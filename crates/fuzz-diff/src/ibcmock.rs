@@ -33,6 +33,8 @@ use x_ibc::lightclients::light;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum UpgradeTimeoutRelay {
     Try,
+    FastForwardConfirm,
+    FastForwardOpen,
     RejectedTimeout,
     SuccessfulTimeout,
     TimedOutConfirm,
@@ -590,6 +592,11 @@ pub struct Driver {
     /// Proof-backed Confirm whose counterparty Upgrade timeout has elapsed,
     /// aborting the upgrade with a code-zero FAILURE response.
     upgrade_confirm_timeout_required: bool,
+    /// Proof-backed successful Try whose counterparty sequence jumps ahead,
+    /// followed by Confirm, Open, and an exact ICA packet acknowledgement.
+    upgrade_try_fast_forward_required: bool,
+    upgrade_try_fast_forward_initial_ready: bool,
+    upgrade_try_fast_forward_confirm_ready: bool,
     upgrade_timeout_stage: u8,
     upgrade_timeout_pending: Option<PendingUpgradeTimeoutRelay>,
     upgrade_timeout_timestamp: u64,
@@ -928,10 +935,18 @@ impl Driver {
         self
     }
 
+    /// Require a complete channel upgrade whose Try fast-forwards sequence.
+    #[must_use]
+    pub fn with_upgrade_try_fast_forward_requirement(mut self, enabled: bool) -> Self {
+        self.upgrade_try_fast_forward_required = enabled;
+        self
+    }
+
     fn upgrade_timeout_active(&self) -> bool {
         self.upgrade_timeout_required
             || self.upgrade_timeout_boundary_required
             || self.upgrade_confirm_timeout_required
+            || self.upgrade_try_fast_forward_required
     }
 
     /// Exact signed relay bytes to retry after CheckTx or proposal omission.
@@ -1039,10 +1054,32 @@ impl Driver {
             && !self.upgrade_timeout_checkpoint_ready
     }
 
+    /// The authentic open ICA channel is ready for the pre-Try raw checkpoint.
+    #[must_use]
+    pub fn upgrade_try_fast_forward_needs_initial_checkpoint(&self) -> bool {
+        self.upgrade_try_fast_forward_required
+            && self.ica_open
+            && self.upgrade_timeout_stage == 0
+            && !self.upgrade_try_fast_forward_initial_ready
+    }
+
+    /// Allows construction only after the harness proves clean pre-Try state.
+    pub fn confirm_upgrade_try_fast_forward_initial_checkpoint(&mut self) {
+        if self.upgrade_try_fast_forward_needs_initial_checkpoint() {
+            self.upgrade_try_fast_forward_initial_ready = true;
+        }
+    }
+
     /// Local channel used by the controlled timeout fixture.
     #[must_use]
     pub fn upgrade_timeout_channel(&self) -> Option<&str> {
         self.a_ica.as_deref()
+    }
+
+    /// Whether the controlled lifecycle is the successful sequence jump.
+    #[must_use]
+    pub fn upgrade_try_fast_forward_required(&self) -> bool {
+        self.upgrade_try_fast_forward_required
     }
 
     /// Client whose complete raw prefix is part of the rollback checkpoint.
@@ -1067,8 +1104,24 @@ impl Driver {
     pub fn upgrade_timeout_needs_rejection_checkpoint(&self) -> bool {
         self.upgrade_timeout_active()
             && !self.upgrade_confirm_timeout_required
+            && !self.upgrade_try_fast_forward_required
             && self.upgrade_timeout_stage == 4
             && !self.upgrade_timeout_rejection_checkpoint_ready
+    }
+
+    /// Successful Confirm committed and awaits its exact raw-state checkpoint.
+    #[must_use]
+    pub fn upgrade_try_fast_forward_needs_confirm_checkpoint(&self) -> bool {
+        self.upgrade_try_fast_forward_required
+            && self.upgrade_timeout_stage == 4
+            && !self.upgrade_try_fast_forward_confirm_ready
+    }
+
+    /// Allows Open construction only after Confirm state is proven.
+    pub fn confirm_upgrade_try_fast_forward_confirm_checkpoint(&mut self) {
+        if self.upgrade_try_fast_forward_needs_confirm_checkpoint() {
+            self.upgrade_try_fast_forward_confirm_ready = true;
+        }
     }
 
     /// Allows construction of a distinct proof only after rollback is proven.
@@ -2469,8 +2522,15 @@ impl Driver {
         };
 
         let (kind, messages) = match self.upgrade_timeout_stage {
-            0 => {
-                let sequence = self.cu_seq + 1;
+            0 if !self.upgrade_try_fast_forward_required
+                || self.upgrade_try_fast_forward_initial_ready =>
+            {
+                let sequence = self.cu_seq
+                    + if self.upgrade_try_fast_forward_required {
+                        2
+                    } else {
+                        1
+                    };
                 self.cp
                     .put_channel_end(CP_ICA_PORT, CP_ICA_CHAN, &channel(&current, sequence));
                 self.cp.put_gogo(
@@ -2500,7 +2560,42 @@ impl Driver {
                 (UpgradeTimeoutRelay::Try, messages)
             }
             2 if self.upgrade_timeout_checkpoint_ready => {
-                if self.upgrade_confirm_timeout_required {
+                if self.upgrade_try_fast_forward_required {
+                    let timestamp = c.now_nanos.saturating_add(3_600_000_000_000);
+                    let mut counterparty_channel = channel(&current, self.cu_seq);
+                    counterparty_channel.state = ch::State::Flushing as i32;
+                    let next_send = self
+                        .cp
+                        .next_send
+                        .get(&(CP_ICA_PORT.to_owned(), CP_ICA_CHAN.to_owned()))
+                        .copied()
+                        .unwrap_or(1);
+                    let counterparty_upgrade = ch::Upgrade {
+                        fields: Some(fields(&self.cu_new)),
+                        timeout: Some(ch::Timeout {
+                            height: Some(Height::default()),
+                            timestamp,
+                        }),
+                        next_sequence_send: next_send,
+                    };
+                    self.cp
+                        .put_channel_end(CP_ICA_PORT, CP_ICA_CHAN, &counterparty_channel);
+                    self.cp.put_gogo(&upgrade_key, &counterparty_upgrade);
+                    let height = self.cp.commit(c.now - 3);
+                    let mut messages: Vec<Any> = self.update(&signer).into_iter().collect();
+                    messages.push(Any::pack(&ch::MsgChannelUpgradeConfirm {
+                        port_id: "icahost".into(),
+                        channel_id: a_ica.clone(),
+                        counterparty_channel_state: ch::State::Flushing as i32,
+                        counterparty_upgrade: Some(counterparty_upgrade),
+                        proof_channel: self.cp.proof(&channel_key),
+                        proof_upgrade: self.cp.proof(&upgrade_key),
+                        proof_height: proof_height(height),
+                        signer,
+                    }));
+                    self.upgrade_timeout_stage = 3;
+                    (UpgradeTimeoutRelay::FastForwardConfirm, messages)
+                } else if self.upgrade_confirm_timeout_required {
                     let timestamp = c.now_nanos;
                     self.upgrade_confirm_timeout_timestamp = timestamp;
                     let mut counterparty_channel = channel(&current, self.cu_seq);
@@ -2588,6 +2683,36 @@ impl Driver {
                     self.upgrade_timeout_stage = 3;
                     (UpgradeTimeoutRelay::RejectedTimeout, messages)
                 }
+            }
+            4 if self.upgrade_try_fast_forward_required
+                && self.upgrade_try_fast_forward_confirm_ready =>
+            {
+                let counterparty_channel = ch::Channel {
+                    state: ch::State::Open as i32,
+                    ordering: ch::Order::Unordered as i32,
+                    counterparty: Some(ch::Counterparty {
+                        port_id: "icahost".into(),
+                        channel_id: a_ica.clone(),
+                    }),
+                    connection_hops: vec![CP_CONNECTION.into()],
+                    version: self.cu_new.clone(),
+                    upgrade_sequence: self.cu_seq,
+                };
+                self.cp
+                    .put_channel_end(CP_ICA_PORT, CP_ICA_CHAN, &counterparty_channel);
+                let height = self.cp.commit(c.now - 2);
+                let mut messages: Vec<Any> = self.update(&signer).into_iter().collect();
+                messages.push(Any::pack(&ch::MsgChannelUpgradeOpen {
+                    port_id: "icahost".into(),
+                    channel_id: a_ica,
+                    counterparty_channel_state: ch::State::Open as i32,
+                    counterparty_upgrade_sequence: self.cu_seq,
+                    proof_channel: self.cp.proof(&channel_key),
+                    proof_height: proof_height(height),
+                    signer,
+                }));
+                self.upgrade_timeout_stage = 5;
+                (UpgradeTimeoutRelay::FastForwardOpen, messages)
             }
             4 if self.upgrade_timeout_rejection_checkpoint_ready => {
                 let mut counterparty_channel = channel(&current, self.cu_seq);
@@ -3044,6 +3169,12 @@ impl Driver {
         let kind = pending.kind;
         let valid = match kind {
             UpgradeTimeoutRelay::Try => self.valid_upgrade_timeout_try(result),
+            UpgradeTimeoutRelay::FastForwardConfirm => {
+                self.valid_upgrade_try_fast_forward_confirm(result)
+            }
+            UpgradeTimeoutRelay::FastForwardOpen => {
+                self.valid_upgrade_try_fast_forward_open(result)
+            }
             UpgradeTimeoutRelay::RejectedTimeout => self.valid_upgrade_timeout_rejection(result),
             UpgradeTimeoutRelay::SuccessfulTimeout => self.valid_upgrade_timeout_success(result),
             UpgradeTimeoutRelay::TimedOutConfirm => self.valid_upgrade_confirm_timeout(result),
@@ -3082,6 +3213,15 @@ impl Driver {
                     "upgrade_timeout_rejected"
                 });
             }
+            UpgradeTimeoutRelay::FastForwardConfirm => {
+                self.upgrade_timeout_stage = 4;
+                self.bump("upgrade_try_fast_forward_confirm");
+            }
+            UpgradeTimeoutRelay::FastForwardOpen => {
+                self.ica_version.clone_from(&self.cu_new);
+                self.upgrade_timeout_stage = 6;
+                self.bump("upgrade_try_fast_forward_open");
+            }
             UpgradeTimeoutRelay::SuccessfulTimeout => {
                 self.upgrade_timeout_stage = 6;
                 self.bump("upgrade_timeout_cleaned");
@@ -3117,11 +3257,23 @@ impl Driver {
         if result.code != 0 {
             return false;
         }
-        let response = Self::tx_responses(result).and_then(|responses| {
-            responses
-                .into_iter()
-                .find(|response| response.type_url.ends_with("MsgChannelUpgradeTryResponse"))
-        });
+        let Some(responses) = Self::tx_responses(result) else {
+            return false;
+        };
+        if self.upgrade_try_fast_forward_required
+            && !matches!(
+                responses.as_slice(),
+                [update, try_response]
+                    if update.type_url.ends_with("MsgUpdateClientResponse")
+                        && update.value.is_empty()
+                        && try_response.type_url.ends_with("MsgChannelUpgradeTryResponse")
+            )
+        {
+            return false;
+        }
+        let response = responses
+            .into_iter()
+            .find(|response| response.type_url.ends_with("MsgChannelUpgradeTryResponse"));
         let Some(response) = response.and_then(|response| {
             ch::MsgChannelUpgradeTryResponse::decode(response.value.as_slice()).ok()
         }) else {
@@ -3138,13 +3290,20 @@ impl Driver {
                     connection_hops: vec![self.a_conn.clone().unwrap_or_default()],
                     version: self.cu_new.clone(),
                 })
-            && result.events.iter().any(|event| {
-                event.r#type == "channel_upgrade_try"
-                    && attr(event, "port_id").as_deref() == Some("icahost")
-                    && attr(event, "channel_id") == self.a_ica
-                    && attr(event, "upgrade_sequence").and_then(|value| value.parse().ok())
-                        == Some(self.cu_seq)
-            })
+            && matches!(
+                result
+                    .events
+                    .iter()
+                    .filter(|event| event.r#type.starts_with("channel_upgrade"))
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                [event]
+                    if event.r#type == "channel_upgrade_try"
+                        && attr(event, "port_id").as_deref() == Some("icahost")
+                        && attr(event, "channel_id") == self.a_ica
+                        && attr(event, "upgrade_sequence").and_then(|value| value.parse().ok())
+                            == Some(self.cu_seq)
+            )
     }
 
     fn valid_upgrade_timeout_rejection(
@@ -3180,6 +3339,77 @@ impl Driver {
                     "channel_upgrade_timeout" | "channel_upgrade_error" | "update_client"
                 )
             })
+    }
+
+    fn valid_upgrade_try_fast_forward_confirm(
+        &self,
+        result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
+    ) -> bool {
+        if result.code != 0 {
+            return false;
+        }
+        let responses_ok = Self::tx_responses(result).is_some_and(|responses| {
+            matches!(
+                responses.as_slice(),
+                [update, confirm]
+                    if update.type_url.ends_with("MsgUpdateClientResponse")
+                        && update.value.is_empty()
+                        && confirm.type_url.ends_with("MsgChannelUpgradeConfirmResponse")
+                        && ch::MsgChannelUpgradeConfirmResponse::decode(confirm.value.as_slice())
+                            .is_ok_and(|response| {
+                                response.result == ch::ResponseResultType::Success as i32
+                            })
+            )
+        });
+        responses_ok
+            && matches!(
+                result
+                    .events
+                    .iter()
+                    .filter(|event| event.r#type.starts_with("channel_upgrade"))
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                [event]
+                    if event.r#type == "channel_upgrade_confirm"
+                        && attr(event, "port_id").as_deref() == Some("icahost")
+                        && attr(event, "channel_id") == self.a_ica
+                        && attr(event, "upgrade_sequence").and_then(|value| value.parse().ok())
+                            == Some(self.cu_seq)
+            )
+    }
+
+    fn valid_upgrade_try_fast_forward_open(
+        &self,
+        result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
+    ) -> bool {
+        if result.code != 0 {
+            return false;
+        }
+        let responses_ok = Self::tx_responses(result).is_some_and(|responses| {
+            matches!(
+                responses.as_slice(),
+                [update, open]
+                    if update.type_url.ends_with("MsgUpdateClientResponse")
+                        && update.value.is_empty()
+                        && open.type_url.ends_with("MsgChannelUpgradeOpenResponse")
+                        && ch::MsgChannelUpgradeOpenResponse::decode(open.value.as_slice()).is_ok()
+            )
+        });
+        responses_ok
+            && matches!(
+                result
+                    .events
+                    .iter()
+                    .filter(|event| event.r#type.starts_with("channel_upgrade"))
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                [event]
+                    if event.r#type == "channel_upgrade_open"
+                        && attr(event, "port_id").as_deref() == Some("icahost")
+                        && attr(event, "channel_id") == self.a_ica
+                        && attr(event, "upgrade_sequence").and_then(|value| value.parse().ok())
+                            == Some(self.cu_seq)
+            )
     }
 
     fn valid_upgrade_timeout_success(
@@ -5516,6 +5746,73 @@ mod tests {
             ..Default::default()
         });
         assert!(!driver.valid_upgrade_confirm_timeout(&leaked_success_event));
+    }
+
+    #[test]
+    fn upgrade_try_fast_forward_transitions_require_ordered_responses_and_exact_event() {
+        let driver = Driver {
+            upgrade_try_fast_forward_required: true,
+            cu_seq: 9,
+            a_ica: Some("channel-3".into()),
+            ..Driver::default()
+        };
+        let event = |kind: &str, sequence: &str| Event {
+            r#type: kind.into(),
+            attributes: [
+                ("port_id", "icahost"),
+                ("channel_id", "channel-3"),
+                ("upgrade_sequence", sequence),
+            ]
+            .into_iter()
+            .map(|(key, value)| EventAttribute {
+                key: key.into(),
+                value: value.into(),
+                index: false,
+            })
+            .collect(),
+        };
+        let response = |message: Any, event: Event| ExecTxResult {
+            data: celestia_proto::cosmos::base::abci::v1beta1::TxMsgData {
+                msg_responses: vec![
+                    Any::pack(&celestia_proto::ibc::core::client::v1::MsgUpdateClientResponse {}),
+                    message,
+                ],
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            events: vec![event],
+            ..Default::default()
+        };
+        let confirm = response(
+            Any::pack(&ch::MsgChannelUpgradeConfirmResponse {
+                result: ch::ResponseResultType::Success as i32,
+            }),
+            event("channel_upgrade_confirm", "9"),
+        );
+        assert!(driver.valid_upgrade_try_fast_forward_confirm(&confirm));
+        let open = response(
+            Any::pack(&ch::MsgChannelUpgradeOpenResponse {}),
+            event("channel_upgrade_open", "9"),
+        );
+        assert!(driver.valid_upgrade_try_fast_forward_open(&open));
+
+        let mut wrong_sequence = open.clone();
+        wrong_sequence.events = vec![event("channel_upgrade_open", "8")];
+        assert!(!driver.valid_upgrade_try_fast_forward_open(&wrong_sequence));
+        let mut duplicate_event = confirm.clone();
+        duplicate_event
+            .events
+            .push(event("channel_upgrade_confirm", "9"));
+        assert!(!driver.valid_upgrade_try_fast_forward_confirm(&duplicate_event));
+        let mut wrong_response_order = open;
+        let mut data = Driver::tx_responses(&wrong_response_order).unwrap();
+        data.reverse();
+        wrong_response_order.data = celestia_proto::cosmos::base::abci::v1beta1::TxMsgData {
+            msg_responses: data,
+            ..Default::default()
+        }
+        .encode_to_vec();
+        assert!(!driver.valid_upgrade_try_fast_forward_open(&wrong_response_order));
     }
 
     #[test]

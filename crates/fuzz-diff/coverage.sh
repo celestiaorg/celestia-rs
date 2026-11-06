@@ -227,6 +227,12 @@ for scen in ibc v9-ibc; do
 done
 for scen in ibc v9-ibc; do
   case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "upgrade-try-fast-forward-$scen" GO_APPD="$A" DELIVER_IBC=1 \
+    DELIVER_IBC_UPGRADE_TRY_FAST_FORWARD_REQUIRE=1 -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 120 0 18094
+done
+for scen in ibc v9-ibc; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
   run "upgrade-timeout-$scen" GO_APPD="$A" DELIVER_IBC=1 \
     DELIVER_IBC_UPGRADE_TIMEOUT_REQUIRE=1 -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" 120 0 18091
