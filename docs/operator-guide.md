@@ -368,6 +368,16 @@ on a validator), and a validator then runs code no one reviewed on that
 machine before it signed with it: weigh that before enabling it on a
 mainnet validator.
 
+For an owner-authorized exact-candidate observation, put a Unix expiry
+time in `~/.celestia-rs/auto-update/qualification-hold-until`. Default
+hourly deployment passes exit before fetching or replacing binaries
+until that time; `watchdog` and read-only `check` passes still run.
+An invalid deadline also stops deployment, while an expired deadline
+automatically resumes it. Record the loaded executable identity and
+the hold deadline with the observation receipts; a candidate change
+or interruption starts a new qualifying interval. This hold does not
+replace the operator's halt response or independent monitoring.
+
 #### Restarting a node that fell behind (optional)
 
 After a network outage, a node that kept running catches up through

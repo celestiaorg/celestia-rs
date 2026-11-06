@@ -76,6 +76,18 @@ log() { echo "$(date -u +%FT%TZ) $*"; }
 die() { log "ERROR: $*"; exit 2; }
 
 mkdir -p "$STATE"
+HOLD=$STATE/qualification-hold-until
+# During an authorized exact-candidate observation, pause deployments
+# until the recorded Unix deadline. Watchdog and read-only `check` passes
+# still run. A malformed hold fails closed; an expired hold auto-resumes.
+if [[ -z ${1:-} && -f $HOLD ]]; then
+  read -r hold_until <"$HOLD" || hold_until=
+  [[ $hold_until =~ ^[0-9]+$ ]] || die "invalid qualification hold deadline"
+  if (($(date +%s) < hold_until)); then
+    log "qualification hold: deployments paused until $hold_until"
+    exit 0
+  fi
+fi
 touch "$STATE/bad-commits"
 LOCK=$STATE/lock
 # The watchdog only reads the lock, so a deploy never finds it held.
