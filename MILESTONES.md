@@ -44,6 +44,14 @@ the time (power outage, see M14), so it did not execute the upgrade live.
 
 ## M13 — Mocha validator soak, mainnet full node
 
+*Live evidence (2026-11-05):* [Mac validator investigation](docs/live-validator-evidence-2026-11-05.md)
+records both nodes bonded, unjailed and at the public tip on release commit
+`b459a6e`. Fresh app-hash checks passed. This does not close the remaining
+mainnet gate or replace the accepted historical Mocha soak: the latest
+72 hours contain 28 starts per node, and the seven-day Mocha history
+contains the Oct 31 guard refusal documented in operator guide §11.11.
+Exact-candidate qualification is tracked in [#299](https://github.com/celestiaorg/celestia-rs/issues/299).
+
 The Mocha validator soak passed on 2026-10-17. The mainnet node on the
 Mac now runs as the M14 validator; what remains is its full-node record
 through the v10 upgrade (C1.1). On the Mac Mini M4, route A (P2P state sync from Mocha's Go
@@ -67,14 +75,14 @@ now on a background thread, OPEN_QUESTIONS #7).
 
 Remaining:
 
-- [ ] Mainnet full node on the Mac over P2P, at the tip with
-  `check-apphash.sh` OK. It is the M14 validator's node, and also
-  F1.8's live replay. It was at the tip from 15,104,013 (signing) to
-  15,115,857, then went offline before the v10 upgrade height
-  (15,116,658). When it is back, it executes the upgrade height while
-  catching up: check app hashes at every height from `H-2` to `H+3`
-  (or run an HTTPS `follow` across the height) to cover F1.5's
-  real-world half.
+- [ ] Mainnet full-node qualification on the Mac over P2P. The M14
+  validator's node was at the tip with `check-apphash.sh` OK on Nov 5;
+  C1.1's continuous three-day record and F1.8's complete parity coverage
+  remain open. Historically it was at the tip from 15,104,013 (signing)
+  to 15,115,857, then went offline before the v10 upgrade height
+  (15,116,658). The Nov 5 spot checks do not reconstruct the Mac's
+  execution of that upgrade boundary; the retained cloud replay below
+  provides separate evidence for F1.5's real-world half.
   *HTTPS follow across the upgrade (2026-10-20, cloud x86_64, release
   build):* `celestia-rs follow` from the Go SDK snapshot at 15,105,000
   inside Polkachu's `celestia_15123013` tarball (restored app hash equal
@@ -115,6 +123,14 @@ Every item must pass on the commit the canary runs.
   The upgrade height itself is covered by the HTTPS follow in M13
   (15,105,001 → 15,137,961, every height matching); C1.1 still needs the
   Mac's P2P node at the tip for 3 days.
+  *2026-11-05:* [live investigation](docs/live-validator-evidence-2026-11-05.md)
+  confirms current tip/parity but not an uninterrupted three-day record:
+  28 mainnet starts in the latest 72h, RPC gaps and six sampled catch-up
+  periods. Periodic app-hash checks do not establish every-height or
+  transaction-result parity. C1.1 remains open;
+  [#299](https://github.com/celestiaorg/celestia-rs/issues/299) tracks the
+  candidate soak and [#298](https://github.com/celestiaorg/celestia-rs/issues/298)
+  tracks parity receipts and transaction-result evidence.
 
 - [ ] **C1.2 Execution differentials nightly.** F1.1: nightly jobs run
   `json_*`, `exec`, `pp` and `deliver` (with `DELIVER_IBC`, `DELIVER_HL`,
@@ -206,6 +222,17 @@ Every item must pass on the commit the canary runs.
   accepted (2026-10-20) a hot `file` keyring on the Mac, its passphrase on
   disk for the watchdog's unjail, for canary stake only
   (OPEN_QUESTIONS #9). Open: confirm the consensus key was never copied.
+  *2026-11-05:* [live investigation](docs/live-validator-evidence-2026-11-05.md)
+  confirms separate homes, ports and public consensus identities, active
+  watchdog/monitoring timers and alert evaluation. Email delivery remains
+  unproven ([#300](https://github.com/celestiaorg/celestia-rs/issues/300));
+  forwarding to Grafana's local notifier is not a delivery receipt.
+  The installed collector still infers jail status from `jailed_until`
+  and lacks the repository's staking-aware correction
+  ([#297](https://github.com/celestiaorg/celestia-rs/issues/297)). Current
+  direct staking queries show both validators unjailed. Key provenance,
+  exclusivity and current custody were not audited
+  ([#301](https://github.com/celestiaorg/celestia-rs/issues/301)). C1.5 stays open.
 
 ## F1 — Consensus-split assurance (gate for more than canary stake)
 
@@ -1129,6 +1156,13 @@ test), then start that harness's count again.
   M13 until M14 starts.
   *2026-10-20:* `follow` matched mainnet 15,105,001 → 15,137,961 (32,961
   heights, the last ~11,600 of the v9 era and ~21,300 at v10).
+  *2026-11-05:* [live investigation](docs/live-validator-evidence-2026-11-05.md)
+  adds dated current-tip, signing and periodic app-hash evidence, not a
+  whole-era replay or an every-height/tx-result comparison. Historical
+  continuity is not established. F1.8 stays open; coverage is tracked in
+  [#302](https://github.com/celestiaorg/celestia-rs/issues/302), with parity
+  receipts in [#298](https://github.com/celestiaorg/celestia-rs/issues/298)
+  and the live observation window in [#299](https://github.com/celestiaorg/celestia-rs/issues/299).
 
 - [ ] **F1.9 Determinism of the Rust binary.** C1.3 records Linux x86_64
   and macOS aarch64 determinism runs on earlier candidates. The validator's

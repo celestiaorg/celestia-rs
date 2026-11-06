@@ -22,6 +22,13 @@ launchd).
 > below is covered by `crates/tier-5-node/celestia-rs/tests/` and
 > `conformance/devnet/operator.sh` (Rust validator + Go full node).
 
+For a dated view of the actual Mac configuration and running validators,
+see the [2026-11-05 live-node investigation](live-validator-evidence-2026-11-05.md).
+Both networks were at tip with fresh app-hash comparisons passing; the
+latest 72 hours did not establish an uninterrupted three-day mainnet run.
+The ports, builds and process states in that report are observations, not
+defaults or a claim that the current machine still has the same setup.
+
 ## 1. Build or download
 
 **Install** (tagged releases) with the installer from the README:
