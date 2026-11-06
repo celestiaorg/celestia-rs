@@ -1825,10 +1825,17 @@ impl Stats {
                     && self
                         .gov_handler_rejection_cases
                         .values()
-                        .all(|count| *count == 1),
-                "incomplete DELIVER_GOV_HANDLER_REJECTION_REQUIRE coverage: completed={} cases={:?}",
+                        .all(|count| *count == 1)
+                    && self
+                        .gov_executed
+                        .get("/cosmos.gov.v1.MsgUpdateParams")
+                        .copied()
+                        .unwrap_or(0)
+                        == 2,
+                "incomplete DELIVER_GOV_HANDLER_REJECTION_REQUIRE coverage: completed={} cases={:?} executed={:?}",
                 self.gov_handler_rejection_completed,
-                self.gov_handler_rejection_cases
+                self.gov_handler_rejection_cases,
+                self.gov_executed
             );
         }
         Ok(())
@@ -12901,6 +12908,9 @@ mod tests {
             gov_handler_rejection_cases: complete_cases.clone(),
             ..Stats::default()
         };
+        stats
+            .gov_executed
+            .insert("/cosmos.gov.v1.MsgUpdateParams".into(), 2);
         assert!(stats.require_gov_handler_rejection_coverage().is_ok());
         stats.gov_handler_rejection_completed = 0;
         assert!(stats.require_gov_handler_rejection_coverage().is_err());
@@ -12913,11 +12923,20 @@ mod tests {
             .gov_handler_rejection_cases
             .insert("wrong-case".into(), 1);
         assert!(stats.require_gov_handler_rejection_coverage().is_err());
-        stats.gov_handler_rejection_cases = complete_cases;
+        stats.gov_handler_rejection_cases = complete_cases.clone();
         *stats
             .gov_handler_rejection_cases
             .get_mut(gov_errors::CASE_NAMES[0])
             .unwrap() = 2;
+        assert!(stats.require_gov_handler_rejection_coverage().is_err());
+        stats.gov_handler_rejection_cases = complete_cases;
+        stats
+            .gov_executed
+            .insert("/cosmos.gov.v1.MsgUpdateParams".into(), 1);
+        assert!(stats.require_gov_handler_rejection_coverage().is_err());
+        stats
+            .gov_executed
+            .insert("/cosmos.gov.v1.MsgUpdateParams".into(), 3);
         assert!(stats.require_gov_handler_rejection_coverage().is_err());
         assert!(
             Stats::default()

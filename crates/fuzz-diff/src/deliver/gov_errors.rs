@@ -59,6 +59,13 @@ impl Fixture {
         )?
         .params
         .context("governance Params query returned no params")?;
+        anyhow::ensure!(
+            baseline_params.proposal_cancel_dest.is_empty(),
+            "governance handler fixture needs an empty baseline proposal cancellation destination"
+        );
+        let proposer = gn.accts[1].acc.clone();
+        sdk::address::acc_codec_to_bytes(&proposer)
+            .context("governance handler fixture proposer is not a valid account address")?;
         let mut query = rust.create_query_context(0, false)?;
         let mut ctx = query.context();
         let first_id = x_gov::peek_proposal_id(&mut ctx)?;
@@ -72,7 +79,7 @@ impl Fixture {
         let gov_balance = account_balance(rust, GOV)?;
         Ok(Self {
             baseline_params,
-            proposer: gn.accts[1].acc.clone(),
+            proposer,
             first_id,
             phase: 0,
             checked: BTreeSet::new(),
@@ -99,10 +106,7 @@ impl Fixture {
                     gn,
                     1,
                     Any::pack(&gov::MsgSubmitProposal {
-                        messages: vec![Any::pack(&gov::MsgUpdateParams {
-                            authority: GOV.into(),
-                            params: Some(self.baseline_params.clone()),
-                        })],
+                        messages: self.control_messages(),
                         initial_deposit: vec![coin(DEPOSIT)],
                         proposer: gn.accts[1].acc.clone(),
                         metadata: METADATA.into(),
@@ -503,13 +507,14 @@ impl Fixture {
         proposal: &gov::Proposal,
         status: gov::ProposalStatus,
     ) -> anyhow::Result<()> {
-        let payload = txdecode::gogo_repack(&Any::pack(&gov::MsgUpdateParams {
-            authority: GOV.into(),
-            params: Some(self.baseline_params.clone()),
-        }));
+        let payloads = self
+            .control_messages()
+            .into_iter()
+            .map(|message| txdecode::gogo_repack(&message))
+            .collect::<Vec<_>>();
         anyhow::ensure!(
-            proposal.messages == [payload.clone()],
-            "metadata-control payload mismatch: stored={:?} expected={payload:?}",
+            proposal.messages == payloads,
+            "metadata-control payload mismatch: stored={:?} expected={payloads:?}",
             proposal.messages
         );
         anyhow::ensure!(
@@ -546,6 +551,22 @@ impl Fixture {
             proposal.total_deposit
         );
         Ok(())
+    }
+
+    fn control_messages(&self) -> Vec<Any> {
+        let mut with_destination = self.baseline_params.clone();
+        with_destination
+            .proposal_cancel_dest
+            .clone_from(&self.proposer);
+        [with_destination, self.baseline_params.clone()]
+            .into_iter()
+            .map(|params| {
+                Any::pack(&gov::MsgUpdateParams {
+                    authority: GOV.into(),
+                    params: Some(params),
+                })
+            })
+            .collect()
     }
 
     fn require_finances(&self, rust: &mut app::App, gn: &Gen, stage: Stage) -> anyhow::Result<()> {
