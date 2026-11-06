@@ -233,6 +233,14 @@ Every item must pass on the commit the canary runs.
   direct staking queries show both validators unjailed. Key provenance,
   exclusivity and current custody were not audited
   ([#301](https://github.com/celestiaorg/celestia-rs/issues/301)). C1.5 stays open.
+  *2026-11-05 owner attestation:* The
+  [dated custody record](docs/c1.5-owner-attestation-2026-11-05.md)
+  states the mainnet consensus key was created on this Mac, never copied
+  or restored elsewhere, and has no other current signer. The owner
+  reaffirmed the hot operator keyring for canary stake only and approved
+  the observed 56.303623 TIA as canary-scale. These are owner statements,
+  not an independent secret audit. C1.5 remains open for alert-delivery
+  evidence in [#300](https://github.com/celestiaorg/celestia-rs/issues/300).
 
 ## F1 — Consensus-split assurance (gate for more than canary stake)
 
