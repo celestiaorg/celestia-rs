@@ -82,7 +82,10 @@ HOLD=$STATE/qualification-hold-until
 # still run. A malformed hold fails closed; an expired hold auto-resumes.
 if [[ -z ${1:-} && -f $HOLD ]]; then
   read -r hold_until <"$HOLD" || hold_until=
-  [[ $hold_until =~ ^[0-9]+$ ]] || die "invalid qualification hold deadline"
+  # Bash arithmetic wraps values outside its signed integer range. Limit
+  # Unix deadlines to ten digits so an overflowing value cannot bypass a
+  # fail-closed hold (ten digits remains sufficient through 2286 UTC).
+  [[ $hold_until =~ ^[0-9]{1,10}$ ]] || die "invalid qualification hold deadline"
   if (($(date +%s) < hold_until)); then
     log "qualification hold: deployments paused until $hold_until"
     exit 0

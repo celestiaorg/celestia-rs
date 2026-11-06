@@ -23,6 +23,14 @@ PATH="$t/bin:$PATH" CELESTIA_RS_DIR="$t" "$script" >"$t/out" 2>&1 || rc=$?
 [[ $rc == 2 ]]
 grep -q 'invalid qualification hold deadline' "$t/out"
 
+# A digits-only value outside Bash's signed integer range must not wrap
+# into an expired deadline and continue into Git.
+echo 18446744073709551615 >"$t/auto-update/qualification-hold-until"
+rc=0
+PATH="$t/bin:$PATH" CELESTIA_RS_DIR="$t" "$script" >"$t/out" 2>&1 || rc=$?
+[[ $rc == 2 ]]
+grep -q 'invalid qualification hold deadline' "$t/out"
+
 echo "$(( $(date +%s) - 1 ))" >"$t/auto-update/qualification-hold-until"
 rc=0
 PATH="$t/bin:$PATH" CELESTIA_RS_DIR="$t" "$script" >"$t/out" 2>&1 || rc=$?
