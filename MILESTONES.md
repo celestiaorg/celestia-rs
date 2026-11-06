@@ -634,8 +634,8 @@ test), then start that harness's count again.
   non-null maximum deposit period case is excluded because Go embeds a
   process-dependent pointer address in its error text. Both focused six-block
   probes completed all 29 cases with zero consensus or log mismatches. These
-  bounded synthetic lifecycles still need merged-profile branch accounting and
-  do not complete F1.3, F1.12, volume, mainnet-shaped state,
+  bounded synthetic lifecycles are included in the exact merged profile below
+  and do not complete F1.3, F1.12, volume, mainnet-shaped state,
   observation-window or production-readiness gates.
   *Governance message-server follow-up (2026-11-05):* focused pinned v10.5.0
   and historical v9.0.8 fixtures cover the invalid-`authors` metadata fallback,
@@ -653,10 +653,25 @@ test), then start that harness's count again.
   `ParamFilterDecorator` (`sdk/18`) before the message server, and an
   unregistered legacy content type is rejected
   by interface decoding before the legacy handler, so neither can honestly
-  credit those handler arms in a full-app run. These bounded synthetic cases
-  still need merged-profile branch accounting and do not complete F1.3, F1.12,
-  volume, mainnet-shaped state, observation-window or production-readiness
-  gates.
+  credit those handler arms in a full-app run. The exact merged `e1a4677`
+  profile passed all 229 scheduled cases with zero consensus mismatches and
+  measured `x/gov/src/msgs.rs` at 103/110 branch arms. The valid nonempty
+  cancellation destination now has both outcomes; the remaining seven arms
+  are the documented ante/interface/prevalidation or unstable-text
+  exclusions. This closes merged-profile accounting for these bounded cases,
+  not F1.3, F1.12, volume, mainnet-shaped state, observation-window or
+  production-readiness gates.
+  *SendAuthorization coverage-schedule follow-up (2026-11-06):* the existing
+  exact signed v10/v9 regression already runs nightly, but was absent from the
+  instrumented profile. The coverage schedule now includes both 28-block
+  fixtures, which bind budget exhaustion, allow-list precedence, repeated
+  inner messages, grant replacement and transaction rollback. Fresh focused
+  runs each finalized all 44 scripted transactions (35 code zero) with zero
+  consensus or log mismatches. Adding their profiles to the sealed `e1a4677`
+  baseline increased global handwritten coverage from 5615/13522 to
+  5617/13522 and `x/authz/src/authorization.rs` from 92/106 to 93/106. The
+  merged schedule still requires a fresh full profile; the remaining authz
+  arms and wider F1.3 gates stay open.
 
 - [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
   already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)

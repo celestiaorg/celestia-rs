@@ -1,0 +1,82 @@
+{
+  "candidate": {
+    "revision": "e1a4677c5797902cd5c231b278c658cb21b0e63d",
+    "status": "merged",
+    "tree": "e0b5203263162709e02927c9fc80183242685bed"
+  },
+  "coverage": {
+    "global_handwritten_arms": {
+      "count": 13522,
+      "covered": 5615
+    },
+    "x_authz_authorization_arms": {
+      "count": 106,
+      "covered": 92
+    },
+    "x_gov_messages_arms": {
+      "count": 110,
+      "covered": 103
+    }
+  },
+  "inputs": {
+    "go_v10_binary_sha256": "5424c37cbeeb664f3caa6c4273c8b039c9858a9c23aa333d94935f96e0f85e9b",
+    "go_v9_binary_sha256": "5f37db5171aad00bfa66d6369dbac31483940e7129ecd8a91d55d11a01f82002",
+    "go_version": "go version go1.26.9 linux/amd64",
+    "rustc_version": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+  },
+  "limitations": [
+    "Raw artifacts are retained in the local engineering workspace, not a public artifact archive.",
+    "The focused SendAuthorization contribution was measured by adding two profile records to the sealed baseline; the merged schedule still requires a fresh full profile.",
+    "The result does not complete per-error or uncovered-branch review, volume, mainnet-shaped replay, observation windows, soak, or production readiness."
+  ],
+  "qualification": {
+    "artifact_hashes": {
+      "branches.json": "5284f043bca8f106e4ef985ada67e0373b049d355db701814a992af138f06352",
+      "check.log": "11e9cf9d091208329123890ef3b80bfa4f080b84a203a9e0d2e659ce69e0c07d",
+      "evidence.json": "ef58a08df97228422f2cc9cf79cb7aea3dc4959edde1741ecb0ce8351438dfe8",
+      "llvm.json": "0d2c1fd1199548dd59a3ec92d6473f0f25855dbb44387b049f2bae8abb4c21d2",
+      "runs.txt": "39f8caf53548fab89b76ee9420185f2a84653a5ae5372d65f8ec9b6bd2c41120"
+    },
+    "cases": 229,
+    "consensus_mismatches": 0,
+    "exit_code": 0,
+    "inputs_unchanged": true,
+    "status": "passed"
+  },
+  "schema_version": 1,
+  "scope": "exact merged-candidate differential branch profile plus a focused SendAuthorization schedule contribution",
+  "send_authorization_followup": {
+    "combined_coverage": {
+      "branches_json_sha256": "55166571902560aaa8be9bbeb5e8791409054b06da3ffedd23ad1676654b8a72",
+      "global_handwritten_arms": {
+        "count": 13522,
+        "covered": 5617
+      },
+      "llvm_json_sha256": "bde5d874ac846a6f7498bf8c467e6a28a757e947a31d24dd949ae4b228d9c56e",
+      "x_authz_authorization_arms": {
+        "count": 106,
+        "covered": 93
+      }
+    },
+    "v10": {
+      "blocks": 28,
+      "delivered": 44,
+      "delivered_ok": 35,
+      "log_only_differences": 0,
+      "mismatches": 0,
+      "profile_sha256": "fe1ff58e87d6a37b2af1ec0e2690b2f1cbf855bec5472a8679f7bfee127e732d",
+      "stderr_sha256": "5d3f0d52c45ff2fd2eb3abeade51c340eefc83ba8ee6097406ae091101824824",
+      "stdout_sha256": "ba21522b5eee2149c3aec56a8b5758a4b4d420b66f3e163e9a39eba09c697d07"
+    },
+    "v9": {
+      "blocks": 28,
+      "delivered": 44,
+      "delivered_ok": 35,
+      "log_only_differences": 0,
+      "mismatches": 0,
+      "profile_sha256": "dca0943443826954cbb85b00fb25bb2457226022ee8f77996a3046f23e2f628c",
+      "stderr_sha256": "73ee30ed158f29e0860fea1aa912518ffef4a96b698252509472f8eee681b5e1",
+      "stdout_sha256": "d5cfa6b14eb455c474e200a235e3e4c85d7f187180cbbb7431c799638832777b"
+    }
+  }
+}
