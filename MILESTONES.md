@@ -640,9 +640,11 @@ test), then start that harness's count again.
   *Governance message-server follow-up (2026-11-05):* focused pinned v10.5.0
   and historical v9.0.8 fixtures cover the invalid-`authors` metadata fallback,
   nil legacy content panic, weighted-vote overflow and both legacy text length
-  limits. The metadata control carries a valid unchanged `MsgUpdateParams`,
-  passes with a yes-only tally, and binds its exact payload, advisory metadata,
-  phase indexes, cleanup, refund and recovery accounting. Rejected transactions
+  limits. The metadata control carries two ordered valid `MsgUpdateParams`
+  payloads: the first sets `proposal_cancel_dest` to the valid proposer address
+  and the second restores the exact baseline parameters. It passes with a
+  yes-only tally and binds both exact payloads, two handler executions, advisory
+  metadata, phase indexes, cleanup, refund and recovery accounting. Rejected transactions
   bind successful CheckTx, exact codes and deterministic logs; the nil-content
   panic binds its stable code and marker because Go's recovered log includes a
   process-specific stack. Both six-block probes completed all five cases with
