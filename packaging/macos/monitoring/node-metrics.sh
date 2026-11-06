@@ -12,7 +12,7 @@
 # `apphash` runs check-apphash.sh against each node's reference RPC.
 #
 # nodes.conf has one node per line: <network> <home> <local-rpc>
-# <reference-rpc> [<log file> [<valoper>]]. With a log file (`-` for
+# <reference-rpc> [<log file> [<valoper> [<candidate commit>]]]. With a log file (`-` for
 # none), `collect` also counts the double-sign guard's refusals in it.
 # With the validator's operator address, it reports whether staking has
 # the validator jailed.
@@ -103,9 +103,9 @@ collect() {
   help celestia_rs_sign_refusals_total counter "Double-sign guard refusals in the node's log (nodes.conf log column)."
   help celestia_rs_collector_timestamp_seconds gauge "When this file was written."
 
-  local net home rpc ref log valoper
+  local net home rpc ref log valoper commit
   mkdir -p "$dir"
-  while read -r net home rpc ref log valoper; do
+  while read -r net home rpc ref log valoper commit; do
     [[ $log == - ]] && log=
     local st h bt cu line bin valcons si params
     st=$(curl -fsS -m 5 "$rpc/status" 2>/dev/null)
@@ -180,10 +180,30 @@ collect() {
 apphash() {
   help celestia_rs_apphash_match gauge "1 app hash matches the reference RPC, 0 MISMATCH (parity bug), -1 check could not run."
   help celestia_rs_apphash_check_timestamp_seconds gauge "When the app hash was last checked."
-  local net home rpc ref _rest rc
-  # _rest takes the optional log and valoper columns so they do not end up in ref.
-  while read -r net home rpc ref _rest; do
-    "$CHECK_APPHASH" "$rpc" "$ref" </dev/null >/dev/null 2>&1; rc=$?
+  local net home rpc ref log valoper commit rc result receipt_dir tmp
+  while read -r net home rpc ref log valoper commit; do
+    [[ $net =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid network label: $net" >&2; continue; }
+    [[ $commit == - ]] && commit=
+    result=$(CANDIDATE_COMMIT="$commit" "$CHECK_APPHASH" "$rpc" "$ref" --json </dev/null 2>/dev/null); rc=$?
+    # A checker failure must leave a receipt as well as an unavailable metric.
+    if ! jq -e '.outcome == "match" or .outcome == "mismatch" or .outcome == "unavailable"' \
+      >/dev/null 2>&1 <<<"$result"; then
+      result=$(jq -nc --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --arg local "$rpc" --arg reference "$ref" --arg candidate "$commit" \
+        '{time_utc:$time,chain_id:null,reference_chain_id:null,executed_height:null,
+          local_app_hash:null,reference_header_height:null,reference_app_hash:null,
+          local_rpc:$local,reference_rpc:$reference,outcome:"unavailable",
+          error:"checker_failed_without_receipt",
+          candidate_commit:(if $candidate=="" then null else $candidate end)}')
+      rc=2
+    fi
+    receipt_dir=$dir/receipts/$net
+    mkdir -p "$receipt_dir"
+    tmp=$(mktemp "$receipt_dir/receipt.XXXXXX")
+    printf '%s\n' "$result" >"$tmp" && chmod 600 "$tmp" && mv "$tmp" "$tmp.json"
+    # At five-minute intervals this retains at most ~26,000 small files per
+    # network; deletion applies only to this collector's receipt files.
+    find "$receipt_dir" -type f -name 'receipt.*.json' -mtime +90 -delete
     case $rc in 0) emit celestia_rs_apphash_match "$net" 1 ;; 1) emit celestia_rs_apphash_match "$net" 0 ;; *) emit celestia_rs_apphash_match "$net" -1 ;; esac
     emit celestia_rs_apphash_check_timestamp_seconds "$net" "$(date -u +%s)"
   done < <(nodes)

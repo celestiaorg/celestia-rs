@@ -69,15 +69,15 @@ the validator. Current collection needs the public operator address in
 `nodes.conf` and a successful staking query; unknown is not unjailed.
 
 `check-apphash.sh` compares the local executed height H with the reference
-header H+1, periodically rather than at every height. The collector stores
-the result and check timestamp, not the checked height/hash, and discards
-the script's output. Count distinct check timestamps rather than repeated
-15-second scrapes. Unavailable checks (`-1`) provide no parity evidence;
-they are different from mismatches (`0`). Validate a public reference's
-chain ID and reachability from the collector's execution context. The
-investigation's configured mainnet reference returned HTTP 403, while an
-alternative answered; this alone does not establish the cause of earlier
-failed checks.
+header H+1, periodically rather than at every height. The Nov 5
+investigation's installed collector stored only the result and timestamp,
+discarding height and hash. Count distinct check timestamps rather than
+repeated 15-second scrapes. Unavailable checks (`-1`) provide no parity
+evidence; they are different from mismatches (`0`). Validate a public
+reference's chain ID and reachability from the collector's execution
+context. The investigation's configured mainnet reference returned HTTP
+403, while an alternative answered; this alone does not establish the
+cause of earlier failed checks.
 
 Slashing's missed-block counter is a rolling window, not lifetime uptime.
 Local missed-counter estimates can omit downtime and increments around
@@ -85,6 +85,24 @@ process resets. A dated public commit sample provides separate on-chain
 signing evidence. Proposals and Fibre endorsements are separate measures.
 Missing samples remain unknown time; a low block age alone does not prove
 historical zero height lag or an uninterrupted process/candidate soak.
+
+### App-hash receipts
+
+`check-apphash.sh` compares the local executed height H with reference
+header H+1 every five minutes. The collector retains one JSON receipt per
+check under `~/.celestia-rs/monitoring/textfile/receipts/<network>/` for
+90 days. Each records UTC time, both chain IDs, H, both hashes, reference
+URL, outcome/error, and an optional candidate commit. Supply the commit in
+the final `nodes.conf` column only after verifying the running executable;
+`-` means unknown. Re-running the installer resets that column to the
+repository template. Receipts begin only after installation and cannot
+reconstruct earlier checks.
+
+Count receipts rather than repeated 15-second Prometheus scrapes. Missing
+scheduled receipts are monitoring gaps. An unavailable check is not a
+match or mismatch. These periodic checks do not establish every-height
+coverage or transaction-result parity. Transaction results require separate
+height-indexed comparison receipts with explicit inclusive coverage.
 
 ## Alerts
 
@@ -152,7 +170,7 @@ operator-email > Test.
 | File | Installed to (`~/.celestia-rs/monitoring/`) |
 |---|---|
 | `node-metrics.sh` | `bin/`; `collect` every 30 s, `apphash` every 5 min |
-| `nodes.conf` | `nodes.conf`: network, home, local RPC, reference RPC, node log |
+| `nodes.conf` | `nodes.conf`: network, home, local RPC, reference RPC, node log, operator, optional candidate commit |
 | `prometheus.yml`, `rules.yml` | `prometheus/` |
 | `grafana/` | `grafana/`: config, datasource, dashboard |
 

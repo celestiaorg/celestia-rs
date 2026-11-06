@@ -69,7 +69,7 @@ chmod +x "$t/bin/"*
 
 cat >"$t/nodes.conf" <<EOF
 # network home rpc reference-rpc
-mocha   $t/val  http://127.0.0.1:1111 https://ref.invalid $t/val.log celestiavaloper1val
+mocha   $t/val  http://127.0.0.1:1111 https://ref.invalid $t/val.log celestiavaloper1val abc123
 mainnet $t/full http://127.0.0.1:2222 https://ref.invalid -
 down    $t/none http://127.0.0.1:3333 https://ref.invalid
 EOF
@@ -169,13 +169,15 @@ fi
 # --- apphash -----------------------------------------------------------------
 cat >"$t/check-apphash.sh" <<'EOF'
 #!/usr/bin/env bash
-# Both arguments are checked: the log and valoper columns must not leak into the reference.
-[[ $2 == https://ref.invalid ]] || exit 2
+# Check the reference and the opt-in receipt format.
+[[ $2 == https://ref.invalid && $3 == --json ]] || exit 2
 case $1 in
-  http://127.0.0.1:1111) echo OK; exit 0 ;;
-  http://127.0.0.1:2222) echo MISMATCH >&2; exit 1 ;;
-  *) exit 2 ;;
+  http://127.0.0.1:1111) outcome=match; rc=0 ;;
+  http://127.0.0.1:2222) outcome=mismatch; rc=1 ;;
+  *) outcome=unavailable; rc=2 ;;
 esac
+printf '{"outcome":"%s","candidate_commit":"%s","time_utc":"2026-11-05T23:00:00Z"}\n' "$outcome" "${CANDIDATE_COMMIT:-}"
+exit "$rc"
 EOF
 chmod +x "$t/check-apphash.sh"
 PATH="$t/bin:$PATH" CHECK_APPHASH="$t/check-apphash.sh" \
@@ -187,6 +189,14 @@ expect "$a" 'celestia_rs_apphash_match{network="mainnet"} 0'
 expect "$a" 'celestia_rs_apphash_match{network="down"} -1'
 grep -q '^celestia_rs_apphash_check_timestamp_seconds{network="mocha"} [0-9]' "$a" \
   || { echo "FAIL: missing apphash timestamp"; fails=$((fails + 1)); }
+for net in mocha mainnet down; do
+  count=$(find "$t/out/receipts/$net" -name 'receipt.*.json' | wc -l | tr -d ' ')
+  [[ $count == 1 ]] || { echo "FAIL: expected one $net receipt"; fails=$((fails + 1)); }
+done
+jq -e '.outcome=="match" and .candidate_commit=="abc123"' "$t"/out/receipts/mocha/*.json >/dev/null \
+  || { echo "FAIL: candidate receipt"; fails=$((fails + 1)); }
+jq -e '.outcome=="unavailable"' "$t"/out/receipts/down/*.json >/dev/null \
+  || { echo "FAIL: unavailable receipt"; fails=$((fails + 1)); }
 
 if ((fails)); then echo "$fails failure(s)"; exit 1; fi
 echo "all node-metrics tests passed"
