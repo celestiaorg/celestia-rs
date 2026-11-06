@@ -1159,7 +1159,10 @@ test), then start that harness's count again.
   *2026-11-05:* [live investigation](docs/live-validator-evidence-2026-11-05.md)
   adds dated current-tip, signing and periodic app-hash evidence, not a
   whole-era replay or an every-height/tx-result comparison. Historical
-  continuity is not established. F1.8 stays open; coverage is tracked in
+  continuity is not established. The
+  [replay inventory](docs/replay-coverage-inventory.md) lists documented
+  inclusive ranges, provenance and missing receipts. F1.8 stays open;
+  coverage is tracked in
   [#302](https://github.com/celestiaorg/celestia-rs/issues/302), with parity
   receipts in [#298](https://github.com/celestiaorg/celestia-rs/issues/298)
   and the live observation window in [#299](https://github.com/celestiaorg/celestia-rs/issues/299).
