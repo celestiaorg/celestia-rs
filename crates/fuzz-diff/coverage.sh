@@ -118,6 +118,13 @@ for scen in authz-feegrant v9-authz-feegrant; do
     crates/fuzz-diff/deliver-diff.sh "$scen" 28 1 17362
 done
 for scen in authz-feegrant v9-authz-feegrant; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "authz-grant-validation-$scen" GO_APPD="$A" \
+    DELIVER_SCRIPT=crates/fuzz-diff/fixtures/authz-grant-validation.script \
+    DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/authz-grant-validation.expected.json -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 5 1 9173
+done
+for scen in authz-feegrant v9-authz-feegrant; do
   case $scen in
     v9-*) A=$V9; SCRIPT=crates/fuzz-diff/fixtures/stake-authz-boundaries-v9.script ;;
     *) A=$V10; SCRIPT=crates/fuzz-diff/fixtures/stake-authz-boundaries.script ;;

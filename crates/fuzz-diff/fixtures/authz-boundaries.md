@@ -40,3 +40,16 @@ in order; dropped/replaced/reordered transactions, too few blocks, incorrect
 results and incorrect failure logs fail even if both implementations agree.
 The Go outcome is checked against the contract after the ordinary differential
 comparison. The two runs are part of `nightly.sh regressions`.
+
+## Grant validation boundaries
+
+`authz-grant-validation.script` adds four signed `MsgGrant` transactions that
+reach `Grant.ValidateBasic` in the message server and are rejected before any
+grant is stored. It pins a zero SendAuthorization spend limit, duplicate Send
+allow-list entries, a negative StakeAuthorization maximum and an unspecified
+StakeAuthorization type. The companion expectation file binds the exact
+codespaces, codes and stable log markers at both pinned app versions.
+
+These cases cover validation only. They do not credit authorization `Accept`
+type-mismatch branches, which ordinary `MsgExec` grant lookup constrains by the
+inner message type URL, or malformed imported grant state.

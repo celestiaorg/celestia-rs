@@ -144,6 +144,8 @@ elif '--output-path' in a:
         self.assertIn("rustc.txt", outputs)
         self.assertIn("send-authz-authz-feegrant.out", outputs)
         self.assertIn("send-authz-v9-authz-feegrant.out", outputs)
+        self.assertIn("authz-grant-validation-authz-feegrant.out", outputs)
+        self.assertIn("authz-grant-validation-v9-authz-feegrant.out", outputs)
 
     def test_stable_mode_does_not_require_branch_data(self):
         result, outputs, commands = self.run_driver(branch="0", toolchain="", no_branches=True)
