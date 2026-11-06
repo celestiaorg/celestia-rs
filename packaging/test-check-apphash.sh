@@ -20,7 +20,8 @@ case $url in
   'http://ref/block?height=43')
     if [[ ${TEST_CASE:-} == mismatch ]]; then hash=$(printf 'F%.0s' {1..64})
     else hash=$(printf '0%.0s' {1..64}); fi
-    printf '{"result":{"block":{"header":{"chain_id":"celestia","app_hash":"%s"}}}}\n' "$hash" ;;
+    if [[ ${TEST_CASE:-} == wrong_height ]]; then height=44; else height=43; fi
+    printf '{"result":{"block":{"header":{"chain_id":"celestia","height":"%s","app_hash":"%s"}}}}\n' "$height" "$hash" ;;
   *) exit 22 ;;
 esac
 EOF
@@ -40,10 +41,12 @@ PATH="$t/bin:$PATH" TEST_CASE=mismatch "$check" http://local http://ref --json >
 [[ $rc == 1 ]] || { echo "mismatch exit status: $rc" >&2; exit 1; }
 jq -e '.outcome=="mismatch" and .local_app_hash!=.reference_app_hash' "$t/mismatch" >/dev/null
 
-for case in unavailable wrong_chain; do
+for case in unavailable wrong_chain wrong_height; do
   rc=0
   PATH="$t/bin:$PATH" TEST_CASE="$case" "$check" http://local http://ref --json >"$t/$case" || rc=$?
   [[ $rc == 2 ]] || { echo "$case exit status: $rc" >&2; exit 1; }
   jq -e '.outcome=="unavailable" and .error!=null' "$t/$case" >/dev/null
 done
+jq -e '.error=="reference_header_height_mismatch" and
+  .reference_header_height==44' "$t/wrong_height" >/dev/null
 echo "all app-hash receipt tests passed"
