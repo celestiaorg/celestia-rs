@@ -1121,7 +1121,7 @@ impl Driver {
     }
 
     fn upgrade_timeout_header_within_clock_drift(c: &StepCtx<'_>) -> bool {
-        c.now_nanos <= c.last_committed_nanos.saturating_add(MAX_CLOCK_DRIFT_NANOS)
+        c.now_nanos < c.last_committed_nanos.saturating_add(MAX_CLOCK_DRIFT_NANOS)
     }
 
     /// Exact recovered packet and acknowledgement credited after cleanup.
@@ -5571,6 +5571,9 @@ mod tests {
 
         context.now = 700;
         context.now_nanos = 700_000_000_000;
+        assert!(!Driver::upgrade_timeout_header_within_clock_drift(&context));
+
+        context.now_nanos -= 1;
         assert!(Driver::upgrade_timeout_header_within_clock_drift(&context));
     }
 
