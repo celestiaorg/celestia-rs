@@ -28,9 +28,10 @@ counts, canonical SHA-256 digests, first differing index and explicit
 unavailable errors. It is bounded to 10,000 heights per invocation and
 does not read signing keys or modify validator state.
 
-The current validator RPC cannot provide historical local transaction
-results through either tested endpoint. A separately isolated
-non-signing observer or replay that retains its own execution results
-is required for every-height transaction-result evidence. The 21
-unavailable receipts must not be interpreted as parity, and C1.1,
-F1.8 and #298 remain open.
+The live validator RPC cannot provide historical local transaction
+results through either tested endpoint. The 21 unavailable receipts
+must not be interpreted as parity. A later
+[isolated replay](tx-result-isolated-replay-2026-11-06.md) established
+every-height result parity for a separate 101-block historical range,
+without changing the live validator. At-tip continuous result evidence
+is still missing, so C1.1, F1.8 and #298 remain open.
