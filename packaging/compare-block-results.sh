@@ -80,7 +80,9 @@ for ((h=first; h<=last; h++)); do
       outcome=mismatch
       difference=$(jq -n --argjson a "$local_norm" --argjson b "$ref_norm" \
         '[range(0; [($a|length),($b|length)]|max) | select($a[.] != $b[.])][0]')
-      overall=1
+      # Preserve an earlier unavailable result: missing evidence is the
+      # aggregate outcome even when a later height has a concrete mismatch.
+      (( overall == 0 )) && overall=1
     fi
   else
     overall=2

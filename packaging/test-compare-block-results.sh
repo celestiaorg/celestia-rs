@@ -16,9 +16,9 @@ case $url in
     height=${url##*=}
     printf '{"result":{"height":"%s","txs_results":[{"code":0,"data":"AQ==","gas_wanted":"12","gas_used":"10"}]}}\n' "$height" ;;
   'http://ref/block_results?height=42'|'http://ref/block_results?height=43')
-    [[ ${TEST_CASE:-} == unavailable ]] && exit 22
     height=${url##*=}
-    if [[ ${TEST_CASE:-} == mismatch && $height == 43 ]]; then gas=11; else gas=10; fi
+    [[ ${TEST_CASE:-} == unavailable || ( ${TEST_CASE:-} == mixed && $height == 42 ) ]] && exit 22
+    if [[ ( ${TEST_CASE:-} == mismatch || ${TEST_CASE:-} == mixed ) && $height == 43 ]]; then gas=11; else gas=10; fi
     printf '{"result":{"height":"%s","txs_results":[{"gas_used":"%s","gas_wanted":"12","data":"AQ=="}]}}\n' "$height" "$gas" ;;
   *) exit 22 ;;
 esac
@@ -50,4 +50,9 @@ for case in unavailable wrong_chain; do
   [[ $rc == 2 ]]
   jq -es 'length==2 and all(.[]; .outcome=="unavailable" and .error!=null)' "$t/$case.jsonl" >/dev/null
 done
+
+rc=0
+PATH="$t/bin:$PATH" TEST_CASE=mixed "$check" http://local http://ref 42 43 "$t/mixed.jsonl" >/dev/null || rc=$?
+[[ $rc == 2 ]]
+jq -es '.[0].outcome=="unavailable" and .[1].outcome=="mismatch"' "$t/mixed.jsonl" >/dev/null
 echo "all block-result receipt tests passed"
