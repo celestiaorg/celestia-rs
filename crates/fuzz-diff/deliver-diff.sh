@@ -172,7 +172,6 @@ PORT=$((37858 + ${DEVNET_PORT_OFFSET:-0}))
 IN=$ROOT/conformance/fixtures/devnet/$SCENARIO
 WORK=$(mktemp -d)
 H=$WORK/home
-UPGRADE_ARGS=()
 if [ -n "${DELIVER_UPGRADE_HALT_REQUIRE:-}${DELIVER_UPGRADE_SKIP_REQUIRE:-}${DELIVER_UPGRADE_RESTART_REQUIRE:-}" ]; then
   export DELIVER_UPGRADE_GO_HOME=$H
   export DELIVER_UPGRADE_RUST_HOME=$WORK/rust-home
@@ -184,7 +183,6 @@ fi
 if [ -n "${DELIVER_UPGRADE_SKIP_REQUIRE:-}" ]; then
   META_HEIGHT=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['committed_heights'])" "$IN/meta.json")
   export DELIVER_UPGRADE_SKIP_HEIGHT=$((META_HEIGHT + BLOCKS))
-  UPGRADE_ARGS=(--unsafe-skip-upgrades "$DELIVER_UPGRADE_SKIP_HEIGHT")
 fi
 CHAIN_ID=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['chain_id'])" "$IN/meta.json")
 "$APPD" init node --chain-id "$CHAIN_ID" --home "$H" >"$WORK/init.log" 2>&1 || {
@@ -214,7 +212,13 @@ sec = re.sub(r'(?m)^enable = .*$', 'enable = true', s[i:j])
 sec = re.sub(r'(?m)^address = .*$', 'address = "127.0.0.1:%s"' % port, sec)
 open(p, "w").write(s[:i] + sec + s[j:])
 PY
-GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --force-no-bbr --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" "${UPGRADE_ARGS[@]}" >"$WORK/app.log" 2>&1 &
+# Bash 3.2 treats an empty array expansion as unset under `set -u`, so keep
+# the ordinary launch argument-free instead of collecting optional arguments.
+if [ -n "${DELIVER_UPGRADE_SKIP_REQUIRE:-}" ]; then
+  GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --force-no-bbr --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" --unsafe-skip-upgrades "$DELIVER_UPGRADE_SKIP_HEIGHT" >"$WORK/app.log" 2>&1 &
+else
+  GOMEMLIMIT=${GOMEMLIMIT:-1500MiB} "$APPD" start --force-no-bbr --home "$H" --with-comet=false --address "tcp://127.0.0.1:$PORT" >"$WORK/app.log" 2>&1 &
+fi
 APP=$!
 echo $APP >"$WORK/app.pid"
 if [ -n "${GO_APPD_NEXT:-}" ]; then
