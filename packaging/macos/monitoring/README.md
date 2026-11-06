@@ -92,11 +92,12 @@ historical zero height lag or an uninterrupted process/candidate soak.
 header H+1 every five minutes. The collector retains one JSON receipt per
 check under `~/.celestia-rs/monitoring/textfile/receipts/<network>/` for
 90 days. Each records UTC time, both chain IDs, H, both hashes, reference
-URL, outcome/error, and an optional candidate commit. Supply the commit in
-the final `nodes.conf` column only after verifying the running executable;
-`-` means unknown. Re-running the installer resets that column to the
-repository template. Receipts begin only after installation and cannot
-reconstruct earlier checks.
+URL, outcome/error, and a candidate commit only when the collector
+verifies the running executable's inode against the installed binary.
+An unverifiable candidate is recorded as unknown. The public consensus
+address in `nodes.conf` lets the collector query signing information
+without reading the validator key file. Receipts begin only after
+installation and cannot reconstruct earlier checks.
 
 Count receipts rather than repeated 15-second Prometheus scrapes. Missing
 scheduled receipts are monitoring gaps. An unavailable check is not a
@@ -170,7 +171,7 @@ operator-email > Test.
 | File | Installed to (`~/.celestia-rs/monitoring/`) |
 |---|---|
 | `node-metrics.sh` | `bin/`; `collect` every 30 s, `apphash` every 5 min |
-| `nodes.conf` | `nodes.conf`: network, home, local RPC, reference RPC, node log, operator, optional candidate commit |
+| `nodes.conf` | `nodes.conf`: network, home, local RPC, reference RPC, node log, operator, public consensus address |
 | `prometheus.yml`, `rules.yml` | `prometheus/` |
 | `grafana/` | `grafana/`: config, datasource, dashboard |
 

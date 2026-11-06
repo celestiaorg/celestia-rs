@@ -32,3 +32,44 @@ maintenance window. After installation, fresh samples must demonstrate
 staking-derived jailed and unknown states, and the reference must be
 checked from the actual collector job. Issue
 [#297](https://github.com/celestiaorg/celestia-rs/issues/297) remains open.
+
+## Authorized maintenance follow-up, 00:44–00:51 UTC
+
+The owner authorized live monitoring maintenance. The four original
+installed files above were copied to
+`/private/tmp/celestia-monitoring-backup-2026-11-06/` before the change.
+The `--system` installer copied the reviewed collector, checker, rules
+and rendered `nodes.conf`, then stopped when macOS requested an
+administrator password for reinstalling the system service plists.
+No password was supplied. Existing system launchd jobs restarted the
+Prometheus, node-exporter and Grafana processes, and Prometheus reported
+`ValidatorJailedUnknown` loaded, inactive and healthy.
+
+The first reviewed collector still invoked `comet show-address`, whose
+implementation reads `priv_validator_key.json` to obtain a public
+address. The scheduled collector may have invoked that command between
+the initial file copy and its replacement. No key material was displayed,
+copied or retained, but this does not meet a literal claim that no
+key file was opened during the maintenance interval. The corrected
+collector instead reads both public consensus addresses from
+`nodes.conf`; its test stub has no `comet show-address` response.
+The corrected script and seven-column config were installed atomically
+without a validator restart or administrator password.
+
+Fresh collector samples after correction reported
+`validator_signing_info_found=1` and staking-derived
+`validator_jailed=0` on both networks. The collector test also checks
+that a failed staking query omits `validator_jailed`, preserving unknown
+state. Manually invoked installed app-hash collection at
+00:50:07–00:50:08 UTC recorded matching local/reference chain IDs and
+hashes at Mocha executed height 2,356,232 and Mainnet 15,627,864.
+Each JSON receipt identified the loaded executable as
+`b459a6e041b2675582019cde5c75ecf2969318ba` by matching its
+loaded text inode with the installed binary before reading
+`version --long`. This is one fresh check per network, not every-height
+parity or a continuous candidate soak.
+
+The installed collector and rules now match the reviewed files; the
+existing system launchd job paths remained in place. The interrupted
+installer did not refresh their plist contents. No validator binary,
+stake, signing state or SMTP password was changed.
