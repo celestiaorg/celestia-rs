@@ -2305,10 +2305,48 @@ impl Stats {
                 "upgrade_timeout_check_rejected",
                 "upgrade_timeout_missing_checktx",
                 "upgrade_timeout_unexpected_result",
+                "upgrade_timeout_boundary_invalid_proof",
             ] {
                 anyhow::ensure!(
                     !self.ibc.contains_key(event),
                     "DELIVER_IBC_UPGRADE_TIMEOUT_REQUIRE observed forbidden {event}: {:?}",
+                    self.ibc
+                );
+            }
+        }
+        if self.ibc_required.contains("upgrade_timeout_boundary") {
+            for event in [
+                "upgrade_timeout_try",
+                "upgrade_timeout_boundary_rejected",
+                "upgrade_timeout_cleaned",
+                "upgrade_timeout_recovery_ack",
+                "upgrade_timeout_recovery_state",
+            ] {
+                anyhow::ensure!(
+                    self.ibc.get(event).copied() == Some(1),
+                    "incomplete DELIVER_IBC_UPGRADE_TIMEOUT_BOUNDARY_REQUIRE coverage: expected exactly one {event}, observed {:?}",
+                    self.ibc.get(event)
+                );
+            }
+            anyhow::ensure!(
+                self.ibc.get("upgrade_timeout_check_ok").copied() == Some(4),
+                "incomplete DELIVER_IBC_UPGRADE_TIMEOUT_BOUNDARY_REQUIRE coverage: expected exactly four accepted controlled CheckTx transactions, observed {:?}",
+                self.ibc.get("upgrade_timeout_check_ok")
+            );
+            for event in [
+                "upgrade_timeout_check_unauthorized",
+                "upgrade_timeout_check_out_of_gas",
+                "upgrade_timeout_check_insufficient_funds",
+                "upgrade_timeout_check_mempool_duplicate",
+                "upgrade_timeout_check_account_sequence",
+                "upgrade_timeout_check_rejected",
+                "upgrade_timeout_missing_checktx",
+                "upgrade_timeout_unexpected_result",
+                "upgrade_timeout_boundary_invalid_proof",
+            ] {
+                anyhow::ensure!(
+                    !self.ibc.contains_key(event),
+                    "DELIVER_IBC_UPGRADE_TIMEOUT_BOUNDARY_REQUIRE observed forbidden {event}: {:?}",
                     self.ibc
                 );
             }
@@ -5096,6 +5134,8 @@ pub fn run(
     let ibc_ica_order_required = std::env::var_os("DELIVER_IBC_ICA_ORDER_REQUIRE").is_some();
     let ibc_upgrade_timeout_required =
         std::env::var_os("DELIVER_IBC_UPGRADE_TIMEOUT_REQUIRE").is_some();
+    let ibc_upgrade_timeout_boundary_required =
+        std::env::var_os("DELIVER_IBC_UPGRADE_TIMEOUT_BOUNDARY_REQUIRE").is_some();
     let ibc_ica_error_required = std::env::var_os("DELIVER_IBC_ICA_ERROR_REQUIRE").is_some();
     let ibc_expired_client_required =
         std::env::var_os("DELIVER_IBC_EXPIRED_CLIENT_REQUIRE").is_some();
@@ -5150,6 +5190,10 @@ pub fn run(
         "DELIVER_IBC_UPGRADE_TIMEOUT_REQUIRE requires DELIVER_IBC and per_block=0"
     );
     anyhow::ensure!(
+        !ibc_upgrade_timeout_boundary_required || (ibc_on && per_block == 0),
+        "DELIVER_IBC_UPGRADE_TIMEOUT_BOUNDARY_REQUIRE requires DELIVER_IBC and per_block=0"
+    );
+    anyhow::ensure!(
         !ibc_ica_error_required || ibc_on,
         "DELIVER_IBC_ICA_ERROR_REQUIRE requires DELIVER_IBC"
     );
@@ -5158,6 +5202,7 @@ pub fn run(
             + usize::from(ibc_ica_order_required)
             + usize::from(ibc_ica_error_required)
             + usize::from(ibc_upgrade_timeout_required)
+            + usize::from(ibc_upgrade_timeout_boundary_required)
             <= 1,
         "DELIVER_IBC ICA encoding-success, order-transition, upgrade-timeout, and application-error requirements are mutually exclusive"
     );
@@ -5179,7 +5224,10 @@ pub fn run(
         "DELIVER_IBC PFM success, error, timeout, exhaustion, and metadata requirements are mutually exclusive"
     );
     anyhow::ensure!(
-        !(ibc_ica_encodings_required || ibc_ica_order_required || ibc_upgrade_timeout_required)
+        !(ibc_ica_encodings_required
+            || ibc_ica_order_required
+            || ibc_upgrade_timeout_required
+            || ibc_upgrade_timeout_boundary_required)
             || !(ibc_pfm_required
                 || ibc_pfm_error_required
                 || ibc_pfm_timeout_required
@@ -5304,13 +5352,14 @@ pub fn run(
                 && !ibc_ica_encodings_required
                 && !ibc_ica_order_required
                 && !ibc_upgrade_timeout_required
+                && !ibc_upgrade_timeout_boundary_required
                 && !ibc_ica_error_required
                 && !ibc_expired_client_required
                 && !ibc_frozen_client_required,
             "DELIVER_IBC_LEGACY_UPGRADE_FIXTURE cannot be combined with connection-confirm, close-init, recover-client, Ack-failure, PFM, ICA, expired-client, or frozen-client requirements"
         );
     }
-    if ibc_upgrade_timeout_required {
+    if ibc_upgrade_timeout_required || ibc_upgrade_timeout_boundary_required {
         anyhow::ensure!(
             !ibc_connection_confirm
                 && !ibc_close_init_failure_required
@@ -5329,7 +5378,7 @@ pub fn run(
                 && !ibc_frozen_client_required
                 && script_path.is_none()
                 && std::env::var_os("DELIVER_UPGRADE").is_none(),
-            "DELIVER_IBC_UPGRADE_TIMEOUT_REQUIRE must run without other controlled IBC, script, or upgrade fixtures"
+            "controlled IBC upgrade-timeout requirements must run without other controlled IBC, script, or upgrade fixtures"
         );
     }
     anyhow::ensure!(
@@ -5467,6 +5516,9 @@ pub fn run(
     }
     if ibc_upgrade_timeout_required {
         stats.ibc_required.insert("upgrade_timeout_recovery");
+    }
+    if ibc_upgrade_timeout_boundary_required {
+        stats.ibc_required.insert("upgrade_timeout_boundary");
     }
     if ibc_ica_error_required {
         stats.ibc_required.insert("ica_error_ack");
@@ -5775,6 +5827,7 @@ pub fn run(
             .with_ica_encoding_requirement(ibc_ica_encodings_required)
             .with_ica_order_requirement(ibc_ica_order_required)
             .with_upgrade_timeout_requirement(ibc_upgrade_timeout_required)
+            .with_upgrade_timeout_boundary_requirement(ibc_upgrade_timeout_boundary_required)
             .with_ica_error_requirement(ibc_ica_error_required)
             .with_expired_client_requirement(ibc_expired_client_required)
             .with_frozen_client_requirement(ibc_frozen_client_required)
@@ -7927,7 +7980,7 @@ pub fn run(
             require_pfm_metadata_state(&mut rust, &d)?;
             *d.stats.entry("pfm_metadata_committed_state").or_default() += 1;
         }
-        if ibc_upgrade_timeout_required {
+        if ibc_upgrade_timeout_required || ibc_upgrade_timeout_boundary_required {
             require_upgrade_timeout_recovery_state(&mut go, cons_conn, &mut rust, &d)?;
             *d.stats.entry("upgrade_timeout_recovery_state").or_default() += 1;
         }
@@ -14357,6 +14410,28 @@ mod tests {
         stats
             .ibc
             .insert("upgrade_timeout_check_account_sequence", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+    }
+
+    #[test]
+    fn required_upgrade_timeout_boundary_needs_exact_credits() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("upgrade_timeout_boundary");
+        for event in [
+            "upgrade_timeout_try",
+            "upgrade_timeout_boundary_rejected",
+            "upgrade_timeout_cleaned",
+            "upgrade_timeout_recovery_ack",
+            "upgrade_timeout_recovery_state",
+        ] {
+            stats.ibc.insert(event, 1);
+        }
+        stats.ibc.insert("upgrade_timeout_check_ok", 3);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("upgrade_timeout_check_ok", 4);
+        assert!(stats.require_ibc_coverage().is_ok());
+
+        stats.ibc.insert("upgrade_timeout_unexpected_result", 1);
         assert!(stats.require_ibc_coverage().is_err());
     }
 

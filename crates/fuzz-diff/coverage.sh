@@ -233,6 +233,12 @@ for scen in ibc v9-ibc; do
 done
 for scen in ibc v9-ibc; do
   case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "upgrade-timeout-boundary-$scen" GO_APPD="$A" DELIVER_IBC=1 \
+    DELIVER_IBC_UPGRADE_TIMEOUT_BOUNDARY_REQUIRE=1 -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 120 0 18092
+done
+for scen in ibc v9-ibc; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
   run "ica-encodings-$scen" GO_APPD="$A" DELIVER_IBC=1 \
     DELIVER_IBC_ICA_ENCODINGS_REQUIRE=1 -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" 300 8 8083
