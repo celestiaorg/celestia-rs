@@ -151,6 +151,11 @@ v9-upgrade 300 6 25407 GO_APPD_NEXT=v10 DELIVER_UPGRADE=37 DELIVER_HL=1 DELIVER_
 # matching rejection or dropped transactions cannot count as coverage.
 authz-feegrant 28 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/authz-boundaries.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/authz-boundaries.expected.json
 v9-authz-feegrant 28 1 17362 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/authz-boundaries.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/authz-boundaries.expected.json
+# Signed invalid grant validation: nonpositive Send spend, duplicate Send
+# allow-list, negative Stake maximum, and unspecified Stake authorization type.
+# Each exact handler rejection is required at both pinned app versions.
+authz-feegrant 5 1 9173 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/authz-grant-validation.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/authz-grant-validation.expected.json
+v9-authz-feegrant 5 1 9173 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/authz-grant-validation.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/authz-grant-validation.expected.json
 # StakeAuthorization policy and token-budget boundaries against a real genesis
 # validator. Exact signed tx/result attribution prevents unrelated MsgExec
 # successes from satisfying the regression.

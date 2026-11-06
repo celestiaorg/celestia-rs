@@ -672,6 +672,17 @@ test), then start that harness's count again.
   5617/13522 and `x/authz/src/authorization.rs` from 92/106 to 93/106. The
   merged schedule still requires a fresh full profile; the remaining authz
   arms and wider F1.3 gates stay open.
+  *Grant-validation follow-up (2026-11-06):* four exact signed `MsgGrant`
+  regressions now require both pinned app versions to reject a nonpositive
+  SendAuthorization spend limit, a duplicate SendAuthorization allow list, a
+  negative StakeAuthorization maximum and an unspecified StakeAuthorization
+  type with their exact codespaces, codes and stable log markers. Both
+  five-block focused runs finalized all four expected failures with zero
+  consensus or log mismatches. A raw LLVM coordinate comparison against the
+  sealed `529066c` profile found four previously uncovered true arms in
+  `x/authz/src/authorization.rs` (lines 152, 158, 167 and 174). The focused
+  profile is not a merged-profile union; the scheduled full qualification
+  must measure the resulting totals, and the wider F1.3 gates stay open.
 
 - [ ] **F1.4 IBC with valid proofs and signed Hyperlane.** `DELIVER_IBC`
   already drives a mock counterparty (`crates/fuzz-diff/src/ibcmock.rs`)

@@ -1,0 +1,26 @@
+[
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "sdk",
+    "code": 10,
+    "log_contains": "spend limit must be positive"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "bank",
+    "code": 8,
+    "log_contains": "duplicate entry"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "authz",
+    "code": 12,
+    "log_contains": "negative coin amount: -1utia"
+  },
+  {
+    "type_url": "/cosmos.authz.v1beta1.MsgGrant",
+    "codespace": "authz",
+    "code": 4,
+    "log_contains": "unknown authorization type"
+  }
+]

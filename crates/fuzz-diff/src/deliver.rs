@@ -13254,6 +13254,55 @@ mod tests {
     }
 
     #[test]
+    fn authz_grant_validation_script_pins_reachable_rejections() {
+        use celestia_proto::cosmos::{
+            authz::v1beta1::MsgGrant, bank::v1beta1::SendAuthorization,
+            staking::v1beta1::StakeAuthorization,
+        };
+
+        let script = read_script(
+            include_str!("../fixtures/authz-grant-validation.script"),
+            ACCOUNTS,
+        )
+        .unwrap();
+        let expected = script_expectations(include_str!(
+            "../fixtures/authz-grant-validation.expected.json"
+        ))
+        .unwrap();
+        assert_eq!(script.len(), 4);
+        assert_eq!(expected.len(), 4);
+        assert!(script.iter().all(|block| block.len() == 1));
+        assert!(
+            script.iter().zip(&expected).all(|(block, result)| {
+                block[0].1.type_url == result.type_url && result.code != 0
+            })
+        );
+
+        let authorization = |index: usize| {
+            MsgGrant::decode(script[index][0].1.value.as_slice())
+                .unwrap()
+                .grant
+                .unwrap()
+                .authorization
+                .unwrap()
+        };
+        let zero = SendAuthorization::decode(authorization(0).value.as_slice()).unwrap();
+        assert_eq!(zero.spend_limit[0].amount, "0");
+        let duplicate = SendAuthorization::decode(authorization(1).value.as_slice()).unwrap();
+        assert_eq!(duplicate.allow_list.len(), 2);
+        assert_eq!(duplicate.allow_list[0], duplicate.allow_list[1]);
+        let negative = StakeAuthorization::decode(authorization(2).value.as_slice()).unwrap();
+        assert_eq!(negative.max_tokens.unwrap().amount, "-1");
+        let unknown = StakeAuthorization::decode(authorization(3).value.as_slice()).unwrap();
+        assert_eq!(unknown.authorization_type, 0);
+
+        assert_eq!(expected[0].codespace, "sdk");
+        assert_eq!(expected[1].codespace, "bank");
+        assert_eq!(expected[2].codespace, "authz");
+        assert_eq!(expected[3].codespace, "authz");
+    }
+
+    #[test]
     fn transfer_authz_boundary_scripts_pin_policies_budgets_and_rollback() {
         use celestia_proto::cosmos::authz::v1beta1 as authz;
         use celestia_proto::ibc::applications::transfer::v1::{MsgTransfer, TransferAuthorization};
