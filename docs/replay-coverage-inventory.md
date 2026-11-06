@@ -1,4 +1,4 @@
-# F1.8 replay coverage inventory — 2026-11-05
+# F1.8 replay coverage inventory — updated 2026-11-06
 
 This inventory separates documented historical runs from artifacts retained
 in this repository. It does not certify a replay of the current candidate.
@@ -19,15 +19,21 @@ historical Mocha or mainnet traffic and does not close F1.8.
 
 ## Required coverage still without exact-candidate receipts
 
-- **Mainnet v9 era:** The v9 activation height is not established in the
-  cited run records. There is no identified receipt from that activation
-  through 14,894,000. Between the two documented mainnet replays,
+- **Mainnet v9 era:** The [network upgrade history](https://docs.celestia.org/operate/maintenance/network-upgrades/)
+  lists v9 at height 11,771,699. An independent archive RPC returned app
+  version 8 in [header 11,771,698](https://celestia-archive-rpc.polkachu.com/block?height=11771698)
+  and app version 9 in [header 11,771,699](https://celestia-archive-rpc.polkachu.com/block?height=11771699).
+  There is no identified exact-candidate receipt for 11,771,699–14,894,000.
+  Between the two documented mainnet replays,
   14,914,201–15,105,000 has no identified receipt. The first run may have
   continued beyond 14,914,200, but its final inclusive height is unknown.
-- **Mocha v9 and upgrade:** Mocha began at app v9 and upgraded at
-  1,082,620. No historical Mocha replay receipt is identified for the v9
-  era, the upgrade boundary, or 1,082,621–1,624,500. The precise v9/v10
-  execution boundary must be checked against a trusted header record.
+- **Mocha v9 and upgrade:** Mocha-5 began at app v9. The
+  [upgrade history](https://docs.celestia.org/operate/maintenance/network-upgrades/)
+  lists v10's upgrade height as 1,082,619. Public Mocha RPC headers report
+  app version 9 at [1,082,619](https://rpc.celestia-mocha.com/block?height=1082619)
+  and app version 10 at [1,082,620](https://rpc.celestia-mocha.com/block?height=1082620).
+  No exact-candidate replay receipt is identified for the v9 era through
+  1,082,619 or for 1,082,620–1,624,500, including the transition.
 - **Mainnet live P2P record:** The Mac's historical parity samples do not
   establish a continuous record from M13 to M14 on one candidate. Issue
   [#299](https://github.com/celestiaorg/celestia-rs/issues/299) tracks the
@@ -40,3 +46,9 @@ executed heights, Rust and Go executable versions and hashes, per-height
 app-hash and transaction-result comparison receipts, failures and gaps.
 Historical claims above remain useful context but do not replace that
 record. F1.8 remains open.
+
+On 2026-11-06, HTTP HEAD requests to the two named Polkachu snapshot
+archives (`celestia_15123013.tar.lz4` and `celestia_1702915.tar.lz4`)
+returned 404. Public archive RPC headers establish the upgrade boundaries,
+but they do not supply a runnable pre-upgrade state snapshot. The required
+isolated replay still needs a historical checkpoint and non-signing compute.
