@@ -578,6 +578,9 @@ pub struct Driver {
     /// recovery. The outer harness owns raw-store checkpoints while this
     /// driver owns the exact counterparty proof material and relay bytes.
     upgrade_timeout_required: bool,
+    /// Proof-backed FLUSHING counterparty timeout-boundary rejection,
+    /// successful cleanup, and ICA recovery.
+    upgrade_timeout_boundary_required: bool,
     upgrade_timeout_stage: u8,
     upgrade_timeout_pending: Option<PendingUpgradeTimeoutRelay>,
     upgrade_timeout_timestamp: u64,
@@ -651,6 +654,73 @@ fn attr(e: &celestia_proto::celestia_core_proto::abci::Event, key: &str) -> Opti
         .iter()
         .find(|a| a.key == key)
         .map(|a| a.value.clone())
+}
+
+fn valid_upgrade_timeout_boundary_bundle(
+    messages: &[Any],
+    channel_id: &str,
+    version: &str,
+    sequence: u64,
+    timestamp: u64,
+) -> bool {
+    let Some(update) = messages
+        .iter()
+        .find(|message| message.type_url.ends_with("MsgUpdateClient"))
+        .and_then(|message| {
+            celestia_proto::ibc::core::client::v1::MsgUpdateClient::decode(message.value.as_slice())
+                .ok()
+        })
+    else {
+        return false;
+    };
+    let Some(header) = update
+        .client_message
+        .and_then(|message| tmlc::Header::decode(message.value.as_slice()).ok())
+        .and_then(|header| header.signed_header)
+        .and_then(|header| header.header)
+    else {
+        return false;
+    };
+    let Some(time) = header.time else {
+        return false;
+    };
+    let Ok(seconds) = u64::try_from(time.seconds) else {
+        return false;
+    };
+    let Ok(nanos) = u64::try_from(time.nanos) else {
+        return false;
+    };
+    let Some(proof_timestamp) = seconds
+        .checked_mul(1_000_000_000)
+        .and_then(|value| value.checked_add(nanos))
+    else {
+        return false;
+    };
+    let Some(timeout) = messages
+        .iter()
+        .find(|message| message.type_url.ends_with("MsgChannelUpgradeTimeout"))
+        .and_then(|message| ch::MsgChannelUpgradeTimeout::decode(message.value.as_slice()).ok())
+    else {
+        return false;
+    };
+    let Some(counterparty) = timeout.counterparty_channel else {
+        return false;
+    };
+    let proof_height = timeout.proof_height.unwrap_or_default();
+    proof_timestamp == timestamp
+        && proof_height.revision_number == 1
+        && proof_height.revision_height == u64::try_from(header.height).unwrap_or_default()
+        && counterparty.state == ch::State::Flushing as i32
+        && counterparty.ordering == ch::Order::Unordered as i32
+        && counterparty.version == version
+        && counterparty.connection_hops == [CP_CONNECTION]
+        && counterparty.upgrade_sequence == sequence
+        && counterparty
+            .counterparty
+            .as_ref()
+            .is_some_and(|counterparty| {
+                counterparty.port_id == "icahost" && counterparty.channel_id == channel_id
+            })
 }
 
 const ICA_HOST_ACK_ERROR: &str = "channel upgrade handshake must be initiated by controller chain: invalid message sent to channel end";
@@ -766,6 +836,17 @@ impl Driver {
         self
     }
 
+    /// Require a FLUSHING counterparty proof at `T - 1`, then at `T`.
+    #[must_use]
+    pub fn with_upgrade_timeout_boundary_requirement(mut self, enabled: bool) -> Self {
+        self.upgrade_timeout_boundary_required = enabled;
+        self
+    }
+
+    fn upgrade_timeout_active(&self) -> bool {
+        self.upgrade_timeout_required || self.upgrade_timeout_boundary_required
+    }
+
     /// Exact signed relay bytes to retry after CheckTx or proposal omission.
     #[must_use]
     pub fn upgrade_timeout_retry_tx(&self) -> Option<&[u8]> {
@@ -779,7 +860,7 @@ impl Driver {
     /// the next lifecycle transaction ineligible for CheckTx.
     #[must_use]
     pub fn upgrade_timeout_signer_offset(&self) -> Option<usize> {
-        if !self.upgrade_timeout_required || !self.ica_open {
+        if !self.upgrade_timeout_active() || !self.ica_open {
             return None;
         }
         Some(match self.upgrade_timeout_stage {
@@ -842,7 +923,7 @@ impl Driver {
 
     /// Supplies the committed Try timeout decoded from the local raw store.
     pub fn confirm_upgrade_timeout_try_checkpoint(&mut self, timeout_timestamp: u64) {
-        if self.upgrade_timeout_required
+        if self.upgrade_timeout_active()
             && self.upgrade_timeout_stage == 2
             && timeout_timestamp != 0
         {
@@ -858,7 +939,7 @@ impl Driver {
     /// The committed Try is waiting for the harness's raw-store checkpoint.
     #[must_use]
     pub fn upgrade_timeout_needs_try_checkpoint(&self) -> bool {
-        self.upgrade_timeout_required
+        self.upgrade_timeout_active()
             && self.upgrade_timeout_stage == 2
             && !self.upgrade_timeout_checkpoint_ready
     }
@@ -889,7 +970,7 @@ impl Driver {
     /// The rejected timeout committed and awaits rollback-state comparison.
     #[must_use]
     pub fn upgrade_timeout_needs_rejection_checkpoint(&self) -> bool {
-        self.upgrade_timeout_required
+        self.upgrade_timeout_active()
             && self.upgrade_timeout_stage == 4
             && !self.upgrade_timeout_rejection_checkpoint_ready
     }
@@ -904,7 +985,7 @@ impl Driver {
     /// Successful cleanup committed and awaits exact raw-state validation.
     #[must_use]
     pub fn upgrade_timeout_needs_cleanup_checkpoint(&self) -> bool {
-        self.upgrade_timeout_required
+        self.upgrade_timeout_active()
             && self.upgrade_timeout_stage == 6
             && !self.upgrade_timeout_cleanup_checkpoint_ready
     }
@@ -1428,7 +1509,7 @@ impl Driver {
                 return self.pfm_ack(c, &signer);
             }
         }
-        if self.upgrade_timeout_required && self.ica_open {
+        if self.upgrade_timeout_active() && self.ica_open {
             if self.upgrade_timeout_stage < 8 {
                 if self.upgrade_timeout_pending.is_some() {
                     return None;
@@ -2280,39 +2361,82 @@ impl Driver {
                 (UpgradeTimeoutRelay::Try, messages)
             }
             2 if self.upgrade_timeout_checkpoint_ready => {
-                self.cp.put_channel_end(
-                    CP_ICA_PORT,
-                    CP_ICA_CHAN,
-                    &channel(&self.cu_new, self.cu_seq),
-                );
-                let height = self.cp.commit_at_nanos(self.upgrade_timeout_timestamp);
+                let (state, version, timestamp) = if self.upgrade_timeout_boundary_required {
+                    (
+                        ch::State::Flushing as i32,
+                        current.as_str(),
+                        self.upgrade_timeout_timestamp.saturating_sub(1),
+                    )
+                } else {
+                    (
+                        ch::State::Open as i32,
+                        self.cu_new.as_str(),
+                        self.upgrade_timeout_timestamp,
+                    )
+                };
+                let mut counterparty_channel = channel(version, self.cu_seq);
+                counterparty_channel.state = state;
+                self.cp
+                    .put_channel_end(CP_ICA_PORT, CP_ICA_CHAN, &counterparty_channel);
+                let height = self.cp.commit_at_nanos(timestamp);
                 let mut messages: Vec<Any> = self.update(&signer).into_iter().collect();
                 messages.push(Any::pack(&ch::MsgChannelUpgradeTimeout {
                     port_id: "icahost".into(),
                     channel_id: a_ica.clone(),
-                    counterparty_channel: Some(channel(&self.cu_new, self.cu_seq)),
+                    counterparty_channel: Some(counterparty_channel),
                     proof_channel: self.cp.proof(&channel_key),
                     proof_height: proof_height(height),
                     signer,
                 }));
+                if self.upgrade_timeout_boundary_required
+                    && !valid_upgrade_timeout_boundary_bundle(
+                        &messages,
+                        &a_ica,
+                        &current,
+                        self.cu_seq,
+                        timestamp,
+                    )
+                {
+                    self.bump("upgrade_timeout_boundary_invalid_proof");
+                    return None;
+                }
                 self.upgrade_timeout_stage = 3;
                 (UpgradeTimeoutRelay::RejectedTimeout, messages)
             }
             4 if self.upgrade_timeout_rejection_checkpoint_ready => {
+                let mut counterparty_channel = channel(&current, self.cu_seq);
+                if self.upgrade_timeout_boundary_required {
+                    counterparty_channel.state = ch::State::Flushing as i32;
+                }
                 self.cp
-                    .put_channel_end(CP_ICA_PORT, CP_ICA_CHAN, &channel(&current, self.cu_seq));
-                let height = self
-                    .cp
-                    .commit_at_nanos(self.upgrade_timeout_timestamp.saturating_add(1));
+                    .put_channel_end(CP_ICA_PORT, CP_ICA_CHAN, &counterparty_channel);
+                let timestamp = if self.upgrade_timeout_boundary_required {
+                    self.upgrade_timeout_timestamp
+                } else {
+                    self.upgrade_timeout_timestamp.saturating_add(1)
+                };
+                let height = self.cp.commit_at_nanos(timestamp);
                 let mut messages: Vec<Any> = self.update(&signer).into_iter().collect();
                 messages.push(Any::pack(&ch::MsgChannelUpgradeTimeout {
                     port_id: "icahost".into(),
                     channel_id: a_ica.clone(),
-                    counterparty_channel: Some(channel(&current, self.cu_seq)),
+                    counterparty_channel: Some(counterparty_channel),
                     proof_channel: self.cp.proof(&channel_key),
                     proof_height: proof_height(height),
                     signer,
                 }));
+                if self.upgrade_timeout_boundary_required
+                    && !valid_upgrade_timeout_boundary_bundle(
+                        &messages,
+                        &a_ica,
+                        &current,
+                        self.cu_seq,
+                        timestamp,
+                    )
+                {
+                    self.bump("upgrade_timeout_boundary_invalid_proof");
+                    return None;
+                }
                 self.upgrade_timeout_stage = 5;
                 (UpgradeTimeoutRelay::SuccessfulTimeout, messages)
             }
@@ -2554,7 +2678,7 @@ impl Driver {
         if !self.ica_encoding_required
             && !self.ica_order_required
             && !self.ica_error_required
-            && !self.upgrade_timeout_required
+            && !self.upgrade_timeout_active()
             && c.rng.one_in(3)
         {
             msgs.push(Any::pack(
@@ -2576,7 +2700,7 @@ impl Driver {
         if !self.ica_encoding_required
             && !self.ica_order_required
             && !self.ica_error_required
-            && !self.upgrade_timeout_required
+            && !self.upgrade_timeout_active()
             && std::env::var("DELIVER_WIRE").is_ok()
         {
             // Systematic wire mutations (`crate::wire`) of host messages:
@@ -2629,7 +2753,7 @@ impl Driver {
         for m in &msgs {
             prost::encoding::message::encode(1, m, &mut tx);
         }
-        if !self.ica_order_required && !self.upgrade_timeout_required && c.rng.one_in(6) {
+        if !self.ica_order_required && !self.upgrade_timeout_active() && c.rng.one_in(6) {
             // An unknown field gogoproto skips at the end of the last
             // message's `Any`.
             tx.clear();
@@ -2681,7 +2805,7 @@ impl Driver {
         if required_error {
             self.ica_error_packet = Some(p.clone());
         }
-        if self.upgrade_timeout_required && self.upgrade_timeout_stage == 6 {
+        if self.upgrade_timeout_active() && self.upgrade_timeout_stage == 6 {
             self.upgrade_timeout_recovery_packet = Some(p.clone());
         }
         let h = self.cp.commit(c.now - 5);
@@ -2743,7 +2867,11 @@ impl Driver {
             }
             UpgradeTimeoutRelay::RejectedTimeout => {
                 self.upgrade_timeout_stage = 4;
-                self.bump("upgrade_timeout_rejected");
+                self.bump(if self.upgrade_timeout_boundary_required {
+                    "upgrade_timeout_boundary_rejected"
+                } else {
+                    "upgrade_timeout_rejected"
+                });
             }
             UpgradeTimeoutRelay::SuccessfulTimeout => {
                 self.upgrade_timeout_stage = 6;
@@ -2810,12 +2938,27 @@ impl Driver {
         &self,
         result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
     ) -> bool {
-        let expected = format!(
-            "failed to execute message; message index: 1: could not timeout upgrade for channel: {}: counterparty channel is already upgraded: upgrade timeout failed",
-            self.a_ica.as_deref().unwrap_or_default()
-        );
+        let (code, expected) = if self.upgrade_timeout_boundary_required {
+            (
+                39,
+                format!(
+                    "failed to execute message; message index: 1: could not timeout upgrade for channel: {}: upgrade timeout not reached: current timestamp: {}, timeout timestamp {}: timeout not reached",
+                    self.a_ica.as_deref().unwrap_or_default(),
+                    self.upgrade_timeout_timestamp.saturating_sub(1),
+                    self.upgrade_timeout_timestamp,
+                ),
+            )
+        } else {
+            (
+                37,
+                format!(
+                    "failed to execute message; message index: 1: could not timeout upgrade for channel: {}: counterparty channel is already upgraded: upgrade timeout failed",
+                    self.a_ica.as_deref().unwrap_or_default()
+                ),
+            )
+        };
         result.codespace == "channel"
-            && result.code == 37
+            && result.code == code
             && result.log == expected
             && result.data.is_empty()
             && !result.events.iter().any(|event| {
@@ -3685,6 +3828,78 @@ mod tests {
         let fallback = cp.commit_at_nanos(1_234_567_891);
         assert_eq!(cp.headers[&fallback].1.seconds, 2);
         assert_eq!(cp.headers[&fallback].1.nanos, 0);
+    }
+
+    #[test]
+    fn upgrade_timeout_boundary_bundle_binds_flushing_sequence_fields_and_time() {
+        let timestamp = 1_234_567_890;
+        let header = tmlc::Header {
+            signed_header: Some(tm::SignedHeader {
+                header: Some(tm::Header {
+                    height: 7,
+                    time: Some(pbjson_types::Timestamp {
+                        seconds: 1,
+                        nanos: 234_567_890,
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let update = Any::pack(&celestia_proto::ibc::core::client::v1::MsgUpdateClient {
+            client_id: "07-tendermint-0".into(),
+            client_message: Some(Any::pack(&header)),
+            signer: "relayer".into(),
+        });
+        let counterparty_channel = ch::Channel {
+            state: ch::State::Flushing as i32,
+            ordering: ch::Order::Unordered as i32,
+            counterparty: Some(ch::Counterparty {
+                port_id: "icahost".into(),
+                channel_id: "channel-3".into(),
+            }),
+            connection_hops: vec![CP_CONNECTION.into()],
+            version: "old-version".into(),
+            upgrade_sequence: 9,
+        };
+        let timeout = |counterparty_channel| {
+            Any::pack(&ch::MsgChannelUpgradeTimeout {
+                port_id: "icahost".into(),
+                channel_id: "channel-3".into(),
+                counterparty_channel: Some(counterparty_channel),
+                proof_height: Some(Height {
+                    revision_number: 1,
+                    revision_height: 7,
+                }),
+                signer: "relayer".into(),
+                ..Default::default()
+            })
+        };
+        assert!(valid_upgrade_timeout_boundary_bundle(
+            &[update.clone(), timeout(counterparty_channel.clone())],
+            "channel-3",
+            "old-version",
+            9,
+            timestamp,
+        ));
+
+        let mut wrong_state = counterparty_channel.clone();
+        wrong_state.state = ch::State::Open as i32;
+        assert!(!valid_upgrade_timeout_boundary_bundle(
+            &[update.clone(), timeout(wrong_state)],
+            "channel-3",
+            "old-version",
+            9,
+            timestamp,
+        ));
+        assert!(!valid_upgrade_timeout_boundary_bundle(
+            &[update, timeout(counterparty_channel)],
+            "channel-3",
+            "old-version",
+            9,
+            timestamp + 1,
+        ));
     }
 
     fn packet_event(kind: &str, packet: &ch::Packet, ack_hex: Option<&str>) -> Event {
@@ -4867,6 +5082,36 @@ mod tests {
         assert_eq!(driver.upgrade_timeout_stage, 4);
         assert_eq!(driver.stats.get("upgrade_timeout_rejected"), Some(&1));
         assert!(driver.upgrade_timeout_pending.is_none());
+    }
+
+    #[test]
+    fn upgrade_timeout_boundary_rejection_requires_exact_timestamp_log() {
+        let driver = Driver {
+            upgrade_timeout_boundary_required: true,
+            upgrade_timeout_timestamp: 100,
+            a_ica: Some("channel-3".into()),
+            ..Driver::default()
+        };
+        let valid = ExecTxResult {
+            codespace: "channel".into(),
+            code: 39,
+            log: "failed to execute message; message index: 1: could not timeout upgrade for channel: channel-3: upgrade timeout not reached: current timestamp: 99, timeout timestamp 100: timeout not reached".into(),
+            ..Default::default()
+        };
+        assert!(driver.valid_upgrade_timeout_rejection(&valid));
+
+        let mut wrong_boundary = valid.clone();
+        wrong_boundary.log = wrong_boundary
+            .log
+            .replace("timestamp: 99", "timestamp: 100");
+        assert!(!driver.valid_upgrade_timeout_rejection(&wrong_boundary));
+
+        let mut leaked_event = valid;
+        leaked_event.events.push(Event {
+            r#type: "update_client".into(),
+            ..Default::default()
+        });
+        assert!(!driver.valid_upgrade_timeout_rejection(&leaked_event));
     }
 
     #[test]

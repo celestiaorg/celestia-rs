@@ -120,6 +120,10 @@
 # state mutation, then a distinct successful timeout proof and recovery Ack.
 # It requires zero generated transactions so unrelated IBC activity cannot
 # satisfy or perturb the checkpoint.
+# DELIVER_IBC_UPGRADE_TIMEOUT_BOUNDARY_REQUIRE=1 advances the counterparty
+# channel from OPEN to FLUSHING, proves timeout rejection at T-1 with no raw
+# state mutation, then proves successful cleanup at T and an exact recovery
+# Ack. It also requires zero generated transactions.
 # DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
 # DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
 # (default noop). Multisig modes use harness-held 2-of-3 validators and

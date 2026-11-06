@@ -766,6 +766,23 @@ test), then start that harness's count again.
   uncovered arms in `x/ibc/src/upgrade.rs` at the two sequence-rewrite
   conditions. This is bounded synthetic lifecycle evidence, not complete IBC
   coverage, volume, observation-window, mainnet-soak or readiness evidence.
+  *ICA upgrade-timeout boundary follow-up (2026-11-06):* a second opt-in
+  timeout contract advances the proved counterparty channel monotonically
+  from OPEN to FLUSHING at the unchanged upgrade sequence. It first proves
+  that channel at the stored timeout timestamp minus one nanosecond and
+  requires the exact `channel/39` rejection plus byte-identical local
+  channel, upgrade, counterparty-upgrade, error-receipt and client-prefix
+  state. Only then does it prove the same FLUSHING channel at the exact
+  timeout, require successful restoration and deletion, the code-34 receipt
+  and committed client update, and finish with an exact ICA recovery
+  acknowledgement and raw receipt/acknowledgement commitment. Pinned
+  v10.5.0 and historical v9.0.8 120-block seed-18092 differentials finalized
+  65 / 63 transactions (43 / 38 code zero), credited all four controlled
+  transactions and five lifecycle gates exactly once, and had zero consensus
+  mismatches. Focused instrumentation reaches both outcomes of the timeout
+  boundary at `x/ibc/src/upgrade.rs:1139` and the FLUSHING arm at line 1150.
+  This is bounded synthetic boundary and cleanup evidence, not complete IBC
+  coverage, volume, observation-window, mainnet-soak or readiness evidence.
   *Expired-client follow-up (2026-10-29):* an opt-in contract creates a
   dedicated one-second Tendermint client while it is active, binds its ID to
   the exact client type and consensus height, then submits a valid signed
