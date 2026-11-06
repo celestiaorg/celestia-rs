@@ -1,0 +1,103 @@
+{
+  "candidate": {
+    "revision": "c985b8452427951af512406f6744e7609409364e",
+    "status": "merged",
+    "tree": "cc83f1116604286dace6a04e937ea2278b0ea0e5"
+  },
+  "coverage": {
+    "global_handwritten_arms": {
+      "count": 13522,
+      "covered": 5621
+    },
+    "x_authz_authorization_arms": {
+      "count": 106,
+      "covered": 97
+    },
+    "x_ibc_upgrade_arms": {
+      "count": 160,
+      "covered": 88
+    }
+  },
+  "ica_encoding_followup": {
+    "focused_coverage": {
+      "branches_json_sha256": "676dddc4a17d6020e96268224fbf4c077419fbb062c7c2811cf685f8f3b6c17e",
+      "global_handwritten_arms": {
+        "count": 13522,
+        "covered": 3580
+      },
+      "llvm_json_sha256": "d07f79554ac573b52c74b73c4923d4d517bd6dd203580f9868ef2a695ea20721",
+      "profile_sha256": "45ad9ebe83f4208f11483c02e6fbfd32930e14c2babaca87df5a2fc918a250ff",
+      "x_ibc_upgrade_arms": {
+        "count": 160,
+        "covered": 66
+      }
+    },
+    "measured_contribution": {
+      "global_handwritten_arms": {
+        "after": 5624,
+        "before": 5621,
+        "count": 13522
+      },
+      "new_arms": [
+        "crates/tier-3-app-modules/sdk/src/coins.rs: one arm",
+        "crates/tier-3-app-modules/x/feegrant/src/allowance.rs: one arm",
+        "crates/tier-3-app-modules/x/ibc/src/lightclients/tendermint.rs: one arm"
+      ],
+      "x_ibc_upgrade_arms": {
+        "after": 88,
+        "before": 88,
+        "count": 160
+      }
+    },
+    "v10": {
+      "blocks": 300,
+      "delivered": 642,
+      "delivered_ok": 301,
+      "ica_proto3_success_ack": 1,
+      "ica_proto3json_success_ack": 1,
+      "log_only_differences": 33,
+      "mismatches": 0,
+      "stderr_sha256": "71c56c6c807179325491f2f94372ffc060a2780849051c9b3587c312987f18f3",
+      "stdout_sha256": "2d87b8276a2503495389afb03de03050d1ad7523b8a937fbcc25674d5960fcbc"
+    },
+    "v9": {
+      "blocks": 300,
+      "delivered": 539,
+      "delivered_ok": 242,
+      "ica_proto3_success_ack": 1,
+      "ica_proto3json_success_ack": 1,
+      "log_only_differences": 31,
+      "mismatches": 0,
+      "stderr_sha256": "a27ba643647f8a2580cb89adeaf49924fd15f4d49c9c17ef352390224f2a4f97",
+      "stdout_sha256": "49dd5087f8f29130031b8ae0e514ee120df6df32de85e14c06855dfb7ece442c"
+    }
+  },
+  "inputs": {
+    "go_v10_binary_sha256": "5424c37cbeeb664f3caa6c4273c8b039c9858a9c23aa333d94935f96e0f85e9b",
+    "go_v9_binary_sha256": "5f37db5171aad00bfa66d6369dbac31483940e7129ecd8a91d55d11a01f82002",
+    "go_version": "go version go1.26.9 linux/amd64",
+    "rustc_version": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+  },
+  "limitations": [
+    "Raw artifacts are retained in the local engineering workspace, not a public artifact archive.",
+    "The exact full profile adds three incidental handwritten arms but reinforces already-covered upgrade arms and does not close an x/ibc/src/upgrade.rs branch gap.",
+    "The result does not complete uncovered-branch review, volume, mainnet-shaped replay, observation windows, soak, or production readiness."
+  ],
+  "qualification": {
+    "artifact_hashes": {
+      "branches.json": "d53b3e61398df196e6ac1a7b03e0b6fe0347263914dba78d7009398c81c7ca49",
+      "check.log": "c1877004fb375f76ec4cef7643d69c836b60f41c0e52dc0009e90038d1531a86",
+      "evidence.json": "406c3f89465d0be570c593b4b8787a9d5df6fbb462c4e7f478a4799377f8fcbf",
+      "llvm.json": "e4e7401e11dca0f41f6bd2fff3667686dc35f8c964fa6a6d80d8bb1c9722d8d0",
+      "profile": "8997347afe6dcb36c5e5066f50de37d06428536c33ccdde502bcaa8942cb5ca6",
+      "runs.txt": "3c162a704e6ac30888e16987396edf49ec87f75b638e3b00b45c299afc5e697c"
+    },
+    "cases": 233,
+    "consensus_mismatches": 0,
+    "exit_code": 0,
+    "inputs_unchanged": true,
+    "status": "passed"
+  },
+  "schema_version": 1,
+  "scope": "exact merged-candidate differential branch profile plus focused ICA proto3-to-proto3json lifecycle evidence"
+}
