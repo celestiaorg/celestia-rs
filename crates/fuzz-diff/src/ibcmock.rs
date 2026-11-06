@@ -523,6 +523,12 @@ pub struct Driver {
     ica_encoding_required: bool,
     ica_requirement_stage: u8,
     ica_required_packet: Option<(ch::Packet, bool)>,
+    /// Required ICA ordering lifecycle: acknowledge a baseline Unordered
+    /// packet, upgrade to Ordered and acknowledge one exact packet, then
+    /// upgrade back to Unordered and acknowledge a third exact packet.
+    ica_order_required: bool,
+    ica_order_requirement_stage: u8,
+    ica_order_required_packet: Option<ch::Packet>,
     /// Required ICA host application-error lifecycle: exact packet, its
     /// converted callback-error event and deterministic error acknowledgement.
     ica_error_required: bool,
@@ -684,6 +690,13 @@ impl Driver {
     #[must_use]
     pub fn with_ica_encoding_requirement(mut self, enabled: bool) -> Self {
         self.ica_encoding_required = enabled;
+        self
+    }
+
+    /// Require exact-packet execution across both ICA channel order changes.
+    #[must_use]
+    pub fn with_ica_order_requirement(mut self, enabled: bool) -> Self {
+        self.ica_order_required = enabled;
         self
     }
 
@@ -1039,12 +1052,15 @@ impl Driver {
                 self.waited = 0;
             }
             5 if self.transfer_open => {
-                let encoding =
-                    if self.ica_encoding_required || self.ica_error_required || c.rng.one_in(2) {
-                        "proto3"
-                    } else {
-                        "proto3json"
-                    };
+                let encoding = if self.ica_encoding_required
+                    || self.ica_order_required
+                    || self.ica_error_required
+                    || c.rng.one_in(2)
+                {
+                    "proto3"
+                } else {
+                    "proto3json"
+                };
                 let md = self.metadata("", encoding);
                 self.cp.put_channel(
                     CP_ICA_PORT,
@@ -1198,6 +1214,16 @@ impl Driver {
             return match self.ica_requirement_stage {
                 0 | 2 => self.ica_packet(c),
                 1 => self.chan_upgrade(c),
+                _ => None,
+            };
+        }
+        if self.ica_order_required && self.ica_open && self.ica_order_requirement_stage < 5 {
+            if self.ica_order_required_packet.is_some() {
+                return self.ica_order_relay_pending(c);
+            }
+            return match self.ica_order_requirement_stage {
+                0 | 2 | 4 => self.ica_packet(c),
+                1 | 3 => self.chan_upgrade(c),
                 _ => None,
             };
         }
@@ -1720,9 +1746,20 @@ impl Driver {
         let ch_key = format!("channelEnds/ports/{CP_ICA_PORT}/channels/{CP_ICA_CHAN}");
         let up_key = format!("channelUpgrades/upgrades/ports/{CP_ICA_PORT}/channels/{CP_ICA_CHAN}");
         let cur = self.ica_version.clone();
+        let current_order =
+            if self.ica_order_required && matches!(self.ica_order_requirement_stage, 2 | 3) {
+                ch::Order::Ordered
+            } else {
+                ch::Order::Unordered
+            };
+        let new_order = if self.ica_order_required && self.ica_order_requirement_stage == 1 {
+            ch::Order::Ordered
+        } else {
+            ch::Order::Unordered
+        };
         let cp_end = |state: ch::State, version: &str, seq: u64| ch::Channel {
             state: state as i32,
-            ordering: ch::Order::Unordered as i32,
+            ordering: current_order as i32,
             counterparty: Some(ch::Counterparty {
                 port_id: "icahost".into(),
                 channel_id: a_ica.clone(),
@@ -1732,7 +1769,7 @@ impl Driver {
             upgrade_sequence: seq,
         };
         let fields = |version: &str| ch::UpgradeFields {
-            ordering: ch::Order::Unordered as i32,
+            ordering: new_order as i32,
             connection_hops: vec![CP_CONNECTION.into()],
             version: version.into(),
         };
@@ -1780,8 +1817,13 @@ impl Driver {
             2 => {
                 let seq = self.cu_seq;
                 let new = self.cu_new.clone();
-                let r = c.rng.below(10);
-                let ack_failure = !self.legacy_upgrade_fixture && seq % 4 == 1;
+                let r = if self.ica_order_required {
+                    9
+                } else {
+                    c.rng.below(10)
+                };
+                let ack_failure =
+                    !self.ica_order_required && !self.legacy_upgrade_fixture && seq % 4 == 1;
                 if !ack_failure && c.now - self.cu_try_at > 620 && r < 6 {
                     // The upgrade timed out: the counterparty never moved on.
                     let end = cp_end(ch::State::Open, &cur, seq);
@@ -2109,6 +2151,26 @@ impl Driver {
         .into_bytes()
     }
 
+    /// Relay the same committed packet again. Ordered channels cannot skip a
+    /// dropped sequence, so constructing a fresh packet here would deadlock.
+    fn ica_order_relay_pending(&mut self, c: &mut StepCtx<'_>) -> Option<Vec<Any>> {
+        let signer = c.signer.clone();
+        let packet = self.ica_order_required_packet.clone()?;
+        let h = self.cp.commit(c.now - 5);
+        let mut out: Vec<Any> = self.update(&signer).into_iter().collect();
+        out.push(Any::pack(&ch::MsgRecvPacket {
+            proof_commitment: self.cp.proof(&format!(
+                "commitments/ports/{CP_ICA_PORT}/channels/{CP_ICA_CHAN}/sequences/{}",
+                packet.sequence
+            )),
+            packet: Some(packet),
+            proof_height: proof_height(h),
+            signer,
+        }));
+        self.bump("ica_order_relay_retry");
+        Some(out)
+    }
+
     /// An ICS-27 packet: a `CosmosTx` of messages signed by the
     /// interchain account.
     fn ica_packet(&mut self, c: &mut StepCtx<'_>) -> Option<Vec<Any>> {
@@ -2131,7 +2193,11 @@ impl Driver {
                 },
             }],
         })];
-        if !self.ica_encoding_required && !self.ica_error_required && c.rng.one_in(3) {
+        if !self.ica_encoding_required
+            && !self.ica_order_required
+            && !self.ica_error_required
+            && c.rng.one_in(3)
+        {
             msgs.push(Any::pack(
                 &celestia_proto::cosmos::feegrant::v1beta1::MsgGrantAllowance {
                     granter: ica.clone(),
@@ -2149,6 +2215,7 @@ impl Driver {
             ));
         }
         if !self.ica_encoding_required
+            && !self.ica_order_required
             && !self.ica_error_required
             && std::env::var("DELIVER_WIRE").is_ok()
         {
@@ -2202,7 +2269,7 @@ impl Driver {
         for m in &msgs {
             prost::encoding::message::encode(1, m, &mut tx);
         }
-        if c.rng.one_in(6) {
+        if !self.ica_order_required && c.rng.one_in(6) {
             // An unknown field gogoproto skips at the end of the last
             // message's `Any`.
             tx.clear();
@@ -2247,6 +2314,9 @@ impl Driver {
         self.cp.send(&mut p);
         if self.ica_encoding_required && matches!(self.ica_requirement_stage, 0 | 2) {
             self.ica_required_packet = Some((p.clone(), json));
+        }
+        if self.ica_order_required && matches!(self.ica_order_requirement_stage, 0 | 2 | 4) {
+            self.ica_order_required_packet = Some(p.clone());
         }
         if required_error {
             self.ica_error_packet = Some(p.clone());
@@ -2320,6 +2390,7 @@ impl Driver {
             let mut pfm_timeout = false;
             let mut pfm_retry = None;
             let mut ica_success_ack = None;
+            let mut ica_order_success_ack = false;
             let mut ica_error_ack = false;
             let mut ica_error_event = false;
             let mut pfm_metadata_recv = false;
@@ -2484,11 +2555,24 @@ impl Driver {
                     | "channel_upgrade_error"
                     | "channel_upgrade_confirm"
                     | "channel_upgrade_open"
-                        if attr(e, "port_id").as_deref() == Some("icahost") =>
+                        if attr(e, "port_id").as_deref() == Some("icahost")
+                            && attr(e, "channel_id") == self.a_ica =>
                     {
-                        if let Some(seq) =
-                            attr(e, "upgrade_sequence").and_then(|s| s.parse::<u64>().ok())
+                        let event_seq =
+                            attr(e, "upgrade_sequence").and_then(|s| s.parse::<u64>().ok());
+                        let expected_order = match self.ica_order_requirement_stage {
+                            1 => Some("ORDER_ORDERED"),
+                            3 => Some("ORDER_UNORDERED"),
+                            _ => None,
+                        };
+                        if e.r#type == "channel_upgrade_open"
+                            && self.ica_order_required
+                            && (event_seq != Some(self.cu_seq)
+                                || attr(e, "ordering").as_deref() != expected_order)
                         {
+                            continue;
+                        }
+                        if let Some(seq) = event_seq {
                             self.cu_seq = seq;
                         }
                         self.cu_wait = 0;
@@ -2506,6 +2590,19 @@ impl Driver {
                             "channel_upgrade_open" => {
                                 self.ica_version = self.cu_new.clone();
                                 self.bump("chan_upgraded");
+                                if self.ica_order_required {
+                                    match self.ica_order_requirement_stage {
+                                        1 => {
+                                            self.ica_order_requirement_stage = 2;
+                                            self.bump("ica_upgrade_to_ordered");
+                                        }
+                                        3 => {
+                                            self.ica_order_requirement_stage = 4;
+                                            self.bump("ica_upgrade_to_unordered");
+                                        }
+                                        _ => {}
+                                    }
+                                }
                                 if self.legacy_upgrade_fixture { 0 } else { 6 }
                             }
                             _ => 0,
@@ -2591,6 +2688,20 @@ impl Driver {
                             .ica_required_packet
                             .as_ref()
                             .map(|(_, proto3json)| *proto3json);
+                    }
+                    "write_acknowledgement"
+                        if self.ica_order_required
+                            && self
+                                .ica_order_required_packet
+                                .as_ref()
+                                .is_some_and(|packet| {
+                                    packet_of(e).as_ref().is_some_and(|event_packet| {
+                                        same_packet(event_packet, packet)
+                                    })
+                                })
+                            && packet_event_has_ica_send_success_ack(e) =>
+                    {
+                        ica_order_success_ack = true;
                     }
                     "write_acknowledgement"
                         if self.ica_error_required
@@ -2680,6 +2791,24 @@ impl Driver {
                     _ => {}
                 }
                 self.ica_required_packet = None;
+            }
+            if ica_order_success_ack {
+                match self.ica_order_requirement_stage {
+                    0 => {
+                        self.ica_order_requirement_stage = 1;
+                        self.bump("ica_unordered_baseline_success_ack");
+                    }
+                    2 => {
+                        self.ica_order_requirement_stage = 3;
+                        self.bump("ica_ordered_success_ack");
+                    }
+                    4 => {
+                        self.ica_order_requirement_stage = 5;
+                        self.bump("ica_unordered_success_ack");
+                    }
+                    _ => {}
+                }
+                self.ica_order_required_packet = None;
             }
             if ica_error_ack && ica_error_event {
                 self.ica_error_packet = None;
@@ -3846,6 +3975,164 @@ mod tests {
         ))]);
         assert_eq!(driver.stats.get("ica_proto3json_success_ack"), Some(&1));
         assert_eq!(driver.ica_requirement_stage, 3);
+    }
+
+    #[test]
+    fn ica_order_credit_requires_exact_success_ack_after_each_transition() {
+        let response = celestia_proto::cosmos::base::abci::v1beta1::TxMsgData {
+            msg_responses: vec![Any {
+                type_url: "/cosmos.bank.v1beta1.MsgSendResponse".into(),
+                value: Vec::new(),
+            }],
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let success_ack_hex = hex::encode(format!(r#"{{"result":"{}"}}"#, base64_std(&response)));
+        let ordered = ch::Packet {
+            sequence: 4,
+            source_port: CP_ICA_PORT.into(),
+            source_channel: CP_ICA_CHAN.into(),
+            destination_port: "icahost".into(),
+            destination_channel: "channel-3".into(),
+            data: b"exact ordered packet".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let mut driver = Driver {
+            ica_order_required: true,
+            ica_order_requirement_stage: 0,
+            ica_order_required_packet: Some(ordered.clone()),
+            ..Driver::default()
+        };
+
+        let mut unrelated = ordered.clone();
+        unrelated.sequence += 1;
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &unrelated,
+            Some(&success_ack_hex),
+        ))]);
+        assert_eq!(driver.stats.get("ica_unordered_baseline_success_ack"), None);
+        assert_eq!(driver.ica_order_requirement_stage, 0);
+        driver.observe_block_events(&[]);
+        assert_eq!(
+            driver
+                .ica_order_required_packet
+                .as_ref()
+                .map(|packet| packet.sequence),
+            Some(ordered.sequence)
+        );
+
+        let mut rng = crate::mutate::Rng::new(7);
+        let mut context = StepCtx {
+            now: 100,
+            rng: &mut rng,
+            signer: "relayer".into(),
+            accounts: Vec::new(),
+        };
+        let retry = driver
+            .ica_order_relay_pending(&mut context)
+            .expect("pending packet");
+        let relayed =
+            ch::MsgRecvPacket::decode(retry.last().expect("recv packet").value.as_slice())
+                .expect("decode recv packet")
+                .packet
+                .expect("packet");
+        assert_eq!(relayed.sequence, ordered.sequence);
+        assert_eq!(relayed, ordered);
+
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &ordered,
+            Some(PFM_ERROR_ACK_HEX),
+        ))]);
+        assert_eq!(driver.stats.get("ica_unordered_baseline_success_ack"), None);
+
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &ordered,
+            Some(&success_ack_hex),
+        ))]);
+        assert_eq!(
+            driver.stats.get("ica_unordered_baseline_success_ack"),
+            Some(&1)
+        );
+        assert_eq!(driver.ica_order_requirement_stage, 1);
+
+        driver.ica_order_requirement_stage = 2;
+        driver.ica_order_required_packet = Some(ordered.clone());
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &ordered,
+            Some(&success_ack_hex),
+        ))]);
+        assert_eq!(driver.stats.get("ica_ordered_success_ack"), Some(&1));
+        assert_eq!(driver.ica_order_requirement_stage, 3);
+
+        let unordered = ch::Packet {
+            sequence: 5,
+            data: b"exact unordered packet".to_vec(),
+            ..ordered
+        };
+        driver.ica_order_requirement_stage = 4;
+        driver.ica_order_required_packet = Some(unordered.clone());
+        driver.observe(&[result(packet_event(
+            "write_acknowledgement",
+            &unordered,
+            Some(&success_ack_hex),
+        ))]);
+        assert_eq!(driver.stats.get("ica_unordered_success_ack"), Some(&1));
+        assert_eq!(driver.ica_order_requirement_stage, 5);
+    }
+
+    #[test]
+    fn ica_order_transition_credit_binds_channel_sequence_and_order() {
+        fn upgrade_open(channel: &str, sequence: u64, ordering: &str) -> Event {
+            Event {
+                r#type: "channel_upgrade_open".into(),
+                attributes: [
+                    ("port_id", "icahost".to_owned()),
+                    ("channel_id", channel.to_owned()),
+                    ("channel_state", "STATE_OPEN".to_owned()),
+                    ("ordering", ordering.to_owned()),
+                    ("upgrade_sequence", sequence.to_string()),
+                ]
+                .into_iter()
+                .map(|(key, value)| EventAttribute {
+                    key: key.into(),
+                    value,
+                    index: true,
+                })
+                .collect(),
+            }
+        }
+
+        let mut driver = Driver {
+            ica_order_required: true,
+            ica_order_requirement_stage: 1,
+            a_ica: Some("channel-3".into()),
+            cu_seq: 7,
+            cu_new: "ordered-version".into(),
+            ..Driver::default()
+        };
+        for event in [
+            upgrade_open("channel-30", 7, "ORDER_ORDERED"),
+            upgrade_open("channel-3", 8, "ORDER_ORDERED"),
+            upgrade_open("channel-3", 7, "ORDER_UNORDERED"),
+        ] {
+            driver.observe(&[result(event)]);
+            assert_eq!(driver.ica_order_requirement_stage, 1);
+            assert_eq!(driver.stats.get("ica_upgrade_to_ordered"), None);
+        }
+        driver.observe(&[result(upgrade_open("channel-3", 7, "ORDER_ORDERED"))]);
+        assert_eq!(driver.ica_order_requirement_stage, 2);
+        assert_eq!(driver.stats.get("ica_upgrade_to_ordered"), Some(&1));
+
+        driver.ica_order_requirement_stage = 3;
+        driver.cu_seq = 8;
+        driver.observe(&[result(upgrade_open("channel-3", 8, "ORDER_UNORDERED"))]);
+        assert_eq!(driver.ica_order_requirement_stage, 4);
+        assert_eq!(driver.stats.get("ica_upgrade_to_unordered"), Some(&1));
     }
 
     #[test]

@@ -111,6 +111,10 @@
 # forward:null transfer control. It requires the official Go Ack bytes,
 # committed Ack hashes and packet receipts, no forwarded packet or minted
 # balance for either failure, and the exact control voucher balance.
+# DELIVER_IBC_ICA_ORDER_REQUIRE=1 upgrades the ICA host channel from
+# Unordered to Ordered and back, requiring an exact successful baseline
+# packet and one after each transition. Both sequence-rewrite paths and all
+# five lifecycle credits must complete exactly once.
 # DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
 # DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
 # (default noop). Multisig modes use harness-held 2-of-3 validators and
