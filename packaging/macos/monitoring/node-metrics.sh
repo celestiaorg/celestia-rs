@@ -12,7 +12,7 @@
 # `apphash` runs check-apphash.sh against each node's reference RPC.
 #
 # nodes.conf has one node per line: <network> <home> <local-rpc>
-# <reference-rpc> [<log file> [<valoper> [<candidate commit>]]]. With a log file (`-` for
+# <reference-rpc> [<log file> [<valoper> [<valcons>]]]. With a log file (`-` for
 # none), `collect` also counts the double-sign guard's refusals in it.
 # With the validator's operator address, it reports whether staking has
 # the validator jailed.
@@ -51,6 +51,25 @@ publish() { # atomic replace, so node_exporter never reads a partial file
 }
 
 nodes() { grep -vE '^[[:space:]]*(#|$)' "$conf"; }
+
+# Identify the commit of the *loaded* executable. Atomic updater swaps
+# leave an older inode running until restart, so the path alone is not
+# enough. If the inode cannot be checked, do not claim an automatic
+# candidate identity.
+running_commit() {
+  local home=$1 line pid bin inode loaded commit
+  line=$(ps -axo pid=,args= | awk -v h="$home" '$0 ~ (" start --home " h "$")' | head -1)
+  [[ -n $line ]] || return 1
+  read -r pid bin _ <<<"$line"
+  [[ -n $pid && -x $bin ]] || return 1
+  inode=$(stat -f %i "$bin" 2>/dev/null) || return 1
+  loaded=$(lsof -a -p "$pid" -d txt -F nDi 2>/dev/null |
+    awk -v p="$bin" '/^i/ {i=substr($0,2)} /^n/ {if (substr($0,2)==p) {print i; exit}}')
+  [[ -n $loaded && $loaded == "$inode" ]] || return 1
+  commit=$("$bin" version --long 2>/dev/null | awk '/^commit:/ {print $2}')
+  [[ $commit =~ ^[0-9a-f]{40}$ ]] || return 1
+  printf '%s\n' "$commit"
+}
 
 # Log lines of a refusal by the double-sign guard (operator guide §11.11).
 REFUSAL='failed signing vote|failed signing proposal|found signature from the same key'
@@ -103,11 +122,12 @@ collect() {
   help celestia_rs_sign_refusals_total counter "Double-sign guard refusals in the node's log (nodes.conf log column)."
   help celestia_rs_collector_timestamp_seconds gauge "When this file was written."
 
-  local net home rpc ref log valoper commit
+  local net home rpc ref log valoper valcons
   mkdir -p "$dir"
-  while read -r net home rpc ref log valoper commit; do
+  while read -r net home rpc ref log valoper valcons; do
     [[ $log == - ]] && log=
-    local st h bt cu line bin valcons si params
+    [[ $valoper == - ]] && valoper=
+    local st h bt cu line bin si params
     st=$(curl -fsS -m 5 "$rpc/status" 2>/dev/null)
     h=$(jq -r '.result.sync_info.latest_block_height // empty' <<<"$st" 2>/dev/null)
     if [[ -n $h ]]; then
@@ -141,10 +161,13 @@ collect() {
       refusals=$(sign_refusals "$net" "$log") && emit celestia_rs_sign_refusals_total "$net" "$refusals"
     fi
 
-    # Signing info exists once the node's key is in a validator; a full
+    # The public consensus address comes from nodes.conf. Do not invoke
+    # `comet show-address`: that command reads priv_validator_key.json.
+    # Signing info exists once the address is in a validator; a full
     # node gets NotFound and reports signing_info_found 0 only.
     [[ -d $home/config ]] || continue
-    valcons=$("$bin" comet show-address --home "$home" </dev/null 2>/dev/null) || continue
+    [[ $valcons == - ]] && valcons=
+    [[ -n $valcons ]] || continue
     si=$("$bin" query slashing signing-info "$valcons" --home "$home" </dev/null 2>/dev/null)
     if [[ -z $si ]]; then
       emit celestia_rs_validator_signing_info_found "$net" 0
@@ -180,10 +203,11 @@ collect() {
 apphash() {
   help celestia_rs_apphash_match gauge "1 app hash matches the reference RPC, 0 MISMATCH (parity bug), -1 check could not run."
   help celestia_rs_apphash_check_timestamp_seconds gauge "When the app hash was last checked."
-  local net home rpc ref log valoper commit rc result receipt_dir tmp
-  while read -r net home rpc ref log valoper commit; do
+  local net home rpc ref log valoper valcons commit rc result receipt_dir tmp
+  while read -r net home rpc ref log valoper valcons; do
     [[ $net =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid network label: $net" >&2; continue; }
-    [[ $commit == - ]] && commit=
+    # Only record an identity proven against the loaded executable inode.
+    commit=$(running_commit "$home") || commit=
     result=$(CANDIDATE_COMMIT="$commit" "$CHECK_APPHASH" "$rpc" "$ref" --json </dev/null 2>/dev/null); rc=$?
     # A checker failure must leave a receipt as well as an unavailable metric.
     if ! jq -e '.outcome == "match" or .outcome == "mismatch" or .outcome == "unavailable"' \

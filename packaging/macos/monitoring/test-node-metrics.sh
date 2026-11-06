@@ -48,8 +48,6 @@ cat >"$t/bin/celestia-rs" <<EOF
 #!/usr/bin/env bash
 home=\${!#}
 case "\$*" in
-  "comet show-address --home $t/val") echo celestiavalcons1val ;;
-  "comet show-address --home $t/full") echo celestiavalcons1full ;;
   "query slashing signing-info celestiavalcons1val --home $t/val")
     echo "{\"val_signing_info\":{\"missed_blocks_counter\":\"184\",\"jailed_until\":\"\$(cat $t/chain/until)\",\"tombstoned\":\$(cat $t/chain/tombstoned)}}" ;;
   "query staking validator celestiavaloper1val --home $t/val")
@@ -69,8 +67,8 @@ chmod +x "$t/bin/"*
 
 cat >"$t/nodes.conf" <<EOF
 # network home rpc reference-rpc
-mocha   $t/val  http://127.0.0.1:1111 https://ref.invalid $t/val.log celestiavaloper1val abc123
-mainnet $t/full http://127.0.0.1:2222 https://ref.invalid -
+mocha   $t/val  http://127.0.0.1:1111 https://ref.invalid $t/val.log celestiavaloper1val celestiavalcons1val
+mainnet $t/full http://127.0.0.1:2222 https://ref.invalid - - celestiavalcons1full
 down    $t/none http://127.0.0.1:3333 https://ref.invalid
 EOF
 
@@ -193,7 +191,7 @@ for net in mocha mainnet down; do
   count=$(find "$t/out/receipts/$net" -name 'receipt.*.json' | wc -l | tr -d ' ')
   [[ $count == 1 ]] || { echo "FAIL: expected one $net receipt"; fails=$((fails + 1)); }
 done
-jq -e '.outcome=="match" and .candidate_commit=="abc123"' "$t"/out/receipts/mocha/*.json >/dev/null \
+jq -e '.outcome=="match" and .candidate_commit==""' "$t"/out/receipts/mocha/*.json >/dev/null \
   || { echo "FAIL: candidate receipt"; fails=$((fails + 1)); }
 jq -e '.outcome=="unavailable"' "$t"/out/receipts/down/*.json >/dev/null \
   || { echo "FAIL: unavailable receipt"; fails=$((fails + 1)); }
