@@ -115,6 +115,11 @@
 # Unordered to Ordered and back, requiring an exact successful baseline
 # packet and one after each transition. Both sequence-rewrite paths and all
 # five lifecycle credits must complete exactly once.
+# DELIVER_IBC_UPGRADE_TIMEOUT_REQUIRE=1 binds a real ICA upgrade Try and its
+# raw state, requires an exact already-upgraded timeout rejection with no
+# state mutation, then a distinct successful timeout proof and recovery Ack.
+# It requires zero generated transactions so unrelated IBC activity cannot
+# satisfy or perturb the checkpoint.
 # DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
 # DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
 # (default noop). Multisig modes use harness-held 2-of-3 validators and

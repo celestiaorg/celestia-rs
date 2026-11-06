@@ -29,6 +29,23 @@ use celestia_proto::ibc::lightclients::tendermint::v1 as tmlc;
 use prost::Message as _;
 use x_ibc::lightclients::light;
 
+/// The exact relay currently owned by the upgrade-timeout fixture.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UpgradeTimeoutRelay {
+    Try,
+    RejectedTimeout,
+    SuccessfulTimeout,
+    RecoveryPacket,
+}
+
+#[derive(Clone, Debug)]
+struct PendingUpgradeTimeoutRelay {
+    kind: UpgradeTimeoutRelay,
+    messages: Vec<Any>,
+    signed_tx: Option<Vec<u8>>,
+    check_ok: bool,
+}
+
 /// The counterparty's chain id (revision 1).
 pub const CHAIN_ID: &str = "cp-1";
 /// The counterparty's ids for its end of everything.
@@ -139,10 +156,38 @@ impl Cp {
     pub fn commit(&mut self, secs: i64) -> i64 {
         let last = self.headers.values().next_back().map_or(0, |h| h.1.seconds);
         let secs = secs.max(last + 1);
+        self.commit_at_time(ts(secs))
+    }
+
+    /// Commits at an exact nanosecond timestamp when it is later than the
+    /// previous header. This is used to exercise timeout equality rather than
+    /// relying on a rounded-up second.
+    pub fn commit_at_nanos(&mut self, nanos: u64) -> i64 {
+        let seconds = i64::try_from(nanos / 1_000_000_000).unwrap_or(i64::MAX);
+        let subsec = i32::try_from(nanos % 1_000_000_000).unwrap_or_default();
+        let requested = pbjson_types::Timestamp {
+            seconds,
+            nanos: subsec,
+        };
+        let last = self
+            .headers
+            .values()
+            .next_back()
+            .map(|header| header.1)
+            .unwrap_or_default();
+        let time = if (requested.seconds, requested.nanos) > (last.seconds, last.nanos) {
+            requested
+        } else {
+            ts(last.seconds.saturating_add(1))
+        };
+        self.commit_at_time(time)
+    }
+
+    fn commit_at_time(&mut self, time: pbjson_types::Timestamp) -> i64 {
         let id = self.store.commit().ok();
         let h = id.as_ref().map_or(0, |c| c.version);
         let hash = id.map(|c| c.hash.to_vec()).unwrap_or_default();
-        self.headers.insert(h, (hash, ts(secs)));
+        self.headers.insert(h, (hash, time));
         h
     }
 
@@ -529,6 +574,19 @@ pub struct Driver {
     ica_order_required: bool,
     ica_order_requirement_stage: u8,
     ica_order_required_packet: Option<ch::Packet>,
+    /// Proof-backed upgrade-timeout rejection, successful cleanup, and ICA
+    /// recovery. The outer harness owns raw-store checkpoints while this
+    /// driver owns the exact counterparty proof material and relay bytes.
+    upgrade_timeout_required: bool,
+    upgrade_timeout_stage: u8,
+    upgrade_timeout_pending: Option<PendingUpgradeTimeoutRelay>,
+    upgrade_timeout_timestamp: u64,
+    upgrade_timeout_checkpoint_ready: bool,
+    upgrade_timeout_rejection_checkpoint_ready: bool,
+    upgrade_timeout_cleanup_checkpoint_ready: bool,
+    upgrade_timeout_wait_blocks: u8,
+    upgrade_timeout_recovery_packet: Option<ch::Packet>,
+    upgrade_timeout_recovery_evidence: Option<(ch::Packet, Vec<u8>)>,
     /// Required ICA host application-error lifecycle: exact packet, its
     /// converted callback-error event and deterministic error acknowledgement.
     ica_error_required: bool,
@@ -698,6 +756,172 @@ impl Driver {
     pub fn with_ica_order_requirement(mut self, enabled: bool) -> Self {
         self.ica_order_required = enabled;
         self
+    }
+
+    /// Require an already-upgraded timeout rejection, successful timeout
+    /// cleanup, and a successful packet after recovery.
+    #[must_use]
+    pub fn with_upgrade_timeout_requirement(mut self, enabled: bool) -> Self {
+        self.upgrade_timeout_required = enabled;
+        self
+    }
+
+    /// Exact signed relay bytes to retry after CheckTx or proposal omission.
+    #[must_use]
+    pub fn upgrade_timeout_retry_tx(&self) -> Option<&[u8]> {
+        self.upgrade_timeout_pending
+            .as_ref()
+            .and_then(|pending| pending.signed_tx.as_deref())
+    }
+
+    /// A fresh fuzz-account slot for each controlled relay. Distinct signers
+    /// prevent an accepted-but-not-yet-flushed CheckTx sequence from making
+    /// the next lifecycle transaction ineligible for CheckTx.
+    #[must_use]
+    pub fn upgrade_timeout_signer_offset(&self) -> Option<usize> {
+        if !self.upgrade_timeout_required || !self.ica_open {
+            return None;
+        }
+        Some(match self.upgrade_timeout_stage {
+            0 | 1 => 1,
+            2 | 3 => 2,
+            4 | 5 => 3,
+            6 | 7 => 4,
+            _ => return None,
+        })
+    }
+
+    /// Binds the signed transaction to the message bundle emitted by `step`.
+    pub fn bind_upgrade_timeout_signed_tx(&mut self, messages: &[Any], tx: Vec<u8>) {
+        if let Some(pending) = self.upgrade_timeout_pending.as_mut()
+            && pending.signed_tx.is_none()
+            && pending.messages == messages
+        {
+            pending.signed_tx = Some(tx);
+        }
+    }
+
+    /// Records CheckTx for the exact signed fixture transaction.
+    pub fn observe_upgrade_timeout_check(
+        &mut self,
+        tx: &[u8],
+        result: &celestia_proto::celestia_core_proto::abci::ResponseCheckTx,
+    ) {
+        let mut matched = false;
+        let mut already_accepted = false;
+        let mut accepted_now = false;
+        if let Some(pending) = self.upgrade_timeout_pending.as_mut()
+            && pending.signed_tx.as_deref() == Some(tx)
+        {
+            matched = true;
+            already_accepted = pending.check_ok;
+            // Proposal omission can cause the same mempool transaction to be
+            // checked again after an earlier accepted CheckTx. Preserve that
+            // accepted attribution; a later sequence-mismatch retry cannot
+            // erase it before the already-accepted bytes are proposed.
+            accepted_now = result.code == 0 && !pending.check_ok;
+            pending.check_ok |= accepted_now;
+        }
+        if matched {
+            if accepted_now {
+                self.bump("upgrade_timeout_check_ok");
+            } else if result.code != 0
+                && !((result.codespace.as_str(), result.code) == ("sdk", 32) && already_accepted)
+            {
+                self.bump(match (result.codespace.as_str(), result.code) {
+                    ("sdk", 4) => "upgrade_timeout_check_unauthorized",
+                    ("sdk", 11) => "upgrade_timeout_check_out_of_gas",
+                    ("sdk", 13) => "upgrade_timeout_check_insufficient_funds",
+                    ("sdk", 19) => "upgrade_timeout_check_mempool_duplicate",
+                    ("sdk", 32) => "upgrade_timeout_check_account_sequence",
+                    _ => "upgrade_timeout_check_rejected",
+                });
+            }
+        }
+    }
+
+    /// Supplies the committed Try timeout decoded from the local raw store.
+    pub fn confirm_upgrade_timeout_try_checkpoint(&mut self, timeout_timestamp: u64) {
+        if self.upgrade_timeout_required
+            && self.upgrade_timeout_stage == 2
+            && timeout_timestamp != 0
+        {
+            self.upgrade_timeout_timestamp = timeout_timestamp;
+            self.upgrade_timeout_checkpoint_ready = true;
+            // CheckTx uses the last committed header time. Commit one empty
+            // generated block so the exact timeout-boundary counterparty
+            // header is strictly within the client's max-clock-drift window.
+            self.upgrade_timeout_wait_blocks = 1;
+        }
+    }
+
+    /// The committed Try is waiting for the harness's raw-store checkpoint.
+    #[must_use]
+    pub fn upgrade_timeout_needs_try_checkpoint(&self) -> bool {
+        self.upgrade_timeout_required
+            && self.upgrade_timeout_stage == 2
+            && !self.upgrade_timeout_checkpoint_ready
+    }
+
+    /// Local channel used by the controlled timeout fixture.
+    #[must_use]
+    pub fn upgrade_timeout_channel(&self) -> Option<&str> {
+        self.a_ica.as_deref()
+    }
+
+    /// Client whose complete raw prefix is part of the rollback checkpoint.
+    #[must_use]
+    pub fn upgrade_timeout_client(&self) -> Option<&str> {
+        self.a_client.as_deref()
+    }
+
+    /// Local connection and exact upgrade fields expected after Try.
+    #[must_use]
+    pub fn upgrade_timeout_expected_state(&self) -> Option<(&str, &str, &str, u64)> {
+        Some((
+            self.a_conn.as_deref()?,
+            self.ica_version.as_str(),
+            self.cu_new.as_str(),
+            self.cu_seq,
+        ))
+    }
+
+    /// The rejected timeout committed and awaits rollback-state comparison.
+    #[must_use]
+    pub fn upgrade_timeout_needs_rejection_checkpoint(&self) -> bool {
+        self.upgrade_timeout_required
+            && self.upgrade_timeout_stage == 4
+            && !self.upgrade_timeout_rejection_checkpoint_ready
+    }
+
+    /// Allows construction of a distinct proof only after rollback is proven.
+    pub fn confirm_upgrade_timeout_rejection_checkpoint(&mut self) {
+        if self.upgrade_timeout_needs_rejection_checkpoint() {
+            self.upgrade_timeout_rejection_checkpoint_ready = true;
+        }
+    }
+
+    /// Successful cleanup committed and awaits exact raw-state validation.
+    #[must_use]
+    pub fn upgrade_timeout_needs_cleanup_checkpoint(&self) -> bool {
+        self.upgrade_timeout_required
+            && self.upgrade_timeout_stage == 6
+            && !self.upgrade_timeout_cleanup_checkpoint_ready
+    }
+
+    /// Allows the post-recovery packet only after cleanup state is proven.
+    pub fn confirm_upgrade_timeout_cleanup_checkpoint(&mut self) {
+        if self.upgrade_timeout_needs_cleanup_checkpoint() {
+            self.upgrade_timeout_cleanup_checkpoint_ready = true;
+        }
+    }
+
+    /// Exact recovered packet and acknowledgement credited after cleanup.
+    #[must_use]
+    pub fn upgrade_timeout_recovery_evidence(&self) -> Option<(&ch::Packet, &[u8])> {
+        self.upgrade_timeout_recovery_evidence
+            .as_ref()
+            .map(|(packet, acknowledgement)| (packet, acknowledgement.as_slice()))
     }
 
     /// Require an exact ICA host application error acknowledgement.
@@ -1114,7 +1338,7 @@ impl Driver {
                 let mut msgs: Vec<Any> = self.update(&signer).into_iter().collect();
                 msgs.push(Any::pack(&ch::MsgChannelOpenConfirm {
                     port_id: "icahost".into(),
-                    channel_id: a_ica,
+                    channel_id: a_ica.clone(),
                     proof_ack: self.cp.proof(&format!(
                         "channelEnds/ports/{CP_ICA_PORT}/channels/{CP_ICA_CHAN}"
                     )),
@@ -1203,6 +1427,15 @@ impl Driver {
                 }
                 return self.pfm_ack(c, &signer);
             }
+        }
+        if self.upgrade_timeout_required && self.ica_open {
+            if self.upgrade_timeout_stage < 8 {
+                if self.upgrade_timeout_pending.is_some() {
+                    return None;
+                }
+                return self.upgrade_timeout_relay(c);
+            }
+            return None;
         }
         if self.ica_encoding_required && self.ica_open && self.ica_requirement_stage < 3 {
             if self.ica_required_packet.is_some() {
@@ -1944,7 +2177,7 @@ impl Driver {
             6 => {
                 msgs.push(Any::pack(&ch::MsgPruneAcknowledgements {
                     port_id: "icahost".into(),
-                    channel_id: a_ica,
+                    channel_id: a_ica.clone(),
                     limit: 100,
                     signer,
                 }));
@@ -1972,6 +2205,131 @@ impl Driver {
         }
         self.cu_wait = 0;
         Some(msgs)
+    }
+
+    /// Controlled proof material for an upgrade timeout that first proves the
+    /// counterparty already adopted the proposal, then independently proves
+    /// its old channel fields so cleanup succeeds.
+    fn upgrade_timeout_relay(&mut self, c: &mut StepCtx<'_>) -> Option<Vec<Any>> {
+        if self.upgrade_timeout_wait_blocks != 0 {
+            self.upgrade_timeout_wait_blocks -= 1;
+            return None;
+        }
+        let a_ica = self.a_ica.clone()?;
+        let ica = self.ica_addr.clone()?;
+        let a_conn = self.a_conn.clone()?;
+        let signer = c.signer.clone();
+        let channel_key = format!("channelEnds/ports/{CP_ICA_PORT}/channels/{CP_ICA_CHAN}");
+        let upgrade_key =
+            format!("channelUpgrades/upgrades/ports/{CP_ICA_PORT}/channels/{CP_ICA_CHAN}");
+        let current = self.ica_version.clone();
+        let proposed = self.metadata(
+            &ica,
+            if current.contains("proto3json") {
+                "proto3"
+            } else {
+                "proto3json"
+            },
+        );
+        let fields = |version: &str| ch::UpgradeFields {
+            ordering: ch::Order::Unordered as i32,
+            connection_hops: vec![CP_CONNECTION.into()],
+            version: version.into(),
+        };
+        let channel = |version: &str, sequence: u64| ch::Channel {
+            state: ch::State::Open as i32,
+            ordering: ch::Order::Unordered as i32,
+            counterparty: Some(ch::Counterparty {
+                port_id: "icahost".into(),
+                channel_id: a_ica.clone(),
+            }),
+            connection_hops: vec![CP_CONNECTION.into()],
+            version: version.into(),
+            upgrade_sequence: sequence,
+        };
+
+        let (kind, messages) = match self.upgrade_timeout_stage {
+            0 => {
+                let sequence = self.cu_seq + 1;
+                self.cp
+                    .put_channel_end(CP_ICA_PORT, CP_ICA_CHAN, &channel(&current, sequence));
+                self.cp.put_gogo(
+                    &upgrade_key,
+                    &ch::Upgrade {
+                        fields: Some(fields(&proposed)),
+                        timeout: Some(ch::Timeout::default()),
+                        next_sequence_send: 0,
+                    },
+                );
+                let height = self.cp.commit(c.now - 4);
+                let mut messages: Vec<Any> = self.update(&signer).into_iter().collect();
+                messages.push(Any::pack(&ch::MsgChannelUpgradeTry {
+                    port_id: "icahost".into(),
+                    channel_id: a_ica.clone(),
+                    proposed_upgrade_connection_hops: vec![a_conn],
+                    counterparty_upgrade_fields: Some(fields(&proposed)),
+                    counterparty_upgrade_sequence: sequence,
+                    proof_channel: self.cp.proof(&channel_key),
+                    proof_upgrade: self.cp.proof(&upgrade_key),
+                    proof_height: proof_height(height),
+                    signer,
+                }));
+                self.cu_new = proposed;
+                self.cu_seq = sequence;
+                self.upgrade_timeout_stage = 1;
+                (UpgradeTimeoutRelay::Try, messages)
+            }
+            2 if self.upgrade_timeout_checkpoint_ready => {
+                self.cp.put_channel_end(
+                    CP_ICA_PORT,
+                    CP_ICA_CHAN,
+                    &channel(&self.cu_new, self.cu_seq),
+                );
+                let height = self.cp.commit_at_nanos(self.upgrade_timeout_timestamp);
+                let mut messages: Vec<Any> = self.update(&signer).into_iter().collect();
+                messages.push(Any::pack(&ch::MsgChannelUpgradeTimeout {
+                    port_id: "icahost".into(),
+                    channel_id: a_ica.clone(),
+                    counterparty_channel: Some(channel(&self.cu_new, self.cu_seq)),
+                    proof_channel: self.cp.proof(&channel_key),
+                    proof_height: proof_height(height),
+                    signer,
+                }));
+                self.upgrade_timeout_stage = 3;
+                (UpgradeTimeoutRelay::RejectedTimeout, messages)
+            }
+            4 if self.upgrade_timeout_rejection_checkpoint_ready => {
+                self.cp
+                    .put_channel_end(CP_ICA_PORT, CP_ICA_CHAN, &channel(&current, self.cu_seq));
+                let height = self
+                    .cp
+                    .commit_at_nanos(self.upgrade_timeout_timestamp.saturating_add(1));
+                let mut messages: Vec<Any> = self.update(&signer).into_iter().collect();
+                messages.push(Any::pack(&ch::MsgChannelUpgradeTimeout {
+                    port_id: "icahost".into(),
+                    channel_id: a_ica.clone(),
+                    counterparty_channel: Some(channel(&current, self.cu_seq)),
+                    proof_channel: self.cp.proof(&channel_key),
+                    proof_height: proof_height(height),
+                    signer,
+                }));
+                self.upgrade_timeout_stage = 5;
+                (UpgradeTimeoutRelay::SuccessfulTimeout, messages)
+            }
+            6 if self.upgrade_timeout_cleanup_checkpoint_ready => {
+                let messages = self.ica_packet(c)?;
+                self.upgrade_timeout_stage = 7;
+                (UpgradeTimeoutRelay::RecoveryPacket, messages)
+            }
+            _ => return None,
+        };
+        self.upgrade_timeout_pending = Some(PendingUpgradeTimeoutRelay {
+            kind,
+            messages: messages.clone(),
+            signed_tx: None,
+            check_ok: false,
+        });
+        Some(messages)
     }
 
     /// The next step of a transfer channel the counterparty closes: it is
@@ -2196,6 +2554,7 @@ impl Driver {
         if !self.ica_encoding_required
             && !self.ica_order_required
             && !self.ica_error_required
+            && !self.upgrade_timeout_required
             && c.rng.one_in(3)
         {
             msgs.push(Any::pack(
@@ -2217,6 +2576,7 @@ impl Driver {
         if !self.ica_encoding_required
             && !self.ica_order_required
             && !self.ica_error_required
+            && !self.upgrade_timeout_required
             && std::env::var("DELIVER_WIRE").is_ok()
         {
             // Systematic wire mutations (`crate::wire`) of host messages:
@@ -2269,7 +2629,7 @@ impl Driver {
         for m in &msgs {
             prost::encoding::message::encode(1, m, &mut tx);
         }
-        if !self.ica_order_required && c.rng.one_in(6) {
+        if !self.ica_order_required && !self.upgrade_timeout_required && c.rng.one_in(6) {
             // An unknown field gogoproto skips at the end of the last
             // message's `Any`.
             tx.clear();
@@ -2321,6 +2681,9 @@ impl Driver {
         if required_error {
             self.ica_error_packet = Some(p.clone());
         }
+        if self.upgrade_timeout_required && self.upgrade_timeout_stage == 6 {
+            self.upgrade_timeout_recovery_packet = Some(p.clone());
+        }
         let h = self.cp.commit(c.now - 5);
         let mut out: Vec<Any> = self.update(&signer).into_iter().collect();
         out.push(Any::pack(&ch::MsgRecvPacket {
@@ -2334,6 +2697,202 @@ impl Driver {
         }));
         self.bump("ica");
         Some(out)
+    }
+
+    /// Attributes the controlled timeout lifecycle only to its exact signed
+    /// transaction in the accepted proposal. Proposal omission leaves the
+    /// raw transaction pending for byte-identical retry.
+    pub fn observe_upgrade_timeout_finalized(
+        &mut self,
+        txs: &[Vec<u8>],
+        results: &[celestia_proto::celestia_core_proto::abci::ExecTxResult],
+    ) {
+        let Some(pending) = self.upgrade_timeout_pending.as_ref() else {
+            return;
+        };
+        let Some(tx) = pending.signed_tx.as_ref() else {
+            return;
+        };
+        let Some((_, result)) = txs
+            .iter()
+            .zip(results)
+            .find(|(candidate, _)| *candidate == tx)
+        else {
+            return;
+        };
+        if !pending.check_ok {
+            self.bump("upgrade_timeout_missing_checktx");
+            return;
+        }
+        let kind = pending.kind;
+        let valid = match kind {
+            UpgradeTimeoutRelay::Try => self.valid_upgrade_timeout_try(result),
+            UpgradeTimeoutRelay::RejectedTimeout => self.valid_upgrade_timeout_rejection(result),
+            UpgradeTimeoutRelay::SuccessfulTimeout => self.valid_upgrade_timeout_success(result),
+            UpgradeTimeoutRelay::RecoveryPacket => self.valid_upgrade_timeout_recovery(result),
+        };
+        if !valid {
+            self.bump("upgrade_timeout_unexpected_result");
+            return;
+        }
+        self.upgrade_timeout_pending = None;
+        match kind {
+            UpgradeTimeoutRelay::Try => {
+                self.upgrade_timeout_stage = 2;
+                self.bump("upgrade_timeout_try");
+            }
+            UpgradeTimeoutRelay::RejectedTimeout => {
+                self.upgrade_timeout_stage = 4;
+                self.bump("upgrade_timeout_rejected");
+            }
+            UpgradeTimeoutRelay::SuccessfulTimeout => {
+                self.upgrade_timeout_stage = 6;
+                self.bump("upgrade_timeout_cleaned");
+            }
+            UpgradeTimeoutRelay::RecoveryPacket => {
+                self.upgrade_timeout_recovery_evidence = self
+                    .upgrade_timeout_recovery_packet
+                    .clone()
+                    .map(|packet| (packet, ica_send_success_ack()));
+                self.upgrade_timeout_stage = 8;
+                self.upgrade_timeout_recovery_packet = None;
+                self.bump("upgrade_timeout_recovery_ack");
+            }
+        }
+    }
+
+    fn tx_responses(
+        result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
+    ) -> Option<Vec<Any>> {
+        celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(result.data.as_slice())
+            .ok()
+            .map(|data| data.msg_responses)
+    }
+
+    fn valid_upgrade_timeout_try(
+        &self,
+        result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
+    ) -> bool {
+        if result.code != 0 {
+            return false;
+        }
+        let response = Self::tx_responses(result).and_then(|responses| {
+            responses
+                .into_iter()
+                .find(|response| response.type_url.ends_with("MsgChannelUpgradeTryResponse"))
+        });
+        let Some(response) = response.and_then(|response| {
+            ch::MsgChannelUpgradeTryResponse::decode(response.value.as_slice()).ok()
+        }) else {
+            return false;
+        };
+        response.result == ch::ResponseResultType::Success as i32
+            && response.upgrade_sequence == self.cu_seq
+            && response
+                .upgrade
+                .as_ref()
+                .and_then(|upgrade| upgrade.fields.as_ref())
+                == Some(&ch::UpgradeFields {
+                    ordering: ch::Order::Unordered as i32,
+                    connection_hops: vec![self.a_conn.clone().unwrap_or_default()],
+                    version: self.cu_new.clone(),
+                })
+            && result.events.iter().any(|event| {
+                event.r#type == "channel_upgrade_try"
+                    && attr(event, "port_id").as_deref() == Some("icahost")
+                    && attr(event, "channel_id") == self.a_ica
+                    && attr(event, "upgrade_sequence").and_then(|value| value.parse().ok())
+                        == Some(self.cu_seq)
+            })
+    }
+
+    fn valid_upgrade_timeout_rejection(
+        &self,
+        result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
+    ) -> bool {
+        let expected = format!(
+            "failed to execute message; message index: 1: could not timeout upgrade for channel: {}: counterparty channel is already upgraded: upgrade timeout failed",
+            self.a_ica.as_deref().unwrap_or_default()
+        );
+        result.codespace == "channel"
+            && result.code == 37
+            && result.log == expected
+            && result.data.is_empty()
+            && !result.events.iter().any(|event| {
+                matches!(
+                    event.r#type.as_str(),
+                    "channel_upgrade_timeout" | "channel_upgrade_error" | "update_client"
+                )
+            })
+    }
+
+    fn valid_upgrade_timeout_success(
+        &self,
+        result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
+    ) -> bool {
+        if result.code != 0 {
+            return false;
+        }
+        let timeout_response = Self::tx_responses(result).is_some_and(|responses| {
+            responses.iter().any(|response| {
+                response
+                    .type_url
+                    .ends_with("MsgChannelUpgradeTimeoutResponse")
+                    && ch::MsgChannelUpgradeTimeoutResponse::decode(response.value.as_slice())
+                        .is_ok()
+            })
+        });
+        let relevant: Vec<_> = result
+            .events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event.r#type.as_str(),
+                    "channel_upgrade_error" | "channel_upgrade_timeout"
+                )
+            })
+            .collect();
+        timeout_response
+            && matches!(
+                relevant.as_slice(),
+                [error, timeout]
+                    if error.r#type == "channel_upgrade_error"
+                        && timeout.r#type == "channel_upgrade_timeout"
+                        && [*error, *timeout].iter().all(|event| {
+                            attr(event, "port_id").as_deref() == Some("icahost")
+                                && attr(event, "channel_id") == self.a_ica
+                                && attr(event, "upgrade_sequence")
+                                    .and_then(|value| value.parse().ok()) == Some(self.cu_seq)
+                        })
+            )
+            && attr(relevant[0], "error_receipt").as_deref() == Some("upgrade timed-out")
+    }
+
+    fn valid_upgrade_timeout_recovery(
+        &self,
+        result: &celestia_proto::celestia_core_proto::abci::ExecTxResult,
+    ) -> bool {
+        result.code == 0
+            && self
+                .upgrade_timeout_recovery_packet
+                .as_ref()
+                .is_some_and(|packet| {
+                    result
+                        .events
+                        .iter()
+                        .filter(|event| {
+                            event.r#type == "write_acknowledgement"
+                                && packet_of(event)
+                                    .as_ref()
+                                    .is_some_and(|observed| same_packet(observed, packet))
+                                && attr(event, "packet_ack_hex")
+                                    .and_then(|value| hex::decode(value).ok())
+                                    .as_deref()
+                                    == Some(ica_send_success_ack().as_slice())
+                        })
+                        .count()
+                        == 1
+                })
     }
 
     /// Learns ids and packets from a finalized block's tx results (Go's).
@@ -3051,6 +3610,18 @@ fn packet_event_has_ica_send_success_ack(
     )
 }
 
+fn ica_send_success_ack() -> Vec<u8> {
+    let response = celestia_proto::cosmos::base::abci::v1beta1::TxMsgData {
+        msg_responses: vec![Any {
+            type_url: "/cosmos.bank.v1beta1.MsgSendResponse".into(),
+            value: Vec::new(),
+        }],
+        ..Default::default()
+    }
+    .encode_to_vec();
+    format!(r#"{{"result":"{}"}}"#, base64_std(&response)).into_bytes()
+}
+
 fn packet_event_has_ica_insufficient_funds_ack(
     event: &celestia_proto::celestia_core_proto::abci::Event,
 ) -> bool {
@@ -3099,6 +3670,22 @@ fn base64_std(b: &[u8]) -> String {
 mod tests {
     use super::*;
     use celestia_proto::celestia_core_proto::abci::{Event, EventAttribute, ExecTxResult};
+
+    #[test]
+    fn counterparty_commit_preserves_exact_nanosecond_boundaries() {
+        let mut cp = Cp::new();
+        let first = cp.commit_at_nanos(1_234_567_890);
+        assert_eq!(cp.headers[&first].1.seconds, 1);
+        assert_eq!(cp.headers[&first].1.nanos, 234_567_890);
+
+        let next = cp.commit_at_nanos(1_234_567_891);
+        assert_eq!(cp.headers[&next].1.seconds, 1);
+        assert_eq!(cp.headers[&next].1.nanos, 234_567_891);
+
+        let fallback = cp.commit_at_nanos(1_234_567_891);
+        assert_eq!(cp.headers[&fallback].1.seconds, 2);
+        assert_eq!(cp.headers[&fallback].1.nanos, 0);
+    }
 
     fn packet_event(kind: &str, packet: &ch::Packet, ack_hex: Option<&str>) -> Event {
         let height = packet.timeout_height.unwrap_or_default();
@@ -4209,5 +4796,130 @@ mod tests {
         driver.observe(&[result_events(vec![ack, error])]);
         assert_eq!(driver.stats.get("ica_error_ack"), Some(&1));
         assert_eq!(driver.ica_error_packet, None);
+    }
+
+    #[test]
+    fn upgrade_timeout_rejection_requires_exact_tx_and_checktx() {
+        let tx = b"exact signed timeout".to_vec();
+        let messages = vec![Any::pack(&ch::MsgChannelUpgradeTimeout::default())];
+        let rejection = ExecTxResult {
+            codespace: "channel".into(),
+            code: 37,
+            log: "failed to execute message; message index: 1: could not timeout upgrade for channel: channel-3: counterparty channel is already upgraded: upgrade timeout failed".into(),
+            ..Default::default()
+        };
+        let mut driver = Driver {
+            upgrade_timeout_required: true,
+            upgrade_timeout_stage: 3,
+            a_ica: Some("channel-3".into()),
+            upgrade_timeout_pending: Some(PendingUpgradeTimeoutRelay {
+                kind: UpgradeTimeoutRelay::RejectedTimeout,
+                messages,
+                signed_tx: Some(tx.clone()),
+                check_ok: false,
+            }),
+            ..Driver::default()
+        };
+
+        driver.observe_upgrade_timeout_finalized(
+            &[b"other".to_vec()],
+            std::slice::from_ref(&rejection),
+        );
+        assert_eq!(driver.upgrade_timeout_stage, 3);
+        assert!(driver.upgrade_timeout_pending.is_some());
+        assert_eq!(driver.upgrade_timeout_retry_tx(), Some(tx.as_slice()));
+
+        driver.observe_upgrade_timeout_finalized(
+            std::slice::from_ref(&tx),
+            std::slice::from_ref(&rejection),
+        );
+        assert_eq!(
+            driver.stats.get("upgrade_timeout_missing_checktx"),
+            Some(&1)
+        );
+        assert_eq!(driver.upgrade_timeout_stage, 3);
+        assert_eq!(driver.upgrade_timeout_retry_tx(), Some(tx.as_slice()));
+
+        driver.observe_upgrade_timeout_check(
+            &tx,
+            &celestia_proto::celestia_core_proto::abci::ResponseCheckTx::default(),
+        );
+        assert_eq!(driver.stats.get("upgrade_timeout_check_ok"), Some(&1));
+        driver.observe_upgrade_timeout_finalized(
+            &[b"other".to_vec()],
+            std::slice::from_ref(&rejection),
+        );
+        assert_eq!(driver.upgrade_timeout_retry_tx(), Some(tx.as_slice()));
+        driver.observe_upgrade_timeout_check(
+            &tx,
+            &celestia_proto::celestia_core_proto::abci::ResponseCheckTx {
+                codespace: "sdk".into(),
+                code: 32,
+                ..Default::default()
+            },
+        );
+        assert_eq!(driver.stats.get("upgrade_timeout_check_ok"), Some(&1));
+        assert_eq!(
+            driver.stats.get("upgrade_timeout_check_account_sequence"),
+            None
+        );
+        driver.observe_upgrade_timeout_finalized(&[tx], &[rejection]);
+        assert_eq!(driver.upgrade_timeout_stage, 4);
+        assert_eq!(driver.stats.get("upgrade_timeout_rejected"), Some(&1));
+        assert!(driver.upgrade_timeout_pending.is_none());
+    }
+
+    #[test]
+    fn upgrade_timeout_success_requires_ordered_error_and_timeout_events() {
+        fn upgrade_event(kind: &str, receipt: Option<&str>) -> Event {
+            let mut attributes = vec![
+                ("port_id", "icahost".to_owned()),
+                ("channel_id", "channel-3".to_owned()),
+                ("upgrade_sequence", "7".to_owned()),
+            ];
+            if let Some(receipt) = receipt {
+                attributes.push(("error_receipt", receipt.to_owned()));
+            }
+            Event {
+                r#type: kind.into(),
+                attributes: attributes
+                    .into_iter()
+                    .map(|(key, value)| EventAttribute {
+                        key: key.into(),
+                        value,
+                        index: true,
+                    })
+                    .collect(),
+            }
+        }
+
+        let response = celestia_proto::cosmos::base::abci::v1beta1::TxMsgData {
+            msg_responses: vec![Any::pack(&ch::MsgChannelUpgradeTimeoutResponse {})],
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let error = upgrade_event("channel_upgrade_error", Some("upgrade timed-out"));
+        let timeout = upgrade_event("channel_upgrade_timeout", None);
+        let driver = Driver {
+            a_ica: Some("channel-3".into()),
+            cu_seq: 7,
+            ..Driver::default()
+        };
+        let valid = ExecTxResult {
+            data: response.clone(),
+            events: vec![error.clone(), timeout.clone()],
+            ..Default::default()
+        };
+        assert!(driver.valid_upgrade_timeout_success(&valid));
+        assert!(!driver.valid_upgrade_timeout_success(&ExecTxResult {
+            data: response.clone(),
+            events: vec![timeout.clone(), error.clone()],
+            ..Default::default()
+        }));
+        assert!(!driver.valid_upgrade_timeout_success(&ExecTxResult {
+            data: response,
+            events: vec![timeout],
+            ..Default::default()
+        }));
     }
 }
