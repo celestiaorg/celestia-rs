@@ -128,6 +128,10 @@
 # channel and Upgrade at the exact counterparty timeout, requires Confirm's
 # code-zero FAILURE abort, then an exact recovery Ack. It requires zero
 # generated transactions.
+# DELIVER_IBC_UPGRADE_TRY_FAST_FORWARD_REQUIRE=1 proves a clean OPEN ICA
+# channel at sequence S, fast-forwards Try to S+2, completes proof-backed
+# Confirm and Open, then requires an exact post-upgrade ICA Ack. It requires
+# zero generated transactions.
 # DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
 # DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
 # (default noop). Multisig modes use harness-held 2-of-3 validators and
