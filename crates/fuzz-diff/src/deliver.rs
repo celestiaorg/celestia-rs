@@ -2424,6 +2424,44 @@ impl Stats {
                 );
             }
         }
+        if self.ibc_required.contains("upgrade_open_flushcomplete") {
+            for event in [
+                "upgrade_timeout_try",
+                "upgrade_open_flushcomplete_confirm",
+                "upgrade_open_flushcomplete_open",
+                "upgrade_timeout_recovery_ack",
+                "upgrade_timeout_recovery_state",
+            ] {
+                anyhow::ensure!(
+                    self.ibc.get(event) == Some(&1),
+                    "incomplete DELIVER_IBC_UPGRADE_OPEN_FLUSHCOMPLETE_REQUIRE coverage: expected exactly one {event}, observed {:?}",
+                    self.ibc
+                );
+            }
+            anyhow::ensure!(
+                self.ibc.get("upgrade_timeout_check_ok") == Some(&4),
+                "incomplete DELIVER_IBC_UPGRADE_OPEN_FLUSHCOMPLETE_REQUIRE coverage: expected exactly four accepted controlled CheckTx transactions, observed {:?}",
+                self.ibc
+            );
+            for event in [
+                "upgrade_open_flushcomplete_invalid_proof",
+                "upgrade_open_flushcomplete_invalid_counterparty_state",
+                "upgrade_timeout_check_unauthorized",
+                "upgrade_timeout_check_out_of_gas",
+                "upgrade_timeout_check_insufficient_funds",
+                "upgrade_timeout_check_mempool_duplicate",
+                "upgrade_timeout_check_account_sequence",
+                "upgrade_timeout_check_rejected",
+                "upgrade_timeout_missing_checktx",
+                "upgrade_timeout_unexpected_result",
+            ] {
+                anyhow::ensure!(
+                    !self.ibc.contains_key(event),
+                    "DELIVER_IBC_UPGRADE_OPEN_FLUSHCOMPLETE_REQUIRE observed forbidden {event}: {:?}",
+                    self.ibc
+                );
+            }
+        }
         if self.ibc_required.contains("ica_error_ack") {
             anyhow::ensure!(
                 self.ibc.get("ica_error_ack").copied().unwrap_or(0) > 0,
@@ -5213,6 +5251,8 @@ pub fn run(
         std::env::var_os("DELIVER_IBC_UPGRADE_CONFIRM_TIMEOUT_REQUIRE").is_some();
     let ibc_upgrade_try_fast_forward_required =
         std::env::var_os("DELIVER_IBC_UPGRADE_TRY_FAST_FORWARD_REQUIRE").is_some();
+    let ibc_upgrade_open_flushcomplete_required =
+        std::env::var_os("DELIVER_IBC_UPGRADE_OPEN_FLUSHCOMPLETE_REQUIRE").is_some();
     let ibc_ica_error_required = std::env::var_os("DELIVER_IBC_ICA_ERROR_REQUIRE").is_some();
     let ibc_expired_client_required =
         std::env::var_os("DELIVER_IBC_EXPIRED_CLIENT_REQUIRE").is_some();
@@ -5279,6 +5319,10 @@ pub fn run(
         "DELIVER_IBC_UPGRADE_TRY_FAST_FORWARD_REQUIRE requires DELIVER_IBC and per_block=0"
     );
     anyhow::ensure!(
+        !ibc_upgrade_open_flushcomplete_required || (ibc_on && per_block == 0),
+        "DELIVER_IBC_UPGRADE_OPEN_FLUSHCOMPLETE_REQUIRE requires DELIVER_IBC and per_block=0"
+    );
+    anyhow::ensure!(
         !ibc_ica_error_required || ibc_on,
         "DELIVER_IBC_ICA_ERROR_REQUIRE requires DELIVER_IBC"
     );
@@ -5290,6 +5334,7 @@ pub fn run(
             + usize::from(ibc_upgrade_timeout_boundary_required)
             + usize::from(ibc_upgrade_confirm_timeout_required)
             + usize::from(ibc_upgrade_try_fast_forward_required)
+            + usize::from(ibc_upgrade_open_flushcomplete_required)
             <= 1,
         "DELIVER_IBC ICA encoding-success, order-transition, upgrade-timeout, and application-error requirements are mutually exclusive"
     );
@@ -5316,7 +5361,8 @@ pub fn run(
             || ibc_upgrade_timeout_required
             || ibc_upgrade_timeout_boundary_required
             || ibc_upgrade_confirm_timeout_required
-            || ibc_upgrade_try_fast_forward_required)
+            || ibc_upgrade_try_fast_forward_required
+            || ibc_upgrade_open_flushcomplete_required)
             || !(ibc_pfm_required
                 || ibc_pfm_error_required
                 || ibc_pfm_timeout_required
@@ -5444,6 +5490,7 @@ pub fn run(
                 && !ibc_upgrade_timeout_boundary_required
                 && !ibc_upgrade_confirm_timeout_required
                 && !ibc_upgrade_try_fast_forward_required
+                && !ibc_upgrade_open_flushcomplete_required
                 && !ibc_ica_error_required
                 && !ibc_expired_client_required
                 && !ibc_frozen_client_required,
@@ -5454,6 +5501,7 @@ pub fn run(
         || ibc_upgrade_timeout_boundary_required
         || ibc_upgrade_confirm_timeout_required
         || ibc_upgrade_try_fast_forward_required
+        || ibc_upgrade_open_flushcomplete_required
     {
         anyhow::ensure!(
             !ibc_connection_confirm
@@ -5620,6 +5668,9 @@ pub fn run(
     }
     if ibc_upgrade_try_fast_forward_required {
         stats.ibc_required.insert("upgrade_try_fast_forward");
+    }
+    if ibc_upgrade_open_flushcomplete_required {
+        stats.ibc_required.insert("upgrade_open_flushcomplete");
     }
     if ibc_ica_error_required {
         stats.ibc_required.insert("ica_error_ack");
@@ -5931,6 +5982,7 @@ pub fn run(
             .with_upgrade_timeout_boundary_requirement(ibc_upgrade_timeout_boundary_required)
             .with_upgrade_confirm_timeout_requirement(ibc_upgrade_confirm_timeout_required)
             .with_upgrade_try_fast_forward_requirement(ibc_upgrade_try_fast_forward_required)
+            .with_upgrade_open_flushcomplete_requirement(ibc_upgrade_open_flushcomplete_required)
             .with_ica_error_requirement(ibc_ica_error_required)
             .with_expired_client_requirement(ibc_expired_client_required)
             .with_frozen_client_requirement(ibc_frozen_client_required)
@@ -7605,7 +7657,7 @@ pub fn run(
                     && channel.upgrade_sequence == sequence,
                 "committed local Channel after Try has unexpected fields: {channel:?}"
             );
-            if driver.upgrade_try_fast_forward_required() {
+            if driver.upgrade_success_required() {
                 let initial = ibc_upgrade_initial_checkpoint
                     .as_ref()
                     .context("upgrade fast-forward has no initial raw checkpoint")?;
@@ -7614,10 +7666,17 @@ pub fn run(
                 )
                 .context("decoding initial ICA Channel for sequence comparison")?;
                 anyhow::ensure!(
-                    sequence == initial_channel.upgrade_sequence.saturating_add(2)
+                    sequence
+                        == initial_channel.upgrade_sequence.saturating_add(
+                            if driver.upgrade_try_fast_forward_required() {
+                                2
+                            } else {
+                                1
+                            },
+                        )
                         && initial.next_sequence_send == checkpoint.next_sequence_send
                         && initial.client_prefix != checkpoint.client_prefix,
-                    "Try did not fast-forward exactly two sequences or commit its client update"
+                    "Try did not advance the exact expected sequence or commit its client update"
                 );
             }
             let upgrade = celestia_proto::ibc::core::channel::v1::Upgrade::decode(
@@ -7642,7 +7701,7 @@ pub fn run(
                 .context("committed local Upgrade has no timeout")?;
             anyhow::ensure!(
                 timeout.timestamp != 0
-                    && (!driver.upgrade_try_fast_forward_required()
+                    && (!driver.upgrade_success_required()
                         || ibc_upgrade_initial_checkpoint
                             .as_ref()
                             .is_some_and(|initial| {
@@ -7781,7 +7840,7 @@ pub fn run(
             )?;
             let error_receipt =
                 query_raw_store_both(&mut go, cons_conn, &mut rust, "ibc", &path("upgradeError"))?;
-            if driver.upgrade_try_fast_forward_required() {
+            if driver.upgrade_success_required() {
                 anyhow::ensure!(
                     channel.state == celestia_proto::ibc::core::channel::v1::State::Open as i32
                         && channel.ordering
@@ -8254,6 +8313,7 @@ pub fn run(
             || ibc_upgrade_timeout_boundary_required
             || ibc_upgrade_confirm_timeout_required
             || ibc_upgrade_try_fast_forward_required
+            || ibc_upgrade_open_flushcomplete_required
         {
             require_upgrade_timeout_recovery_state(&mut go, cons_conn, &mut rust, &d)?;
             *d.stats.entry("upgrade_timeout_recovery_state").or_default() += 1;
@@ -14769,6 +14829,35 @@ mod tests {
         assert!(stats.require_ibc_coverage().is_ok());
 
         stats.ibc.insert("upgrade_timeout_unexpected_result", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+    }
+
+    #[test]
+    fn required_upgrade_open_flushcomplete_needs_each_exact_credit() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("upgrade_open_flushcomplete");
+        for event in [
+            "upgrade_timeout_try",
+            "upgrade_open_flushcomplete_confirm",
+            "upgrade_open_flushcomplete_open",
+            "upgrade_timeout_recovery_ack",
+            "upgrade_timeout_recovery_state",
+        ] {
+            stats.ibc.insert(event, 1);
+        }
+        stats.ibc.insert("upgrade_timeout_check_ok", 3);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("upgrade_timeout_check_ok", 4);
+        assert!(stats.require_ibc_coverage().is_ok());
+
+        stats
+            .ibc
+            .insert("upgrade_open_flushcomplete_invalid_proof", 1);
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.remove("upgrade_open_flushcomplete_invalid_proof");
+        stats
+            .ibc
+            .insert("upgrade_timeout_check_account_sequence", 1);
         assert!(stats.require_ibc_coverage().is_err());
     }
 
