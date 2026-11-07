@@ -1,4 +1,4 @@
-//! Port of celestia-core v0.42.3 `consensus/propagation` (ADR 0003): the
+//! Port of celestia-core v0.42.8 `consensus/propagation` (ADR 0003): the
 //! `RECOVERY` reactor that distributes proposals as signed compact blocks
 //! plus erasure-coded parts.
 //!

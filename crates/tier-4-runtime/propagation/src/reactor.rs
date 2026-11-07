@@ -69,6 +69,14 @@ struct ProposalData {
     block: CombinedPartSet,
     max_requests: BitArray,
     catchup: bool,
+    /// Whether this proposal has already been handed to consensus.
+    forwarded: bool,
+}
+
+#[derive(Default)]
+struct RecoveredParts {
+    parts: Vec<Part>,
+    haves: Option<(HaveParts, usize)>,
 }
 
 /// All mutable state: the `ProposalCache`, the current proposer and the
@@ -244,6 +252,7 @@ impl State {
                 max_requests: BitArray::new(total as usize),
                 block,
                 catchup: false,
+                forwarded: false,
             },
         );
         self.current_proposal_parts_count = i64::from(total);
@@ -254,6 +263,19 @@ impl State {
     fn conflicts_with(&self, cb: &CompactBlock) -> bool {
         self.cached(cb.proposal.height, cb.proposal.round)
             .is_some_and(|e| !same_proposal_identity(e, cb))
+    }
+
+    /// `claimForward`: claim the matching proposal for one-time forwarding
+    /// to consensus.
+    fn claim_forward(&mut self, cb: &CompactBlock) -> bool {
+        let Some(existing) = self.cached_mut(cb.proposal.height, cb.proposal.round) else {
+            return false;
+        };
+        if existing.forwarded || !same_proposal_identity(existing, cb) {
+            return false;
+        }
+        existing.forwarded = true;
+        true
     }
 
     /// `countRequests`.
@@ -349,6 +371,23 @@ impl Reactor {
         }
     }
 
+    fn retry_wants_async(&self) {
+        let Some(me) = self.me.upgrade() else {
+            return;
+        };
+        if std::thread::Builder::new()
+            .name("propagation-retry-wants".into())
+            .spawn(move || {
+                if !me.stopped.load(Ordering::SeqCst) {
+                    me.retry_wants();
+                }
+            })
+            .is_err()
+        {
+            tracing::error!("failed to spawn propagation retry");
+        }
+    }
+
     /// Our node ID.
     #[must_use]
     pub fn self_id(&self) -> NodeId {
@@ -438,10 +477,12 @@ impl Reactor {
             return;
         }
         if !proposer {
-            self.emit(Output::Proposal {
-                proposal: cb.proposal.clone(),
-                from: peer.to_string(),
-            });
+            if st.claim_forward(&cb) {
+                self.emit(Output::Proposal {
+                    proposal: cb.proposal.clone(),
+                    from: peer.to_string(),
+                });
+            }
             if let Some(p) = st.peers.get(&peer) {
                 p.consensus_peer_state.set_has_proposal(&cb.proposal);
             }
@@ -450,13 +491,28 @@ impl Reactor {
             return;
         }
         if !proposer {
-            self.recover_parts_from_mempool(st, &cb);
+            let recovered = self.recover_parts_from_mempool(st, &cb);
+            let mut delivered = true;
+            for part in recovered.parts {
+                if self.stopped.load(Ordering::SeqCst) {
+                    delivered = false;
+                    break;
+                }
+                self.emit(Output::Part {
+                    height: cb.proposal.height,
+                    round: cb.proposal.round,
+                    part,
+                });
+            }
+            if delivered && let Some((haves, total)) = recovered.haves {
+                st.broadcast_haves(&haves, self.self_id, total);
+            }
         }
         Self::broadcast_compact_block(st, &cb, peer);
     }
 
     /// `recoverPartsFromMempool`.
-    fn recover_parts_from_mempool(&self, st: &mut State, cb: &CompactBlock) {
+    fn recover_parts_from_mempool(&self, st: &mut State, cb: &CompactBlock) -> RecoveredParts {
         let mut found = Vec::new();
         for md in &cb.blobs {
             let Ok(key) = <[u8; 32]>::try_from(md.hash.as_slice()) else {
@@ -473,7 +529,7 @@ impl Reactor {
             });
         }
         if found.is_empty() {
-            return;
+            return RecoveredParts::default();
         }
         let (h, r) = (cb.proposal.height, cb.proposal.round);
         let parts = match txs_to_parts(
@@ -485,14 +541,14 @@ impl Reactor {
             Ok(p) => p,
             Err(e) => {
                 tracing::error!(err = %e, "invalid compact block");
-                return;
+                return RecoveredParts::default();
             }
         };
         let proofs = match cb.proofs() {
             Ok(p) => p,
             Err(e) => {
                 tracing::error!(err = %e, "failed to get proofs from compact block");
-                return;
+                return RecoveredParts::default();
             }
         };
         let Some(pd) = st.relevant(h, r).then(|| st.cached_mut(h, r)).flatten() else {
@@ -501,7 +557,7 @@ impl Reactor {
                 round = r,
                 "unexpected nil partset while attempting to reuse transactions from the mempool"
             );
-            return;
+            return RecoveredParts::default();
         };
         let mut haves = HaveParts {
             height: h,
@@ -541,15 +597,10 @@ impl Reactor {
             n = recovered.len(),
             "recovered parts from the mempool"
         );
-        for p in recovered {
-            self.emit(Output::Part {
-                height: h,
-                round: r,
-                part: p,
-            });
-        }
-        if !haves.parts.is_empty() {
-            st.broadcast_haves(&haves, self.self_id, total);
+        let haves = (!haves.parts.is_empty()).then_some((haves, total));
+        RecoveredParts {
+            parts: recovered,
+            haves,
         }
     }
 
@@ -1164,7 +1215,6 @@ impl Reactor {
                     p.delete_unverified_proposal(h);
                 }
                 drop(st);
-                self.retry_wants();
                 return;
             }
         }
@@ -1183,8 +1233,13 @@ impl Reactor {
                 "cached proposal already exists"
             );
         }
-        match st.cached_mut(cb.proposal.height, cb.proposal.round) {
-            Some(pd) if same_proposal_identity(pd, cb) => pd.catchup = true,
+        let forward = match st.cached_mut(cb.proposal.height, cb.proposal.round) {
+            Some(pd) if same_proposal_identity(pd, cb) => {
+                pd.catchup = true;
+                let forward = !pd.forwarded;
+                pd.forwarded = true;
+                forward
+            }
             Some(_) => {
                 tracing::error!(
                     height = cb.proposal.height,
@@ -1194,14 +1249,80 @@ impl Reactor {
                 return false;
             }
             None => return false,
-        }
-        self.emit(Output::Proposal {
-            proposal: cb.proposal.clone(),
-            from: self.self_id.to_string(),
-        });
-        self.recover_parts_from_mempool(st, cb);
+        };
         Self::reset_retry(st, &self.retry_notify);
+        let Some(me) = self.me.upgrade() else {
+            if forward
+                && let Some(pd) = st.cached_mut(cb.proposal.height, cb.proposal.round)
+                && same_proposal_identity(pd, cb)
+            {
+                pd.forwarded = false;
+            }
+            return false;
+        };
+        let deliver_cb = cb.clone();
+        if std::thread::Builder::new()
+            .name("propagation-cached-delivery".into())
+            .spawn(move || me.deliver_cached_compact_block(deliver_cb, forward))
+            .is_err()
+        {
+            if forward
+                && let Some(pd) = st.cached_mut(cb.proposal.height, cb.proposal.round)
+                && same_proposal_identity(pd, cb)
+            {
+                pd.forwarded = false;
+            }
+            tracing::error!("failed to spawn cached compact block delivery");
+            return false;
+        }
         true
+    }
+
+    /// `deliverCachedCompactBlock`: forward a cached proposal, recover its
+    /// parts and request the remainder outside the consensus receive routine.
+    /// An arbitrary output callback already in progress cannot be cancelled;
+    /// the production sink is an unbounded channel send.
+    fn deliver_cached_compact_block(&self, cb: Arc<CompactBlock>, forward: bool) {
+        if self.stopped.load(Ordering::SeqCst) {
+            return;
+        }
+        if forward {
+            self.emit(Output::Proposal {
+                proposal: cb.proposal.clone(),
+                from: self.self_id.to_string(),
+            });
+        }
+        if self.stopped.load(Ordering::SeqCst) {
+            return;
+        }
+        let recovered = {
+            let mut st = lock(&self.state);
+            self.recover_parts_from_mempool(&mut st, &cb)
+        };
+        for part in recovered.parts {
+            if self.stopped.load(Ordering::SeqCst) {
+                return;
+            }
+            self.emit(Output::Part {
+                height: cb.proposal.height,
+                round: cb.proposal.round,
+                part,
+            });
+        }
+        if let Some((haves, total)) = recovered.haves {
+            let mut st = lock(&self.state);
+            let current = st
+                .relevant(cb.proposal.height, cb.proposal.round)
+                .then(|| st.cached(cb.proposal.height, cb.proposal.round))
+                .flatten()
+                .is_some_and(|pd| same_proposal_identity(pd, &cb));
+            if current {
+                st.broadcast_haves(&haves, self.self_id, total);
+            }
+        }
+        if !self.stopped.load(Ordering::SeqCst) {
+            self.retry_wants();
+        }
     }
 
     /// The retry ticker (`ticker.C` → `retryWants`).
@@ -1385,6 +1506,7 @@ impl Propagator for Reactor {
                 ProposalData {
                     compact_block: Arc::new(cb),
                     catchup: true,
+                    forwarded: false,
                     block: combined,
                     max_requests: BitArray::new(psh.total as usize * 2),
                 },
@@ -1393,7 +1515,7 @@ impl Propagator for Reactor {
             st.round = 0;
             Self::reset_retry(&mut st, &self.retry_notify);
         }
-        self.retry_wants();
+        self.retry_wants_async();
     }
 
     fn prune(&self, committed_height: i64) {
@@ -1572,5 +1694,204 @@ impl Reactor {
     #[must_use]
     pub fn weak(&self) -> Weak<Self> {
         self.me.clone()
+    }
+}
+
+#[cfg(test)]
+mod forwarding_tests {
+    use std::sync::mpsc::{channel, sync_channel};
+    use std::time::{Duration, Instant};
+
+    use kvdb::MemBackend;
+    use serde_json::Value;
+
+    use super::*;
+
+    #[derive(Debug)]
+    struct EmptyMempool;
+
+    impl Mempool for EmptyMempool {
+        fn get_tx_by_key(&self, _: &[u8; 32]) -> Option<Vec<u8>> {
+            None
+        }
+    }
+
+    #[derive(Debug)]
+    struct FixtureMempool(Vec<u8>);
+
+    impl Mempool for FixtureMempool {
+        fn get_tx_by_key(&self, _: &[u8; 32]) -> Option<Vec<u8>> {
+            Some(self.0.clone())
+        }
+    }
+
+    fn fixture_compact_block() -> Arc<CompactBlock> {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../conformance/fixtures/consensus/propagation.json"
+        );
+        let doc: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let encoded = doc["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|msg| msg["name"] == "compact_block")
+            .unwrap()["hex"]
+            .as_str()
+            .unwrap();
+        let Message::CompactBlock(cb) = Message::decode(&hex::decode(encoded).unwrap()).unwrap()
+        else {
+            panic!("fixture is not a compact block")
+        };
+        Arc::new(*cb)
+    }
+
+    fn reactor_with_mempool(mempool: Arc<dyn Mempool>) -> Arc<Reactor> {
+        Reactor::new(
+            NodeId([1; 20]),
+            Config {
+                store: BlockStore::new(Arc::new(MemBackend::new())).unwrap(),
+                mempool,
+                chain_id: "test-chain".into(),
+                block_max_bytes: -1,
+            },
+        )
+    }
+
+    fn reactor() -> Arc<Reactor> {
+        reactor_with_mempool(Arc::new(EmptyMempool))
+    }
+
+    fn recoverable_compact_block(tx: &[u8]) -> Arc<CompactBlock> {
+        let wrapped = ctypes::proto::mempool::Txs {
+            txs: vec![tx.to_vec()],
+        }
+        .encode_to_vec();
+        let original = PartSet::from_data(&wrapped, BLOCK_PART_SIZE_BYTES).unwrap();
+        let (parity, last_len) = erasure::encode(&original, BLOCK_PART_SIZE_BYTES).unwrap();
+        let mut parts_hashes = Vec::new();
+        for part_set in [&original, &parity] {
+            for index in 0..part_set.total() as usize {
+                parts_hashes.push(part_set.get_part(index).unwrap().proof.leaf_hash);
+            }
+        }
+        let mut cb = CompactBlock {
+            bp_hash: parity.hash().to_vec(),
+            blobs: vec![TxMetaData {
+                hash: vec![3; 32],
+                start: 0,
+                end: wrapped.len() as u32,
+            }],
+            last_len: last_len as u32,
+            parts_hashes,
+            ..CompactBlock::default()
+        };
+        cb.proposal.height = 1;
+        cb.proposal.block_id.hash = vec![4; 32];
+        cb.proposal.block_id.part_set_header = original.header();
+        Arc::new(cb)
+    }
+
+    #[test]
+    fn validated_compact_block_is_forwarded_once() {
+        for precommit in [false, true] {
+            let reactor = reactor();
+            let cb = fixture_compact_block();
+            if precommit {
+                reactor.add_commitment(
+                    cb.proposal.height,
+                    cb.proposal.round,
+                    &cb.proposal.block_id.part_set_header,
+                );
+            }
+            let outputs = Arc::new(Mutex::new(Vec::new()));
+            let captured = outputs.clone();
+            reactor.set_output(Arc::new(move |output| lock(&captured).push(output)));
+            let mut state = lock(&reactor.state);
+            for _ in 0..10 {
+                reactor.process_validated_compact_block(
+                    &mut state,
+                    cb.clone(),
+                    NodeId([2; 20]),
+                    false,
+                );
+            }
+            drop(state);
+            let outputs = lock(&outputs);
+            assert_eq!(outputs.len(), 1, "precommit={precommit}");
+            assert!(matches!(outputs[0], Output::Proposal { .. }));
+        }
+    }
+
+    #[test]
+    fn cached_compact_block_forwards_once_without_blocking() {
+        let reactor = reactor();
+        let cb = fixture_compact_block();
+        let (send, receive) = sync_channel(0);
+        reactor.set_output(Arc::new(move |output| send.send(output).unwrap()));
+
+        let mut state = lock(&reactor.state);
+        let start = Instant::now();
+        for _ in 0..10 {
+            assert!(reactor.handle_cached_compact_block(&mut state, &cb));
+        }
+        assert!(
+            start.elapsed() < Duration::from_millis(500),
+            "cached delivery blocked the consensus receive routine"
+        );
+        drop(state);
+
+        let output = receive.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(matches!(output, Output::Proposal { .. }));
+        assert!(receive.recv_timeout(Duration::from_millis(200)).is_err());
+    }
+
+    #[test]
+    fn cached_recovered_part_does_not_block_consensus_receive() {
+        let tx = vec![7; 100];
+        let reactor = reactor_with_mempool(Arc::new(FixtureMempool(tx.clone())));
+        let cb = recoverable_compact_block(&tx);
+        reactor.add_commitment(
+            cb.proposal.height,
+            cb.proposal.round,
+            &cb.proposal.block_id.part_set_header,
+        );
+
+        let (proposal_send, proposal_receive) = channel();
+        let (part_started_send, part_started_receive) = channel();
+        let (part_send, part_receive) = sync_channel(0);
+        reactor.set_output(Arc::new(move |output| match output {
+            Output::Proposal { .. } => proposal_send.send(()).unwrap(),
+            Output::Part { .. } => {
+                part_started_send.send(()).unwrap();
+                part_send.send(()).unwrap();
+            }
+        }));
+
+        let mut state = lock(&reactor.state);
+        let start = Instant::now();
+        assert!(reactor.handle_cached_compact_block(&mut state, &cb));
+        assert!(
+            start.elapsed() < Duration::from_millis(500),
+            "cached delivery blocked the consensus receive routine"
+        );
+        drop(state);
+
+        proposal_receive
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap();
+        part_started_receive
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap();
+
+        let start = Instant::now();
+        let mut state = lock(&reactor.state);
+        assert!(reactor.handle_cached_compact_block(&mut state, &cb));
+        assert!(
+            start.elapsed() < Duration::from_millis(500),
+            "blocked recovered part stalled a duplicate receive"
+        );
+        drop(state);
+        part_receive.recv_timeout(Duration::from_secs(2)).unwrap();
     }
 }
