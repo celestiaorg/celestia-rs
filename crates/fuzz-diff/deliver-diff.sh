@@ -133,6 +133,10 @@
 # Confirm, rejects a proof-backed Open at S+1 without state mutation, then
 # completes Open at S+2 and an exact post-upgrade ICA Ack. It requires zero
 # generated transactions.
+# DELIVER_IBC_UPGRADE_OPEN_FLUSHCOMPLETE_REQUIRE=1 advances a clean ICA
+# channel through Try and Confirm, proves counterparty FLUSHCOMPLETE at the
+# same sequence for Open, and requires an exact post-upgrade ICA Ack. It
+# requires zero generated transactions.
 # DELIVER_HL=1 drives incoming/outgoing Hyperlane transfers. Optional
 # DELIVER_HL_ISM=noop|message-id|merkle-root selects the mailbox verifier
 # (default noop). Multisig modes use harness-held 2-of-3 validators and

@@ -158,6 +158,8 @@ elif '--output-path' in a:
         self.assertIn("upgrade-confirm-timeout-v9-ibc.out", outputs)
         self.assertIn("upgrade-try-fast-forward-ibc.out", outputs)
         self.assertIn("upgrade-try-fast-forward-v9-ibc.out", outputs)
+        self.assertIn("upgrade-open-flushcomplete-ibc.out", outputs)
+        self.assertIn("upgrade-open-flushcomplete-v9-ibc.out", outputs)
 
     def test_stable_mode_does_not_require_branch_data(self):
         result, outputs, commands = self.run_driver(branch="0", toolchain="", no_branches=True)
