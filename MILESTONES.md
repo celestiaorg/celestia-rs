@@ -1286,12 +1286,13 @@ test), then start that harness's count again.
   [`docs/adr/0007-app-v10-5.md`](docs/adr/0007-app-v10-5.md).
   Historical v10.4.0 fixture provenance is retained; the soak,
   determinism and saturation gates still require evidence on this target.
-  *Retargeted 2026-11-07:* ADR 0010 advances the active oracle and devnet
-  build closure to celestia-app v10.6.0, hyperlane-cosmos v1.3.3,
+  *Retargeted 2026-11-07:* ADR 0010 advances the active differential and
+  qualification oracle closure to celestia-app v10.6.0, hyperlane-cosmos v1.3.3,
   celestia-core v0.42.8 and Go 1.26.10. Sampled public RPC endpoints reported
   v10.4.0, v10.5.0 and v10.6.0, which establishes rollout heterogeneity but
   not a uniform network version. The exact tagged source and pinned oracle
-  define new qualification. Stored v10.5.0 evidence remains historical; the
+  define new qualification. Stored v10.5.0 evidence and its byte-bound live
+  devnet generators remain historical; the
   Rust compatibility strings remain at their audited v10.5.0 / v0.42.3
   boundary until the other v10.6.0 and v0.42.8 deltas are ported and the full
   candidate is requalified.

@@ -47,9 +47,9 @@ set -euo pipefail
 SCENARIO=${1:?scenario}
 BLOCKS=${2:?blocks}
 WORKLOAD=${3:-}
-APP_VERSION=v10.6.0
+APP_VERSION=v10.5.0
 [ -n "${APP_V9:-}" ] && APP_VERSION=v9.0.8
-CORE_VERSION=v0.42.8
+CORE_VERSION=v0.42.3
 CHAIN_ID=${CHAIN_ID:-rs-devnet-1}
 # Shift every listening port so concurrent devnets don't collide.
 OFF=${DEVNET_PORT_OFFSET:-0}
@@ -73,7 +73,7 @@ build_go() { # <module@version> <pkg> <name>
   (cd "$WORK/src" && GOFLAGS=-mod=mod go build -buildvcs=false -o "$BIN/$3" "$2")
   printf '%s\n' "$1" >"$BIN/$3.module"
 }
-build_go github.com/celestiaorg/celestia-app/v10@v10.6.0 ./cmd/celestia-appd celestia-appd
+build_go github.com/celestiaorg/celestia-app/v10@v10.5.0 ./cmd/celestia-appd celestia-appd
 if [ -n "${APP_V9:-}" ]; then
   mkdir -p "$BIN/v9"
   build_go github.com/celestiaorg/celestia-app/v9@v9.0.8 ./cmd/celestia-appd v9/celestia-appd
@@ -275,7 +275,7 @@ cat > "$OUT/meta.json" <<JSON
   "scenario": "$SCENARIO",
   "chain_id": "$CHAIN_ID",
   "celestia_app": "$APP_VERSION",
-  "celestia_app_next": $(if [ -n "${UPGRADE_TO_V10:-}" ]; then echo '"v10.6.0"'; else echo null; fi),
+  "celestia_app_next": $(if [ -n "${UPGRADE_TO_V10:-}" ]; then echo '"v10.5.0"'; else echo null; fi),
   "celestia_core": "$CORE_VERSION",
   "committed_heights": $LAST,
   "workload": "$(basename "${WORKLOAD:-none}")",

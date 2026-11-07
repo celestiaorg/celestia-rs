@@ -54,7 +54,7 @@ jobs:
       - if: steps.cache.outputs.cache-hit != 'true'
         name: Build celestia-appd v10.6.0 and v9.0.8
         run: |
-          conformance/devnet/build-bins.sh
+          APP_VERSION=v10.6.0 CORE_VERSION=v0.42.8 conformance/devnet/build-bins.sh
           APP_VERSION=v9.0.8 APPD_ONLY=1 DEVNET_BIN=target/devnet-bin/v9 conformance/devnet/build-bins.sh
       - name: Build the Go oracles
         run: |

@@ -2,7 +2,7 @@ module github.com/celestiaorg/celestia-rs/conformance/devnet-oracle
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.26.9
 
 require (
 	cosmossdk.io/log v1.4.1
