@@ -10,8 +10,9 @@ Earn enough evidence to recommend celestia-rs for Celestia mainnet's
 non-archival RPC nodes, full consensus nodes and validators, alongside
 the Go implementation. Running our own validator is an intermediate
 canary, not the completion criterion. The initial compatibility baseline
-is celestia-app **v10.5.0**, including the dependency versions that release
-actually builds; v9.0.8 remains a historical upgrade/replay reference.
+was celestia-app **v10.5.0**; ADR 0010 advances new qualification to
+**v10.6.0**, including the dependency versions that release actually builds.
+v9.0.8 remains a historical upgrade/replay reference.
 Follow future mainnet releases with explicit source-diff review and renewed
 compatibility evidence.
 

@@ -9,7 +9,7 @@
 # usage: GO_APPD=<celestia-appd of the scenario's version> \
 #        crates/fuzz-diff/deliver-diff.sh <scenario> [blocks] [txs-per-block] [seed]
 #
-# v10 scenarios need celestia-appd v10.5.0, v9-* scenarios v9.0.8 (both as
+# v10 scenarios need celestia-appd v10.6.0, v9-* scenarios v9.0.8 (both as
 # built by conformance/devnet/devnet.sh into $DEVNET_BIN and $DEVNET_BIN/v9).
 # Environment: DELIVER_TYPES=<substr,...> narrows the synthesized message
 # types.
@@ -150,6 +150,11 @@
 # DELIVER_HL_REGISTRY_REQUIRE=1 additionally requires the reserved sequence's
 # merkle-root ISM creation and signed validator announcement to finalize
 # successfully; unrelated generated handler successes do not count.
+# DELIVER_HL_RECOVERY_ID_REQUIRE=1 isolates signed validator announcements
+# with recovery wire IDs 29 and 30. App version 9 must accept and store both;
+# app version 10 must reject both without state mutation, then accept a
+# canonical wire-ID-27 announcement. It requires DELIVER_HL=1, zero generated
+# transactions and no upgrade or rejection fixture.
 # The upgrade driver's block counter pauses during isolated setup (including
 # rejection setup), preserving its one-shot validator/vesting/grant setup
 # and DELIVER_UPGRADE signal delay.
@@ -160,7 +165,7 @@
 # required pair must reject at verification and then succeed, or exit nonzero.
 # Cannot be combined with DELIVER_UPGRADE (its early fixture windows).
 #
-# The v9 -> v10 upgrade (GO_APPD = v9.0.8, GO_APPD_NEXT = v10.5.0): when Go
+# The v9 -> v10 upgrade (GO_APPD = v9.0.8, GO_APPD_NEXT = v10.6.0): when Go
 # raises the app version, the harness stops the Go app after that Commit
 # and starts GO_APPD_NEXT on the same home and address (the multiplexer's
 # switch, as abci-recorder reproduces it); the Rust app continues.

@@ -12,7 +12,7 @@ FAKE_GO = '''#!/usr/bin/env python3
 import json, os, pathlib, sys
 args = sys.argv[1:]
 if args == ["version"]:
-    print("go version " + os.environ.get("TEST_GO_VERSION", "go1.26.9") + " linux/amd64")
+    print("go version " + os.environ.get("TEST_GO_VERSION", "go1.26.10") + " linux/amd64")
 elif args[:2] == ["version", "-m"]:
     print("fake build info")
 elif args[:2] == ["env", "-json"]:
@@ -90,13 +90,13 @@ class OracleBuildCache(unittest.TestCase):
         self.assertEqual(len(recipe["binary_sha256"]), 64)
 
     def test_identical_recipe_reuses_binary_but_compiler_and_content_changes_rebuild(self):
-        for options, expected_builds in (({}, 1), ({}, 1), ({"TEST_GO_VERSION": "go1.26.10"}, 2),
-                                        ({"TEST_GO_VERSION": "go1.26.10", "TEST_GOAMD64": "v3"}, 3)):
+        for options, expected_builds in (({}, 1), ({}, 1), ({"TEST_GO_VERSION": "go1.26.11"}, 2),
+                                        ({"TEST_GO_VERSION": "go1.26.11", "TEST_GOAMD64": "v3"}, 3)):
             result = self.build(**options)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(len(self.log.read_text().splitlines()), expected_builds)
         self.binary.write_text("#!/bin/sh\necho corrupt\n")
-        result = self.build(TEST_GO_VERSION="go1.26.10", TEST_GOAMD64="v3")
+        result = self.build(TEST_GO_VERSION="go1.26.11", TEST_GOAMD64="v3")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(self.log.read_text().splitlines()), 4)
 

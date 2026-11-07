@@ -342,6 +342,12 @@ pub struct Stats {
     pub hl_rejection_blocks: u64,
     /// Height where every rejection/retry case was completed.
     pub hl_rejection_complete_height: Option<i64>,
+    /// Require the v9/v10 Hyperlane recovery-id boundary fixture.
+    pub hl_recovery_id_required: Option<()>,
+    /// Exact recovery-id boundary blocks completed.
+    pub hl_recovery_id_completed: u64,
+    /// Incomplete or invalid recovery-id boundary observations.
+    pub hl_recovery_id_failures: Vec<String>,
     /// `DELIVER_WIRE` mutations by class: (in finalized txs, of those Go
     /// code 0, in txs Go's `CheckTx` rejected).
     pub wire: BTreeMap<String, (u64, u64, u64)>,
@@ -1227,6 +1233,19 @@ struct HlSeq {
     proposal: u64,
     /// Go's result of each step: (step, type URL, code, log).
     results: Vec<String>,
+}
+
+struct HlRecoveryIdCase {
+    wire_id: u8,
+    tx: Vec<u8>,
+    validator: [u8; 20],
+    location: String,
+    check: Option<abci::ResponseCheckTx>,
+}
+
+struct HlRecoveryIdBlock {
+    cases: Vec<HlRecoveryIdCase>,
+    good: Vec<u8>,
 }
 
 /// The fuzz account `DELIVER_HL` signs with (the IBC relayer is the last).
@@ -2513,6 +2532,14 @@ impl Stats {
             self.hl_rejection_cases,
             self.hl_retried
         );
+        if self.hl_recovery_id_required.is_some() {
+            anyhow::ensure!(
+                self.hl_recovery_id_completed == 1 && self.hl_recovery_id_failures.is_empty(),
+                "incomplete DELIVER_HL_RECOVERY_ID_REQUIRE coverage: completed={}, failures={:?}",
+                self.hl_recovery_id_completed,
+                self.hl_recovery_id_failures
+            );
+        }
         if self.hl_registry_required.is_some() {
             for handler in ["merkle-root-ism", "validator-announcement"] {
                 anyhow::ensure!(
@@ -4865,6 +4892,7 @@ pub fn run(
     let verifier = hyperlane::Verifier::from_env()?;
     let hl_on = std::env::var("DELIVER_HL").is_ok();
     let hl_reject = std::env::var("DELIVER_HL_REJECT").is_ok();
+    let hl_recovery_id_required = std::env::var_os("DELIVER_HL_RECOVERY_ID_REQUIRE").is_some();
     let hl_registry_required = std::env::var_os("DELIVER_HL_REGISTRY_REQUIRE").is_some();
     anyhow::ensure!(
         hl_on || verifier.name() == "noop",
@@ -4877,6 +4905,14 @@ pub fn run(
     anyhow::ensure!(
         !hl_reject || std::env::var("DELIVER_UPGRADE").is_err(),
         "DELIVER_HL_REJECT cannot be combined with DELIVER_UPGRADE: the controlled phase would skip early upgrade fixtures"
+    );
+    anyhow::ensure!(
+        !hl_recovery_id_required || (hl_on && !hl_reject && per_block == 0),
+        "DELIVER_HL_RECOVERY_ID_REQUIRE requires DELIVER_HL, DELIVER_HL_REJECT unset and per_block=0"
+    );
+    anyhow::ensure!(
+        !hl_recovery_id_required || std::env::var("DELIVER_UPGRADE").is_err(),
+        "DELIVER_HL_RECOVERY_ID_REQUIRE cannot be combined with DELIVER_UPGRADE"
     );
     anyhow::ensure!(
         !hl_registry_required || (hl_on && verifier.name() == "merkle-root"),
@@ -5628,6 +5664,7 @@ pub fn run(
         } else {
             Vec::new()
         },
+        hl_recovery_id_required: hl_recovery_id_required.then_some(()),
         ..Stats::default()
     };
     if ibc_close_init_failure_required {
@@ -6136,10 +6173,13 @@ pub fn run(
         // The requested block budget still bounds setup; missing coverage fails.
         let hl_preupgrade = upg.on && stats.hl_preupgrade_setup(app_version);
         let hl_rejection_setup = stats.hl_rejection_setup();
-        let hl_setup = hl_rejection_setup || hl_preupgrade;
+        let hl_recovery_id_setup =
+            hl_recovery_id_required && stats.hl_recovery_id_completed == 0 && hl_seq.step == 2;
+        let hl_setup = hl_rejection_setup || hl_preupgrade || hl_recovery_id_setup;
         stats.hl_rejection_blocks += u64::from(hl_rejection_setup);
         stats.hl_preupgrade_blocks += u64::from(hl_preupgrade);
         let mut hl_pair = None;
+        let mut hl_recovery_id_block = None;
         let mut scripted = false;
         let phase = upg.phase(height, app_version);
         let block_av = app_version;
@@ -6388,33 +6428,62 @@ pub fn run(
             }
             if !gov_setup && hl_seq.on && hl_seq.pending.is_none() {
                 let msgs = hl_seq.msgs(&gn);
-                let rejection =
-                    if hl_rejection_setup && matches!(hl_seq.step, 11 | 14) {
+                if hl_recovery_id_setup {
+                    let mut cases = Vec::new();
+                    for wire_id in [29, 30] {
+                        let (message, validator, location) = hyperlane::boundary_announcement(
+                            gn.accts[HL_ACCT].acc.clone(),
+                            hl_seq.mailbox.clone(),
+                            HL_LOCAL,
+                            wire_id,
+                        )?;
+                        let tx = sign_simple(&gn, HL_ACCT, vec![message], 3_000_000)
+                            .context("signing Hyperlane recovery-id boundary tx")?;
+                        gn.accts[HL_ACCT].seq += 1;
+                        txs.push(tx.clone());
+                        cases.push(HlRecoveryIdCase {
+                            wire_id,
+                            tx,
+                            validator,
+                            location,
+                            check: None,
+                        });
+                    }
+                    let good = sign_simple(&gn, HL_ACCT, msgs, 3_000_000)
+                        .context("signing Hyperlane recovery-id recovery tx")?;
+                    gn.accts[HL_ACCT].seq += 1;
+                    hl_seq.pending = Some(good.clone());
+                    txs.push(good.clone());
+                    hl_recovery_id_block = Some(HlRecoveryIdBlock { cases, good });
+                    scripted = true;
+                } else {
+                    let rejection = if hl_rejection_setup && matches!(hl_seq.step, 11 | 14) {
                         hl_seq.verifier.rejections().iter().copied().find(|case| {
                             stats.hl_retried.get(case.name()).copied().unwrap_or(0) == 0
                         })
                     } else {
                         None
                     };
-                let bad = if let Some(case) = rejection {
-                    let invalid = case.messages(&msgs)?;
-                    let tx = sign_simple(&gn, HL_ACCT, invalid, 3_000_000)
-                        .context("signing rejected Hyperlane tx")?;
-                    gn.accts[HL_ACCT].seq += 1;
-                    txs.push(tx.clone());
-                    Some((case, tx))
-                } else {
-                    None
-                };
-                if let Some(t) = sign_simple(&gn, HL_ACCT, msgs, 3_000_000) {
-                    gn.accts[HL_ACCT].seq += 1;
-                    hl_seq.pending = Some(t.clone());
-                    if let Some((case, bad)) = bad {
-                        hl_pair = Some((case, bad, t.clone()));
+                    let bad = if let Some(case) = rejection {
+                        let invalid = case.messages(&msgs)?;
+                        let tx = sign_simple(&gn, HL_ACCT, invalid, 3_000_000)
+                            .context("signing rejected Hyperlane tx")?;
+                        gn.accts[HL_ACCT].seq += 1;
+                        txs.push(tx.clone());
+                        Some((case, tx))
+                    } else {
+                        None
+                    };
+                    if let Some(t) = sign_simple(&gn, HL_ACCT, msgs, 3_000_000) {
+                        gn.accts[HL_ACCT].seq += 1;
+                        hl_seq.pending = Some(t.clone());
+                        if let Some((case, bad)) = bad {
+                            hl_pair = Some((case, bad, t.clone()));
+                        }
+                        txs.push(t);
+                    } else if bad.is_some() {
+                        anyhow::bail!("signing valid Hyperlane retry");
                     }
-                    txs.push(t);
-                } else if bad.is_some() {
-                    anyhow::bail!("signing valid Hyperlane retry");
                 }
                 // The generated votes (any option) stay off the proposal.
                 gn.proposals.retain(|p| *p != hl_seq.proposal);
@@ -6720,6 +6789,11 @@ pub fn run(
             }
             if let Some(fixture) = gov_handler_rejection_fixture.as_mut() {
                 fixture.observe_check(t, &g)?;
+            }
+            if let Some(block) = hl_recovery_id_block.as_mut()
+                && let Some(case) = block.cases.iter_mut().find(|case| case.tx == *t)
+            {
+                case.check = Some(g.clone());
             }
             if let Some(driver) = ibc.as_mut() {
                 driver.observe_upgrade_timeout_check(t, &g);
@@ -7595,6 +7669,21 @@ pub fn run(
             return Ok(stats);
         }
         rust.commit().map_err(|e| anyhow::anyhow!("{e}"))?;
+        if let Some(block) = hl_recovery_id_block.take() {
+            match require_hl_recovery_id_block(
+                &block,
+                &fb.txs,
+                &g.tx_results,
+                app_version,
+                &hl_seq.mailbox,
+                &mut go,
+                cons_conn,
+                &mut rust,
+            ) {
+                Ok(()) => stats.hl_recovery_id_completed += 1,
+                Err(error) => stats.hl_recovery_id_failures.push(error.to_string()),
+            }
+        }
         if let Some(driver) = ibc.as_mut()
             && driver.upgrade_try_fast_forward_needs_initial_checkpoint()
         {
@@ -8428,6 +8517,168 @@ fn query_raw_store_both(
         go_response.log
     );
     Ok((!go_response.value.is_empty()).then_some(go_response.value))
+}
+
+fn query_raw_store_bytes_both(
+    go: &mut GoApp,
+    conn: u32,
+    rust: &mut app::App,
+    store: &str,
+    key: &[u8],
+) -> anyhow::Result<Option<Vec<u8>>> {
+    let query = abci::RequestQuery {
+        data: key.to_vec(),
+        path: format!("/store/{store}/key"),
+        height: 0,
+        prove: false,
+    };
+    let response = go.call_or_exception(
+        conn,
+        &Request {
+            value: Some(request::Value::Query(query.clone())),
+        },
+    )?;
+    let Some(response::Value::Query(go_response)) = response.value else {
+        anyhow::bail!(
+            "raw Go query for {store}/{} returned {response:?}",
+            hex::encode(key)
+        );
+    };
+    let rust_response = rust.query(&query);
+    anyhow::ensure!(
+        (go_response.code, &go_response.codespace, &go_response.value)
+            == (
+                rust_response.code,
+                &rust_response.codespace,
+                &rust_response.value
+            ),
+        "raw store query differed for {store}/{}: Go {}/{} {}, Rust {}/{} {}",
+        hex::encode(key),
+        go_response.codespace,
+        go_response.code,
+        hex::encode(&go_response.value),
+        rust_response.codespace,
+        rust_response.code,
+        hex::encode(&rust_response.value)
+    );
+    anyhow::ensure!(
+        go_response.code == 0,
+        "raw store query failed for {store}/{}: {}/{} {}",
+        hex::encode(key),
+        go_response.codespace,
+        go_response.code,
+        go_response.log
+    );
+    Ok((!go_response.value.is_empty()).then_some(go_response.value))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn require_hl_recovery_id_block(
+    block: &HlRecoveryIdBlock,
+    txs: &[Vec<u8>],
+    results: &[abci::ExecTxResult],
+    app_version: u64,
+    mailbox: &str,
+    go: &mut GoApp,
+    conn: u32,
+    rust: &mut app::App,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(block.cases.len() == 2, "recovery-id fixture case count");
+    let expected_txs = [
+        block.cases[0].tx.as_slice(),
+        block.cases[1].tx.as_slice(),
+        block.good.as_slice(),
+    ];
+    anyhow::ensure!(
+        txs.iter().map(Vec::as_slice).eq(expected_txs),
+        "recovery-id fixture transactions were missing, reordered or replaced"
+    );
+    anyhow::ensure!(
+        results.len() == 3,
+        "recovery-id fixture expected three finalized results, got {}",
+        results.len()
+    );
+    for (index, case) in block.cases.iter().enumerate() {
+        let check = case
+            .check
+            .as_ref()
+            .context("recovery-id boundary transaction had no CheckTx response")?;
+        let result = &results[index];
+        let announcement_events = result
+            .events
+            .iter()
+            .filter(|event| {
+                event.r#type == "hyperlane.core.interchain_security.v1.EventAnnounceStorageLocation"
+            })
+            .count();
+        if app_version < 10 {
+            anyhow::ensure!(
+                check.code == 0 && result.code == 0 && announcement_events == 1,
+                "v9 recovery-id {} boundary outcome changed: CheckTx {}/{} {}, Finalize {}/{} {}, events={announcement_events}",
+                case.wire_id,
+                check.codespace,
+                check.code,
+                check.log,
+                result.codespace,
+                result.code,
+                result.log
+            );
+        } else {
+            anyhow::ensure!(
+                check.code == 0
+                    && result.codespace == "ism"
+                    && result.code == 5
+                    && result
+                        .log
+                        .contains("invalid signature recovery id: invalid signature")
+                    && announcement_events == 0,
+                "v10 recovery-id {} boundary outcome changed: CheckTx {}/{} {}, Finalize {}/{} {}, events={announcement_events}",
+                case.wire_id,
+                check.codespace,
+                check.code,
+                check.log,
+                result.codespace,
+                result.code,
+                result.log
+            );
+        }
+    }
+    anyhow::ensure!(
+        results[2].code == 0
+            && results[2].events.iter().any(|event| {
+                event.r#type == "hyperlane.core.interchain_security.v1.EventAnnounceStorageLocation"
+            }),
+        "canonical recovery transaction failed after boundary cases: {}/{} {}",
+        results[2].codespace,
+        results[2].code,
+        results[2].log
+    );
+
+    let mailbox = x_hyperlane::util::HexAddress::decode(mailbox)
+        .map_err(anyhow::Error::msg)?
+        .internal_id();
+    for case in &block.cases {
+        let mut key = vec![1, 2];
+        key.extend_from_slice(&mailbox.to_be_bytes());
+        key.push(20);
+        key.extend_from_slice(&case.validator);
+        key.extend_from_slice(&0u64.to_be_bytes());
+        let value = query_raw_store_bytes_both(go, conn, rust, "hyperlane", &key)?;
+        if app_version < 10 {
+            anyhow::ensure!(
+                value.as_deref() == Some(case.location.as_bytes()),
+                "v9 recovery-id {} announcement state missing or changed",
+                case.wire_id
+            );
+        } else {
+            anyhow::ensure!(
+                value.is_none(),
+                "v10 rejected recovery-id {} announcement mutated storage",
+                case.wire_id
+            );
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

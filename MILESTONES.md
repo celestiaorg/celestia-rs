@@ -16,9 +16,10 @@ signers are later goals; an external security audit is optional
 ([ADR 0008](docs/adr/0008-mainnet-recommendation.md)). F1 still requires
 independent code review and evidence tied to an exact release candidate.
 
-**Go parity target:** celestia-app **v10.5.0** (Mainnet) /
-**v10.5.0-mocha** (Mocha), celestia-core **v0.42.3**, and historical
-app version 9 at celestia-app **v9.0.8** (ADR 0004).
+**Go parity target:** celestia-app **v10.6.0**, celestia-core **v0.42.8**,
+and historical app version 9 at celestia-app **v9.0.8** (ADR 0004).
+ADR 0010 supersedes the v10.5.0 target for new qualification; retained
+v10.5.0 evidence remains historical.
 
 ## Remaining milestones
 
@@ -1254,8 +1255,8 @@ test), then start that harness's count again.
   off, and in `release` vs `dist`; a recorded replay gives the same app
   hashes on x86_64 and aarch64.
 
-- [ ] **F1.10 Pin the exact mainnet binaries.** Parity is with v10.5.0 and
-  v9.0.8. Mainnet's v10 upgrade may ship a later v10.x (and v9 patch
+- [ ] **F1.10 Pin the exact mainnet binaries.** New parity work targets
+  v10.6.0 and historical v9.0.8. Mainnet may ship a later v10.x (and v9 patch
   releases are possible). Exit: before M14 starts, and before every
   mainnet upgrade the Rust validator will run through, the fuzz oracles,
   devnet fixtures and parity target are re-pinned to the exact tagged
@@ -1285,6 +1286,15 @@ test), then start that harness's count again.
   [`docs/adr/0007-app-v10-5.md`](docs/adr/0007-app-v10-5.md).
   Historical v10.4.0 fixture provenance is retained; the soak,
   determinism and saturation gates still require evidence on this target.
+  *Retargeted 2026-11-07:* ADR 0010 advances the active oracle and devnet
+  build closure to celestia-app v10.6.0, hyperlane-cosmos v1.3.3,
+  celestia-core v0.42.8 and Go 1.26.10. Sampled public RPC endpoints reported
+  v10.4.0, v10.5.0 and v10.6.0, which establishes rollout heterogeneity but
+  not a uniform network version. The exact tagged source and pinned oracle
+  define new qualification. Stored v10.5.0 evidence remains historical; the
+  Rust compatibility strings remain at their audited v10.5.0 / v0.42.3
+  boundary until the other v10.6.0 and v0.42.8 deltas are ported and the full
+  candidate is requalified.
 
 - [ ] **F1.11 Known Go nondeterminism decided.** *Policy recorded and
   mainnet reachability checked (`docs/security.md`, open Go items); the

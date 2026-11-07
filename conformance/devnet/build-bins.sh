@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the Go binaries the devnet scripts need into $DEVNET_BIN (default
 # target/devnet-bin) from module-proxy sources: celestia-appd (celestia-app
-# v10.5.0) and cometbft (celestia-core v0.42.3), like devnet.sh does.
+# v10.6.0) and cometbft (celestia-core v0.42.8), like devnet.sh does.
 # Module downloads are retried (transient proxy.golang.org failures).
 # APP_VERSION=v9.0.8 builds that release instead (module .../v9);
 # APPD_ONLY=1 skips cometbft.
@@ -14,8 +14,8 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # setup-go supplies GOTOOLCHAIN=local in CI after selecting this version.
 export GOTOOLCHAIN=${GOTOOLCHAIN:-$(awk '$1 == "toolchain" { print $2; exit }' "$ROOT/conformance/devnet-oracle/go.mod")}
 BIN=${DEVNET_BIN:-$ROOT/target/devnet-bin}
-APP_VERSION=${APP_VERSION:-v10.5.0}
-CORE_VERSION=${CORE_VERSION:-v0.42.3}
+APP_VERSION=${APP_VERSION:-v10.6.0}
+CORE_VERSION=${CORE_VERSION:-v0.42.8}
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$BIN"
