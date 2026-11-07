@@ -230,11 +230,16 @@ pub fn eth_signing_hash(msg: &[u8]) -> [u8; 32] {
     keccak256(&[prefix.as_bytes(), msg])
 }
 
-/// Recovers the Ethereum address that produced `sig` (65 bytes, recovery id
-/// 27/28) over `hash` (`RecoverEthSignature` + `PubkeyToAddress`).
-pub fn recover_eth_address(hash: &[u8; 32], sig: &[u8]) -> Result<[u8; 20], String> {
+fn recover_eth_address_inner(
+    hash: &[u8; 32],
+    sig: &[u8],
+    strict_recovery_id: bool,
+) -> Result<[u8; 20], String> {
     if sig.len() != 65 {
         return Err("invalid signature".into());
+    }
+    if strict_recovery_id && !matches!(sig[64], 27 | 28) {
+        return Err("invalid signature recovery id".into());
     }
     // go-ethereum `SigToPub` (libsecp256k1 `RecoverPubkey`): the recovery id
     // must be < 4 after subtracting 27; high-S signatures are accepted.
@@ -255,6 +260,18 @@ pub fn recover_eth_address(hash: &[u8; 32], sig: &[u8]) -> Result<[u8; 20], Stri
     let mut out = [0u8; 20];
     out.copy_from_slice(&h[12..]);
     Ok(out)
+}
+
+/// Recovers the Ethereum address that produced `sig` (65 bytes, recovery id
+/// 27/28) over `hash` (`RecoverEthSignature` + `PubkeyToAddress`).
+pub fn recover_eth_address(hash: &[u8; 32], sig: &[u8]) -> Result<[u8; 20], String> {
+    recover_eth_address_inner(hash, sig, true)
+}
+
+/// Hyperlane v1.1 recovery used by app version 9. Its go-ethereum CGO path
+/// accepts recovery ids 27 through 30.
+pub fn recover_eth_address_v1_1(hash: &[u8; 32], sig: &[u8]) -> Result<[u8; 20], String> {
+    recover_eth_address_inner(hash, sig, false)
 }
 
 /// Depth of the incremental merkle tree.
@@ -386,6 +403,45 @@ mod tests {
         let pk = sk.verifying_key().to_sec1_point(false);
         let expected = &keccak256(&[&pk.as_bytes()[1..]])[12..];
         assert_eq!(recover_eth_address(&hash, &raw).unwrap(), expected);
+    }
+
+    #[test]
+    fn recovery_id_version_boundary() {
+        let hash = [0x42; 32];
+        let mut raw = [0u8; 65];
+        raw[31] = 4;
+        raw[63] = 4;
+
+        for wire_id in 27..=30 {
+            raw[64] = wire_id;
+            let signature = Signature::from_slice(&raw[..64]).unwrap();
+            let recovery_id = RecoveryId::from_byte(wire_id - 27).unwrap();
+            let key = VerifyingKey::recover_from_prehash(&hash, &signature, recovery_id).unwrap();
+            let point = key.to_sec1_point(false);
+            let expected = &keccak256(&[&point.as_bytes()[1..]])[12..];
+            assert_eq!(recover_eth_address_v1_1(&hash, &raw).unwrap(), expected);
+
+            if wire_id <= 28 {
+                assert_eq!(recover_eth_address(&hash, &raw).unwrap(), expected);
+            } else {
+                assert_eq!(
+                    recover_eth_address(&hash, &raw),
+                    Err("invalid signature recovery id".into())
+                );
+            }
+        }
+
+        for wire_id in [26, 31] {
+            raw[64] = wire_id;
+            assert_eq!(
+                recover_eth_address(&hash, &raw),
+                Err("invalid signature recovery id".into())
+            );
+        }
+        assert_eq!(
+            recover_eth_address(&hash, &raw[..64]),
+            Err("invalid signature".into())
+        );
     }
 
     #[test]

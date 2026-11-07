@@ -35,8 +35,8 @@ Roadmap and progress: [`MILESTONES.md`](MILESTONES.md). Open decisions:
 
 - **Mainnet recommendation:** qualify celestia-rs for non-archival RPC
   nodes, full consensus nodes and validators. The reference is Go
-  celestia-app **v10.5.0**. Archival service, HSMs and remote signers are
-  later goals; an external security audit is optional. See
+  celestia-app **v10.6.0** (ADR 0010). Archival service, HSMs and remote
+  signers are later goals; an external security audit is optional. See
   [ADR 0008](docs/adr/0008-mainnet-recommendation.md) for scope and evidence
   requirements. General recommendation remains pending qualification.
 

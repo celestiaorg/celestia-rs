@@ -15,7 +15,7 @@ use crate::events::{JsonValue as J, typed_event};
 use crate::router::{Deps, InterchainSecurityModule};
 use crate::util::{
     HexAddress, HyperlaneMessage, TREE_DEPTH, acc_address_from_bech32, branch_root, decode_eth_hex,
-    encode_eth_hex, eth_signing_hash, keccak256, recover_eth_address,
+    encode_eth_hex, eth_signing_hash, keccak256, recover_eth_address, recover_eth_address_v1_1,
 };
 use crate::{ISMS_KEY, STORAGE_LOCATIONS_KEY, STORE_KEY};
 
@@ -548,7 +548,7 @@ pub fn verify_multisig_v1_1(
     }
     let mut idx = 0;
     for sig in signatures.iter().take(threshold as usize) {
-        let signer = recover_eth_address(digest, sig)
+        let signer = recover_eth_address_v1_1(digest, sig)
             .map_err(|e| internal(format!("failed to recover validator signature: {e}")))?;
         let signer = format!("0x{}", hex::encode(signer));
         while idx < validators.len()
@@ -927,7 +927,12 @@ pub fn announce_validator(
         corek::local_domain(ctx, mailbox_id).map_err(|e| err::unexpected_error(e.log))?;
     let digest = announcement_digest(storage_location, local_domain, mailbox_id.bytes());
     let signing_hash = eth_signing_hash(&digest);
-    let recovered = recover_eth_address(&signing_hash, &sig).map_err(err::invalid_signature)?;
+    let recovered = if crate::is_v9(ctx) {
+        recover_eth_address_v1_1(&signing_hash, &sig)
+    } else {
+        recover_eth_address(&signing_hash, &sig)
+    }
+    .map_err(err::invalid_signature)?;
     let validator_address = decode_eth_hex(validator)
         .map_err(|_| err::invalid_announce("invalid validator address"))?;
     if recovered.as_slice() != validator_address.as_slice() {

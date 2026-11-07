@@ -3,7 +3,7 @@
 use anyhow::{Context as _, bail};
 use celestia_proto::Any;
 use celestia_proto::hyperlane::core::interchain_security::v1 as pb;
-use k256::ecdsa::SigningKey;
+use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
 use prost::Message as _;
 use x_hyperlane::ism::{announcement_digest, checkpoint_digest};
 use x_hyperlane::util::{branch_root, eth_signing_hash, keccak256};
@@ -131,6 +131,52 @@ pub(super) fn announcement(
         mailbox_id,
         creator,
     }))
+}
+
+/// A validator announcement at the legacy secp256k1 recovery-id boundary.
+///
+/// `r = s = 4` is deliberately chosen because libsecp256k1 can recover it
+/// with the x-reduced recovery ids 2 and 3 (wire ids 29 and 30). The
+/// validator is derived independently from that recovery operation.
+pub(super) fn boundary_announcement(
+    creator: String,
+    mailbox_id: String,
+    domain: u32,
+    wire_id: u8,
+) -> anyhow::Result<(Any, [u8; 20], String)> {
+    anyhow::ensure!(matches!(wire_id, 27..=30), "invalid boundary wire id");
+    let storage_location = format!("s3://celestia-rs-fuzz/recovery-id-{wire_id}");
+    let mailbox = hex::decode(mailbox_id.trim_start_matches("0x"))
+        .context("controlled Hyperlane mailbox id")?;
+    anyhow::ensure!(
+        mailbox.len() == 32,
+        "controlled Hyperlane mailbox id length"
+    );
+    let digest = announcement_digest(&storage_location, domain, &mailbox);
+    let hash = eth_signing_hash(&digest);
+    let mut raw = vec![0u8; 65];
+    raw[31] = 4;
+    raw[63] = 4;
+    raw[64] = wire_id;
+    let signature = Signature::from_slice(&raw[..64]).context("boundary signature")?;
+    let recovery = RecoveryId::from_byte(wire_id - 27).context("boundary recovery id")?;
+    let key = VerifyingKey::recover_from_prehash(&hash, &signature, recovery)
+        .context("boundary public key recovery")?;
+    let point = key.to_sec1_point(false);
+    let hash = keccak256(&[&point.as_bytes()[1..]]);
+    let mut validator = [0u8; 20];
+    validator.copy_from_slice(&hash[12..]);
+    Ok((
+        Any::pack(&pb::MsgAnnounceValidator {
+            validator: format!("0x{}", hex::encode(validator)),
+            storage_location: storage_location.clone(),
+            signature: format!("0x{}", hex::encode(raw)),
+            mailbox_id,
+            creator,
+        }),
+        validator,
+        storage_location,
+    ))
 }
 
 impl Verifier {
@@ -276,6 +322,23 @@ mod tests {
             message.validator,
             format!("0x{}", hex::encode(&validator[12..]))
         );
+    }
+
+    #[test]
+    fn boundary_announcements_use_x_reduced_recovery_ids() {
+        let mailbox = format!("0x{}", "42".repeat(32));
+        for wire_id in [29, 30] {
+            let (any, validator, location) =
+                boundary_announcement("celestia1creator".into(), mailbox.clone(), 77, wire_id)
+                    .unwrap();
+            let message = pb::MsgAnnounceValidator::decode(any.value.as_slice()).unwrap();
+            assert_eq!(message.validator, format!("0x{}", hex::encode(validator)));
+            assert_eq!(message.storage_location, location);
+            let signature = hex::decode(message.signature.trim_start_matches("0x")).unwrap();
+            assert_eq!(signature[64], wire_id);
+            assert_eq!(signature[31], 4);
+            assert_eq!(signature[63], 4);
+        }
     }
 
     #[test]

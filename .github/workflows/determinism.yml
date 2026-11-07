@@ -35,8 +35,8 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7
         with:
-          go-version-file: conformance/devnet-oracle/go.mod
-          cache-dependency-path: conformance/devnet-oracle/go.sum
+          go-version-file: conformance/fuzzoracle/v10/go.mod
+          cache-dependency-path: conformance/fuzzoracle/v10/go.sum
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -50,11 +50,11 @@ jobs:
         uses: actions/cache@v6
         with:
           path: target/devnet-bin
-          key: determinism-bin-${{ runner.os }}-${{ runner.arch }}-app-v10.5.0-v9.0.8-${{ hashFiles('conformance/devnet/build-bins.sh') }}
+          key: determinism-bin-${{ runner.os }}-${{ runner.arch }}-app-v10.6.0-v9.0.8-${{ hashFiles('conformance/devnet/build-bins.sh') }}
       - if: steps.cache.outputs.cache-hit != 'true'
-        name: Build celestia-appd v10.5.0 and v9.0.8
+        name: Build celestia-appd v10.6.0 and v9.0.8
         run: |
-          APPD_ONLY=1 conformance/devnet/build-bins.sh
+          APP_VERSION=v10.6.0 CORE_VERSION=v0.42.8 APPD_ONLY=1 conformance/devnet/build-bins.sh
           APP_VERSION=v9.0.8 APPD_ONLY=1 DEVNET_BIN=target/devnet-bin/v9 conformance/devnet/build-bins.sh
       - name: Build fuzz-diff (release, dist)
         run: |

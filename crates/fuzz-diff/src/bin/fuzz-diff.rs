@@ -649,6 +649,10 @@ fn main() -> anyhow::Result<()> {
             "hl_rejection_blocks": st.hl_rejection_blocks,
             "hl_rejection_complete_height": st.hl_rejection_complete_height,
         });
+        deliver_stats["hl_recovery_id_required"] = st.hl_recovery_id_required.is_some().into();
+        deliver_stats["hl_recovery_id_completed"] = st.hl_recovery_id_completed.into();
+        deliver_stats["hl_recovery_id_failures"] =
+            serde_json::to_value(&st.hl_recovery_id_failures)?;
         deliver_stats["zero_threshold_multisig_required"] =
             st.zero_threshold_multisig_required.is_some().into();
         deliver_stats["zero_threshold_multisig_completed"] =

@@ -8,14 +8,14 @@ use celestia_proto::Any;
 use celestia_proto::hyperlane::core::interchain_security::v1 as ismpb;
 use celestia_proto::hyperlane::core::post_dispatch::v1 as pdpb;
 use celestia_proto::hyperlane::core::v1 as pb;
-use k256::ecdsa::SigningKey;
+use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
 use math::Int;
 use prost::Message;
 use sdk::{Context, ExecMode, Header, Kind, MultiStore, Result};
 use x_hyperlane::coins::{Coin, Coins};
 use x_hyperlane::ism::{self, Route};
 use x_hyperlane::testing::FakeBank;
-use x_hyperlane::util::{acc_address_string, eth_signing_hash, keccak256};
+use x_hyperlane::util::{acc_address_string, branch_root, eth_signing_hash, keccak256};
 use x_hyperlane::{
     Deps, HexAddress, HyperlaneApp, HyperlaneMessage, STORE_KEY, StandardHookMetadata, core,
     genesis, handle_msg, post_dispatch,
@@ -493,6 +493,188 @@ fn sign(sk: &SigningKey, digest: &[u8; 32]) -> Vec<u8> {
     let mut v = sig.to_bytes().to_vec();
     v.push(rid.to_byte() + 27);
     v
+}
+
+fn edge_signature(hash: &[u8; 32], wire_id: u8) -> ([u8; 20], Vec<u8>) {
+    let mut raw = vec![0u8; 65];
+    raw[31] = 4;
+    raw[63] = 4;
+    raw[64] = wire_id;
+    let signature = Signature::from_slice(&raw[..64]).unwrap();
+    let recovery_id = RecoveryId::from_byte(wire_id - 27).unwrap();
+    let key = VerifyingKey::recover_from_prehash(hash, &signature, recovery_id).unwrap();
+    let point = key.to_sec1_point(false);
+    let hash = keccak256(&[&point.as_bytes()[1..]]);
+    (hash[12..].try_into().unwrap(), raw)
+}
+
+#[test]
+fn validator_announcement_recovery_id_version_boundary() {
+    let hash = [0x42; 32];
+    for wire_id in [29, 30] {
+        let (validator, signature) = edge_signature(&hash, wire_id);
+        let validators = [format!("0x{}", hex::encode(validator))];
+        assert!(
+            ism::verify_multisig_v1_1(&validators, 1, std::slice::from_ref(&signature), &hash)
+                .unwrap()
+        );
+        let error = ism::verify_multisig(&validators, 1, std::slice::from_ref(&signature), &hash)
+            .unwrap_err();
+        assert_eq!(
+            error.log,
+            "failed to recover validator signature: invalid signature recovery id"
+        );
+    }
+
+    for app_version in [9, 10] {
+        let bank = FakeBank::default();
+        let deps = Deps::new(&bank);
+        let mut ms = store();
+        let mut c = ctx(&mut ms);
+        c.consensus_params.version = Some(
+            celestia_proto::celestia_core_proto::tendermint::types::VersionParams {
+                app: app_version,
+            },
+        );
+        let noop = ism::create_noop_ism(&mut c, &deps, &owner()).unwrap();
+        let mailbox = setup_mailbox(&mut c, &deps, noop);
+        c.events.take();
+
+        for wire_id in [29, 30] {
+            let location = format!("s3://edge-{wire_id}");
+            let digest = ism::announcement_digest(&location, 7, &mailbox.0);
+            let (validator, sig) = edge_signature(&eth_signing_hash(&digest), wire_id);
+            let result = exec(
+                &mut c,
+                &deps,
+                &ismpb::MsgAnnounceValidator {
+                    validator: format!("0x{}", hex::encode(validator)),
+                    storage_location: location.clone(),
+                    signature: format!("0x{}", hex::encode(sig)),
+                    mailbox_id: mailbox.to_string(),
+                    creator: owner(),
+                },
+            );
+            if app_version == 9 {
+                result.unwrap();
+                assert_eq!(
+                    c.events
+                        .take()
+                        .into_iter()
+                        .map(|event| event.r#type)
+                        .collect::<Vec<_>>(),
+                    ["hyperlane.core.interchain_security.v1.EventAnnounceStorageLocation"]
+                );
+                assert_eq!(
+                    ism::storage_locations(&mut c, mailbox.internal_id(), &validator).unwrap(),
+                    [location]
+                );
+            } else {
+                let error = result.unwrap_err();
+                assert_eq!((error.codespace, error.code), ("ism", 5));
+                assert_eq!(
+                    error.log,
+                    "invalid signature recovery id: invalid signature"
+                );
+                assert!(c.events.take().is_empty());
+                assert!(
+                    ism::storage_locations(&mut c, mailbox.internal_id(), &validator)
+                        .unwrap()
+                        .is_empty()
+                );
+            }
+        }
+
+        let location = "s3://canonical";
+        let digest = ism::announcement_digest(location, 7, &mailbox.0);
+        let (validator, sig) = edge_signature(&eth_signing_hash(&digest), 27);
+        exec(
+            &mut c,
+            &deps,
+            &ismpb::MsgAnnounceValidator {
+                validator: format!("0x{}", hex::encode(validator)),
+                storage_location: location.into(),
+                signature: format!("0x{}", hex::encode(sig)),
+                mailbox_id: mailbox.to_string(),
+                creator: owner(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            ism::storage_locations(&mut c, mailbox.internal_id(), &validator).unwrap(),
+            [location]
+        );
+    }
+}
+
+#[test]
+fn multisig_ism_recovery_id_version_boundary() {
+    let mut ms = store();
+    let mut c = ctx(&mut ms);
+    let message = incoming(HexAddress::generate(&[0; 20], 9, 1), 0);
+    let hook = [4u8; 32];
+    let root = [8u8; 32];
+
+    for wire_id in [29, 30] {
+        let message_id_digest =
+            ism::checkpoint_digest(message.origin, &hook, &root, 3, &message.id().0);
+        let (validator, signature) = edge_signature(&message_id_digest, wire_id);
+        let validators = vec![format!("0x{}", hex::encode(validator))];
+        let message_id = ism::Ism::MessageIdMultisig {
+            id: HexAddress::generate(&[0; 20], 0, 0),
+            owner: owner(),
+            validators: validators.clone(),
+            threshold: 1,
+        };
+        let mut message_id_metadata = Vec::new();
+        message_id_metadata.extend_from_slice(&hook);
+        message_id_metadata.extend_from_slice(&root);
+        message_id_metadata.extend_from_slice(&3u32.to_be_bytes());
+        message_id_metadata.extend_from_slice(&signature);
+
+        let proof = [[0u8; 32]; x_hyperlane::util::TREE_DEPTH];
+        let signed_root = branch_root(message.id().0, &proof, 0);
+        let merkle_digest =
+            ism::checkpoint_digest(message.origin, &hook, &signed_root, 0, &message.id().0);
+        let (validator, signature) = edge_signature(&merkle_digest, wire_id);
+        let merkle_root = ism::Ism::MerkleRootMultisig {
+            id: HexAddress::generate(&[0; 20], 0, 1),
+            owner: owner(),
+            validators: vec![format!("0x{}", hex::encode(validator))],
+            threshold: 1,
+        };
+        let mut merkle_metadata = Vec::new();
+        merkle_metadata.extend_from_slice(&hook);
+        merkle_metadata.extend_from_slice(&0u32.to_be_bytes());
+        merkle_metadata.extend_from_slice(&message.id().0);
+        for branch in proof {
+            merkle_metadata.extend_from_slice(&branch);
+        }
+        merkle_metadata.extend_from_slice(&0u32.to_be_bytes());
+        merkle_metadata.extend_from_slice(&signature);
+
+        for (app_version, accepted) in [(9, true), (10, false)] {
+            c.consensus_params.version = Some(
+                celestia_proto::celestia_core_proto::tendermint::types::VersionParams {
+                    app: app_version,
+                },
+            );
+            for (handler, metadata) in [
+                (&message_id, message_id_metadata.as_slice()),
+                (&merkle_root, merkle_metadata.as_slice()),
+            ] {
+                let result = handler.verify(&mut c, metadata, &message);
+                if accepted {
+                    assert!(result.unwrap());
+                } else {
+                    assert_eq!(
+                        result.unwrap_err().log,
+                        "failed to recover validator signature: invalid signature recovery id"
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]

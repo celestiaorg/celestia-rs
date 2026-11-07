@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "hyperlane-cosmos v1.3.1 x/core: mailboxes, ISMs and post-dispatch hooks."
+description = "App-versioned Celestia Hyperlane x/core: mailboxes, ISMs and post-dispatch hooks."
 publish = false
 
 [lints]

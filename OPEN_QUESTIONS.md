@@ -4,7 +4,8 @@ Things that need the owner. Work continues around each item; the "Default"
 column records what the code does until it is answered.
 
 **Scope clarified 2026-10-24:** target general recommendation for
-non-archival RPC nodes, consensus nodes and validators against Go v10.5.0.
+non-archival RPC nodes, consensus nodes and validators against the current
+Go target in ADR 0010 (v10.6.0).
 Archival RPC, HSMs and remote signers are later goals. An external audit is
 optional; a separate review agent is authorized for independent code review.
 F1's measurable acceptance criteria remain in force (ADR 0008).

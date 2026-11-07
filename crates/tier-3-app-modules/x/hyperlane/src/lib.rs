@@ -1,4 +1,4 @@
-//! `hyperlane` module: port of hyperlane-cosmos v1.3.1 `x/core` with its
+//! `hyperlane` module: app-versioned port of Celestia's Hyperlane `x/core` with its
 //! `01_interchain_security` and `02_post_dispatch` submodules, which share
 //! the `hyperlane` store through `collections` prefixes:
 //!
@@ -72,7 +72,8 @@ pub const MERKLE_TREE_HOOKS_KEY: [u8; 2] = [2, 4];
 pub const NOOP_HOOKS_KEY: [u8; 2] = [2, 5];
 
 /// Whether the context executes app version 9: upstream hyperlane-cosmos
-/// v1.1.0 (celestia-app v9.0.8, ADR 0004) instead of celestia's v1.3.0.
+/// v1.1.0 (celestia-app v9.0.8, ADR 0004) instead of Celestia's current
+/// v1.3.3 behavior.
 pub(crate) fn is_v9(ctx: &sdk::Context<'_>) -> bool {
     let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
     sdk::version::is_v9(sdk::version::executing(v))

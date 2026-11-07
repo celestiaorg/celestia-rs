@@ -18,14 +18,15 @@
 //! | 12 | `SigGasConsumeDecorator` (sdk) | [`sigverify::sig_gas_consume`] |
 //! | 13 | `SigVerificationDecorator` (sdk) | [`sigverify::sig_verification`] |
 //! | 14 | `NestedMsgDecorator` (celestia) | [`celestia::nested_msg`] |
-//! | 15 | `FibreSignatureGasDecorator` (x/fibre) | [`celestia::fibre_signature_gas`] |
-//! | 16 | `MinGasPFBDecorator` (x/blob) | [`celestia::min_gas_pfb`] |
-//! | 17 | `BlobShareDecorator` (x/blob) | [`celestia::blob_share`] |
-//! | 18 | `FibreStatefulValidationDecorator` (x/fibre) | [`celestia::fibre_stateful_validation`] |
-//! | 19 | `FibreSignatureVerificationDecorator` (x/fibre) | [`celestia::fibre_sig_verification`] |
-//! | 20 | `ParamFilterDecorator` (celestia) | [`celestia::param_filter`] |
-//! | 21 | `IncrementSequenceDecorator` (sdk) | [`sigverify::increment_sequence`] |
-//! | 22 | `RedundantRelayDecorator` (ibc-go) | [`celestia::redundant_relay`] |
+//! | 15 | `FibreLegacyEscrowDecorator` (x/fibre) | [`celestia::fibre_legacy_escrow`] |
+//! | 16 | `FibreSignatureGasDecorator` (x/fibre) | [`celestia::fibre_signature_gas`] |
+//! | 17 | `MinGasPFBDecorator` (x/blob) | [`celestia::min_gas_pfb`] |
+//! | 18 | `BlobShareDecorator` (x/blob) | [`celestia::blob_share`] |
+//! | 19 | `FibreStatefulValidationDecorator` (x/fibre) | [`celestia::fibre_stateful_validation`] |
+//! | 20 | `FibreSignatureVerificationDecorator` (x/fibre) | [`celestia::fibre_sig_verification`] |
+//! | 21 | `ParamFilterDecorator` (celestia) | [`celestia::param_filter`] |
+//! | 22 | `IncrementSequenceDecorator` (sdk) | [`sigverify::increment_sequence`] |
+//! | 23 | `RedundantRelayDecorator` (ibc-go) | [`celestia::redundant_relay`] |
 //!
 //! State owned by modules that are not ported in this repository yet is
 //! reached through [`AnteDeps`]; [`StoreDeps`] implements it by reading
@@ -347,6 +348,7 @@ fn run_chain(
         celestia::msg_exec_v9(tx)?;
     } else {
         celestia::nested_msg(tx)?;
+        celestia::fibre_legacy_escrow(ctx, tx)?;
         celestia::fibre_signature_gas(ctx, tx)?;
     }
     celestia::min_gas_pfb(ctx, tx)?;
