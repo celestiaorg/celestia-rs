@@ -474,6 +474,10 @@ impl Cp {
 
 /// Trusting period of the clients (block times jump by up to 15 days).
 const TRUSTING: i64 = 60 * 86_400;
+// The static duplicate-error-receipt governance fixture carries a signed
+// header at height 44 whose trusted height is 43. Keep this opt-in fixture
+// independent of unrelated additions to the random steady-state schedule.
+const LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT: i64 = 43;
 
 /// The counterparty's transfer channel.
 pub const CP_TRANSFER: &str = "channel-7";
@@ -559,6 +563,7 @@ pub struct Driver {
     pfm_metadata_packets: Vec<(ch::Packet, Vec<u8>, &'static str)>,
     pfm_metadata_diagnostic: Option<String>,
     pfm_stage: u8,
+    pfm_receive_pending: bool,
     pfm_original: Option<ch::Packet>,
     pfm_forwarded: Option<ch::Packet>,
     pfm_ack_pending: bool,
@@ -1403,7 +1408,20 @@ impl Driver {
     /// `MsgUpdateClient` of the main client to the counterparty's latest
     /// height.
     fn update(&mut self, signer: &str) -> Option<Any> {
-        self.update_at(signer, self.cp.height(), self.trusted)
+        let height = if self.legacy_upgrade_fixture {
+            self.cp.height().min(LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT)
+        } else {
+            self.cp.height()
+        };
+        self.update_at(signer, height, self.trusted)
+    }
+
+    fn legacy_upgrade_fixture_update(&mut self, signer: &str) -> Option<Any> {
+        (self.legacy_upgrade_fixture
+            && self.cp.height() >= LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT
+            && self.trusted < LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT)
+            .then(|| self.update(signer))
+            .flatten()
     }
 
     /// A valid update for the dedicated client after its one-second trusting
@@ -1749,6 +1767,13 @@ impl Driver {
                 if let Some(t) = self.steady(c) {
                     txs.push(t);
                 }
+                // The static governance fixture needs consensus state 43.
+                // Random relay messages can fail after their bundled client
+                // update and roll the whole transaction back, so retry the
+                // exact trust anchor independently until its event lands.
+                if let Some(update) = self.legacy_upgrade_fixture_update(&signer) {
+                    txs.push(vec![update]);
+                }
             }
             _ if retry => {
                 // Start over from the step that did not land.
@@ -1772,6 +1797,13 @@ impl Driver {
             txs.push(vec![update]);
         }
         txs
+    }
+
+    fn required_misbehaviour_setup(&self) -> bool {
+        !self.frozen
+            && (self.frozen_client_required
+                || (self.recover_client_on
+                    && self.stats.get("recover_client").copied().unwrap_or(0) == 0))
     }
 
     /// One steady-state relay: packets both ways, acknowledgements,
@@ -1837,7 +1869,11 @@ impl Driver {
             }
             return self.ica_packet(c);
         }
-        if self.frozen_client_required && !self.frozen {
+        // Recovery needs the same confirmed freeze as the explicit frozen-client
+        // fixture.  Do not leave that prerequisite to the random steady-state
+        // relay selector: a required governance payload cannot exist until this
+        // exact misbehaviour lands.
+        if self.required_misbehaviour_setup() {
             return self.misbehaviour(c);
         }
         let relay = match c.rng.below(17) {
@@ -2041,6 +2077,7 @@ impl Driver {
         let h = self.cp.commit(c.now - 8);
         self.pfm_original = Some(packet.clone());
         self.pfm_stage = 1;
+        self.pfm_receive_pending = true;
         let mut messages: Vec<Any> = self.update(signer).into_iter().collect();
         messages.push(Any::pack(&ch::MsgRecvPacket {
             proof_commitment: self.cp.proof(&format!(
@@ -3965,6 +4002,11 @@ impl Driver {
                         if let (Some(id), Some(h)) = (id, h) {
                             if self.a_client.as_ref() == Some(&id) {
                                 self.trusted = self.trusted.max(h);
+                                if self.legacy_upgrade_fixture
+                                    && h == LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT
+                                {
+                                    self.bump("legacy_upgrade_fixture_trusted_height");
+                                }
                             } else if self.a_client2.as_ref() == Some(&id) {
                                 let advanced = h > self.trusted2;
                                 self.trusted2 = self.trusted2.max(h);
@@ -4349,6 +4391,29 @@ impl Driver {
                 }
             }
         }
+        let receive_attempted = std::mem::take(&mut self.pfm_receive_pending);
+        if self.pfm_enabled()
+            && receive_attempted
+            && self.pfm_stage == 1
+            && self.pfm_original.as_ref().is_some_and(|original| {
+                !results.iter().any(|result| {
+                    result.code == 0
+                        && result.events.iter().any(|event| {
+                            event.r#type == "recv_packet"
+                                && packet_of(event)
+                                    .as_ref()
+                                    .is_some_and(|observed| same_packet(observed, original))
+                        })
+                })
+            })
+        {
+            // Construction is not delivery. If CheckTx or proposal selection
+            // dropped the exact incoming packet, build a fresh proof-backed
+            // packet next block rather than leaving the required lifecycle
+            // permanently stuck between receive and forward.
+            self.pfm_original = None;
+            self.pfm_stage = 0;
+        }
     }
 
     /// Learns governance-executed IBC events emitted at block scope.
@@ -4381,7 +4446,10 @@ impl Driver {
             // the exact error Ack and converted detailed callback event.
             self.ica_error_packet = None;
         }
-        if self.frozen_client_required && self.frozen && !self.recover_subject_ready {
+        if (self.frozen_client_required || self.recover_client_on)
+            && self.frozen
+            && !self.recover_subject_ready
+        {
             // Construction is not confirmation: retry required misbehaviour
             // if CheckTx or proposal selection dropped the transaction.
             self.frozen = false;
@@ -4960,6 +5028,17 @@ mod tests {
         required.recover_subject_ready = true;
         required.observe_block_events(&[]);
         assert!(required.frozen);
+
+        let mut recovery = Driver {
+            recover_client_on: true,
+            frozen: true,
+            ..Driver::default()
+        };
+        recovery.observe_block_events(&[]);
+        assert!(!recovery.frozen);
+        assert!(recovery.required_misbehaviour_setup());
+        recovery.stats.insert("recover_client".into(), 1);
+        assert!(!recovery.required_misbehaviour_setup());
     }
 
     #[test]
@@ -5053,6 +5132,41 @@ mod tests {
         );
         driver.trusted2 = 10;
         assert!(driver.recovery_clients().is_none());
+    }
+
+    #[test]
+    fn legacy_upgrade_fixture_clamps_updates_to_exact_trusted_height() {
+        let mut driver = Driver::default().with_legacy_upgrade_fixture(true);
+        driver.a_client = Some("07-tendermint-0".into());
+        while driver.cp.height() < LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT + 2 {
+            driver.cp.commit(100);
+        }
+        driver.trusted = LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT - 1;
+        let update = driver.legacy_upgrade_fixture_update("relayer").unwrap();
+        let message =
+            celestia_proto::ibc::core::client::v1::MsgUpdateClient::decode(update.value.as_slice())
+                .unwrap();
+        let header =
+            tmlc::Header::decode(message.client_message.unwrap().value.as_slice()).unwrap();
+        assert_eq!(
+            header
+                .signed_header
+                .as_ref()
+                .and_then(|signed| signed.header.as_ref())
+                .map(|header| header.height),
+            Some(LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT)
+        );
+        assert_eq!(
+            header.trusted_height,
+            Some(Cp::height_of(LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT - 1))
+        );
+
+        driver.trusted = LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT;
+        assert!(driver.legacy_upgrade_fixture_update("relayer").is_none());
+        assert_eq!(
+            driver.cp.height(),
+            LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT + 2
+        );
     }
 
     #[test]
@@ -5338,6 +5452,79 @@ mod tests {
             Some(PFM_SUCCESS_ACK_HEX),
         ))]);
         assert_eq!(driver.stats.get("pfm_original_ack"), Some(&1));
+    }
+
+    #[test]
+    fn required_pfm_receive_retries_when_the_exact_packet_does_not_finalize() {
+        let mut driver = Driver {
+            pfm_required: true,
+            pfm_stage: 1,
+            pfm_receive_pending: true,
+            pfm_original: Some(ch::Packet::default()),
+            ..Driver::default()
+        };
+        driver.observe(&[]);
+        assert_eq!(driver.pfm_stage, 0);
+        assert!(driver.pfm_original.is_none());
+    }
+
+    #[test]
+    fn required_pfm_receive_accepts_only_the_exact_successful_finalization() {
+        let original = ch::Packet {
+            sequence: 4,
+            source_port: "transfer".into(),
+            source_channel: CP_TRANSFER.into(),
+            destination_port: "transfer".into(),
+            destination_channel: "channel-3".into(),
+            data: b"pending exact receive".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let mut driver = Driver {
+            pfm_required: true,
+            pfm_stage: 1,
+            pfm_original: Some(original.clone()),
+            pfm_receive_pending: true,
+            ..Driver::default()
+        };
+
+        driver.observe(&[result(packet_event("recv_packet", &original, None))]);
+        assert_eq!(driver.pfm_stage, 1);
+        assert!(
+            driver
+                .pfm_original
+                .as_ref()
+                .is_some_and(|packet| same_packet(packet, &original))
+        );
+        assert!(!driver.pfm_receive_pending);
+    }
+
+    #[test]
+    fn required_pfm_receive_retries_when_exact_event_is_from_failed_tx() {
+        let original = ch::Packet {
+            sequence: 4,
+            source_port: "transfer".into(),
+            source_channel: CP_TRANSFER.into(),
+            destination_port: "transfer".into(),
+            destination_channel: "channel-3".into(),
+            data: b"failed exact receive".to_vec(),
+            timeout_height: None,
+            timeout_timestamp: 88,
+        };
+        let mut driver = Driver {
+            pfm_required: true,
+            pfm_stage: 1,
+            pfm_original: Some(original.clone()),
+            pfm_receive_pending: true,
+            ..Driver::default()
+        };
+        let mut rejected = result(packet_event("recv_packet", &original, None));
+        rejected.code = 1;
+
+        driver.observe(&[rejected]);
+        assert_eq!(driver.pfm_stage, 0);
+        assert!(driver.pfm_original.is_none());
+        assert!(!driver.pfm_receive_pending);
     }
 
     #[test]
