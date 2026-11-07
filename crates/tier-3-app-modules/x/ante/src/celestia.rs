@@ -3,7 +3,7 @@
 
 use celestia_proto::Any;
 use celestia_proto::celestia::blob::v1::MsgPayForBlobs;
-use celestia_proto::celestia::fibre::v1::MsgPayForFibre;
+use celestia_proto::celestia::fibre::v1::{MsgDepositToEscrow, MsgPayForFibre};
 use kvstore::GasMeter;
 use prost::{Message, Name};
 use sdk::error::sdk as errs;
@@ -138,6 +138,48 @@ pub fn nested_msg(tx: &Tx) -> R<()> {
             reject_wrapped(&nested, "MsgExec")?;
         } else if let Some(nested) = txview::submit_proposal_msgs(m)? {
             reject_wrapped(&nested, "MsgSubmitProposal")?;
+        }
+    }
+    Ok(())
+}
+
+/// `FibreLegacyEscrowDecorator` (celestia-app v10.6.0): reject deposits
+/// which would require a v11 migration outside consensus execution.
+pub fn fibre_legacy_escrow(ctx: &Context<'_>, tx: &Tx) -> R<()> {
+    if !matches!(
+        ctx.mode,
+        ExecMode::Check | ExecMode::ReCheck | ExecMode::Simulate | ExecMode::PrepareProposal
+    ) {
+        return Ok(());
+    }
+    for any in tx.gogo_msgs() {
+        if !is_type::<MsgDepositToEscrow>(any) {
+            continue;
+        }
+        let msg: MsgDepositToEscrow = decode(any)?;
+        let address = txview::acc_address_from_bech32(&msg.signer).map_err(|e| {
+            Fail::Err(errs::invalid_address(format!(
+                "invalid signer address: {}",
+                e.log
+            )))
+        })?;
+        let canonical = txview::bytes_to_bech32(&address);
+        if msg.signer != canonical {
+            return Err(errs::invalid_address(format!(
+                "signer {} is not canonical, use {canonical}",
+                msg.signer
+            ))
+            .into());
+        }
+        let denom = msg
+            .amount
+            .as_ref()
+            .map_or("", |amount| amount.denom.as_str());
+        if denom != "utia" {
+            return Err(errs::invalid_coins(format!(
+                "escrow deposits must be in utia, got {denom}"
+            ))
+            .into());
         }
     }
     Ok(())
@@ -378,4 +420,81 @@ pub fn redundant_relay(
         return Err(redundant_tx().into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::cosmos::tx::v1beta1::TxBody;
+    use sdk::{Header, MultiStore};
+
+    use super::*;
+
+    fn deposit(signer: &str, denom: &str) -> Tx {
+        deposits(&[(signer, denom)])
+    }
+
+    fn deposits(entries: &[(&str, &str)]) -> Tx {
+        Tx {
+            body: TxBody {
+                messages: entries
+                    .iter()
+                    .map(|(signer, denom)| {
+                        Any::pack(&MsgDepositToEscrow {
+                            signer: (*signer).into(),
+                            amount: Some(Coin {
+                                denom: (*denom).into(),
+                                amount: "1".into(),
+                            }),
+                        })
+                    })
+                    .collect(),
+                ..TxBody::default()
+            },
+            ..Tx::default()
+        }
+    }
+
+    fn result(mode: ExecMode, tx: &Tx) -> R<()> {
+        let mut ms = MultiStore::new();
+        let ctx = Context::new(&mut ms, Header::default(), mode);
+        fibre_legacy_escrow(&ctx, tx)
+    }
+
+    fn code(fail: Fail) -> (&'static str, u32) {
+        match fail {
+            Fail::Err(e) | Fail::ZeroCtx(e) => (e.codespace, e.code),
+            Fail::Panic(_) => panic!("unexpected panic"),
+        }
+    }
+
+    #[test]
+    fn legacy_escrow_is_filtered_only_outside_consensus_execution() {
+        let canonical = txview::bytes_to_bech32(&[1; 20]);
+        let uppercase = canonical.to_uppercase();
+        for mode in [
+            ExecMode::Check,
+            ExecMode::ReCheck,
+            ExecMode::Simulate,
+            ExecMode::PrepareProposal,
+        ] {
+            assert!(result(mode, &Tx::default()).is_ok());
+            assert!(result(mode, &deposit(&canonical, "utia")).is_ok());
+            let e = result(mode, &deposit("invalid", "utia")).unwrap_err();
+            assert_eq!(code(e), ("sdk", 7));
+            let e = result(mode, &deposit(&uppercase, "utia")).unwrap_err();
+            assert_eq!(code(e), ("sdk", 7));
+            let e = result(mode, &deposit(&canonical, "stake")).unwrap_err();
+            assert_eq!(code(e), ("sdk", 10));
+            let e = result(
+                mode,
+                &deposits(&[(&canonical, "utia"), (&canonical, "stake")]),
+            )
+            .unwrap_err();
+            assert_eq!(code(e), ("sdk", 10));
+        }
+        for mode in [ExecMode::ProcessProposal, ExecMode::Finalize] {
+            assert!(result(mode, &deposit(&uppercase, "stake")).is_ok());
+        }
+    }
 }
