@@ -9,8 +9,8 @@
 # usage: GO_APPD=<celestia-appd of the scenario's version> \
 #        crates/fuzz-diff/deliver-diff.sh <scenario> [blocks] [txs-per-block] [seed]
 #
-# v10 scenarios need celestia-appd v10.6.0, v9-* scenarios v9.0.8 (both as
-# built by conformance/devnet/devnet.sh into $DEVNET_BIN and $DEVNET_BIN/v9).
+# v10 scenarios need celestia-appd v10.6.0, v9-* scenarios v9.0.8, supplied
+# through $DEVNET_BIN and $DEVNET_BIN/v9 by the differential CI build.
 # Environment: DELIVER_TYPES=<substr,...> narrows the synthesized message
 # types.
 # DELIVER_TYPE_REQUIRE=<exact-url,...> fails unless every listed top-level
