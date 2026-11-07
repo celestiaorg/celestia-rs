@@ -52,6 +52,8 @@ pub enum SecretConnectionError {
     UnsupportedKey(String),
     /// The remote signature over the challenge did not verify.
     ChallengeVerificationFailed,
+    /// The remote identity key is unsafe to admit as a new authority.
+    InvalidRemoteAuthenticationKey(crypto::ed25519::Error),
 }
 
 impl fmt::Display for SecretConnectionError {
@@ -64,6 +66,9 @@ impl fmt::Display for SecretConnectionError {
             Self::Decode(e) => write!(f, "handshake decode: {e}"),
             Self::UnsupportedKey(e) => write!(f, "expected ed25519 pubkey, got {e}"),
             Self::ChallengeVerificationFailed => f.write_str("challenge verification failed"),
+            Self::InvalidRemoteAuthenticationKey(e) => {
+                write!(f, "invalid remote authentication key: {e}")
+            }
         }
     }
 }
@@ -74,6 +79,21 @@ impl From<io::Error> for SecretConnectionError {
     fn from(e: io::Error) -> Self {
         Self::Io(e)
     }
+}
+
+fn verify_remote_auth(
+    public_key: &[u8; 32],
+    challenge: &[u8; 32],
+    signature: &[u8],
+) -> Result<(), SecretConnectionError> {
+    crypto::ed25519::validate_authority_key(public_key)
+        .map_err(SecretConnectionError::InvalidRemoteAuthenticationKey)?;
+    let signature = <[u8; 64]>::try_from(signature)
+        .map_err(|_| SecretConnectionError::ChallengeVerificationFailed)?;
+    if !crypto::ed25519::verify(public_key, challenge, &signature) {
+        return Err(SecretConnectionError::ChallengeVerificationFailed);
+    }
+    Ok(())
 }
 
 /// `google.protobuf.BytesValue`.
@@ -464,11 +484,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> SecretConnection<S> {
             }
             None => return Err(SecretConnectionError::Decode("nil PublicKey".into())),
         };
-        let sig_ok = <[u8; 64]>::try_from(rem.sig.as_slice())
-            .is_ok_and(|s| crypto::ed25519::verify(&remote_pubkey, &challenge, &s));
-        if !sig_ok {
-            return Err(SecretConnectionError::ChallengeVerificationFailed);
-        }
+        verify_remote_auth(&remote_pubkey, &challenge, &rem.sig)?;
         Ok(Self {
             reader,
             writer,
@@ -514,6 +530,36 @@ fn derive_secrets(dh: &[u8; 32], loc_is_least: bool) -> ([u8; 32], [u8; 32]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_auth_rejects_weak_identity_before_zip215_verification() {
+        let mut identity = [0; 32];
+        identity[0] = 1;
+        let mut zip215_signature = [0; 64];
+        zip215_signature[0] = 1;
+        let challenge = [9; 32];
+        assert!(crypto::ed25519::verify(
+            &identity,
+            &challenge,
+            &zip215_signature
+        ));
+        assert!(matches!(
+            verify_remote_auth(&identity, &challenge, &zip215_signature),
+            Err(SecretConnectionError::InvalidRemoteAuthenticationKey(
+                crypto::ed25519::Error::SmallOrderAuthorityKey
+            ))
+        ));
+
+        let node_key = NodeKey::from_seed(&[7; 32]);
+        assert!(
+            verify_remote_auth(
+                &node_key.public_key(),
+                &challenge,
+                &node_key.sign(&challenge)
+            )
+            .is_ok()
+        );
+    }
 
     #[tokio::test]
     async fn handshake_roundtrip_and_data() {

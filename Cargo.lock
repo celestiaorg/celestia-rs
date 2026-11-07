@@ -1116,6 +1116,7 @@ name = "crypto"
 version = "0.0.1"
 dependencies = [
  "blst",
+ "curve25519-dalek-ng",
  "ed25519-consensus",
  "hash",
  "hex",
