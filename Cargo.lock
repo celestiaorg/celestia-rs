@@ -2994,6 +2994,7 @@ dependencies = [
  "ctypes",
  "hash",
  "hex",
+ "kvdb",
  "mempool",
  "nodestore",
  "p2p",
