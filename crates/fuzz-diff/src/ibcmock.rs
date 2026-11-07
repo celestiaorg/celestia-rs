@@ -1837,7 +1837,11 @@ impl Driver {
             }
             return self.ica_packet(c);
         }
-        if self.frozen_client_required && !self.frozen {
+        // Recovery needs the same confirmed freeze as the explicit frozen-client
+        // fixture.  Do not leave that prerequisite to the random steady-state
+        // relay selector: a required governance payload cannot exist until this
+        // exact misbehaviour lands.
+        if (self.frozen_client_required || self.recover_client_on) && !self.frozen {
             return self.misbehaviour(c);
         }
         let relay = match c.rng.below(17) {
@@ -4381,7 +4385,10 @@ impl Driver {
             // the exact error Ack and converted detailed callback event.
             self.ica_error_packet = None;
         }
-        if self.frozen_client_required && self.frozen && !self.recover_subject_ready {
+        if (self.frozen_client_required || self.recover_client_on)
+            && self.frozen
+            && !self.recover_subject_ready
+        {
             // Construction is not confirmation: retry required misbehaviour
             // if CheckTx or proposal selection dropped the transaction.
             self.frozen = false;
@@ -4960,6 +4967,14 @@ mod tests {
         required.recover_subject_ready = true;
         required.observe_block_events(&[]);
         assert!(required.frozen);
+
+        let mut recovery = Driver {
+            recover_client_on: true,
+            frozen: true,
+            ..Driver::default()
+        };
+        recovery.observe_block_events(&[]);
+        assert!(!recovery.frozen);
     }
 
     #[test]

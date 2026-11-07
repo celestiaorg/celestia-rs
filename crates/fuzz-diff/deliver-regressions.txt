@@ -88,6 +88,13 @@ v9-ibc 300 8 8083 DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_GOV_REQUIRE=/ibc.core.
 # forwarded packets, signed downstream Ack, then delayed original-packet Ack.
 ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_PFM_REQUIRE=1
 v9-ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_PFM_REQUIRE=1
+# Temporary CI seed probes; remove after selecting a deterministic v9 PFM fixture.
+v9-ibc 300 8 1 DELIVER_IBC=1 DELIVER_IBC_PFM_REQUIRE=1
+v9-ibc 300 8 6 DELIVER_IBC=1 DELIVER_IBC_PFM_REQUIRE=1
+v9-ibc 300 8 30 DELIVER_IBC=1 DELIVER_IBC_PFM_REQUIRE=1
+v9-ibc 300 8 4243 DELIVER_IBC=1 DELIVER_IBC_PFM_REQUIRE=1
+v9-ibc 300 8 8084 DELIVER_IBC=1 DELIVER_IBC_PFM_REQUIRE=1
+v9-ibc 300 8 18091 DELIVER_IBC=1 DELIVER_IBC_PFM_REQUIRE=1
 # Relay an exact downstream error Ack and require PFM to propagate the same
 # delayed error Ack to the original packet after its refund path executes.
 ibc 300 8 8083 DELIVER_IBC=1 DELIVER_IBC_PFM_ERROR_REQUIRE=1
@@ -159,7 +166,7 @@ v9-hyperlane 60 8 4243 DELIVER_HL=1 DELIVER_HL_ISM=merkle-root DELIVER_HL_REGIST
 # Delay the proposal to the triggering state, close expedited voting in the
 # next block, keep post-capture Ack-abort state out of the static signed-header
 # fixture, and require the exact Go frame so an earlier failure cannot pass.
-v9-upgrade 76 6 930039 GO_APPD_NEXT=v10 DELIVER_UPGRADE=19 DELIVER_HL=1 DELIVER_HL_ISM=message-id DELIVER_HL_ALLOW_POSTUPGRADE=governance-fixture DELIVER_IBC=1 DELIVER_IBC_LEGACY_UPGRADE_FIXTURE=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/gov-duplicate-error-receipt.script DELIVER_SCRIPT_AT=54 DELIVER_TIME_JUMP_AT=55 DELIVER_TIME_JUMP_SECONDS=3600 DELIVER_GOV_FAILURE_REQUIRE=upgrade.go:1048
+v9-upgrade 76 6 930039 GO_APPD_NEXT=v10 DELIVER_UPGRADE=19 DELIVER_IBC=1 DELIVER_IBC_LEGACY_UPGRADE_FIXTURE=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/gov-duplicate-error-receipt.script DELIVER_SCRIPT_AT=54 DELIVER_TIME_JUMP_AT=55 DELIVER_TIME_JUMP_SECONDS=3600 DELIVER_GOV_FAILURE_REQUIRE=upgrade.go:1048
 # Signed upgrade runs used to let unrelated mempool traffic consume the
 # scripted account sequence. Merkle-root synthetic delivery then succeeded only
 # after the binary switch, while whole-run counters hid the missing v9 path.

@@ -2518,6 +2518,16 @@ impl Stats {
             })
     }
 
+    fn hl_registry_setup(&self) -> bool {
+        self.hl_registry_required.is_some()
+            && (["merkle-root-ism", "validator-announcement"]
+                .iter()
+                .any(|handler| self.hl_registry.get(*handler).copied().unwrap_or(0) == 0)
+                || ["collateral", "synthetic"]
+                    .iter()
+                    .any(|kind| self.hl_verified.get(*kind).copied().unwrap_or(0) == 0))
+    }
+
     /// Require both signed incoming-transfer paths when a multisig ISM was
     /// explicitly selected. Matching rejections alone are incomplete evidence.
     pub fn require_hl_coverage(&self) -> anyhow::Result<()> {
@@ -6175,7 +6185,14 @@ pub fn run(
         let hl_rejection_setup = stats.hl_rejection_setup();
         let hl_recovery_id_setup =
             hl_recovery_id_required && stats.hl_recovery_id_completed == 0 && hl_seq.step == 2;
-        let hl_setup = hl_rejection_setup || hl_preupgrade || hl_recovery_id_setup;
+        // A registry requirement covers the complete controlled sequence,
+        // including both signed incoming transfers.  Keep unrelated generated
+        // traffic from changing its mailbox, token or account state before the
+        // exact transactions finalize.
+        let hl_setup = hl_rejection_setup
+            || hl_preupgrade
+            || hl_recovery_id_setup
+            || stats.hl_registry_setup();
         stats.hl_rejection_blocks += u64::from(hl_rejection_setup);
         stats.hl_preupgrade_blocks += u64::from(hl_preupgrade);
         let mut hl_pair = None;
@@ -15644,6 +15661,21 @@ mod tests {
             ..Stats::default()
         };
         assert!(gov_setup_ready(&static_stats, &[]));
+    }
+
+    #[test]
+    fn registry_requirement_reserves_setup_until_every_exact_path_lands() {
+        let mut stats = Stats {
+            hl_registry_required: Some(()),
+            ..Stats::default()
+        };
+        assert!(stats.hl_registry_setup());
+        stats.hl_registry.insert("merkle-root-ism".into(), 1);
+        stats.hl_registry.insert("validator-announcement".into(), 1);
+        stats.hl_verified.insert("collateral".into(), 1);
+        assert!(stats.hl_registry_setup());
+        stats.hl_verified.insert("synthetic".into(), 1);
+        assert!(!stats.hl_registry_setup());
     }
 
     #[test]
