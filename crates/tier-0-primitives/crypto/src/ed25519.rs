@@ -1,5 +1,6 @@
 //! `CometBFT` Ed25519 consensus signature helpers.
 
+use curve25519_dalek_ng::edwards::CompressedEdwardsY;
 use ed25519_consensus::{Signature, SigningKey, VerificationKey};
 use hash::sha256;
 
@@ -45,6 +46,18 @@ pub enum Error {
     /// The signature could not be parsed.
     #[error("malformed Ed25519 signature")]
     MalformedSignature,
+    /// An authority key used a non-canonical point encoding.
+    #[error("ed25519 authority key is not canonical")]
+    NonCanonicalAuthorityKey,
+    /// An authority key did not encode a point on the curve.
+    #[error("ed25519 authority key is not on the curve")]
+    AuthorityKeyNotOnCurve,
+    /// An authority key encoded a small-order point.
+    #[error("ed25519 authority key has small order")]
+    SmallOrderAuthorityKey,
+    /// An authority key was not in the prime-order subgroup.
+    #[error("ed25519 authority key is not in the prime-order subgroup")]
+    NonPrimeOrderAuthorityKey,
 }
 
 /// Derive the `CometBFT` Ed25519 private key from a 32-byte seed.
@@ -95,6 +108,28 @@ pub fn verify(public_key: &PublicKeyBytes, msg: &[u8], signature: &SignatureByte
     verification_key.verify(&signature, msg).is_ok()
 }
 
+/// Validate an Ed25519 key before granting it authority over a new identity.
+///
+/// Signature verification intentionally retains CometBFT's ZIP-215 behavior
+/// for historical consensus data. New authority keys must additionally use a
+/// canonical encoding of a non-small-order point in the prime-order subgroup.
+pub fn validate_authority_key(public_key: &PublicKeyBytes) -> Result<(), Error> {
+    let compressed = CompressedEdwardsY(*public_key);
+    let Some(point) = compressed.decompress() else {
+        return Err(Error::AuthorityKeyNotOnCurve);
+    };
+    if point.compress().to_bytes() != *public_key {
+        return Err(Error::NonCanonicalAuthorityKey);
+    }
+    if point.is_small_order() {
+        return Err(Error::SmallOrderAuthorityKey);
+    }
+    if !point.is_torsion_free() {
+        return Err(Error::NonPrimeOrderAuthorityKey);
+    }
+    Ok(())
+}
+
 /// Return `CometBFT`'s Ed25519 address: first 20 bytes of SHA-256(public_key).
 #[must_use]
 pub fn address(public_key: &PublicKeyBytes) -> AddressBytes {
@@ -122,6 +157,22 @@ mod tests {
             Error::MalformedSignature.to_string(),
             "malformed Ed25519 signature"
         );
+        assert_eq!(
+            Error::NonCanonicalAuthorityKey.to_string(),
+            "ed25519 authority key is not canonical"
+        );
+        assert_eq!(
+            Error::AuthorityKeyNotOnCurve.to_string(),
+            "ed25519 authority key is not on the curve"
+        );
+        assert_eq!(
+            Error::SmallOrderAuthorityKey.to_string(),
+            "ed25519 authority key has small order"
+        );
+        assert_eq!(
+            Error::NonPrimeOrderAuthorityKey.to_string(),
+            "ed25519 authority key is not in the prime-order subgroup"
+        );
     }
 
     #[test]
@@ -130,5 +181,63 @@ mod tests {
         let signature = [0u8; SIGNATURE_LENGTH];
 
         assert!(!verify(&public_key, b"message", &signature));
+    }
+
+    #[test]
+    fn authority_keys_match_core_v0428() {
+        for seed in 0..64 {
+            let private_key = private_key_from_seed(&[seed; SEED_LENGTH]);
+            let public_key = public_key_from_private_key(&private_key).unwrap();
+            assert_eq!(validate_authority_key(&public_key), Ok(()));
+        }
+
+        for (encoded, expected) in [
+            (
+                "0100000000000000000000000000000000000000000000000000000000000000",
+                Error::SmallOrderAuthorityKey,
+            ),
+            (
+                "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+                Error::SmallOrderAuthorityKey,
+            ),
+            (
+                "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
+                Error::SmallOrderAuthorityKey,
+            ),
+            (
+                "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+                Error::NonCanonicalAuthorityKey,
+            ),
+            (
+                "0100000000000000000000000000000000000000000000000000000000000080",
+                Error::NonCanonicalAuthorityKey,
+            ),
+            (
+                "0b485cfc0eecc619440448436f8fc9df40566f2369e72400281454cb552afb52",
+                Error::AuthorityKeyNotOnCurve,
+            ),
+            (
+                "d03785ba6fb4990c5b4c743b53fc0ba2eb8b6ee2886e6c776eac2e1e7cb42cc4",
+                Error::NonPrimeOrderAuthorityKey,
+            ),
+        ] {
+            let key = hex::decode(encoded).unwrap().try_into().unwrap();
+            assert_eq!(validate_authority_key(&key), Err(expected), "{encoded}");
+        }
+    }
+
+    #[test]
+    fn authority_admission_does_not_change_zip215_verification() {
+        let mut key = [0; PUBLIC_KEY_LENGTH];
+        key[0] = 1;
+        let mut signature = [0; SIGNATURE_LENGTH];
+        signature[0] = 1;
+        assert_eq!(
+            validate_authority_key(&key),
+            Err(Error::SmallOrderAuthorityKey)
+        );
+        for message in [b"vote".as_slice(), b"another vote".as_slice()] {
+            assert!(verify(&key, message, &signature));
+        }
     }
 }
