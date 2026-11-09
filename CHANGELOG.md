@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- Runtime metadata now declares celestia-app v10.6.0 and celestia-core
+  v0.42.8 as the explicit compatibility targets.
+
 ### Fixed
 
 - Validator signing fails if the parent directory of its signing-state file

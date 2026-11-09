@@ -145,7 +145,7 @@
       },
       "documentation": {
         "path": "docs/rpc-version-identity.md",
-        "sha256": "824b429c60e062416f0ccb9e54ad1f969e68dead27e2b16e04cfbf8435e1ffa7"
+        "sha256": "3c9554d3ce2921a1e4d2e15209d5dd278ee2b3efec8190378afb71422fdd807d"
       },
       "verifier": null,
       "transports": [
@@ -166,7 +166,7 @@
         {
           "source": {
             "path": "crates/tier-5-node/celestia-rs/tests/runtime_metadata.rs",
-            "sha256": "6c2b3db5d11aeef2bd1c34423ae76316a7d939b86431ae15e246406cf5d1f9b8"
+            "sha256": "f9036202d41b98c2bc445c88ef3ca6bef0c1776c1fd13e1d105294dff239aca6"
           },
           "function": "production_listeners_report_build_and_compatibility_separately"
         }
@@ -473,14 +473,14 @@
         {
           "source": {
             "path": "crates/tier-4-runtime/rpc/tests/corpus.rs",
-            "sha256": "eaf64fab565b8665a55e6ae8102dd5abff239085919937a16109b2e5d48cc42c"
+            "sha256": "53aba60660302305ec0f6b78ad122707b0b9b469ab8a5caf7608cb633c15d407"
           },
           "function": "websocket_disconnects_reclaim_subscriptions_and_allow_reconnect"
         },
         {
           "source": {
             "path": "crates/tier-4-runtime/rpc/tests/corpus.rs",
-            "sha256": "eaf64fab565b8665a55e6ae8102dd5abff239085919937a16109b2e5d48cc42c"
+            "sha256": "53aba60660302305ec0f6b78ad122707b0b9b469ab8a5caf7608cb633c15d407"
           },
           "function": "websocket_origins_match_go_and_deliver_events"
         }
@@ -709,7 +709,7 @@
       "comparison": "paired-frozen-module-closure",
       "receipt": {
         "path": "conformance/mainnet-rpc/module-closure/evidence/manifest.json",
-        "sha256": "605a216586ca3d6d5328f4b36853344816347d9fbc1b1fe01c36c8d85c6703e6"
+        "sha256": "63df8d8c652efa70f3af473140fa538bacd4120946bd34dceb8054c225a58a2b"
       },
       "documentation": {
         "path": "conformance/mainnet-rpc/module-closure/README.md",
@@ -717,7 +717,7 @@
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/module-closure/verify.py",
-        "sha256": "fe9b56cc862e56d735350dcf46c7ab0d671244d49e92d8895c41036c4e930568"
+        "sha256": "947107afec33a33daac15a64b666be369a89ce862e8f3ddf7b49fbd979189b66"
       },
       "transports": [
         "comet-jsonrpc",
@@ -739,13 +739,13 @@
       ],
       "provenance_limits": [
         "Fresh Go1.26.9 ledger-tagged standalone oracle; original Go1.26.6 baseline delta explicit",
-        "Archived signed helper/native source, binary/compiler receipts and committed paired responses; current test adds only checked lint annotations"
+        "Archived signed helper/native source, binary/compiler receipts and committed paired responses; current test adds checked lint annotations and an exact v10.5-to-current /app/version identity adapter"
       ],
       "runtime_regressions": [
         {
           "source": {
             "path": "crates/devnet-conformance/tests/populated_module_matrix.rs",
-            "sha256": "9f20b33644dbb177231d4311f536a64162551209b69e5174d16a857bb787d94f"
+            "sha256": "ee89c113cd9ceb1b439cb28e3be5bd68862760933c0e54ebc031a6f02687d599"
           },
           "function": "populated_module_matrix_matches_real_transports_and_proofs"
         },

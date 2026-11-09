@@ -8,13 +8,13 @@ is tracked in [#181](https://github.com/celestiaorg/celestia-rs/issues/181).
 | Surface | Value and meaning |
 | --- | --- |
 | ABCI `Info.data` (`/abci_info`) | `celestia-rs`, the implementation identity |
-| ABCI `Info.version`, `/app/version` | `10.5.0`, the explicit celestia-app API compatibility target |
+| ABCI `Info.version`, `/app/version` | `10.6.0`, the explicit celestia-app API compatibility target |
 | ABCI `Info.app_version`, node-info numeric `app` protocol | The application protocol from committed consensus parameters; independent of either software release |
 | `/status` and P2P `node_info.version` | `0.38.17-celestia-rs.<Rust package version>` |
 | Cosmos gRPC/REST `GetNodeInfo.application_version` | Rust name, application name, package version, git commit, build profile and Rust compiler/target |
 | CLI `version`, `version --long` | Rust software version; long output labels the application/core release target as `compatibility_target` |
 
-The current core compatibility target is celestia-core v0.42.3. The node-info
+The current core compatibility target is celestia-core v0.42.8. The node-info
 software string retains the Comet API compatibility prefix `0.38.*`, allowing
 clients that dispatch on that prefix (including CosmJS) to keep selecting the
 Comet 0.38 adapter. Its suffix explicitly identifies the Rust implementation
@@ -49,12 +49,13 @@ and software identity agree with the configured node. The genesis is the
 existing historical node fixture: this regression verifies runtime wiring and does not
 claim matched-state parity with the current Go release.
 
-The historical query corpus adapts only a successful `/app/version` whose
-recorded payload is empty, and only when Rust returns the declared target and
-all other ABCI fields match. The historical Comet corpus adapts only
+The historical query corpora adapt only a successful `/app/version` whose
+recorded payload is empty or the retained v10.5.0 target, and only when Rust
+returns the declared target and all other ABCI fields match. The historical
+Comet corpus adapts only
 `/abci_info.response.data` and an absent `version` from the unversioned Go
 recordings. It preserves app version, height, hashes and timeout fields.
-Current-release version responses require no empty-version adaptation.
+Current-release version responses require no historical-version adaptation.
 
 The older corpus still constructs node info from a recorded Go `/status`,
 drops Cosmos `application_version` in its comparison helper, and replaces

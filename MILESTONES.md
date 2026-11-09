@@ -1292,10 +1292,11 @@ test), then start that harness's count again.
   v10.4.0, v10.5.0 and v10.6.0, which establishes rollout heterogeneity but
   not a uniform network version. The exact tagged source and pinned oracle
   define new qualification. Stored v10.5.0 evidence and its byte-bound live
-  devnet generators remain historical; the
-  Rust compatibility strings remain at their audited v10.5.0 / v0.42.3
-  boundary until the other v10.6.0 and v0.42.8 deltas are ported and the full
-  candidate is requalified.
+  devnet generators remain historical. The Rust compatibility strings now
+  identify v10.6.0 / v0.42.8 after the
+  audited behavior deltas were ported. This identity update does not make
+  historical v10.5.0 evidence current or close the exact-candidate campaign,
+  replay, determinism, volume or observation-window gates.
 
 - [ ] **F1.11 Known Go nondeterminism decided.** *Policy recorded and
   mainnet reachability checked (`docs/security.md`, open Go items); the

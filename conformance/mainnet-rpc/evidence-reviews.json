@@ -120,7 +120,7 @@
         ]
       },
       "regressions": [
-        {"runner": "cargo", "package": "celestia-rs", "target": "runtime_metadata", "filter": "production_listeners_report_build_and_compatibility_separately", "source": "crates/tier-5-node/celestia-rs/tests/runtime_metadata.rs", "source_sha256": "6c2b3db5d11aeef2bd1c34423ae76316a7d939b86431ae15e246406cf5d1f9b8"}
+        {"runner": "cargo", "package": "celestia-rs", "target": "runtime_metadata", "filter": "production_listeners_report_build_and_compatibility_separately", "source": "crates/tier-5-node/celestia-rs/tests/runtime_metadata.rs", "source_sha256": "f9036202d41b98c2bc445c88ef3ca6bef0c1776c1fd13e1d105294dff239aca6"}
       ],
       "admission_blockers": [
         "missing-exact-dependency-commits",

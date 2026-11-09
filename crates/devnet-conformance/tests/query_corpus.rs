@@ -17,10 +17,10 @@ use prost::Message as _;
 /// Old unversioned Go recordings predate the explicit compatibility-release
 /// policy. Only their empty version payload is different; every other ABCI
 /// response field must still match. Fresh release captures compare directly.
-fn legacy_empty_version(case: &AbciCase, ours: &AbciResponse) -> bool {
+fn version_only_mismatch(case: &AbciCase, ours: &AbciResponse, recorded: &[u8]) -> bool {
     if case.path == "/app/version" {
         if case.response.code != 0
-            || !case.response.value.is_empty()
+            || hex::decode(&case.response.value).ok().as_deref() != Some(recorded)
             || ours.value != hex::encode(app::COMPATIBILITY_VERSION)
         {
             return false;
@@ -59,7 +59,7 @@ fn legacy_empty_version(case: &AbciCase, ours: &AbciResponse) -> bool {
         return false;
     };
     if expected_inner.code != 0
-        || !expected_inner.value.is_empty()
+        || expected_inner.value != recorded
         || actual_inner.value != app::COMPATIBILITY_VERSION.as_bytes()
     {
         return false;
@@ -71,6 +71,14 @@ fn legacy_empty_version(case: &AbciCase, ours: &AbciResponse) -> bool {
     let mut expected = case.response.clone();
     expected.value.clone_from(&ours.value);
     expected == *ours
+}
+
+fn legacy_empty_version(case: &AbciCase, ours: &AbciResponse) -> bool {
+    version_only_mismatch(case, ours, b"")
+}
+
+fn historical_v105_version(case: &AbciCase, ours: &AbciResponse) -> bool {
+    version_only_mismatch(case, ours, b"10.5.0")
 }
 
 #[test]
@@ -145,7 +153,65 @@ fn legacy_version_adapter_is_narrow() {
     assert!(!legacy_empty_rest_version(&other_route, 200, &current_rest));
 }
 
+#[test]
+fn historical_v105_version_adapter_is_narrow() {
+    let case = AbciCase {
+        path: "/app/version".into(),
+        data: String::new(),
+        height: 0,
+        prove: false,
+        missing_response: false,
+        response: AbciResponse {
+            code: 0,
+            value: hex::encode("10.5.0"),
+            height: 89,
+            ..AbciResponse::default()
+        },
+    };
+    let ours = AbciResponse {
+        value: hex::encode(app::COMPATIBILITY_VERSION),
+        ..case.response.clone()
+    };
+    assert!(historical_v105_version(&case, &ours));
+
+    let mut changed = ours.clone();
+    changed.height += 1;
+    assert!(!historical_v105_version(&case, &changed));
+
+    let rest = RestCase {
+        method: "/cosmos.base.tendermint.v1beta1.Service/ABCIQuery".into(),
+        url: "/cosmos/base/tendermint/v1beta1/abci_query?path=%2Fapp%2Fversion".into(),
+        height: None,
+        status: 200,
+        body: serde_json::json!({
+            "code": 0,
+            "value": app::comet::to_b64(b"10.5.0"),
+        }),
+    };
+    let mut current = rest.body.clone();
+    current["value"] =
+        serde_json::Value::String(app::comet::to_b64(app::COMPATIBILITY_VERSION.as_bytes()));
+    assert!(historical_v105_rest_version(&rest, 200, &current));
+
+    let mut changed = current;
+    changed["code"] = serde_json::Value::from(1);
+    assert!(!historical_v105_rest_version(&rest, 200, &changed));
+}
+
 fn legacy_empty_rest_version(case: &RestCase, status: u16, ours: &serde_json::Value) -> bool {
+    rest_version_only_mismatch(case, status, ours, None)
+}
+
+fn historical_v105_rest_version(case: &RestCase, status: u16, ours: &serde_json::Value) -> bool {
+    rest_version_only_mismatch(case, status, ours, Some(b"10.5.0"))
+}
+
+fn rest_version_only_mismatch(
+    case: &RestCase,
+    status: u16,
+    ours: &serde_json::Value,
+    recorded: Option<&[u8]>,
+) -> bool {
     if case.method != "/cosmos.base.tendermint.v1beta1.Service/ABCIQuery"
         || case.status != 200
         || status != 200
@@ -160,9 +226,12 @@ fn legacy_empty_rest_version(case: &RestCase, status: u16, ours: &serde_json::Va
             key == "path" && value.replace("%2F", "/").replace("%2f", "/") == "/app/version"
         })
     });
+    let recorded_value = recorded.map_or(serde_json::Value::Null, |value| {
+        serde_json::Value::String(app::comet::to_b64(value))
+    });
     if !version_path
         || case.body["code"] != 0
-        || !case.body["value"].is_null()
+        || case.body["value"] != recorded_value
         || ours["value"]
             != serde_json::Value::String(app::comet::to_b64(app::COMPATIBILITY_VERSION.as_bytes()))
     {
@@ -311,26 +380,36 @@ const SCENARIOS: &[&str] = &[
     "zkism-forwarding",
 ];
 
-/// Fresh release answers must not inherit the legacy empty-version adapter or
-/// stale Simulate gas exception. The shared query comparator's explicit list
-/// ordering/build-identity/diagnostic normalizations still apply.
+/// The retained v10.5.0 corpus is historical after the v10.6.0 retarget. Only
+/// its explicit version response is adapted; stale Simulate gas and every
+/// other response still compare directly.
 #[test]
 fn corpus_v105_authz_feegrant() -> anyhow::Result<()> {
     let abci = check_abci("v105-authz-feegrant")?;
     assert!(abci.compared > 1000, "only {} ABCI cases", abci.compared);
+    let abci_mismatches = abci
+        .mismatches
+        .iter()
+        .filter(|(case, ours)| !historical_v105_version(case, ours))
+        .collect::<Vec<_>>();
     assert!(
-        abci.mismatches.is_empty(),
-        "{} fresh ABCI mismatches: {:#?}",
-        abci.mismatches.len(),
-        abci.mismatches.iter().take(8).collect::<Vec<_>>()
+        abci_mismatches.is_empty(),
+        "{} retained ABCI mismatches: {:#?}",
+        abci_mismatches.len(),
+        abci_mismatches.iter().take(8).collect::<Vec<_>>()
     );
     let rest = check_rest("v105-authz-feegrant")?;
     assert!(rest.compared > 500, "only {} REST cases", rest.compared);
+    let rest_mismatches = rest
+        .mismatches
+        .iter()
+        .filter(|(case, status, body)| !historical_v105_rest_version(case, *status, body))
+        .collect::<Vec<_>>();
     assert!(
-        rest.mismatches.is_empty(),
-        "{} fresh REST mismatches: {:#?}",
-        rest.mismatches.len(),
-        rest.mismatches.iter().take(8).collect::<Vec<_>>()
+        rest_mismatches.is_empty(),
+        "{} retained REST mismatches: {:#?}",
+        rest_mismatches.len(),
+        rest_mismatches.iter().take(8).collect::<Vec<_>>()
     );
     assert_eq!(abci.skipped, 16, "review changed consensus exclusions");
     assert_eq!(rest.skipped, 11, "review changed consensus exclusions");
