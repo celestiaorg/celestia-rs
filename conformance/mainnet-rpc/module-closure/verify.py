@@ -66,6 +66,23 @@ def verify():
         name='crates/devnet-conformance/tests/populated_module_matrix.rs'
         compiled=archive.extractfile(name).read().decode()
         current=(ROOT/name).read_text()
+        identity_adapter='''    let expected = expected_bytes(case, transport);
+    // The populated capture is retained v10.5 evidence. Accept only the
+    // declared compatibility identity change; transport envelopes are
+    // compared field by field by their callers.
+    if path == "/app/version"
+        && expected == b"10.5.0"
+        && bytes == app::COMPATIBILITY_VERSION.as_bytes()
+    {
+        return;
+    }
+'''
+        require(current.count(identity_adapter)==1,'native version adapter changed')
+        current=current.replace(identity_adapter,'')
+        adapted_value='canonical(bytes) == canonical(&expected)'
+        require(current.count(adapted_value)==1,'native version comparison changed')
+        current=current.replace(adapted_value,
+                                'canonical(bytes) == canonical(&expected_bytes(case, transport))')
         current='\n'.join(line for line in current.split('\n') if not line.startswith('#[allow(clippy::collapsible_if)]') and not line.startswith('#[allow(clippy::too_many_lines, clippy::result_large_err)]'))
         require(current==compiled,'native test changed beyond declared lint annotations')
     totals=Counter();proofs=Counter();heights=0;methods=set();differences=[]

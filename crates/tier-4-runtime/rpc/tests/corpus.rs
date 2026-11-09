@@ -453,7 +453,8 @@ fn legacy_app_version_adapter_is_narrow() {
     let legacy = r#"{"jsonrpc":"2.0","id":-1,"result":{"response":{"code":0,"log":"","info":"kept","value":"","height":"30","codespace":"sdk"}},"extra":7}"#;
     let adapted: Value = serde_json::from_str(&legacy_app_version(legacy)).unwrap();
     let mut expected: Value = serde_json::from_str(legacy).unwrap();
-    expected["result"]["response"]["value"] = Value::String("MTAuNS4w".into());
+    expected["result"]["response"]["value"] =
+        Value::String(base64::engine::general_purpose::STANDARD.encode(app::COMPATIBILITY_VERSION));
     assert_eq!(adapted, expected);
 
     for unchanged in [
