@@ -3387,6 +3387,7 @@ dependencies = [
  "grpc-transport",
  "h2",
  "hex",
+ "http-body",
  "hyper",
  "hyper-util",
  "kvdb",
