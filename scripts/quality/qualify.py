@@ -7,10 +7,12 @@ Example: python3 scripts/quality/qualify.py --out target/qualification/tests \
 """
 
 import argparse
+import binascii
 import hashlib
 import json
 from pathlib import Path
 import platform
+import struct
 import subprocess
 import sys
 import time
@@ -41,6 +43,39 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def protobuf_go_detrand(path):
+    """Classify protobuf-go's binary-seeded error prefix for this executable.
+
+    google.golang.org/protobuf/internal/detrand hashes the executable size and
+    eight 64-byte samples with FNV-1. Its low bit selects the ordinary or
+    nonbreaking space after ``proto:``. The choice can become consensus-visible
+    when governance persists a dynamic-message decoding error.
+    """
+    size = path.stat().st_size
+    offset_basis = 14695981039346656037
+    prime = 1099511628211
+    value = offset_basis
+    with path.open("rb") as stream:
+        chunks = [struct.pack("<Q", size)]
+        for index in range(8):
+            stream.seek(index * size // 8)
+            sample = stream.read(64)
+            # Go returns seed zero if ReadAt cannot fill a complete sample.
+            if len(sample) != 64:
+                value = 0
+                break
+            chunks.append(sample)
+        else:
+            for byte in b"".join(chunks):
+                value = value * prime & ((1 << 64) - 1)
+                value ^= byte
+    return {
+        "seed_hex": f"0x{value:016x}",
+        "separator": "nonbreaking-space" if value & 1 else "space",
+        "separator_utf8_hex": binascii.hexlify("\u00a0".encode() if value & 1 else b" ").decode(),
+    }
+
+
 def tool(*command):
     try:
         result = subprocess.run(command, text=True, capture_output=True, check=False)
@@ -60,6 +95,9 @@ def qualify(root, out, command, binaries):
     # Never overwrite evidence from an earlier run or turn a rerun into its pass.
     out.mkdir(parents=True, exist_ok=False)
     inputs = {str(path.resolve()): digest(path) for path in binaries}
+    protobuf_prefixes = {
+        str(path.resolve()): protobuf_go_detrand(path) for path in binaries
+    }
     evidence = {
         "schema_version": 1,
         "source": before,
@@ -70,6 +108,7 @@ def qualify(root, out, command, binaries):
         "toolchains": {"rustc": tool("rustc", "-Vv"), "cargo": tool("cargo", "-V"),
                        "go": tool("go", "version")},
         "binary_sha256": inputs,
+        "protobuf_go_detrand": protobuf_prefixes,
         "status": "running",
         "scope": "one check only; remaining F1 gates require separate evidence",
     }
