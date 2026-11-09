@@ -145,7 +145,7 @@
       },
       "documentation": {
         "path": "docs/rpc-version-identity.md",
-        "sha256": "824b429c60e062416f0ccb9e54ad1f969e68dead27e2b16e04cfbf8435e1ffa7"
+        "sha256": "3c9554d3ce2921a1e4d2e15209d5dd278ee2b3efec8190378afb71422fdd807d"
       },
       "verifier": null,
       "transports": [
@@ -166,7 +166,7 @@
         {
           "source": {
             "path": "crates/tier-5-node/celestia-rs/tests/runtime_metadata.rs",
-            "sha256": "6c2b3db5d11aeef2bd1c34423ae76316a7d939b86431ae15e246406cf5d1f9b8"
+            "sha256": "f9036202d41b98c2bc445c88ef3ca6bef0c1776c1fd13e1d105294dff239aca6"
           },
           "function": "production_listeners_report_build_and_compatibility_separately"
         }
