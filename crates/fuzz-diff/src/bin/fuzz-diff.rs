@@ -650,6 +650,9 @@ fn main() -> anyhow::Result<()> {
             "hl_rejection_complete_height": st.hl_rejection_complete_height,
         });
         deliver_stats["hl_recovery_id_required"] = st.hl_recovery_id_required.is_some().into();
+        deliver_stats["gov_results"] = serde_json::to_value(&st.gov_results)?;
+        deliver_stats["script"] = serde_json::to_value(&st.script)?;
+        deliver_stats["script_incomplete"] = serde_json::to_value(st.script_incomplete)?;
         deliver_stats["hl_recovery_id_completed"] = st.hl_recovery_id_completed.into();
         deliver_stats["hl_recovery_id_failures"] =
             serde_json::to_value(&st.hl_recovery_id_failures)?;

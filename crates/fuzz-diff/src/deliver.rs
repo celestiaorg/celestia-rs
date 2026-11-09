@@ -2135,6 +2135,16 @@ impl Stats {
                 "incomplete DELIVER_IBC_ACK_FAILURE_REQUIRE coverage: no attributed code-0 MsgChannelUpgradeAck FAILURE response"
             );
         }
+        if self.ibc_required.contains("legacy_upgrade_fixture") {
+            anyhow::ensure!(
+                self.ibc
+                    .get("legacy_upgrade_fixture_trusted_height")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0,
+                "incomplete DELIVER_IBC_LEGACY_UPGRADE_FIXTURE coverage: trusted consensus height 43 did not finalize"
+            );
+        }
         if self.ibc_required.contains("close_init_failure") {
             anyhow::ensure!(
                 self.ibc.get("close_init_failure").copied().unwrap_or(0) > 0,
@@ -2518,6 +2528,42 @@ impl Stats {
             })
     }
 
+    fn hl_registry_setup(&self) -> bool {
+        self.hl_registry_required.is_some()
+            && ["merkle-root-ism", "validator-announcement"]
+                .iter()
+                .any(|handler| self.hl_registry.get(*handler).copied().unwrap_or(0) == 0)
+    }
+
+    fn hl_verification_setup(&self) -> bool {
+        self.hl_verification
+            .as_deref()
+            .is_some_and(|mode| mode != "noop")
+            && ["collateral", "synthetic"]
+                .iter()
+                .any(|kind| self.hl_verified.get(*kind).copied().unwrap_or(0) == 0)
+    }
+
+    fn ibc_pfm_setup(&self) -> bool {
+        (self.ibc_required.contains("pfm_lifecycle")
+            || self.ibc_required.contains("pfm_timeout_lifecycle"))
+            && self.ibc.get("pfm_original_ack").copied().unwrap_or(0) == 0
+            || (self.ibc_required.contains("pfm_error_lifecycle")
+                || self.ibc_required.contains("pfm_exhaust_lifecycle"))
+                && self.ibc.get("pfm_original_error_ack").copied().unwrap_or(0) == 0
+    }
+
+    fn ibc_recover_setup(&self) -> bool {
+        self.ibc_required.contains("recover_client")
+            && (self.ibc.get("recover_client").copied().unwrap_or(0) == 0
+                || self
+                    .ibc
+                    .get("recovered_client_update")
+                    .copied()
+                    .unwrap_or(0)
+                    == 0)
+    }
+
     /// Require both signed incoming-transfer paths when a multisig ISM was
     /// explicitly selected. Matching rejections alone are incomplete evidence.
     pub fn require_hl_coverage(&self) -> anyhow::Result<()> {
@@ -2569,6 +2615,54 @@ impl Stats {
         }
         Ok(())
     }
+}
+
+fn legacy_upgrade_fixture_block_index(
+    generated: usize,
+    paused: &mut usize,
+    enabled: bool,
+    ready: bool,
+    script_at: usize,
+) -> (usize, bool) {
+    let logical = generated.saturating_sub(*paused);
+    let setup = enabled && !ready && logical >= script_at;
+    *paused += usize::from(setup);
+    (logical, setup)
+}
+
+fn script_vote_proposal_id(
+    legacy_upgrade_fixture: bool,
+    pinned: Option<u64>,
+    proposals: &[u64],
+) -> anyhow::Result<u64> {
+    if legacy_upgrade_fixture {
+        pinned.context("legacy upgrade fixture vote has no finalized submission proposal ID")
+    } else {
+        Ok(proposals.iter().copied().max().unwrap_or(1))
+    }
+}
+
+fn finalized_script_proposal_id(
+    expected_tx: &[u8],
+    tx: &[u8],
+    result: &abci::ExecTxResult,
+) -> anyhow::Result<Option<u64>> {
+    if tx != expected_tx || result.code != 0 {
+        return Ok(None);
+    }
+    let responses =
+        celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(result.data.as_slice())?;
+    let response = responses
+        .msg_responses
+        .into_iter()
+        .find(|response| response.type_url == "/cosmos.gov.v1.MsgSubmitProposalResponse")
+        .context("legacy upgrade fixture submission has no typed proposal response")?;
+    Ok(Some(
+        celestia_proto::cosmos::gov::v1::MsgSubmitProposalResponse::decode(
+            response.value.as_slice(),
+        )?
+        .proposal_id,
+    ))
 }
 
 fn gov_setup_ready(stats: &Stats, messages: &[Any]) -> bool {
@@ -5670,6 +5764,9 @@ pub fn run(
     if ibc_close_init_failure_required {
         stats.ibc_required.insert("close_init_failure");
     }
+    if ibc_legacy_upgrade_fixture {
+        stats.ibc_required.insert("legacy_upgrade_fixture");
+    }
     if ibc_recover_client {
         stats.ibc_required.insert("recover_client");
     }
@@ -6034,6 +6131,8 @@ pub fn run(
         Some(path) => read_script(&std::fs::read_to_string(path)?, gn.accts.len())?,
         None => std::collections::VecDeque::new(),
     };
+    let mut legacy_upgrade_fixture_submit_tx = None;
+    let mut legacy_upgrade_fixture_proposal_id = None;
     let transfer_authz_plan = transfer_authz_required
         .then(|| transfer_authz_plan(&script, &stats.script_required))
         .transpose()?;
@@ -6134,10 +6233,46 @@ pub fn run(
     // The txs a comet mempool would still hold: accepted by Go's `CheckTx`,
     // not in a block, not removed by a recheck (oldest first, capped).
     let mut pool: std::collections::VecDeque<Vec<u8>> = std::collections::VecDeque::new();
+    let mut legacy_upgrade_fixture_paused_blocks = 0usize;
     for b in 0..blocks {
         height += 1;
         gn.height = height;
         let script_blocks_at_start = script.len();
+        let legacy_upgrade_fixture_anchor_ready = ibc
+            .as_ref()
+            .map_or(&stats.ibc, |driver| &driver.stats)
+            .get("legacy_upgrade_fixture_trusted_height")
+            .copied()
+            .unwrap_or(0)
+            > 0;
+        let legacy_upgrade_fixture_intermediate_ready = ibc
+            .as_ref()
+            .map_or(&stats.ibc, |driver| &driver.stats)
+            .get("legacy_upgrade_fixture_intermediate_height")
+            .copied()
+            .unwrap_or(0)
+            > 0;
+        let legacy_upgrade_fixture_ready = ibc
+            .as_ref()
+            .is_some_and(crate::ibcmock::Driver::legacy_upgrade_fixture_ready);
+        let legacy_upgrade_fixture_state_ready = ibc
+            .as_ref()
+            .is_some_and(crate::ibcmock::Driver::legacy_upgrade_fixture_state_ready);
+        let (fixture_block, legacy_upgrade_fixture_setup) = legacy_upgrade_fixture_block_index(
+            b,
+            &mut legacy_upgrade_fixture_paused_blocks,
+            ibc_legacy_upgrade_fixture,
+            legacy_upgrade_fixture_ready,
+            script_at,
+        );
+        if ibc_legacy_upgrade_fixture && fixture_block >= script_at {
+            let state = ibc
+                .as_ref()
+                .map(crate::ibcmock::Driver::legacy_upgrade_fixture_state);
+            stats.script.push(format!(
+                "h={height} legacy fixture gate intermediate={legacy_upgrade_fixture_intermediate_ready} anchor={legacy_upgrade_fixture_anchor_ready} state={state:?} ready={legacy_upgrade_fixture_ready} setup={legacy_upgrade_fixture_setup}"
+            ));
+        }
         let last_committed_nanos = u64::try_from(time.seconds)
             .unwrap_or_default()
             .saturating_mul(1_000_000_000)
@@ -6149,7 +6284,16 @@ pub fn run(
         } else {
             time.seconds += 5 + gn.m.rng.below(3) as i64;
         }
-        if time_jump_at == Some(b) {
+        if legacy_upgrade_fixture_state_ready {
+            // Keep this opt-in historical fixture after the retained header
+            // time. The height-43 trust anchor can finalize through either the
+            // ordinary IBC step or the held setup block, so this follows the
+            // logical fixture clock rather than only the setup branch.
+            time.seconds = time
+                .seconds
+                .max(crate::ibcmock::LEGACY_UPGRADE_FIXTURE_HEADER_TIME);
+        }
+        if time_jump_at == Some(fixture_block) && !legacy_upgrade_fixture_setup {
             time.seconds = time
                 .seconds
                 .checked_add(time_jump_seconds)
@@ -6175,12 +6319,30 @@ pub fn run(
         let hl_rejection_setup = stats.hl_rejection_setup();
         let hl_recovery_id_setup =
             hl_recovery_id_required && stats.hl_recovery_id_completed == 0 && hl_seq.step == 2;
-        let hl_setup = hl_rejection_setup || hl_preupgrade || hl_recovery_id_setup;
+        let hl_verification_setup = stats.hl_verification_setup();
+        // The governance fixture permits signed paths after the binary switch.
+        // Reserve their signer once v10 is active and suppress only background
+        // traffic through the exact failure receipt. Keeping this exception out
+        // of `hl_setup` preserves the upgrade/script clock.
+        let hl_postupgrade_setup = allow_postupgrade && app_version >= 10 && hl_verification_setup;
+        let fixture_background_setup =
+            allow_postupgrade && app_version >= 10 && stats.gov_failure_matches == 0;
+        let hl_account_setup = hl_preupgrade || hl_postupgrade_setup;
+        // Explicit registry and signed-verification requirements cover their
+        // complete controlled sequences. Keep unrelated generated traffic from
+        // changing mailbox, token or account state before the exact
+        // transactions finalize.
+        let hl_setup = hl_rejection_setup
+            || hl_preupgrade
+            || hl_recovery_id_setup
+            || stats.hl_registry_setup()
+            || (!allow_postupgrade && hl_verification_setup);
+        let hl_background_setup = hl_setup || hl_postupgrade_setup || fixture_background_setup;
         stats.hl_rejection_blocks += u64::from(hl_rejection_setup);
         stats.hl_preupgrade_blocks += u64::from(hl_preupgrade);
         let mut hl_pair = None;
         let mut hl_recovery_id_block = None;
-        let mut scripted = false;
+        let mut scripted = legacy_upgrade_fixture_setup;
         let phase = upg.phase(height, app_version);
         let block_av = app_version;
         if ibc_recover_client
@@ -6201,30 +6363,31 @@ pub fn run(
                 },
             ));
         }
-        let gov_setup = !hl_setup && gov_setup_ready(&stats, &gn.gov_msgs);
+        let gov_setup = !hl_background_setup && gov_setup_ready(&stats, &gn.gov_msgs);
         scripted |= gov_setup;
         // A signed Hyperlane sequence needs its dedicated account's committed
         // sequence. Before both incoming paths succeed at v9, keep unrelated
         // mempool traffic off that account and defer the held upgrade signal.
-        gn.reserved_account = hl_preupgrade.then_some(HL_ACCT);
+        gn.reserved_account = hl_account_setup.then_some(HL_ACCT);
         // The blocks around the upgrade height also take every generated
         // tx unfiltered (the first v10 block's `CheckTx` runs on the fresh
         // app's empty check state and rejects most of them).
-        let force_raw =
-            ((malformed_multisig_required || p256_required || pubkey_rejection_required) && b > 0)
-                || (upg.on
-                    && upg
-                        .upgrade_height
-                        .is_some_and(|h| (h..=h + 2).contains(&height)));
+        let force_raw = legacy_upgrade_fixture_setup
+            || ((malformed_multisig_required || p256_required || pubkey_rejection_required)
+                && b > 0)
+            || (upg.on
+                && upg
+                    .upgrade_height
+                    .is_some_and(|h| (h..=h + 2).contains(&height)));
         let upgrade_block = upg.block_index(b, hl_setup, bootstrap);
-        if upg.on && !bootstrap && !hl_setup {
+        if upg.on && !bootstrap && !hl_setup && !legacy_upgrade_fixture_setup {
             txs = upg.txs(&mut gn, upgrade_block, height, &hl_seq.token, hl_preupgrade);
         }
         if bootstrap {
             bootstrap = false;
             if let Some(v) = gn.validators.first().cloned() {
                 for i in 0..gn.accts.len() {
-                    if hl_preupgrade && i == HL_ACCT {
+                    if hl_account_setup && i == HL_ACCT {
                         continue;
                     }
                     if (zero_threshold_multisig_required || p256_required)
@@ -6331,9 +6494,10 @@ pub fn run(
             .context("signing zero-slash recovery transaction")?;
             zero_slash_recovery = Some((tx.clone(), recipient, initial));
             txs.push(tx);
-        } else if !hl_setup
+        } else if !legacy_upgrade_fixture_setup
+            && !hl_setup
             && !gov_setup
-            && b >= script_at
+            && fixture_block >= script_at
             && let Some(block) = script.pop_front()
         {
             scripted = true;
@@ -6355,17 +6519,77 @@ pub fn run(
             }
             let required_count = block.len();
             for (i, mut msg, gas) in block {
-                // `vote <account>`: a yes vote on the latest proposal.
+                // `vote <account>`: a yes vote on the fixture's proposal, or
+                // the latest proposal for ordinary scripts.
                 if msg.type_url == "vote" {
+                    let proposal_id = script_vote_proposal_id(
+                        ibc_legacy_upgrade_fixture,
+                        legacy_upgrade_fixture_proposal_id,
+                        &gn.proposals,
+                    )
+                    .with_context(|| {
+                        let outcome = stats.script_outcomes.last().map(|(_, result)| {
+                            format!(
+                                "code={} codespace={} log={}",
+                                result.code,
+                                result.codespace,
+                                gostr::to_go_bytes(&result.log).escape_ascii()
+                            )
+                        });
+                        let trace = stats
+                            .script
+                            .iter()
+                            .rev()
+                            .take(8)
+                            .rev()
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        format!("last scripted outcome: {outcome:?}; trace: {trace:?}")
+                    })?;
+                    if ibc_legacy_upgrade_fixture {
+                        stats.script.push(format!(
+                            "h={height} legacy fixture vote targets proposal {proposal_id}"
+                        ));
+                    }
                     msg = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
-                        proposal_id: gn.proposals.iter().copied().max().unwrap_or(1),
+                        proposal_id,
                         voter: gn.accts[i].acc.clone(),
                         option: 1,
                         metadata: String::new(),
                     });
                 }
+                let is_legacy_fixture_submission = ibc_legacy_upgrade_fixture
+                    && msg.type_url == "/cosmos.gov.v1.MsgSubmitProposal";
+                if is_legacy_fixture_submission {
+                    let mut proposal = celestia_proto::cosmos::gov::v1::MsgSubmitProposal::decode(
+                        msg.value.as_slice(),
+                    )?;
+                    let execution_signer = proposal
+                        .messages
+                        .first()
+                        .filter(|message| message.type_url == "/ibc.core.client.v1.MsgUpdateClient")
+                        .and_then(|message| {
+                            celestia_proto::ibc::core::client::v1::MsgUpdateClient::decode(
+                                message.value.as_slice(),
+                            )
+                            .ok()
+                        })
+                        .map(|message| message.signer)
+                        .filter(|signer| !signer.is_empty())
+                        .context("legacy upgrade fixture governance execution signer")?;
+                    proposal.messages = ibc
+                        .as_mut()
+                        .and_then(|driver| {
+                            driver.legacy_upgrade_fixture_messages(time.seconds, &execution_signer)
+                        })
+                        .context("legacy upgrade fixture dynamic proposal prerequisites")?;
+                    msg = Any::pack(&proposal);
+                }
                 if let Some(t) = sign_simple(&gn, i, vec![msg], gas) {
                     gn.accts[i].seq += 1;
+                    if is_legacy_fixture_submission {
+                        legacy_upgrade_fixture_submit_tx = Some(t.clone());
+                    }
                     txs.push(t);
                 }
             }
@@ -6375,8 +6599,7 @@ pub fn run(
         } else {
             // IBC uses the dedicated relayer, not the Hyperlane account. Keep
             // it active so packets can be in flight across the switch.
-            if !hl_setup
-                && !gov_setup
+            if ((!hl_setup && !gov_setup) || legacy_upgrade_fixture_setup)
                 && let Some(d) = ibc.as_mut()
             {
                 let ibc_relayer = d
@@ -6389,6 +6612,7 @@ pub fn run(
                     .map(|a| (a.acc.clone(), a.addr.clone()))
                     .collect();
                 let mut c = crate::ibcmock::StepCtx {
+                    app_version,
                     now: time.seconds,
                     now_nanos: u64::try_from(time.seconds)
                         .unwrap_or_default()
@@ -6399,7 +6623,36 @@ pub fn run(
                     signer: gn.accts[ibc_relayer].acc.clone(),
                     accounts,
                 };
-                if let Some(retry) = d.upgrade_timeout_retry_tx().map(<[u8]>::to_vec) {
+                if legacy_upgrade_fixture_setup
+                    && legacy_upgrade_fixture_state_ready
+                    && !legacy_upgrade_fixture_intermediate_ready
+                {
+                    if let Some(update) = d.legacy_upgrade_fixture_intermediate_update(
+                        app_version,
+                        &gn.accts[ibc_relayer].acc,
+                    ) && let Some(t) = sign_simple(&gn, ibc_relayer, vec![update], 8_000_000)
+                    {
+                        gn.accts[ibc_relayer].seq += 1;
+                        txs.push(t);
+                    }
+                } else if legacy_upgrade_fixture_setup
+                    && legacy_upgrade_fixture_state_ready
+                    && !legacy_upgrade_fixture_anchor_ready
+                {
+                    // Reserve the held logical block for the exact historical
+                    // trust anchor. The ordinary IBC state machine may not
+                    // reach its steady phase until the bounded run is nearly
+                    // over, leaving no blocks for the dependent proposal.
+                    if let Some(update) = d.legacy_upgrade_fixture_update(
+                        app_version,
+                        time.seconds,
+                        &gn.accts[ibc_relayer].acc,
+                    ) && let Some(t) = sign_simple(&gn, ibc_relayer, vec![update], 8_000_000)
+                    {
+                        gn.accts[ibc_relayer].seq += 1;
+                        txs.push(t);
+                    }
+                } else if let Some(retry) = d.upgrade_timeout_retry_tx().map(<[u8]>::to_vec) {
                     txs.push(retry);
                 } else {
                     for msgs in d.step(&mut c) {
@@ -6417,16 +6670,22 @@ pub fn run(
                     gn.dict.string("source_channel", id.as_bytes());
                 }
             }
-            if !hl_setup && !gov_setup && sweep_on && !sweeps.is_empty() && !gn.m.rng.one_in(3) {
+            if !hl_background_setup
+                && !gov_setup
+                && sweep_on
+                && !sweeps.is_empty()
+                && !gn.m.rng.one_in(3)
+            {
                 let (i, msgs, used) = sweeps[gn.m.rng.below(sweeps.len())].clone();
-                if !hl_preupgrade || i != HL_ACCT {
+                if !hl_account_setup || i != HL_ACCT {
                     for t in sweep_txs(&mut gn, i, &msgs, used) {
                         stats.swept += 1;
                         txs.push(t);
                     }
                 }
             }
-            if !gov_setup && hl_seq.on && hl_seq.pending.is_none() {
+            if !legacy_upgrade_fixture_setup && !gov_setup && hl_seq.on && hl_seq.pending.is_none()
+            {
                 let msgs = hl_seq.msgs(&gn);
                 if hl_recovery_id_setup {
                     let mut cases = Vec::new();
@@ -6532,7 +6791,7 @@ pub fn run(
                     }
                 }
             }
-            if !hl_setup && govpass && !govpass_delegated {
+            if !hl_background_setup && govpass && !govpass_delegated {
                 // Stake on every bonded validator (only bonded stake is
                 // tallied; one may be jailed for downtime).
                 let vals = bonded_validators(&mut rust);
@@ -6541,7 +6800,7 @@ pub fn run(
                     if !governed_fixture_required {
                         gn.gov_msgs = authority_msgs(&mut rust, &gn.accts[0].acc);
                     }
-                    for i in (0..ACCOUNTS - 1).filter(|&i| !hl_preupgrade || i != HL_ACCT) {
+                    for i in (0..ACCOUNTS - 1).filter(|&i| !hl_account_setup || i != HL_ACCT) {
                         let msg =
                             Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
                                 delegator_address: gn.accts[i].acc.clone(),
@@ -6557,7 +6816,7 @@ pub fn run(
                         }
                     }
                 }
-            } else if !hl_setup && gov_params_rejection_required && govpass_delegated {
+            } else if !hl_background_setup && gov_params_rejection_required && govpass_delegated {
                 if gov_params_rejection_fixture.is_none() {
                     gov_params_rejection_fixture = Some(gov_params::Fixture::new(&gn, &mut rust)?);
                 }
@@ -6567,7 +6826,7 @@ pub fn run(
                         .context("governance Params rejection fixture disappeared")?
                         .txs(&mut gn)?,
                 );
-            } else if !hl_setup && gov_handler_rejection_required && govpass_delegated {
+            } else if !hl_background_setup && gov_handler_rejection_required && govpass_delegated {
                 if gov_handler_rejection_fixture.is_none() {
                     gov_handler_rejection_fixture = Some(gov_errors::Fixture::new(&gn, &mut rust)?);
                 }
@@ -6577,7 +6836,7 @@ pub fn run(
                         .context("governance handler rejection fixture disappeared")?
                         .txs(&mut gn)?,
                 );
-            } else if !hl_setup && governed_upgrade_required && govpass_delegated {
+            } else if !hl_background_setup && governed_upgrade_required && govpass_delegated {
                 let fixture = upgrade_plan_fixture
                     .as_mut()
                     .context("upgrade-plan fixture was not initialized")?;
@@ -6626,7 +6885,7 @@ pub fn run(
                         }
                     }
                 }
-            } else if !hl_setup && govpass && (gov_setup || b % 4 == 0) {
+            } else if !hl_background_setup && govpass && (gov_setup || b % 4 == 0) {
                 // Each authority message in turn, in a proposal of its own
                 // (the deposits and votes below pass it).
                 let msg = if gov_setup {
@@ -6718,9 +6977,11 @@ pub fn run(
                 }
             }
             let k = if evidence_requirement.is_some()
-                || hl_setup
+                || hl_background_setup
                 || gov_setup
                 || governed_fixture_required
+                || stats.ibc_pfm_setup()
+                || stats.ibc_recover_setup()
             {
                 0
             } else {
@@ -7491,6 +7752,20 @@ pub fn run(
             }
         }
         for (t, res) in fb.txs.iter().zip(&g.tx_results) {
+            if let Some(expected) = legacy_upgrade_fixture_submit_tx.as_deref()
+                && let Some(proposal_id) = finalized_script_proposal_id(expected, t, res)?
+            {
+                if let Some(existing) = legacy_upgrade_fixture_proposal_id {
+                    anyhow::ensure!(
+                        existing == proposal_id,
+                        "legacy upgrade fixture proposal ID changed from {existing} to {proposal_id}"
+                    );
+                }
+                legacy_upgrade_fixture_proposal_id = Some(proposal_id);
+                stats.script.push(format!(
+                    "h={height} legacy fixture submission pinned proposal {proposal_id}"
+                ));
+            }
             if let Some(fixture) = upgrade_plan_fixture.as_mut() {
                 fixture.observe_finalized(app_version, t, res)?;
             }
@@ -15647,6 +15922,57 @@ mod tests {
     }
 
     #[test]
+    fn registry_requirement_reserves_setup_until_every_exact_path_lands() {
+        let mut stats = Stats {
+            hl_registry_required: Some(()),
+            ..Stats::default()
+        };
+        assert!(stats.hl_registry_setup());
+        stats.hl_registry.insert("merkle-root-ism".into(), 1);
+        stats.hl_registry.insert("validator-announcement".into(), 1);
+        assert!(!stats.hl_registry_setup());
+    }
+
+    #[test]
+    fn signed_verification_reserves_setup_until_both_exact_paths_land() {
+        let mut stats = Stats {
+            hl_verification: Some("message-id".into()),
+            ..Stats::default()
+        };
+        assert!(stats.hl_verification_setup());
+        stats.hl_verified.insert("collateral".into(), 1);
+        assert!(stats.hl_verification_setup());
+        stats.hl_verified.insert("synthetic".into(), 1);
+        assert!(!stats.hl_verification_setup());
+    }
+
+    #[test]
+    fn pfm_requirement_reserves_setup_until_the_exact_original_ack_lands() {
+        let mut success = Stats::default();
+        success.ibc_required.insert("pfm_timeout_lifecycle");
+        assert!(success.ibc_pfm_setup());
+        success.ibc.insert("pfm_original_ack", 1);
+        assert!(!success.ibc_pfm_setup());
+
+        let mut error = Stats::default();
+        error.ibc_required.insert("pfm_exhaust_lifecycle");
+        assert!(error.ibc_pfm_setup());
+        error.ibc.insert("pfm_original_error_ack", 1);
+        assert!(!error.ibc_pfm_setup());
+    }
+
+    #[test]
+    fn recover_requirement_reserves_setup_through_the_post_recovery_update() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("recover_client");
+        assert!(stats.ibc_recover_setup());
+        stats.ibc.insert("recover_client", 1);
+        assert!(stats.ibc_recover_setup());
+        stats.ibc.insert("recovered_client_update", 1);
+        assert!(!stats.ibc_recover_setup());
+    }
+
+    #[test]
     fn required_ibc_ack_failure_needs_the_decoded_failure_response() {
         let mut stats = Stats {
             ibc_ack_failure_required: true,
@@ -15662,6 +15988,84 @@ mod tests {
         stats.ibc.insert("chan_upgrade_ack_failure", 1);
         assert!(stats.require_ibc_coverage().is_ok());
         assert!(Stats::default().require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn legacy_upgrade_fixture_requires_the_exact_trusted_height_event() {
+        let mut stats = Stats::default();
+        stats.ibc_required.insert("legacy_upgrade_fixture");
+        assert!(stats.require_ibc_coverage().is_err());
+        stats.ibc.insert("legacy_upgrade_fixture_trusted_height", 1);
+        assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn legacy_upgrade_fixture_pauses_script_and_time_jump_until_anchor() {
+        let mut paused = 0;
+        assert_eq!(
+            legacy_upgrade_fixture_block_index(53, &mut paused, true, false, 54),
+            (53, false)
+        );
+        assert_eq!(
+            legacy_upgrade_fixture_block_index(54, &mut paused, true, false, 54),
+            (54, true)
+        );
+        assert_eq!(
+            legacy_upgrade_fixture_block_index(55, &mut paused, true, false, 54),
+            (54, true)
+        );
+        assert_eq!(
+            legacy_upgrade_fixture_block_index(56, &mut paused, true, true, 54),
+            (54, false)
+        );
+        assert_eq!(
+            legacy_upgrade_fixture_block_index(57, &mut paused, true, true, 54),
+            (55, false)
+        );
+
+        let mut ordinary_paused = 0;
+        assert_eq!(
+            legacy_upgrade_fixture_block_index(54, &mut ordinary_paused, false, false, 54),
+            (54, false)
+        );
+    }
+
+    #[test]
+    fn legacy_upgrade_fixture_votes_use_the_pinned_submission() {
+        assert_eq!(script_vote_proposal_id(true, Some(9), &[9, 10]).unwrap(), 9);
+        assert!(script_vote_proposal_id(true, None, &[9, 10]).is_err());
+        assert_eq!(script_vote_proposal_id(false, None, &[9, 10]).unwrap(), 10);
+        assert_eq!(script_vote_proposal_id(false, None, &[]).unwrap(), 1);
+    }
+
+    #[test]
+    fn legacy_upgrade_fixture_pins_only_its_successful_typed_response() {
+        let expected = b"fixture submission";
+        let response = Any::pack(
+            &celestia_proto::cosmos::gov::v1::MsgSubmitProposalResponse { proposal_id: 9 },
+        );
+        let mut result = abci::ExecTxResult {
+            data: celestia_proto::cosmos::base::abci::v1beta1::TxMsgData {
+                msg_responses: vec![response],
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            finalized_script_proposal_id(expected, expected, &result).unwrap(),
+            Some(9)
+        );
+        assert_eq!(
+            finalized_script_proposal_id(expected, b"unrelated submission", &result).unwrap(),
+            None
+        );
+        result.code = 1;
+        assert_eq!(
+            finalized_script_proposal_id(expected, expected, &result).unwrap(),
+            None
+        );
     }
 
     #[test]

@@ -26,6 +26,10 @@ on:
         description: "Run the C1.4 campaign (every scenario and flag) instead of the nightly rotation"
         type: boolean
         default: false
+      regressions_only:
+        description: "Run only the pinned regression corpus"
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -87,7 +91,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        job: ${{ fromJSON(inputs.campaign && '["campaign-0of8","campaign-1of8","campaign-2of8","campaign-3of8","campaign-4of8","campaign-5of8","campaign-6of8","campaign-7of8"]' || '["regressions","json","consensus","exec","pp","deliver-0of6","deliver-1of6","deliver-2of6","deliver-3of6","deliver-4of6","deliver-5of6","upgrade-0of2","upgrade-1of2"]') }}
+        job: ${{ fromJSON(inputs.regressions_only && '["regressions"]' || inputs.campaign && '["campaign-0of8","campaign-1of8","campaign-2of8","campaign-3of8","campaign-4of8","campaign-5of8","campaign-6of8","campaign-7of8"]' || '["regressions","json","consensus","exec","pp","deliver-0of6","deliver-1of6","deliver-2of6","deliver-3of6","deliver-4of6","deliver-5of6","upgrade-0of2","upgrade-1of2"]') }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/download-artifact@v8
@@ -119,6 +123,73 @@ jobs:
           seed="${{ inputs.seed }}"
           seed=${seed:-${{ github.run_number }}}
           crates/fuzz-diff/nightly.sh "${{ matrix.job }}" "$seed" "${{ runner.temp }}/findings"
+      - if: failure()
+        name: Publish bounded failure diagnostics
+        env:
+          FINDINGS: ${{ runner.temp }}/findings
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          summary = Path(os.environ["FINDINGS"]) / "summary.txt"
+          if summary.exists():
+              raw = summary.read_text(errors="replace")
+              failures = [
+                  chunk
+                  for chunk in re.split(r"(?=^RUN )", raw, flags=re.MULTILINE)
+                  if re.search(r"^  rc=[1-9][0-9]*\b", chunk, flags=re.MULTILINE)
+              ]
+              if not failures:
+                  failures = [raw[-6000:] or "fuzz-diff failed before writing its summary"]
+              for index, text in enumerate(failures, 1):
+                  run = re.search(r"^RUN ([^:]+):", text)
+                  if run:
+                      stderr = summary.parent / f"{run.group(1)}.err"
+                      if stderr.exists():
+                          stats_line = next(
+                              (line.removeprefix("DELIVER_STATS ") for line in stderr.read_text(errors="replace").splitlines() if line.startswith("DELIVER_STATS ")),
+                              None,
+                          )
+                          if stats_line:
+                              try:
+                                  stats = json.loads(stats_line)
+                                  selected = {
+                                      key: stats.get(key)
+                                      for key in (
+                                          "gov_executed",
+                                          "gov_failure_matches",
+                                          "gov_results",
+                                          "ibc",
+                                          "script_incomplete",
+                                      )
+                                  }
+                                  selected["script"] = [
+                                      entry[:500]
+                                      for entry in stats.get("script", [])
+                                      if "legacy fixture" in entry or "/cosmos.gov" in entry
+                                  ][-30:]
+                                  selected["script_outcomes"] = [
+                                      {
+                                          "type": outcome[0],
+                                          "code": outcome[1].get("code"),
+                                          "log": outcome[1].get("log", "")[:500],
+                                      }
+                                      for outcome in stats.get("script_outcomes", [])
+                                  ]
+                                  # Keep the structured attribution at the
+                                  # start so GitHub's annotation-size cap
+                                  # cannot hide it behind verbose stderr.
+                                  text = f"selected stats: {json.dumps(selected, sort_keys=True)}\n{text}"
+                              except json.JSONDecodeError:
+                                  text += "\n  DELIVER_STATS was not valid JSON"
+                  if len(text) > 6000:
+                      text = f"{text[:3000]}\n... diagnostics truncated ...\n{text[-2950:]}"
+                  text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+                  print(f"::error title=fuzz-diff failure {index}::{text}")
+          PY
       - if: always()
         run: cat "${{ runner.temp }}/findings/summary.txt" >>"$GITHUB_STEP_SUMMARY" || true
       - if: always()
