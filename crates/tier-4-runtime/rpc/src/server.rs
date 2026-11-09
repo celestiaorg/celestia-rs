@@ -7,20 +7,23 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use axum::body::Body;
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{FromRequestParts, State};
 use axum::http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Version, header};
+use bytes::Bytes;
 use futures_util::{SinkExt as _, StreamExt as _};
 use rustls_pki_types::pem::PemObject as _;
 use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 use tokio::sync::mpsc;
 use tokio_rustls::TlsAcceptor;
 
-use crate::env::{ERR_HEAVY_LIMIT, Environment, MAX_QUERY_LENGTH, Route, find_route};
+use crate::env::{ERR_HEAVY_LIMIT, Environment, HeavyGuard, MAX_QUERY_LENGTH, Route, find_route};
 use crate::json::{self, J, Node, Val};
 use crate::params::{self, Arg};
 use crate::query::Query;
@@ -335,6 +338,18 @@ async fn call_route(
     let Some(guard) = env.try_acquire(route) else {
         return Err(CallError::Busy);
     };
+    let result = call_route_admitted(env, route, args, remote).await;
+    drop(guard);
+    result
+}
+
+/// Calls a route whose heavy-request slot is already held by the caller.
+async fn call_route_admitted(
+    env: &Arc<Environment>,
+    route: &'static Route,
+    args: Vec<Arg>,
+    remote: &str,
+) -> Result<J, CallError> {
     if route.name == "broadcast_tx_commit" {
         return broadcast_tx_commit(
             env,
@@ -347,7 +362,6 @@ async fn call_route(
     let env2 = Arc::clone(env);
     let name = route.name;
     tokio::task::spawn_blocking(move || {
-        let _guard = guard;
         if name == "abci_query" {
             let arg = |i: usize| args.get(i).cloned().unwrap_or(Arg::Null);
             env2.abci_query_response(arg(0).str(), arg(1).bytes(), arg(2).int(), arg(3).bool())
@@ -487,6 +501,32 @@ struct Ctx {
     remote: SocketAddr,
 }
 
+/// Keeps a heavy-request slot until Hyper finishes consuming the response.
+struct GuardedBody {
+    inner: Body,
+    _guard: HeavyGuard,
+}
+
+impl http_body::Body for GuardedBody {
+    type Data = Bytes;
+    type Error = axum::Error;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        http_body::Body::poll_frame(Pin::new(&mut self.inner), cx)
+    }
+
+    fn is_end_stream(&self) -> bool {
+        http_body::Body::is_end_stream(&self.inner)
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        http_body::Body::size_hint(&self.inner)
+    }
+}
+
 fn json_response(status: StatusCode, body: String, cache: bool) -> Response<Body> {
     let mut r = Response::new(Body::from(body));
     *r.status_mut() = status;
@@ -501,6 +541,23 @@ fn json_response(status: StatusCode, body: String, cache: bool) -> Response<Body
         );
     }
     r
+}
+
+fn guarded_json_response(
+    status: StatusCode,
+    body: String,
+    cache: bool,
+    guard: Option<HeavyGuard>,
+) -> Response<Body> {
+    let Some(guard) = guard else {
+        return json_response(status, body, cache);
+    };
+    let mut response = json_response(status, String::new(), cache);
+    *response.body_mut() = Body::new(GuardedBody {
+        inner: Body::from(body),
+        _guard: guard,
+    });
+    response
 }
 
 fn not_found() -> Response<Body> {
@@ -697,6 +754,7 @@ async fn jsonrpc_handler(ctx: &Ctx, body: &[u8], host: &str) -> Response<Body> {
     };
     let mut responses = Vec::new();
     let mut cache = true;
+    let mut heavy_guard = None;
     for req in requests {
         let Some(id) = req.id.clone() else { continue };
         let route = find_route(&req.method, ctx.env.config.unsafe_routes);
@@ -734,7 +792,20 @@ async fn jsonrpc_handler(ctx: &Ctx, body: &[u8], host: &str) -> Response<Body> {
         if cache && !route.cacheable_with(&args) {
             cache = false;
         }
-        match call_route(&ctx.env, route, args, &ctx.remote.to_string()).await {
+        let result = if route.heavy {
+            if heavy_guard.is_none() {
+                let Some(guard) = ctx.env.try_acquire(route) else {
+                    responses.push(RpcResponse::internal(Some(id), ERR_HEAVY_LIMIT));
+                    cache = false;
+                    continue;
+                };
+                heavy_guard = Some(guard);
+            }
+            call_route_admitted(&ctx.env, route, args, &ctx.remote.to_string()).await
+        } else {
+            call_route(&ctx.env, route, args, &ctx.remote.to_string()).await
+        };
+        match result {
             Ok(j) => responses.push(RpcResponse::ok(Some(id), &j)),
             Err(CallError::Busy) => {
                 responses.push(RpcResponse::internal(Some(id), ERR_HEAVY_LIMIT));
@@ -755,7 +826,12 @@ async fn jsonrpc_handler(ctx: &Ctx, body: &[u8], host: &str) -> Response<Body> {
     if responses.is_empty() {
         return Response::new(Body::empty());
     }
-    json_response(StatusCode::OK, encode_responses(&responses), cache)
+    guarded_json_response(
+        StatusCode::OK,
+        encode_responses(&responses),
+        cache,
+        heavy_guard,
+    )
 }
 
 /// Applies the CORS policy (`rs/cors` subset).
@@ -1709,6 +1785,36 @@ pub(crate) mod broadcast_tests {
             env.call("block_results", &[]).unwrap_err(),
             "node is not persisting finalize block responses"
         );
+    }
+
+    #[tokio::test]
+    async fn heavy_batch_holds_one_slot_until_response_body_is_consumed() {
+        let mut env = environment(Ok(abci::ResponseCheckTx::default()), 1_000);
+        Arc::get_mut(&mut env)
+            .expect("unshared test environment")
+            .config
+            .max_concurrent_heavy_requests = 1;
+        let ctx = Ctx {
+            env: Arc::clone(&env),
+            remote: "127.0.0.1:1234".parse().expect("remote address"),
+        };
+        let request = br#"[
+            {"jsonrpc":"2.0","id":1,"method":"genesis"},
+            {"jsonrpc":"2.0","id":2,"method":"genesis"}
+        ]"#;
+
+        let response = jsonrpc_handler(&ctx, request, "localhost").await;
+        let heavy = find_route("genesis", false).expect("heavy route");
+        assert!(env.try_acquire(heavy).is_none());
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body");
+        let body = String::from_utf8(body.to_vec()).expect("UTF-8 response");
+        assert!(body.contains("\"id\":1"));
+        assert!(body.contains("\"id\":2"));
+        assert!(!body.contains(ERR_HEAVY_LIMIT));
+        assert!(env.try_acquire(heavy).is_some());
     }
 
     async fn wait_for_subscription(env: &Environment, client: &str) {
