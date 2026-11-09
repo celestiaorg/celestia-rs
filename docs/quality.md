@@ -105,7 +105,12 @@ remain necessary alongside these byte-oriented targets.
 
 `scripts/quality/qualify.py` records committed source, worktree status,
 platform/toolchains and hashes of explicitly supplied executables before and
-after one check. Tracked files marked `assume-unchanged` or `skip-worktree`
+after one check. For every supplied executable it also records the exact
+binary-seeded FNV value and `proto:` separator selected by protobuf-go's
+`internal/detrand`. That text is normally diagnostic, but a governance proposal
+can persist a dynamic-message decoding error in `failed_reason`; a binary hash
+alone does not make this otherwise hidden consensus input reviewable. Tracked
+files marked `assume-unchanged` or `skip-worktree`
 can hide modified contents from Git status. Qualification rejects those root
 index flags, even if their files currently match HEAD, and records index flags
 in source evidence so flags added during a check invalidate its result. It does

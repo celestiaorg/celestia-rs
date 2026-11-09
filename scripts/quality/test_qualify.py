@@ -59,6 +59,37 @@ class QualificationTest(unittest.TestCase):
                 self.assertEqual(evidence["exit_code"], 0)
                 self.assertEqual(evidence["status"], "failed")
 
+    def test_records_protobuf_go_binary_seeded_error_prefix(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = self.repo(folder)
+            binary = Path(folder) / "binary"
+            binary.write_bytes(bytes(range(256)) * 4)
+            result, evidence = self.run_check(
+                root, Path(folder) / "out", "pass", [binary]
+            )
+            self.assertTrue(result)
+            self.assertEqual(
+                evidence["protobuf_go_detrand"][str(binary.resolve())],
+                {
+                    "seed_hex": "0x0ce7a0bfde0748e1",
+                    "separator": "nonbreaking-space",
+                    "separator_utf8_hex": "c2a0",
+                },
+            )
+
+    def test_short_binary_uses_protobuf_go_zero_seed_fallback(self):
+        with tempfile.TemporaryDirectory() as folder:
+            binary = Path(folder) / "binary"
+            binary.write_bytes(b"short")
+            self.assertEqual(
+                MODULE.protobuf_go_detrand(binary),
+                {
+                    "seed_hex": "0x0000000000000000",
+                    "separator": "space",
+                    "separator_utf8_hex": "20",
+                },
+            )
+
     def test_untracked_source_prevents_qualification(self):
         with tempfile.TemporaryDirectory() as folder:
             root = self.repo(folder)

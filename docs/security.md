@@ -1105,10 +1105,25 @@ Open:
   for the owner to file (re-check the ICA allow list whenever mainnet
   governance changes it).
 
+- Go itself: protobuf-go deliberately selects `proto: ` or `proto:\u00a0`
+  from a hash of the program binary. A passed governance proposal can persist
+  such a dynamic-message decoding error in `failed_reason`, so Go validators
+  built as different binaries can split among themselves if governance passes
+  a crafted proposal. The authenticated qualification binaries for v10.6.0 and
+  v9.0.8 select ASCII, which is the deterministic behavior Rust currently
+  matches. The scheduled long-run workflow rebuilt both binaries with different
+  bytes that select U+00A0; v9-upgrade seed 62203 then demonstrated the persisted
+  `MsgAnnounceValidator.storage_location` error and app-hash split. That run is
+  not exact-candidate evidence. Official standalone release binaries do not
+  remove the ambiguity: the v10.6.0 asset selects U+00A0 while the v9.0.8 asset
+  selects ASCII. Exact-source qualification records this hidden binary input for
+  every supplied oracle. The general halt policy above still applies. Mainnet
+  reachability requires governance to pass the crafted proposal; ordinary
+  rejected transactions expose the same difference only in unhashed logs.
+
 - Error text (logs; not hashed, code and gas match) that still differs
   from Go, judged infeasible or not worth emulating: Go panics log a
-  stack (goroutine ids, addresses); protobuf-go randomizes a space in its
-  errors (`proto:` followed by a space or U+00A0, chosen per binary);
+  stack (goroutine ids, addresses);
   `Simulate`'s error carries `cosmossdk.io/errors`' `%v` source frame
   (`[celestiaorg/cosmos-sdk@v0.52.12/x/auth/ante/sigverify.go:290]`, see
   "Log parity" above); gogoproto's `wrong wireType` names the Go field.
