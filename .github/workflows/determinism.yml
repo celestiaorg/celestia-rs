@@ -56,6 +56,13 @@ jobs:
         run: |
           APP_VERSION=v10.6.0 CORE_VERSION=v0.42.8 APPD_ONLY=1 conformance/devnet/build-bins.sh
           APP_VERSION=v9.0.8 APPD_ONLY=1 DEVNET_BIN=target/devnet-bin/v9 conformance/devnet/build-bins.sh
+      - name: Record exact Go oracle provenance
+        run: |
+          python3 scripts/quality/oracle_provenance.py \
+            --out "$RUNNER_TEMP/oracle-provenance.json" \
+            --binary v10=target/devnet-bin/celestia-appd \
+            --binary v9=target/devnet-bin/v9/celestia-appd
+          cat "$RUNNER_TEMP/oracle-provenance.json" >>"$GITHUB_STEP_SUMMARY"
       - name: Build fuzz-diff (release, dist)
         run: |
           cargo build --locked --release -p fuzz-diff
@@ -88,6 +95,11 @@ jobs:
           GO_APPD=target/devnet-bin/celestia-appd crates/fuzz-diff/pp-diff.sh blob 20 1
           GO_APPD=target/devnet-bin/celestia-appd crates/fuzz-diff/pp-diff.sh ibc 20 2
           GO_APPD=target/devnet-bin/v9/celestia-appd crates/fuzz-diff/pp-diff.sh v9-blob 20 3
+      - if: always()
+        name: Preserve exact oracle provenance
+        run: |
+          mkdir -p "$RUNNER_TEMP/upload"
+          cp "$RUNNER_TEMP/oracle-provenance.json" "$RUNNER_TEMP/upload/"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -112,5 +124,12 @@ jobs:
       - run: |
           set -e
           ls
-          diff -r traces-Linux-X64 traces-macOS-ARM64
-          echo "identical: $(ls traces-Linux-X64 | wc -l) traces"
+          find traces-Linux-X64 -maxdepth 1 -name '*.trace' -printf '%f\n' | sort >linux-traces
+          find traces-macOS-ARM64 -maxdepth 1 -name '*.trace' -printf '%f\n' | sort >macos-traces
+          cmp linux-traces macos-traces
+          while read -r trace; do
+            cmp "traces-Linux-X64/$trace" "traces-macOS-ARM64/$trace"
+          done <linux-traces
+          cat traces-Linux-X64/oracle-provenance.json >>"$GITHUB_STEP_SUMMARY"
+          cat traces-macOS-ARM64/oracle-provenance.json >>"$GITHUB_STEP_SUMMARY"
+          echo "identical: $(wc -l <linux-traces) traces"
