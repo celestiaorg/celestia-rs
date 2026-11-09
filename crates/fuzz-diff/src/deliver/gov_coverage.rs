@@ -10,6 +10,15 @@ pub(super) struct Proposals {
 }
 
 impl Proposals {
+    /// Proposal ids whose retained payload contains `required` and whose
+    /// terminal governance event has not been observed yet.
+    pub(super) fn pending_for(&self, required: &str) -> Vec<u64> {
+        self.pending
+            .iter()
+            .filter_map(|(id, messages)| messages.iter().any(|m| m == required).then_some(*id))
+            .collect()
+    }
+
     /// Called only for a generated tx Go finalized with code 0.
     pub(super) fn submitted(&mut self, version: u64, tx: &[u8], events: &[abci::Event]) {
         if let Ok(tx) = txdecode::decode_for(version, tx) {
@@ -228,5 +237,28 @@ mod tests {
             );
             assert!(executed.is_empty());
         }
+    }
+
+    #[test]
+    fn required_payload_tracks_only_live_matching_proposals() {
+        let mut p = Proposals::default();
+        p.remember(
+            &[proposal(&["/required"]), proposal(&["/other"])],
+            &[
+                event("submit_proposal", 7, ""),
+                event("submit_proposal", 8, ""),
+            ],
+        );
+        assert_eq!(p.pending_for("/required"), vec![7]);
+        assert!(p.pending_for("/missing").is_empty());
+
+        p.completed(
+            &[event("active_proposal", 7, "proposal_rejected")],
+            &mut BTreeMap::new(),
+            None,
+            None,
+        );
+        assert!(p.pending_for("/required").is_empty());
+        assert_eq!(p.pending_for("/other"), vec![8]);
     }
 }

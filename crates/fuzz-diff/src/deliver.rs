@@ -787,7 +787,10 @@ fn max_account_number(v: &serde_json::Value, max: &mut u64) {
 
 /// Adds the fuzz accounts (auth accounts, bank balances, supply) to the
 /// InitChain app state; returns the patched state and the accounts.
-fn patch_app_state(app_state: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<Acct>)> {
+fn patch_app_state(
+    app_state: &[u8],
+    exact_governance_coverage: bool,
+) -> anyhow::Result<(Vec<u8>, Vec<Acct>)> {
     let mut g: serde_json::Value = serde_json::from_slice(app_state)?;
     if std::env::var_os("DELIVER_NEVER_BONDED_UNJAIL_REQUIRE").is_some()
         || std::env::var_os("DELIVER_UNBONDED_REDELEGATION_ROLLBACK_REQUIRE").is_some()
@@ -866,6 +869,16 @@ fn patch_app_state(app_state: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<Acct>)> {
             "min_signed_per_window",
             "0.500000000000000000",
         );
+        if exact_governance_coverage {
+            // Exact governance coverage is isolated from downtime fuzzing.
+            // Recorded fixtures without commit votes would otherwise remove
+            // every bonded validator before the required proposal can tally.
+            set(
+                &mut g["slashing"]["params"],
+                "min_signed_per_window",
+                "0.000000000000000000",
+            );
+        }
         set(&mut g["staking"]["params"], "unbonding_time", "600s");
         set(&mut g["gov"]["params"], "voting_period", "120s");
         set(&mut g["gov"]["params"], "expedited_voting_period", "60s");
@@ -5843,7 +5856,8 @@ pub fn run(
             continue;
         }
         if let Some(request::Value::InitChain(ic)) = &mut req.value {
-            let (patched, a) = patch_app_state(&ic.app_state_bytes)?;
+            let (patched, a) =
+                patch_app_state(&ic.app_state_bytes, !stats.gov_required.is_empty())?;
             ic.app_state_bytes = patched;
             if evidence_requirement == Some(EvidenceRequirement::Stale) {
                 let evidence = ic
@@ -6229,6 +6243,7 @@ pub fn run(
     // messages run. `DELIVER_GOV_ABSTAIN_REQUIRE` makes them all abstain so the
     // rejected-proposal tally path is exercised instead.
     let mut govpass_delegated = false;
+    let mut govpass_validators_created = false;
     let recheck_all = std::env::var("DELIVER_RECHECK").is_ok();
     // The txs a comet mempool would still hold: accepted by Go's `CheckTx`,
     // not in a block, not removed by a recheck (oldest first, capped).
@@ -6364,6 +6379,21 @@ pub fn run(
             ));
         }
         let gov_setup = !hl_background_setup && gov_setup_ready(&stats, &gn.gov_msgs);
+        let required_gov_type = if gov_setup {
+            gn.gov_msgs
+                .iter()
+                .find(|msg| {
+                    stats.gov_required.contains(&msg.type_url)
+                        && stats.gov_executed.get(&msg.type_url).copied().unwrap_or(0) == 0
+                })
+                .map(|msg| msg.type_url.clone())
+        } else {
+            None
+        };
+        let required_gov_ids = required_gov_type
+            .as_deref()
+            .map(|required| gov_coverage.pending_for(required))
+            .unwrap_or_default();
         scripted |= gov_setup;
         // A signed Hyperlane sequence needs its dedicated account's committed
         // sequence. Before both incoming paths succeed at v9, keep unrelated
@@ -6792,24 +6822,69 @@ pub fn run(
                 }
             }
             if !hl_background_setup && govpass && !govpass_delegated {
-                // Stake on every bonded validator (only bonded stake is
-                // tallied; one may be jailed for downtime).
-                let vals = bonded_validators(&mut rust);
+                // Stake on every live bonded validator (only bonded stake is
+                // tallied). A recorded fixture can leave only jailed
+                // validators; create controlled replacements before voting.
+                let vals = if !govpass_validators_created && stats.gov_setup() {
+                    Vec::new()
+                } else {
+                    live_bonded_validators(&mut rust)
+                };
                 if !vals.is_empty() {
                     govpass_delegated = true;
                     if !governed_fixture_required {
                         gn.gov_msgs = authority_msgs(&mut rust, &gn.accts[0].acc);
                     }
+                    if !govpass_validators_created {
+                        for i in (0..ACCOUNTS - 1).filter(|&i| !hl_account_setup || i != HL_ACCT) {
+                            let msg =
+                                Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
+                                    delegator_address: gn.accts[i].acc.clone(),
+                                    validator_address: vals[i % vals.len()].clone(),
+                                    amount: Some(Coin {
+                                        denom: "utia".into(),
+                                        amount: "800000000000000".into(),
+                                    }),
+                                });
+                            if let Some(t) = sign_simple(&gn, i, vec![msg], 1_000_000) {
+                                gn.accts[i].seq += 1;
+                                txs.push(t);
+                            }
+                        }
+                    }
+                } else if !govpass_validators_created && stats.gov_setup() {
+                    govpass_validators_created = true;
                     for i in (0..ACCOUNTS - 1).filter(|&i| !hl_account_setup || i != HL_ACCT) {
-                        let msg =
-                            Any::pack(&celestia_proto::cosmos::staking::v1beta1::MsgDelegate {
-                                delegator_address: gn.accts[i].acc.clone(),
-                                validator_address: vals[i % vals.len()].clone(),
-                                amount: Some(Coin {
+                        let msg = Any::pack(
+                            &celestia_proto::cosmos::staking::v1beta1::MsgCreateValidator {
+                                description: Some(
+                                    celestia_proto::cosmos::staking::v1beta1::Description {
+                                        moniker: format!("govpass{i}"),
+                                        ..Default::default()
+                                    },
+                                ),
+                                commission: Some(
+                                    celestia_proto::cosmos::staking::v1beta1::CommissionRates {
+                                        rate: "100000000000000000".into(),
+                                        max_rate: "200000000000000000".into(),
+                                        max_change_rate: "10000000000000000".into(),
+                                    },
+                                ),
+                                min_self_delegation: "1".into(),
+                                #[allow(deprecated)]
+                                delegator_address: String::new(),
+                                validator_address: gn.accts[i].val.clone(),
+                                pubkey: Some(Any::pack(
+                                    &celestia_proto::cosmos::crypto::ed25519::PubKey {
+                                        key: vec![101 + i as u8; 32],
+                                    },
+                                )),
+                                value: Some(Coin {
                                     denom: "utia".into(),
                                     amount: "800000000000000".into(),
                                 }),
-                            });
+                            },
+                        );
                         if let Some(t) = sign_simple(&gn, i, vec![msg], 1_000_000) {
                             gn.accts[i].seq += 1;
                             txs.push(t);
@@ -6888,14 +6963,15 @@ pub fn run(
             } else if !hl_background_setup && govpass && (gov_setup || b % 4 == 0) {
                 // Each authority message in turn, in a proposal of its own
                 // (the deposits and votes below pass it).
-                let msg = if gov_setup {
+                let msg = if gov_setup && required_gov_ids.is_empty() {
                     gn.gov_msgs
                         .iter()
-                        .find(|msg| {
-                            stats.gov_required.contains(&msg.type_url)
-                                && stats.gov_executed.get(&msg.type_url).copied().unwrap_or(0) == 0
-                        })
+                        .find(|msg| required_gov_type.as_deref() == Some(msg.type_url.as_str()))
                         .cloned()
+                } else if gov_setup {
+                    // Keep depositing and voting on the retained proposal
+                    // instead of submitting a competing copy every block.
+                    None
                 } else if gn.gov_msgs.is_empty() {
                     None
                 } else {
@@ -6921,7 +6997,11 @@ pub fn run(
                 }
                 // One message per tx: a vote on an ended proposal fails
                 // alone.
-                let ids: Vec<u64> = gn.proposals.iter().rev().take(6).copied().collect();
+                let ids: Vec<u64> = if gov_setup {
+                    required_gov_ids.clone()
+                } else {
+                    gn.proposals.iter().rev().take(6).copied().collect()
+                };
                 for &id in &ids {
                     let deposit = Any::pack(&celestia_proto::cosmos::gov::v1::MsgDeposit {
                         proposal_id: id,
@@ -7244,7 +7324,9 @@ pub fn run(
                     // for its proposal's tally.
                     // `DELIVER_UPGRADE` too (its validator's signal
                     // decides the upgrade).
-                    .filter(|v| (v.2 && !upg.late) || (!hl_seq.on && !upg.on && gn.m.rng.one_in(50)))
+                    .filter(|v| {
+                        (v.2 && !upg.late) || (!hl_seq.on && !upg.on && gn.m.rng.one_in(50))
+                    })
                     .cloned()
                     .collect();
                 if let Some((a, p, _)) = gn.pick(&fuzzv) {
@@ -8742,6 +8824,27 @@ fn bonded_validators(rust: &mut app::App) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn live_bonded_validators(rust: &mut app::App) -> Vec<String> {
+    use celestia_proto::cosmos::staking::v1beta1 as st;
+    query_app::<st::QueryValidatorsResponse>(
+        rust,
+        "/cosmos.staking.v1beta1.Query/Validators",
+        &st::QueryValidatorsRequest {
+            status: "BOND_STATUS_BONDED".into(),
+            pagination: None,
+        },
+    )
+    .map(|response| {
+        response
+            .validators
+            .into_iter()
+            .filter(|validator| !validator.jailed)
+            .map(|validator| validator.operator_address)
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 /// Reads one committed raw store key from both apps and requires byte-for-byte
@@ -16309,7 +16412,7 @@ mod tests {
     #[test]
     fn genesis_patch_adds_accounts() {
         let g = br#"{"auth":{"accounts":[{"@type":"/cosmos.auth.v1beta1.BaseAccount","account_number":"4"}]},"bank":{"balances":[],"supply":[{"denom":"utia","amount":"5"}]}}"#;
-        let (out, accts) = patch_app_state(g).unwrap();
+        let (out, accts) = patch_app_state(g, false).unwrap();
         assert_eq!(accts[0].number, 5);
         let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(
@@ -16320,6 +16423,24 @@ mod tests {
             v["bank"]["supply"][0]["amount"],
             (5 + BALANCE * accts.len() as u128).to_string()
         );
+    }
+
+    #[test]
+    fn exact_governance_genesis_preserves_validator_voting_power() {
+        let g = br#"{"auth":{"accounts":[]},"bank":{"balances":[],"supply":[]},"slashing":{"params":{"signed_blocks_window":"99","min_signed_per_window":"0.9"}}}"#;
+        let ordinary: serde_json::Value =
+            serde_json::from_slice(&patch_app_state(g, false).unwrap().0).unwrap();
+        assert_eq!(
+            ordinary["slashing"]["params"]["min_signed_per_window"],
+            "0.500000000000000000"
+        );
+        let required: serde_json::Value =
+            serde_json::from_slice(&patch_app_state(g, true).unwrap().0).unwrap();
+        assert_eq!(
+            required["slashing"]["params"]["min_signed_per_window"],
+            "0.000000000000000000"
+        );
+        assert_eq!(required["slashing"]["params"]["signed_blocks_window"], "20");
     }
 
     #[test]
