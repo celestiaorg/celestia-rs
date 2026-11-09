@@ -51,7 +51,7 @@ pub const APPLICATION_NAME: &str = "celestia-rs";
 /// Reported by ABCI `Info.version` and `/app/version` for client feature
 /// negotiation. This is neither the Rust software version nor a claim that
 /// every provider API has been qualified; see `docs/rpc-version-identity.md`.
-pub const COMPATIBILITY_VERSION: &str = "10.5.0";
+pub const COMPATIBILITY_VERSION: &str = "10.6.0";
 
 /// The application.
 #[derive(Debug)]

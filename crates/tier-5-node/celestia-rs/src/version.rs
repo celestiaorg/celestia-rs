@@ -17,7 +17,7 @@ pub fn node_version() -> String {
 }
 
 /// The celestia-core release targeted by the node implementation.
-pub const CORE_COMPATIBILITY_VERSION: &str = "0.42.3";
+pub const CORE_COMPATIBILITY_VERSION: &str = "0.42.8";
 
 /// Records this binary's actual build identity for Cosmos `GetNodeInfo`.
 ///

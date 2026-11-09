@@ -114,10 +114,9 @@ fn assert_consensus_schema(rpc: SocketAddr) -> anyhow::Result<()> {
     )))?;
     let info: Value =
         serde_json::from_str(fixture["responses"]["abci_info"]["body"].as_str().unwrap())?;
-    assert_eq!(
-        info["result"]["response"]["version"],
-        app::COMPATIBILITY_VERSION
-    );
+    // The retained response is a v10.5.0 schema baseline. The production
+    // identity assertions below independently require the current target.
+    assert_eq!(info["result"]["response"]["version"], "10.5.0");
     assert_eq!(
         fixture["provenance"]["application_commit"],
         "6013e758d5dceb75827ad191c8d739d7c43cfa04"
