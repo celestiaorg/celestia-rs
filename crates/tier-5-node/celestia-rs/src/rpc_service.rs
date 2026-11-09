@@ -28,6 +28,8 @@ pub struct RpcSettings {
     pub p2p_laddr: String,
     /// `[tx_index] indexer == "kv"`.
     pub tx_index: bool,
+    /// `[tx_index] max_search_results` (0 = unlimited).
+    pub max_search_results: usize,
     /// `app.toml [grpc] address` (empty = disabled).
     pub app_grpc: String,
     /// `app.toml [grpc] max-recv-msg-size` and `max-send-msg-size`.
@@ -254,6 +256,7 @@ impl RpcSettings {
             // celestia-app's default config indexes txs ("kv" unless set to
             // "null").
             tx_index: get_str(&cfg, "tx_index", "indexer").is_none_or(|v| v == "kv"),
+            max_search_results: get_int(&cfg, "tx_index", "max_search_results").map_or(100_000, n),
             app_grpc: if configured && enabled("grpc") {
                 get_str(&app, "grpc", "address").unwrap_or_else(|| "localhost:9090".into())
             } else {
@@ -863,8 +866,12 @@ impl Rpc {
             .map_err(|e| anyhow!("open tx_index: {e}"))?;
             crate::memstats::register_db("tx_index", &db);
             (
-                Some(Arc::new(TxIndexer::new(db.clone()))),
-                Some(Arc::new(BlockIndexer::new(db))),
+                Some(Arc::new(
+                    TxIndexer::new(db.clone()).with_max_search_results(settings.max_search_results),
+                )),
+                Some(Arc::new(
+                    BlockIndexer::new(db).with_max_search_results(settings.max_search_results),
+                )),
             )
         } else {
             (None, None)
@@ -1162,7 +1169,7 @@ mod grpc_limit_tests {
         std::fs::create_dir(dir.path().join("config")).unwrap();
         std::fs::write(
             dir.path().join("config/config.toml"),
-            "[rpc]\nladdr = \"\"\nmax_header_bytes = 256",
+            "[rpc]\nladdr = \"\"\nmax_header_bytes = 256\n[tx_index]\nmax_search_results = 321",
         )
         .unwrap();
         std::fs::write(
@@ -1179,6 +1186,20 @@ mod grpc_limit_tests {
             }
         );
         assert_eq!(settings.rpc.max_header_bytes, 256);
+        assert_eq!(settings.max_search_results, 321);
+
+        std::fs::write(
+            dir.path().join("config/config.toml"),
+            "[rpc]\nladdr = \"\"\n[tx_index]\nmax_search_results = -1",
+        )
+        .unwrap();
+        assert_eq!(RpcSettings::load(dir.path()).unwrap().max_search_results, 0);
+
+        std::fs::write(dir.path().join("config/config.toml"), "[rpc]\nladdr = \"\"").unwrap();
+        assert_eq!(
+            RpcSettings::load(dir.path()).unwrap().max_search_results,
+            100_000
+        );
     }
 
     #[test]
@@ -1314,6 +1335,7 @@ mod grpc_limit_tests {
             shared,
             settings: RpcSettings {
                 rpc: config,
+                max_search_results: 100_000,
                 app_grpc: grpc.to_string(),
                 app_api: rest.to_string(),
                 ..Default::default()
