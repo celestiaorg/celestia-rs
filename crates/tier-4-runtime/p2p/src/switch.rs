@@ -121,6 +121,31 @@ struct ReactorEntry {
     peers: Mutex<HashSet<NodeId>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum QueueOutcome {
+    Queued,
+    Dropped,
+    Closed,
+}
+
+async fn queue_reactor_message<T>(
+    tx: &mpsc::Sender<T>,
+    message: T,
+    drop_on_full: bool,
+) -> QueueOutcome {
+    if drop_on_full {
+        return match tx.try_send(message) {
+            Ok(()) => QueueOutcome::Queued,
+            Err(mpsc::error::TrySendError::Full(_)) => QueueOutcome::Dropped,
+            Err(mpsc::error::TrySendError::Closed(_)) => QueueOutcome::Closed,
+        };
+    }
+    match tx.send(message).await {
+        Ok(()) => QueueOutcome::Queued,
+        Err(_) => QueueOutcome::Closed,
+    }
+}
+
 struct Inner {
     config: SwitchConfig,
     node_key: NodeKey,
@@ -781,7 +806,9 @@ impl Switch {
                 channel_id: ch,
                 message: msg,
             };
-            if entry.tx.send(env).await.is_err() {
+            if queue_reactor_message(&entry.tx, env, entry.reactor.drop_on_full_queue()).await
+                == QueueOutcome::Closed
+            {
                 return;
             }
         }
@@ -916,5 +943,45 @@ impl Switch {
             .find(|r| r.name == reactor_name)
             .map(|r| lock(&r.peers).iter().copied().collect())
             .unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn nonblocking_reactor_queue_drops_only_the_full_message() {
+        let (tx, mut rx) = mpsc::channel(1);
+        tx.send(1).await.expect("open queue");
+
+        assert_eq!(
+            queue_reactor_message(&tx, 2, true).await,
+            QueueOutcome::Dropped
+        );
+        assert_eq!(rx.recv().await, Some(1));
+        assert!(rx.try_recv().is_err());
+        assert_eq!(
+            queue_reactor_message(&tx, 3, true).await,
+            QueueOutcome::Queued
+        );
+        assert_eq!(rx.recv().await, Some(3));
+    }
+
+    #[tokio::test]
+    async fn default_reactor_queue_waits_for_capacity() {
+        let (tx, mut rx) = mpsc::channel(1);
+        tx.send(1).await.expect("open queue");
+        let queued = queue_reactor_message(&tx, 2, false);
+        tokio::pin!(queued);
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut queued)
+                .await
+                .is_err()
+        );
+        assert_eq!(rx.recv().await, Some(1));
+        assert_eq!(queued.await, QueueOutcome::Queued);
+        assert_eq!(rx.recv().await, Some(2));
     }
 }

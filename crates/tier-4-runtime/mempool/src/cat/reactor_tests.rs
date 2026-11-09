@@ -13,12 +13,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use celestia_core_proto::tendermint::mempool::{Message, SeenTx, Txs, WantTx, message::Sum};
+use p2p::Reactor as _;
 use prost::Message as _;
 
 use super::peers::MempoolPeer;
 use super::reactor::{
     DEFAULT_GOSSIP_DELAY, MAX_SEEN_TX_BROADCAST, MAX_SIGNER_LENGTH, MEMPOOL_DATA_CHANNEL,
-    MEMPOOL_WANTS_CHANNEL, Reactor, ReactorOptions,
+    MEMPOOL_WANTS_CHANNEL, P2pReactor, Reactor, ReactorOptions,
 };
 use super::seen::{PendingTxInfo, SeenEntry};
 use super::sticky::{select_sticky_peers, sticky_score64};
@@ -72,6 +73,13 @@ fn wants_sent(p: &MockPeer) -> Vec<Vec<u8>> {
         .filter(|(ch, _)| *ch == MEMPOOL_WANTS_CHANNEL)
         .map(|(_, m)| m)
         .collect()
+}
+
+#[test]
+fn p2p_adapter_drops_new_messages_when_its_incoming_queue_is_full() {
+    let (reactor, _, _) = setup_reactor();
+    let adapter = P2pReactor::new(reactor);
+    assert!(adapter.drop_on_full_queue());
 }
 
 #[test]
