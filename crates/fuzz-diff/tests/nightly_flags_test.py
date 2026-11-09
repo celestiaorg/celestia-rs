@@ -99,6 +99,22 @@ class NightlyFlagsTest(unittest.TestCase):
             for wire in (False, True) for sweep in (False, True)
         })
 
+    def test_signal_stop_upgrade_omits_only_the_impossible_governance_gate(self):
+        runs = self.dry_runs("deliver-0of1", 7)
+        governance = [
+            (flags, command[-4])
+            for flags, command in runs
+            if "DELIVER_GOVPASS" in flags
+        ]
+        upgrades = [flags for flags, scenario in governance if scenario == "upgrade"]
+        self.assertTrue(upgrades)
+        for flags in upgrades:
+            self.assertEqual(flags["DELIVER_REPLAY_STOP"], "signal")
+            self.assertNotIn("DELIVER_GOV_REQUIRE", flags)
+        for flags, scenario in governance:
+            if scenario != "upgrade":
+                self.assertEqual(flags["DELIVER_GOV_REQUIRE"], self.ICA_HOST_PARAMS)
+
     def test_message_type_url_does_not_create_artifact_subdirectories(self):
         script = Path(__file__).resolve().parents[1] / "nightly.sh"
         with tempfile.TemporaryDirectory() as folder:
@@ -129,12 +145,15 @@ class NightlyFlagsTest(unittest.TestCase):
         upgrades = []
         abstain = set()
         for flags, command in runs:
+            scenario = command[-4]
             if ("DELIVER_GOVPASS" in flags and
-                    "DELIVER_GOV_ABSTAIN_REQUIRE" not in flags):
+                    "DELIVER_GOV_ABSTAIN_REQUIRE" not in flags and
+                    scenario != "upgrade"):
                 self.assertEqual(flags["DELIVER_GOV_REQUIRE"], self.ICA_HOST_PARAMS)
             else:
                 self.assertNotIn("DELIVER_GOV_REQUIRE", flags)
-            scenario = command[-4]
+            if scenario == "upgrade":
+                self.assertEqual(flags.get("DELIVER_REPLAY_STOP"), "signal")
             if "DELIVER_GOV_ABSTAIN_REQUIRE" in flags:
                 self.assertEqual(flags["DELIVER_GOV_ABSTAIN_REQUIRE"], "1")
                 self.assertEqual(flags["DELIVER_GOVPASS"], "1")
