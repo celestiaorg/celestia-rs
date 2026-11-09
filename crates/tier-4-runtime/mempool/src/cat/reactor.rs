@@ -435,7 +435,7 @@ impl Reactor {
             let out = encode(Sum::Txs(Txs {
                 txs: vec![tx.tx().to_vec()],
             }));
-            if src.send(MEMPOOL_DATA_CHANNEL, out) {
+            if src.try_send(MEMPOOL_DATA_CHANNEL, out) {
                 self.mempool.peer_has_tx(peer_id, key);
             }
         }
@@ -493,7 +493,7 @@ impl Reactor {
             if self.mempool.seen_tracker.has(&key, p.id) {
                 continue;
             }
-            if p.peer.send(MEMPOOL_DATA_CHANNEL, msg.clone()) {
+            if p.peer.try_send(MEMPOOL_DATA_CHANNEL, msg.clone()) {
                 self.mempool.peer_has_tx(p.id, key);
                 sent += 1;
                 if persistent {

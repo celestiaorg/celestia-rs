@@ -154,8 +154,32 @@ fn sends_tx_after_receiving_want_tx() {
     pool.check_tx(&tx, TxInfo::default()).unwrap();
     let id = init(&r, &peer);
     recv(&r, &peer, MEMPOOL_WANTS_CHANNEL, &want(&key)).unwrap();
-    assert_eq!(peer.sends(), vec![(MEMPOOL_DATA_CHANNEL, txs(vec![tx]))]);
+    assert_eq!(
+        peer.try_sends(),
+        vec![(MEMPOOL_DATA_CHANNEL, txs(vec![tx]))]
+    );
     assert!(pool.seen_tracker.has(&key, id));
+}
+
+#[test]
+fn failed_want_tx_reply_does_not_mark_peer_as_having_tx() {
+    let (r, pool, _) = setup_reactor();
+    let tx = new_default_tx("hello");
+    let key = tx_key(&tx);
+    let peer = MockPeer::random();
+    pool.check_tx(&tx, TxInfo::default()).unwrap();
+    let id = init(&r, &peer);
+    peer.try_send_ok
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+
+    recv(&r, &peer, MEMPOOL_WANTS_CHANNEL, &want(&key)).unwrap();
+
+    assert_eq!(
+        peer.try_sends(),
+        vec![(MEMPOOL_DATA_CHANNEL, txs(vec![tx]))]
+    );
+    assert!(peer.sends().is_empty());
+    assert!(!pool.seen_tracker.has(&key, id));
 }
 
 #[test]
@@ -182,8 +206,14 @@ fn broadcasts_seen_tx_after_receiving_tx() {
     recv(&r, &peers[0], MEMPOOL_CHANNEL, &txs(vec![tx])).unwrap();
     // only peer 1 gets SeenTx: peer 0 sent us the tx
     assert!(peers[0].sends().is_empty());
+    assert!(
+        peers[0]
+            .try_sends()
+            .iter()
+            .all(|(ch, _)| *ch != MEMPOOL_DATA_CHANNEL)
+    );
     assert_eq!(
-        peers[1].sends(),
+        peers[1].try_sends(),
         vec![(MEMPOOL_DATA_CHANNEL, seen(&key, b"sender-000-0", 0))]
     );
 }
@@ -825,8 +855,8 @@ fn seen_tx_skips_peers_far_behind() {
     init(&r, &behind);
     init(&r, &current);
     r.broadcast_seen_tx_with_height([1; 32], 100, b"s", 1);
-    assert!(behind.sends().is_empty());
-    assert_eq!(current.sends().len(), 1);
+    assert!(behind.try_sends().is_empty());
+    assert_eq!(current.try_sends().len(), 1);
 }
 
 // --- sticky broadcast ---
@@ -882,7 +912,7 @@ fn sticky_reactor(
 fn recipients(peers: &[Arc<MockPeer>]) -> HashSet<String> {
     peers
         .iter()
-        .filter(|p| !p.sends().is_empty())
+        .filter(|p| !p.try_sends().is_empty())
         .map(|p| p.id.clone())
         .collect()
 }
@@ -929,6 +959,40 @@ fn broadcast_seen_tx_no_persistent_no_change() {
     for p in ordered.iter().take(MAX_SEEN_TX_BROADCAST) {
         assert!(rec.contains(&p.peer.id()));
     }
+}
+
+#[test]
+fn failed_seen_tx_send_does_not_consume_broadcast_quota() {
+    let (signer, salt) = (
+        b"signer-failed-send".as_slice(),
+        b"salt-failed-send".as_slice(),
+    );
+    let plans = plan_peers(signer, salt, 30, 0, 0);
+    let (r, peers) = sticky_reactor(
+        ReactorOptions {
+            sticky_peer_salt: salt.to_vec(),
+            ..ReactorOptions::default()
+        },
+        &plans,
+    );
+    let ordered = select_sticky_peers(signer, &r.ids.get_all(), 30, salt);
+    let failed = peers.iter().find(|p| p.id == ordered[0].peer.id()).unwrap();
+    failed
+        .try_send_ok
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    let key = [0x42; 32];
+
+    r.broadcast_seen_tx_with_height(key, 1, signer, 1);
+
+    let attempted = recipients(&peers);
+    assert_eq!(attempted.len(), MAX_SEEN_TX_BROADCAST + 1);
+    assert!(attempted.contains(&ordered[0].peer.id()));
+    assert!(!r.mempool.seen_tracker.has(&key, ordered[0].id));
+    for peer in ordered.iter().skip(1).take(MAX_SEEN_TX_BROADCAST) {
+        assert!(attempted.contains(&peer.peer.id()));
+        assert!(r.mempool.seen_tracker.has(&key, peer.id));
+    }
+    assert!(peers.iter().all(|p| p.sends().is_empty()));
 }
 
 #[test]
