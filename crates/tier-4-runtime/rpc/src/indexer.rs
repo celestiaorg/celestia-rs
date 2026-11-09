@@ -75,9 +75,9 @@ fn is_range_op(op: Token) -> bool {
     matches!(op, Token::Gt | Token::Geq | Token::Lt | Token::Leq)
 }
 
-/// `LookForRangesWithHeight`: ranges in first-appearance order (Go iterates
-/// a map; the order only matters for which range initializes the result,
-/// which does not change the outcome).
+/// `LookForRangesWithHeight`: collects one range per tag. Callers sort the
+/// result by tag before matching, as current Go does to make cap errors
+/// deterministic.
 fn look_for_ranges_with_height(
     conds: &[Condition],
     height_key: &str,
@@ -234,7 +234,7 @@ fn check_height_conditions(info: &HeightInfo, key_height: i64) -> Result<bool, S
 }
 
 /// `indexer.ErrTooManyResults`.
-pub const ERR_TOO_MANY_RESULTS: &str = "too many results, please use a more specific query";
+pub const ERR_TOO_MANY_RESULTS: &str = "search query too broad: narrow the query";
 
 fn limit_reached(n: usize, max: usize) -> bool {
     max > 0 && n > max
@@ -372,6 +372,13 @@ impl TxIndexer {
         }
     }
 
+    /// Applies Go's `WithMaxSearchResults` option (0 = unlimited).
+    #[must_use]
+    pub fn with_max_search_results(mut self, max: usize) -> Self {
+        self.max_search_results = max;
+        self
+    }
+
     /// The backend (shared with the block indexer).
     #[must_use]
     pub fn db(&self) -> &Arc<dyn KvBackend> {
@@ -440,8 +447,20 @@ impl TxIndexer {
         Ok(())
     }
 
-    fn set_tmp_hashes(&self, tmp: &mut HashMap<Vec<u8>, TxRef>, key: &[u8], value: &[u8]) {
+    fn set_tmp_hashes(
+        &self,
+        tmp: &mut HashMap<Vec<u8>, TxRef>,
+        key: &[u8],
+        value: &[u8],
+        filtered: &HashMap<Vec<u8>, TxRef>,
+        first_run: bool,
+    ) {
         let seq = extract_event_seq_from_key(key);
+        let mut k = value.to_vec();
+        k.extend_from_slice(seq.as_bytes());
+        if !first_run && !filtered.contains_key(&k) {
+            return;
+        }
         let r = match (extract_height_from_key(key), extract_index_from_key(key)) {
             (Ok(height), Ok(index)) => TxRef {
                 hash: value.to_vec(),
@@ -457,8 +476,6 @@ impl TxIndexer {
                 _ => return,
             },
         };
-        let mut k = value.to_vec();
-        k.extend_from_slice(seq.as_bytes());
         tmp.insert(k, r);
     }
 
@@ -497,7 +514,7 @@ impl TxIndexer {
                     if !check_height_conditions(info, h).unwrap_or(false) {
                         continue;
                     }
-                    self.set_tmp_hashes(&mut tmp, &k, &v);
+                    self.set_tmp_hashes(&mut tmp, &k, &v, &filtered, first_run);
                     if limit_reached(tmp.len(), self.max_search_results) {
                         return Err(ERR_TOO_MANY_RESULTS.into());
                     }
@@ -511,7 +528,7 @@ impl TxIndexer {
                     if !check_height_conditions(info, h).unwrap_or(false) {
                         continue;
                     }
-                    self.set_tmp_hashes(&mut tmp, &k, &v);
+                    self.set_tmp_hashes(&mut tmp, &k, &v, &filtered, first_run);
                     if limit_reached(tmp.len(), self.max_search_results) {
                         return Err(ERR_TOO_MANY_RESULTS.into());
                     }
@@ -529,7 +546,7 @@ impl TxIndexer {
                         if !check_height_conditions(info, h).unwrap_or(false) {
                             continue;
                         }
-                        self.set_tmp_hashes(&mut tmp, &k, &v);
+                        self.set_tmp_hashes(&mut tmp, &k, &v, &filtered, first_run);
                     }
                     if limit_reached(tmp.len(), self.max_search_results) {
                         return Err(ERR_TOO_MANY_RESULTS.into());
@@ -571,7 +588,7 @@ impl TxIndexer {
                     }
                 }
                 if check_bounds(r, &num).unwrap_or(false) {
-                    self.set_tmp_hashes(&mut tmp, &k, &v);
+                    self.set_tmp_hashes(&mut tmp, &k, &v, &filtered, first_run);
                 }
             }
             if limit_reached(tmp.len(), self.max_search_results) {
@@ -611,7 +628,9 @@ impl TxIndexer {
                 skip.push(i);
             }
         }
-        let (ranges, range_idx, height_range) = look_for_ranges_with_height(&conds, TX_HEIGHT_KEY);
+        let (mut ranges, range_idx, height_range) =
+            look_for_ranges_with_height(&conds, TX_HEIGHT_KEY);
+        ranges.sort_by(|a, b| a.key.cmp(&b.key));
         info.height_range = height_range;
         let mut initialized = false;
         let mut filtered = HashMap::new();
@@ -986,6 +1005,13 @@ impl BlockIndexer {
         }
     }
 
+    /// Applies Go's `WithMaxSearchResults` option (0 = unlimited).
+    #[must_use]
+    pub fn with_max_search_results(mut self, max: usize) -> Self {
+        self.max_search_results = max;
+        self
+    }
+
     fn iter(&self, prefix: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>, String> {
         Ok(iterate_prefix(self.db.as_ref(), &prefixed(prefix))?
             .into_iter()
@@ -1033,10 +1059,19 @@ impl BlockIndexer {
         self.db.write(batch).map_err(kv_err)
     }
 
-    fn set_tmp(tmp: &mut HashMap<Vec<u8>, Vec<u8>>, k: &[u8], v: &[u8]) {
+    fn set_tmp(
+        tmp: &mut HashMap<Vec<u8>, Vec<u8>>,
+        k: &[u8],
+        v: &[u8],
+        filtered: &HashMap<Vec<u8>, Vec<u8>>,
+        first_run: bool,
+    ) {
         let seq = parse_event_seq(k);
         let mut key = v.to_vec();
         key.extend_from_slice(seq.to_string().as_bytes());
+        if !first_run && !filtered.contains_key(&key) {
+            return;
+        }
         tmp.insert(key, v.to_vec());
     }
 
@@ -1093,7 +1128,7 @@ impl BlockIndexer {
                     }
                 }
                 if check_bounds(r, &num).unwrap_or(false) {
-                    Self::set_tmp(&mut tmp, &k, &v);
+                    Self::set_tmp(&mut tmp, &k, &v, &filtered, first_run);
                 }
             }
             if limit_reached(tmp.len(), self.max_search_results) {
@@ -1126,7 +1161,7 @@ impl BlockIndexer {
                     if !check_height_conditions(info, h).unwrap_or(false) {
                         continue;
                     }
-                    Self::set_tmp(&mut tmp, &k, &v);
+                    Self::set_tmp(&mut tmp, &k, &v, &filtered, first_run);
                     if limit_reached(tmp.len(), self.max_search_results) {
                         return Err(ERR_TOO_MANY_RESULTS.into());
                     }
@@ -1140,7 +1175,7 @@ impl BlockIndexer {
                     if !check_height_conditions(info, h).unwrap_or(false) {
                         continue;
                     }
-                    Self::set_tmp(&mut tmp, &k, &v);
+                    Self::set_tmp(&mut tmp, &k, &v, &filtered, first_run);
                     if limit_reached(tmp.len(), self.max_search_results) {
                         return Err(ERR_TOO_MANY_RESULTS.into());
                     }
@@ -1155,7 +1190,7 @@ impl BlockIndexer {
                         if !check_height_conditions(info, h).unwrap_or(false) {
                             continue;
                         }
-                        Self::set_tmp(&mut tmp, &k, &v);
+                        Self::set_tmp(&mut tmp, &k, &v, &filtered, first_run);
                     }
                     if limit_reached(tmp.len(), self.max_search_results) {
                         return Err(ERR_TOO_MANY_RESULTS.into());
@@ -1170,8 +1205,9 @@ impl BlockIndexer {
     /// `Search`: matching heights in ascending order.
     pub fn search(&self, q: &Query) -> Result<Vec<i64>, String> {
         let (conds, mut info, found) = dedup_height(&q.conds, BLOCK_HEIGHT_KEY);
-        let (ranges, range_idx, height_range) =
+        let (mut ranges, range_idx, height_range) =
             look_for_ranges_with_height(&conds, BLOCK_HEIGHT_KEY);
+        ranges.sort_by(|a, b| a.key.cmp(&b.key));
         info.height_range = height_range;
         if found && info.only_height_eq {
             return Ok(if self.has(info.height)? {
@@ -1244,6 +1280,78 @@ pub fn index_block(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn indexed_event(height: i64) -> abci::Event {
+        let mut attributes = vec![abci::EventAttribute {
+            key: "z_broad".into(),
+            value: height.to_string(),
+            index: true,
+        }];
+        if height == 1 {
+            attributes.push(abci::EventAttribute {
+                key: "a_rare".into(),
+                value: "1".into(),
+                index: true,
+            });
+        }
+        abci::Event {
+            r#type: "event".into(),
+            attributes,
+        }
+    }
+
+    #[test]
+    fn tx_search_cap_applies_after_intersection_in_sorted_range_order() {
+        let db: Arc<dyn KvBackend> = Arc::new(kvdb::MemBackend::new());
+        let txi = TxIndexer::new(db).with_max_search_results(2);
+        for height in 1..=10 {
+            txi.add_batch(&[abci::TxResult {
+                height,
+                tx: format!("tx{height}").into_bytes(),
+                result: Some(abci::ExecTxResult {
+                    events: vec![indexed_event(height)],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }])
+            .unwrap();
+        }
+
+        // Go sorts range tags, so event.a_rare initializes the intersection even
+        // though the query lists the broad range first. The later broad range
+        // may accumulate only the already-matched entry before applying the cap.
+        let query = Query::new("event.z_broad > 0 AND event.a_rare > 0").unwrap();
+        let (results, total) = txi.search_paged(&query, "asc", 0, 10).unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(results[0].height, 1);
+
+        let ordinary = Query::new("event.a_rare = '1' AND event.z_broad EXISTS").unwrap();
+        assert_eq!(txi.search_paged(&ordinary, "asc", 0, 10).unwrap().1, 1);
+
+        let broad = Query::new("event.z_broad > 0").unwrap();
+        assert_eq!(
+            txi.search_paged(&broad, "asc", 0, 10).unwrap_err(),
+            ERR_TOO_MANY_RESULTS
+        );
+    }
+
+    #[test]
+    fn block_search_cap_applies_after_intersection_in_sorted_range_order() {
+        let db: Arc<dyn KvBackend> = Arc::new(kvdb::MemBackend::new());
+        let bi = BlockIndexer::new(db).with_max_search_results(2);
+        for height in 1..=10 {
+            bi.index(height, &[indexed_event(height)]).unwrap();
+        }
+
+        let query = Query::new("event.z_broad > 0 AND event.a_rare > 0").unwrap();
+        assert_eq!(bi.search(&query).unwrap(), vec![1]);
+
+        let ordinary = Query::new("event.a_rare = '1' AND event.z_broad EXISTS").unwrap();
+        assert_eq!(bi.search(&ordinary).unwrap(), vec![1]);
+
+        let broad = Query::new("event.z_broad > 0").unwrap();
+        assert_eq!(bi.search(&broad).unwrap_err(), ERR_TOO_MANY_RESULTS);
+    }
 
     #[test]
     fn orderedcode_ints_roundtrip() {
