@@ -838,4 +838,8 @@ impl p2p::Reactor for P2pReactor {
     fn queue_size(&self) -> usize {
         REACTOR_INCOMING_MESSAGE_QUEUE_SIZE
     }
+
+    fn drop_on_full_queue(&self) -> bool {
+        true
+    }
 }

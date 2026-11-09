@@ -71,4 +71,14 @@ pub trait Reactor: Send + Sync + 'static {
     fn queue_size(&self) -> usize {
         100
     }
+
+    /// Drop a newly received message when the incoming queue is full.
+    ///
+    /// The default matches `BaseReactor`'s blocking queue. CAT overrides this
+    /// to match its v0.42.8 `WithQueueingFunc(TryQueueUnprocessedEnvelope)`
+    /// option, which prevents a stalled mempool reactor from blocking every
+    /// other channel received from the same peer.
+    fn drop_on_full_queue(&self) -> bool {
+        false
+    }
 }
