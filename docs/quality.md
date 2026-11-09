@@ -124,6 +124,16 @@ not replace the scenario, coverage, volume, compiler, replay or elapsed-window
 gates in MILESTONES.md. External scripts and binaries used by a check must be
 supplied as hashed inputs as well.
 
+`scripts/quality/oracle_provenance.py` writes the same digest, size and
+protobuf-go seed classification for workflow-built Go oracles. `fuzz-exec`
+includes that receipt in both its shared binary artifact and every completed
+findings artifact. Cross-platform determinism artifacts retain the receipt from
+each platform alongside the traces; trace comparison requires the same trace
+set and bytes but does not require platform-specific oracle executables to be
+identical. A source version or Go compiler label is insufficient to transfer
+results between byte-different builds; the workflow receipt is diagnostic and
+does not replace an exact-source qualification receipt.
+
 ## Reviewing progress
 
 GitHub job summaries give the current results; download `workspace-coverage`,
