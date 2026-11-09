@@ -6238,12 +6238,28 @@ pub fn run(
         height += 1;
         gn.height = height;
         let script_blocks_at_start = script.len();
-        let legacy_upgrade_fixture_ready = stats
-            .ibc
+        let legacy_upgrade_fixture_anchor_ready = ibc
+            .as_ref()
+            .map(|driver| &driver.stats)
+            .unwrap_or(&stats.ibc)
             .get("legacy_upgrade_fixture_trusted_height")
             .copied()
             .unwrap_or(0)
             > 0;
+        let legacy_upgrade_fixture_intermediate_ready = ibc
+            .as_ref()
+            .map(|driver| &driver.stats)
+            .unwrap_or(&stats.ibc)
+            .get("legacy_upgrade_fixture_intermediate_height")
+            .copied()
+            .unwrap_or(0)
+            > 0;
+        let legacy_upgrade_fixture_ready = ibc
+            .as_ref()
+            .is_some_and(crate::ibcmock::Driver::legacy_upgrade_fixture_ready);
+        let legacy_upgrade_fixture_state_ready = ibc
+            .as_ref()
+            .is_some_and(crate::ibcmock::Driver::legacy_upgrade_fixture_state_ready);
         let (fixture_block, legacy_upgrade_fixture_setup) = legacy_upgrade_fixture_block_index(
             b,
             &mut legacy_upgrade_fixture_paused_blocks,
@@ -6251,6 +6267,14 @@ pub fn run(
             legacy_upgrade_fixture_ready,
             script_at,
         );
+        if ibc_legacy_upgrade_fixture && fixture_block >= script_at {
+            let state = ibc
+                .as_ref()
+                .map(crate::ibcmock::Driver::legacy_upgrade_fixture_state);
+            stats.script.push(format!(
+                "h={height} legacy fixture gate intermediate={legacy_upgrade_fixture_intermediate_ready} anchor={legacy_upgrade_fixture_anchor_ready} state={state:?} ready={legacy_upgrade_fixture_ready} setup={legacy_upgrade_fixture_setup}"
+            ));
+        }
         let last_committed_nanos = u64::try_from(time.seconds)
             .unwrap_or_default()
             .saturating_mul(1_000_000_000)
@@ -6261,6 +6285,15 @@ pub fn run(
             time.seconds += [3600, 86_400, 90, 700_000, 1_300_000][gn.m.rng.below(5)];
         } else {
             time.seconds += 5 + gn.m.rng.below(3) as i64;
+        }
+        if legacy_upgrade_fixture_state_ready {
+            // Keep this opt-in historical fixture after the retained header
+            // time. The height-43 trust anchor can finalize through either the
+            // ordinary IBC step or the held setup block, so this follows the
+            // logical fixture clock rather than only the setup branch.
+            time.seconds = time
+                .seconds
+                .max(crate::ibcmock::LEGACY_UPGRADE_FIXTURE_HEADER_TIME);
         }
         if time_jump_at == Some(fixture_block) && !legacy_upgrade_fixture_setup {
             time.seconds = time
@@ -6311,7 +6344,7 @@ pub fn run(
         stats.hl_preupgrade_blocks += u64::from(hl_preupgrade);
         let mut hl_pair = None;
         let mut hl_recovery_id_block = None;
-        let mut scripted = false;
+        let mut scripted = legacy_upgrade_fixture_setup;
         let phase = upg.phase(height, app_version);
         let block_av = app_version;
         if ibc_recover_client
@@ -6341,14 +6374,15 @@ pub fn run(
         // The blocks around the upgrade height also take every generated
         // tx unfiltered (the first v10 block's `CheckTx` runs on the fresh
         // app's empty check state and rejects most of them).
-        let force_raw =
-            ((malformed_multisig_required || p256_required || pubkey_rejection_required) && b > 0)
-                || (upg.on
-                    && upg
-                        .upgrade_height
-                        .is_some_and(|h| (h..=h + 2).contains(&height)));
+        let force_raw = legacy_upgrade_fixture_setup
+            || ((malformed_multisig_required || p256_required || pubkey_rejection_required)
+                && b > 0)
+            || (upg.on
+                && upg
+                    .upgrade_height
+                    .is_some_and(|h| (h..=h + 2).contains(&height)));
         let upgrade_block = upg.block_index(b, hl_setup, bootstrap);
-        if upg.on && !bootstrap && !hl_setup {
+        if upg.on && !bootstrap && !hl_setup && !legacy_upgrade_fixture_setup {
             txs = upg.txs(&mut gn, upgrade_block, height, &hl_seq.token, hl_preupgrade);
         }
         if bootstrap {
@@ -6494,7 +6528,26 @@ pub fn run(
                         ibc_legacy_upgrade_fixture,
                         legacy_upgrade_fixture_proposal_id,
                         &gn.proposals,
-                    )?;
+                    )
+                    .with_context(|| {
+                        let outcome = stats.script_outcomes.last().map(|(_, result)| {
+                            format!(
+                                "code={} codespace={} log={}",
+                                result.code,
+                                result.codespace,
+                                gostr::to_go_bytes(&result.log).escape_ascii()
+                            )
+                        });
+                        let trace = stats
+                            .script
+                            .iter()
+                            .rev()
+                            .take(8)
+                            .rev()
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        format!("last scripted outcome: {outcome:?}; trace: {trace:?}")
+                    })?;
                     if ibc_legacy_upgrade_fixture {
                         stats.script.push(format!(
                             "h={height} legacy fixture vote targets proposal {proposal_id}"
@@ -6509,6 +6562,31 @@ pub fn run(
                 }
                 let is_legacy_fixture_submission = ibc_legacy_upgrade_fixture
                     && msg.type_url == "/cosmos.gov.v1.MsgSubmitProposal";
+                if is_legacy_fixture_submission {
+                    let mut proposal = celestia_proto::cosmos::gov::v1::MsgSubmitProposal::decode(
+                        msg.value.as_slice(),
+                    )?;
+                    let execution_signer = proposal
+                        .messages
+                        .first()
+                        .filter(|message| message.type_url == "/ibc.core.client.v1.MsgUpdateClient")
+                        .and_then(|message| {
+                            celestia_proto::ibc::core::client::v1::MsgUpdateClient::decode(
+                                message.value.as_slice(),
+                            )
+                            .ok()
+                        })
+                        .map(|message| message.signer)
+                        .filter(|signer| !signer.is_empty())
+                        .context("legacy upgrade fixture governance execution signer")?;
+                    proposal.messages = ibc
+                        .as_mut()
+                        .and_then(|driver| {
+                            driver.legacy_upgrade_fixture_messages(time.seconds, &execution_signer)
+                        })
+                        .context("legacy upgrade fixture dynamic proposal prerequisites")?;
+                    msg = Any::pack(&proposal);
+                }
                 if let Some(t) = sign_simple(&gn, i, vec![msg], gas) {
                     gn.accts[i].seq += 1;
                     if is_legacy_fixture_submission {
@@ -6523,8 +6601,7 @@ pub fn run(
         } else {
             // IBC uses the dedicated relayer, not the Hyperlane account. Keep
             // it active so packets can be in flight across the switch.
-            if !hl_setup
-                && !gov_setup
+            if ((!hl_setup && !gov_setup) || legacy_upgrade_fixture_setup)
                 && let Some(d) = ibc.as_mut()
             {
                 let ibc_relayer = d
@@ -6548,7 +6625,36 @@ pub fn run(
                     signer: gn.accts[ibc_relayer].acc.clone(),
                     accounts,
                 };
-                if let Some(retry) = d.upgrade_timeout_retry_tx().map(<[u8]>::to_vec) {
+                if legacy_upgrade_fixture_setup
+                    && legacy_upgrade_fixture_state_ready
+                    && !legacy_upgrade_fixture_intermediate_ready
+                {
+                    if let Some(update) = d.legacy_upgrade_fixture_intermediate_update(
+                        app_version,
+                        &gn.accts[ibc_relayer].acc,
+                    ) && let Some(t) = sign_simple(&gn, ibc_relayer, vec![update], 8_000_000)
+                    {
+                        gn.accts[ibc_relayer].seq += 1;
+                        txs.push(t);
+                    }
+                } else if legacy_upgrade_fixture_setup
+                    && legacy_upgrade_fixture_state_ready
+                    && !legacy_upgrade_fixture_anchor_ready
+                {
+                    // Reserve the held logical block for the exact historical
+                    // trust anchor. The ordinary IBC state machine may not
+                    // reach its steady phase until the bounded run is nearly
+                    // over, leaving no blocks for the dependent proposal.
+                    if let Some(update) = d.legacy_upgrade_fixture_update(
+                        app_version,
+                        time.seconds,
+                        &gn.accts[ibc_relayer].acc,
+                    ) && let Some(t) = sign_simple(&gn, ibc_relayer, vec![update], 8_000_000)
+                    {
+                        gn.accts[ibc_relayer].seq += 1;
+                        txs.push(t);
+                    }
+                } else if let Some(retry) = d.upgrade_timeout_retry_tx().map(<[u8]>::to_vec) {
                     txs.push(retry);
                 } else {
                     for msgs in d.step(&mut c) {
@@ -6580,7 +6686,8 @@ pub fn run(
                     }
                 }
             }
-            if !gov_setup && hl_seq.on && hl_seq.pending.is_none() {
+            if !legacy_upgrade_fixture_setup && !gov_setup && hl_seq.on && hl_seq.pending.is_none()
+            {
                 let msgs = hl_seq.msgs(&gn);
                 if hl_recovery_id_setup {
                     let mut cases = Vec::new();

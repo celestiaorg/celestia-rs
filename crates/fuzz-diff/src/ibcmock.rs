@@ -478,9 +478,11 @@ const TRUSTING: i64 = 60 * 86_400;
 // header at height 44 whose trusted height is 43. Keep this opt-in fixture
 // independent of unrelated additions to the random steady-state schedule.
 const LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT: i64 = 43;
+const LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_HEIGHT: i64 = 35;
+const LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_TIME: i64 = LEGACY_UPGRADE_FIXTURE_HEADER_TIME - 29;
 // Header 44 in gov-duplicate-error-receipt.script is timestamped at this
 // second. The synthetic height-43 anchor must be strictly earlier.
-const LEGACY_UPGRADE_FIXTURE_HEADER_TIME: i64 = 1_793_351_641;
+pub(crate) const LEGACY_UPGRADE_FIXTURE_HEADER_TIME: i64 = 1_793_351_641;
 
 /// The counterparty's transfer channel.
 pub const CP_TRANSFER: &str = "channel-7";
@@ -686,6 +688,7 @@ pub struct Driver {
     conn2_wait: u32,
     connection_confirm_on: bool,
     legacy_upgrade_fixture: bool,
+    legacy_upgrade_fixture_intermediate_pending: bool,
     legacy_upgrade_fixture_update_pending: bool,
 }
 
@@ -1384,14 +1387,21 @@ impl Driver {
     }
 
     /// `MsgUpdateClient` of the main client to an exact counterparty height.
-    fn update_at(&mut self, signer: &str, h: i64, trusted: i64) -> Option<Any> {
+    fn update_at_inner(
+        &mut self,
+        signer: &str,
+        h: i64,
+        trusted: i64,
+        fuzz_wide_flag: bool,
+    ) -> Option<Any> {
         let client = self.a_client.clone()?;
         if h <= trusted {
             return None;
         }
         let mut header = self.cp.header(h, trusted, None);
         self.updates += 1;
-        if self.updates.is_multiple_of(3)
+        if fuzz_wide_flag
+            && self.updates.is_multiple_of(3)
             && let Some(sig) = header
                 .signed_header
                 .as_mut()
@@ -1411,6 +1421,14 @@ impl Driver {
         ))
     }
 
+    fn update_at(&mut self, signer: &str, h: i64, trusted: i64) -> Option<Any> {
+        self.update_at_inner(signer, h, trusted, true)
+    }
+
+    fn exact_update_at(&mut self, signer: &str, h: i64, trusted: i64) -> Option<Any> {
+        self.update_at_inner(signer, h, trusted, false)
+    }
+
     /// `MsgUpdateClient` of the main client to the counterparty's latest
     /// height.
     fn update(&mut self, signer: &str) -> Option<Any> {
@@ -1424,7 +1442,152 @@ impl Driver {
         self.update_at(signer, height, self.trusted)
     }
 
-    fn legacy_upgrade_fixture_update(
+    /// Whether the retained governance proposal's exact on-chain
+    /// preconditions have finalized.
+    #[must_use]
+    pub(crate) fn legacy_upgrade_fixture_ready(&self) -> bool {
+        self.stats
+            .contains_key("legacy_upgrade_fixture_trusted_height")
+            && self
+                .stats
+                .contains_key("legacy_upgrade_fixture_intermediate_height")
+            && self.legacy_upgrade_fixture_state_ready()
+    }
+
+    /// Whether the retained governance proposal's channel-upgrade state is
+    /// ready for the final height-43 trust anchor.
+    #[must_use]
+    pub(crate) fn legacy_upgrade_fixture_state_ready(&self) -> bool {
+        self.cu_stage == 2 && self.cu_seq == 2
+    }
+
+    /// Compact state used by bounded fixture diagnostics.
+    #[must_use]
+    pub(crate) fn legacy_upgrade_fixture_state(&self) -> (u8, u8, u64) {
+        (self.phase, self.cu_stage, self.cu_seq)
+    }
+
+    pub(crate) fn legacy_upgrade_fixture_messages(
+        &mut self,
+        now: i64,
+        signer: &str,
+    ) -> Option<Vec<Any>> {
+        if !self.legacy_upgrade_fixture_ready() {
+            return None;
+        }
+        self.a_client.as_ref()?;
+        let channel = self.a_ica.clone()?;
+        let connection = self.a_conn.clone()?;
+        let current = self.ica_version.clone();
+        let next = self.cu_new.clone();
+        let sequence = self.cu_seq;
+        let receipt = ch::ErrorReceipt {
+            sequence,
+            message: "fuzz: upgrade cancelled".into(),
+        };
+        let receipt_key =
+            format!("channelUpgrades/upgradeError/ports/{CP_ICA_PORT}/channels/{CP_ICA_CHAN}");
+        self.cp.put_gogo(&receipt_key, &receipt);
+        let cancel_height = self.cp.commit(now.saturating_sub(2));
+        let cancel_update = self.exact_update_at(signer, cancel_height, self.trusted)?;
+        let cancel = Any::pack(&ch::MsgChannelUpgradeCancel {
+            port_id: "icahost".into(),
+            channel_id: channel.clone(),
+            error_receipt: Some(receipt),
+            proof_error_receipt: self.cp.proof(&receipt_key),
+            proof_height: proof_height(cancel_height),
+            signer: signer.into(),
+        });
+
+        let fields = ch::UpgradeFields {
+            ordering: ch::Order::Unordered as i32,
+            connection_hops: vec![CP_CONNECTION.into()],
+            version: next,
+        };
+        let channel_key = format!("channelEnds/ports/{CP_ICA_PORT}/channels/{CP_ICA_CHAN}");
+        let upgrade_key =
+            format!("channelUpgrades/upgrades/ports/{CP_ICA_PORT}/channels/{CP_ICA_CHAN}");
+        self.cp.put_channel_end(
+            CP_ICA_PORT,
+            CP_ICA_CHAN,
+            &ch::Channel {
+                state: ch::State::Open as i32,
+                ordering: ch::Order::Unordered as i32,
+                counterparty: Some(ch::Counterparty {
+                    port_id: "icahost".into(),
+                    channel_id: channel.clone(),
+                }),
+                connection_hops: vec![CP_CONNECTION.into()],
+                version: current,
+                upgrade_sequence: sequence,
+            },
+        );
+        self.cp.put_gogo(
+            &upgrade_key,
+            &ch::Upgrade {
+                fields: Some(fields.clone()),
+                timeout: Some(ch::Timeout::default()),
+                next_sequence_send: 0,
+            },
+        );
+        let try_height = self.cp.commit(now.saturating_sub(1));
+        let try_update = self.exact_update_at(signer, try_height, cancel_height)?;
+        let try_upgrade = Any::pack(&ch::MsgChannelUpgradeTry {
+            port_id: "icahost".into(),
+            channel_id: channel,
+            proposed_upgrade_connection_hops: vec![connection],
+            counterparty_upgrade_fields: Some(fields),
+            counterparty_upgrade_sequence: sequence,
+            proof_channel: self.cp.proof(&channel_key),
+            proof_upgrade: self.cp.proof(&upgrade_key),
+            proof_height: proof_height(try_height),
+            signer: signer.into(),
+        });
+        Some(vec![cancel_update, cancel, try_update, try_upgrade])
+    }
+
+    pub(crate) fn legacy_upgrade_fixture_intermediate_update(
+        &mut self,
+        app_version: u64,
+        signer: &str,
+    ) -> Option<Any> {
+        if !self.legacy_upgrade_fixture
+            || app_version < 10
+            || self
+                .stats
+                .contains_key("legacy_upgrade_fixture_intermediate_height")
+        {
+            return None;
+        }
+        let initial_height = self.cp.height();
+        let remaining = u64::try_from(
+            LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_HEIGHT.saturating_sub(initial_height),
+        )
+        .expect("legacy upgrade fixture intermediate height delta must be nonnegative");
+        let final_nanos = u64::try_from(LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_TIME)
+            .expect("legacy upgrade fixture intermediate time must be nonnegative")
+            .saturating_mul(1_000_000_000);
+        let first_nanos = final_nanos.saturating_sub(remaining.saturating_sub(1));
+        while self.cp.height() < LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_HEIGHT {
+            let offset = u64::try_from(self.cp.height().saturating_sub(initial_height))
+                .expect("legacy upgrade fixture intermediate offset must be nonnegative");
+            self.cp.commit_at_nanos(first_nanos.saturating_add(offset));
+        }
+        let (_, time) = self
+            .cp
+            .headers
+            .get_mut(&LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_HEIGHT)?;
+        *time = ts(LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_TIME);
+        self.legacy_upgrade_fixture_intermediate_pending = true;
+        self.exact_update_at(
+            signer,
+            LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_HEIGHT,
+            self.trusted
+                .min(LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_HEIGHT - 1),
+        )
+    }
+
+    pub(crate) fn legacy_upgrade_fixture_update(
         &mut self,
         app_version: u64,
         now: i64,
@@ -1483,7 +1646,7 @@ impl Driver {
             self.cp.commit_at_nanos(first_nanos.saturating_add(offset));
         }
         self.legacy_upgrade_fixture_update_pending = true;
-        self.update_at(
+        self.exact_update_at(
             signer,
             LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT,
             self.trusted.min(LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT - 1),
@@ -1830,17 +1993,17 @@ impl Driver {
                 {
                     txs.push(vec![message]);
                 }
-                if let Some(t) = self.steady(c) {
+                let relay = if self.legacy_upgrade_fixture {
+                    if self.legacy_upgrade_fixture_state_ready() {
+                        None
+                    } else {
+                        self.chan_upgrade(c)
+                    }
+                } else {
+                    self.steady(c)
+                };
+                if let Some(t) = relay {
                     txs.push(t);
-                }
-                // The static governance fixture needs consensus state 43.
-                // Random relay messages can fail after their bundled client
-                // update and roll the whole transaction back, so retry the
-                // exact trust anchor independently until its event lands.
-                if let Some(update) =
-                    self.legacy_upgrade_fixture_update(c.app_version, c.now, &signer)
-                {
-                    txs.push(vec![update]);
                 }
             }
             _ if retry => {
@@ -2533,7 +2696,11 @@ impl Driver {
                 };
                 let ack_failure =
                     !self.ica_order_required && !self.legacy_upgrade_fixture && seq % 4 == 1;
-                if !ack_failure && c.now - self.cu_try_at > 620 && r < 6 {
+                if !ack_failure
+                    && !self.legacy_upgrade_fixture
+                    && c.now - self.cu_try_at > 620
+                    && r < 6
+                {
                     // The upgrade timed out: the counterparty never moved on.
                     let end = cp_end(ch::State::Open, &cur, seq);
                     self.cp.put_channel_end(CP_ICA_PORT, CP_ICA_CHAN, &end);
@@ -4075,6 +4242,11 @@ impl Driver {
                                 {
                                     self.bump("legacy_upgrade_fixture_trusted_height");
                                 }
+                                if self.legacy_upgrade_fixture_intermediate_pending
+                                    && h == LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_HEIGHT
+                                {
+                                    self.bump("legacy_upgrade_fixture_intermediate_height");
+                                }
                             } else if self.a_client2.as_ref() == Some(&id) {
                                 let advanced = h > self.trusted2;
                                 self.trusted2 = self.trusted2.max(h);
@@ -4460,6 +4632,7 @@ impl Driver {
             }
         }
         self.legacy_upgrade_fixture_update_pending = false;
+        self.legacy_upgrade_fixture_intermediate_pending = false;
         let receive_attempted = std::mem::take(&mut self.pfm_receive_pending);
         if self.pfm_enabled()
             && receive_attempted
@@ -5235,6 +5408,25 @@ mod tests {
             driver.stats.get("legacy_upgrade_fixture_trusted_height"),
             None
         );
+        let intermediate = driver
+            .legacy_upgrade_fixture_intermediate_update(10, "relayer")
+            .unwrap();
+        let message = celestia_proto::ibc::core::client::v1::MsgUpdateClient::decode(
+            intermediate.value.as_slice(),
+        )
+        .unwrap();
+        let header =
+            tmlc::Header::decode(message.client_message.unwrap().value.as_slice()).unwrap();
+        assert_eq!(
+            header
+                .signed_header
+                .and_then(|signed| signed.header)
+                .map(|header| header.height),
+            Some(LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_HEIGHT)
+        );
+        driver.observe(&[result(update_event(
+            LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_HEIGHT,
+        ))]);
         let update = driver
             .legacy_upgrade_fixture_update(10, LEGACY_UPGRADE_FIXTURE_HEADER_TIME + 8, "relayer")
             .unwrap();
@@ -5261,6 +5453,10 @@ mod tests {
             driver.stats.get("legacy_upgrade_fixture_trusted_height"),
             Some(&1)
         );
+        assert!(!driver.legacy_upgrade_fixture_ready());
+        driver.cu_stage = 2;
+        driver.cu_seq = 2;
+        assert!(driver.legacy_upgrade_fixture_ready());
         assert!(!driver.legacy_upgrade_fixture_update_pending);
         assert!(
             driver
@@ -5268,6 +5464,8 @@ mod tests {
                 .is_none()
         );
         assert_eq!(driver.cp.height(), LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT);
+        driver.cp.commit(LEGACY_UPGRADE_FIXTURE_HEADER_TIME + 1);
+        assert!(driver.update("relayer").is_none());
         let anchor_time = driver
             .cp
             .headers
@@ -5275,7 +5473,7 @@ mod tests {
             .map(|(_, time)| time.clone())
             .unwrap();
         assert_eq!(anchor_time.seconds, LEGACY_UPGRADE_FIXTURE_HEADER_TIME - 1);
-        assert_eq!(anchor_time.nanos, 42);
+        assert_eq!(anchor_time.nanos, 0);
 
         let fixture = include_str!("../fixtures/gov-duplicate-error-receipt.script");
         let proposal_hex = fixture
@@ -5301,6 +5499,65 @@ mod tests {
             .unwrap();
         assert_eq!(fixture_time, LEGACY_UPGRADE_FIXTURE_HEADER_TIME);
         assert!((anchor_time.seconds, anchor_time.nanos) < (fixture_time, 0));
+    }
+
+    #[test]
+    fn legacy_upgrade_fixture_rebinds_current_channel_proofs() {
+        let mut driver = Driver::default().with_legacy_upgrade_fixture(true);
+        driver.a_client = Some("07-tendermint-0".into());
+        driver.a_ica = Some("channel-1".into());
+        driver.a_conn = Some("connection-0".into());
+        driver.ica_version = "current-version".into();
+        driver.cu_new = "next-version".into();
+        driver.cu_stage = 2;
+        driver.cu_seq = 2;
+        driver.trusted = LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT;
+        driver
+            .stats
+            .insert("legacy_upgrade_fixture_trusted_height", 1);
+        driver
+            .stats
+            .insert("legacy_upgrade_fixture_intermediate_height", 1);
+        for seconds in 1..=LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT {
+            driver.cp.commit(seconds);
+        }
+
+        let messages = driver
+            .legacy_upgrade_fixture_messages(LEGACY_UPGRADE_FIXTURE_HEADER_TIME + 2, "gov-module")
+            .unwrap();
+        assert_eq!(
+            messages
+                .iter()
+                .map(|message| message.type_url.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "/ibc.core.client.v1.MsgUpdateClient",
+                "/ibc.core.channel.v1.MsgChannelUpgradeCancel",
+                "/ibc.core.client.v1.MsgUpdateClient",
+                "/ibc.core.channel.v1.MsgChannelUpgradeTry",
+            ]
+        );
+        let cancel = ch::MsgChannelUpgradeCancel::decode(messages[1].value.as_slice()).unwrap();
+        assert_eq!(cancel.error_receipt.unwrap().sequence, 2);
+        assert_eq!(cancel.proof_height, Some(Cp::height_of(44)));
+        let try_upgrade = ch::MsgChannelUpgradeTry::decode(messages[3].value.as_slice()).unwrap();
+        assert_eq!(try_upgrade.counterparty_upgrade_sequence, 2);
+        assert_eq!(try_upgrade.proof_height, Some(Cp::height_of(45)));
+        assert!(!try_upgrade.proof_channel.is_empty());
+        assert!(!try_upgrade.proof_upgrade.is_empty());
+        let channel = ch::Channel::decode(
+            driver
+                .cp
+                .get(&format!(
+                    "channelEnds/ports/{CP_ICA_PORT}/channels/{CP_ICA_CHAN}"
+                ))
+                .unwrap()
+                .as_slice(),
+        )
+        .unwrap();
+        assert_eq!(channel.state, ch::State::Open as i32);
+        assert_eq!(channel.upgrade_sequence, 2);
+        assert_eq!(channel.version, "current-version");
     }
 
     #[test]
