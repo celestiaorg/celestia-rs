@@ -91,6 +91,144 @@ fn rollback_one_height_and_resume() {
 }
 
 #[test]
+fn rollback_to_height_checks_history_and_resumes_partial_work() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    copy_fixture(home);
+    node::start(&opts(home, 8)).unwrap();
+    assert_eq!(heights(home), (8, 8, 8));
+
+    let target_hash = {
+        let (bs, _) = node::open_stores(home).unwrap();
+        bs.load_block_meta(4 + 1).unwrap().unwrap().header.app_hash
+    };
+    let (height, hash) =
+        rollback::rollback_to_height(home, 4, false, false, app::AppOptions::default()).unwrap();
+    assert_eq!((height, hash), (4, target_hash.clone()));
+    assert_eq!(heights(home), (5, 4, 4));
+
+    // An explicit target is idempotent after every store reached it.
+    let (height, hash) =
+        rollback::rollback_to_height(home, 4, false, false, app::AppOptions::default()).unwrap();
+    assert_eq!((height, hash), (4, target_hash));
+    assert_eq!(heights(home), (5, 4, 4));
+
+    // Reproduce a crash after saving consensus state but before deleting its
+    // corresponding block. The checked loop finishes consensus first, then
+    // the top-level command brings the still-ahead app to the same target.
+    {
+        let (bs, ss) = node::open_stores(home).unwrap();
+        rollback::rollback_state(&bs, &ss, true).unwrap();
+        let (height, _) = rollback::rollback_state(&bs, &ss, false).unwrap();
+        assert_eq!(height, 3);
+        assert_eq!(
+            (bs.height(), ss.load().unwrap().unwrap().last_block_height),
+            (4, 3)
+        );
+    }
+    let (height, _) =
+        rollback::rollback_to_height(home, 2, false, false, app::AppOptions::default()).unwrap();
+    assert_eq!(height, 2);
+    assert_eq!(heights(home), (3, 2, 2));
+}
+
+#[test]
+fn rollback_to_height_rejects_hard_multi_height_before_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    copy_fixture(home);
+    node::start(&opts(home, 5)).unwrap();
+
+    let error =
+        rollback::rollback_to_height(home, 3, true, false, app::AppOptions::default()).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("--hard rolls back at most one height")
+    );
+    assert_eq!(heights(home), (5, 5, 5));
+}
+
+#[test]
+fn rollback_default_refuses_to_guess_about_an_unexecuted_block() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    copy_fixture(home);
+    node::start(&opts(home, 4)).unwrap();
+
+    let (bs, ss) = node::open_stores(home).unwrap();
+    rollback::rollback_state(&bs, &ss, false).unwrap();
+    assert_eq!(
+        (bs.height(), ss.load().unwrap().unwrap().last_block_height),
+        (4, 3)
+    );
+    let error = rollback::default_rollback_height(&bs, &ss).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("block saved but not executed at height 4")
+    );
+    assert!(error.to_string().contains("--height 3"));
+    assert!(error.to_string().contains("--height 2"));
+    assert_eq!(
+        (bs.height(), ss.load().unwrap().unwrap().last_block_height),
+        (4, 3)
+    );
+}
+
+#[test]
+fn rollback_preflight_rejects_app_hash_mismatch_before_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    copy_fixture(home);
+    node::start(&opts(home, 4)).unwrap();
+
+    let bad_hash = vec![0xA5; 32];
+    {
+        let (_, ss) = node::open_stores(home).unwrap();
+        let mut state = ss.load().unwrap().unwrap();
+        state.app_hash.clone_from(&bad_hash);
+        ss.save(&state).unwrap();
+    }
+    let error = rollback::rollback_to_height(home, 4, false, false, app::AppOptions::default())
+        .unwrap_err();
+    assert!(error.to_string().contains("app state at height 4 has hash"));
+
+    let (bs, ss) = node::open_stores(home).unwrap();
+    assert_eq!(bs.height(), 4);
+    let state = ss.load().unwrap().unwrap();
+    assert_eq!(state.last_block_height, 4);
+    assert_eq!(state.app_hash, bad_hash);
+    assert_eq!(app::App::open(home).unwrap().info().last_block_height, 4);
+}
+
+#[test]
+fn rollback_preflight_rejects_app_version_mismatch_before_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    copy_fixture(home);
+    node::start(&opts(home, 4)).unwrap();
+
+    {
+        let (_, ss) = node::open_stores(home).unwrap();
+        let mut state = ss.load().unwrap().unwrap();
+        state.version.app = 999;
+        ss.save(&state).unwrap();
+    }
+    let error = rollback::rollback_to_height(home, 4, false, false, app::AppOptions::default())
+        .unwrap_err();
+    assert!(error.to_string().contains("app version at height 4 is"));
+    assert!(error.to_string().contains("expected 999"));
+
+    let (bs, ss) = node::open_stores(home).unwrap();
+    assert_eq!(bs.height(), 4);
+    let state = ss.load().unwrap().unwrap();
+    assert_eq!(state.last_block_height, 4);
+    assert_eq!(state.version.app, 999);
+    assert_eq!(app::App::open(home).unwrap().info().last_block_height, 4);
+}
+
+#[test]
 fn halt_height_stops_before_the_block() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();

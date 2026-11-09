@@ -870,6 +870,7 @@ dependencies = [
  "tracing-subscriber",
  "txdecode",
  "x-blob",
+ "x-consensus",
 ]
 
 [[package]]

@@ -496,9 +496,15 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
   height with `UPGRADE "vN" NEEDED at height: H`, writes
   `data/upgrade-info.json` (cosmovisor's trigger, Go's format) and keeps
   RPC up, like a Go node. Stop it and start the upgraded binary.
-- **Rollback:** `celestia-rs rollback [--hard]` rolls the consensus and app
-  state back one height (Go's `celestia-appd rollback`), e.g. after an
-  app-hash mismatch caused by a bug; the next start re-executes the block.
+- **Rollback:** `celestia-rs rollback [--height H] [--hard] [--force]`
+  checks the retained block, consensus and app histories, then rolls all
+  three back to H. Without `--height`, it rolls back one executed height;
+  an unexecuted final block must be handled with an explicit height. Blocks
+  above H+1 are deleted and the next start re-executes block H+1. `--hard`
+  deletes that block too and is limited to one height. Rollbacks deeper than
+  100 heights require `--force`. The command preserves the private-validator
+  sign state and can resume after an interrupted state-save or block-delete
+  step.
 - **Export:** `celestia-rs export [--height H] [--output-document f]`
   writes the app state as a genesis file, identical to `celestia-appd
   export` at the same height.

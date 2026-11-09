@@ -66,6 +66,7 @@ toml = "1.1"
 toml_edit = "0.25"
 txdecode = { path = "../../tier-3-app-modules/txdecode" }
 x-blob = { path = "../../tier-3-app-modules/x/blob" }
+x-consensus = { path = "../../tier-3-app-modules/x/consensus" }
 tracing = "0.1"
 clap = { workspace = true, features = ["env"] }
 math = { path = "../../tier-0-primitives/math" }

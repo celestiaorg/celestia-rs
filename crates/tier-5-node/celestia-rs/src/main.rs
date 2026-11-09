@@ -13,7 +13,7 @@
 //! | `tx bank send`, `tx staking delegate`, `tx blob pay-for-blob`, `tx signal …`, `tx slashing unjail` | `celestia-appd tx …` |
 //! | `query bank\|auth\|staking\|tx\|block …`, `status` | `celestia-appd query …`, `status` |
 //! | `config view\|get\|set` | `celestia-appd config …` (confix) |
-//! | `rollback [--hard]`, `export` | `celestia-appd rollback`, `export` |
+//! | `rollback [--height N] [--hard] [--force]`, `export` | `celestia-appd rollback`, `export` |
 //! | `comet show-node-id\|show-validator\|show-address` | `celestia-appd comet …` |
 //!
 //! `abci` serves the state machine to Go celestia-core over the ABCI
@@ -137,11 +137,17 @@ enum Cmd {
         #[arg(long)]
         long: bool,
     },
-    /// Roll back the consensus and app state by one height.
+    /// Roll back the consensus and app state to a retained height.
     Rollback {
+        /// Height to roll back to (0 = current executed height - 1).
+        #[arg(long, default_value_t = 0)]
+        height: i64,
         /// Also delete the last block from the block store.
         #[arg(long)]
         hard: bool,
+        /// Allow rolling back more than 100 heights.
+        #[arg(long)]
+        force: bool,
     },
     /// Export the app state as a genesis file.
     Export {
@@ -979,11 +985,25 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Cmd::Rollback { hard } => {
-            let (height, hash) =
-                celestia_rs::rollback::rollback(&home, hard, app_options(&home, None)?)?;
+        Cmd::Rollback {
+            height,
+            hard,
+            force,
+        } => {
+            let (height, hash) = celestia_rs::rollback::rollback_to_height(
+                &home,
+                height,
+                hard,
+                force,
+                app_options(&home, None)?,
+            )?;
+            let subject = if hard {
+                "both state and block"
+            } else {
+                "state"
+            };
             util::out(format!(
-                "Rolled back state to height {height} and hash {}",
+                "Rolled back {subject} to height {height} and hash {}",
                 hex::encode_upper(hash)
             ));
             Ok(())
