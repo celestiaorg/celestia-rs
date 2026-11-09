@@ -263,6 +263,7 @@ pub fn expired_queue_entries(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sdk::coins::Coin;
     use sdk::{ExecMode, Header, Kind, MultiStore};
 
     struct NoRouter;
@@ -377,6 +378,177 @@ mod tests {
         assert_eq!(p.status, ProposalStatus::Rejected as i32);
         assert_eq!(p.failed_reason, "proposal did not get enough votes to pass");
         assert_eq!(ctx.get(STORE_KEY, &[0x04, 0, 0, 0, 0, 0, 0, 0, 1])?, None);
+        Ok(())
+    }
+
+    fn unsupported_proposal(id: u64, end: Timestamp, active: bool) -> Proposal {
+        Proposal {
+            id,
+            messages: vec![celestia_proto::Any {
+                type_url: "/review.Unregistered".to_owned(),
+                value: vec![],
+            }],
+            status: if active {
+                ProposalStatus::VotingPeriod as i32
+            } else {
+                ProposalStatus::DepositPeriod as i32
+            },
+            final_tally_result: Some(keeper::empty_tally()),
+            submit_time: Some(Timestamp {
+                seconds: 10,
+                nanos: 0,
+            }),
+            deposit_end_time: Some(end),
+            total_deposit: vec![],
+            voting_start_time: active.then_some(Timestamp {
+                seconds: 20,
+                nanos: 0,
+            }),
+            voting_end_time: active.then_some(end),
+            metadata: "retained metadata".to_owned(),
+            title: "retained title".to_owned(),
+            summary: "retained summary".to_owned(),
+            proposer: sdk::address::to_bech32("celestia", &[7; 20]),
+            expedited: true,
+            failed_reason: "old reason".to_owned(),
+        }
+    }
+
+    fn seed_deposit(ctx: &mut Context<'_>, id: u64, depositor: &[u8]) -> Result<()> {
+        x_bank::set_balance(ctx, &keeper::module_address(), &Coin::new("utia", 12))?;
+        set_deposit(
+            ctx,
+            &Deposit {
+                proposal_id: id,
+                depositor: sdk::address::to_bech32("celestia", depositor),
+                amount: vec![celestia_proto::cosmos::base::v1beta1::Coin {
+                    denom: "utia".to_owned(),
+                    amount: "12".to_owned(),
+                }],
+            },
+        )
+    }
+
+    fn assert_failed_event(ctx: &Context<'_>, active: bool, id: u64) {
+        let event = ctx.events.events().last().expect("failed event");
+        assert_eq!(
+            event.r#type,
+            if active {
+                "active_proposal"
+            } else {
+                "inactive_proposal"
+            }
+        );
+        assert_eq!(event.attributes[0].key, "proposal_id");
+        assert_eq!(event.attributes[0].value, id.to_string());
+        assert_eq!(event.attributes[1].key, "proposal_result");
+        assert_eq!(event.attributes[1].value, "proposal_failed");
+    }
+
+    #[test]
+    fn active_unregistered_message_fails_and_preserves_proposal() -> Result<()> {
+        let mut ms = ms();
+        let end = Timestamp {
+            seconds: 100,
+            nanos: 0,
+        };
+        let mut ctx = Context::new(
+            &mut ms,
+            Header {
+                time: Timestamp {
+                    seconds: 100,
+                    nanos: 0,
+                },
+                ..Header::default()
+            },
+            ExecMode::Finalize,
+        );
+        init_genesis_json(&mut ctx, &devnet_genesis())?;
+        let id = 7;
+        let proposal = unsupported_proposal(id, end, true);
+        set_proposal(&mut ctx, &proposal)?;
+        insert_queue(&mut ctx, ACTIVE_QUEUE_PREFIX, &end, id)?;
+        let depositor = [8; 20];
+        seed_deposit(&mut ctx, id, &depositor)?;
+        let vote = Vote {
+            proposal_id: id,
+            voter: sdk::address::to_bech32("celestia", &[9; 20]),
+            options: vec![],
+            metadata: String::new(),
+        };
+        set_vote(&mut ctx, &vote)?;
+        let vote_key = pair_addr_key(VOTES_PREFIX, id, &[9; 20]);
+
+        end_block(&mut ctx, &NoRouter)?;
+
+        let failed = keeper::must_get_proposal(&mut ctx, id)?;
+        assert_eq!(failed.id, id);
+        assert_eq!(failed.status, ProposalStatus::Failed as i32);
+        assert!(failed.messages.is_empty());
+        assert_eq!(failed.title, "retained title");
+        assert_eq!(failed.summary, "retained summary");
+        assert_eq!(failed.metadata, "retained metadata");
+        assert!(failed.expedited);
+        assert_eq!(failed.voting_end_time, Some(end));
+        assert_eq!(
+            failed.failed_reason,
+            "proposal failed because it cannot be processed by gov: collections: encoding error: value decode: no concrete type registered for type URL /review.Unregistered against interface *types.Msg"
+        );
+        assert!(!ctx.has(STORE_KEY, &queue_key(ACTIVE_QUEUE_PREFIX, &end, id))?);
+        let mut voting_index = vec![VOTING_PERIOD_PROPOSAL_PREFIX];
+        voting_index.extend_from_slice(&u64_key(id));
+        assert!(!ctx.has(STORE_KEY, &voting_index)?);
+        assert!(ctx.has(STORE_KEY, &vote_key)?);
+        assert!(keeper::get_deposits(&mut ctx, id)?.is_empty());
+        assert_eq!(
+            x_bank::get_balance(&mut ctx, &depositor, "utia")?,
+            Coin::new("utia", 12)
+        );
+        assert_eq!(
+            x_bank::get_balance(&mut ctx, &keeper::module_address(), "utia")?,
+            Coin::new("utia", 0)
+        );
+        assert_failed_event(&ctx, true, id);
+        Ok(())
+    }
+
+    #[test]
+    fn inactive_unregistered_message_refunds_and_deletes_proposal() -> Result<()> {
+        let mut ms = ms();
+        let end = Timestamp {
+            seconds: 100,
+            nanos: 0,
+        };
+        let mut ctx = Context::new(
+            &mut ms,
+            Header {
+                time: end,
+                ..Header::default()
+            },
+            ExecMode::Finalize,
+        );
+        init_genesis_json(&mut ctx, &devnet_genesis())?;
+        let id = 8;
+        let proposal = unsupported_proposal(id, end, false);
+        set_proposal(&mut ctx, &proposal)?;
+        insert_queue(&mut ctx, INACTIVE_QUEUE_PREFIX, &end, id)?;
+        let depositor = [10; 20];
+        seed_deposit(&mut ctx, id, &depositor)?;
+
+        end_block(&mut ctx, &NoRouter)?;
+
+        assert!(keeper::get_proposal(&mut ctx, id)?.is_none());
+        assert!(keeper::get_deposits(&mut ctx, id)?.is_empty());
+        assert!(!ctx.has(STORE_KEY, &queue_key(INACTIVE_QUEUE_PREFIX, &end, id))?);
+        assert_eq!(
+            x_bank::get_balance(&mut ctx, &depositor, "utia")?,
+            Coin::new("utia", 12)
+        );
+        assert_eq!(
+            x_bank::get_balance(&mut ctx, &keeper::module_address(), "utia")?,
+            Coin::new("utia", 0)
+        );
+        assert_failed_event(&ctx, false, id);
         Ok(())
     }
 
