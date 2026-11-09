@@ -2617,6 +2617,54 @@ impl Stats {
     }
 }
 
+fn legacy_upgrade_fixture_block_index(
+    generated: usize,
+    paused: &mut usize,
+    enabled: bool,
+    ready: bool,
+    script_at: usize,
+) -> (usize, bool) {
+    let logical = generated.saturating_sub(*paused);
+    let setup = enabled && !ready && logical >= script_at;
+    *paused += usize::from(setup);
+    (logical, setup)
+}
+
+fn script_vote_proposal_id(
+    legacy_upgrade_fixture: bool,
+    pinned: Option<u64>,
+    proposals: &[u64],
+) -> anyhow::Result<u64> {
+    if legacy_upgrade_fixture {
+        pinned.context("legacy upgrade fixture vote has no finalized submission proposal ID")
+    } else {
+        Ok(proposals.iter().copied().max().unwrap_or(1))
+    }
+}
+
+fn finalized_script_proposal_id(
+    expected_tx: &[u8],
+    tx: &[u8],
+    result: &abci::ExecTxResult,
+) -> anyhow::Result<Option<u64>> {
+    if tx != expected_tx || result.code != 0 {
+        return Ok(None);
+    }
+    let responses =
+        celestia_proto::cosmos::base::abci::v1beta1::TxMsgData::decode(result.data.as_slice())?;
+    let response = responses
+        .msg_responses
+        .into_iter()
+        .find(|response| response.type_url == "/cosmos.gov.v1.MsgSubmitProposalResponse")
+        .context("legacy upgrade fixture submission has no typed proposal response")?;
+    Ok(Some(
+        celestia_proto::cosmos::gov::v1::MsgSubmitProposalResponse::decode(
+            response.value.as_slice(),
+        )?
+        .proposal_id,
+    ))
+}
+
 fn gov_setup_ready(stats: &Stats, messages: &[Any]) -> bool {
     stats.gov_setup()
         && stats.gov_required.iter().any(|required| {
@@ -6083,6 +6131,8 @@ pub fn run(
         Some(path) => read_script(&std::fs::read_to_string(path)?, gn.accts.len())?,
         None => std::collections::VecDeque::new(),
     };
+    let mut legacy_upgrade_fixture_submit_tx = None;
+    let mut legacy_upgrade_fixture_proposal_id = None;
     let transfer_authz_plan = transfer_authz_required
         .then(|| transfer_authz_plan(&script, &stats.script_required))
         .transpose()?;
@@ -6183,10 +6233,24 @@ pub fn run(
     // The txs a comet mempool would still hold: accepted by Go's `CheckTx`,
     // not in a block, not removed by a recheck (oldest first, capped).
     let mut pool: std::collections::VecDeque<Vec<u8>> = std::collections::VecDeque::new();
+    let mut legacy_upgrade_fixture_paused_blocks = 0usize;
     for b in 0..blocks {
         height += 1;
         gn.height = height;
         let script_blocks_at_start = script.len();
+        let legacy_upgrade_fixture_ready = stats
+            .ibc
+            .get("legacy_upgrade_fixture_trusted_height")
+            .copied()
+            .unwrap_or(0)
+            > 0;
+        let (fixture_block, legacy_upgrade_fixture_setup) = legacy_upgrade_fixture_block_index(
+            b,
+            &mut legacy_upgrade_fixture_paused_blocks,
+            ibc_legacy_upgrade_fixture,
+            legacy_upgrade_fixture_ready,
+            script_at,
+        );
         let last_committed_nanos = u64::try_from(time.seconds)
             .unwrap_or_default()
             .saturating_mul(1_000_000_000)
@@ -6198,7 +6262,7 @@ pub fn run(
         } else {
             time.seconds += 5 + gn.m.rng.below(3) as i64;
         }
-        if time_jump_at == Some(b) {
+        if time_jump_at == Some(fixture_block) && !legacy_upgrade_fixture_setup {
             time.seconds = time
                 .seconds
                 .checked_add(time_jump_seconds)
@@ -6398,9 +6462,10 @@ pub fn run(
             .context("signing zero-slash recovery transaction")?;
             zero_slash_recovery = Some((tx.clone(), recipient, initial));
             txs.push(tx);
-        } else if !hl_setup
+        } else if !legacy_upgrade_fixture_setup
+            && !hl_setup
             && !gov_setup
-            && b >= script_at
+            && fixture_block >= script_at
             && let Some(block) = script.pop_front()
         {
             scripted = true;
@@ -6422,17 +6487,33 @@ pub fn run(
             }
             let required_count = block.len();
             for (i, mut msg, gas) in block {
-                // `vote <account>`: a yes vote on the latest proposal.
+                // `vote <account>`: a yes vote on the fixture's proposal, or
+                // the latest proposal for ordinary scripts.
                 if msg.type_url == "vote" {
+                    let proposal_id = script_vote_proposal_id(
+                        ibc_legacy_upgrade_fixture,
+                        legacy_upgrade_fixture_proposal_id,
+                        &gn.proposals,
+                    )?;
+                    if ibc_legacy_upgrade_fixture {
+                        stats.script.push(format!(
+                            "h={height} legacy fixture vote targets proposal {proposal_id}"
+                        ));
+                    }
                     msg = Any::pack(&celestia_proto::cosmos::gov::v1::MsgVote {
-                        proposal_id: gn.proposals.iter().copied().max().unwrap_or(1),
+                        proposal_id,
                         voter: gn.accts[i].acc.clone(),
                         option: 1,
                         metadata: String::new(),
                     });
                 }
+                let is_legacy_fixture_submission = ibc_legacy_upgrade_fixture
+                    && msg.type_url == "/cosmos.gov.v1.MsgSubmitProposal";
                 if let Some(t) = sign_simple(&gn, i, vec![msg], gas) {
                     gn.accts[i].seq += 1;
+                    if is_legacy_fixture_submission {
+                        legacy_upgrade_fixture_submit_tx = Some(t.clone());
+                    }
                     txs.push(t);
                 }
             }
@@ -6456,6 +6537,7 @@ pub fn run(
                     .map(|a| (a.acc.clone(), a.addr.clone()))
                     .collect();
                 let mut c = crate::ibcmock::StepCtx {
+                    app_version,
                     now: time.seconds,
                     now_nanos: u64::try_from(time.seconds)
                         .unwrap_or_default()
@@ -7565,6 +7647,20 @@ pub fn run(
             }
         }
         for (t, res) in fb.txs.iter().zip(&g.tx_results) {
+            if let Some(expected) = legacy_upgrade_fixture_submit_tx.as_deref()
+                && let Some(proposal_id) = finalized_script_proposal_id(expected, t, res)?
+            {
+                if let Some(existing) = legacy_upgrade_fixture_proposal_id {
+                    anyhow::ensure!(
+                        existing == proposal_id,
+                        "legacy upgrade fixture proposal ID changed from {existing} to {proposal_id}"
+                    );
+                }
+                legacy_upgrade_fixture_proposal_id = Some(proposal_id);
+                stats.script.push(format!(
+                    "h={height} legacy fixture submission pinned proposal {proposal_id}"
+                ));
+            }
             if let Some(fixture) = upgrade_plan_fixture.as_mut() {
                 fixture.observe_finalized(app_version, t, res)?;
             }
@@ -15796,6 +15892,76 @@ mod tests {
         assert!(stats.require_ibc_coverage().is_err());
         stats.ibc.insert("legacy_upgrade_fixture_trusted_height", 1);
         assert!(stats.require_ibc_coverage().is_ok());
+    }
+
+    #[test]
+    fn legacy_upgrade_fixture_pauses_script_and_time_jump_until_anchor() {
+        let mut paused = 0;
+        assert_eq!(
+            legacy_upgrade_fixture_block_index(53, &mut paused, true, false, 54),
+            (53, false)
+        );
+        assert_eq!(
+            legacy_upgrade_fixture_block_index(54, &mut paused, true, false, 54),
+            (54, true)
+        );
+        assert_eq!(
+            legacy_upgrade_fixture_block_index(55, &mut paused, true, false, 54),
+            (54, true)
+        );
+        assert_eq!(
+            legacy_upgrade_fixture_block_index(56, &mut paused, true, true, 54),
+            (54, false)
+        );
+        assert_eq!(
+            legacy_upgrade_fixture_block_index(57, &mut paused, true, true, 54),
+            (55, false)
+        );
+
+        let mut ordinary_paused = 0;
+        assert_eq!(
+            legacy_upgrade_fixture_block_index(54, &mut ordinary_paused, false, false, 54),
+            (54, false)
+        );
+    }
+
+    #[test]
+    fn legacy_upgrade_fixture_votes_use_the_pinned_submission() {
+        assert_eq!(script_vote_proposal_id(true, Some(9), &[9, 10]).unwrap(), 9);
+        assert!(script_vote_proposal_id(true, None, &[9, 10]).is_err());
+        assert_eq!(script_vote_proposal_id(false, None, &[9, 10]).unwrap(), 10);
+        assert_eq!(script_vote_proposal_id(false, None, &[]).unwrap(), 1);
+    }
+
+    #[test]
+    fn legacy_upgrade_fixture_pins_only_its_successful_typed_response() {
+        let expected = b"fixture submission";
+        let response = Any::pack(
+            &celestia_proto::cosmos::gov::v1::MsgSubmitProposalResponse { proposal_id: 9 },
+        );
+        let mut result = abci::ExecTxResult {
+            data: celestia_proto::cosmos::base::abci::v1beta1::TxMsgData {
+                msg_responses: vec![response],
+                ..Default::default()
+            }
+            .encode_to_vec()
+            .into(),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            finalized_script_proposal_id(expected, expected, &result).unwrap(),
+            Some(9)
+        );
+        assert_eq!(
+            finalized_script_proposal_id(expected, b"unrelated submission", &result).unwrap(),
+            None
+        );
+        result.code = 1;
+        assert_eq!(
+            finalized_script_proposal_id(expected, expected, &result).unwrap(),
+            None
+        );
     }
 
     #[test]

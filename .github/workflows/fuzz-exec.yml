@@ -162,15 +162,27 @@ jobs:
                                           "gov_executed",
                                           "gov_failure_matches",
                                           "gov_results",
-                                          "hl_registry",
-                                          "hl_verified",
-                                          "hl_verified_versions",
                                           "ibc",
-                                          "script",
                                           "script_incomplete",
                                       )
                                   }
-                                  text += f"\n  selected stats: {json.dumps(selected, sort_keys=True)}"
+                                  selected["script"] = [
+                                      entry[:500]
+                                      for entry in stats.get("script", [])
+                                      if "legacy fixture" in entry or "/cosmos.gov" in entry
+                                  ][-30:]
+                                  selected["script_outcomes"] = [
+                                      {
+                                          "type": outcome[0],
+                                          "code": outcome[1].get("code"),
+                                          "log": outcome[1].get("log", "")[:500],
+                                      }
+                                      for outcome in stats.get("script_outcomes", [])
+                                  ]
+                                  # Keep the structured attribution at the
+                                  # start so GitHub's annotation-size cap
+                                  # cannot hide it behind verbose stderr.
+                                  text = f"selected stats: {json.dumps(selected, sort_keys=True)}\n{text}"
                               except json.JSONDecodeError:
                                   text += "\n  DELIVER_STATS was not valid JSON"
                   if len(text) > 6000:

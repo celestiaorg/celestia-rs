@@ -478,6 +478,9 @@ const TRUSTING: i64 = 60 * 86_400;
 // header at height 44 whose trusted height is 43. Keep this opt-in fixture
 // independent of unrelated additions to the random steady-state schedule.
 const LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT: i64 = 43;
+// Header 44 in gov-duplicate-error-receipt.script is timestamped at this
+// second. The synthetic height-43 anchor must be strictly earlier.
+const LEGACY_UPGRADE_FIXTURE_HEADER_TIME: i64 = 1_793_351_641;
 
 /// The counterparty's transfer channel.
 pub const CP_TRANSFER: &str = "channel-7";
@@ -514,6 +517,8 @@ fn fixture_ack(fixture: &str, name: &str) -> Option<Vec<u8>> {
 
 /// What the driver needs from the harness for one step.
 pub struct StepCtx<'a> {
+    /// Application protocol version handling this block.
+    pub app_version: u64,
     /// Time of the block the txs go into.
     pub now: i64,
     /// Nanosecond-precision time of the block the txs go into.
@@ -681,6 +686,7 @@ pub struct Driver {
     conn2_wait: u32,
     connection_confirm_on: bool,
     legacy_upgrade_fixture: bool,
+    legacy_upgrade_fixture_update_pending: bool,
 }
 
 fn proof_height(h: i64) -> Option<Height> {
@@ -1409,19 +1415,79 @@ impl Driver {
     /// height.
     fn update(&mut self, signer: &str) -> Option<Any> {
         let height = if self.legacy_upgrade_fixture {
-            self.cp.height().min(LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT)
+            self.cp
+                .height()
+                .min(LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT - 1)
         } else {
             self.cp.height()
         };
         self.update_at(signer, height, self.trusted)
     }
 
-    fn legacy_upgrade_fixture_update(&mut self, signer: &str) -> Option<Any> {
-        (self.legacy_upgrade_fixture
-            && self.cp.height() >= LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT
-            && self.trusted < LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT)
-            .then(|| self.update(signer))
-            .flatten()
+    fn legacy_upgrade_fixture_update(
+        &mut self,
+        app_version: u64,
+        now: i64,
+        signer: &str,
+    ) -> Option<Any> {
+        if !self.legacy_upgrade_fixture
+            || app_version < 10
+            || self
+                .stats
+                .contains_key("legacy_upgrade_fixture_trusted_height")
+        {
+            return None;
+        }
+        // A successful pre-upgrade update does not establish that the static
+        // fixture's trust anchor is present after the binary switch. Re-submit
+        // the exact anchor on v10 and credit it only after this post-upgrade
+        // transaction finalizes.
+        let initial_height = self.cp.height();
+        let remaining =
+            u64::try_from(LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT.saturating_sub(initial_height))
+                .expect("legacy upgrade fixture height delta must be nonnegative");
+        let to_nanos = |seconds: i64, nanos: i32| {
+            u64::try_from(seconds)
+                .ok()
+                .and_then(|seconds| seconds.checked_mul(1_000_000_000))
+                .and_then(|seconds| seconds.checked_add(u64::try_from(nanos).ok()?))
+                .expect("legacy upgrade fixture timestamps must fit in nanoseconds")
+        };
+        let latest_nanos = self
+            .cp
+            .headers
+            .values()
+            .next_back()
+            .map_or(0, |(_, time)| to_nanos(time.seconds, time.nanos));
+        let preferred_final_nanos = to_nanos(
+            now.saturating_sub(9)
+                .min(LEGACY_UPGRADE_FIXTURE_HEADER_TIME.saturating_sub(1)),
+            0,
+        );
+        let first_nanos = latest_nanos
+            .checked_add(remaining)
+            .filter(|end| *end <= preferred_final_nanos)
+            .map_or_else(
+                || latest_nanos.saturating_add(1),
+                |_| preferred_final_nanos.saturating_sub(remaining.saturating_sub(1)),
+            );
+        let final_nanos = first_nanos.saturating_add(remaining.saturating_sub(1));
+        let upper_bound_nanos = to_nanos(now.min(LEGACY_UPGRADE_FIXTURE_HEADER_TIME), 0);
+        assert!(
+            final_nanos < upper_bound_nanos,
+            "legacy upgrade fixture cannot place height 43 before its host block and static height-44 header"
+        );
+        while self.cp.height() < LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT {
+            let offset = u64::try_from(self.cp.height().saturating_sub(initial_height))
+                .expect("legacy upgrade fixture offset must be nonnegative");
+            self.cp.commit_at_nanos(first_nanos.saturating_add(offset));
+        }
+        self.legacy_upgrade_fixture_update_pending = true;
+        self.update_at(
+            signer,
+            LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT,
+            self.trusted.min(LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT - 1),
+        )
     }
 
     /// A valid update for the dedicated client after its one-second trusting
@@ -1771,7 +1837,9 @@ impl Driver {
                 // Random relay messages can fail after their bundled client
                 // update and roll the whole transaction back, so retry the
                 // exact trust anchor independently until its event lands.
-                if let Some(update) = self.legacy_upgrade_fixture_update(&signer) {
+                if let Some(update) =
+                    self.legacy_upgrade_fixture_update(c.app_version, c.now, &signer)
+                {
                     txs.push(vec![update]);
                 }
             }
@@ -4002,7 +4070,7 @@ impl Driver {
                         if let (Some(id), Some(h)) = (id, h) {
                             if self.a_client.as_ref() == Some(&id) {
                                 self.trusted = self.trusted.max(h);
-                                if self.legacy_upgrade_fixture
+                                if self.legacy_upgrade_fixture_update_pending
                                     && h == LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT
                                 {
                                     self.bump("legacy_upgrade_fixture_trusted_height");
@@ -4391,6 +4459,7 @@ impl Driver {
                 }
             }
         }
+        self.legacy_upgrade_fixture_update_pending = false;
         let receive_attempted = std::mem::take(&mut self.pfm_receive_pending);
         if self.pfm_enabled()
             && receive_attempted
@@ -5135,14 +5204,40 @@ mod tests {
     }
 
     #[test]
-    fn legacy_upgrade_fixture_clamps_updates_to_exact_trusted_height() {
+    fn legacy_upgrade_fixture_retries_exact_trusted_height_after_upgrade() {
         let mut driver = Driver::default().with_legacy_upgrade_fixture(true);
         driver.a_client = Some("07-tendermint-0".into());
-        while driver.cp.height() < LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT + 2 {
-            driver.cp.commit(100);
-        }
-        driver.trusted = LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT - 1;
-        let update = driver.legacy_upgrade_fixture_update("relayer").unwrap();
+        driver.trusted = 2;
+        driver.cp.commit(LEGACY_UPGRADE_FIXTURE_HEADER_TIME - 1);
+        assert!(
+            driver
+                .legacy_upgrade_fixture_update(9, 100, "relayer")
+                .is_none()
+        );
+        let update_event = |height| Event {
+            r#type: "update_client".into(),
+            attributes: [
+                ("client_id", "07-tendermint-0".to_owned()),
+                ("consensus_height", format!("1-{height}")),
+            ]
+            .into_iter()
+            .map(|(key, value)| EventAttribute {
+                key: key.into(),
+                value,
+                index: true,
+            })
+            .collect(),
+        };
+        driver.observe(&[result(update_event(
+            LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT - 1,
+        ))]);
+        assert_eq!(
+            driver.stats.get("legacy_upgrade_fixture_trusted_height"),
+            None
+        );
+        let update = driver
+            .legacy_upgrade_fixture_update(10, LEGACY_UPGRADE_FIXTURE_HEADER_TIME + 8, "relayer")
+            .unwrap();
         let message =
             celestia_proto::ibc::core::client::v1::MsgUpdateClient::decode(update.value.as_slice())
                 .unwrap();
@@ -5161,12 +5256,51 @@ mod tests {
             Some(Cp::height_of(LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT - 1))
         );
 
-        driver.trusted = LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT;
-        assert!(driver.legacy_upgrade_fixture_update("relayer").is_none());
+        driver.observe(&[result(update_event(LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT))]);
         assert_eq!(
-            driver.cp.height(),
-            LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT + 2
+            driver.stats.get("legacy_upgrade_fixture_trusted_height"),
+            Some(&1)
         );
+        assert!(!driver.legacy_upgrade_fixture_update_pending);
+        assert!(
+            driver
+                .legacy_upgrade_fixture_update(10, 100, "relayer")
+                .is_none()
+        );
+        assert_eq!(driver.cp.height(), LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT);
+        let anchor_time = driver
+            .cp
+            .headers
+            .get(&LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT)
+            .map(|(_, time)| time.clone())
+            .unwrap();
+        assert_eq!(anchor_time.seconds, LEGACY_UPGRADE_FIXTURE_HEADER_TIME - 1);
+        assert_eq!(anchor_time.nanos, 42);
+
+        let fixture = include_str!("../fixtures/gov-duplicate-error-receipt.script");
+        let proposal_hex = fixture
+            .lines()
+            .find(|line| line.starts_with("0 /cosmos.gov.v1.MsgSubmitProposal "))
+            .and_then(|line| line.split_ascii_whitespace().nth(2))
+            .unwrap();
+        let proposal = celestia_proto::cosmos::gov::v1::MsgSubmitProposal::decode(
+            hex::decode(proposal_hex).unwrap().as_slice(),
+        )
+        .unwrap();
+        let fixture_update = celestia_proto::ibc::core::client::v1::MsgUpdateClient::decode(
+            proposal.messages[0].value.as_slice(),
+        )
+        .unwrap();
+        let fixture_header =
+            tmlc::Header::decode(fixture_update.client_message.unwrap().value.as_slice()).unwrap();
+        let fixture_time = fixture_header
+            .signed_header
+            .and_then(|signed| signed.header)
+            .and_then(|header| header.time)
+            .map(|time| time.seconds)
+            .unwrap();
+        assert_eq!(fixture_time, LEGACY_UPGRADE_FIXTURE_HEADER_TIME);
+        assert!((anchor_time.seconds, anchor_time.nanos) < (fixture_time, 0));
     }
 
     #[test]
@@ -5919,6 +6053,7 @@ mod tests {
 
         let mut rng = crate::mutate::Rng::new(7);
         let mut context = StepCtx {
+            app_version: 10,
             now: 100,
             now_nanos: 100_000_000_000,
             last_committed_nanos: 99_000_000_000,
@@ -6440,6 +6575,7 @@ mod tests {
     fn upgrade_confirm_timeout_defers_headers_across_large_host_time_jumps() {
         let mut rng = crate::mutate::Rng::new(7);
         let mut context = StepCtx {
+            app_version: 10,
             now: 701,
             now_nanos: 701_000_000_000,
             last_committed_nanos: 100_000_000_000,
