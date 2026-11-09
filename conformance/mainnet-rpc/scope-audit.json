@@ -697,7 +697,7 @@
         {
           "source": {
             "path": "crates/tier-5-node/celestia-rs/src/rpc_service.rs",
-            "sha256": "fc5a345f5b7c82d7ee7cded296e7b71967cbc795dc4bcd4ca1a0e97eb693ba01"
+            "sha256": "98773a0d7700ac3785b4125c31f036eb4d1d5a2748a8d8fa4e8995657e50591c"
           },
           "function": "tls_public_rpc_keeps_app_get_latest_block_on_private_loopback"
         }
