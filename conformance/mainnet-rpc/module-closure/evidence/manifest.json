@@ -206,10 +206,10 @@
     "conformance/mainnet-rpc/module-closure/evidence/v105-closure-zkism-forwarding-rust.json.gz": "e4a3b439d2167a363d1912902b3a98caf62b5d3acce53f4d51ab07cce2e71d7d"
   },
   "sources": {
-    "conformance/mainnet-rpc/module-closure/verify.py": "fe9b56cc862e56d735350dcf46c7ab0d671244d49e92d8895c41036c4e930568",
+    "conformance/mainnet-rpc/module-closure/verify.py": "947107afec33a33daac15a64b666be369a89ce862e8f3ddf7b49fbd979189b66",
     "conformance/mainnet-rpc/module-closure/README.md": "bab6c7981fafae168bfbfd75f88278278597ee4766ff03d63d2e39ad172369c4",
     "conformance/mainnet-rpc/module-closure/campaigns.json": "3246b3d2f015c5ed3cbb1f664166df0254d36b23fc3409adeba70d842f00e5d7",
-    "crates/devnet-conformance/tests/populated_module_matrix.rs": "9f20b33644dbb177231d4311f536a64162551209b69e5174d16a857bb787d94f",
+    "crates/devnet-conformance/tests/populated_module_matrix.rs": "ee89c113cd9ceb1b439cb28e3be5bd68862760933c0e54ebc031a6f02687d599",
     "crates/tier-4-runtime/api-server/src/lib.rs": "718f95ee723a82518d94f6a3adec9ff44ac9ae697c0d9a692514590cb363e67f",
     "crates/tier-4-runtime/grpc-transport/src/lib.rs": "0e745a290ba160e3b7df0155355b6683e61199ba34815f0cb6059e46cf04e7e2",
     "crates/tier-4-runtime/grpc-transport/tests/query_headers.rs": "67b81f6640f903f81097c135bbb90fcaf54b862bd3537cade245f4d4f0271f36",
