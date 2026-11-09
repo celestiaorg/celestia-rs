@@ -145,8 +145,12 @@ deliver_flags() {
   [ $((s % 3)) -eq 0 ] && f+=(DELIVER_SWEEP=1)
   [ $((s % 4)) -eq 1 ] && f+=(DELIVER_RECHECK=1)
   [ $((s % 5)) -eq 2 ] && f+=(DELIVER_SIM=1)
-  [ $((s % 3)) -eq 1 ] && f+=(DELIVER_GOVPASS=1 \
-    DELIVER_GOV_REQUIRE=/ibc.applications.interchain_accounts.host.v1.MsgUpdateParams)
+  if [ $((s % 3)) -eq 1 ]; then
+    f+=(DELIVER_GOVPASS=1)
+    # The upgrade scenario intentionally stops as soon as the signal is
+    # ready. A fail-closed governance lifecycle cannot complete first.
+    [ "$scen" = upgrade ] || f+=(DELIVER_GOV_REQUIRE=/ibc.applications.interchain_accounts.host.v1.MsgUpdateParams)
+  fi
   [ "$scen" = upgrade ] && f+=(DELIVER_REPLAY_STOP=signal)
   echo "${f[@]}"
 }
@@ -314,8 +318,9 @@ campaign-*of*)
       # The same with every proposal passed (handler error texts reach
       # state through `failed_reason`).
       scen=${it#g:}
-      f=(DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_RECHECK=1 \
-        DELIVER_GOV_REQUIRE=/ibc.applications.interchain_accounts.host.v1.MsgUpdateParams)
+      f=(DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_RECHECK=1)
+      [ "$scen" = upgrade ] || \
+        f+=(DELIVER_GOV_REQUIRE=/ibc.applications.interchain_accounts.host.v1.MsgUpdateParams)
       [ "$scen" = upgrade ] && f+=(DELIVER_REPLAY_STOP=signal)
       campaign_deliver_run "$scen" "$((SEED + 1))" "${f[@]}"
       ;;
