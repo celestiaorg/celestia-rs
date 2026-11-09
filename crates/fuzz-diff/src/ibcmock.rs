@@ -1563,14 +1563,13 @@ impl Driver {
         let remaining = u64::try_from(
             LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_HEIGHT.saturating_sub(initial_height),
         )
-        .expect("legacy upgrade fixture intermediate height delta must be nonnegative");
+        .ok()?;
         let final_nanos = u64::try_from(LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_TIME)
-            .expect("legacy upgrade fixture intermediate time must be nonnegative")
+            .ok()?
             .saturating_mul(1_000_000_000);
         let first_nanos = final_nanos.saturating_sub(remaining.saturating_sub(1));
         while self.cp.height() < LEGACY_UPGRADE_FIXTURE_INTERMEDIATE_HEIGHT {
-            let offset = u64::try_from(self.cp.height().saturating_sub(initial_height))
-                .expect("legacy upgrade fixture intermediate offset must be nonnegative");
+            let offset = u64::try_from(self.cp.height().saturating_sub(initial_height)).ok()?;
             self.cp.commit_at_nanos(first_nanos.saturating_add(offset));
         }
         let (_, time) = self
@@ -1608,25 +1607,22 @@ impl Driver {
         let initial_height = self.cp.height();
         let remaining =
             u64::try_from(LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT.saturating_sub(initial_height))
-                .expect("legacy upgrade fixture height delta must be nonnegative");
+                .ok()?;
         let to_nanos = |seconds: i64, nanos: i32| {
             u64::try_from(seconds)
                 .ok()
                 .and_then(|seconds| seconds.checked_mul(1_000_000_000))
                 .and_then(|seconds| seconds.checked_add(u64::try_from(nanos).ok()?))
-                .expect("legacy upgrade fixture timestamps must fit in nanoseconds")
         };
-        let latest_nanos = self
-            .cp
-            .headers
-            .values()
-            .next_back()
-            .map_or(0, |(_, time)| to_nanos(time.seconds, time.nanos));
+        let latest_nanos = match self.cp.headers.values().next_back() {
+            Some((_, time)) => to_nanos(time.seconds, time.nanos)?,
+            None => 0,
+        };
         let preferred_final_nanos = to_nanos(
             now.saturating_sub(9)
                 .min(LEGACY_UPGRADE_FIXTURE_HEADER_TIME.saturating_sub(1)),
             0,
-        );
+        )?;
         let first_nanos = latest_nanos
             .checked_add(remaining)
             .filter(|end| *end <= preferred_final_nanos)
@@ -1635,14 +1631,13 @@ impl Driver {
                 |_| preferred_final_nanos.saturating_sub(remaining.saturating_sub(1)),
             );
         let final_nanos = first_nanos.saturating_add(remaining.saturating_sub(1));
-        let upper_bound_nanos = to_nanos(now.min(LEGACY_UPGRADE_FIXTURE_HEADER_TIME), 0);
+        let upper_bound_nanos = to_nanos(now.min(LEGACY_UPGRADE_FIXTURE_HEADER_TIME), 0)?;
         assert!(
             final_nanos < upper_bound_nanos,
             "legacy upgrade fixture cannot place height 43 before its host block and static height-44 header"
         );
         while self.cp.height() < LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT {
-            let offset = u64::try_from(self.cp.height().saturating_sub(initial_height))
-                .expect("legacy upgrade fixture offset must be nonnegative");
+            let offset = u64::try_from(self.cp.height().saturating_sub(initial_height)).ok()?;
             self.cp.commit_at_nanos(first_nanos.saturating_add(offset));
         }
         self.legacy_upgrade_fixture_update_pending = true;
@@ -5279,7 +5274,7 @@ mod tests {
         recovery.observe_block_events(&[]);
         assert!(!recovery.frozen);
         assert!(recovery.required_misbehaviour_setup());
-        recovery.stats.insert("recover_client".into(), 1);
+        recovery.stats.insert("recover_client", 1);
         assert!(!recovery.required_misbehaviour_setup());
     }
 
@@ -5470,7 +5465,7 @@ mod tests {
             .cp
             .headers
             .get(&LEGACY_UPGRADE_FIXTURE_TRUSTED_HEIGHT)
-            .map(|(_, time)| time.clone())
+            .map(|(_, time)| *time)
             .unwrap();
         assert_eq!(anchor_time.seconds, LEGACY_UPGRADE_FIXTURE_HEADER_TIME - 1);
         assert_eq!(anchor_time.nanos, 0);

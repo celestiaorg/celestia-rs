@@ -6240,16 +6240,14 @@ pub fn run(
         let script_blocks_at_start = script.len();
         let legacy_upgrade_fixture_anchor_ready = ibc
             .as_ref()
-            .map(|driver| &driver.stats)
-            .unwrap_or(&stats.ibc)
+            .map_or(&stats.ibc, |driver| &driver.stats)
             .get("legacy_upgrade_fixture_trusted_height")
             .copied()
             .unwrap_or(0)
             > 0;
         let legacy_upgrade_fixture_intermediate_ready = ibc
             .as_ref()
-            .map(|driver| &driver.stats)
-            .unwrap_or(&stats.ibc)
+            .map_or(&stats.ibc, |driver| &driver.stats)
             .get("legacy_upgrade_fixture_intermediate_height")
             .copied()
             .unwrap_or(0)
@@ -16051,8 +16049,7 @@ mod tests {
                 msg_responses: vec![response],
                 ..Default::default()
             }
-            .encode_to_vec()
-            .into(),
+            .encode_to_vec(),
             ..Default::default()
         };
 
