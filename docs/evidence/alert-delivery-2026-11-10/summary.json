@@ -1,0 +1,302 @@
+{
+  "cleanup": {
+    "contacts": true,
+    "policy": true,
+    "rule": true
+  },
+  "closure_criteria_satisfied": false,
+  "contact_points": [
+    {
+      "disableResolveMessage": false,
+      "name": "operator-email",
+      "recipient_count": 1,
+      "recipient_sha256": "90d5f1ebdfd0b8a693c0d0c58e13adbde35c9320cb56a4088edc4d43e3ddc990",
+      "type": "email",
+      "uid": "operator-email"
+    }
+  ],
+  "events": [
+    {
+      "event": "synthetic_metric_installed",
+      "metric_file": "issue300-delivery-test-20261110T231648Z.prom",
+      "network": "delivery-test-20261110T231648Z",
+      "time_utc": "2026-11-10T23:17:59.146076Z",
+      "value": 0
+    },
+    {
+      "event": "synthetic_metric_removed",
+      "file_absent": true,
+      "time_utc": "2026-11-10T23:20:29.148000Z"
+    },
+    {
+      "event": "test_collection_complete",
+      "temporary_metric_absent": true,
+      "time_utc": "2026-11-10T23:24:59.236590Z"
+    }
+  ],
+  "final_alert_states": {
+    "final-grafana-alerts": [],
+    "final-prom-alerts": {
+      "data": {
+        "alerts": []
+      },
+      "status": "success"
+    }
+  },
+  "final_cleanup": {
+    "observation_period_includes_configured_notification_group_interval": true,
+    "observed_utc": "2026-11-10T23:25:30.080660Z",
+    "recipient_acknowledgment": null,
+    "test_metric_file_absent": true,
+    "test_tmp_file_absent": true
+  },
+  "format_correction": {
+    "corrected_content": "# HELP celestia_rs_apphash_match 1 app hash matches the reference RPC, 0 MISMATCH (parity bug), -1 check could not run.\n# TYPE celestia_rs_apphash_match gauge\ncelestia_rs_apphash_match{network=\"delivery-test-20261110T231648Z\"} 0\n",
+    "event": "synthetic_metric_format_corrected",
+    "initial_content": "celestia_rs_apphash_match{network=\"delivery-test-20261110T231648Z\"} 0\n",
+    "reason": "Initial synthetic series omitted matching HELP/TYPE and exporter omitted that synthetic sample; real app-hash samples remained exposed.",
+    "time_utc": "2026-11-10T23:19:09.440546Z"
+  },
+  "installed_configuration_unchanged": {
+    "alerting": true,
+    "prometheus": true,
+    "rules": true
+  },
+  "isolated_rule_evaluation": {
+    "command": [
+      "promtool",
+      "test",
+      "rules",
+      "issue300-isolated-test.yml"
+    ],
+    "exit_code": 0,
+    "scope": "isolated evaluation of installed Prometheus rules; sends no notification",
+    "stderr": "",
+    "stdout": "  SUCCESS\n\n",
+    "time_utc": "2026-11-10T23:19:28.527253Z"
+  },
+  "limitations": [
+    "Local notifier forwarding does not prove SMTP submission, provider acceptance, mailbox delivery or recipient receipt.",
+    "Query-error behavior is documented from the deployed execErrState=Alerting rule, not induced in production. Successful empty critical-alert queries resolve via noDataState=OK.",
+    "Grafana or host downtime prevents this on-host route from sending notifications; independent off-host monitoring is needed for that failure."
+  ],
+  "mechanism": "Temporary synthetic metric evaluated by existing production Prometheus AppHashMismatch rule and existing production Grafana rule; no direct Alertmanager injection and no contact-point test.",
+  "monitoring-up-history": {
+    "observed_utc": "2026-11-10T23:23:45.322831Z",
+    "series": [
+      {
+        "first_utc": "2026-11-10T23:13:56.935000Z",
+        "labels": {
+          "__name__": "up",
+          "instance": "127.0.0.1:26660",
+          "job": "celestia-rs",
+          "network": "mocha"
+        },
+        "last_utc": "2026-11-10T23:23:41.939000Z",
+        "max": 1.0,
+        "min": 1.0,
+        "samples": 40
+      },
+      {
+        "first_utc": "2026-11-10T23:13:45.431000Z",
+        "labels": {
+          "__name__": "up",
+          "instance": "127.0.0.1:26760",
+          "job": "celestia-rs",
+          "network": "mainnet"
+        },
+        "last_utc": "2026-11-10T23:23:30.436000Z",
+        "max": 1.0,
+        "min": 1.0,
+        "samples": 40
+      },
+      {
+        "first_utc": "2026-11-10T23:13:51.047000Z",
+        "labels": {
+          "__name__": "up",
+          "instance": "127.0.0.1:9090",
+          "job": "prometheus"
+        },
+        "last_utc": "2026-11-10T23:23:36.051000Z",
+        "max": 1.0,
+        "min": 1.0,
+        "samples": 40
+      },
+      {
+        "first_utc": "2026-11-10T23:13:59.163000Z",
+        "labels": {
+          "__name__": "up",
+          "instance": "127.0.0.1:9100",
+          "job": "node"
+        },
+        "last_utc": "2026-11-10T23:23:44.167000Z",
+        "max": 1.0,
+        "min": 1.0,
+        "samples": 40
+      }
+    ]
+  },
+  "monitoring-up-history-after": {
+    "observed_utc": "2026-11-10T23:25:30.036904Z",
+    "series": [
+      {
+        "first_utc": "2026-11-10T23:15:41.934000Z",
+        "labels": {
+          "__name__": "up",
+          "instance": "127.0.0.1:26660",
+          "job": "celestia-rs",
+          "network": "mocha"
+        },
+        "last_utc": "2026-11-10T23:25:26.940000Z",
+        "max": 1.0,
+        "min": 1.0,
+        "samples": 40
+      },
+      {
+        "first_utc": "2026-11-10T23:15:30.432000Z",
+        "labels": {
+          "__name__": "up",
+          "instance": "127.0.0.1:26760",
+          "job": "celestia-rs",
+          "network": "mainnet"
+        },
+        "last_utc": "2026-11-10T23:25:15.436000Z",
+        "max": 1.0,
+        "min": 1.0,
+        "samples": 40
+      },
+      {
+        "first_utc": "2026-11-10T23:15:36.048000Z",
+        "labels": {
+          "__name__": "up",
+          "instance": "127.0.0.1:9090",
+          "job": "prometheus"
+        },
+        "last_utc": "2026-11-10T23:25:21.052000Z",
+        "max": 1.0,
+        "min": 1.0,
+        "samples": 40
+      },
+      {
+        "first_utc": "2026-11-10T23:15:44.165000Z",
+        "labels": {
+          "__name__": "up",
+          "instance": "127.0.0.1:9100",
+          "job": "node"
+        },
+        "last_utc": "2026-11-10T23:25:29.167000Z",
+        "max": 1.0,
+        "min": 1.0,
+        "samples": 40
+      }
+    ]
+  },
+  "policy": {
+    "group_by": [
+      "network"
+    ],
+    "group_interval": "5m",
+    "group_wait": "30s",
+    "provenance": "file",
+    "receiver": "operator-email",
+    "repeat_interval": "4h"
+  },
+  "processes_after": {
+    "processes": [
+      "19319 Thu Nov  5 16:43:22 2026     /opt/homebrew/opt/prometheus/bin/prometheus",
+      "19325 Thu Nov  5 16:43:23 2026     /opt/homebrew/opt/node_exporter/bin/node_exporter",
+      "19331 Thu Nov  5 16:43:25 2026     /opt/homebrew/opt/grafana/bin/grafana",
+      "24144 Tue Nov 10 14:20:25 2026     <validator-bin>/celestia-rs",
+      "47956 Tue Nov 10 14:38:48 2026     <validator-bin>/celestia-rs-mainnet"
+    ],
+    "time_utc": "2026-11-10T23:24:59.225136Z"
+  },
+  "processes_before": {
+    "processes": [
+      "19319 Thu Nov  5 16:43:22 2026     /opt/homebrew/opt/prometheus/bin/prometheus",
+      "19325 Thu Nov  5 16:43:23 2026     /opt/homebrew/opt/node_exporter/bin/node_exporter",
+      "19331 Thu Nov  5 16:43:25 2026     /opt/homebrew/opt/grafana/bin/grafana",
+      "24144 Tue Nov 10 14:20:25 2026     <validator-bin>/celestia-rs",
+      "47956 Tue Nov 10 14:38:48 2026     <validator-bin>/celestia-rs-mainnet"
+    ],
+    "time_utc": "2026-11-10T23:17:59.145617Z"
+  },
+  "provider_delivery_acknowledgment": null,
+  "real-metrics-history": {
+    "observed_utc": "2026-11-10T23:23:45.313337Z",
+    "series": [
+      {
+        "first_utc": "2026-11-10T23:13:59.163000Z",
+        "labels": {
+          "__name__": "celestia_rs_apphash_match",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last_utc": "2026-11-10T23:23:44.167000Z",
+        "max": 1.0,
+        "min": 1.0,
+        "samples": 40
+      },
+      {
+        "first_utc": "2026-11-10T23:13:59.163000Z",
+        "labels": {
+          "__name__": "celestia_rs_apphash_match",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last_utc": "2026-11-10T23:23:44.167000Z",
+        "max": 1.0,
+        "min": 1.0,
+        "samples": 40
+      }
+    ]
+  },
+  "real-metrics-history-after": {
+    "observed_utc": "2026-11-10T23:25:30.035150Z",
+    "series": [
+      {
+        "first_utc": "2026-11-10T23:15:44.165000Z",
+        "labels": {
+          "__name__": "celestia_rs_apphash_match",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last_utc": "2026-11-10T23:25:29.167000Z",
+        "max": 1.0,
+        "min": 1.0,
+        "samples": 40
+      },
+      {
+        "first_utc": "2026-11-10T23:15:44.165000Z",
+        "labels": {
+          "__name__": "celestia_rs_apphash_match",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last_utc": "2026-11-10T23:25:29.167000Z",
+        "max": 1.0,
+        "min": 1.0,
+        "samples": 40
+      }
+    ]
+  },
+  "recipient_acknowledgment": null,
+  "rule": {
+    "condition": "C",
+    "execErrState": "Alerting",
+    "for": "0s",
+    "isPaused": false,
+    "labels": {
+      "severity": "critical"
+    },
+    "noDataState": "OK",
+    "title": "celestia-rs critical",
+    "uid": "celestia-rs-critical"
+  },
+  "rule_query": "max by (problem, network, mountpoint) (label_replace(\n  ALERTS{alertstate=\"firing\", severity=\"critical\", alertname!=\"LowPeers\"},\n  \"problem\", \"$1\", \"alertname\", \"(.*)\"))\n",
+  "test_id": "delivery-test-20261110T231648Z"
+}
