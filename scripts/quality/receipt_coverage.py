@@ -106,6 +106,11 @@ def audit(paths, chain, candidate, first, last, kind):
                 if (row.get("chain_id") != chain or row.get("reference_chain_id") != chain
                         or row.get("candidate_commit") != candidate):
                     counts["identity_rejected"] += 1
+                    # An unavailable reference commonly has no chain ID.
+                    # Preserve that height as unknown even if a retry matches;
+                    # rejecting identity must not bypass failure accounting.
+                    if height is not None:
+                        rejected.add(height)
                     continue
                 payload = matching_payload(row, kind) if height is not None else None
                 if payload is None:
