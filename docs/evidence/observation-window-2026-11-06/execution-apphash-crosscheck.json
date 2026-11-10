@@ -1,0 +1,22 @@
+{
+  "conflicting_reference_ranges": [],
+  "matched_heights": 90978,
+  "matched_ranges": [
+    [
+      15634044,
+      15725021
+    ]
+  ],
+  "method": "Join node committed-block app_hash by height to reference_app_hash from retained per-height header receipts; no new RPC comparisons.",
+  "mismatching_ranges": [],
+  "missing_ranges": [
+    [
+      15634038,
+      15634043
+    ],
+    [
+      15725022,
+      15725032
+    ]
+  ]
+}

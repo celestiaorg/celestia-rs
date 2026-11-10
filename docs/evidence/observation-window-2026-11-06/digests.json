@@ -1,0 +1,25 @@
+{
+  "derived_window_receipts": {
+    "apphash-window.jsonl": {
+      "bytes": 38635228,
+      "sha256": "224d627b8133718b39fc395c52702e32c8fee28a4245a73309ff6427824e592c"
+    },
+    "tx-results-window.jsonl": {
+      "bytes": 58218156,
+      "sha256": "27c381150f9dfe392f74b4d1e59817ca2d19d7c773cac046633a736d7cf25808"
+    }
+  },
+  "offline_auditor_commit": "8ffc98a50fb9bf6e4ec8bc29351617f7cd6c346c",
+  "sanitized_artifacts": {
+    "apphash-audit.json": "c43ca43482576b4affe839fcc3259b8a01a35c0b1fe90e78be261b513ff4f825",
+    "apphash-failures.json": "bbed28d12ecdc2ffec2bac0b10208ef07d0f42a5df656d0c0d911795dd9f6b12",
+    "deployment-observations.json": "4d42c7a253d627f3993101cf387a0427439fda2bca0fdecf01381292702fd1fe",
+    "execution-apphash-crosscheck.json": "440726a3396d7d1272c4fb78172e9d0129b0759185a789ec99855f63abac241a",
+    "later-comparisons.json": "294b4720455432d123ab776440f89bfd8c658441b1225ca8525bd0f807b04c0d",
+    "periodic-audit.json": "b1030d5b0db5465dfbb05b8056022a9f9ca0a6727e767fd6724e690891ffe71e",
+    "raw-manifest.json.gz": "0ec15ceb0ddf84b3c6c44ca29ab884016450287ea6aa340c2d6d66bff15d120b",
+    "summary.json": "e53ee1d7a670ebb049dc13d31bd67acbfb44ddd1e3449b2d7400616c8a9a500a",
+    "tx-results-audit.json": "e5d231263dfadc4c98076b2582cdb3d878378f5bc1d3588b6864652e29b103e0",
+    "tx-results-failures.json": "54df7239af6fc5109d2a80bc4d20f721b4f6c36187517bf89bf70fb9650be8a8"
+  }
+}

@@ -1,0 +1,804 @@
+{
+  "interval_utc": [
+    "2026-11-06T05:43:12Z",
+    "2026-11-09T05:43:12Z"
+  ],
+  "metrics": {
+    "prom-ALERTS": [
+      {
+        "first": [
+          1794036493.659,
+          1.0
+        ],
+        "gaps_over_20s": [
+          [
+            1794036703.659,
+            1794036883.659
+          ]
+        ],
+        "labels": {
+          "__name__": "ALERTS",
+          "alertname": "ValidatorMissingBlocks",
+          "alertstate": "firing",
+          "network": "mainnet",
+          "severity": "warning"
+        },
+        "last": [
+          1794036898.659,
+          1.0
+        ],
+        "max": 1.0,
+        "min": 1.0,
+        "nonzero_ranges": null,
+        "samples": 17,
+        "zero_samples": null
+      }
+    ],
+    "prom-celestia_rs_apphash_check_timestamp_seconds": [
+      {
+        "first": [
+          1793943806.636,
+          1793943498.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_apphash_check_timestamp_seconds",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last": [
+          1794202978.254,
+          1794202693.0
+        ],
+        "max": 1794202693.0,
+        "min": 1793943498.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      },
+      {
+        "first": [
+          1793943806.636,
+          1793943493.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_apphash_check_timestamp_seconds",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last": [
+          1794202978.254,
+          1794202689.0
+        ],
+        "max": 1794202689.0,
+        "min": 1793943493.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      }
+    ],
+    "prom-celestia_rs_apphash_match": [
+      {
+        "first": [
+          1793943806.636,
+          1.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_apphash_match",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last": [
+          1794202978.254,
+          1.0
+        ],
+        "max": 1.0,
+        "min": 1.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      },
+      {
+        "first": [
+          1793943806.636,
+          1.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_apphash_match",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last": [
+          1794202978.254,
+          1.0
+        ],
+        "max": 1.0,
+        "min": -1.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      }
+    ],
+    "prom-celestia_rs_catching_up": [
+      {
+        "first": [
+          1793943806.636,
+          0.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_catching_up",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last": [
+          1794202978.254,
+          0.0
+        ],
+        "max": 0.0,
+        "min": 0.0,
+        "nonzero_ranges": [],
+        "nonzero_samples": [],
+        "samples": 17279,
+        "zero_samples": null
+      },
+      {
+        "first": [
+          1793943806.636,
+          0.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_catching_up",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last": [
+          1794202978.254,
+          0.0
+        ],
+        "max": 0.0,
+        "min": 0.0,
+        "nonzero_ranges": [],
+        "nonzero_samples": [],
+        "samples": 17279,
+        "zero_samples": null
+      }
+    ],
+    "prom-celestia_rs_collector_timestamp_seconds": [
+      {
+        "first": [
+          1793943806.636,
+          1793943801.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_collector_timestamp_seconds",
+          "instance": "127.0.0.1:9100",
+          "job": "node"
+        },
+        "last": [
+          1794202978.254,
+          1794202953.0
+        ],
+        "max": 1794202953.0,
+        "max_age_seconds": 32.6800000667572,
+        "min": 1793943801.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      }
+    ],
+    "prom-celestia_rs_latest_block_height": [
+      {
+        "first": [
+          1793943806.636,
+          15634040.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_latest_block_height",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last": [
+          1794202978.254,
+          15725019.0
+        ],
+        "max": 15725019.0,
+        "min": 15634040.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      },
+      {
+        "first": [
+          1793943806.636,
+          2362386.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_latest_block_height",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last": [
+          1794202978.254,
+          2452938.0
+        ],
+        "max": 2452938.0,
+        "min": 2362386.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      }
+    ],
+    "prom-celestia_rs_latest_block_time_seconds": [
+      {
+        "block_age_over_60s": [],
+        "first": [
+          1793943806.636,
+          1793943797.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_latest_block_time_seconds",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last": [
+          1794202978.254,
+          1794202949.0
+        ],
+        "max": 1794202949.0,
+        "min": 1793943797.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      },
+      {
+        "block_age_over_60s": [],
+        "first": [
+          1793943806.636,
+          1793943797.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_latest_block_time_seconds",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last": [
+          1794202978.254,
+          1794202947.0
+        ],
+        "max": 1794202947.0,
+        "min": 1793943797.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      }
+    ],
+    "prom-celestia_rs_process_up": [
+      {
+        "first": [
+          1793943806.636,
+          1.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_process_up",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last": [
+          1794202978.254,
+          1.0
+        ],
+        "max": 1.0,
+        "min": 1.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": []
+      },
+      {
+        "first": [
+          1793943806.636,
+          1.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_process_up",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last": [
+          1794202978.254,
+          1.0
+        ],
+        "max": 1.0,
+        "min": 1.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": []
+      }
+    ],
+    "prom-celestia_rs_rpc_up": [
+      {
+        "first": [
+          1793943806.636,
+          1.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_rpc_up",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last": [
+          1794202978.254,
+          1.0
+        ],
+        "max": 1.0,
+        "min": 1.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": []
+      },
+      {
+        "first": [
+          1793943806.636,
+          1.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_rpc_up",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last": [
+          1794202978.254,
+          1.0
+        ],
+        "max": 1.0,
+        "min": 1.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": []
+      }
+    ],
+    "prom-celestia_rs_sign_refusals_total": [
+      {
+        "first": [
+          1793943806.636,
+          0.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_sign_refusals_total",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last": [
+          1794202978.254,
+          0.0
+        ],
+        "max": 0.0,
+        "min": 0.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      },
+      {
+        "first": [
+          1793943806.636,
+          3.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_sign_refusals_total",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last": [
+          1794202978.254,
+          3.0
+        ],
+        "max": 3.0,
+        "min": 3.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      }
+    ],
+    "prom-celestia_rs_validator_jailed": [
+      {
+        "first": [
+          1793943806.636,
+          0.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_validator_jailed",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last": [
+          1794202978.254,
+          0.0
+        ],
+        "max": 0.0,
+        "min": 0.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      },
+      {
+        "first": [
+          1793943806.636,
+          0.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_validator_jailed",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last": [
+          1794202978.254,
+          0.0
+        ],
+        "max": 0.0,
+        "min": 0.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      }
+    ],
+    "prom-celestia_rs_validator_missed_blocks_window": [
+      {
+        "first": [
+          1793943806.636,
+          39.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_validator_missed_blocks_window",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last": [
+          1794202978.254,
+          32.0
+        ],
+        "max": 46.0,
+        "min": 17.0,
+        "nonzero_ranges": null,
+        "observed_decreases": 244,
+        "samples": 17279,
+        "zero_samples": null
+      },
+      {
+        "first": [
+          1793943806.636,
+          20.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_validator_missed_blocks_window",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last": [
+          1794202978.254,
+          20.0
+        ],
+        "max": 50.0,
+        "min": 7.0,
+        "nonzero_ranges": null,
+        "observed_decreases": 204,
+        "samples": 17279,
+        "zero_samples": null
+      }
+    ],
+    "prom-celestia_rs_validator_signing_info_found": [
+      {
+        "first": [
+          1793943806.636,
+          1.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_validator_signing_info_found",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last": [
+          1794202978.254,
+          1.0
+        ],
+        "max": 1.0,
+        "min": 1.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": []
+      },
+      {
+        "first": [
+          1793943806.636,
+          1.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_validator_signing_info_found",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last": [
+          1794202978.254,
+          1.0
+        ],
+        "max": 1.0,
+        "min": 1.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": []
+      }
+    ],
+    "prom-celestia_rs_validator_tombstoned": [
+      {
+        "first": [
+          1793943806.636,
+          0.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_validator_tombstoned",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "last": [
+          1794202978.254,
+          0.0
+        ],
+        "max": 0.0,
+        "min": 0.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      },
+      {
+        "first": [
+          1793943806.636,
+          0.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "celestia_rs_validator_tombstoned",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "last": [
+          1794202978.254,
+          0.0
+        ],
+        "max": 0.0,
+        "min": 0.0,
+        "nonzero_ranges": null,
+        "samples": 17279,
+        "zero_samples": null
+      }
+    ],
+    "prom-cometbft_consensus_validator_last_signed_height": [
+      {
+        "first": [
+          1793943792.904,
+          15634037.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "cometbft_consensus_validator_last_signed_height",
+          "chain_id": "celestia",
+          "instance": "127.0.0.1:26760",
+          "job": "celestia-rs",
+          "network": "mainnet",
+          "validator_address": "7FC8073F6F0DE936593BBBF6E6EBE37E17487615"
+        },
+        "last": [
+          1794202979.521,
+          15725028.0
+        ],
+        "max": 15725028.0,
+        "min": 15634037.0,
+        "nonzero_ranges": null,
+        "samples": 17280,
+        "zero_samples": null
+      },
+      {
+        "first": [
+          1793943804.409,
+          2362387.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "cometbft_consensus_validator_last_signed_height",
+          "chain_id": "mocha-5",
+          "instance": "127.0.0.1:26660",
+          "job": "celestia-rs",
+          "network": "mocha",
+          "validator_address": "64910794C3B7404929AB3CF18063A6B8CD3032D7"
+        },
+        "last": [
+          1794202991.024,
+          2452952.0
+        ],
+        "max": 2452952.0,
+        "min": 2362387.0,
+        "nonzero_ranges": null,
+        "samples": 17280,
+        "zero_samples": null
+      }
+    ],
+    "prom-cometbft_consensus_validator_missed_blocks": [
+      {
+        "first": [
+          1793943792.904,
+          2.0
+        ],
+        "gaps_over_20s": [],
+        "increments": 257.0,
+        "labels": {
+          "__name__": "cometbft_consensus_validator_missed_blocks",
+          "chain_id": "celestia",
+          "instance": "127.0.0.1:26760",
+          "job": "celestia-rs",
+          "network": "mainnet",
+          "validator_address": "7FC8073F6F0DE936593BBBF6E6EBE37E17487615"
+        },
+        "last": [
+          1794202979.521,
+          259.0
+        ],
+        "max": 259.0,
+        "min": 2.0,
+        "nonzero_ranges": null,
+        "resets": 0,
+        "samples": 17280,
+        "zero_samples": null
+      },
+      {
+        "first": [
+          1793943804.409,
+          1.0
+        ],
+        "gaps_over_20s": [],
+        "increments": 211.0,
+        "labels": {
+          "__name__": "cometbft_consensus_validator_missed_blocks",
+          "chain_id": "mocha-5",
+          "instance": "127.0.0.1:26660",
+          "job": "celestia-rs",
+          "network": "mocha",
+          "validator_address": "64910794C3B7404929AB3CF18063A6B8CD3032D7"
+        },
+        "last": [
+          1794202991.024,
+          212.0
+        ],
+        "max": 212.0,
+        "min": 1.0,
+        "nonzero_ranges": null,
+        "resets": 0,
+        "samples": 17280,
+        "zero_samples": null
+      }
+    ],
+    "prom-up": [
+      {
+        "first": [
+          1793943804.409,
+          1.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "up",
+          "instance": "127.0.0.1:26660",
+          "job": "celestia-rs",
+          "network": "mocha"
+        },
+        "last": [
+          1794202991.024,
+          1.0
+        ],
+        "max": 1.0,
+        "min": 1.0,
+        "nonzero_ranges": null,
+        "samples": 17280,
+        "zero_samples": []
+      },
+      {
+        "first": [
+          1793943792.904,
+          1.0
+        ],
+        "gaps_over_20s": [],
+        "labels": {
+          "__name__": "up",
+          "instance": "127.0.0.1:26760",
+          "job": "celestia-rs",
+          "network": "mainnet"
+        },
+        "last": [
+          1794202979.521,
+          1.0
+        ],
+        "max": 1.0,
+        "min": 1.0,
+        "nonzero_ranges": null,
+        "samples": 17280,
+        "zero_samples": []
+      }
+    ]
+  },
+  "nodes": {
+    "mainnet": {
+      "committed_height_gaps": [],
+      "events": [],
+      "first_commit": [
+        "2026-11-06T05:43:14.816968Z",
+        15634038
+      ],
+      "last_commit": [
+        "2026-11-09T05:43:10.067260Z",
+        15725032
+      ],
+      "last_commit_before_start": [
+        "2026-11-06T05:43:11.966880Z",
+        15634037
+      ]
+    },
+    "mocha": {
+      "committed_height_gaps": [],
+      "events": [],
+      "first_commit": [
+        "2026-11-06T05:43:12.409526Z",
+        2362383
+      ],
+      "last_commit": [
+        "2026-11-09T05:43:10.807857Z",
+        2452952
+      ],
+      "last_commit_before_start": [
+        "2026-11-06T05:43:09.593495Z",
+        2362382
+      ]
+    }
+  }
+}
