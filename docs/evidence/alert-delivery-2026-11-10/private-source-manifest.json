@@ -765,6 +765,11 @@
     "sha256": "48f21fd975ed8c0a4691877d6a1f2f9886460d5d4532b125a98a7ec68d9ebdc8"
   },
   {
+    "bytes": 1061,
+    "file": "recipient-acknowledgment.json",
+    "sha256": "5644cc6c87d2d5b46e54c77123ec95ba15301c38e336de5cefb8a12eb0287f30"
+  },
+  {
     "bytes": 2161,
     "file": "rule-after.json",
     "sha256": "f5438d7142e9e2b315c72309e8db715c5019a87ec0f69d2586c12b5e616513fc"

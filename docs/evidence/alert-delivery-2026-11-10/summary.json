@@ -4,7 +4,7 @@
     "policy": true,
     "rule": true
   },
-  "closure_criteria_satisfied": false,
+  "closure_criteria_satisfied": true,
   "contact_points": [
     {
       "disableResolveMessage": false,
@@ -15,6 +15,7 @@
       "uid": "operator-email"
     }
   ],
+  "delivery_evidence_basis": "Recipient explicitly confirmed receipt of both exact test subjects in this chat, recorded by the assistant at 2026-11-10T23:43:00Z; production rule evaluation and routing were retained separately.",
   "events": [
     {
       "event": "synthetic_metric_installed",
@@ -191,6 +192,17 @@
       }
     ]
   },
+  "notification_delivery_bounds_utc": {
+    "firing": [
+      "2026-11-10T23:19:40Z",
+      "2026-11-10T23:43:00Z"
+    ],
+    "interpretation": "Conservative bounds from rule transition to recorded recipient acknowledgment; individual send and receipt times are unknown.",
+    "resolved": [
+      "2026-11-10T23:20:40Z",
+      "2026-11-10T23:43:00Z"
+    ]
+  },
   "policy": {
     "group_by": [
       "network"
@@ -284,7 +296,23 @@
       }
     ]
   },
-  "recipient_acknowledgment": null,
+  "recipient_acknowledgment": {
+    "exact_reply": "I received [FIRING:1] delivery-test-20261110T231648Z (celestia-rs critical celestia-rs AppHashMismatch critical) and [RESOLVED] delivery-test-20261110T231648Z (celestia-rs critical celestia-rs AppHashMismatch critical)",
+    "firing_subject": "[FIRING:1] delivery-test-20261110T231648Z (celestia-rs critical celestia-rs AppHashMismatch critical)",
+    "individual_email_receipt_times_utc": null,
+    "limitations": [
+      "recorded_at_utc is the UTC time the assistant recorded this acknowledgment, not an email receipt or SMTP submission timestamp."
+    ],
+    "message_ids": null,
+    "provider_delivery_receipt": null,
+    "recipient_confirmed_firing_received": true,
+    "recipient_confirmed_resolved_received": true,
+    "recorded_at_utc": "2026-11-10T23:43:00Z",
+    "resolved_subject": "[RESOLVED] delivery-test-20261110T231648Z (celestia-rs critical celestia-rs AppHashMismatch critical)",
+    "schema_version": 1,
+    "source": "Recipient reply in this Codex chat to the explicit inbox-confirmation request",
+    "test_id": "delivery-test-20261110T231648Z"
+  },
   "rule": {
     "condition": "C",
     "execErrState": "Alerting",

@@ -1,11 +1,12 @@
 # Production alert-delivery test — 2026-11-10
 
-Issue [#300](https://github.com/celestiaorg/celestia-rs/issues/300) remains
-**open**. The authorized synthetic test exercised the existing production
-Prometheus and Grafana rules and reached the configured local notifier.
-Firing and resolution at the intended recipient are **not yet established**:
-there is no recipient or provider delivery acknowledgment in the retained
-evidence. Local forwarding is not mailbox receipt.
+**The recipient confirmed both firing and resolved emails for this exact test.**
+Together with the retained production-rule evaluation, routing and cleanup,
+this satisfies the acceptance criteria for
+[#300](https://github.com/celestiaorg/celestia-rs/issues/300). The acknowledgment
+was recorded at 2026-11-10T23:43:00Z. Individual SMTP submission and mailbox
+receipt timestamps were not supplied and remain unknown. This is recipient
+confirmation, not a provider delivery receipt.
 
 All times below are UTC. Test identity:
 `delivery-test-20261110T231648Z`.
@@ -19,14 +20,25 @@ All times below are UTC. Test identity:
 | 23:19:40 | Existing Grafana rule became firing for this network. Alertmanager recorded receiver `operator-email`, active state, no inhibition and no silence. Local-notifier forwarding was logged at 23:19:40.031049. |
 | 23:20:29.148000 | Removed the temporary metric file; removal check confirmed absent. |
 | By 23:20:44.147542 | Prometheus no longer listed the test alert. Its exact resolution time is bounded by the last firing and first absent observations. |
-| 23:20:40 | Grafana recorded `Normal (NoData)` for the test instance; observed at 23:20:44.152465. This is rule resolution, not proof of a resolved email. |
+| 23:20:40 | Grafana recorded `Normal (NoData)` for the test instance; observed at 23:20:44.152465. This is rule resolution, distinct from recipient confirmation below. |
+| By 23:43:00 | The recipient explicitly confirmed receiving both exact FIRING and RESOLVED subjects in this chat. This is the acknowledgment recording time, not either individual email's receipt time. |
 
 The configured notification group wait is 30 seconds and group interval is
 five minutes. These settings describe scheduling, not actual send timestamps.
-SMTP submission, provider acceptance, firing-email receipt and resolved-email
-receipt timestamps remain unknown. The recipient was explicitly asked in this
-chat to confirm both messages separately with UTC times and the test identity.
-No response is inferred from elapsed time.
+Exact SMTP submission, provider acceptance and individual mailbox receipt
+timestamps remain unknown. The recipient was explicitly asked to confirm both
+messages, and replied that both were received. Conservative delivery bounds
+are 23:19:40–23:43:00 for firing and 23:20:40–23:43:00 for resolution; these
+bounds do not infer a precise send time from the configured group intervals.
+
+The [retained recipient acknowledgment](evidence/alert-delivery-2026-11-10/recipient-acknowledgment.json)
+quotes the exact reply and records these received subjects:
+
+- `[FIRING:1] delivery-test-20261110T231648Z (celestia-rs critical celestia-rs AppHashMismatch critical)`
+- `[RESOLVED] delivery-test-20261110T231648Z (celestia-rs critical celestia-rs AppHashMismatch critical)`
+
+No message IDs or provider receipt were supplied. The recipient's explicit
+confirmation, rather than local forwarding logs, establishes inbox receipt.
 
 ## Rule, labels and route
 
@@ -70,6 +82,7 @@ and provides no recipient-delivery evidence.
 and rule resolution are recorded separately. None proves email delivery.
 A firing/normal transition is not a firing/resolved message acknowledgment.
 The receiver-status API probes returned 404 and provided no delivery history.
+The later recipient acknowledgment supplies the separate delivery evidence.
 
 ## Monitoring failures and operational limits
 
@@ -104,7 +117,7 @@ all four monitoring scrape targets up at every available sample. No test
 service, silence, notification-policy change or contact-point change was made.
 Historical test samples and inactive alert state remain as monitoring history.
 
-## Evidence and remaining work
+## Retained evidence and acceptance
 
 Raw request/response observations, non-secret installed configuration snapshots,
 test mechanism, isolated evaluation output and selected notification logs are
@@ -122,8 +135,12 @@ retains source filenames, sizes and SHA-256 digests; [digests](evidence/alert-de
 identify the sanitized outputs. Request timestamps are observation times,
 not email-delivery timestamps.
 
-Remaining blockers are explicit recipient/provider acknowledgments for **both**
-the firing and resolved messages, tied to this test identity, with UTC
-acknowledgment/receipt timestamps. “Sent” or “forwarded” logs cannot close that
-gap. Until those are supplied and retained, this is evidence progress and
-contains no closing reference for #300.
+Acceptance is established by the authorized non-disruptive production-rule
+test, recipient confirmation of both exact message subjects with a UTC
+acknowledgment recording time, documented query-failure/host-down limitations,
+and verified cleanup. The original cleanup snapshot's null acknowledgment
+records what was known at 23:25:30; the separate 23:43:00 acknowledgment updates
+that knowledge without rewriting the historical snapshot. Individual email
+receipt/send times, message IDs and a provider receipt remain unavailable;
+none is substituted with a local forwarding timestamp. No new alert was sent
+and no service was changed to record this follow-up.
