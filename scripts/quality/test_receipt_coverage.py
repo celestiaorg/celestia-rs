@@ -63,6 +63,23 @@ class ReceiptCoverageTests(unittest.TestCase):
             self.assertFalse(report["complete"])
             self.assertEqual(report["rejected_ranges"], [[11, 11]])
 
+    def test_identity_rejected_attempt_remains_a_gap_after_successful_retry(self):
+        for field, value in (("reference_chain_id", None), ("chain_id", None),
+                             ("candidate_commit", None), ("candidate_commit", "d" * 40)):
+            for kind in ("apphash", "tx-results"):
+                with self.subTest(field=field, kind=kind):
+                    row = receipt(11)
+                    row.update(outcome="unavailable", error="reference_status_unavailable")
+                    row[field] = value
+                    for rows in ([row, receipt(11)], [receipt(11), row]):
+                        report = self.run_audit([receipt(10), *rows, receipt(12)], kind=kind)
+                        self.assertFalse(report["complete"])
+                        self.assertEqual(report["covered_ranges"], [[10, 10], [12, 12]])
+                        self.assertEqual(report["covered_heights"], 2)
+                        self.assertEqual(report["missing_ranges"], [[11, 11]])
+                        self.assertEqual(report["rejected_ranges"], [[11, 11]])
+                        self.assertEqual(report["counts"]["identity_rejected"], 1)
+
     def test_match_label_alone_does_not_establish_result_parity(self):
         for changes in ({"reference_results_sha256": "d" * 64},
                         {"reference_tx_count": 4}, {"compared_fields": ["code"]},

@@ -32,7 +32,11 @@ payloads. App-hash checks also require reference header H+1. Transaction
 checks require equal counts and digests for `code`, `data`, `gas_wanted` and
 `gas_used`. Repeated identical receipts count once per height. An unavailable,
 invalid or contradictory receipt at a known height excludes that height even
-if another receipt reports success. Identity rejections and failures without
+if another receipt reports success. Identity-rejected rows at known heights
+also exclude those heights from coverage: an unavailable reference chain ID
+must not disappear from the gap report when a retry succeeds. This conservative
+rule also applies to conflicting candidate or chain IDs; audit each candidate
+and chain in separate input files. Identity rejections and failures without
 a known height prevent an overall complete result. Out-of-range rows are
 counted separately and do not contribute coverage. Malformed JSON, heights
 or timestamps fail the audit with exit 2; reported gaps/failures exit 1.
