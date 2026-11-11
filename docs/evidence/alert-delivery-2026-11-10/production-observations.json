@@ -1,0 +1,1481 @@
+[
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:17:59.156421Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:17:59.159346Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-06T01:03:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:17:40Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:17:59.146213Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:17:59.166440Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:18:14.158867Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:18:14.162321Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-06T01:03:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:18:10Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:18:14.156299Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:18:14.167421Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:18:29.154638Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:18:29.157418Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-06T01:03:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:18:10Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:18:29.152763Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:18:29.164048Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:18:44.158768Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:18:44.163335Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-06T01:03:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:18:40Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:18:44.155895Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:18:44.172172Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:18:59.156505Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:18:59.159539Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-06T01:03:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:18:40Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:18:59.154660Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:18:59.165385Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:19:14.151341Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:19:14.153034Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-06T01:03:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:19:10Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:19:14.150083Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:19:14.156754Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:19:29.188221Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:19:29.232255Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-06T01:03:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:19:10Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [
+      {
+        "activeAt": "2026-11-10T23:19:15.815289787Z",
+        "labels": {
+          "alertname": "AppHashMismatch",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "delivery-test-20261110T231648Z",
+          "severity": "critical"
+        },
+        "state": "firing"
+      }
+    ],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:19:29.149644Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:19:29.249845Z",
+    "result": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_apphash_match",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "delivery-test-20261110T231648Z"
+        },
+        "value": [
+          1794352769.251,
+          "0"
+        ]
+      }
+    ]
+  },
+  {
+    "alerts": [
+      {
+        "endsAt": "2026-11-10T23:21:40Z",
+        "fingerprint": "65853d80af2ca6d9",
+        "labels": {
+          "__alert_rule_uid__": "celestia-rs-critical",
+          "alertname": "celestia-rs critical",
+          "grafana_folder": "celestia-rs",
+          "network": "delivery-test-20261110T231648Z",
+          "problem": "AppHashMismatch",
+          "severity": "critical"
+        },
+        "receivers": [
+          {
+            "name": "operator-email"
+          }
+        ],
+        "startsAt": "2026-11-10T23:19:40Z",
+        "status": {
+          "inhibitedBy": [],
+          "silencedBy": [],
+          "state": "active"
+        },
+        "updatedAt": "2026-11-10T23:19:40.031000Z"
+      }
+    ],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:19:44.151680Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:19:44.161416Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-06T01:03:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          },
+          {
+            "activeAt": "2026-11-10T23:19:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Alerting"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:19:40Z",
+        "state": "firing",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [
+      {
+        "activeAt": "2026-11-10T23:19:15.815289787Z",
+        "labels": {
+          "alertname": "AppHashMismatch",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "delivery-test-20261110T231648Z",
+          "severity": "critical"
+        },
+        "state": "firing"
+      }
+    ],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:19:44.149132Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:19:44.169581Z",
+    "result": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_apphash_match",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "delivery-test-20261110T231648Z"
+        },
+        "value": [
+          1794352784.17,
+          "0"
+        ]
+      }
+    ]
+  },
+  {
+    "alerts": [
+      {
+        "endsAt": "2026-11-10T23:21:40Z",
+        "fingerprint": "65853d80af2ca6d9",
+        "labels": {
+          "__alert_rule_uid__": "celestia-rs-critical",
+          "alertname": "celestia-rs critical",
+          "grafana_folder": "celestia-rs",
+          "network": "delivery-test-20261110T231648Z",
+          "problem": "AppHashMismatch",
+          "severity": "critical"
+        },
+        "receivers": [
+          {
+            "name": "operator-email"
+          }
+        ],
+        "startsAt": "2026-11-10T23:19:40Z",
+        "status": {
+          "inhibitedBy": [],
+          "silencedBy": [],
+          "state": "active"
+        },
+        "updatedAt": "2026-11-10T23:19:40.031000Z"
+      }
+    ],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:19:59.160285Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:19:59.164618Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-06T01:03:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          },
+          {
+            "activeAt": "2026-11-10T23:19:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Alerting"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:19:40Z",
+        "state": "firing",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [
+      {
+        "activeAt": "2026-11-10T23:19:15.815289787Z",
+        "labels": {
+          "alertname": "AppHashMismatch",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "delivery-test-20261110T231648Z",
+          "severity": "critical"
+        },
+        "state": "firing"
+      }
+    ],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:19:59.156926Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:19:59.172360Z",
+    "result": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_apphash_match",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "delivery-test-20261110T231648Z"
+        },
+        "value": [
+          1794352799.173,
+          "0"
+        ]
+      }
+    ]
+  },
+  {
+    "alerts": [
+      {
+        "endsAt": "2026-11-10T23:22:10Z",
+        "fingerprint": "65853d80af2ca6d9",
+        "labels": {
+          "__alert_rule_uid__": "celestia-rs-critical",
+          "alertname": "celestia-rs critical",
+          "grafana_folder": "celestia-rs",
+          "network": "delivery-test-20261110T231648Z",
+          "problem": "AppHashMismatch",
+          "severity": "critical"
+        },
+        "receivers": [
+          {
+            "name": "operator-email"
+          }
+        ],
+        "startsAt": "2026-11-10T23:19:40Z",
+        "status": {
+          "inhibitedBy": [],
+          "silencedBy": [],
+          "state": "active"
+        },
+        "updatedAt": "2026-11-10T23:20:10.007000Z"
+      }
+    ],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:20:14.158856Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:20:14.161899Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:19:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Alerting"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:20:10Z",
+        "state": "firing",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [
+      {
+        "activeAt": "2026-11-10T23:19:15.815289787Z",
+        "labels": {
+          "alertname": "AppHashMismatch",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "delivery-test-20261110T231648Z",
+          "severity": "critical"
+        },
+        "state": "firing"
+      }
+    ],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:20:14.156979Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:20:14.167322Z",
+    "result": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_apphash_match",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "delivery-test-20261110T231648Z"
+        },
+        "value": [
+          1794352814.167,
+          "0"
+        ]
+      }
+    ]
+  },
+  {
+    "alerts": [
+      {
+        "endsAt": "2026-11-10T23:22:10Z",
+        "fingerprint": "65853d80af2ca6d9",
+        "labels": {
+          "__alert_rule_uid__": "celestia-rs-critical",
+          "alertname": "celestia-rs critical",
+          "grafana_folder": "celestia-rs",
+          "network": "delivery-test-20261110T231648Z",
+          "problem": "AppHashMismatch",
+          "severity": "critical"
+        },
+        "receivers": [
+          {
+            "name": "operator-email"
+          }
+        ],
+        "startsAt": "2026-11-10T23:19:40Z",
+        "status": {
+          "inhibitedBy": [],
+          "silencedBy": [],
+          "state": "active"
+        },
+        "updatedAt": "2026-11-10T23:20:10.007000Z"
+      }
+    ],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:20:29.150726Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:20:29.153854Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:19:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Alerting"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:20:10Z",
+        "state": "firing",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [
+      {
+        "activeAt": "2026-11-10T23:19:15.815289787Z",
+        "labels": {
+          "alertname": "AppHashMismatch",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "delivery-test-20261110T231648Z",
+          "severity": "critical"
+        },
+        "state": "firing"
+      }
+    ],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:20:29.148821Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:20:29.158668Z",
+    "result": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_apphash_match",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "delivery-test-20261110T231648Z"
+        },
+        "value": [
+          1794352829.159,
+          "0"
+        ]
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:20:44.149534Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:20:44.152465Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:20:40Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:20:44.147542Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:20:44.159898Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:20:59.157713Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:20:59.161792Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:20:40Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:20:59.154923Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:20:59.169388Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:21:14.160229Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:21:14.164392Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:21:10Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:21:14.157375Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:21:14.171534Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:21:29.160369Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:21:29.164401Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:21:10Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:21:29.157475Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:21:29.172268Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:21:44.160342Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:21:44.164643Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:21:40Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:21:44.157551Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:21:44.172149Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:21:59.159777Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:21:59.163643Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:21:40Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:21:59.157655Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:21:59.171039Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:22:14.152252Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:22:14.155214Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:22:10Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:22:14.149973Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:22:14.161460Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:22:29.160701Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:22:29.164702Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:22:10Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:22:29.157836Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:22:29.171949Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:22:44.160703Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:22:44.164756Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:22:40Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:22:44.157934Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:22:44.172790Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:22:59.153006Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:22:59.157052Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:22:40Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:22:59.150275Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:22:59.164830Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:23:14.160242Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:23:14.163254Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:23:10Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:23:14.158130Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:23:14.169004Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:23:29.155645Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:23:29.159610Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:23:10Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:23:29.152981Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:23:29.167734Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:23:44.155340Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:23:44.159516Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:23:40Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:23:44.152779Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:23:44.167760Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:23:59.161257Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:23:59.165307Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:23:40Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:23:59.158387Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:23:59.173411Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:24:14.162161Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:24:14.166449Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:24:10Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:24:14.158744Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:24:14.174255Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:24:29.158598Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:24:29.163048Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:24:10Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:24:29.155879Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:24:29.170988Z",
+    "result": []
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "grafana-alerts",
+    "observed_utc": "2026-11-10T23:24:44.152982Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "grafana-rules",
+    "observed_utc": "2026-11-10T23:24:44.156034Z",
+    "rules": [
+      {
+        "alerts": [
+          {
+            "activeAt": "2026-11-10T23:20:40Z",
+            "labels": {
+              "alertname": "celestia-rs critical",
+              "grafana_folder": "celestia-rs",
+              "network": "delivery-test-20261110T231648Z",
+              "problem": "AppHashMismatch",
+              "severity": "critical"
+            },
+            "state": "Normal (NoData)"
+          }
+        ],
+        "health": "ok",
+        "lastEvaluation": "2026-11-10T23:24:40Z",
+        "state": "inactive",
+        "uid": "celestia-rs-critical"
+      }
+    ]
+  },
+  {
+    "alerts": [],
+    "http_status": 200,
+    "kind": "prom-alerts",
+    "observed_utc": "2026-11-10T23:24:44.150914Z"
+  },
+  {
+    "http_status": 200,
+    "kind": "test-series",
+    "observed_utc": "2026-11-10T23:24:44.163607Z",
+    "result": []
+  }
+]

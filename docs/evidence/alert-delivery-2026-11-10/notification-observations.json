@@ -1,0 +1,92 @@
+[
+  {
+    "count": "1",
+    "level": "info",
+    "logger": "ngalert.sender.router",
+    "msg": "Sending alerts to local notifier",
+    "time_utc": "2026-11-10T23:19:40.031049Z"
+  },
+  {
+    "level": "info",
+    "logger": "ngalert.state.manager",
+    "msg": "Detected stale state entry",
+    "time_utc": "2026-11-10T23:20:10.005718Z"
+  },
+  {
+    "count": "1",
+    "level": "info",
+    "logger": "ngalert.sender.router",
+    "msg": "Sending alerts to local notifier",
+    "time_utc": "2026-11-10T23:20:10.007001Z"
+  },
+  {
+    "count": "1",
+    "level": "info",
+    "logger": "ngalert.sender.router",
+    "msg": "Sending alerts to local notifier",
+    "time_utc": "2026-11-10T23:20:40.011266Z"
+  },
+  {
+    "count": "1",
+    "level": "info",
+    "logger": "ngalert.sender.router",
+    "msg": "Sending alerts to local notifier",
+    "time_utc": "2026-11-10T23:21:10.008341Z"
+  },
+  {
+    "count": "1",
+    "level": "info",
+    "logger": "ngalert.sender.router",
+    "msg": "Sending alerts to local notifier",
+    "time_utc": "2026-11-10T23:21:40.010988Z"
+  },
+  {
+    "count": "1",
+    "level": "info",
+    "logger": "ngalert.sender.router",
+    "msg": "Sending alerts to local notifier",
+    "time_utc": "2026-11-10T23:22:10.011063Z"
+  },
+  {
+    "count": "1",
+    "level": "info",
+    "logger": "ngalert.sender.router",
+    "msg": "Sending alerts to local notifier",
+    "time_utc": "2026-11-10T23:22:40.011548Z"
+  },
+  {
+    "count": "1",
+    "level": "info",
+    "logger": "ngalert.sender.router",
+    "msg": "Sending alerts to local notifier",
+    "time_utc": "2026-11-10T23:23:10.011718Z"
+  },
+  {
+    "count": "1",
+    "level": "info",
+    "logger": "ngalert.sender.router",
+    "msg": "Sending alerts to local notifier",
+    "time_utc": "2026-11-10T23:23:40.011307Z"
+  },
+  {
+    "count": "1",
+    "level": "info",
+    "logger": "ngalert.sender.router",
+    "msg": "Sending alerts to local notifier",
+    "time_utc": "2026-11-10T23:24:10.010218Z"
+  },
+  {
+    "count": "1",
+    "level": "info",
+    "logger": "ngalert.sender.router",
+    "msg": "Sending alerts to local notifier",
+    "time_utc": "2026-11-10T23:24:40.009915Z"
+  },
+  {
+    "count": "1",
+    "level": "info",
+    "logger": "ngalert.sender.router",
+    "msg": "Sending alerts to local notifier",
+    "time_utc": "2026-11-10T23:25:10.007559Z"
+  }
+]
