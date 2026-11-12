@@ -47,7 +47,7 @@ export DEVNET_PORT_OFFSET=${DEVNET_PORT_OFFSET:--10000}
 # replace instrumented libraries.
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$ROOT/target/cov}
 # Capture setup failure before sourcing: process substitution can hide it.
-"${CARGO[@]}" llvm-cov show-env --export-prefix --release "${BRANCH_FLAGS[@]}" >"$OUT/coverage-env.sh" || exit 1
+"${CARGO[@]}" llvm-cov show-env --export-prefix --release ${BRANCH_FLAGS[@]+"${BRANCH_FLAGS[@]}"} >"$OUT/coverage-env.sh" || exit 1
 # shellcheck disable=SC1090
 source "$OUT/coverage-env.sh" || exit 1
 "${CARGO[@]}" llvm-cov clean --workspace || exit 1
@@ -71,10 +71,11 @@ FAILED=0
 run() { # <name> <env...> -- <cmd...>
   local name=$1
   shift
+  # Bash 3.2 treats empty arrays as unset under nounset; expand only when set.
   local envs=()
   while [ "$1" != "--" ]; do envs+=("$1"); shift; done
   shift
-  env "${envs[@]}" "$@" >"$OUT/$name.out" 2>"$OUT/$name.err"
+  env ${envs[@]+"${envs[@]}"} "$@" >"$OUT/$name.out" 2>"$OUT/$name.err"
   local rc=$?
   [ "$rc" -eq 0 ] || FAILED=1
   echo "$name rc=$rc $(tail -n 1 "$OUT/$name.err")" | tee -a "$LOG"
@@ -85,11 +86,11 @@ for scen in gov staking staking-lifecycle hyperlane authz-feegrant fibre vesting
   case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
   hl=()
   case $scen in *hyperlane* | *zkism*) hl=(DELIVER_HL=1) ;; esac
-  run "deliver-$scen" GO_APPD="$A" DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 "${hl[@]}" -- \
+  run "deliver-$scen" GO_APPD="$A" DELIVER_IBC=1 DELIVER_WIRE=1 DELIVER_SWEEP=1 DELIVER_RECHECK=1 ${hl[@]+"${hl[@]}"} -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" "$BLOCKS" 8 1
   run "govpass-$scen" GO_APPD="$A" DELIVER_IBC=1 DELIVER_GOVPASS=1 DELIVER_SIM=1 \
     DELIVER_GOV_REQUIRE=/ibc.applications.interchain_accounts.host.v1.MsgUpdateParams \
-    DELIVER_TYPE_REQUIRE=/cosmos.gov.v1beta1.MsgDeposit "${hl[@]}" -- \
+    DELIVER_TYPE_REQUIRE=/cosmos.gov.v1beta1.MsgDeposit ${hl[@]+"${hl[@]}"} -- \
     crates/fuzz-diff/deliver-diff.sh "$scen" "$BLOCKS" 8 2
   case $scen in ibc-edge | ibc-upgrades) ;; *)
     for mode in strings nil synth json; do

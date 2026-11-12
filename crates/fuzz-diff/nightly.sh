@@ -63,6 +63,7 @@ elapsed() { echo $(($(date +%s) - START)); }
 run() {
   local name=$1 est=$2
   shift 2
+  # Bash 3.2 treats empty arrays as unset under nounset; expand only when set.
   local envs=()
   while [ "$1" != "--" ]; do envs+=("$1"); shift; done
   shift
@@ -73,14 +74,14 @@ run() {
   fi
   RUNS=$((RUNS + 1))
   local out=$FINDINGS/$name
-  echo "RUN $name: ${envs[*]} $*" | tee -a "$SUMMARY"
+  echo "RUN $name: ${envs[*]-} $*" | tee -a "$SUMMARY"
   if [ -n "${DRY_RUN:-}" ]; then return; fi
   local t0
   t0=$(date +%s)
-  env "${envs[@]}" GO_LOG="$out.go.log" "$@" >"$out.out" 2>"$out.err"
+  env ${envs[@]+"${envs[@]}"} GO_LOG="$out.go.log" "$@" >"$out.out" 2>"$out.err"
   local rc=$?
   printf '%s\n' "$rc" >"$out.exit"
-  printf '%s\n' "${envs[@]}" >"$out.env"
+  printf '%s\n' ${envs[@]+"${envs[@]}"} >"$out.env"
   local line
   line=$(tail -n 1 "$out.err")
   echo "  rc=$rc $(($(date +%s) - t0))s: $line" | tee -a "$SUMMARY"
@@ -93,7 +94,7 @@ run() {
     { head -n 20 "$out.err"; tail -n 40 "$out.err"; } \
       | cut -c1-400 | sed 's/^/  /' | tee -a "$SUMMARY"
     grep -m 20 '^MISMATCH' "$out.out" | sed 's/^/  /' | cut -c1-400 | tee -a "$SUMMARY"
-    { echo "seed=$SEED"; echo "env: ${envs[*]}"; echo "cmd: $*"; } >"$out.repro"
+    { echo "seed=$SEED"; echo "env: ${envs[*]-}"; echo "cmd: $*"; } >"$out.repro"
   else
     # Keep TYPE / GOV_EXECUTED and finalized-tx counts even on success:
     # F1.2 and F1.3 need evidence from clean campaigns too.
