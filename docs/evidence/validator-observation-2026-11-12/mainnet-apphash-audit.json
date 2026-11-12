@@ -1,0 +1,58 @@
+{
+  "artifacts": [
+    {
+      "path": "mainnet-heights.jsonl",
+      "sha256": "6cc1b0ea4836cccfd382d962ab6f360d5866c30f2344b74ba71ee89ce2b216d5"
+    }
+  ],
+  "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+  "chain_id": "celestia",
+  "complete": false,
+  "counts": {
+    "duplicates": 0,
+    "failed_or_invalid": 0,
+    "identity_rejected": 1,
+    "outside_range": 0,
+    "receipts": 45
+  },
+  "covered_heights": 43,
+  "covered_ranges": [
+    [
+      15809397,
+      15809399
+    ],
+    [
+      15809401,
+      15809440
+    ]
+  ],
+  "kind": "apphash",
+  "limitations": [
+    "Receipt timestamps are check times, not block times or proof of continuous uptime.",
+    "Coverage does not prove snapshot provenance, executable identity, signing or monitoring health.",
+    "Transaction results cover only code, data, gas_wanted and gas_used.",
+    "Input digests identify supplied files; receipts are not authenticated by this audit."
+  ],
+  "missing_ranges": [
+    [
+      15809400,
+      15809400
+    ]
+  ],
+  "receipt_time_range_utc": [
+    "2026-11-12T00:29:43.287574+00:00",
+    "2026-11-12T00:31:47.461809+00:00"
+  ],
+  "rejected_ranges": [
+    [
+      15809400,
+      15809400
+    ]
+  ],
+  "requested_range": [
+    15809397,
+    15809440
+  ],
+  "schema_version": 1,
+  "scope": "offline retained receipt height coverage"
+}
