@@ -148,7 +148,7 @@ Every item must pass on the commit the canary runs.
   first local smoke found findings 75-77 (fixed); the 3-night count starts
   at the first clean night.
 
-- [ ] **C1.3 Determinism of the signing binary.** F1.9: `deliver` and `pp`
+- [x] **C1.3 Determinism of the signing binary.** F1.9: `deliver` and `pp`
   clean on the Mac (or a `macos-14` runner) with the `dist` profile; the
   same seeds byte-identical under `RAYON_NUM_THREADS=1` and the default,
   with the signature cache on and off, and in `release` vs `dist`; a
@@ -1244,7 +1244,7 @@ test), then start that harness's count again.
   receipts in [#298](https://github.com/celestiaorg/celestia-rs/issues/298)
   and the live observation window in [#299](https://github.com/celestiaorg/celestia-rs/issues/299).
 
-- [ ] **F1.9 Determinism of the Rust binary.** C1.3 records Linux x86_64
+- [x] **F1.9 Determinism of the Rust binary.** C1.3 records Linux x86_64
   and macOS aarch64 determinism runs on earlier candidates. The validator's
   `dist` build uses parallel erasure coding, a signature cache and
   background snapshots; qualification needs fresh evidence on its exact
@@ -1260,8 +1260,13 @@ test), then start that harness's count again.
   36 release/dist configuration runs on the Mac Mini, with identical traces
   across profiles, square-thread settings and signature-cache settings, plus
   4,220 dist ProcessProposal comparisons with zero consensus mismatches.
-  Go/Rust log-only differences remain recorded separately. The exact-candidate
-  x86_64 comparison and remaining qualification gates are still open.
+  Go/Rust log-only differences remain recorded separately. Exact-candidate
+  [run 43138710653](https://github.com/celestiaorg/celestia-rs/actions/runs/43138710653)
+  passed on Linux x86_64 and macOS arm64: all six traces matched byte-for-byte
+  across platforms and profiles, and also matched both physical Mac profiles.
+  Platform receipts and Go oracle provenance are retained with the candidate
+  evidence. This closes C1.3/F1.9 for `46acbcb`; other qualification gates and
+  future source revisions still require their own evidence.
 
 - [ ] **F1.10 Pin the exact mainnet binaries.** New parity work targets
   v10.6.0 and historical v9.0.8. Mainnet may ship a later v10.x (and v9 patch

@@ -1,0 +1,26 @@
+{
+  "binaries": {
+    "v10": {
+      "path": "target/devnet-bin/celestia-appd",
+      "protobuf_go_detrand": {
+        "seed_hex": "0xd4b6a3033387de1c",
+        "separator": "space",
+        "separator_utf8_hex": "20"
+      },
+      "sha256": "da6494817fa648d582b096441fa03e848334c873fd9775c70d285c33f415b8f7",
+      "size": 191790432
+    },
+    "v9": {
+      "path": "target/devnet-bin/v9/celestia-appd",
+      "protobuf_go_detrand": {
+        "seed_hex": "0xc2d16cf3a47a0703",
+        "separator": "nonbreaking-space",
+        "separator_utf8_hex": "c2a0"
+      },
+      "sha256": "e5cbd1012086b39ee7b98966c0c57fecc8c603e0578c8439b4efaacbc28def32",
+      "size": 182058440
+    }
+  },
+  "schema_version": 1,
+  "scope": "exact binary bytes; this receipt does not establish qualification"
+}

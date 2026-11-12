@@ -1,0 +1,69 @@
+{
+  "binary_sha256": {
+    "/Users/runner/work/celestia-rs/celestia-rs/target/devnet-bin/celestia-appd": "bbc0436df2b1d897208b2a851693988f69d516974f66f4e00fe06146a26e4989",
+    "/Users/runner/work/celestia-rs/celestia-rs/target/devnet-bin/v9/celestia-appd": "f5e694368cc8e0be6c56cb1127ee232abce4d19a7134479472a6a08e0bf11437",
+    "/Users/runner/work/celestia-rs/celestia-rs/target/release/fuzz-diff": "6e115d054c24913cfcbcd7d289957f61f050fb811ec062783e5812c9ae5e10ca"
+  },
+  "command": [
+    "crates/fuzz-diff/determinism.sh",
+    "/Users/runner/work/_temp/traces",
+    "release",
+    "120"
+  ],
+  "exit_code": 0,
+  "finished_at_unix": 1794451251.95664,
+  "inputs_unchanged": true,
+  "log_sha256": "03849342bfd18c4aa195cf7939382e19b5cee5f81efb1b6e4e5677b36dbd2eb6",
+  "machine": "arm64",
+  "platform": "macOS-15.8.2-arm64-arm-64bit-Mach-O",
+  "protobuf_go_detrand": {
+    "/Users/runner/work/celestia-rs/celestia-rs/target/devnet-bin/celestia-appd": {
+      "seed_hex": "0xcb64b776df626071",
+      "separator": "nonbreaking-space",
+      "separator_utf8_hex": "c2a0"
+    },
+    "/Users/runner/work/celestia-rs/celestia-rs/target/devnet-bin/v9/celestia-appd": {
+      "seed_hex": "0x81e31a2fcc875476",
+      "separator": "space",
+      "separator_utf8_hex": "20"
+    },
+    "/Users/runner/work/celestia-rs/celestia-rs/target/release/fuzz-diff": {
+      "seed_hex": "0x3b53e8ec94a6d501",
+      "separator": "nonbreaking-space",
+      "separator_utf8_hex": "c2a0"
+    }
+  },
+  "schema_version": 1,
+  "scope": "one check only; remaining F1 gates require separate evidence",
+  "source": {
+    "index_flags": [],
+    "revision": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "status": "",
+    "tree": "48ec947ee96f5e85d7bffd0e7f6a9a014502f151"
+  },
+  "source_after": {
+    "index_flags": [],
+    "revision": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "status": "",
+    "tree": "48ec947ee96f5e85d7bffd0e7f6a9a014502f151"
+  },
+  "started_at_unix": 1794451089.1352909,
+  "status": "passed",
+  "toolchains": {
+    "cargo": {
+      "error": "",
+      "exit_code": 0,
+      "output": "cargo 1.99.1 (5f94df478 2026-08-27)"
+    },
+    "go": {
+      "error": "",
+      "exit_code": 0,
+      "output": "go version go1.26.10 darwin/arm64"
+    },
+    "rustc": {
+      "error": "",
+      "exit_code": 0,
+      "output": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1"
+    }
+  }
+}
