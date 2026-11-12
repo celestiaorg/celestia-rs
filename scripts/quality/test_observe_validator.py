@@ -54,6 +54,7 @@ class ObserverTest(unittest.TestCase):
         self.nil_signature = False
         self.fail_results = False
         self.wrong_app_hash = False
+        self.wrong_results_hash = False
 
         def request(endpoint, route):
             if endpoint == "reference" and self.fail_reference:
@@ -67,6 +68,8 @@ class ObserverTest(unittest.TestCase):
                 return {"height": str(self.height-1), "txs_results": [{"code": 0}]}
             if route.startswith("/block?"):
                 return {"block": {"header": {"chain_id": "test", "height": str(self.height),
+                                              "last_results_hash": "e"*64 if self.wrong_results_hash else MODULE.results_hash([
+                                                  {"code": 0, "gas_wanted": 0, "gas_used": 0, "data": ""}]),
                                               "app_hash": "c"*64 if self.wrong_app_hash else "b"*64}}}
             if route.startswith("/commit?"):
                 return {"signed_header": {"header": {"chain_id": "test"}, "commit": {
@@ -116,6 +119,21 @@ class ObserverTest(unittest.TestCase):
             observer.step()
             rows = [json.loads(line) for line in (observer.output / "heights.jsonl").read_text().splitlines()]
             self.assertEqual([row["outcome"] for row in rows], ["unavailable", "match"])
+
+    def test_equal_results_must_match_next_header_commitment(self):
+        with tempfile.TemporaryDirectory() as folder:
+            observer, log = self.observer(folder)
+            observer.step()
+            self.advance(log)
+            self.wrong_results_hash = True
+            with self.assertRaisesRegex(ValueError, "parity mismatch"):
+                observer.step()
+            row = json.loads((observer.output / "heights.jsonl").read_text())
+            self.assertEqual(row["outcome"], "mismatch")
+            self.assertEqual(row["local_results_sha256"], row["reference_results_sha256"])
+            self.assertNotEqual(row["local_results_hash"], row["header_results_hash"])
+            self.assertEqual(row["local_tx_results"], row["reference_tx_results"])
+            self.assertEqual(observer.next_height, 41)
 
     def test_reference_failure_retains_local_tip_sample(self):
         with tempfile.TemporaryDirectory() as folder:

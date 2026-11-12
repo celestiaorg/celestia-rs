@@ -18,7 +18,9 @@ python3 scripts/quality/observe_validator.py --config observer.json \
 The output directory must not exist. Each run starts at the first height
 after its local `/status` baseline; it does not claim earlier coverage.
 Run one process per network. Install a fixed copy of the script outside a
-development checkout so branch changes cannot alter collection. A finite
+development checkout so branch changes cannot alter collection. Keep the
+sibling `follow_receipt_audit.py` module beside it: the observer uses its
+Go-vector-tested deterministic transaction-result commitment implementation. A finite
 launchd job with `RunAtLoad` and without `KeepAlive` can outlive a terminal.
 Do not automatically restart it into the same observation after failure.
 
@@ -35,7 +37,16 @@ not a guarantee: RPC latency and bounded catch-up work extend it.
 to the independent header H+1 app hash, independent commit H block hash,
 and local/reference transaction results. Ordered comparisons cover `code`,
 `data`, `gas_wanted` and `gas_used`, with exact integer normalization,
-counts and canonical JSON digests. The receipt also records whether the
+counts and canonical JSON digests. New receipts additionally retain both
+normalized result lists, their deterministic protobuf/Merkle commitments and
+H+1's `last_results_hash`. Both computed commitments must match that header
+field; equal local/reference responses with a different commitment stop the
+run as a parity mismatch. Missing/malformed commitments remain unavailable.
+This is a consistency check against the retained reference response; it does
+not authenticate that header. Older receipts lack these additional fields
+and cannot establish this stronger check retrospectively.
+
+The receipt also records whether the
 public validator address signed that reference commit, signed nil, missed,
 or was outside the reference validator set. Absent signatures trigger an
 independent validator-set lookup to distinguish the last two cases.
