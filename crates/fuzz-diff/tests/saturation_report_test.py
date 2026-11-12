@@ -21,8 +21,8 @@ class EvidenceTest(unittest.TestCase):
         (folder / "worktree.status").write_text(" M file\n" if dirty else "")
         (folder / "worktree.patch").write_text("")
         (folder / "go-build-info.txt").write_text(
-            f"v10/celestia-appd: {REPORT.PINNED_GO}\n"
-            f"v9/celestia-appd: {REPORT.PINNED_GO}\n"
+            f"v10/celestia-appd: {REPORT.PINNED_GO['v10']}\n"
+            f"v9/celestia-appd: {REPORT.PINNED_GO['v9']}\n"
         )
         result = dict(scenario="gov", seed=1, requested_blocks=10,
                       txs_per_block=8, blocks=10, delivered=17,
@@ -69,6 +69,28 @@ class EvidenceTest(unittest.TestCase):
             self.run_evidence(root, "bad-count", delivered_ok=18)
             with self.assertRaisesRegex(ValueError, "invalid success count"):
                 REPORT.collect([root])
+
+    def test_version_specific_compilers_and_order_are_required(self):
+        v10, v9 = REPORT.PINNED_GO["v10"], REPORT.PINNED_GO["v9"]
+        self.assertNotEqual(v10, v9)
+        for compilers in ([v9, v9], [v10, v10], [v9, v10], [v10], [v10, v9, v9]):
+            with self.subTest(compilers=compilers), tempfile.TemporaryDirectory() as root:
+                folder = self.run_evidence(root, "bad-pair")
+                (folder / "go-build-info.txt").write_text("".join(f"app-{index}: {compiler}\n" for index, compiler in enumerate(compilers)))
+                runs, excluded = REPORT.collect([root])
+                self.assertFalse(runs)
+                self.assertEqual(excluded, {"unpinned Go toolchain": 1})
+
+    def test_pin_uses_explicit_toolchain_or_exact_go_directive(self):
+        with tempfile.TemporaryDirectory() as root:
+            module = Path(root) / "go.mod"
+            for content, expected in [("go 1.26.10\n", "go1.26.10"),
+                                      ("go 1.26.0\ntoolchain go1.26.9\n", "go1.26.9")]:
+                module.write_text(content)
+                self.assertEqual(REPORT.go_pin(module), expected)
+            module.write_text("go 1.26\n")
+            with self.assertRaisesRegex(ValueError, "missing exact"):
+                REPORT.go_pin(module)
 
     def test_unpinned_go_builds_do_not_count(self):
         with tempfile.TemporaryDirectory() as root:
