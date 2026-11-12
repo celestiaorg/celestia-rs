@@ -1,0 +1,27 @@
+{
+  "binary_sha256": "761abfb2720aa2394601d9e9d2b66dca4923d4da89a61fddce5ccc926f56e627",
+  "chain_id": "mocha-5",
+  "executed_transactions": 0,
+  "first_executed_height": 1,
+  "genesis_pin_source": "crates/tier-5-node/celestia-rs/src/networks.rs",
+  "genesis_sha256": "82db3ac5ab8485e4784054bd10457533a64563f055c0d234a3134603a9c85d33",
+  "header_app_version": 9,
+  "historical_trust_period_hours": 10000,
+  "last_executed_height": 100,
+  "limitations": [
+    "No transactions occurred in this bounded interval.",
+    "The transcript does not retain a separate receipt for every height.",
+    "Network headers establish consensus commitments, not the patch version of each Go validator.",
+    "The installed signing candidate remains 46acbcb; this replay used the new genesis follower source.",
+    "Remaining historical eras and transition coverage remain open in #302."
+  ],
+  "retained_sha256": {
+    "build/check.log": "09955aeb3a934bb73c2e856bf5c15fc5feb9523f91dc26aae7f0e0a2d9f6ddac",
+    "build/evidence.json": "2afe7a31e7b2d40e67ddab6cf63ad05744b7bbbd207f3faf8c5bd4c3ac44586d",
+    "replay/check.log": "74f84e834a8f8fb0200ce1e7b3cd5eecacd4721e8d470a40ea70a361a4e4bb92",
+    "replay/evidence.json": "b9cf4587e725febdb8779fc02752e85d61266407f85d8ba7546d195c2bd3b5ed"
+  },
+  "scope": "bounded genesis follower startup and header verification, not exact installed-candidate qualification",
+  "source_commit": "ecec011ca435f9a7c9f8c233506d21731d114492",
+  "verified_final_header": 101
+}

@@ -1,0 +1,10 @@
+/private/tmp/celestia-mocha-genesis-replay/committed-home/config/genesis.json: OK
+2026-11-12T03:30:35.065185Z  INFO celestia_rs::follow: following over RPC chain_id="mocha-5" primary=https://rpc.celestia-mocha.com tip=2540681 earliest=1
+2026-11-12T03:30:35.366321Z  INFO nodestore::handshake: ABCI Handshake App Info height=0 hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 protocol_version=0
+2026-11-12T03:30:35.366348Z  INFO nodestore::handshake: ABCI Replay Blocks app_height=0 store_height=0 state_height=0
+2026-11-12T03:30:36.729666Z  INFO nodestore::handshake: Completed ABCI Handshake - CometBFT and App are synced app_height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855
+2026-11-12T03:30:36.729791Z  INFO celestia_rs::follow: resuming height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855
+2026-11-12T03:30:51.593996Z  INFO celestia_rs::follow: followed height=100 tip=2540686 blocks_per_sec="6.97" txs_per_sec="0.0" exec_secs=6 wait_secs=8 tx_mib=0 app_hash=5233A68B6A96EC636491C81B65B22F1D656ED6C54655A518680AD7684CCA66F9
+2026-11-12T03:30:51.594249Z  INFO celestia_rs::follow: stop height reached height=100 verified_header_height=101
+2026-11-12T03:30:58.309469Z  INFO celestia_rs::follow: follow finished first=1 last=100 blocks=100 txs=0 secs=21
+/private/tmp/celestia-mocha-genesis-replay/committed-home/config/genesis.json: OK
