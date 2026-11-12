@@ -1,0 +1,36 @@
+| revision | scenario | unique runs | generated blocks | finalized txs | Go code 0 |
+|---|---|---:|---:|---:|---:|
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | authz-feegrant | 30 | 9000 | 66587 | 29204 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | blob | 29 | 8700 | 60035 | 25915 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | consensus | 29 | 8700 | 61504 | 30721 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | empty | 29 | 8700 | 61200 | 25682 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | evidence | 29 | 8700 | 60288 | 26073 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | fibre | 30 | 9000 | 65205 | 29564 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | gov | 31 | 9300 | 72094 | 33101 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | hyperlane | 34 | 10200 | 74617 | 35015 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | ibc | 30 | 9000 | 64563 | 26260 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | ibc-edge | 30 | 9000 | 64615 | 26268 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | ibc-upgrades | 30 | 9000 | 68053 | 27807 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | staking | 30 | 9000 | 65644 | 28633 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | staking-lifecycle | 30 | 9000 | 65046 | 28027 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | upgrade | 1 | 300 | 590 | 297 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | utf8 | 30 | 9000 | 68002 | 31771 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | v9-authz-feegrant | 29 | 8700 | 48403 | 19467 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | v9-blob | 29 | 8700 | 34612 | 12134 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | v9-empty | 29 | 8700 | 49851 | 19271 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | v9-exec | 29 | 8700 | 47941 | 20433 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | v9-gov | 30 | 9000 | 54805 | 23888 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | v9-hyperlane | 33 | 9900 | 57065 | 25114 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | v9-ibc | 29 | 8700 | 50158 | 19792 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | v9-staking | 29 | 8700 | 50112 | 20331 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | v9-upgrade | 12 | 3600 | 14974 | 7702 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | v9-utf8 | 29 | 8700 | 51824 | 20997 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | v9-vesting | 29 | 8700 | 49938 | 19913 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | v9-zkism-forwarding | 32 | 9600 | 52643 | 22679 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | vesting | 30 | 9000 | 64789 | 28151 |
+| `46acbcb516c3dab26cb5706c908dfe0207f27349` | zkism-forwarding | 34 | 10200 | 75409 | 35938 |
+
+Counted 825 unique clean runs; 1620567 finalized txs across all revisions.
+Assess the F1.2 volume gate per revision, after the last fix; this report does not establish 3 clean nights or complete scenario coverage.
+Required oracle compilers: v10 go1.26.10, v9 go1.26.9 (in that build-info order).
+Excluded: 29 incomplete block count.

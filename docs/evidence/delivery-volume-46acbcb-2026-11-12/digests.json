@@ -1,0 +1,14 @@
+{
+  "combined-report/check.log": "23d1e73738a0837d01fe45eec4d256d1bd7e2b53460d31718b3baa378bea4750",
+  "combined-report/evidence.json": "fe0c96d2e7ab9582d74d50b28522a6857c0a176e1b81a659cde8abfb9addb4ed",
+  "findings/go-build-info.txt": "4c8c00dcfa0ed9144151f1b2cbb0470c5d70cf21b5f312e758e4df81366b368d",
+  "findings/job.txt": "916271cb8838877adb1d79114614a254b888293ea44665e4c7f1c23bfd769598",
+  "findings/revision.txt": "15370a209bbc18d15e4aaf6270b1aacdcd38964ae1fe45da55367e125bcde9ac",
+  "findings/summary.txt": "ee3de56ace513a8294f8bc7c914ebca51a2ade6732fd22ebf239cefcce4c770d",
+  "findings/worktree.patch": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "findings/worktree.status": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "qualification/check.log": "ee3de56ace513a8294f8bc7c914ebca51a2ade6732fd22ebf239cefcce4c770d",
+  "qualification/evidence.json": "fa4a642befb9525fdc1d62e2a2bc365be4db20298de88cc80bdd37753531601d",
+  "runs.jsonl.gz": "4e808161baf119ef52f2bb079eab8302211374037257e95fc550fe033cb88f2e",
+  "summary.json": "aff59f6508bf9bbd56b7b44b8ebf9b9b9d09b4fa1da6fe48406471ee703489d7"
+}
