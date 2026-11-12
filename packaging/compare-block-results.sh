@@ -25,8 +25,25 @@ mkdir -p "$(dirname "$receipts")" || exit 2
 # comparison scope explicit in each receipt, and never imply that logs,
 # events or all ABCI fields were compared.
 normalize='
-  if ((.result.height | tonumber?) == $h) and
-     ((.result.txs_results == null) or ((.result.txs_results | type) == "array"))
+  def integer:
+    if type == "number" then . == floor
+    elif type == "string" then test("^-?(0|[1-9][0-9]*)$")
+    else false end;
+  def valid_result:
+    if type != "object" then false
+    else
+      ((.code == null) or (.code | integer and
+        (tonumber >= 0 and tonumber <= 4294967295))) and
+      ((.data == null) or (.data | if type == "string" then
+        test("^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$")
+        else false end)) and
+      ((.gas_wanted == null) or (.gas_wanted | integer)) and
+      ((.gas_used == null) or (.gas_used | integer))
+    end;
+  if (.error == null) and ((.result.height | tonumber?) == $h) and
+     ((.result.txs_results == null) or
+      ((.result.txs_results | type) == "array" and
+       all(.result.txs_results[]; valid_result)))
   then [.result.txs_results[]? |
     {code:(.code // 0 | tostring), data:(.data // ""),
      gas_wanted:(.gas_wanted // 0 | tostring),
