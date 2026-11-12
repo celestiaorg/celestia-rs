@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "candidate": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+  "tree": "48ec947ee96f5e85d7bffd0e7f6a9a014502f151",
+  "runs": 768,
+  "completed_block_runs": 741,
+  "intentional_short_runs": 27,
+  "finalized_complete_transactions": 1494291,
+  "all_finalized_transactions": 1500494,
+  "code_zero_complete_transactions": 650610,
+  "consensus_mismatches": 0,
+  "budget_skipped": 16,
+  "earlier_campaign_complete_runs": 84,
+  "earlier_campaign_finalized_transactions": 126276,
+  "combined_complete_runs": 825,
+  "combined_finalized_transactions": 1620567,
+  "qualification": false,
+  "scope": "Exact-candidate F1.2 finalized-transaction volume reached; three-night, branch/type coverage and other gates remain open.",
+  "log_only_differences": 741716,
+  "generated_blocks": 222799,
+  "script_incomplete_runs": 239,
+  "script_incomplete_complete_block_runs": 239
+}

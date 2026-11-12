@@ -348,6 +348,16 @@ test), then start that harness's count again.
   candidate. Scenario/branch coverage and three consecutive scheduled
   nights remain open, and the result does not transfer to later commits.
 
+  *Installed-candidate volume (2026-11-12):* the
+  [46acbcb report](docs/delivery-volume-46acbcb-2026-11-12.md) counts
+  **1,620,567 finalized transactions across 825 complete clean runs**, with
+  zero consensus mismatches, combining the full campaign and a two-hour
+  rotation against Go v10.6.0/v9.0.8. The report excludes 29 deliberately
+  short block runs and retains 16 budget skips, log-only differences and
+  incomplete-script observations separately. This reaches the numerical
+  volume threshold for the installed candidate. Coverage and three
+  consecutive clean nights remain open; later revisions need fresh evidence.
+
 - [ ] **F1.3 Measure coverage of consensus code.** The recorded-message
   inventory (`fuzz-diff coverage`) and instrumented campaigns below do
   not yet establish complete per-error and branch coverage. Qualifying
