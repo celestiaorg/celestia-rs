@@ -83,6 +83,19 @@ class OracleBuildCache(unittest.TestCase):
         return subprocess.run(["bash", str(self.script)], env={**self.env, **changes},
                               text=True, capture_output=True, timeout=15)
 
+    def test_core_build_accepts_empty_optional_flags(self):
+        result = self.build(APPD_ONLY="")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        core = self.binary.with_name("cometbft")
+        self.assertTrue(core.exists())
+        recipe = json.loads(core.with_name("cometbft.build.json").read_text())
+        self.assertEqual(recipe["build_tags"], [])
+        self.assertEqual(recipe["ldflags"], "")
+        builds = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertEqual(len(builds), 2)
+        self.assertNotIn("", builds[1])
+        self.assertFalse(any(item.startswith(("-tags=", "-ldflags=")) for item in builds[1]))
+
     def test_legacy_module_stamp_is_rebuilt_and_release_recipe_is_recorded(self):
         self.binary.parent.mkdir()
         self.binary.write_text("#!/bin/sh\necho old\n")

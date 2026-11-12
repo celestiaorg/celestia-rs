@@ -109,7 +109,7 @@ PY
   rm -rf "$WORK/src" && cp -r "$src" "$WORK/src" && chmod -R u+w "$WORK/src"
   # Module-proxy archives have no VCS metadata. Do not stamp a surrounding
   # workspace's repository (or fail when its .git is inaccessible).
-  (cd "$WORK/src" && retry env GOFLAGS=-mod=mod go mod download && GOFLAGS=-mod=mod go build -buildvcs=false "${flags[@]}" -o "$WORK/$3" "$2")
+  (cd "$WORK/src" && retry env GOFLAGS=-mod=mod go mod download && GOFLAGS=-mod=mod go build -buildvcs=false ${flags[@]+"${flags[@]}"} -o "$WORK/$3" "$2")
   if [ "$3" = celestia-appd ]; then
     # The app pre-instantiates its upgrade keeper even for `version`;
     # keep that command's filesystem effects in the temporary build home.
