@@ -32,7 +32,7 @@
     "conformance/mainnet-rpc/module-closure/evidence/manifest.json": "63df8d8c652efa70f3af473140fa538bacd4120946bd34dceb8054c225a58a2b",
     "conformance/mainnet-rpc/persistence/closure-evidence/manifest.json": "e8ce2ef7043048eff4a66a920ac65c8b3ed3cd213f2cdb510dd22264e9a3932b",
     "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/manifest.json": "d13b92ee1861a7a566b31f9e128850c1db4f79eb48ff183b20ed10c2112ee7bc",
-    ".github/workflows/ci.yml": "b3f5dd7ed3d696ee69db9d8e0fce2fb989fbc44724c0daf069064aa445c2e93c",
+    ".github/workflows/ci.yml": "5d0423cebaf7a7a2290fb770514b1365eea24f09b8fc9c19f5a23aec9fd17717",
     "conformance/mainnet-rpc/validation/api-tests.log": "eaebce54d80d3417b9f9e749c173276baa775ee964bd6266d34274d8f1e6e794",
     "conformance/mainnet-rpc/validation/clippy.log": "319fbcfe472d41732fe7a0252ec2d71cd771c535ed25447b74024bd225d89d92",
     "conformance/mainnet-rpc/validation/go-proofcheck-tests.log": "ec69083e1cec70ec6c0f91b8d6582e1dccdf963d90eadd7fa36002d910bf5bdf",

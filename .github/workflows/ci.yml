@@ -200,6 +200,7 @@ jobs:
           - mintvectors
           - p2pvectors
           - provider-client
+          - rpc-relay
           - rpccorpus/recorder
           - mainnet-rpc/module-closure/proofcheck
           - txdecode
