@@ -21,6 +21,8 @@ import subprocess
 import time
 from urllib.request import urlopen
 
+from follow_receipt_audit import results_hash
+
 
 def utc():
     return datetime.now(timezone.utc).isoformat()
@@ -235,6 +237,15 @@ class Observer:
                 if not re.fullmatch(r"[0-9A-Fa-f]{64}", header["app_hash"]) or not re.fullmatch(r"[0-9A-Fa-f]{64}", commit["commit"]["block_id"]["hash"]):
                     raise ValueError("invalid reference hash")
                 ours, theirs = results(data["local_results"], h), results(data["reference_results"], h)
+                expected_results_hash = header["last_results_hash"]
+                if not isinstance(expected_results_hash, str) or not re.fullmatch(r"[0-9A-Fa-f]{64}", expected_results_hash):
+                    raise ValueError("invalid reference results commitment")
+                # Bind both result lists to H+1, not only to each other: two
+                # equal RPC responses may both omit or alter finalized data.
+                def committed_hash(rows):
+                    return results_hash([{**item, **{field: int(item[field]) for field in
+                                         ("code", "gas_wanted", "gas_used")}} for item in rows])
+                local_results_hash, reference_results_hash = committed_hash(ours), committed_hash(theirs)
                 signed = participation(commit["commit"], self.config["validator_address"])
                 if signed["outcome"] == "absent_or_not_in_set":
                     addresses = []
@@ -253,9 +264,15 @@ class Observer:
                            reference_block_hash=commit["commit"]["block_id"]["hash"],
                            local_results_sha256=digest(ours), reference_results_sha256=digest(theirs),
                            local_tx_count=len(ours), reference_tx_count=len(theirs),
+                           local_results_hash=local_results_hash,
+                           reference_results_hash=reference_results_hash,
+                           header_results_hash=expected_results_hash.lower(),
+                           local_tx_results=ours, reference_tx_results=theirs,
                            compared_fields=["code", "data", "gas_wanted", "gas_used"],
                            participation=signed)
-                matches = (ours == theirs and execution["app_hash"] == header["app_hash"].upper()
+                matches = (ours == theirs
+                           and local_results_hash == reference_results_hash == expected_results_hash.lower()
+                           and execution["app_hash"] == header["app_hash"].upper()
                            and execution["block_hash"] == row["reference_block_hash"].upper())
                 row["outcome"] = "match" if matches else "mismatch"
             except Exception as error:

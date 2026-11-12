@@ -18,7 +18,9 @@ python3 scripts/quality/observe_validator.py --config observer.json \
 The output directory must not exist. Each run starts at the first height
 after its local `/status` baseline; it does not claim earlier coverage.
 Run one process per network. Install a fixed copy of the script outside a
-development checkout so branch changes cannot alter collection. A finite
+development checkout so branch changes cannot alter collection. Keep the
+sibling `follow_receipt_audit.py` module beside it: the observer uses its
+Go-vector-tested deterministic transaction-result commitment implementation. A finite
 launchd job with `RunAtLoad` and without `KeepAlive` can outlive a terminal.
 Do not automatically restart it into the same observation after failure.
 
@@ -35,7 +37,16 @@ not a guarantee: RPC latency and bounded catch-up work extend it.
 to the independent header H+1 app hash, independent commit H block hash,
 and local/reference transaction results. Ordered comparisons cover `code`,
 `data`, `gas_wanted` and `gas_used`, with exact integer normalization,
-counts and canonical JSON digests. The receipt also records whether the
+counts and canonical JSON digests. New receipts additionally retain both
+normalized result lists, their deterministic protobuf/Merkle commitments and
+H+1's `last_results_hash`. Both computed commitments must match that header
+field; equal local/reference responses with a different commitment stop the
+run as a parity mismatch. Missing/malformed commitments remain unavailable.
+This is a consistency check against the retained reference response; it does
+not authenticate that header. Older receipts lack these additional fields
+and cannot establish this stronger check retrospectively.
+
+The receipt also records whether the
 public validator address signed that reference commit, signed nil, missed,
 or was outside the reference validator set. Absent signatures trigger an
 independent validator-set lookup to distinguish the last two cases.
@@ -99,3 +110,25 @@ signatures, authenticate input logs or inspect separate Prometheus/guard/panic
 records. `qualification_established` remains false. Review those independent
 requirements before claiming C1.1, F1.8 or #299 is complete. File digests bind
 the supplied snapshots; they do not authenticate their contents.
+
+## Result-commitment validation on live validators
+
+Two independent 120-second read-only probes on 2026-11-12 checked the added
+result commitment comparison using observer revision `01a3188`. Both signing
+validators remained on candidate `46acbcb`; the original three-day collectors
+continued running. Clean-source wrappers passed with unchanged process/binary
+identity. Both probes reached their normal deadline with all 39 attempted
+heights matching and 24 status samples each:
+
+| Network | Inclusive executed heights | Compared transactions |
+|---|---|---:|
+| Mocha `mocha-5` | 2,542,577–2,542,615 | 38 |
+| Mainnet `celestia` | 15,815,126–15,815,164 | 177 |
+
+[Retained probe evidence](evidence/observer-commitment-2026-11-12/summary.json)
+includes compressed raw events, samples and per-height normalized results,
+wrapper receipts and file digests. Every retained matching result commitment
+was recomputed offline from those result lists and matched H+1's recorded
+commitment. This validates nonempty live transaction handling in the stronger
+collector. It does not extend the earlier collectors' claims retrospectively,
+verify reference signatures or establish continuous three-day qualification.

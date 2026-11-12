@@ -30,7 +30,17 @@ A successful row requires both chain IDs and the full candidate commit to
 match, a UTC timestamp, a match outcome without an error, and agreeing
 payloads. App-hash checks also require reference header H+1. Transaction
 checks require equal counts and digests for `code`, `data`, `gas_wanted` and
-`gas_used`. Repeated identical receipts count once per height. An unavailable,
+`gas_used`. When a receipt includes any of the newer result-commitment fields,
+the audit additionally requires all of them, recomputes both JSON digests and
+deterministic protobuf/Merkle roots from the retained normalized result lists,
+and checks H+1's commitment and both counts. Missing or inconsistent fields
+cannot be hidden behind a `match` label. `result_commitment_checked_heights`
+reports how many accepted heights passed this stronger check. Use
+`--require-result-commitment` with `--kind tx-results` to reject older
+receipts that lack those fields. Without that flag, older digest-only
+receipts retain their original, narrower coverage meaning.
+
+Repeated identical receipts count once per height. An unavailable,
 invalid or contradictory receipt at a known height excludes that height even
 if another receipt reports success. Identity-rejected rows at known heights
 also exclude those heights from coverage: an unavailable reference chain ID

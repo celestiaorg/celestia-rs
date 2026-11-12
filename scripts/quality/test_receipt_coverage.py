@@ -2,11 +2,13 @@
 
 import copy
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
 
 from receipt_coverage import audit
+from follow_receipt_audit import results_hash
 
 
 CANDIDATE = "a" * 40
@@ -27,11 +29,46 @@ def receipt(height=10):
 
 
 class ReceiptCoverageTests(unittest.TestCase):
-    def run_audit(self, rows, first=10, last=12, kind="tx-results"):
+    def run_audit(self, rows, first=10, last=12, kind="tx-results", require_commitment=False):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "receipts.jsonl"
             path.write_text("".join(json.dumps(row) + "\n" for row in rows))
-            return audit([path], "celestia", CANDIDATE, first, last, kind)
+            return audit([path], "celestia", CANDIDATE, first, last, kind, require_commitment)
+
+    def committed(self):
+        row = receipt()
+        rows = [{"code": "0", "data": "YQ==", "gas_wanted": "9223372036854775807", "gas_used": "-1"}]
+        digest = hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        root = results_hash([{**rows[0], "code": 0, "gas_wanted": 2**63-1, "gas_used": -1}])
+        row.update(local_tx_count=1, reference_tx_count=1,
+                   local_results_sha256=digest, reference_results_sha256=digest,
+                   local_results_hash=root, reference_results_hash=root, header_results_hash=root,
+                   local_tx_results=rows, reference_tx_results=copy.deepcopy(rows))
+        return row
+
+    def test_commitments_recomputed_and_legacy_requirement_explicit(self):
+        report = self.run_audit([self.committed()], last=10, require_commitment=True)
+        self.assertTrue(report["complete"])
+        self.assertEqual(report["result_commitment_checked_heights"], 1)
+        self.assertFalse(self.run_audit([receipt()], last=10, require_commitment=True)["complete"])
+        self.assertTrue(self.run_audit([receipt()], last=10)["complete"])
+        self.assertEqual(self.run_audit([receipt()], last=10)["result_commitment_checked_heights"], 0)
+
+    def test_partial_or_tampered_commitments_fail_without_opt_in(self):
+        for changes in ({"header_results_hash": "d"*64}, {"local_results_hash": None},
+                        {"local_tx_results": []}, {"reference_tx_results": [{}]},
+                        {"reference_header_height": 10}, {"local_tx_count": 2, "reference_tx_count": 2}):
+            with self.subTest(changes=changes):
+                row = self.committed();row.update(changes)
+                self.assertFalse(self.run_audit([row], last=10)["complete"])
+        row = receipt();row["header_results_hash"] = "e"*64
+        self.assertFalse(self.run_audit([row], last=10)["complete"])
+        for data in ("@@", "YR=="):
+            row = self.committed()
+            for prefix in ("local", "reference"):
+                row[prefix+"_tx_results"][0]["data"] = data
+                row[prefix+"_results_sha256"] = hashlib.sha256(json.dumps(row[prefix+"_tx_results"], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            self.assertFalse(self.run_audit([row], last=10)["complete"])
 
     def test_duplicate_scrapes_are_not_additional_height_coverage(self):
         report = self.run_audit([receipt(10), receipt(10), receipt(12)])

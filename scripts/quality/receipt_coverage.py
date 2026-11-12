@@ -14,6 +14,8 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from follow_receipt_audit import results_hash
+
 
 def ranges(heights):
     result = []
@@ -46,7 +48,44 @@ def timestamp(value):
     return parsed
 
 
-def matching_payload(row, kind):
+COMMITMENT_FIELDS = {"local_results_hash", "reference_results_hash", "header_results_hash",
+                     "local_tx_results", "reference_tx_results"}
+
+
+def committed_payload(row):
+    """Recompute optional stronger receipts without authenticating the header."""
+    try:
+        expected = row["header_results_hash"]
+        if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected):
+            return False
+        if type(row["reference_header_height"]) is not int or row["reference_header_height"] != row["executed_height"]+1:
+            return False
+        for prefix in ("local", "reference"):
+            rows = row[prefix+"_tx_results"]
+            if not isinstance(rows, list) or len(rows) != row[prefix+"_tx_count"]:
+                return False
+            digest = hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            if digest != row[prefix+"_results_sha256"]:
+                return False
+            normalized = []
+            for item in rows:
+                if not isinstance(item, dict) or set(item) != {"code", "data", "gas_wanted", "gas_used"}:
+                    return False
+                converted = dict(item)
+                for field in ("code", "gas_wanted", "gas_used"):
+                    number = item[field]
+                    if not isinstance(number, str) or not re.fullmatch(r"0|-?[1-9][0-9]*", number):
+                        return False
+                    converted[field] = int(number)
+                normalized.append(converted)
+            if results_hash(normalized) != row[prefix+"_results_hash"] or row[prefix+"_results_hash"] != expected:
+                return False
+        return row["local_tx_results"] == row["reference_tx_results"]
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def matching_payload(row, kind, require_commitment=False):
     if row.get("outcome") != "match" or row.get("error") is not None:
         return None
     if kind == "apphash":
@@ -72,15 +111,20 @@ def matching_payload(row, kind):
         return None
     if row.get("first_difference_index") is not None:
         return None
+    has_commitment = bool(COMMITMENT_FIELDS.intersection(row))
+    if (has_commitment or require_commitment) and not committed_payload(row):
+        return None
     return (local, count)
 
 
-def audit(paths, chain, candidate, first, last, kind):
+def audit(paths, chain, candidate, first, last, kind, require_commitment=False):
+    if require_commitment and kind != "tx-results":
+        raise ValueError("result commitments require tx-results receipts")
     if first < 1 or last < first:
         raise ValueError("require 1 <= first <= last")
     if not re.fullmatch(r"[0-9a-f]{40}", candidate):
         raise ValueError("candidate must be a full lowercase Git commit SHA")
-    matches, rejected = {}, set()
+    matches, rejected, committed = {}, set(), set()
     counts = {"receipts": 0, "duplicates": 0, "outside_range": 0,
               "identity_rejected": 0, "failed_or_invalid": 0}
     artifacts, times = [], []
@@ -112,12 +156,14 @@ def audit(paths, chain, candidate, first, last, kind):
                     if height is not None:
                         rejected.add(height)
                     continue
-                payload = matching_payload(row, kind) if height is not None else None
+                payload = matching_payload(row, kind, require_commitment) if height is not None else None
                 if payload is None:
                     counts["failed_or_invalid"] += 1
                     if height is not None:
                         rejected.add(height)
                     continue
+                if kind == "tx-results" and COMMITMENT_FIELDS.intersection(row):
+                    committed.add(height)
                 times.append(time)
                 if height in matches:
                     counts["duplicates"] += 1
@@ -135,6 +181,8 @@ def audit(paths, chain, candidate, first, last, kind):
         "requested_range": [first, last], "covered_ranges": covered,
         "missing_ranges": missing, "rejected_ranges": ranges(rejected),
         "covered_heights": sum(end - start + 1 for start, end in covered),
+        "result_commitment_required": require_commitment,
+        "result_commitment_checked_heights": len(committed - rejected),
         "receipt_time_range_utc": [min(times).isoformat(), max(times).isoformat()] if times else None,
         "counts": counts, "artifacts": artifacts,
         "complete": not missing and not any(counts[key] for key in
@@ -155,10 +203,14 @@ def main():
     parser.add_argument("--first", required=True, type=int)
     parser.add_argument("--last", required=True, type=int)
     parser.add_argument("--kind", required=True, choices=("apphash", "tx-results"))
+    parser.add_argument("--require-result-commitment", action="store_true",
+                        help="require retained result lists and H+1 commitments for tx-results")
     parser.add_argument("receipts", nargs="+")
     args = parser.parse_args()
+    if args.require_result_commitment and args.kind != "tx-results":
+        parser.error("--require-result-commitment requires --kind tx-results")
     try:
-        report = audit(args.receipts, args.chain, args.candidate, args.first, args.last, args.kind)
+        report = audit(args.receipts, args.chain, args.candidate, args.first, args.last, args.kind, args.require_result_commitment)
     except (ValueError, OSError) as error:
         print(str(error), file=sys.stderr)
         return 2
