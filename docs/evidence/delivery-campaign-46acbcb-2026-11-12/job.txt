@@ -1,0 +1,1 @@
+campaign-0of1 seed=20261112 budget=14400 blocks=300

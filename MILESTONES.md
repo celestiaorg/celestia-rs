@@ -171,11 +171,18 @@ Every item must pass on the commit the canary runs.
   `blob`, `ibc`, `v9-blob` clean (4,220 mutated proposals). The whole suite
   took under 3 minutes on the M4. Rerun on the commit the canary runs.
 
-- [ ] **C1.4 Fresh `deliver` campaign on the release commit.** At least
+- [x] **C1.4 Fresh `deliver` campaign on the release commit.** At least
   one run of every devnet scenario at both app versions, plus
   `DELIVER_UPGRADE` over at least 10 seeds, with `DELIVER_IBC`,
   `DELIVER_HL`, `DELIVER_WIRE`, `DELIVER_SWEEP` and `DELIVER_RECHECK`;
   no mismatch. A finding is fixed, pinned and the campaign rerun.
+  *Fresh installed-candidate campaign (2026-11-12):*
+  [46acbcb evidence](docs/delivery-campaign-46acbcb-2026-11-12.md) retains all
+  86 run outcomes, zero skips and zero consensus mismatches: 25,218 generated
+  blocks and 126,358 finalized transactions, including twelve upgrade seeds.
+  Two v10 upgrade cases stopped at the expected future-v11 signal; the other
+  84 completed all 300 requested blocks. The exact-source wrapper passed with
+  unchanged binaries and inputs. Remaining qualification gates stay open.
   *Tooling ready:* run `fuzz-exec` by hand with `campaign: true` on the
   release commit (8 jobs: every scenario with all those flags, again with
   `DELIVER_GOVPASS`, and the upgrade over 12 seeds).

@@ -1,0 +1,23 @@
+{
+  "runs": 86,
+  "skipped": 0,
+  "generated_blocks": 25218,
+  "finalized_transactions": 126358,
+  "code_zero": 49583,
+  "consensus_mismatches": 0,
+  "log_only_differences": 2400,
+  "partial_runs": [
+    {
+      "scenario": "upgrade",
+      "seed": 20261112,
+      "blocks": 8,
+      "requested_blocks": 300
+    },
+    {
+      "scenario": "upgrade",
+      "seed": 20261113,
+      "blocks": 10,
+      "requested_blocks": 300
+    }
+  ]
+}
