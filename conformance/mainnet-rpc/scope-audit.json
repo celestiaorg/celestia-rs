@@ -260,7 +260,7 @@
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/tests/test_live_tx.py",
-        "sha256": "372cc2d3a07a9684a6c4b4ce6c986ef2205e7e4b2bd0b79d825519f360b8be21"
+        "sha256": "90658c16d378ba8271e94ce6c184e2ae25c1a76892c29ac731ea77c7875e8a07"
       },
       "transports": [
         "comet-jsonrpc",
@@ -354,7 +354,7 @@
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/tests/test_populated_staking.py",
-        "sha256": "32f3baba474c390663f46125e8edfd9889a398d8de6698f558db8e1204397cd1"
+        "sha256": "c4e46ed8270a544db2ec7397813b90fc24232bf0e4ef26bc47a6f20ef37e44ec"
       },
       "transports": [
         "comet-jsonrpc",

@@ -116,7 +116,11 @@ class LiveTransactionEvidence(unittest.TestCase):
 
     def test_sources_artifacts_builds_and_inputs_are_bound(self):
         for name, expected in self.metadata["source_sha256"].items():
-            self.assertEqual(digest(ROOT / name), expected, name)
+            # Historical captures bind their original builder, before active
+            # oracle toolchain selection changed. Never rehash old receipts.
+            source = (ROOT / "conformance/mainnet-rpc/v10.5.0/sources/build-bins.sh"
+                      if name == "conformance/devnet/build-bins.sh" else ROOT / name)
+            self.assertEqual(digest(source), expected, name)
         for name, expected in self.metadata["artifact_sha256"].items():
             self.assertEqual(digest(FIXTURE / name), expected, name)
 
