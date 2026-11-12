@@ -132,3 +132,7 @@ was recomputed offline from those result lists and matched H+1's recorded
 commitment. This validates nonempty live transaction handling in the stronger
 collector. It does not extend the earlier collectors' claims retrospectively,
 verify reference signatures or establish continuous three-day qualification.
+
+The [pooled-reference observation record](pooled-validator-observation-2026-11-12.md)
+retains a separately started durable window and bounded live transport probes.
+It preserves the earlier window's gaps and states the later acceptance deadline.

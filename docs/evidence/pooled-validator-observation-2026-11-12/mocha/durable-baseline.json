@@ -1,0 +1,75 @@
+[
+  {
+    "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "chain_id": "mocha-5",
+    "config": {
+      "binary": "/Users/rootulp/.celestia-rs/bin/celestia-rs",
+      "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+      "chain_id": "mocha-5",
+      "home": "/Users/rootulp/.celestia-rs/mocha",
+      "local_rpc": "http://127.0.0.1:26657",
+      "log": "/Users/rootulp/Library/Logs/celestia-rs.log",
+      "network": "mocha",
+      "pid": 26124,
+      "reference_rpc": "http://127.0.0.1:60995",
+      "validator_address": "64910794C3B7404929AB3CF18063A6B8CD3032D7"
+    },
+    "event": "start",
+    "identity": {
+      "binary_sha256": "fdaf29302ce215334663a851ad4b16295da99b03d57bb4779249ebfb04a7c192",
+      "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+      "device": 16777234,
+      "inode": 27083999,
+      "mtime_ns": 1794357663408698351,
+      "pid": 26124,
+      "size": 62959200,
+      "version": "name: celestia-rs\nversion: 0.1.0-rc.5\ncommit: 46acbcb516c3dab26cb5706c908dfe0207f27349\nbuild_profile: release\ntoolchain: rustc 1.99.1 (58cf8f9c3 2026-10-13) aarch64-apple-darwin\napp_version: 10\ncompatibility_target: celestia-app v10.6.0, celestia-core v0.42.8\n"
+    },
+    "time_utc": "2026-11-12T05:23:57.687524+00:00"
+  },
+  {
+    "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "chain_id": "mocha-5",
+    "event": "baseline",
+    "first_required_height": 2543053,
+    "local_status": {
+      "node_info": {
+        "channels": "40202223303860613231505100",
+        "id": "df2aea1cc24721dc9900409bac32ef4488c4a6c3",
+        "listen_addr": "tcp://0.0.0.0:26656",
+        "moniker": "celestia-rs validator",
+        "network": "mocha-5",
+        "other": {
+          "rpc_address": "tcp://127.0.0.1:26657",
+          "tx_index": "off"
+        },
+        "protocol_version": {
+          "app": "10",
+          "block": "11",
+          "p2p": "8"
+        },
+        "version": "0.38.17-celestia-rs.0.1.0-rc.5"
+      },
+      "sync_info": {
+        "catching_up": false,
+        "earliest_app_hash": "049685F34364C0D6744EA887D9D6F3CD4154D1BEF1248FA177C358EB95655235",
+        "earliest_block_hash": "9997BB1D9E9EE0332E24BFDE4CFCB6693E0300C3B3A7ECC876ED7334945D5FCB",
+        "earliest_block_height": "2540052",
+        "earliest_block_time": "2026-11-12T03:00:34.648389055Z",
+        "latest_app_hash": "81A6878A1677A11FB3E89C6DDAA84CFEEE4300A3C702609D5D21BC05DD346DE0",
+        "latest_block_hash": "2F733B7D44E69B2DCDC9F063EB2D5DB74408C093BD136D1CDBB9A48974D6450E",
+        "latest_block_height": "2543052",
+        "latest_block_time": "2026-11-12T05:23:52.341547015Z"
+      },
+      "validator_info": {
+        "address": "64910794C3B7404929AB3CF18063A6B8CD3032D7",
+        "pub_key": {
+          "type": "tendermint/PubKeyEd25519",
+          "value": "vvzYCqLZwDArQ4OM5hGH1kxYQQssOc5Ku0dQYCrm/PM="
+        },
+        "voting_power": "1010001"
+      }
+    },
+    "time_utc": "2026-11-12T05:23:57.797857+00:00"
+  }
+]

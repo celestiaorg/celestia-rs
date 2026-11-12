@@ -1,0 +1,120 @@
+{
+  "installed_at_utc": "2026-11-12T05:23:58.039946+00:00",
+  "labels": [
+    "org.celestia.qualification-v3-pooled-mocha",
+    "org.celestia.qualification-v3-pooled-mainnet"
+  ],
+  "duration_seconds": 259500,
+  "original_collectors_unchanged": true,
+  "validators_restarted": false,
+  "candidate": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+  "hold_previous_unix": 1794706176,
+  "hold_until_unix": 1794724137,
+  "hold_until_utc": "2026-11-15T06:28:57+00:00",
+  "reason": "Preserve exact-candidate deployment hold through the separately recorded stronger pooled observation window plus one hour.",
+  "source": {
+    "observer_source": "a2fa70b3755f0f6b184facb81c15851caeadc24b",
+    "tool_sha256": {
+      "observe_validator.py": "941453424997f8b4a09fb0a1dc9da3e4bd9b630a08020cbc4b2be44536169a92",
+      "follow_receipt_audit.py": "a7cbb5f5c45a70b1e35bca825003d566433e050f938096c5f2374aace3ebc565"
+    },
+    "relay_source": "baf29ffab66910fe1a4f53a9b945f3bfd7f58e35",
+    "relay_binary_sha256": "29a9cbe9ef6060235c2d2e3de29a0e064d0516913129365d105fe3e1577cd85d",
+    "scope": "isolated parallel read-only collector transport validation; originals unchanged"
+  },
+  "files": {
+    "run.py": "e79143a511a0e969beec6bd4a9cf1bb2688b24db3036fb10eb60b8de890679a7",
+    "rpc-relay": "29a9cbe9ef6060235c2d2e3de29a0e064d0516913129365d105fe3e1577cd85d",
+    "mocha.json": "a80da67171398292abf0410538f1d797160a7bf9d6f2158f388ee71391a8785a",
+    "mainnet.json": "64a990b9cd70eea9a999f361c1ea768821c2753c6488e12dbe7f1cd4478dafda",
+    "tools/observe_validator.py": "941453424997f8b4a09fb0a1dc9da3e4bd9b630a08020cbc4b2be44536169a92",
+    "tools/follow_receipt_audit.py": "a7cbb5f5c45a70b1e35bca825003d566433e050f938096c5f2374aace3ebc565"
+  },
+  "initial_runs": [
+    {
+      "observer_source": "a2fa70b3755f0f6b184facb81c15851caeadc24b",
+      "tool_sha256": {
+        "observe_validator.py": "941453424997f8b4a09fb0a1dc9da3e4bd9b630a08020cbc4b2be44536169a92",
+        "follow_receipt_audit.py": "a7cbb5f5c45a70b1e35bca825003d566433e050f938096c5f2374aace3ebc565"
+      },
+      "relay_source": "baf29ffab66910fe1a4f53a9b945f3bfd7f58e35",
+      "relay_binary_sha256": "29a9cbe9ef6060235c2d2e3de29a0e064d0516913129365d105fe3e1577cd85d",
+      "scope": "isolated parallel read-only collector transport validation; originals unchanged",
+      "network": "mocha",
+      "started_at_utc": "2026-11-12T05:23:57.110040+00:00",
+      "upstream": "https://rpc.celestia-mocha.com",
+      "status": "running",
+      "input_sha256": {
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/run.py": "e79143a511a0e969beec6bd4a9cf1bb2688b24db3036fb10eb60b8de890679a7",
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/rpc-relay": "29a9cbe9ef6060235c2d2e3de29a0e064d0516913129365d105fe3e1577cd85d",
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/tools/observe_validator.py": "941453424997f8b4a09fb0a1dc9da3e4bd9b630a08020cbc4b2be44536169a92",
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/tools/follow_receipt_audit.py": "a7cbb5f5c45a70b1e35bca825003d566433e050f938096c5f2374aace3ebc565"
+      },
+      "relay": {
+        "connections": 4,
+        "event": "ready",
+        "listen": "http://127.0.0.1:60995",
+        "pid": 44347,
+        "rps": 4,
+        "time_utc": "2026-11-12T05:23:57.424525Z",
+        "upstream": "https://rpc.celestia-mocha.com"
+      },
+      "command": [
+        "python3",
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/tools/observe_validator.py",
+        "--config",
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/mocha/config.json",
+        "--output",
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/mocha/receipts",
+        "--seconds",
+        "259500",
+        "--interval",
+        "5"
+      ],
+      "child_pid": 44355
+    },
+    {
+      "observer_source": "a2fa70b3755f0f6b184facb81c15851caeadc24b",
+      "tool_sha256": {
+        "observe_validator.py": "941453424997f8b4a09fb0a1dc9da3e4bd9b630a08020cbc4b2be44536169a92",
+        "follow_receipt_audit.py": "a7cbb5f5c45a70b1e35bca825003d566433e050f938096c5f2374aace3ebc565"
+      },
+      "relay_source": "baf29ffab66910fe1a4f53a9b945f3bfd7f58e35",
+      "relay_binary_sha256": "29a9cbe9ef6060235c2d2e3de29a0e064d0516913129365d105fe3e1577cd85d",
+      "scope": "isolated parallel read-only collector transport validation; originals unchanged",
+      "network": "mainnet",
+      "started_at_utc": "2026-11-12T05:23:57.115188+00:00",
+      "upstream": "https://rpc.celestia.pops.one",
+      "status": "running",
+      "input_sha256": {
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/run.py": "e79143a511a0e969beec6bd4a9cf1bb2688b24db3036fb10eb60b8de890679a7",
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/rpc-relay": "29a9cbe9ef6060235c2d2e3de29a0e064d0516913129365d105fe3e1577cd85d",
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/tools/observe_validator.py": "941453424997f8b4a09fb0a1dc9da3e4bd9b630a08020cbc4b2be44536169a92",
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/tools/follow_receipt_audit.py": "a7cbb5f5c45a70b1e35bca825003d566433e050f938096c5f2374aace3ebc565"
+      },
+      "relay": {
+        "connections": 4,
+        "event": "ready",
+        "listen": "http://127.0.0.1:60994",
+        "pid": 44348,
+        "rps": 4,
+        "time_utc": "2026-11-12T05:23:57.424507Z",
+        "upstream": "https://rpc.celestia.pops.one"
+      },
+      "command": [
+        "python3",
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/tools/observe_validator.py",
+        "--config",
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/mainnet/config.json",
+        "--output",
+        "/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/mainnet/receipts",
+        "--seconds",
+        "259500",
+        "--interval",
+        "5"
+      ],
+      "child_pid": 44354
+    }
+  ],
+  "scope": "Read-only evidence collection; no completed three-day or signature-authentication claim."
+}

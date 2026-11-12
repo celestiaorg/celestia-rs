@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>GOMAXPROCS</key>
+		<string>1</string>
+		<key>GOMEMLIMIT</key>
+		<string>128MiB</string>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>PYTHONDONTWRITEBYTECODE</key>
+		<string>1</string>
+	</dict>
+	<key>KeepAlive</key>
+	<false/>
+	<key>Label</key>
+	<string>org.celestia.qualification-v3-pooled-mainnet</string>
+	<key>Nice</key>
+	<integer>10</integer>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/bin/python3</string>
+		<string>/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/run.py</string>
+		<string>mainnet</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/mainnet.err</string>
+	<key>StandardOutPath</key>
+	<string>/Users/rootulp/.celestia-rs/auto-update/qualification-v3-pooled-2026-11-12/mainnet.out</string>
+</dict>
+</plist>

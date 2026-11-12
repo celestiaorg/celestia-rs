@@ -1,0 +1,45 @@
+{
+  "observer_source": "a2fa70b3755f0f6b184facb81c15851caeadc24b",
+  "tool_sha256": {
+    "observe_validator.py": "941453424997f8b4a09fb0a1dc9da3e4bd9b630a08020cbc4b2be44536169a92",
+    "follow_receipt_audit.py": "a7cbb5f5c45a70b1e35bca825003d566433e050f938096c5f2374aace3ebc565"
+  },
+  "relay_source": "baf29ffab66910fe1a4f53a9b945f3bfd7f58e35",
+  "relay_binary_sha256": "29a9cbe9ef6060235c2d2e3de29a0e064d0516913129365d105fe3e1577cd85d",
+  "scope": "isolated parallel read-only collector transport validation; originals unchanged",
+  "network": "mocha",
+  "started_at_utc": "2026-11-12T05:19:58.658616+00:00",
+  "upstream": "https://rpc.celestia-mocha.com",
+  "status": "finished",
+  "input_sha256": {
+    "/private/tmp/celestia-observer-pooled-canary-a2fa70b/run.py": "4b25ec472a6cb33a9af6bf96479df1ceecaec89cab238522f4a9602bf3fa0430",
+    "/private/tmp/celestia-rpc-relay-baf29ff/rpc-relay": "29a9cbe9ef6060235c2d2e3de29a0e064d0516913129365d105fe3e1577cd85d",
+    "/private/tmp/celestia-observer-pooled-canary-a2fa70b/tools/observe_validator.py": "941453424997f8b4a09fb0a1dc9da3e4bd9b630a08020cbc4b2be44536169a92",
+    "/private/tmp/celestia-observer-pooled-canary-a2fa70b/tools/follow_receipt_audit.py": "a7cbb5f5c45a70b1e35bca825003d566433e050f938096c5f2374aace3ebc565"
+  },
+  "relay": {
+    "connections": 4,
+    "event": "ready",
+    "listen": "http://127.0.0.1:50181",
+    "pid": 40460,
+    "rps": 4,
+    "time_utc": "2026-11-12T05:19:58.667576Z",
+    "upstream": "https://rpc.celestia-mocha.com"
+  },
+  "command": [
+    "python3",
+    "/private/tmp/celestia-observer-pooled-canary-a2fa70b/tools/observe_validator.py",
+    "--config",
+    "/private/tmp/celestia-observer-pooled-canary-a2fa70b/mocha/config.json",
+    "--output",
+    "/private/tmp/celestia-observer-pooled-canary-a2fa70b/mocha/receipts",
+    "--seconds",
+    "120",
+    "--interval",
+    "5"
+  ],
+  "child_pid": 40461,
+  "inputs_unchanged": true,
+  "child_exit_code": 0,
+  "finished_at_utc": "2026-11-12T05:21:58.894567+00:00"
+}

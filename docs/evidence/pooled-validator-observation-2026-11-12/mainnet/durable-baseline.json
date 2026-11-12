@@ -1,0 +1,75 @@
+[
+  {
+    "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "chain_id": "celestia",
+    "config": {
+      "binary": "/Users/rootulp/.celestia-rs/bin/celestia-rs-mainnet",
+      "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+      "chain_id": "celestia",
+      "home": "/Users/rootulp/.celestia-rs/mainnet",
+      "local_rpc": "http://127.0.0.1:26757",
+      "log": "/Users/rootulp/Library/Logs/celestia-rs-mainnet.log",
+      "network": "mainnet",
+      "pid": 50523,
+      "reference_rpc": "http://127.0.0.1:60994",
+      "validator_address": "7FC8073F6F0DE936593BBBF6E6EBE37E17487615"
+    },
+    "event": "start",
+    "identity": {
+      "binary_sha256": "fdaf29302ce215334663a851ad4b16295da99b03d57bb4779249ebfb04a7c192",
+      "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+      "device": 16777234,
+      "inode": 27090884,
+      "mtime_ns": 1794358736615148184,
+      "pid": 50523,
+      "size": 62959200,
+      "version": "name: celestia-rs\nversion: 0.1.0-rc.5\ncommit: 46acbcb516c3dab26cb5706c908dfe0207f27349\nbuild_profile: release\ntoolchain: rustc 1.99.1 (58cf8f9c3 2026-10-13) aarch64-apple-darwin\napp_version: 10\ncompatibility_target: celestia-app v10.6.0, celestia-core v0.42.8\n"
+    },
+    "time_utc": "2026-11-12T05:23:57.688108+00:00"
+  },
+  {
+    "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "chain_id": "celestia",
+    "event": "baseline",
+    "first_required_height": 15815604,
+    "local_status": {
+      "node_info": {
+        "channels": "40202223303860613231505100",
+        "id": "39563324652b1ba35774701c01eeb92f4ac3d26f",
+        "listen_addr": "tcp://0.0.0.0:26756",
+        "moniker": "rootulp-mainnet",
+        "network": "celestia",
+        "other": {
+          "rpc_address": "tcp://127.0.0.1:26757",
+          "tx_index": "off"
+        },
+        "protocol_version": {
+          "app": "10",
+          "block": "11",
+          "p2p": "8"
+        },
+        "version": "0.38.17-celestia-rs.0.1.0-rc.5"
+      },
+      "sync_info": {
+        "catching_up": false,
+        "earliest_app_hash": "AF464BA2C99F39E8894332C65E1374D0CAE850792C317AC5A6E5D976582DEB4C",
+        "earliest_block_hash": "60710AAA78D822D9AA920ACC18D3CC43FE4C89127017040D54C93884C9889ED6",
+        "earliest_block_height": "15812603",
+        "earliest_block_time": "2026-11-12T03:01:34.814013054Z",
+        "latest_app_hash": "75F4FCE0AF8B3F8454856EDE925771AAF6F603716A640B5E49AADBC68ECA002A",
+        "latest_block_hash": "657F81FECCB9DA999D62E5EDEDEF3130CB3793BACAF4DA30D0C0B4D3F6C75DD0",
+        "latest_block_height": "15815603",
+        "latest_block_time": "2026-11-12T05:23:53.615493852Z"
+      },
+      "validator_info": {
+        "address": "7FC8073F6F0DE936593BBBF6E6EBE37E17487615",
+        "pub_key": {
+          "type": "tendermint/PubKeyEd25519",
+          "value": "tkpVJ4+IErkYWefKg+3IhFFqP9PrFJ7S+6m2jMKpy1k="
+        },
+        "voting_power": "56"
+      }
+    },
+    "time_utc": "2026-11-12T05:23:57.782036+00:00"
+  }
+]
