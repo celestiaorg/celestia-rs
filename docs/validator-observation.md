@@ -62,3 +62,40 @@ The observer creates private files. Bound its lifetime (`--seconds`, default
 73 hours), monitor disk use, and retain a digest manifest before archiving
 receipts. A successful short canary establishes only that canary's coverage;
 72-hour qualification still needs the full continuous operational record.
+
+## Auditing a requested observation window
+
+`scripts/quality/observation_audit.py` additionally checks the observer's
+`events.jsonl`, `samples.jsonl` and `heights.jsonl` together. Copy all three
+files into a separate snapshot directory first: changing inputs are rejected.
+Supply the expected chain, candidate and binary SHA-256 independently, plus
+an explicit UTC interval and its inclusive executed height range:
+
+```sh
+python3 scripts/quality/observation_audit.py observation-snapshot \
+  --chain celestia --candidate "$candidate" --binary-sha256 "$binary_sha256" \
+  --start 2026-11-12T01:00:00Z --end 2026-11-12T01:10:00Z \
+  --first 15810038 --last 15810248
+```
+
+Determine required heights from independent execution logs covering both
+interval edges, rather than from successful comparison receipts. The auditor
+checks each retained execution line against the claimed height, block hash,
+app hash and interval. It reports missing height/participation ranges and
+contradictory signing observations. Retries do not erase unavailable attempts.
+
+Sample checks require the recorded binary bytes and process identity to
+match, both chains to agree, block times to be fresh, and independently
+recorded height lag to agree with both statuses. Defaults allow at most a
+20-second sample gap, three heights of absolute reference lag and a 60-second
+block age; the selected thresholds are retained in the report. Gaps include
+both requested interval edges. Duplicate/backwards samples, stale binary
+measurements, outages and collector interruptions remain explicit failures.
+
+Exit 0 means these bounded sample, execution-link, participation-coverage and
+receipt checks pass for the supplied interval. It does not require that the
+interval lasts 72 hours, bound missed-block percentages, verify reference
+signatures, authenticate input logs or inspect separate Prometheus/guard/panic
+records. `qualification_established` remains false. Review those independent
+requirements before claiming C1.1, F1.8 or #299 is complete. File digests bind
+the supplied snapshots; they do not authenticate their contents.
