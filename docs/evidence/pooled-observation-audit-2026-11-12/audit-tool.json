@@ -1,0 +1,9 @@
+{
+  "source_revision": "a2fa70b3755f0f6b184facb81c15851caeadc24b",
+  "files": {
+    "observation_audit.py": "b8a669460be70cedf52cc89b1e2ac9766a2d1b6f10f525a0091ae6104b3ab604",
+    "receipt_coverage.py": "a328dab7104c37515091e5ad0943f5a5fd4a7c32b1f657f0c729849d18bccdef",
+    "follow_receipt_audit.py": "a7cbb5f5c45a70b1e35bca825003d566433e050f938096c5f2374aace3ebc565"
+  },
+  "scope": "unchanged strict offline sample, execution, participation and result-commitment checks; no duration or signature-authentication qualification"
+}

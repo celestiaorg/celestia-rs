@@ -1,0 +1,114 @@
+{
+  "time_utc": "2026-11-12T05:45:13.888861+00:00",
+  "scope": "Public/local ABCI Info metadata; does not establish executable hash or build recipe.",
+  "networks": {
+    "mocha": {
+      "local": {
+        "endpoint": "http://127.0.0.1:26657",
+        "response": {
+          "jsonrpc": "2.0",
+          "id": -1,
+          "result": {
+            "response": {
+              "data": "celestia-rs",
+              "version": "10.6.0",
+              "app_version": "10",
+              "last_block_height": "2543498",
+              "last_block_app_hash": "91lKsadugwywlN/HtMppr/OfswlvJh9UrPiQpkUnD1A=",
+              "timeout_info": {
+                "timeout_propose": "3000000000",
+                "timeout_propose_delta": "500000000",
+                "timeout_prevote": "2000000000",
+                "timeout_prevote_delta": "500000000",
+                "timeout_precommit": "3000000000",
+                "timeout_precommit_delta": "500000000",
+                "timeout_commit": "500000000",
+                "delayed_precommit_timeout": "2100000000"
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "endpoint": "https://rpc.celestia-mocha.com",
+        "response": {
+          "jsonrpc": "2.0",
+          "id": -1,
+          "result": {
+            "response": {
+              "data": "celestia-app",
+              "version": "10.6.0-mocha",
+              "app_version": "10",
+              "last_block_height": "2543498",
+              "last_block_app_hash": "91lKsadugwywlN/HtMppr/OfswlvJh9UrPiQpkUnD1A=",
+              "timeout_info": {
+                "timeout_propose": "3000000000",
+                "timeout_propose_delta": "500000000",
+                "timeout_prevote": "2000000000",
+                "timeout_prevote_delta": "500000000",
+                "timeout_precommit": "3000000000",
+                "timeout_precommit_delta": "500000000",
+                "timeout_commit": "500000000",
+                "delayed_precommit_timeout": "2100000000"
+              }
+            }
+          }
+        }
+      }
+    },
+    "mainnet": {
+      "local": {
+        "endpoint": "http://127.0.0.1:26757",
+        "response": {
+          "jsonrpc": "2.0",
+          "id": -1,
+          "result": {
+            "response": {
+              "data": "celestia-rs",
+              "version": "10.6.0",
+              "app_version": "10",
+              "last_block_height": "15816052",
+              "last_block_app_hash": "3MYRD9G0A+c5rJ5cRIFZPnOMmj8EX4ZXIvDvKgvnyew=",
+              "timeout_info": {
+                "timeout_propose": "3000000000",
+                "timeout_propose_delta": "500000000",
+                "timeout_prevote": "2000000000",
+                "timeout_prevote_delta": "500000000",
+                "timeout_precommit": "3000000000",
+                "timeout_precommit_delta": "500000000",
+                "timeout_commit": "500000000",
+                "delayed_precommit_timeout": "2100000000"
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "endpoint": "https://rpc.celestia.pops.one",
+        "response": {
+          "jsonrpc": "2.0",
+          "id": -1,
+          "result": {
+            "response": {
+              "data": "celestia-app",
+              "version": "10.6.0",
+              "app_version": "10",
+              "last_block_height": "15816052",
+              "last_block_app_hash": "3MYRD9G0A+c5rJ5cRIFZPnOMmj8EX4ZXIvDvKgvnyew=",
+              "timeout_info": {
+                "timeout_propose": "3000000000",
+                "timeout_propose_delta": "500000000",
+                "timeout_prevote": "2000000000",
+                "timeout_prevote_delta": "500000000",
+                "timeout_precommit": "3000000000",
+                "timeout_precommit_delta": "500000000",
+                "timeout_commit": "500000000",
+                "delayed_precommit_timeout": "2100000000"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

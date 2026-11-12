@@ -1,0 +1,50 @@
+{
+  "start_utc": "2026-11-12T05:25:00+00:00",
+  "end_utc": "2026-11-12T05:35:00+00:00",
+  "networks": {
+    "mocha": {
+      "first": 2543075,
+      "last": 2543285,
+      "executed_heights": 211,
+      "inputs": {
+        "events": {
+          "source_bytes": 2402,
+          "copied_complete_prefix_bytes": 2402,
+          "sha256": "1e5de7fd8bcae77129d8d0c582f1564d230bd579d6bf446a755ef4db30be625f"
+        },
+        "samples": {
+          "source_bytes": 604286,
+          "copied_complete_prefix_bytes": 604286,
+          "sha256": "31e87b8b719ab841e034ad1b06804215c9f21f431a462bd4d24b65e17f6c5a29"
+        },
+        "heights": {
+          "source_bytes": 791733,
+          "copied_complete_prefix_bytes": 791733,
+          "sha256": "84dcb14730ebe509247353cb9f7af51aee1c4436d0e4013ef5c316a817689546"
+        }
+      }
+    },
+    "mainnet": {
+      "first": 15815626,
+      "last": 15815836,
+      "executed_heights": 211,
+      "inputs": {
+        "events": {
+          "source_bytes": 2418,
+          "copied_complete_prefix_bytes": 2418,
+          "sha256": "8cba61653da1ed315de80df22bbc84d9a996497ba0efe9d8fabcba93da769fdb"
+        },
+        "samples": {
+          "source_bytes": 599760,
+          "copied_complete_prefix_bytes": 599760,
+          "sha256": "bc60722a69c2c4dcdf1b63dd4c6adae7d9000f7a112fd08743927df0aeedf786"
+        },
+        "heights": {
+          "source_bytes": 1319510,
+          "copied_complete_prefix_bytes": 1319510,
+          "sha256": "714f718ba77a86689360baec86a1dc01370c5b1ebae9feb2984ce085593ade19"
+        }
+      }
+    }
+  }
+}
