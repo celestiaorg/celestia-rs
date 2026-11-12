@@ -41,6 +41,8 @@ jobs:
         run: python3 -m unittest discover -s crates/fuzz-diff/tests -p '*_test.py' -v
       - name: Quality evidence accounting
         run: python3 -m unittest discover -s scripts/quality -p 'test_*.py' -v
+      - name: Transaction-result receipt failure paths
+        run: bash packaging/test-compare-block-results.sh
       - name: Mixed devnet crash-boundary checks
         run: python3 -m unittest discover -s conformance/devnet/tests -v
       - name: gRPC limit evidence integrity

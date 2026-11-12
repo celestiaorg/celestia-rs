@@ -7,6 +7,13 @@ mkdir -p "$t/bin"
 cat >"$t/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 url=${!#}
+# Exercise malformed responses on either endpoint, including identical
+# malformed payloads that must never count as a successful comparison.
+if [[ $url == *'/block_results?'* && -n ${TEST_RESPONSE:-} &&
+      ( ${TEST_SIDE:-both} == both || $url == "http://${TEST_SIDE}/"* ) ]]; then
+  printf '%s\n' "$TEST_RESPONSE"
+  exit 0
+fi
 case $url in
   http://local/status) echo '{"result":{"node_info":{"network":"celestia"}}}' ;;
   http://ref/status)
@@ -55,4 +62,37 @@ rc=0
 PATH="$t/bin:$PATH" TEST_CASE=mixed "$check" http://local http://ref 42 43 "$t/mixed.jsonl" >/dev/null || rc=$?
 [[ $rc == 2 ]]
 jq -es '.[0].outcome=="unavailable" and .[1].outcome=="mismatch"' "$t/mixed.jsonl" >/dev/null
+
+for side in local ref both; do
+  for response in \
+    '{"result":{"height":"42","txs_results":[null]}}' \
+    '{"result":{"height":"42","txs_results":[{"code":false}]}}' \
+    '{"result":{"height":"42","txs_results":[{"code":0.5}]}}' \
+    '{"result":{"height":"42","txs_results":[{"code":-1}]}}' \
+    '{"result":{"height":"42","txs_results":[{"code":4294967296}]}}' \
+    '{"result":{"height":"42","txs_results":[{"gas_used":"unknown"}]}}' \
+    '{"result":{"height":"42","txs_results":[{"gas_wanted":{}}]}}' \
+    '{"result":{"height":"42","txs_results":[{"data":true}]}}' \
+    '{"result":{"height":"42","txs_results":[{"data":"invalid base64"}]}}' \
+    '{"error":{"code":-32603},"result":{"height":"42","txs_results":[]}}'; do
+    rm -f "$t/invalid.jsonl"
+    rc=0
+    PATH="$t/bin:$PATH" TEST_SIDE="$side" TEST_RESPONSE="$response" \
+      "$check" http://local http://ref 42 42 "$t/invalid.jsonl" >/dev/null || rc=$?
+    [[ $rc == 2 ]]
+    if [[ $side == ref ]]; then endpoint=reference; else endpoint=local; fi
+    jq -es --arg error "invalid_${endpoint}_block_results" \
+      'length==1 and .[0].outcome=="unavailable" and .[0].error==$error and
+       .[0].local_results_sha256==null and .[0].reference_results_sha256==null' \
+      "$t/invalid.jsonl" >/dev/null
+  done
+done
+
+# Empty blocks and omitted/default fields are valid Go JSON responses.
+for results in null '[]' '[{}]' '[{"code":null,"data":null,"gas_wanted":null,"gas_used":null}]'; do
+  rm -f "$t/defaults.jsonl"
+  PATH="$t/bin:$PATH" TEST_RESPONSE="{\"result\":{\"height\":\"42\",\"txs_results\":$results}}" \
+    "$check" http://local http://ref 42 42 "$t/defaults.jsonl" >/dev/null
+  jq -e '.outcome=="match"' "$t/defaults.jsonl" >/dev/null
+done
 echo "all block-result receipt tests passed"
