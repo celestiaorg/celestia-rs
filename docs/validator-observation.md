@@ -110,3 +110,25 @@ signatures, authenticate input logs or inspect separate Prometheus/guard/panic
 records. `qualification_established` remains false. Review those independent
 requirements before claiming C1.1, F1.8 or #299 is complete. File digests bind
 the supplied snapshots; they do not authenticate their contents.
+
+## Result-commitment validation on live validators
+
+Two independent 120-second read-only probes on 2026-11-12 checked the added
+result commitment comparison using observer revision `01a3188`. Both signing
+validators remained on candidate `46acbcb`; the original three-day collectors
+continued running. Clean-source wrappers passed with unchanged process/binary
+identity. Both probes reached their normal deadline with all 39 attempted
+heights matching and 24 status samples each:
+
+| Network | Inclusive executed heights | Compared transactions |
+|---|---|---:|
+| Mocha `mocha-5` | 2,542,577–2,542,615 | 38 |
+| Mainnet `celestia` | 15,815,126–15,815,164 | 177 |
+
+[Retained probe evidence](evidence/observer-commitment-2026-11-12/summary.json)
+includes compressed raw events, samples and per-height normalized results,
+wrapper receipts and file digests. Every retained matching result commitment
+was recomputed offline from those result lists and matched H+1's recorded
+commitment. This validates nonempty live transaction handling in the stronger
+collector. It does not extend the earlier collectors' claims retrospectively,
+verify reference signatures or establish continuous three-day qualification.

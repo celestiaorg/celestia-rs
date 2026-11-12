@@ -1,0 +1,40 @@
+{
+  "observer_source": "01a3188d126261682d177cd5b015039fb2548186",
+  "validator_candidate": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+  "qualification": false,
+  "scope": "Two bounded read-only observer probes; original validators and collectors unchanged. No continuous-soak or replay completion claim.",
+  "networks": {
+    "mocha": {
+      "attempts": 39,
+      "matched_heights": 39,
+      "other_outcomes": [],
+      "first": 2542577,
+      "last": 2542615,
+      "transactions": 38,
+      "samples": 24,
+      "terminal_event": {
+        "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+        "chain_id": "mocha-5",
+        "event": "deadline",
+        "next_height": 2542616,
+        "time_utc": "2026-11-12T05:03:14.242602+00:00"
+      }
+    },
+    "mainnet": {
+      "attempts": 39,
+      "matched_heights": 39,
+      "other_outcomes": [],
+      "first": 15815126,
+      "last": 15815164,
+      "transactions": 177,
+      "samples": 24,
+      "terminal_event": {
+        "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+        "chain_id": "celestia",
+        "event": "deadline",
+        "next_height": 15815165,
+        "time_utc": "2026-11-12T05:03:12.992934+00:00"
+      }
+    }
+  }
+}
