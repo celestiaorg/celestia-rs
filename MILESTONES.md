@@ -1318,6 +1318,15 @@ test), then start that harness's count again.
   historical v10.5.0 evidence current or close the exact-candidate campaign,
   replay, determinism, volume or observation-window gates.
 
+  *Read-only recheck (2026-11-12, 05:45 UTC):* the
+  [retained live metadata and source comparison](docs/pooled-observation-audit-2026-11-12.md)
+  records mainnet `10.6.0` and Mocha `10.6.0-mocha`, app version 10,
+  with matching local/reference app hashes at each sampled height. Both
+  release tags identify the same upstream commit, so the suffix alone
+  requires no additional source port. This does not establish uniform
+  rollout, reference executable hashes/build recipes, or completion of
+  the remaining exact-candidate gates.
+
 - [ ] **F1.11 Known Go nondeterminism decided.** *Policy recorded and
   mainnet reachability checked (`docs/security.md`, open Go items); the
   upstream report is drafted in `docs/upstream/gogoproto-jsonpb-oneof.md`

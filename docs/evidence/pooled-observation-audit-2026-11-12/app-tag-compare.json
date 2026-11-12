@@ -1,0 +1,21 @@
+{
+  "repository_full_name": "celestiaorg/celestia-app",
+  "base": "v10.6.0",
+  "head": "v10.6.0-mocha",
+  "status": "identical",
+  "ahead_by": 0,
+  "behind_by": 0,
+  "total_commits": 0,
+  "too_large": null,
+  "base_commit": {
+    "sha": "25f09cab3f8912bbe78c62909e8d39d8fa8b3fc0",
+    "url": "https://api.github.com/repos/celestiaorg/celestia-app/commits/25f09cab3f8912bbe78c62909e8d39d8fa8b3fc0",
+    "html_url": "https://github.com/celestiaorg/celestia-app/commit/25f09cab3f8912bbe78c62909e8d39d8fa8b3fc0"
+  },
+  "merge_base_commit": {
+    "sha": "25f09cab3f8912bbe78c62909e8d39d8fa8b3fc0",
+    "url": "https://api.github.com/repos/celestiaorg/celestia-app/commits/25f09cab3f8912bbe78c62909e8d39d8fa8b3fc0",
+    "html_url": "https://github.com/celestiaorg/celestia-app/commit/25f09cab3f8912bbe78c62909e8d39d8fa8b3fc0"
+  },
+  "files": []
+}

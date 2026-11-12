@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "scope": "offline retained observation samples and explicit height coverage",
+  "chain_id": "celestia",
+  "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+  "binary_sha256": "fdaf29302ce215334663a851ad4b16295da99b03d57bb4779249ebfb04a7c192",
+  "validator_address": "7FC8073F6F0DE936593BBBF6E6EBE37E17487615",
+  "requested_time_range_utc": [
+    "2026-11-12T05:25:00+00:00",
+    "2026-11-12T05:35:00+00:00"
+  ],
+  "requested_seconds": 600.0,
+  "requested_height_range": [
+    15815626,
+    15815836
+  ],
+  "thresholds": {
+    "max_sample_gap_seconds": 20,
+    "max_absolute_reference_lag": 3,
+    "max_block_age_seconds": 60
+  },
+  "valid_sample_count": 117,
+  "sample_failures": [],
+  "sample_gaps": [],
+  "collector_interruptions": [],
+  "sample_requirements_met": true,
+  "participation_counts": {
+    "signed": 208,
+    "nil": 0,
+    "missed": 3,
+    "not_in_set": 0
+  },
+  "missing_participation_ranges": [],
+  "participation_errors": [],
+  "height_audits": {
+    "apphash": {
+      "schema_version": 1,
+      "scope": "offline retained receipt height coverage",
+      "kind": "apphash",
+      "chain_id": "celestia",
+      "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+      "requested_range": [
+        15815626,
+        15815836
+      ],
+      "covered_ranges": [
+        [
+          15815626,
+          15815836
+        ]
+      ],
+      "missing_ranges": [],
+      "rejected_ranges": [],
+      "covered_heights": 211,
+      "result_commitment_required": false,
+      "result_commitment_checked_heights": 0,
+      "receipt_time_range_utc": [
+        "2026-11-12T05:25:11.115828+00:00",
+        "2026-11-12T05:35:08.113392+00:00"
+      ],
+      "counts": {
+        "receipts": 387,
+        "duplicates": 0,
+        "outside_range": 176,
+        "identity_rejected": 0,
+        "failed_or_invalid": 0
+      },
+      "artifacts": [
+        {
+          "path": "heights.jsonl",
+          "sha256": "714f718ba77a86689360baec86a1dc01370c5b1ebae9feb2984ce085593ade19"
+        }
+      ],
+      "complete": true,
+      "limitations": [
+        "Receipt timestamps are check times, not block times or proof of continuous uptime.",
+        "Coverage does not prove snapshot provenance, executable identity, signing or monitoring health.",
+        "Transaction results cover only code, data, gas_wanted and gas_used.",
+        "Input digests identify supplied files; receipts are not authenticated by this audit."
+      ]
+    },
+    "tx-results": {
+      "schema_version": 1,
+      "scope": "offline retained receipt height coverage",
+      "kind": "tx-results",
+      "chain_id": "celestia",
+      "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+      "requested_range": [
+        15815626,
+        15815836
+      ],
+      "covered_ranges": [
+        [
+          15815626,
+          15815836
+        ]
+      ],
+      "missing_ranges": [],
+      "rejected_ranges": [],
+      "covered_heights": 211,
+      "result_commitment_required": false,
+      "result_commitment_checked_heights": 211,
+      "receipt_time_range_utc": [
+        "2026-11-12T05:25:11.115828+00:00",
+        "2026-11-12T05:35:08.113392+00:00"
+      ],
+      "counts": {
+        "receipts": 387,
+        "duplicates": 0,
+        "outside_range": 176,
+        "identity_rejected": 0,
+        "failed_or_invalid": 0
+      },
+      "artifacts": [
+        {
+          "path": "heights.jsonl",
+          "sha256": "714f718ba77a86689360baec86a1dc01370c5b1ebae9feb2984ce085593ade19"
+        }
+      ],
+      "complete": true,
+      "limitations": [
+        "Receipt timestamps are check times, not block times or proof of continuous uptime.",
+        "Coverage does not prove snapshot provenance, executable identity, signing or monitoring health.",
+        "Transaction results cover only code, data, gas_wanted and gas_used.",
+        "Input digests identify supplied files; receipts are not authenticated by this audit."
+      ]
+    }
+  },
+  "artifacts": [
+    {
+      "path": "events.jsonl",
+      "rows": 2,
+      "sha256": "8cba61653da1ed315de80df22bbc84d9a996497ba0efe9d8fabcba93da769fdb"
+    },
+    {
+      "path": "samples.jsonl",
+      "rows": 215,
+      "sha256": "bc60722a69c2c4dcdf1b63dd4c6adae7d9000f7a112fd08743927df0aeedf786"
+    },
+    {
+      "path": "heights.jsonl",
+      "rows": 387,
+      "sha256": "714f718ba77a86689360baec86a1dc01370c5b1ebae9feb2984ce085593ade19"
+    }
+  ],
+  "qualification_established": false,
+  "limitations": [
+    "Samples are discrete observations; time between them remains unobserved.",
+    "Requested heights must come from independent execution logs, including interval edges.",
+    "Height comparisons may be retrospective; check times do not establish execution at tip.",
+    "Reference commit participation is an RPC assertion, not cryptographic verification.",
+    "Input digests identify supplied files; they do not authenticate receipts or logs.",
+    "Separate monitoring, guard/panic logs, duration and remaining qualification criteria require review."
+  ]
+}
