@@ -372,13 +372,14 @@ pub fn write_file_atomic(path: &Path, data: &[u8]) -> Result<()> {
         .map_err(io)?;
     file.write_all(data).map_err(io)?;
     file.as_file().sync_all().map_err(io)?;
-    let _file = file.persist(path).map_err(|error| io(error.error))?;
+    let published_file = file.persist(path).map_err(|error| io(error.error))?;
     // std's sync_all uses F_FULLFSYNC on Apple, which is for regular
     // files. Use fsync for directory metadata, and propagate every error.
     sync_directory(&directory).map_err(io)?;
     // On Apple, flush the device again after publishing directory metadata.
     #[cfg(target_vendor = "apple")]
-    _file.sync_all().map_err(io)?;
+    published_file.sync_all().map_err(io)?;
+    drop(published_file);
     Ok(())
 }
 
