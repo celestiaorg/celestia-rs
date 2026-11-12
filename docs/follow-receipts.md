@@ -72,3 +72,14 @@ be internally consistent. Bind retained files to trusted capture/build evidence.
 The report always leaves `qualification_established=false` and
 `network_signature_proof_verified=false`. A bounded ledger covers neither other
 historical eras nor the separate upgrade, review or continuous-observation gates.
+
+## Bounded check on 2026-11-12
+
+A [clean-source build and smoke run](evidence/follow-receipts-2026-11-12/manifest.json)
+of `1cb60aa` produced and audited all 100 height receipts for Mocha heights
+1–100, authenticating header 101 before completion. The verified genesis hash
+was checked before and after the run. This interval had zero transactions;
+nonempty result commitments are exercised by the offline RPC integration test
+and the pinned v9/v10 Go vectors. The retained audit leaves qualification and
+independent network signature proof false. This new replay binary does not
+replace the installed validator candidate `46acbcb` or close #302.
