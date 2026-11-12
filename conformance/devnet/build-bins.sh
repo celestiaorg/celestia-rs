@@ -9,13 +9,33 @@
 # usage: [DEVNET_BIN=dir] [APP_VERSION=vX.Y.Z] [APPD_ONLY=1] conformance/devnet/build-bins.sh
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-# The Go release affects consensus-visible JSON (including amino sign
-# bytes). Do not silently build the oracles with a newer installed Go.
-# setup-go supplies GOTOOLCHAIN=local in CI after selecting this version.
-export GOTOOLCHAIN=${GOTOOLCHAIN:-$(awk '$1 == "toolchain" { print $2; exit }' "$ROOT/conformance/devnet-oracle/go.mod")}
 BIN=${DEVNET_BIN:-$ROOT/target/devnet-bin}
 APP_VERSION=${APP_VERSION:-v10.5.0}
 CORE_VERSION=${CORE_VERSION:-v0.42.3}
+APP_MAJOR=${APP_VERSION%%.*}
+# The Go release affects consensus-visible JSON (including amino sign
+# bytes). Use the matching execution oracle's pin for an active app version;
+# v10.6.0 requires Go 1.26.10, while historical captures use Go 1.26.9.
+# Preserve an explicit caller override rather than choosing an installed Go.
+if [[ -z ${GOTOOLCHAIN:-} ]]; then
+  toolchain_module=$ROOT/conformance/devnet-oracle/go.mod
+  execution_module=$ROOT/conformance/fuzzoracle/$APP_MAJOR/go.mod
+  if [[ -f $execution_module ]] && [[ $APP_VERSION == $(awk \
+    -v module="github.com/celestiaorg/celestia-app/$APP_MAJOR" \
+    '$1 == module { print $2; exit }
+     $1 == "require" && $2 == module { print $3; exit }' "$execution_module") ]]; then
+    toolchain_module=$execution_module
+  fi
+  GOTOOLCHAIN=$(awk '$1 == "toolchain" { print $2; exit }' "$toolchain_module")
+  if [[ -z $GOTOOLCHAIN ]]; then
+    GOTOOLCHAIN=$(awk '$1 == "go" { print "go" $2; exit }' "$toolchain_module")
+  fi
+  [[ $GOTOOLCHAIN =~ ^go[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+    echo "missing exact Go toolchain pin in $toolchain_module" >&2
+    exit 1
+  }
+fi
+export GOTOOLCHAIN
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$BIN"
@@ -34,7 +54,12 @@ retry() { # <cmd...>: up to 5 attempts with backoff
 
 download_module() {
   # Each retry must replace the prior JSON error response, not append it.
-  go mod download -json "$1" > "$WORK/module.json"
+  if ! go mod download -json "$1" > "$WORK/module.json"; then
+    # `go mod download -json` puts errors on stdout, which is otherwise
+    # hidden in this temporary file (including incompatible Go versions).
+    cat "$WORK/module.json" >&2
+    return 1
+  fi
 }
 
 build_go() { # <module@version> <pkg> <name>
@@ -101,7 +126,6 @@ binary.with_name(binary.name + ".build.json").write_text(json.dumps(recipe, sort
 PY
   printf '%s\n' "$1" >"$BIN/$3.module"
 }
-APP_MAJOR=${APP_VERSION%%.*}
 build_go "github.com/celestiaorg/celestia-app/$APP_MAJOR@$APP_VERSION" ./cmd/celestia-appd celestia-appd
 [ -n "${APPD_ONLY:-}" ] || build_go "github.com/celestiaorg/celestia-core@$CORE_VERSION" ./cmd/cometbft cometbft
 ls -l "$BIN"

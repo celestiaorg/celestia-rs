@@ -12,7 +12,9 @@ FAKE_GO = '''#!/usr/bin/env python3
 import json, os, pathlib, sys
 args = sys.argv[1:]
 if args == ["version"]:
-    print("go version " + os.environ.get("TEST_GO_VERSION", "go1.26.9") + " linux/amd64")
+    selected = os.environ.get("GOTOOLCHAIN", "local")
+    default = selected if selected.startswith("go") else "go1.26.9"
+    print("go version " + os.environ.get("TEST_GO_VERSION", default) + " linux/amd64")
 elif args[:2] == ["version", "-m"]:
     print("fake build info")
 elif args[:2] == ["env", "-json"]:
@@ -52,6 +54,12 @@ class OracleBuildCache(unittest.TestCase):
         scripts = self.root / "conformance/devnet"
         scripts.mkdir(parents=True)
         (self.root / "conformance/devnet-oracle").mkdir()
+        (self.root / "conformance/devnet-oracle/go.mod").write_text("module historical\ngo 1.26.0\ntoolchain go1.26.9\n")
+        for major, version, go in (("v10", "v10.6.0", "go 1.26.10"),
+                                   ("v9", "v9.0.8", "go 1.26.6\ntoolchain go1.26.9")):
+            oracle = self.root / "conformance/fuzzoracle" / major
+            oracle.mkdir(parents=True)
+            (oracle / "go.mod").write_text(f"module oracle\n{go}\nrequire github.com/celestiaorg/celestia-app/{major} {version}\n")
         shutil.copy(Path(__file__).with_name("build-bins.sh"), scripts)
         self.script = scripts / "build-bins.sh"
         tools = self.root / "tools"
@@ -111,7 +119,23 @@ class OracleBuildCache(unittest.TestCase):
         result = self.build(TEST_DOWNLOAD_FAIL_ONCE="1")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("attempt 1", result.stderr)
+        self.assertIn("transient module proxy failure", result.stderr)
         self.assertEqual(len(self.log.read_text().splitlines()), 1)
+
+    def test_current_and_historical_versions_select_their_exact_pins(self):
+        for app, compiler in (("v10.6.0", "go1.26.10"), ("v9.0.8", "go1.26.9"),
+                              ("v10.5.0", "go1.26.9")):
+            with self.subTest(app=app):
+                result = self.build(APP_VERSION=app, GOTOOLCHAIN="")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                recipe = json.loads(self.binary.with_name("celestia-appd.build.json").read_text())
+                self.assertEqual(recipe["compiler"], f"go version {compiler} linux/amd64")
+
+    def test_explicit_toolchain_override_is_preserved(self):
+        result = self.build(APP_VERSION="v10.6.0", GOTOOLCHAIN="go1.26.11")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        recipe = json.loads(self.binary.with_name("celestia-appd.build.json").read_text())
+        self.assertEqual(recipe["compiler"], "go version go1.26.11 linux/amd64")
 
 
 if __name__ == "__main__":
