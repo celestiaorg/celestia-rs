@@ -582,6 +582,32 @@ celestia-rs follow --home ~/.celestia-rs/mocha-follow --chain-id mocha-5 \
   --rpc https://rpc.celestia-mocha.com,https://celestia-testnet-rpc.polkachu.com
 ```
 
+A fresh home can instead start from an independently obtained genesis file at
+`<home>/config/genesis.json`, with `--snapshot` omitted. This runs InitChain,
+checks the first header against genesis-derived state and validators, and
+verifies its commit before executing it. The follower does not create or load
+a consensus signing key. The app currently requires initial height 1; other
+initial heights fail explicitly. Snapshot bootstrap and later resumes retain
+their existing behavior.
+
+For historical Mocha v9 replay, use a separate home and archive RPCs that retain
+height 1. Verify the genesis against the network's published SHA-256 (the
+Mocha pin is also in `networks.rs`). Historical headers may be older than the
+default 336-hour trusting period; choose an explicit period covering the replay
+interval when the genesis is your independently trusted root. For example:
+
+```sh
+# Place the verified Mocha-5 genesis in $REPLAY_HOME/config/genesis.json first.
+celestia-rs follow --home "$REPLAY_HOME" --chain-id mocha-5 \
+  --rpc https://rpc.celestia-mocha.com,https://celestia-testnet-rpc.polkachu.com \
+  --stop-at-height 1000 --trust-period-hours 10000
+```
+
+A bounded replay also authenticates and compares header `H+1` before reporting
+completion through height `H`. It may fetch `H+2` to obtain that header's commit.
+A successful short run does not establish coverage of the rest of the era or
+an upgrade boundary.
+
 Per height `h` the follower
 
 1. fetches `/block` (many heights ahead in parallel, `--prefetch`, default

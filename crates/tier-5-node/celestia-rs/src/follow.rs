@@ -29,8 +29,10 @@
 //! (`<dir>/<height>/<format>/<chunk>`, as Go writes them to
 //! `data/snapshots`), verified like state sync: the light client
 //! establishes the trusted header at the snapshot height and the restored
-//! app hash must equal header `h+1`'s. Later starts resume from the
-//! node's stores (handshake replay covers a crash between the app's
+//! app hash must equal header `h+1`'s. Without a snapshot, a fresh home
+//! initializes from its independently supplied `config/genesis.json`,
+//! authenticating the first block against genesis-derived validators.
+//! Later starts resume from the node's stores (handshake replay covers a crash between the app's
 //! Commit and the state save).
 
 use std::collections::BTreeMap;
@@ -858,6 +860,14 @@ pub struct FollowStats {
     pub txs: u64,
 }
 
+fn next_execution_height(state: &State) -> i64 {
+    if state.last_block_height == 0 {
+        state.initial_height
+    } else {
+        state.last_block_height + 1
+    }
+}
+
 /// `celestia-rs follow`.
 #[allow(clippy::too_many_lines)]
 pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
@@ -897,9 +907,27 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
         app::App::open_with(home, app_opts).map_err(|e| anyhow!("open app state: {}", e.log))?;
     let app = Arc::new(Mutex::new(app));
     let (bs, ss) = crate::node::open_stores(home)?;
-    let state = match ss.load().map_err(|e| anyhow!("load state: {e}"))? {
-        Some(s) if s.last_block_height > 0 => s,
-        _ => bootstrap(opts, &chain_id, &app, &ss, &bs)?,
+    let (state, genesis) = match ss.load().map_err(|e| anyhow!("load state: {e}"))? {
+        Some(s) if s.last_block_height > 0 => (s, None),
+        _ if opts.snapshot.is_some() => (bootstrap(opts, &chain_id, &app, &ss, &bs)?, None),
+        _ => {
+            if opts.snapshot_height.is_some() || opts.trust_hash.is_some() {
+                bail!(
+                    "snapshot height/trust hash require --snapshot for a fresh execution follower"
+                );
+            }
+            // An independently supplied genesis is the trust root for a full
+            // replay. Do not generate or load a consensus signing key.
+            let genesis = crate::node::load_genesis(home)
+                .context("fresh follower needs --snapshot or config/genesis.json")?;
+            if genesis.chain_id != chain_id {
+                bail!("genesis follows {:?}, not {chain_id:?}", genesis.chain_id);
+            }
+            let state = ss
+                .load_from_db_or_genesis(&genesis)
+                .map_err(|e| anyhow!("genesis state: {e}"))?;
+            (state, Some(genesis))
+        }
     };
     if state.chain_id != chain_id {
         bail!("the home follows {:?}, not {chain_id:?}", state.chain_id);
@@ -913,7 +941,7 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
     );
     // Handshake: replays a block committed by the app but not yet recorded
     // in the state (crash between Commit and the state save).
-    let gen_doc = GenesisDoc {
+    let gen_doc = genesis.unwrap_or_else(|| GenesisDoc {
         genesis_time: ctypes::Time::default(),
         chain_id: chain_id.clone(),
         initial_height: state.initial_height,
@@ -921,7 +949,7 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
         validators: Vec::new(),
         app_hash: Vec::new(),
         app_state: Vec::new(),
-    };
+    });
     let mut state = Handshaker::new(
         ss.clone(),
         state,
@@ -940,17 +968,22 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
     // The trusted header at the current height (its hash must be the one
     // our state recorded); its canonical commit comes with block h0+1.
     let h0 = state.last_block_height;
-    let (_, first) = fetch_one(&clients, h0)?;
-    if first.header.hash().unwrap_or_default() != state.last_block_id.hash {
-        bail!(
-            "header {h0} from the RPC server ({}) is not the one in our state ({})",
-            hex::encode_upper(first.header.hash().unwrap_or_default()),
-            hex::encode_upper(&state.last_block_id.hash)
-        );
-    }
-    let mut trusted_header = first.header;
+    let first_height = next_execution_height(&state);
+    let mut trusted_header = if h0 > 0 {
+        let (_, first) = fetch_one(&clients, h0)?;
+        if first.header.hash().unwrap_or_default() != state.last_block_id.hash {
+            bail!(
+                "header {h0} from the RPC server ({}) is not the one in our state ({})",
+                hex::encode_upper(first.header.hash().unwrap_or_default()),
+                hex::encode_upper(&state.last_block_id.hash)
+            );
+        }
+        Some(first.header)
+    } else {
+        None
+    };
 
-    let fetcher = Fetcher::new(clients.clone(), h0 + 1, opts.prefetch);
+    let fetcher = Fetcher::new(clients.clone(), first_height, opts.prefetch);
     fetcher.refresh_tip();
     let mut threads = Vec::new();
     for _ in 0..opts.prefetch.max(1) {
@@ -972,7 +1005,7 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
     }
 
     let mut totals = FollowStats {
-        first: h0 + 1,
+        first: first_height,
         last: h0,
         ..FollowStats::default()
     };
@@ -998,18 +1031,14 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
     };
     let result: anyhow::Result<()> = (|| {
         let t0 = Instant::now();
-        let Some(mut cur) = take(h0 + 1)? else {
+        let Some(mut cur) = take(first_height)? else {
             return Ok(());
         };
         // Block h0+1's last commit is the canonical commit of h0.
-        let mut trusted_commit = cur
-            .block
-            .last_commit
-            .clone()
-            .ok_or_else(|| anyhow!("block {} has no last commit", h0 + 1))?;
+        let mut trusted_commit = cur.block.last_commit.clone();
         waited += t0.elapsed();
         loop {
-            let height = state.last_block_height + 1;
+            let height = next_execution_height(&state);
             if opts.shutdown.is_triggered() {
                 return Ok(());
             }
@@ -1057,15 +1086,23 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
             }
             // Light client: header h is signed by 2/3+ of the validator set
             // header h-1 committed to (ours, whose hash header h carries).
-            light::verify_adjacent(
-                &signed_header(&trusted_header, &trusted_commit),
-                &signed_header(&header, &commit),
-                &state.validators,
-                opts.trust_period,
-                light::verifier::now(),
-                MAX_CLOCK_DRIFT,
-            )
-            .map_err(|e| anyhow!("light client verification of header {height}: {e}"))?;
+            if let Some(previous) = &trusted_header {
+                let previous_commit = trusted_commit
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("block {height} has no last commit"))?;
+                light::verify_adjacent(
+                    &signed_header(previous, previous_commit),
+                    &signed_header(&header, &commit),
+                    &state.validators,
+                    opts.trust_period,
+                    light::verifier::now(),
+                    MAX_CLOCK_DRIFT,
+                )
+                .map_err(|e| anyhow!("light client verification of header {height}: {e}"))?;
+            }
+            // At genesis there is no previous signed header. The comparisons
+            // above bind InitChain state and validators; verify_commit below
+            // authenticates this first block against that genesis-derived set.
             if opts.witness_interval > 0 && height % opts.witness_interval == 0 {
                 check_witnesses(&clients, cur.server, height, &header)?;
             }
@@ -1127,8 +1164,8 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
                 .apply_verified_block(&state, block_id, &mut block)
                 .map_err(|e| anyhow!("executing block {height}: {e}"))?;
             exec_time += t1.elapsed();
-            trusted_header = header;
-            trusted_commit = commit;
+            trusted_header = Some(header);
+            trusted_commit = Some(commit);
             cur = next;
             totals.last = height;
             totals.blocks += 1;
