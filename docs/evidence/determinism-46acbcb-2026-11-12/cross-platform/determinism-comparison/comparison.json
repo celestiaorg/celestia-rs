@@ -1,0 +1,69 @@
+{
+  "identical": true,
+  "limitations": [
+    "This is a bounded seeded matrix, not complete fuzz/replay or live-node qualification.",
+    "Platform Go oracle executables differ; their separate provenance must be retained."
+  ],
+  "platforms": {
+    "traces-Linux-X64": {
+      "machine": "x86_64",
+      "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43"
+    },
+    "traces-macOS-ARM64": {
+      "machine": "arm64",
+      "platform": "macOS-15.8.2-arm64-arm-64bit-Mach-O"
+    }
+  },
+  "profiles": [
+    "release",
+    "dist"
+  ],
+  "qualification_receipt_sha256": {
+    "traces-Linux-X64": {
+      "dist": "05c71eeb5f6b030122079002b3b789607047fb68443c6e768a98a10689db4c0e",
+      "release": "61e3b66989b39208ca9d62586df28395ba683497003647a2414bcc36172b16f7"
+    },
+    "traces-macOS-ARM64": {
+      "dist": "fe332b09c833071c1d2feec06cf7d34ddda9558165c8eb73961e0147eaa51f1b",
+      "release": "2e4bb52b968aec8f31b445249b64bfb48900c12907eceb5b1e249679fe23e0c9"
+    }
+  },
+  "schema_version": 1,
+  "scope": "exact-source cross-platform deterministic trace comparison",
+  "source": {
+    "revision": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "tree": "48ec947ee96f5e85d7bffd0e7f6a9a014502f151"
+  },
+  "traces": {
+    "blob-default.trace": {
+      "bytes": 12672,
+      "heights": 180,
+      "sha256": "868bb555cdc5b95cfc9bd500877efb2be2e45750eb77fa7d13642b0b02b638f0"
+    },
+    "gov-default.trace": {
+      "bytes": 15086,
+      "heights": 214,
+      "sha256": "341cf6c8f7de4d47b789da6347eb5a98434237763d73f2e51fe532358a494290"
+    },
+    "hyperlane-default.trace": {
+      "bytes": 12672,
+      "heights": 180,
+      "sha256": "14aa49d2f6a8a334b83601e619209d964e073d241e0ee34326b0bda4280a4c42"
+    },
+    "ibc-default.trace": {
+      "bytes": 16151,
+      "heights": 229,
+      "sha256": "444ee997499928875c70e7ede9421a87cd4ed68e166ef30ec724d45012fdd7a9"
+    },
+    "upgrade-default.trace": {
+      "bytes": 9051,
+      "heights": 129,
+      "sha256": "ab517736dcc27f8024290ac5e0e8a5337388a50717aceef5ed0b381441293ca5"
+    },
+    "v9-staking-default.trace": {
+      "bytes": 11252,
+      "heights": 160,
+      "sha256": "393ae05f6f356856c2811b40ba0bbd2835e4e0d02c7187b1c52ae75116a51572"
+    }
+  }
+}

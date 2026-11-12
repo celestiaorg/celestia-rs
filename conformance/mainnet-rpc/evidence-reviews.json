@@ -356,7 +356,7 @@
         ]
       },
       "regressions": [
-        {"runner": "python-unittest", "package": "conformance.mainnet-rpc.tests", "target": "test_populated_staking", "filter": "PopulatedStakingEvidence.test_abci_comet_and_grpc_return_identical_protobuf", "source": "conformance/mainnet-rpc/tests/test_populated_staking.py", "source_sha256": "32f3baba474c390663f46125e8edfd9889a398d8de6698f558db8e1204397cd1"}
+        {"runner": "python-unittest", "package": "conformance.mainnet-rpc.tests", "target": "test_populated_staking", "filter": "PopulatedStakingEvidence.test_abci_comet_and_grpc_return_identical_protobuf", "source": "conformance/mainnet-rpc/tests/test_populated_staking.py", "source_sha256": "c4e46ed8270a544db2ec7397813b90fc24232bf0e4ef26bc47a6f20ef37e44ec"}
       ],
       "admission_blockers": [
         "missing-exact-dependency-commits",
