@@ -1,0 +1,136 @@
+   Compiling zstd-sys v2.1.2+zstd.1.5.7
+   Compiling byteorder v1.5.0
+   Compiling tracing-core v0.1.36
+   Compiling tracing v0.1.44
+   Compiling curve25519-dalek-ng v4.1.1
+   Compiling ed25519-consensus v2.1.0
+   Compiling crypto v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-0-primitives/crypto)
+   Compiling tokio v1.54.1
+   Compiling rand v0.8.8
+   Compiling ctypes v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-1-protocol-types/ctypes)
+   Compiling librocksdb-sys v0.17.3+10.4.2
+   Compiling ark-std v0.5.0
+   Compiling merlin v3.0.0
+   Compiling log v0.4.34
+   Compiling futures-util v0.3.34
+   Compiling ark-serialize v0.5.0
+   Compiling p2p v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/p2p)
+   Compiling tokio-util v0.7.20
+   Compiling h2 v0.4.20
+   Compiling ark-ff v0.5.0
+   Compiling mempool v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/mempool)
+   Compiling sha1 v0.10.7
+   Compiling ring v0.17.14
+   Compiling utf-8 v0.7.6
+   Compiling data-encoding v2.11.1
+   Compiling tungstenite v0.24.0
+   Compiling hyper v1.12.0
+   Compiling ark-poly v0.5.0
+   Compiling rustix v1.1.6
+   Compiling axum-core v0.4.5
+   Compiling ark-ec v0.5.0
+   Compiling hyper-util v0.1.21
+   Compiling tokio-tungstenite v0.24.0
+   Compiling tower v0.5.3
+   Compiling tokio-stream v0.1.19
+   Compiling untrusted v0.9.0
+   Compiling axum v0.7.9
+   Compiling tonic v0.12.3
+   Compiling hashbrown v0.12.3
+   Compiling ark-bn254 v0.5.0
+   Compiling rustls-pki-types v1.15.1
+   Compiling utf8parse v0.2.2
+   Compiling rustls v0.23.46
+   Compiling tempfile v3.27.0
+   Compiling anstyle-parse v1.0.0
+   Compiling rustls-webpki v0.103.16
+   Compiling lru v0.7.8
+   Compiling grpc-transport v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/grpc-transport)
+   Compiling abci-server v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/abci-server)
+   Compiling tikv-jemalloc-sys v0.7.1+5.3.1-0-g81034ce1f1373e37dc865038e1bc8eeecf559ce8
+   Compiling regex-syntax v0.8.11
+   Compiling winnow v1.0.4
+   Compiling colorchoice v1.0.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle v1.0.14
+   Compiling anstyle-query v1.1.5
+   Compiling anstream v1.0.0
+   Compiling reed-solomon-erasure v6.0.0
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling regex-automata v0.4.18
+   Compiling grpc-reflection v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/grpc-reflection)
+   Compiling privval v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/privval)
+   Compiling blowfish v0.9.1
+   Compiling toml_datetime v1.1.2+spec-1.1.0
+   Compiling clap_lex v1.1.1
+   Compiling lazy_static v1.5.1
+   Compiling strsim v0.11.1
+   Compiling toml_writer v1.2.0+spec-1.1.0
+   Compiling clap_builder v4.6.7
+   Compiling sharded-slab v0.1.7
+   Compiling bcrypt v0.15.1
+   Compiling tokio-rustls v0.26.6
+   Compiling matchers v0.2.0
+   Compiling tracing-log v0.2.0
+   Compiling tracing-serde v0.2.0
+   Compiling clap_derive v4.6.7
+   Compiling serde_spanned v1.1.2
+   Compiling thread_local v1.1.10
+   Compiling celestia-rs v0.1.0-rc.5 (/Users/rootulp/git/celestia-rs/crates/tier-5-node/celestia-rs)
+   Compiling nu-ansi-term v0.50.3
+   Compiling tracing-subscriber v0.3.23
+   Compiling toml v1.2.0+spec-1.1.0
+   Compiling clap v4.6.7
+   Compiling keyring v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-5-node/keyring)
+   Compiling tikv-jemallocator v0.7.0
+   Compiling toml_edit v0.25.18+spec-1.1.0
+   Compiling rocksdb v0.24.0
+   Compiling kvdb v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-2-state-and-store/kvdb)
+   Compiling iavl v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-2-state-and-store/iavl)
+   Compiling kvstore v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-2-state-and-store/kvstore)
+   Compiling ics23-proofs v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-2-state-and-store/ics23-proofs)
+   Compiling nodestore v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/nodestore)
+   Compiling multistore v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-2-state-and-store/multistore)
+   Compiling sdk v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/sdk)
+   Compiling x-auth v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/auth)
+   Compiling x-bank v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/bank)
+   Compiling x-staking v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/staking)
+   Compiling txdecode v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/txdecode)
+   Compiling x-feegrant v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/feegrant)
+   Compiling x-fibre v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/fibre)
+   Compiling x-capability v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/capability)
+   Compiling x-ante v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/ante)
+   Compiling x-upgrade v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/upgrade)
+   Compiling x-ibc v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/ibc)
+   Compiling x-hyperlane v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/hyperlane)
+   Compiling x-params v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/params)
+   Compiling x-warp v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/warp)
+   Compiling x-transfer v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/transfer)
+   Compiling x-slashing v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/slashing)
+   Compiling x-distribution v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/distribution)
+   Compiling x-gov v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/gov)
+   Compiling x-forwarding v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/forwarding)
+   Compiling x-blob v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/blob)
+   Compiling x-minfee v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/minfee)
+   Compiling x-zkism v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/zkism)
+   Compiling x-icahost v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/icahost)
+   Compiling x-authz v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/authz)
+   Compiling x-consensus v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/consensus)
+   Compiling x-mint v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/mint)
+   Compiling x-circuit v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/circuit)
+   Compiling x-signal v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/signal)
+   Compiling x-valaddr v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/valaddr)
+   Compiling grpc-query v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/grpc-query)
+   Compiling x-evidence v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/evidence)
+   Compiling x-packetforward v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-3-app-modules/x/packetforward)
+   Compiling snapshots v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-2-state-and-store/snapshots)
+   Compiling app v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/app)
+   Compiling propagation v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/propagation)
+   Compiling light v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/light)
+   Compiling statesync v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/statesync)
+   Compiling consensus v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/consensus)
+   Compiling api-server v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/api-server)
+   Compiling blocksync v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/blocksync)
+   Compiling evidence v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/evidence)
+   Compiling rpc v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/rpc)
+    Finished `release` profile [optimized] target(s) in 4m 48s

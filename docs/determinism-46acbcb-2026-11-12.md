@@ -86,6 +86,24 @@ All three exact-source wrappers passed with unchanged inputs. These are
 4,220 bounded proposal comparisons, not a high-volume campaign or proof
 that every ProcessProposal branch is covered.
 
-Cross-platform comparison must use this exact candidate and retain its own
-platform/oracle provenance. Matching an earlier commit's traces or comparing
-different source revisions does not complete F1.9 for this candidate.
+## Exact-candidate cross-platform comparison
+
+[Workflow run 43138710653](https://github.com/celestiaorg/celestia-rs/actions/runs/43138710653)
+completed successfully on 2026-11-12 at 02:47 UTC. Current orchestration
+(`9198b17`) checked out candidate `46acbcb` separately and required unchanged
+source inputs for each release/dist run. Both Linux x86_64 and macOS arm64
+passed the same 36-run matrix and dist ProcessProposal checks described above.
+
+The [comparison receipt](evidence/determinism-46acbcb-2026-11-12/cross-platform/determinism-comparison/comparison.json)
+records identical hashes for all six traces across both hosted platforms and
+both profiles. A separate local byte comparison also matched each hosted trace
+to both profiles from the physical Mac Mini run: 1,092 trace heights per set.
+The retained platform directories include the full traces, qualification
+receipts, check logs and separate Go oracle provenance. The Go executables
+differ between platforms, as expected; their provenance is retained separately.
+
+This completes C1.3/F1.9's bounded determinism checks for candidate `46acbcb`.
+It does not establish a clean multi-night fuzz campaign, historical replay
+coverage, a 72-hour validator observation, full Go/Rust response parity or
+qualification of a later source revision. The running validators were not
+restarted or redeployed for these checks.

@@ -1,0 +1,83 @@
+{
+  "artifacts": {
+    "build-fixed/check.log": {
+      "bytes": 8201,
+      "sha256": "5f435e46c84f483f67a4cb6009368784fb3cb5fa7468b98b5c9f60d6da0f723e"
+    },
+    "build-fixed/evidence.json": {
+      "bytes": 1544,
+      "sha256": "bfbe064a79f5f24c493223d231808740dfeab63d4c2297d4863db3ddf6733226"
+    },
+    "fault-diagnostic-summary.json": {
+      "bytes": 7519,
+      "sha256": "c32327b52c15822b3631b6bb8b485ab56d90dc53c40f3e5a47d483cf4e5f2156"
+    },
+    "faults.jsonl": {
+      "bytes": 404,
+      "sha256": "28d4c1379060a49de2896e65e64e15c4ab6441648106b1bb3f5ca5a006f3bd0b"
+    },
+    "fixed-fault-result/check.log": {
+      "bytes": 1352,
+      "sha256": "1590d65820b5c692169ae40c91f92500fb8e1c78cab226613822d683d70a998f"
+    },
+    "fixed-fault-result/evidence.json": {
+      "bytes": 2398,
+      "sha256": "dc00f678c9f64fab5dd8af1b6014e9ac3b3e50ae31b2434ec2079b0ba32f583a"
+    },
+    "fixed-honest-result/check.log": {
+      "bytes": 1086,
+      "sha256": "411a50e8a261791a20569cfc49ad49fa54362e3b9e8d6febea1bb8ee035db84b"
+    },
+    "fixed-honest-result/evidence.json": {
+      "bytes": 2132,
+      "sha256": "20d873331f6525ec29aeaf87f7118ceea9ff78a14978d07268ceb818d2f73056"
+    },
+    "follow-unit-tests.log": {
+      "bytes": 2786,
+      "sha256": "74e6d84f859d9e93ad77f840c508a9e6b93b06569c7ccff6a160bcd38d7a2b88"
+    },
+    "old-fault-result/check.log": {
+      "bytes": 1047,
+      "sha256": "954c2525471cdce353baf5556276646d40d60339854fd355714a642cb39fb2a7"
+    },
+    "old-fault-result/evidence.json": {
+      "bytes": 2395,
+      "sha256": "3da64d715560c830ff01ce2e99010e26265a57afad7c02036b20a35bab94dbbf"
+    },
+    "proxy.py": {
+      "bytes": 1320,
+      "sha256": "899d2582a67f744c240fc6b01491f4a89933c696b47ade5e6497f1a51101cbb9"
+    }
+  },
+  "baseline_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+  "checkpoint_app_hash": "3C15AC889DBB6B6EB699F7D7427367F83042CBEC69FC9F9BFC3EC36212DE2A5C",
+  "checkpoint_height": 15531673,
+  "fault_header_height": 15531675,
+  "implementation_commit": "ba28bf9da7d30fedad9bf573c977616a3410c301",
+  "runs": {
+    "fixed-fault-result": {
+      "executed_blocks": 1,
+      "exit_code": 1,
+      "source_and_inputs_unchanged": true,
+      "source_commit": "ba28bf9da7d30fedad9bf573c977616a3410c301",
+      "transactions": 3
+    },
+    "fixed-honest-result": {
+      "executed_blocks": 1,
+      "exit_code": 0,
+      "source_and_inputs_unchanged": true,
+      "source_commit": "ba28bf9da7d30fedad9bf573c977616a3410c301",
+      "transactions": 3
+    },
+    "old-fault-result": {
+      "executed_blocks": 1,
+      "exit_code": 0,
+      "source_and_inputs_unchanged": true,
+      "source_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+      "transactions": 3
+    }
+  },
+  "schema_version": 1,
+  "scope": "controlled finite-follower app-hash fault regression; not live validator or historical-era qualification",
+  "stop_height": 15531674
+}

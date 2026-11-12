@@ -27,8 +27,8 @@
   "bindings": {
     "conformance/mainnet-rpc/READINESS.md": "c90b5bc2bf18f5f5b118f2fb75daa6da16bbf2a12168b78877dbc179ea3e4c85",
     "conformance/mainnet-rpc/readiness.py": "b285feb0f3ab949254967dd7e4576312ae540893039b96be81f1d5f62212b407",
-    "conformance/mainnet-rpc/scope-audit.json": "01fd4add6969ddcfc47eadca8a41d464fa9423d62eaf222487fbb3ef51f9493d",
-    "conformance/mainnet-rpc/scope_audit.py": "3cfbde5f40dc23f709e65a77d5ca735d313f58bd945450cb113336d35dc30520",
+    "conformance/mainnet-rpc/scope-audit.json": "6fceaf454988410d4822d8734825713ef7f27477fbb9292a9cc069a11dad25ce",
+    "conformance/mainnet-rpc/scope_audit.py": "773da830809c4c99426b7fbc01fca21a9d8856ee8ed66b15e7256cc18b8d1747",
     "conformance/mainnet-rpc/module-closure/evidence/manifest.json": "63df8d8c652efa70f3af473140fa538bacd4120946bd34dceb8054c225a58a2b",
     "conformance/mainnet-rpc/persistence/closure-evidence/manifest.json": "e8ce2ef7043048eff4a66a920ac65c8b3ed3cd213f2cdb510dd22264e9a3932b",
     "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/manifest.json": "d13b92ee1861a7a566b31f9e128850c1db4f79eb48ff183b20ed10c2112ee7bc",
