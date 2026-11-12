@@ -1,0 +1,31 @@
+{
+  "auditor_source_commit": "cf57682a8412535d4ba4161a2b501401fa3e35a4",
+  "auditor_source_sha256": {
+    "scripts/quality/observation_audit.py": "b8a669460be70cedf52cc89b1e2ac9766a2d1b6f10f525a0091ae6104b3ab604",
+    "scripts/quality/receipt_coverage.py": "1f4d499c9ed549e7320af279457d165f0c5f7ac17b28150542b62b6d8f080cdb"
+  },
+  "independent_execution_logs": {
+    "mainnet": "/Users/rootulp/Library/Logs/celestia-rs-mainnet.log",
+    "mocha": "/Users/rootulp/Library/Logs/celestia-rs.log"
+  },
+  "raw_inputs": "gzip files decompress to the names in input-digests.json",
+  "retained_sha256": {
+    "input-digests.json": "36e64fe0167c7f9693fcf801fa85108ed9e27869b58d4af748ae5f689f311224",
+    "mainnet-audit.json": "9ac722b398915bd4a1ab304a384036b21cb1f5df1d598cd1d74674c1902b024a",
+    "mainnet-executions.log.gz": "983e4eb059b6828cdd5e065de2faad7d647bcb532001b81ec3e08804d8c22c2e",
+    "mainnet/events.jsonl.gz": "e0dbb3891b59a0b9f1ab0260f5262f21a7ce0eb3b691da4e67c9e0640ed6b2bf",
+    "mainnet/heights.jsonl.gz": "5db70d3817730da21a7c6e5f7687daa3efaeb7e22cc3ba24fe6cfcfef2ac18c3",
+    "mainnet/samples.jsonl.gz": "3edaf6ae8ce42621b4fab37f75eb97f3ce6d10b2216e3cc242c10db2c9ea632c",
+    "mocha-audit.json": "7c23d5d19cc7ca77b67631a5c11f1ced7f780320a1610085a07b984ad5a9e456",
+    "mocha-executions.log.gz": "2a68c6042f57c4c7242771270adb71f8b14d6d1e4f2a58d85097e9939e435251",
+    "mocha/events.jsonl.gz": "02bf318ab061a7c9efac3f0cc6d0dabd9d85247007938f7754a35ed11c2ecaf6",
+    "mocha/heights.jsonl.gz": "b359947da3f10ae9231ce8800e12745ab2f6af1bd2aba78267d3b2747c0069b7",
+    "mocha/samples.jsonl.gz": "78879a97cb44aace07d2285cc9ae5033f5dcaca7d946762dfa0a8162754a3ca2",
+    "resource-context.json": "18c991a95c025e903175674f5780645aca667d854d6435a9c0e93648e0815a06"
+  },
+  "scope": "one-hour retrospective audit; qualification remains false",
+  "window_utc": [
+    "2026-11-12T02:00:00Z",
+    "2026-11-12T03:00:00Z"
+  ]
+}
