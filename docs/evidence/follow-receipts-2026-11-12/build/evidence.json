@@ -1,0 +1,53 @@
+{
+  "binary_sha256": {},
+  "command": [
+    "cargo",
+    "build",
+    "--locked",
+    "--release",
+    "-p",
+    "celestia-rs",
+    "--bin",
+    "celestia-rs"
+  ],
+  "exit_code": 0,
+  "finished_at_unix": 1794456864.143896,
+  "inputs_unchanged": true,
+  "log_sha256": "51d98965024ab33448e8822e878943548282cc7d9f0fc23591675169890dfc8c",
+  "machine": "arm64",
+  "platform": "Darwin-25.2.0-arm64-arm-64bit-Mach-O",
+  "protobuf_go_detrand": {},
+  "schema_version": 1,
+  "scope": "one check only; remaining F1 gates require separate evidence",
+  "source": {
+    "index_flags": [],
+    "revision": "1cb60aa695f9878871a01d431969c08b732dc1db",
+    "status": "",
+    "tree": "da1b92ff62eb5c462534deea4559b951a7ce34ec"
+  },
+  "source_after": {
+    "index_flags": [],
+    "revision": "1cb60aa695f9878871a01d431969c08b732dc1db",
+    "status": "",
+    "tree": "da1b92ff62eb5c462534deea4559b951a7ce34ec"
+  },
+  "started_at_unix": 1794456841.234785,
+  "status": "passed",
+  "toolchains": {
+    "cargo": {
+      "error": "",
+      "exit_code": 0,
+      "output": "cargo 1.99.1 (5f94df478 2026-08-27)"
+    },
+    "go": {
+      "error": "",
+      "exit_code": 0,
+      "output": "go version go1.26.3 darwin/arm64"
+    },
+    "rustc": {
+      "error": "",
+      "exit_code": 0,
+      "output": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1"
+    }
+  }
+}

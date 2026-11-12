@@ -1,0 +1,90 @@
+{
+  "cases": [
+    {
+      "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "results": []
+    },
+    {
+      "hash": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+      "results": [
+        {
+          "code": 0,
+          "data": "",
+          "gas_used": 0,
+          "gas_wanted": 0
+        }
+      ]
+    },
+    {
+      "hash": "c61afe80a3546951f4233bed7f88f87eaaa1140eb9ff6f7cd62f17ddc421dbfe",
+      "results": [
+        {
+          "code": 7,
+          "data": "AAH/",
+          "gas_used": 6789,
+          "gas_wanted": 12345
+        }
+      ]
+    },
+    {
+      "hash": "5001e4b64923e7dfc600b975c486cc33e6062c442e2ccae87c2a24bf94e4ce83",
+      "results": [
+        {
+          "code": 4294967295,
+          "data": "/w==",
+          "gas_used": -9223372036854775808,
+          "gas_wanted": -1
+        }
+      ]
+    },
+    {
+      "hash": "e413d8305f1a239f52360e45025392693782466d8139aa48b5b8bed8823cafb3",
+      "results": [
+        {
+          "code": 0,
+          "data": "",
+          "gas_used": 0,
+          "gas_wanted": 9223372036854775807
+        },
+        {
+          "code": 0,
+          "data": "dHdv",
+          "gas_used": 0,
+          "gas_wanted": 0
+        },
+        {
+          "code": 2,
+          "data": "",
+          "gas_used": -3,
+          "gas_wanted": 0
+        }
+      ]
+    },
+    {
+      "hash": "6fd5c4cb7f34db2e39944c56a3487c9488e9aac152f467be4ec289cee75be6f9",
+      "results": [
+        {
+          "code": 2,
+          "data": "",
+          "gas_used": -3,
+          "gas_wanted": 0
+        },
+        {
+          "code": 0,
+          "data": "dHdv",
+          "gas_used": 0,
+          "gas_wanted": 0
+        },
+        {
+          "code": 0,
+          "data": "",
+          "gas_used": 0,
+          "gas_wanted": 9223372036854775807
+        }
+      ]
+    }
+  ],
+  "core": "github.com/celestiaorg/celestia-core@v0.42.8",
+  "go": "go1.26.10",
+  "schema_version": 1
+}

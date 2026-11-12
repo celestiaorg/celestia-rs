@@ -6,6 +6,7 @@ pub mod client;
 pub mod config;
 pub mod export;
 pub mod follow;
+mod follow_receipts;
 pub mod genesis;
 pub mod init;
 pub mod keys;

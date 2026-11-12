@@ -1,0 +1,5 @@
+   Compiling privval v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/privval)
+   Compiling celestia-rs v0.1.0-rc.5 (/Users/rootulp/git/celestia-rs/crates/tier-5-node/celestia-rs)
+   Compiling propagation v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/propagation)
+   Compiling consensus v0.0.1 (/Users/rootulp/git/celestia-rs/crates/tier-4-runtime/consensus)
+    Finished `release` profile [optimized] target(s) in 22.63s

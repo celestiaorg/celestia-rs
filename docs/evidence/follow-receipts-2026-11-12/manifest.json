@@ -1,0 +1,22 @@
+{
+  "binary_sha256": "866f1a00eb2203c161b6c30ff72e52c1be6275e84ed5ee23dcf301bf81f1df7a",
+  "chain_id": "mocha-5",
+  "executed_height_range": [
+    1,
+    100
+  ],
+  "genesis_sha256": "82db3ac5ab8485e4784054bd10457533a64563f055c0d234a3134603a9c85d33",
+  "input_uncompressed_sha256": "22a4c73bd35e68f02de3a755a7ada500ae888854de9734c90de0efcc78c907b7",
+  "retained_sha256": {
+    "audit.json": "7009e364cfeef02a006a2af918ba8ec570cd4368cc3b43c526a4098646bc5770",
+    "build/check.log": "51d98965024ab33448e8822e878943548282cc7d9f0fc23591675169890dfc8c",
+    "build/evidence.json": "ddec4d426b7639bd246a3bea375c6d292dd086e26387c100e16fce4002585821",
+    "heights-1-100.jsonl.gz": "4b39abd3e66d498138986112407969d196f711a5a616731d7ed8811abc22af2a",
+    "smoke/check.log": "54e36565f7f12ff35082703723716e03ed934730f078fc26f120cc08711093f7",
+    "smoke/evidence.json": "a3d54bf55b86f107375a0299558413eb26ba36b69a6236ce23285b49b8d030f3"
+  },
+  "scope": "bounded clean-source Mocha receipt producer/auditor check; no historical-era qualification",
+  "source_commit": "1cb60aa695f9878871a01d431969c08b732dc1db",
+  "transactions": 0,
+  "verified_final_header_height": 101
+}

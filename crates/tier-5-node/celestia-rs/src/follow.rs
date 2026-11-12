@@ -868,9 +868,28 @@ fn next_execution_height(state: &State) -> i64 {
     }
 }
 
-/// `celestia-rs follow`.
-#[allow(clippy::too_many_lines)]
+pub use crate::follow_receipts::FollowReceiptOptions;
+
+/// `celestia-rs follow` without an optional receipt file.
 pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
+    follow_inner(opts, None)
+}
+
+/// Follows with per-height receipts emitted only after the next header has
+/// authenticated the local app/results commitments. The candidate claim must
+/// be bound to the measured executable by separate clean-source build evidence.
+pub fn follow_with_receipts(
+    opts: &FollowOptions,
+    receipts: &FollowReceiptOptions,
+) -> anyhow::Result<FollowStats> {
+    follow_inner(opts, Some(receipts))
+}
+
+#[allow(clippy::too_many_lines)]
+fn follow_inner(
+    opts: &FollowOptions,
+    receipts: Option<&FollowReceiptOptions>,
+) -> anyhow::Result<FollowStats> {
     if opts.rpc.is_empty() {
         bail!("at least one --rpc server is required");
     }
@@ -898,6 +917,9 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
         earliest = primary_status.earliest_block_height,
         "following over RPC"
     );
+    let mut receipts = receipts
+        .map(|config| crate::follow_receipts::Recorder::create(config, opts, &chain_id))
+        .transpose()?;
     let home = &opts.home;
     std::fs::create_dir_all(home.join("data"))?;
     let mut app_opts = opts.app.clone();
@@ -969,6 +991,9 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
     // our state recorded); its canonical commit comes with block h0+1.
     let h0 = state.last_block_height;
     let first_height = next_execution_height(&state);
+    if let Some(recorder) = &mut receipts {
+        recorder.baseline(&state, first_height)?;
+    }
     let mut trusted_header = if h0 > 0 {
         let (_, first) = fetch_one(&clients, h0)?;
         if first.header.hash().unwrap_or_default() != state.last_block_id.hash {
@@ -1029,6 +1054,7 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
             Some(Err(e)) => Err(anyhow!("fetching block {h} failed: {e}")),
         }
     };
+    let mut tx_count_for_receipt = None;
     let result: anyhow::Result<()> = (|| {
         let t0 = Instant::now();
         let Some(mut cur) = take(first_height)? else {
@@ -1106,6 +1132,9 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
             if opts.witness_interval > 0 && height % opts.witness_interval == 0 {
                 check_witnesses(&clients, cur.server, height, &header)?;
             }
+            if let Some(recorder) = &mut receipts {
+                recorder.verified(&state, &header, cur.server, tx_count_for_receipt, &ss)?;
+            }
             // Header H+1 commits the app/results hashes produced at H.
             // Authenticate and compare that header before reporting a finite
             // run through H as complete, without executing block H+1.
@@ -1170,6 +1199,7 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
             totals.last = height;
             totals.blocks += 1;
             totals.txs += ntx as u64;
+            tx_count_for_receipt = Some(ntx);
             if totals.blocks.is_multiple_of(100) {
                 let dt = window_start.0.elapsed().as_secs_f64().max(1e-9);
                 #[allow(clippy::cast_precision_loss)]
@@ -1210,6 +1240,14 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
         secs = started.elapsed().as_secs(),
         "follow finished"
     );
+    if let Some(recorder) = &mut receipts {
+        recorder.finish(
+            &totals,
+            opts.stop_height,
+            stopped.load(Ordering::SeqCst),
+            result.is_err(),
+        )?;
+    }
     if stopped.load(Ordering::SeqCst) {
         return Ok(totals);
     }

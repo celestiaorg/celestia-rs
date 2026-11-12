@@ -1,0 +1,56 @@
+{
+  "binary_sha256": {
+    "/private/tmp/celestia-follow-receipts-1cb60aa/celestia-rs-1cb60aa": "866f1a00eb2203c161b6c30ff72e52c1be6275e84ed5ee23dcf301bf81f1df7a"
+  },
+  "command": [
+    "bash",
+    "-c",
+    "shasum -a 256 -c /private/tmp/celestia-follow-receipts-1cb60aa/genesis.sha256 && /private/tmp/celestia-follow-receipts-1cb60aa/celestia-rs-1cb60aa follow --home /private/tmp/celestia-follow-receipts-1cb60aa/home --chain-id mocha-5 --rpc https://rpc.celestia-mocha.com,https://celestia-testnet-rpc.polkachu.com --stop-at-height 100 --trust-period-hours 10000 --prefetch 8 --witness-interval 10 --receipts /private/tmp/celestia-follow-receipts-1cb60aa/heights-1-100.jsonl --receipt-candidate 1cb60aa695f9878871a01d431969c08b732dc1db && shasum -a 256 -c /private/tmp/celestia-follow-receipts-1cb60aa/genesis.sha256"
+  ],
+  "exit_code": 0,
+  "finished_at_unix": 1794457084.339939,
+  "inputs_unchanged": true,
+  "log_sha256": "54e36565f7f12ff35082703723716e03ed934730f078fc26f120cc08711093f7",
+  "machine": "arm64",
+  "platform": "Darwin-25.2.0-arm64-arm-64bit-Mach-O",
+  "protobuf_go_detrand": {
+    "/private/tmp/celestia-follow-receipts-1cb60aa/celestia-rs-1cb60aa": {
+      "seed_hex": "0x9503f849eb2131f3",
+      "separator": "nonbreaking-space",
+      "separator_utf8_hex": "c2a0"
+    }
+  },
+  "schema_version": 1,
+  "scope": "one check only; remaining F1 gates require separate evidence",
+  "source": {
+    "index_flags": [],
+    "revision": "1cb60aa695f9878871a01d431969c08b732dc1db",
+    "status": "",
+    "tree": "da1b92ff62eb5c462534deea4559b951a7ce34ec"
+  },
+  "source_after": {
+    "index_flags": [],
+    "revision": "1cb60aa695f9878871a01d431969c08b732dc1db",
+    "status": "",
+    "tree": "da1b92ff62eb5c462534deea4559b951a7ce34ec"
+  },
+  "started_at_unix": 1794457059.373182,
+  "status": "passed",
+  "toolchains": {
+    "cargo": {
+      "error": "",
+      "exit_code": 0,
+      "output": "cargo 1.99.1 (5f94df478 2026-08-27)"
+    },
+    "go": {
+      "error": "",
+      "exit_code": 0,
+      "output": "go version go1.26.3 darwin/arm64"
+    },
+    "rustc": {
+      "error": "",
+      "exit_code": 0,
+      "output": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1"
+    }
+  }
+}

@@ -608,6 +608,11 @@ completion through height `H`. It may fetch `H+2` to obtain that header's commit
 A successful short run does not establish coverage of the rest of the era or
 an upgrade boundary.
 
+Optional [per-height receipts](follow-receipts.md) retain the consensus app and
+transaction-result commitments after each following header is authenticated.
+Use a new `--receipts` file and the binary's full `--receipt-candidate` identity;
+the offline audit checks explicit height coverage and terminal completion.
+
 Per height `h` the follower
 
 1. fetches `/block` (many heights ahead in parallel, `--prefetch`, default

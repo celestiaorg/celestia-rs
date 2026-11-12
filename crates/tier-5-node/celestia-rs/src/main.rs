@@ -268,6 +268,14 @@ struct FollowArgs {
     /// initialize from the independently supplied `config/genesis.json`.
     #[arg(long)]
     snapshot: Option<PathBuf>,
+    /// New JSONL receipt file; records each executed height after the following
+    /// header authenticates its app/results commitments.
+    #[arg(long, requires = "receipt_candidate", conflicts_with = "light_only")]
+    receipts: Option<PathBuf>,
+    /// Full lowercase source commit claimed for receipt identity; bind it to
+    /// this executable with a separate clean-source build receipt.
+    #[arg(long, requires = "receipts")]
+    receipt_candidate: Option<String>,
     /// Snapshot height to restore (default: the highest in `--snapshot`).
     #[arg(long)]
     snapshot_height: Option<u64>,
@@ -1189,6 +1197,14 @@ async fn follow(home: &Path, a: FollowArgs) -> anyhow::Result<()> {
         })
         .await?;
     }
+    let receipts = match (a.receipts, a.receipt_candidate) {
+        (Some(path), Some(candidate_commit)) => Some(celestia_rs::follow::FollowReceiptOptions {
+            path,
+            candidate_commit,
+        }),
+        (None, None) => None,
+        _ => anyhow::bail!("--receipts and --receipt-candidate must be supplied together"),
+    };
     let opts = celestia_rs::follow::FollowOptions {
         home: home.to_path_buf(),
         rpc: a.rpc,
@@ -1204,7 +1220,14 @@ async fn follow(home: &Path, a: FollowArgs) -> anyhow::Result<()> {
         app,
         shutdown,
     };
-    tokio::task::spawn_blocking(move || celestia_rs::follow::follow(&opts).map(|_| ())).await?
+    tokio::task::spawn_blocking(move || {
+        match receipts {
+            Some(receipts) => celestia_rs::follow::follow_with_receipts(&opts, &receipts),
+            None => celestia_rs::follow::follow(&opts),
+        }
+        .map(|_| ())
+    })
+    .await?
 }
 
 #[allow(clippy::too_many_lines)]

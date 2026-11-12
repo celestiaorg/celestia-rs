@@ -427,3 +427,42 @@ fn generate_only_address_from_needs_no_passphrase() {
     let out = run(&["bank", "send", "op", to, "1utia", "--fees", "3000utia"]);
     assert!(String::from_utf8_lossy(&out.stderr).contains("passphrase"));
 }
+
+#[test]
+fn follower_receipts_require_candidate_identity_and_execution() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("must-not-exist.jsonl");
+    let candidate = "c".repeat(40);
+    let output_path = path.to_str().unwrap();
+    let cases = [
+        vec!["--receipts", output_path],
+        vec!["--receipt-candidate", candidate.as_str()],
+        vec![
+            "--receipts",
+            output_path,
+            "--receipt-candidate",
+            candidate.as_str(),
+            "--light-only",
+        ],
+    ];
+    for flags in cases {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_celestia-rs"))
+            .args([
+                "follow",
+                "--rpc",
+                "http://127.0.0.1:1",
+                "--home",
+                directory.path().to_str().unwrap(),
+            ])
+            .args(flags)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!path.exists());
+    }
+}
