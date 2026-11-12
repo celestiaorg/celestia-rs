@@ -1382,7 +1382,9 @@ test), then start that harness's count again.
 
 Not consensus-relevant unless noted; tracked so nothing is lost.
 
-- [ ] ProcessProposal blob-tx cache (S2; behavior-neutral, performance).
+- [x] ProcessProposal blob-tx cache (S2; behavior-neutral, performance):
+  bounded successful-CheckTx memoization for exact wire bytes/app version;
+  [design and bounded cache-on/off evidence](docs/blob-tx-cache.md).
 - [ ] Validator-local fibre promise cache (M11; query surface only).
   *Go build info in `GetNodeInfo` done 2026-10-20:* the node's version,
   commit, build profile and toolchain, checked over gRPC by

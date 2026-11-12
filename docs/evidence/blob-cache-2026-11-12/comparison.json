@@ -1,0 +1,118 @@
+{
+  "delivery": {
+    "blob": {
+      "identical": true,
+      "runs": {
+        "off": {
+          "blocks": 300,
+          "delivered": 413,
+          "delivered_ok": 164,
+          "mismatches": 0,
+          "raw_log_sha256": "6bec5545731a5250d81f65f654f65231a43cbe408076a8c4045fc929ff576000",
+          "seed": 20261112,
+          "summary": "blob: replayed 60 heights; 300 generated blocks, 2569 txs checked (454 accepted; multisig 152 / 19), 413 delivered (164 code 0); 0 gas-sweep copies; 0 mismatches, 33 log-only differences"
+        },
+        "on": {
+          "blocks": 300,
+          "delivered": 413,
+          "delivered_ok": 164,
+          "mismatches": 0,
+          "raw_log_sha256": "c5f809e24468fa2c1f4b6742a9df4c99df4163a897dc890ffa9e42b384b4ab6a",
+          "seed": 20261112,
+          "summary": "blob: replayed 60 heights; 300 generated blocks, 2569 txs checked (454 accepted; multisig 152 / 19), 413 delivered (164 code 0); 0 gas-sweep copies; 0 mismatches, 33 log-only differences"
+        }
+      },
+      "trace_heights": 360,
+      "trace_sha256": "61000985bed17382ae4fe7011ddd92381faf456efe6f21ff367c86ff8a1d0383"
+    },
+    "ibc": {
+      "identical": true,
+      "runs": {
+        "off": {
+          "blocks": 300,
+          "delivered": 548,
+          "delivered_ok": 174,
+          "mismatches": 0,
+          "raw_log_sha256": "e43f9bea34e7156c3a21b52b44ce744be54427845d255403597a03fac3017fb0",
+          "seed": 20261112,
+          "summary": "ibc: replayed 109 heights; 300 generated blocks, 2524 txs checked (500 accepted; multisig 267 / 35), 548 delivered (174 code 0); 0 gas-sweep copies; 0 mismatches, 40 log-only differences"
+        },
+        "on": {
+          "blocks": 300,
+          "delivered": 548,
+          "delivered_ok": 174,
+          "mismatches": 0,
+          "raw_log_sha256": "0a39c10f2fedf1756df915e2d295ff26501defe4bbaace98e13a57d8a40100f8",
+          "seed": 20261112,
+          "summary": "ibc: replayed 109 heights; 300 generated blocks, 2524 txs checked (500 accepted; multisig 267 / 35), 548 delivered (174 code 0); 0 gas-sweep copies; 0 mismatches, 40 log-only differences"
+        }
+      },
+      "trace_heights": 409,
+      "trace_sha256": "1e71b79ad041bda32feefc3da4a2b560f533357decffe8a8e64a054954f06cdd"
+    },
+    "v9-blob": {
+      "identical": true,
+      "runs": {
+        "off": {
+          "blocks": 300,
+          "delivered": 144,
+          "delivered_ok": 64,
+          "mismatches": 0,
+          "raw_log_sha256": "199a3f7c8a111e5fc918bf2411a23a33d1b319c87decb227b8fb7f3629bbabb2",
+          "seed": 20261112,
+          "summary": "v9-blob: replayed 40 heights; 300 generated blocks, 2527 txs checked (415 accepted; multisig 157 / 19), 144 delivered (64 code 0); 0 gas-sweep copies; 0 mismatches, 32 log-only differences"
+        },
+        "on": {
+          "blocks": 300,
+          "delivered": 144,
+          "delivered_ok": 64,
+          "mismatches": 0,
+          "raw_log_sha256": "0a332da83c8f35a444c205217cc005f51f4adf769a7ae43e5dd176fc266e7c7a",
+          "seed": 20261112,
+          "summary": "v9-blob: replayed 40 heights; 300 generated blocks, 2527 txs checked (415 accepted; multisig 157 / 19), 144 delivered (64 code 0); 0 gas-sweep copies; 0 mismatches, 32 log-only differences"
+        }
+      },
+      "trace_heights": 340,
+      "trace_sha256": "f69529887f3a1e00bc19d0a5804e85a3eb4d39283d9d8d4da2fc5287cb1789a4"
+    }
+  },
+  "harness_sha256": "83ea4c655dff0c142c441d7312bf6235ea2114a4d48abf33882910b4299bb934",
+  "limitations": [
+    "Single delivery seed, 20261112; not a high-volume campaign.",
+    "Go/Rust log-only differences are counted separately from consensus mismatches.",
+    "Microbenchmark uses 4,183 transaction bytes and does not establish large-blob or production throughput."
+  ],
+  "proposals": {
+    "blob-off": {
+      "raw_log_sha256": "d10bfa529952e01e89b372b73be35eb6a47c1ee9d77a3df16edc2a251bfe0859",
+      "summary": "blob: 6100 mutated proposals, Go accepted 3757, 0 mismatches"
+    },
+    "blob-on": {
+      "raw_log_sha256": "d10bfa529952e01e89b372b73be35eb6a47c1ee9d77a3df16edc2a251bfe0859",
+      "summary": "blob: 6100 mutated proposals, Go accepted 3757, 0 mismatches"
+    },
+    "ibc-off": {
+      "raw_log_sha256": "4d9329cad677db5d706e5db2910aadd962972ab5d79ad0ff4845078e55bf809a",
+      "summary": "ibc: 11000 mutated proposals, Go accepted 6662, 0 mismatches"
+    },
+    "ibc-on": {
+      "raw_log_sha256": "4d9329cad677db5d706e5db2910aadd962972ab5d79ad0ff4845078e55bf809a",
+      "summary": "ibc: 11000 mutated proposals, Go accepted 6662, 0 mismatches"
+    },
+    "v9-blob-off": {
+      "raw_log_sha256": "257da34a05a73f8fc38bc9c7d55b93901d0e2bd02d845b24092e409a35fa6e4b",
+      "summary": "v9-blob: 4000 mutated proposals, Go accepted 2371, 0 mismatches"
+    },
+    "v9-blob-on": {
+      "raw_log_sha256": "257da34a05a73f8fc38bc9c7d55b93901d0e2bd02d845b24092e409a35fa6e4b",
+      "summary": "v9-blob: 4000 mutated proposals, Go accepted 2371, 0 mismatches"
+    }
+  },
+  "scope": "bounded local cache-on/off comparison; no live deployment",
+  "source_files": {
+    "crates/tier-4-runtime/app/src/blob_cache.rs": "e42a96dfefa0d50b455bde0ddbcad8d037683661fd3fb75295118005a9ef295d",
+    "crates/tier-4-runtime/app/src/check_tx.rs": "ed8491b50a3800d48db6ba0a65564ae1abdf19eb5d849ca99ed8891191cae45c",
+    "crates/tier-4-runtime/app/src/lib.rs": "e9519ae8b6c5f3f8bb67fa0c6b42011fac00bd98545df3a6bf2f0a8ce50b8fb8",
+    "crates/tier-4-runtime/app/src/proposal.rs": "b125068cc255ba02264a1ccf302c8c69b59f2cd4794b6c5d414cf98b48331629"
+  }
+}
