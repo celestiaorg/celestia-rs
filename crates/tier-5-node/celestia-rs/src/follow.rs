@@ -71,7 +71,8 @@ pub struct FollowOptions {
     pub trust_hash: Option<Vec<u8>>,
     /// Light client trusting period (ns).
     pub trust_period: i64,
-    /// Stop after this height (0 = follow forever).
+    /// Stop after this height and verify its execution against the next
+    /// signed header (0 = follow forever).
     pub stop_height: i64,
     /// Heights fetched ahead in parallel.
     pub prefetch: usize,
@@ -1012,10 +1013,6 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
             if opts.shutdown.is_triggered() {
                 return Ok(());
             }
-            if opts.stop_height > 0 && height > opts.stop_height {
-                tracing::info!(height = state.last_block_height, "stop height reached");
-                return Ok(());
-            }
             // Block h+1 carries the canonical commit of h.
             let t0 = Instant::now();
             let Some(next) = take(height + 1)? else {
@@ -1071,6 +1068,17 @@ pub fn follow(opts: &FollowOptions) -> anyhow::Result<FollowStats> {
             .map_err(|e| anyhow!("light client verification of header {height}: {e}"))?;
             if opts.witness_interval > 0 && height % opts.witness_interval == 0 {
                 check_witnesses(&clients, cur.server, height, &header)?;
+            }
+            // Header H+1 commits the app/results hashes produced at H.
+            // Authenticate and compare that header before reporting a finite
+            // run through H as complete, without executing block H+1.
+            if opts.stop_height > 0 && height > opts.stop_height {
+                tracing::info!(
+                    height = state.last_block_height,
+                    verified_header_height = height,
+                    "stop height reached"
+                );
+                return Ok(());
             }
             // The block id (header hash + part set: every tx, the evidence
             // and the last commit) must be the one the commit signs.

@@ -1,0 +1,8 @@
+2026-11-12T02:07:29.403336Z  INFO celestia_rs::follow: following over RPC chain_id="celestia" primary=http://127.0.0.1:38657 tip=15811460 earliest=1
+2026-11-12T02:07:29.450579Z  INFO nodestore::handshake: ABCI Handshake App Info height=15531673 hash=3C15AC889DBB6B6EB699F7D7427367F83042CBEC69FC9F9BFC3EC36212DE2A5C protocol_version=10
+2026-11-12T02:07:29.450617Z  INFO nodestore::handshake: ABCI Replay Blocks app_height=15531673 store_height=15531673 state_height=15531673
+2026-11-12T02:07:29.450624Z  INFO nodestore::handshake: Completed ABCI Handshake - CometBFT and App are synced app_height=15531673 app_hash=3C15AC889DBB6B6EB699F7D7427367F83042CBEC69FC9F9BFC3EC36212DE2A5C
+2026-11-12T02:07:29.450768Z  INFO celestia_rs::follow: resuming height=15531673 app_hash=3C15AC889DBB6B6EB699F7D7427367F83042CBEC69FC9F9BFC3EC36212DE2A5C
+2026-11-12T02:08:08.513264Z ERROR celestia_rs::follow: MISMATCH field="app_hash" ours=11ACDC3D3DC2EF79FA95C2EED038E2217A398B4E62EEFCB0206B6F2138D646EB network=01ACDC3D3DC2EF79FA95C2EED038E2217A398B4E62EEFCB0206B6F2138D646EB
+2026-11-12T02:08:13.390123Z  INFO celestia_rs::follow: follow finished first=15531674 last=15531674 blocks=1 txs=3 secs=42
+Error: state after block 15531674 diverges from the network (app_hash); diagnostics in /private/tmp/celestia-follow-stop-regression/fixed-fault/follow-diagnostics/15531674
