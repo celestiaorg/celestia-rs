@@ -132,6 +132,12 @@ fn make_chain(home: &Path, first: i64) {
         first + 5,
         consensus::ConsensusConfig::default(),
     );
+    let inbox = home.join("data/tx-inbox");
+    std::fs::create_dir_all(&inbox).unwrap();
+    for entry in std::fs::read_dir(fixture.parent().unwrap().join("txs")).unwrap() {
+        let entry = entry.unwrap();
+        std::fs::copy(entry.path(), inbox.join(entry.file_name())).unwrap();
+    }
     node::start(&options).unwrap();
 }
 
@@ -159,6 +165,69 @@ fn options(source: &Path, home: &Path, server: &Server, stop: i64) -> FollowOpti
     }
 }
 
+fn receipt_rows(path: &Path) -> Vec<Value> {
+    std::fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+fn check_receipts(path: &Path, heights: &[i64], status: &str) {
+    use base64::Engine as _;
+    let rows = receipt_rows(path);
+    assert_eq!(rows[0]["event"], "run_start");
+    assert_eq!(rows[0]["data"]["candidate_commit"], "1".repeat(40));
+    assert_eq!(rows[0]["data"]["binary_sha256"].as_str().unwrap().len(), 64);
+    assert_eq!(rows.last().unwrap()["event"], "run_end");
+    assert_eq!(rows.last().unwrap()["data"]["status"], status);
+    let records: Vec<_> = rows
+        .iter()
+        .filter(|r| r["event"] == "height")
+        .map(|r| &r["data"])
+        .collect();
+    assert_eq!(
+        records
+            .iter()
+            .map(|r| r["executed_height"].as_i64().unwrap())
+            .collect::<Vec<_>>(),
+        heights
+    );
+    for record in records {
+        assert_eq!(
+            record["reference_header_height"].as_i64().unwrap(),
+            record["executed_height"].as_i64().unwrap() + 1
+        );
+        assert_eq!(record["local_app_hash"], record["reference_app_hash"]);
+        assert_eq!(
+            record["local_results_hash"],
+            record["reference_results_hash"]
+        );
+        let results: Vec<_> = record["tx_results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|result| ctypes::proto::abci::ExecTxResult {
+                code: u32::try_from(result["code"].as_u64().unwrap()).unwrap(),
+                data: base64::engine::general_purpose::STANDARD
+                    .decode(result["data"].as_str().unwrap())
+                    .unwrap(),
+                gas_wanted: result["gas_wanted"].as_i64().unwrap(),
+                gas_used: result["gas_used"].as_i64().unwrap(),
+                ..Default::default()
+            })
+            .collect();
+        assert_eq!(
+            results.len(),
+            usize::try_from(record["tx_count"].as_u64().unwrap()).unwrap()
+        );
+        assert_eq!(
+            hex::encode(ctypes::results_hash(&results)),
+            record["local_results_hash"]
+        );
+    }
+}
+
 #[test]
 fn genesis_follower_authenticates_first_commit_and_resumes_without_keys() {
     let temp = tempfile::tempdir().unwrap();
@@ -167,20 +236,58 @@ fn genesis_follower_authenticates_first_commit_and_resumes_without_keys() {
     let server = Server::new(&source, false);
     let home = temp.path().join("follower");
     let mut opts = options(&source, &home, &server, 2);
-    let first = follow::follow(&opts).unwrap();
+    let receipt_config = follow::FollowReceiptOptions {
+        path: temp.path().join("first.jsonl"),
+        candidate_commit: "1".repeat(40),
+    };
+    let first = follow::follow_with_receipts(&opts, &receipt_config).unwrap();
     assert_eq!((first.first, first.last, first.blocks), (1, 2, 2));
+    assert!(first.txs > 0, "receipt test needs finalized transactions");
+    check_receipts(&receipt_config.path, &[1, 2], "complete");
+    let original = std::fs::read(&receipt_config.path).unwrap();
+    assert!(follow::follow_with_receipts(&opts, &receipt_config).is_err());
+    assert_eq!(std::fs::read(&receipt_config.path).unwrap(), original);
     opts.stop_height = 3;
-    let resumed = follow::follow(&opts).unwrap();
+    let resume_config = follow::FollowReceiptOptions {
+        path: temp.path().join("resume.jsonl"),
+        candidate_commit: "1".repeat(40),
+    };
+    let resumed = follow::follow_with_receipts(&opts, &resume_config).unwrap();
+    check_receipts(&resume_config.path, &[3], "complete");
+    let resumed_rows = receipt_rows(&resume_config.path);
+    assert_eq!(
+        resumed_rows
+            .iter()
+            .find(|r| r["event"] == "anchor_verified")
+            .unwrap()["data"]["height"],
+        2
+    );
     assert_eq!((resumed.first, resumed.last, resumed.blocks), (3, 3, 1));
     assert!(!home.join("config/priv_validator_key.json").exists());
     assert!(!home.join("data/priv_validator_state.json").exists());
     let forged = Server::new(&source, true);
     let forged_home = temp.path().join("forged");
     let opts = options(&source, &forged_home, &forged, 2);
-    let error = follow::follow(&opts).unwrap_err().to_string();
+    let forged_config = follow::FollowReceiptOptions {
+        path: temp.path().join("forged.jsonl"),
+        candidate_commit: "1".repeat(40),
+    };
+    let error = follow::follow_with_receipts(&opts, &forged_config)
+        .unwrap_err()
+        .to_string();
     assert!(error.contains("commit of block 1"), "{error}");
+    check_receipts(&forged_config.path, &[], "failed");
     let (_, store) = node::open_stores(&forged_home).unwrap();
     assert_eq!(store.load().unwrap().unwrap().last_block_height, 0);
+    let interrupted_home = temp.path().join("interrupted");
+    let opts = options(&source, &interrupted_home, &server, 2);
+    opts.shutdown.trigger();
+    let interrupted_config = follow::FollowReceiptOptions {
+        path: temp.path().join("interrupted.jsonl"),
+        candidate_commit: "1".repeat(40),
+    };
+    follow::follow_with_receipts(&opts, &interrupted_config).unwrap();
+    check_receipts(&interrupted_config.path, &[], "interrupted");
     let wrong_home = temp.path().join("wrong-chain");
     let opts = options(&source, &wrong_home, &server, 2);
     let path = wrong_home.join("config/genesis.json");
