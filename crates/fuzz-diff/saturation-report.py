@@ -14,12 +14,20 @@ from pathlib import Path
 import re
 import sys
 
-PINNED_GO = next(
-    line.split()[1]
-    for line in (Path(__file__).resolve().parents[2] / "conformance/devnet-oracle/go.mod")
-    .read_text().splitlines()
-    if line.startswith("toolchain ")
-)
+def go_pin(module):
+    text = Path(module).read_text()
+    explicit = re.search(r"^toolchain (go[0-9]+\.[0-9]+\.[0-9]+)$", text, re.MULTILINE)
+    minimum = re.search(r"^go ([0-9]+\.[0-9]+\.[0-9]+)$", text, re.MULTILINE)
+    if explicit:
+        return explicit[1]
+    if minimum:
+        return "go"+minimum[1]
+    raise ValueError(f"missing exact Go toolchain pin in {module}")
+
+
+PINNED_GO = {version: go_pin(Path(__file__).resolve().parents[2] /
+                            f"conformance/fuzzoracle/{version}/go.mod")
+             for version in ("v10", "v9")}
 
 
 def collect(roots):
@@ -40,7 +48,7 @@ def collect(roots):
                 patch = (err.parent / "worktree.patch").read_text().strip()
                 build_info = (err.parent / "go-build-info.txt").read_text()
                 toolchains = re.findall(r": (go\d+\.\d+\.\d+)\s*$", build_info, re.MULTILINE)
-                if toolchains != [PINNED_GO, PINNED_GO]:
+                if toolchains != [PINNED_GO["v10"], PINNED_GO["v9"]]:
                     excluded["unpinned Go toolchain"] += 1
                     continue
                 rc = int(err.with_suffix(".exit").read_text())
@@ -92,7 +100,7 @@ def report(roots):
           f"{sum(st['delivered'] for st in runs.values())} finalized txs across all revisions.")
     print("Assess the F1.2 volume gate per revision, after the last fix; "
           "this report does not establish 3 clean nights or complete scenario coverage.")
-    print(f"Both Go oracles must have been built with {PINNED_GO}.")
+    print(f"Required oracle compilers: v10 {PINNED_GO['v10']}, v9 {PINNED_GO['v9']} (in that build-info order).")
     if excluded:
         print("Excluded: " + ", ".join(f"{n} {why}" for why, n in sorted(excluded.items())) + ".")
 
