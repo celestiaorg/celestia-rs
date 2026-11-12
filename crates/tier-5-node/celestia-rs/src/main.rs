@@ -284,7 +284,8 @@ struct FollowArgs {
     /// Light client trusting period in hours.
     #[arg(long, default_value_t = 336)]
     trust_period_hours: i64,
-    /// Stop after this height (0 = follow forever).
+    /// Stop after this height, checking its results against the next signed
+    /// header without executing another block (0 = follow forever).
     #[arg(long = "stop-at-height", default_value_t = 0)]
     stop_at_height: i64,
     /// Heights fetched ahead in parallel.
