@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "candidate": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+  "tree": "48ec947ee96f5e85d7bffd0e7f6a9a014502f151",
+  "seed": 2026111202,
+  "requested_seconds_per_version": 7200,
+  "runs": {
+    "9": {
+      "inputs": 413877476,
+      "operations": {
+        "blobtx": {
+          "inputs": 103465113,
+          "go_accepts": 2617496
+        },
+        "fibre": {
+          "inputs": 103474264,
+          "go_accepts": 121904
+        },
+        "iw": {
+          "inputs": 103464425,
+          "go_accepts": 2374994
+        },
+        "tx": {
+          "inputs": 103473674,
+          "go_accepts": 10360453
+        }
+      },
+      "mismatches": 0,
+      "go_oracle_sha256": "e4d47d31c9e9c3952e576da26d43b78bc2131e282967388ebae9d6797be271f5"
+    },
+    "10": {
+      "inputs": 402000100,
+      "operations": {
+        "blobtx": {
+          "inputs": 100494277,
+          "go_accepts": 743788
+        },
+        "fibre": {
+          "inputs": 100509090,
+          "go_accepts": 104216
+        },
+        "iw": {
+          "inputs": 100494977,
+          "go_accepts": 2307045
+        },
+        "tx": {
+          "inputs": 100501756,
+          "go_accepts": 8827015
+        }
+      },
+      "mismatches": 0,
+      "go_oracle_sha256": "eccd770869a860e68ab0af71503968f6d4320a72635ac4228ea1700f0a244c4c"
+    }
+  },
+  "qualification": false,
+  "scope": "Four decoding operations only; no delivery, consensus operation, branch coverage, three-night, replay or live-soak completion claim."
+}
