@@ -1255,6 +1255,14 @@ test), then start that harness's count again.
   off, and in `release` vs `dist`; a recorded replay gives the same app
   hashes on x86_64 and aarch64.
 
+  *Fresh Mac candidate evidence (2026-11-12):*
+  [candidate 46acbcb](docs/determinism-46acbcb-2026-11-12.md) passed all
+  36 release/dist configuration runs on the Mac Mini, with identical traces
+  across profiles, square-thread settings and signature-cache settings, plus
+  4,220 dist ProcessProposal comparisons with zero consensus mismatches.
+  Go/Rust log-only differences remain recorded separately. The exact-candidate
+  x86_64 comparison and remaining qualification gates are still open.
+
 - [ ] **F1.10 Pin the exact mainnet binaries.** New parity work targets
   v10.6.0 and historical v9.0.8. Mainnet may ship a later v10.x (and v9 patch
   releases are possible). Exit: before M14 starts, and before every

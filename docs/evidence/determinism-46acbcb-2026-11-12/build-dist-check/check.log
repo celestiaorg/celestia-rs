@@ -1,0 +1,347 @@
+   Compiling libc v0.2.190
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling syn v2.0.119
+   Compiling cfg-if v1.0.5
+   Compiling typenum v1.20.1
+   Compiling version_check v0.9.5
+   Compiling getrandom v0.2.17
+   Compiling subtle v2.6.1
+   Compiling rand_core v0.6.4
+   Compiling generic-array v0.14.7
+   Compiling syn v3.0.9
+   Compiling autocfg v1.5.1
+   Compiling crypto-common v0.1.7
+   Compiling either v1.19.0
+   Compiling bytes v1.12.1
+   Compiling anyhow v1.0.104
+   Compiling jobserver v0.1.35
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.14
+   Compiling cc v1.8.0
+   Compiling itertools v0.14.0
+   Compiling prost-derive v0.13.5
+   Compiling regex-syntax v0.8.11
+   Compiling num-traits v0.2.19
+   Compiling block-buffer v0.10.4
+   Compiling digest v0.10.7
+   Compiling zeroize_derive v1.5.0
+   Compiling serde_core v1.0.229
+   Compiling zeroize v1.9.1
+   Compiling cpufeatures v0.2.17
+   Compiling serde v1.0.229
+   Compiling serde_derive v1.0.229
+   Compiling bitflags v2.13.2
+   Compiling regex-automata v0.4.18
+   Compiling regex v1.13.1
+   Compiling itertools v0.13.0
+   Compiling itoa v1.0.18
+   Compiling prost v0.13.5
+   Compiling prost-types v0.13.5
+   Compiling rustix v1.1.6
+   Compiling once_cell v1.21.4
+   Compiling sha2 v0.10.9
+   Compiling ripemd v0.1.3
+   Compiling hex v0.4.3
+   Compiling gostr v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-0-primitives/gostr)
+   Compiling thiserror v2.0.21
+   Compiling thiserror-impl v2.0.21
+   Compiling getrandom v0.4.3
+   Compiling base64 v0.21.7
+   Compiling errno v0.3.14
+   Compiling glob v0.3.4
+   Compiling hashbrown v0.17.1
+   Compiling prettyplease v0.2.37
+   Compiling pkg-config v0.3.34
+   Compiling equivalent v1.0.3
+   Compiling memchr v2.8.3
+   Compiling indexmap v2.14.2
+   Compiling zstd-sys v2.1.2+zstd.1.5.7
+   Compiling clang-sys v1.9.1
+   Compiling hash v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-0-primitives/hash)
+   Compiling heck v0.5.0
+   Compiling fixedbitset v0.5.7
+   Compiling fastrand v2.5.0
+   Compiling tempfile v3.27.0
+   Compiling petgraph v0.7.1
+   Compiling multimap v0.10.1
+   Compiling zmij v1.0.23
+   Compiling log v0.4.34
+   Compiling minimal-lexical v0.2.1
+   Compiling nom v7.1.3
+   Compiling prost-build v0.13.5
+   Compiling pbjson-build v0.7.0
+   Compiling libloading v0.8.9
+   Compiling serde_json v1.0.154
+   Compiling bindgen v0.72.1
+   Compiling arrayvec v0.7.8
+   Compiling pbjson-types v0.7.0
+   Compiling cexpr v0.6.0
+   Compiling lz4-sys v1.11.1+lz4-1.10.0
+   Compiling shlex v1.3.0
+   Compiling rustc-hash v2.1.3
+   Compiling base64 v0.23.1
+   Compiling pbjson v0.7.0
+   Compiling keccak v0.1.6
+   Compiling chrono v0.4.45
+   Compiling librocksdb-sys v0.17.3+10.4.2
+   Compiling prost-gostr v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-0-primitives/prost-gostr)
+   Compiling prost-gostr-std v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-0-primitives/prost-gostr-std)
+   Compiling redb v2.6.4
+   Compiling celestia-core-proto v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-1-protocol-types/celestia-core-proto)
+   Compiling rocksdb v0.24.0
+   Compiling merkle v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-0-primitives/merkle)
+   Compiling kvdb v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-2-state-and-store/kvdb)
+   Compiling num-integer v0.1.47
+   Compiling blake3 v1.8.7
+   Compiling num-bigint v0.4.8
+   Compiling blake2 v0.10.6
+   Compiling bech32 v0.9.1
+   Compiling constant_time_eq v0.4.2
+   Compiling encoding v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-0-primitives/encoding)
+   Compiling sha3 v0.10.9
+   Compiling informalsystems-pbjson v0.7.0
+   Compiling ics23 v0.12.0
+   Compiling lru v0.19.0
+   Compiling iavl v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-2-state-and-store/iavl)
+   Compiling rand_core v0.10.1
+   Compiling ics23-proofs v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-2-state-and-store/ics23-proofs)
+   Compiling kvstore v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-2-state-and-store/kvstore)
+   Compiling multistore v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-2-state-and-store/multistore)
+   Compiling celestia-proto v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-1-protocol-types/celestia-proto)
+   Compiling math v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-0-primitives/math)
+   Compiling hybrid-array v0.4.15
+   Compiling pin-project-lite v0.2.17
+   Compiling sdk v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/sdk)
+   Compiling cmov v0.5.4
+   Compiling ctutils v0.4.5
+   Compiling const-oid v0.10.2
+   Compiling crypto-common v0.2.2
+   Compiling base64ct v1.8.3
+   Compiling thiserror v1.0.69
+   Compiling block-buffer v0.12.1
+   Compiling thiserror-impl v1.0.69
+   Compiling zerocopy v0.8.63
+   Compiling opaque-debug v0.3.1
+   Compiling digest v0.11.3
+   Compiling pem-rfc7468 v1.0.0
+   Compiling cpubits v0.1.1
+   Compiling crypto-bigint v0.7.9
+   Compiling der v0.8.2
+   Compiling ff v0.14.0
+   Compiling tracing-core v0.1.36
+   Compiling tracing-attributes v0.1.31
+   Compiling byteorder v1.5.0
+   Compiling tracing v0.1.44
+   Compiling group v0.14.0
+   Compiling ppv-lite86 v0.2.21
+   Compiling spki v0.8.1
+   Compiling secp256k1-sys v0.11.0
+   Compiling digest v0.9.0
+   Compiling base16ct v1.0.0
+   Compiling sec1 v0.8.1
+   Compiling pkcs8 v0.11.0
+   Compiling blst v0.3.14
+   Compiling block-buffer v0.9.0
+   Compiling num_cpus v1.17.0
+   Compiling subtle-ng v2.5.0
+   Compiling curve25519-dalek-ng v4.1.1
+   Compiling threadpool v1.8.1
+   Compiling sha2 v0.9.9
+   Compiling elliptic-curve v0.14.2
+   Compiling primefield v0.14.0
+   Compiling hmac v0.13.0
+   Compiling rfc6979 v0.6.0
+   Compiling wnaf v0.14.1
+   Compiling secp256k1 v0.31.1
+   Compiling ed25519-consensus v2.1.0
+   Compiling signal-hook-registry v1.4.8
+   Compiling signature v3.0.0
+   Compiling tokio-macros v2.7.2
+   Compiling mio v1.2.4
+   Compiling socket2 v0.6.5
+   Compiling cpufeatures v0.3.1
+   Compiling sha2 v0.11.1
+   Compiling tokio v1.54.1
+   Compiling ecdsa v0.17.0
+   Compiling crypto v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-0-primitives/crypto)
+   Compiling primeorder v0.14.0
+   Compiling x-auth v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/auth)
+   Compiling x-bank v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/bank)
+   Compiling fnv v1.0.7
+   Compiling beef v0.5.2
+   Compiling lazy_static v1.5.1
+   Compiling logos-codegen v0.14.4
+   Compiling futures-core v0.3.34
+   Compiling logos-derive v0.14.4
+   Compiling miette-derive v7.6.0
+   Compiling unicode-width v0.1.14
+   Compiling miette v7.6.0
+   Compiling logos v0.14.4
+   Compiling x-staking v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/staking)
+   Compiling rand_chacha v0.3.1
+   Compiling rand v0.8.8
+   Compiling gojson v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-0-primitives/gojson)
+   Compiling protox-parse v0.7.0
+   Compiling prost-reflect v0.14.7
+   Compiling shares v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-1-protocol-types/shares)
+   Compiling protox v0.7.2
+   Compiling p256 v0.14.0
+   Compiling inout v0.1.4
+   Compiling slab v0.4.12
+   Compiling cipher v0.4.4
+   Compiling txdecode v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/txdecode)
+   Compiling x-ante v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/ante)
+   Compiling http v1.5.0
+   Compiling ahash v0.7.8
+   Compiling smallvec v1.16.3
+   Compiling x-feegrant v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/feegrant)
+   Compiling x-fibre v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/fibre)
+   Compiling futures-task v0.3.34
+   Compiling futures-sink v0.3.34
+   Compiling readme-rustdocifier v0.1.1
+   Compiling tokio-util v0.7.20
+   Compiling futures-util v0.3.34
+   Compiling http-body v1.1.0
+   Compiling universal-hash v0.5.1
+   Compiling enum-ordinalize-derive v4.3.2
+   Compiling tower-service v0.3.3
+   Compiling paste v1.0.15
+   Compiling httparse v1.10.1
+   Compiling enum-ordinalize v4.3.2
+   Compiling hashbrown v0.12.3
+   Compiling ark-std v0.5.0
+   Compiling ahash v0.8.12
+   Compiling ark-serialize-derive v0.5.0
+   Compiling semver v1.0.28
+   Compiling try-lock v0.2.5
+   Compiling getrandom v0.3.4
+   Compiling atomic-waker v1.1.2
+   Compiling h2 v0.4.20
+   Compiling want v0.3.2
+   Compiling rustc_version v0.4.1
+   Compiling ark-serialize v0.5.0
+   Compiling reed-solomon-simd v3.1.0
+   Compiling ark-ff-macros v0.5.0
+   Compiling educe v0.6.0
+   Compiling futures-channel v0.3.34
+   Compiling k256 v0.14.0
+   Compiling x-upgrade v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/upgrade)
+   Compiling x-capability v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/capability)
+   Compiling ark-ff-asm v0.5.0
+   Compiling allocator-api2 v0.2.21
+   Compiling rustversion v1.0.23
+   Compiling httpdate v1.0.3
+   Compiling tower-layer v0.3.3
+   Compiling crc32fast v1.5.2
+   Compiling hyper v1.12.0
+   Compiling hashbrown v0.15.5
+   Compiling ark-ff v0.5.0
+   Compiling x-ibc v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/ibc)
+   Compiling curve25519-dalek v4.1.3
+   Compiling hmac v0.12.1
+   Compiling aead v0.5.2
+   Compiling indexmap v1.9.3
+   Compiling sync_wrapper v1.0.2
+   Compiling adler2 v2.0.1
+   Compiling miniz_oxide v0.8.9
+   Compiling rand_core v0.9.5
+   Compiling ark-poly v0.5.0
+   Compiling hyper-util v0.1.21
+   Compiling x-hyperlane v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/hyperlane)
+   Compiling poly1305 v0.8.0
+   Compiling http-body-util v0.1.5
+   Compiling chacha20 v0.9.1
+   Compiling async-trait v0.1.92
+   Compiling pin-project-internal v1.1.13
+   Compiling mime v0.3.17
+   Compiling base64 v0.22.1
+   Compiling axum-core v0.4.5
+   Compiling pin-project v1.1.13
+   Compiling chacha20poly1305 v0.10.1
+   Compiling flate2 v1.1.2
+   Compiling ark-ec v0.5.0
+   Compiling rand_chacha v0.9.0
+   Compiling tower v0.5.3
+   Compiling x-params v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/params)
+   Compiling async-stream-impl v0.3.6
+   Compiling matchit v0.7.3
+   Compiling percent-encoding v2.3.2
+   Compiling leopard v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-1-protocol-types/leopard)
+   Compiling square v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-1-protocol-types/square)
+   Compiling axum v0.7.9
+   Compiling async-stream v0.3.6
+   Compiling tower v0.4.13
+   Compiling rand v0.9.5
+   Compiling x25519-dalek v2.0.1
+   Compiling ark-bn254 v0.5.0
+   Compiling x-warp v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/warp)
+   Compiling hyper-timeout v0.5.2
+   Compiling hkdf v0.12.4
+   Compiling x-transfer v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/transfer)
+   Compiling x-distribution v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/distribution)
+   Compiling x-slashing v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/slashing)
+   Compiling tokio-stream v0.1.19
+   Compiling ctypes v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-1-protocol-types/ctypes)
+   Compiling merlin v3.0.0
+   Compiling socket2 v0.5.10
+   Compiling parking_lot_core v0.8.6
+   Compiling tonic v0.12.3
+   Compiling p2p v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-4-runtime/p2p)
+   Compiling x-gov v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/gov)
+   Compiling x-forwarding v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/forwarding)
+   Compiling x-zkism v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/zkism)
+   Compiling x-blob v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/blob)
+   Compiling x-minfee v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/minfee)
+   Compiling x-icahost v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/icahost)
+   Compiling x-authz v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/authz)
+   Compiling x-consensus v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/consensus)
+   Compiling x-mint v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/mint)
+   Compiling x-circuit v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/circuit)
+   Compiling x-signal v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/signal)
+   Compiling x-valaddr v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/valaddr)
+   Compiling instant v0.1.13
+   Compiling scopeguard v1.2.0
+   Compiling libm v0.2.16
+   Compiling lock_api v0.4.14
+   Compiling grpc-query v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-4-runtime/grpc-query)
+   Compiling mempool v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-4-runtime/mempool)
+   Compiling grpc-transport v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-4-runtime/grpc-transport)
+   Compiling x-evidence v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/evidence)
+   Compiling x-packetforward v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-3-app-modules/x/packetforward)
+   Compiling snapshots v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-2-state-and-store/snapshots)
+   Compiling polyval v0.6.2
+   Compiling abci-server v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-4-runtime/abci-server)
+   Compiling legacy-amino v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-1-protocol-types/legacy-amino)
+   Compiling hex-conservative v0.2.3
+   Compiling reed-solomon-erasure v6.0.0
+   Compiling zstd-safe v8.2.0
+   Compiling tinyvec v1.13.3
+   Compiling unicode-normalization v0.1.25
+   Compiling bitcoin_hashes v0.14.101
+   Compiling app v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-4-runtime/app)
+   Compiling ghash v0.5.1
+   Compiling grpc-reflection v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-4-runtime/grpc-reflection)
+   Compiling nodestore v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-4-runtime/nodestore)
+   Compiling parking_lot v0.11.2
+   Compiling lru v0.7.8
+   Compiling ctr v0.9.2
+   Compiling blowfish v0.9.1
+   Compiling aes v0.8.4
+   Compiling password-hash v0.5.0
+   Compiling spin v0.9.9
+   Compiling argon2 v0.5.3
+   Compiling aes-gcm v0.10.3
+   Compiling bcrypt v0.15.1
+   Compiling api-server v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-4-runtime/api-server)
+   Compiling bip39 v2.2.2
+   Compiling privval v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-4-runtime/privval)
+   Compiling pbkdf2 v0.12.2
+   Compiling keyring v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-5-node/keyring)
+   Compiling zstd v0.14.3
+   Compiling propagation v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-4-runtime/propagation)
+   Compiling devnet-conformance v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/devnet-conformance)
+   Compiling evidence v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/tier-4-runtime/evidence)
+   Compiling fuzz-diff v0.0.1 (/Users/rootulp/.codex/worktrees/candidate-46acbcb/celestia-rs/crates/fuzz-diff)
+    Finished `dist` profile [optimized] target(s) in 10m 37s

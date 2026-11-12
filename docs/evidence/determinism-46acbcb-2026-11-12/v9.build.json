@@ -1,0 +1,24 @@
+{
+  "binary_sha256": "20a2410f3f31a3680ffc17c1e99409cb7c53aca931403302c3f1e354b3233f52",
+  "build_tags": [
+    "ledger"
+  ],
+  "buildvcs": false,
+  "compiler": "go version go1.26.9 darwin/arm64",
+  "goflags": "-mod=mod",
+  "ldflags": "-X github.com/cosmos/cosmos-sdk/version.Name=celestia-app -X github.com/cosmos/cosmos-sdk/version.AppName=celestia-appd -X github.com/cosmos/cosmos-sdk/version.Version=9.0.8 -X github.com/cosmos/cosmos-sdk/version.Commit=220ef14eab5f6849c8129633e8bc5bc55995ecfa -X github.com/cosmos/cosmos-sdk/version.BuildTags=ledger -X github.com/celestiaorg/celestia-app/v9/cmd/celestia-appd/cmd.v2UpgradeHeight=0",
+  "module": "github.com/celestiaorg/celestia-app/v9@v9.0.8",
+  "module_sum": "h1:HyxzmHCFbkksDbxNrLctaF+0xb2wWoxzb8OJTBoPZmY=",
+  "package": "./cmd/celestia-appd",
+  "schema_version": 1,
+  "source_commit": "220ef14eab5f6849c8129633e8bc5bc55995ecfa",
+  "target": {
+    "CGO_ENABLED": "1",
+    "GOAMD64": "",
+    "GOARCH": "arm64",
+    "GOARM": "",
+    "GOEXPERIMENT": "",
+    "GOFIPS140": "off",
+    "GOOS": "darwin"
+  }
+}

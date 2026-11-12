@@ -1,0 +1,68 @@
+{
+  "binary_sha256": {
+    "/private/tmp/celestia-rc-46acbcb/fuzz-diff-dist-46acbcb": "75d1149617b942b0e7f83ab1207b0ee5b9a7830aa14a4b8b11783d1a4b2f1b4f",
+    "/private/tmp/celestia-rc-46acbcb/go-bin/celestia-appd": "996c8d3477ac26df6937d48b4ae434c553f3b5ded05a5ac8d01f63743931fb05"
+  },
+  "command": [
+    "env",
+    "GO_APPD=/private/tmp/celestia-rc-46acbcb/go-bin/celestia-appd",
+    "FUZZ_DIFF=/private/tmp/celestia-rc-46acbcb/fuzz-diff-dist-46acbcb",
+    "GOMAXPROCS=2",
+    "GOMEMLIMIT=1000MiB",
+    "crates/fuzz-diff/pp-diff.sh",
+    "blob",
+    "20",
+    "1"
+  ],
+  "exit_code": 0,
+  "finished_at_unix": 1794446959.9867342,
+  "inputs_unchanged": true,
+  "log_sha256": "fcb626cdc2e3355f1ad697aa1a7ea01a6465bc80cd0dd1c1451bf2615e231226",
+  "machine": "arm64",
+  "platform": "Darwin-25.2.0-arm64-arm-64bit-Mach-O",
+  "protobuf_go_detrand": {
+    "/private/tmp/celestia-rc-46acbcb/fuzz-diff-dist-46acbcb": {
+      "seed_hex": "0x8fde2e167149c4d6",
+      "separator": "space",
+      "separator_utf8_hex": "20"
+    },
+    "/private/tmp/celestia-rc-46acbcb/go-bin/celestia-appd": {
+      "seed_hex": "0xb2c2c53299667b87",
+      "separator": "nonbreaking-space",
+      "separator_utf8_hex": "c2a0"
+    }
+  },
+  "schema_version": 1,
+  "scope": "one check only; remaining F1 gates require separate evidence",
+  "source": {
+    "index_flags": [],
+    "revision": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "status": "",
+    "tree": "48ec947ee96f5e85d7bffd0e7f6a9a014502f151"
+  },
+  "source_after": {
+    "index_flags": [],
+    "revision": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "status": "",
+    "tree": "48ec947ee96f5e85d7bffd0e7f6a9a014502f151"
+  },
+  "started_at_unix": 1794446957.265627,
+  "status": "passed",
+  "toolchains": {
+    "cargo": {
+      "error": "",
+      "exit_code": 0,
+      "output": "cargo 1.99.1 (5f94df478 2026-08-27)"
+    },
+    "go": {
+      "error": "",
+      "exit_code": 0,
+      "output": "go version go1.26.3 darwin/arm64"
+    },
+    "rustc": {
+      "error": "",
+      "exit_code": 0,
+      "output": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1"
+    }
+  }
+}
