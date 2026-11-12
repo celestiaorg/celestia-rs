@@ -5,6 +5,7 @@
 //! Go's exact order lists ([`modules`]). [`AbciApp`] adapts it to the ABCI
 //! socket server.
 
+mod blob_cache;
 pub mod check_tx;
 pub mod comet;
 pub mod export;
@@ -92,6 +93,8 @@ pub struct App {
     /// The square of this node's last PrepareProposal and its data root,
     /// reused by ProcessProposal of the same square.
     proposed: proposal::ProposedSquare,
+    /// Pure blob proofs admitted only by successful New CheckTx.
+    blob_tx_cache: blob_cache::BlobTxCache,
 }
 
 /// Node-local settings that do not affect consensus state. Most come from
@@ -268,6 +271,7 @@ impl App {
             node_min_gas_price: None,
             node: NodeOptions::default(),
             proposed: proposal::ProposedSquare::default(),
+            blob_tx_cache: blob_cache::BlobTxCache::default(),
         }
     }
 

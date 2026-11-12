@@ -1,0 +1,8 @@
+{"cache":"on","elapsed_seconds":0.697400708,"fixture":"blob","repetitions":3000,"tx_bytes":4183}
+{"cache":"off","elapsed_seconds":0.712531208,"fixture":"blob","repetitions":3000,"tx_bytes":4183}
+{"cache":"on","elapsed_seconds":0.707323666,"fixture":"blob","repetitions":3000,"tx_bytes":4183}
+{"cache":"off","elapsed_seconds":0.713095791,"fixture":"blob","repetitions":3000,"tx_bytes":4183}
+{"cache":"on","elapsed_seconds":0.678940458,"fixture":"v9-blob","repetitions":3000,"tx_bytes":4183}
+{"cache":"off","elapsed_seconds":0.6815745,"fixture":"v9-blob","repetitions":3000,"tx_bytes":4183}
+{"cache":"on","elapsed_seconds":0.661180458,"fixture":"v9-blob","repetitions":3000,"tx_bytes":4183}
+{"cache":"off","elapsed_seconds":0.690558458,"fixture":"v9-blob","repetitions":3000,"tx_bytes":4183}

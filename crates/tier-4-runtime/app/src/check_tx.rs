@@ -165,7 +165,12 @@ impl App {
             Err(_) => return Err(format!("unknown RequestCheckTx type: {}", req.r#type)),
         }
         let sdk_tx = decode(&u.tx).map_err(|e| e.log)?;
-        self.forward_check_tx(req.r#type, &u.tx, &sdk_tx, decode)
+        let response = self.forward_check_tx(req.r#type, &u.tx, &sdk_tx, decode)?;
+        if req.r#type == i32::from(CheckTxType::New) && response.code == 0 {
+            self.blob_tx_cache
+                .remember(self.execution_version(), &req.tx);
+        }
+        Ok(response)
     }
 
     /// `forwardCheckTx`: `BaseApp.CheckTx` plus the priority-mempool
@@ -250,5 +255,132 @@ mod tests {
         // (ResponseException).
         assert!(check(b"\x0a\x02\x0a\x00\x1a\x04BLOB".to_vec()).is_err());
         assert!(check(vec![0xff, 0xff]).is_err());
+    }
+
+    type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+
+    fn reject_changed_blob(
+        app: &mut App,
+        proposal: &celestia_proto::celestia_core_proto::abci::RequestProcessProposal,
+    ) -> TestResult<bool> {
+        use celestia_proto::celestia_core_proto::abci::response_process_proposal::ProposalStatus;
+        let version = app.execution_version();
+        let Some((index, mut blob)) = proposal.txs.iter().enumerate().find_map(|(i, raw)| {
+            if !app.blob_tx_cache.contains(version, raw) {
+                return None;
+            }
+            txdecode::unmarshal_blob_tx_v9(raw)?
+                .ok()
+                .map(|blob| (i, blob))
+        }) else {
+            return Ok(false);
+        };
+        assert_eq!(
+            app.process_proposal(proposal)?.status,
+            i32::from(ProposalStatus::Accept)
+        );
+        let data = blob
+            .blobs
+            .iter_mut()
+            .find(|b| !b.data.is_empty())
+            .ok_or("nonempty blob required")?;
+        data.data[0] ^= 1;
+        let mut altered = proposal.clone();
+        altered.txs[index] = txdecode::marshal_blob_tx(&blob.tx, &blob.blobs);
+        let (size, root) = crate::proposal::block_data_root(version, &altered.txs)?;
+        altered.square_size = size;
+        altered.data_root_hash = root;
+        assert!(!app.blob_tx_cache.contains(version, &altered.txs[index]));
+        assert_eq!(
+            app.process_proposal(&altered)?.status,
+            i32::from(ProposalStatus::Reject)
+        );
+        Ok(true)
+    }
+
+    fn reject_failed_signature(app: &mut App, raw: &[u8], version: u64) -> TestResult {
+        use celestia_proto::cosmos::tx::v1beta1::TxRaw;
+        use prost::Message;
+        let mut blob = txdecode::unmarshal_blob_tx_v9(raw)
+            .ok_or("blob required")?
+            .map_err(|e| e.to_string())?;
+        let mut inner = TxRaw::decode(blob.tx.as_slice())?;
+        inner.signatures[0][0] ^= 1;
+        blob.tx = inner.encode_to_vec();
+        let invalid = txdecode::marshal_blob_tx(&blob.tx, &blob.blobs);
+        // Valid blob commitments must not authorize failed SDK/ante validation.
+        for check_type in [CheckTxType::New, CheckTxType::Recheck] {
+            let failed = app.check_tx(&RequestCheckTx {
+                tx: invalid.clone(),
+                r#type: i32::from(check_type),
+            });
+            assert!(!matches!(failed, Ok(ref r) if r.code == 0));
+            assert!(!app.blob_tx_cache.contains(version, &invalid));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn recorded_blob_admission_and_proposals_respect_cache_boundaries() -> TestResult {
+        use abci_server::Application;
+        use celestia_proto::celestia_core_proto::abci::{request, response};
+        for fixture in ["blob", "v9-blob"] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../conformance/fixtures/devnet")
+                .join(fixture)
+                .join("abci.rec");
+            let records = abci_server::record::parse(&std::fs::read(path)?)?;
+            let adapter = crate::AbciApp::new(App::new());
+            let shared = adapter.shared();
+            shared.lock().map_err(|e| e.to_string())?.blob_tx_cache =
+                crate::blob_cache::BlobTxCache::with_capacity(10_000);
+            let (mut admitted, mut mutated) = (0, 0);
+            for exchange in abci_server::record::exchanges(&records)? {
+                let Some(req) = exchange.request.value else {
+                    continue;
+                };
+                if let request::Value::ProcessProposal(proposal) = &req {
+                    let mut app = shared.lock().map_err(|e| e.to_string())?;
+                    mutated += usize::from(reject_changed_blob(&mut app, proposal)?);
+                }
+                let check = if let request::Value::CheckTx(check) = &req {
+                    let app = shared.lock().map_err(|e| e.to_string())?;
+                    Some((
+                        check.clone(),
+                        app.execution_version(),
+                        app.blob_tx_cache
+                            .contains(app.execution_version(), &check.tx),
+                    ))
+                } else {
+                    None
+                };
+                let result = adapter.handle(req);
+                if let Some((check, version, before)) = check {
+                    if txdecode::unmarshal_blob_tx_v9(&check.tx).is_none() {
+                        continue;
+                    }
+                    let mut app = shared.lock().map_err(|e| e.to_string())?;
+                    let after = app.blob_tx_cache.contains(version, &check.tx);
+                    if check.r#type == i32::from(CheckTxType::New)
+                        && matches!(result, response::Value::CheckTx(ref r) if r.code == 0)
+                    {
+                        assert!(after);
+                        admitted += 1;
+                        reject_failed_signature(&mut app, &check.tx, version)?;
+                    } else {
+                        assert_eq!(
+                            after, before,
+                            "failed or rechecked tx must not populate cache"
+                        );
+                    }
+                }
+            }
+            assert!(admitted > 0, "{fixture}: successful admission exercised");
+            assert!(
+                mutated > 0,
+                "{fixture}: warm proposal and changed blob exercised"
+            );
+        }
+        Ok(())
     }
 }

@@ -108,6 +108,14 @@ pub fn to_share_blob(b: &sdk::tx::Blob) -> Result<shares::Blob, String> {
 
 /// `ValidateBlobTx` on a decoded `BlobTx` (`inner` is its decoded SDK tx).
 pub fn validate_blob_tx(inner: &Tx, u: &UnwrappedBlobTx) -> sdk::Result<()> {
+    validate_blob_tx_with_commitments(inner, u, true)
+}
+
+fn validate_blob_tx_with_commitments(
+    inner: &Tx,
+    u: &UnwrappedBlobTx,
+    check_commitments: bool,
+) -> sdk::Result<()> {
     let pfb = x_blob::pfb_from_msgs(inner.gogo_msgs())?;
     let blobs = u
         .blobs
@@ -115,7 +123,7 @@ pub fn validate_blob_tx(inner: &Tx, u: &UnwrappedBlobTx) -> sdk::Result<()> {
         .map(to_share_blob)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| SdkError::new("undefined", 1, e))?;
-    x_blob::validate_blob_tx(&pfb, &blobs, true)
+    x_blob::validate_blob_tx(&pfb, &blobs, check_commitments)
 }
 
 /// `MaxEffectiveSquareSize`.
@@ -392,12 +400,15 @@ impl App {
             &req.next_validators_hash,
         );
         let proposed = std::mem::take(&mut self.proposed);
+        let blob_tx_cache = std::mem::take(&mut self.blob_tx_cache);
+        let version = self.execution_version();
         let accept = self
             .with_proposal_ctx(header, ExecMode::ProcessProposal, |ctx, deps| {
-                process(ctx, deps, req, &proposed)
+                process(ctx, deps, req, &proposed, &blob_tx_cache, version)
             })
             .unwrap_or(false);
         self.proposed = proposed;
+        self.blob_tx_cache = blob_tx_cache;
         Ok(ResponseProcessProposal {
             status: if accept {
                 ProposalStatus::Accept
@@ -664,6 +675,8 @@ fn process_v9(
     deps: &x_ante::StoreDeps,
     req: &RequestProcessProposal,
     proposed: &ProposedSquare,
+    blob_tx_cache: &crate::blob_cache::BlobTxCache,
+    version: u64,
 ) -> Result<bool, Abort> {
     let (mut sdk_msgs, mut blob_msgs) = (0usize, 0usize);
     for raw in &req.txs {
@@ -693,7 +706,9 @@ fn process_v9(
             }
             continue;
         };
-        if validate_blob_tx(&tx, &blob).is_err() {
+        if validate_blob_tx_with_commitments(&tx, &blob, !blob_tx_cache.contains(version, raw))
+            .is_err()
+        {
             return Ok(false);
         }
         blob_msgs += tx.msgs().len();
@@ -779,9 +794,11 @@ fn process(
     deps: &x_ante::StoreDeps,
     req: &RequestProcessProposal,
     proposed: &ProposedSquare,
+    blob_tx_cache: &crate::blob_cache::BlobTxCache,
+    version: u64,
 ) -> Result<bool, Abort> {
     if x_ante::is_v9(ctx) {
-        return process_v9(ctx, deps, req, proposed);
+        return process_v9(ctx, deps, req, proposed, blob_tx_cache, version);
     }
     let max_square_size = max_effective_square_size(ctx)?;
     if x_fibre::begin_block(ctx).is_err() {
@@ -831,7 +848,9 @@ fn process(
             }
             continue;
         };
-        if validate_blob_tx(&tx, &blob).is_err() {
+        if validate_blob_tx_with_commitments(&tx, &blob, !blob_tx_cache.contains(version, raw))
+            .is_err()
+        {
             return Ok(false);
         }
         blob_msgs += tx.msgs().len();
