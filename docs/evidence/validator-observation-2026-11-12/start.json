@@ -1,0 +1,162 @@
+{
+  "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+  "collector_sha256": "7045e78702bd41772e457236d381b446ae9ce24d67f5af61c53f29c403f5d6d7",
+  "duration_seconds": 259500,
+  "hold_until_utc": "2026-11-15T01:29:36+00:00",
+  "installed_at_utc": "2026-11-12T00:29:36.006148+00:00",
+  "networks": {
+    "mainnet": {
+      "audits": {
+        "apphash": {
+          "complete": false,
+          "counts": {
+            "duplicates": 0,
+            "failed_or_invalid": 0,
+            "identity_rejected": 1,
+            "outside_range": 0,
+            "receipts": 45
+          },
+          "covered_heights": 43,
+          "missing_ranges": [
+            [
+              15809400,
+              15809400
+            ]
+          ],
+          "rejected_ranges": [
+            [
+              15809400,
+              15809400
+            ]
+          ]
+        },
+        "tx-results": {
+          "complete": false,
+          "counts": {
+            "duplicates": 0,
+            "failed_or_invalid": 0,
+            "identity_rejected": 1,
+            "outside_range": 0,
+            "receipts": 45
+          },
+          "covered_heights": 43,
+          "missing_ranges": [
+            [
+              15809400,
+              15809400
+            ]
+          ],
+          "rejected_ranges": [
+            [
+              15809400,
+              15809400
+            ]
+          ]
+        }
+      },
+      "baseline_time_utc": "2026-11-12T00:29:36.598371+00:00",
+      "chain_id": "celestia",
+      "earliest_72h_completion_utc": "2026-11-15T00:29:36.598371+00:00",
+      "first_required_height": 15809397,
+      "height_outcomes": {
+        "match": 44,
+        "unavailable": 1
+      },
+      "identity": {
+        "binary_sha256": "fdaf29302ce215334663a851ad4b16295da99b03d57bb4779249ebfb04a7c192",
+        "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+        "device": 16777234,
+        "inode": 27090884,
+        "mtime_ns": 1794358736615148184,
+        "pid": 50523,
+        "size": 62959200,
+        "version": "name: celestia-rs\nversion: 0.1.0-rc.5\ncommit: 46acbcb516c3dab26cb5706c908dfe0207f27349\nbuild_profile: release\ntoolchain: rustc 1.99.1 (58cf8f9c3 2026-10-13) aarch64-apple-darwin\napp_version: 10\ncompatibility_target: celestia-app v10.6.0, celestia-core v0.42.8\n"
+      },
+      "initial_height_count": 45,
+      "initial_height_range": [
+        15809397,
+        15809440
+      ],
+      "initial_sample_count": 25,
+      "participation_outcomes": {
+        "signed": 44,
+        "unavailable": 1
+      },
+      "sample_outcomes": {
+        "observed": 25
+      },
+      "snapshot_sha256": {
+        "events": "c5f1d4f8d6f4c382ed33630c34b99e982ae2da1688328c429d84f422c9bf9cf6",
+        "heights": "6cc1b0ea4836cccfd382d962ab6f360d5866c30f2344b74ba71ee89ce2b216d5",
+        "samples": "d0adc4139986534be6463dea498a00d840a9019d4d002c3d45bae7d5dcf31473"
+      }
+    },
+    "mocha": {
+      "audits": {
+        "apphash": {
+          "complete": true,
+          "counts": {
+            "duplicates": 0,
+            "failed_or_invalid": 0,
+            "identity_rejected": 0,
+            "outside_range": 0,
+            "receipts": 44
+          },
+          "covered_heights": 44,
+          "missing_ranges": [],
+          "rejected_ranges": []
+        },
+        "tx-results": {
+          "complete": true,
+          "counts": {
+            "duplicates": 0,
+            "failed_or_invalid": 0,
+            "identity_rejected": 0,
+            "outside_range": 0,
+            "receipts": 44
+          },
+          "covered_heights": 44,
+          "missing_ranges": [],
+          "rejected_ranges": []
+        }
+      },
+      "baseline_time_utc": "2026-11-12T00:29:36.606143+00:00",
+      "chain_id": "mocha-5",
+      "earliest_72h_completion_utc": "2026-11-15T00:29:36.606143+00:00",
+      "first_required_height": 2536888,
+      "height_outcomes": {
+        "match": 44
+      },
+      "identity": {
+        "binary_sha256": "fdaf29302ce215334663a851ad4b16295da99b03d57bb4779249ebfb04a7c192",
+        "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+        "device": 16777234,
+        "inode": 27083999,
+        "mtime_ns": 1794357663408698351,
+        "pid": 26124,
+        "size": 62959200,
+        "version": "name: celestia-rs\nversion: 0.1.0-rc.5\ncommit: 46acbcb516c3dab26cb5706c908dfe0207f27349\nbuild_profile: release\ntoolchain: rustc 1.99.1 (58cf8f9c3 2026-10-13) aarch64-apple-darwin\napp_version: 10\ncompatibility_target: celestia-app v10.6.0, celestia-core v0.42.8\n"
+      },
+      "initial_height_count": 44,
+      "initial_height_range": [
+        2536888,
+        2536931
+      ],
+      "initial_sample_count": 26,
+      "participation_outcomes": {
+        "missed": 1,
+        "signed": 43
+      },
+      "sample_outcomes": {
+        "observed": 26
+      },
+      "snapshot_sha256": {
+        "events": "b9faa1972336553d39519e5ddd1a52a185b648ed6e5476462df152e9f484da6b",
+        "heights": "b99f48e85b38b4c93a2f13eea63b48569f189ab98b09b5587833ca10b2c184c3",
+        "samples": "edaeb4851f1c5c89b3a11b1df0fd0344cb88b29da367d568ade3cb1a6e7cf3ef"
+      }
+    }
+  },
+  "scope": "start and bounded initial collection only; not a completed qualification",
+  "snapshot_at_utc": "2026-11-12T00:31:49.396509+00:00"
+}
