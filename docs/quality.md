@@ -134,6 +134,25 @@ identical. A source version or Go compiler label is insufficient to transfer
 results between byte-different builds; the workflow receipt is diagnostic and
 does not replace an exact-source qualification receipt.
 
+The `determinism` workflow accepts an optional `candidate_ref` dispatch input
+to test a candidate while the workflow itself comes from the current branch:
+
+```sh
+gh workflow run determinism.yml --ref main \
+  -f candidate_ref=<full-candidate-commit> -f blocks=120
+```
+
+Prefer a full commit SHA. The checked-out candidate must contain the
+qualification wrapper and determinism harness. Both platforms retain clean
+source receipts and executable hashes for their release and dist matrices.
+The final comparison requires the same source revision/tree across all four
+receipts, unchanged inputs, matching qualification logs, distinct platforms,
+and the complete six-scenario trace set. It rejects matching traces from
+different candidates or incomplete artifacts. The `determinism-comparison`
+artifact records the resolved source and trace digests; separate oracle
+provenance and platform receipts accompany the trace artifacts. A successful
+bounded matrix does not complete the other F1 gates or the live observation.
+
 ## Reviewing progress
 
 GitHub job summaries give the current results; download `workspace-coverage`,

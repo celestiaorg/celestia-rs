@@ -15,6 +15,12 @@ on:
       blocks:
         description: "Generated blocks per deliver run"
         default: "120"
+      candidate_ref:
+        description: "Candidate commit/ref to check (default: workflow commit)"
+        default: ""
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -33,6 +39,8 @@ jobs:
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.candidate_ref || github.sha }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: conformance/fuzzoracle/v10/go.mod
@@ -54,8 +62,10 @@ jobs:
       - if: steps.cache.outputs.cache-hit != 'true'
         name: Build celestia-appd v10.6.0 and v9.0.8
         run: |
-          APP_VERSION=v10.6.0 CORE_VERSION=v0.42.8 APPD_ONLY=1 conformance/devnet/build-bins.sh
-          APP_VERSION=v9.0.8 APPD_ONLY=1 DEVNET_BIN=target/devnet-bin/v9 conformance/devnet/build-bins.sh
+          # Explicit pins also support candidates whose builder still selects
+          # the historical toolchain for v10.6.0. Keep their source untouched.
+          GOTOOLCHAIN=go1.26.10 APP_VERSION=v10.6.0 CORE_VERSION=v0.42.8 APPD_ONLY=1 conformance/devnet/build-bins.sh
+          GOTOOLCHAIN=go1.26.9 APP_VERSION=v9.0.8 APPD_ONLY=1 DEVNET_BIN=target/devnet-bin/v9 conformance/devnet/build-bins.sh
       - name: Record exact Go oracle provenance
         run: |
           python3 scripts/quality/oracle_provenance.py \
@@ -71,13 +81,23 @@ jobs:
         env:
           DEVNET_BIN: ${{ github.workspace }}/target/devnet-bin
           FUZZ_DIFF: ${{ github.workspace }}/target/release/fuzz-diff
-        run: crates/fuzz-diff/determinism.sh "$RUNNER_TEMP/traces" release "${{ inputs.blocks || '120' }}"
+          GENERATED_BLOCKS: ${{ inputs.blocks || '120' }}
+        run: |
+          python3 scripts/quality/qualify.py --out "$RUNNER_TEMP/qualification/release" \
+            --binary "$FUZZ_DIFF" --binary target/devnet-bin/celestia-appd \
+            --binary target/devnet-bin/v9/celestia-appd -- \
+            crates/fuzz-diff/determinism.sh "$RUNNER_TEMP/traces" release "$GENERATED_BLOCKS"
       - name: Traces (dist)
         if: always()
         env:
           DEVNET_BIN: ${{ github.workspace }}/target/devnet-bin
           FUZZ_DIFF: ${{ github.workspace }}/target/dist/fuzz-diff
-        run: crates/fuzz-diff/determinism.sh "$RUNNER_TEMP/traces" dist "${{ inputs.blocks || '120' }}"
+          GENERATED_BLOCKS: ${{ inputs.blocks || '120' }}
+        run: |
+          python3 scripts/quality/qualify.py --out "$RUNNER_TEMP/qualification/dist" \
+            --binary "$FUZZ_DIFF" --binary target/devnet-bin/celestia-appd \
+            --binary target/devnet-bin/v9/celestia-appd -- \
+            crates/fuzz-diff/determinism.sh "$RUNNER_TEMP/traces" dist "$GENERATED_BLOCKS"
       - name: release and dist traces identical
         run: |
           set -e
@@ -99,7 +119,8 @@ jobs:
         name: Preserve exact oracle provenance
         run: |
           mkdir -p "$RUNNER_TEMP/upload"
-          cp "$RUNNER_TEMP/oracle-provenance.json" "$RUNNER_TEMP/upload/"
+          test ! -f "$RUNNER_TEMP/oracle-provenance.json" || cp "$RUNNER_TEMP/oracle-provenance.json" "$RUNNER_TEMP/upload/"
+          test ! -d "$RUNNER_TEMP/qualification" || cp -R "$RUNNER_TEMP/qualification" "$RUNNER_TEMP/upload/qualification"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -118,18 +139,19 @@ jobs:
     needs: traces
     runs-on: ubuntu-latest
     steps:
+      # Use the workflow revision's comparator, while qualification receipts
+      # identify the separately checked-out candidate on each platform.
+      - uses: actions/checkout@v7.0.1
       - uses: actions/download-artifact@v8
         with:
           pattern: traces-*
       - run: |
-          set -e
-          ls
-          find traces-Linux-X64 -maxdepth 1 -name '*.trace' -printf '%f\n' | sort >linux-traces
-          find traces-macOS-ARM64 -maxdepth 1 -name '*.trace' -printf '%f\n' | sort >macos-traces
-          cmp linux-traces macos-traces
-          while read -r trace; do
-            cmp "traces-Linux-X64/$trace" "traces-macOS-ARM64/$trace"
-          done <linux-traces
-          cat traces-Linux-X64/oracle-provenance.json >>"$GITHUB_STEP_SUMMARY"
-          cat traces-macOS-ARM64/oracle-provenance.json >>"$GITHUB_STEP_SUMMARY"
-          echo "identical: $(wc -l <linux-traces) traces"
+          python3 scripts/quality/compare_determinism.py \
+            traces-Linux-X64 traces-macOS-ARM64 --out comparison.json
+          cat traces-Linux-X64/oracle-provenance.json \
+            traces-macOS-ARM64/oracle-provenance.json comparison.json >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: determinism-comparison
+          path: comparison.json
+          retention-days: 30
