@@ -1,0 +1,12 @@
+{
+  "network": "mainnet",
+  "chain_id": "celestia",
+  "pid": 50523,
+  "local_rpc": "http://127.0.0.1:26757",
+  "reference_rpc": "https://rpc.celestia.pops.one",
+  "validator_address": "7FC8073F6F0DE936593BBBF6E6EBE37E17487615",
+  "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+  "binary": "/Users/rootulp/.celestia-rs/bin/celestia-rs-mainnet",
+  "home": "/Users/rootulp/.celestia-rs/mainnet",
+  "log": "/Users/rootulp/Library/Logs/celestia-rs-mainnet.log"
+}

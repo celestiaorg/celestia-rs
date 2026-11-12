@@ -1,0 +1,12 @@
+{
+  "network": "mocha",
+  "chain_id": "mocha-5",
+  "pid": 26124,
+  "local_rpc": "http://127.0.0.1:26657",
+  "reference_rpc": "https://rpc.celestia-mocha.com",
+  "validator_address": "64910794C3B7404929AB3CF18063A6B8CD3032D7",
+  "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+  "binary": "/Users/rootulp/.celestia-rs/bin/celestia-rs",
+  "home": "/Users/rootulp/.celestia-rs/mocha",
+  "log": "/Users/rootulp/Library/Logs/celestia-rs.log"
+}

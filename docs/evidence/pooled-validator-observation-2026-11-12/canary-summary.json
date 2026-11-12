@@ -1,0 +1,22 @@
+{
+  "scope": "Two completed bounded pooled reference probes; separately started durable observation remains incomplete.",
+  "qualification": false,
+  "networks": {
+    "mocha": {
+      "first": 2542969,
+      "last": 2543008,
+      "matching_heights": 40,
+      "transactions": 41,
+      "observed_samples": 24,
+      "unavailable_attempts": 0
+    },
+    "mainnet": {
+      "first": 15815522,
+      "last": 15815559,
+      "matching_heights": 38,
+      "transactions": 314,
+      "observed_samples": 24,
+      "unavailable_attempts": 0
+    }
+  }
+}

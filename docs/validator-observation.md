@@ -6,6 +6,10 @@ never opens validator keys, submits transactions, restarts nodes or deploys
 binaries. A deployment hold is a separate operator action described in
 [operator guide §8](operator-guide.md).
 
+The [pooled-reference observation record](pooled-validator-observation-2026-11-12.md)
+retains a separately started durable window and bounded live transport probes.
+It preserves the earlier window's gaps and states the later acceptance deadline.
+
 Supply a JSON configuration with `network`, `chain_id`, `pid`, `binary`,
 `home`, `log`, `local_rpc`, `reference_rpc`, `validator_address` (uppercase
 public hexadecimal address), and the full `candidate_commit`. The command is:
