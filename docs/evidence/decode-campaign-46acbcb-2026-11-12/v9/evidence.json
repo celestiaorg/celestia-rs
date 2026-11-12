@@ -1,0 +1,76 @@
+{
+  "binary_sha256": {
+    "/private/tmp/celestia-rc-46acbcb/fuzz-diff-release-46acbcb": "0ba760fd0d6b857b9b06beb0aedd664f7943c59779e02e7d9aa3084b7a919f07",
+    "/private/tmp/celestia-rc-46acbcb/fuzzoracle/fuzzoracle-v9": "e4d47d31c9e9c3952e576da26d43b78bc2131e282967388ebae9d6797be271f5"
+  },
+  "command": [
+    "env",
+    "FUZZ_ORACLE_V9=/private/tmp/celestia-rc-46acbcb/fuzzoracle/fuzzoracle-v9",
+    "GOMAXPROCS=2",
+    "GOMEMLIMIT=1000MiB",
+    "/private/tmp/celestia-rc-46acbcb/fuzz-diff-release-46acbcb",
+    "--app-version",
+    "9",
+    "--ops",
+    "tx,blobtx,iw,fibre",
+    "--iters",
+    "1000000000",
+    "--max-secs",
+    "7200",
+    "--seed",
+    "2026111202",
+    "--findings",
+    "/private/tmp/celestia-rc-46acbcb/findings-v9-decode-7200s"
+  ],
+  "exit_code": 0,
+  "finished_at_unix": 1794456812.13632,
+  "inputs_unchanged": true,
+  "log_sha256": "dfe4dfaff2dcd8fa39a600ce667f1a72f149209cde13684c7d4efa11fdb2f749",
+  "machine": "arm64",
+  "platform": "Darwin-25.2.0-arm64-arm-64bit-Mach-O",
+  "protobuf_go_detrand": {
+    "/private/tmp/celestia-rc-46acbcb/fuzz-diff-release-46acbcb": {
+      "seed_hex": "0x5170770a9a8cab96",
+      "separator": "space",
+      "separator_utf8_hex": "20"
+    },
+    "/private/tmp/celestia-rc-46acbcb/fuzzoracle/fuzzoracle-v9": {
+      "seed_hex": "0x655d86fbbce28d30",
+      "separator": "space",
+      "separator_utf8_hex": "20"
+    }
+  },
+  "schema_version": 1,
+  "scope": "one check only; remaining F1 gates require separate evidence",
+  "source": {
+    "index_flags": [],
+    "revision": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "status": "",
+    "tree": "48ec947ee96f5e85d7bffd0e7f6a9a014502f151"
+  },
+  "source_after": {
+    "index_flags": [],
+    "revision": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "status": "",
+    "tree": "48ec947ee96f5e85d7bffd0e7f6a9a014502f151"
+  },
+  "started_at_unix": 1794449611.142847,
+  "status": "passed",
+  "toolchains": {
+    "cargo": {
+      "error": "",
+      "exit_code": 0,
+      "output": "cargo 1.99.1 (5f94df478 2026-08-27)"
+    },
+    "go": {
+      "error": "",
+      "exit_code": 0,
+      "output": "go version go1.26.3 darwin/arm64"
+    },
+    "rustc": {
+      "error": "",
+      "exit_code": 0,
+      "output": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1"
+    }
+  }
+}

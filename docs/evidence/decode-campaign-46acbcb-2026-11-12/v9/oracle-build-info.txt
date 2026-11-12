@@ -1,0 +1,251 @@
+/private/tmp/celestia-rc-46acbcb/fuzzoracle/fuzzoracle-v9: go1.26.9
+	path	github.com/rootulp/celestia-rs/conformance/fuzzoracle/v9
+	mod	github.com/rootulp/celestia-rs/conformance/fuzzoracle/v9	(devel)	
+	dep	cel.dev/expr	v0.25.2	h1:K6j46C81hXtZQfuX60cVWQFBJahKSE2gfRbNuvr5bFs=
+	dep	cloud.google.com/go	v0.123.0	h1:2NAUJwPR47q+E35uaJeYoNhuNEM9kM8SjgRgdeOJUSE=
+	dep	cloud.google.com/go/auth	v0.20.0	h1:kXTssoVb4azsVDoUiF8KvxAqrsQcQtB53DcSgta74CA=
+	dep	cloud.google.com/go/auth/oauth2adapt	v0.2.8	h1:keo8NaayQZ6wimpNSmW5OPc283g65QNIiLpZnkHRbnc=
+	dep	cloud.google.com/go/compute/metadata	v0.9.0	h1:pDUj4QMoPejqq20dK0Pg2N4yG9zIkYGdBtwLoEkH9Zs=
+	dep	cloud.google.com/go/iam	v1.5.3	h1:+vMINPiDF2ognBJ97ABAYYwRgsaqxPbQDlMnbHMjolc=
+	dep	cloud.google.com/go/monitoring	v1.24.3	h1:dde+gMNc0UhPZD1Azu6at2e79bfdztVDS5lvhOdsgaE=
+	dep	cloud.google.com/go/storage	v1.61.3	h1:VS//ZfBuPGDvakfD9xyPW1RGF1Vy3BWUoVZXgW1KMOg=
+	dep	cosmossdk.io/api	v1.0.0
+	=>	github.com/celestiaorg/cosmos-sdk/api	v0.7.6	h1:81in9Zk+noz0ko+hZFSSK8L1aawFN8/CmdcQAUhbiUU=
+	
+	dep	cosmossdk.io/client/v2	v2.0.0-beta.8	h1:RXMJdA4V9H1H3/3BfMD6dAW3lF8W9DpNPPYnKD+ArxY=
+	dep	cosmossdk.io/collections	v0.4.0	h1:PFmwj2W8szgpD5nOd8GWH6AbYNi1f2J6akWXJ7P5t9s=
+	dep	cosmossdk.io/core	v1.1.0	h1:iJ7j2DjNsFzg4/z4ImNQYzy2D4LfMCsaQ8Lrz1KCmxk=
+	dep	cosmossdk.io/depinject	v1.2.1	h1:eD6FxkIjlVaNZT+dXTQuwQTKZrFZ4UrfCq1RKgzyhMw=
+	dep	cosmossdk.io/errors	v1.0.2	h1:wcYiJz08HThbWxd/L4jObeLaLySopyyuUFB5w4AGpCo=
+	dep	cosmossdk.io/log	v1.6.0
+	=>	github.com/celestiaorg/cosmos-sdk/log	v1.3.0	h1:DfckA2UihWckeKHBQU3UXkF2G/qEmsPxd3LtGYB9HeM=
+	
+	dep	cosmossdk.io/math	v1.5.3	h1:WH6tu6Z3AUCeHbeOSHg2mt9rnoiUWVWaQ2t6Gkll96U=
+	dep	cosmossdk.io/store	v1.1.2
+	=>	github.com/celestiaorg/cosmos-sdk/store	v1.1.3-celestia.1	h1:lEP9DjBMA5frZy/B1IYhAdbJrEwutwGQ+EiTOs4Lm8M=
+	
+	dep	cosmossdk.io/x/circuit	v0.1.1	h1:KPJCnLChWrxD4jLwUiuQaf5mFD/1m7Omyo7oooefBVQ=
+	dep	cosmossdk.io/x/evidence	v0.1.1	h1:Ks+BLTa3uftFpElLTDp9L76t2b58htjVbSZ86aoK/E4=
+	dep	cosmossdk.io/x/feegrant	v0.1.1	h1:EKFWOeo/pup0yF0svDisWWKAA9Zags6Zd0P3nRvVvw8=
+	dep	cosmossdk.io/x/tx	v0.13.8
+	=>	github.com/celestiaorg/cosmos-sdk/x/tx	v0.13.9	h1:YELTe9/1YksoqSd+Hm1uDZ6auHFNhyJrk5jvli0lbT4=
+	
+	dep	cosmossdk.io/x/upgrade	v0.1.4
+	=>	github.com/celestiaorg/cosmos-sdk/x/upgrade	v0.2.0	h1:GyDYfK8dLETlUI7F+w+3QYQgAszUegMXgB6cTbDm7CA=
+	
+	dep	filippo.io/edwards25519	v1.1.1	h1:YpjwWWlNmGIDyXOn8zLzqiD+9TyIlPhGFG96P39uBpw=
+	dep	github.com/99designs/go-keychain	v0.0.0-20191008050251-8e49817e8af4	h1:/vQbFIOMbk2FiG/kXiLl8BRyzTWDw7gX/Hz7Dd5eDMs=
+	dep	github.com/99designs/keyring	v1.2.2	h1:pZd3neh/EmUzWONb35LxQfvuY7kiSXAq3HQd97+XBn0=
+	dep	github.com/DataDog/datadog-go	v4.8.3+incompatible	h1:fNGaYSuObuQb5nzeTQqowRAd9bpDIRRV4/gUtIBjh8Q=
+	dep	github.com/DataDog/zstd	v1.5.7	h1:ybO8RBeh29qrxIhCA9E8gKY6xfONU9T6G6aP9DTKfLE=
+	dep	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp	v1.33.0	h1:l7+6kwRMJNwdCvYdDl7Eax+wzEYHSnNY7zrrfbhDdTA=
+	dep	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric	v0.55.0	h1:UnDZ/zFfG1JhH/DqxIZYU/1CUAlTUScoXD/LcM2Ykk8=
+	dep	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping	v0.55.0	h1:0s6TxfCu2KHkkZPnBfsQ2y5qia0jl3MMrmBhu3nCOYk=
+	dep	github.com/aws/aws-sdk-go-v2	v1.41.7	h1:DWpAJt66FmnnaRIOT/8ASTucrvuDPZASqhhLey6tLY8=
+	dep	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream	v1.7.10	h1:gx1AwW1Iyk9Z9dD9F4akX5gnN3QZwUB20GGKH/I+Rho=
+	dep	github.com/aws/aws-sdk-go-v2/config	v1.32.17	h1:FpL4/758/diKwqbytU0prpuiu60fgXKUWCpDJtApclU=
+	dep	github.com/aws/aws-sdk-go-v2/credentials	v1.19.16	h1:r3RJBuU7X9ibt8RHbMjWE6y60QbKBiII6wSrXnapxSU=
+	dep	github.com/aws/aws-sdk-go-v2/feature/ec2/imds	v1.18.23	h1:UuSfcORqNSz/ey3VPRS8TcVH2Ikf0/sC+Hdj400QI6U=
+	dep	github.com/aws/aws-sdk-go-v2/internal/configsources	v1.4.23	h1:GpT/TrnBYuE5gan2cZbTtvP+JlHsutdmlV2YfEyNde0=
+	dep	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2	v2.7.23	h1:bpd8vxhlQi2r1hiueOw02f/duEPTMK59Q4QMAoTTtTo=
+	dep	github.com/aws/aws-sdk-go-v2/internal/v4a	v1.4.24	h1:OQqn11BtaYv1WLUowvcA30MpzIu8Ti4pcLPIIyoKZrA=
+	dep	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding	v1.13.9	h1:FLudkZLt5ci0ozzgkVo8BJGwvqNaZbTWb3UcucAateA=
+	dep	github.com/aws/aws-sdk-go-v2/service/internal/checksum	v1.9.15	h1:ieLCO1JxUWuxTZ1cRd0GAaeX7O6cIxnwk7tc1LsQhC4=
+	dep	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url	v1.13.23	h1:pbrxO/kuIwgEsOPLkaHu0O+m4fNgLU8B3vxQ+72jTPw=
+	dep	github.com/aws/aws-sdk-go-v2/service/internal/s3shared	v1.19.23	h1:03xatSQO4+AM1lTAbnRg5OK528EUg744nW7F73U8DKw=
+	dep	github.com/aws/aws-sdk-go-v2/service/s3	v1.101.0	h1:etqBTKY581iwLL/H/S2sVgk3C9lAsTJFeXWFDsDcWOU=
+	dep	github.com/aws/aws-sdk-go-v2/service/signin	v1.0.11	h1:TdJ+HdzOBhU8+iVAOGUTU63VXopcumCOF1paFulHWZc=
+	dep	github.com/aws/aws-sdk-go-v2/service/sso	v1.30.17	h1:7byT8HUWrgoRp6sXjxtZwgOKfhss5fW6SkLBtqzgRoE=
+	dep	github.com/aws/aws-sdk-go-v2/service/ssooidc	v1.35.21	h1:+1Kl1zx6bWi4X7cKi3VYh29h8BvsCoHQEQ6ST9X8w7w=
+	dep	github.com/aws/aws-sdk-go-v2/service/sts	v1.42.1	h1:F/M5Y9I3nwr2IEpshZgh1GeHpOItExNM9L1euNuh/fk=
+	dep	github.com/aws/smithy-go	v1.25.1	h1:J8ERsGSU7d+aCmdQur5Txg6bVoYelvQJgtZehD12GkI=
+	dep	github.com/bcp-innovations/hyperlane-cosmos	v1.1.0	h1:WXt+WrKv2DG/xVIkLvggDRbi/2law104Vj6AWZGxHNw=
+	dep	github.com/beorn7/perks	v1.0.1	h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
+	dep	github.com/bgentry/go-netrc	v0.0.0-20140422174119-9fd32a8b3d3d	h1:xDfNPAt8lFiC1UJrqV3uuy861HCTo708pDMbjHHdCas=
+	dep	github.com/bgentry/speakeasy	v0.2.0	h1:tgObeVOf8WAvtuAX6DhJ4xks4CFNwPDZiqzGqIHE51E=
+	dep	github.com/bits-and-blooms/bitset	v1.24.0	h1:H4x4TuulnokZKvHLfzVRTHJfFfnHEeSYJizujEZvmAM=
+	dep	github.com/blang/semver/v4	v4.0.0	h1:1PFHFE6yCCTv8C1TeyNNarDzntLi7wMI5i/pzqYIsAM=
+	dep	github.com/celestiaorg/celestia-app/v9	v9.0.8	h1:HyxzmHCFbkksDbxNrLctaF+0xb2wWoxzb8OJTBoPZmY=
+	dep	github.com/celestiaorg/go-square/v2	v2.3.3	h1:vhu6Lt39km19Q/Jk4nS3r2cuWJq6jFg+/1+iG8YGftY=
+	dep	github.com/celestiaorg/go-square/v3	v3.0.2	h1:eSQOgNII8inK9IhiBZ+6GADQeWbRq4HYY72BOgcduA4=
+	dep	github.com/celestiaorg/go-square/v4	v4.0.0-rc4	h1:bh7rney5lLq4Z9OpaSg9ckY9bt6BZUW0VYnFOi1RPwQ=
+	dep	github.com/celestiaorg/merkletree	v0.0.0-20210714075610-a84dc3ddbbe4	h1:CJdIpo8n5MFP2MwK0gSRcOVlDlFdQJO1p+FqdxYzmvc=
+	dep	github.com/celestiaorg/nmt	v0.24.3	h1:ylQnRlXkVoTtq36CxtCyXYZX4JISBsHgKlAAUAnf7ig=
+	dep	github.com/celestiaorg/rsmt2d	v0.15.2	h1:wHqNqaBboSX5e8Czm4FnBnys4RPp5gSNm4CAcsXAyTU=
+	dep	github.com/cenkalti/backoff/v4	v4.3.0	h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
+	dep	github.com/cespare/xxhash/v2	v2.3.0	h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
+	dep	github.com/chzyer/readline	v1.5.1	h1:upd/6fQk4src78LMRzh5vItIt361/o4uq553V8B5sGI=
+	dep	github.com/cncf/xds/go	v0.0.0-20260202195803-dba9d589def2	h1:aBangftG7EVZoUb69Os8IaYg++6uMOdKK83QtkkvJik=
+	dep	github.com/cockroachdb/apd/v2	v2.0.2	h1:weh8u7Cneje73dDh+2tEVLUvyBc89iwepWCD8b8034E=
+	dep	github.com/cockroachdb/errors	v1.12.0	h1:d7oCs6vuIMUQRVbi6jWWWEJZahLCfJpnJSVobd1/sUo=
+	dep	github.com/cockroachdb/fifo	v0.0.0-20240816210425-c5d0cb0b6fc0	h1:pU88SPhIFid6/k0egdR5V6eALQYq2qbSmukrkgIh/0A=
+	dep	github.com/cockroachdb/logtags	v0.0.0-20241215232642-bb51bb14a506	h1:ASDL+UJcILMqgNeV5jiqR4j+sTuvQNHdf2chuKj1M5k=
+	dep	github.com/cockroachdb/pebble	v1.1.5	h1:5AAWCBWbat0uE0blr8qzufZP5tBjkRyy/jWe1QWLnvw=
+	dep	github.com/cockroachdb/redact	v1.1.6	h1:zXJBwDZ84xJNlHl1rMyCojqyIxv+7YUpQiJLQ7n4314=
+	dep	github.com/cockroachdb/tokenbucket	v0.0.0-20250429170803-42689b6311bb	h1:3bCgBvB8PbJVMX1ouCcSIxvsqKPYM7gs72o0zC76n9g=
+	dep	github.com/cometbft/cometbft	v1.0.1
+	=>	github.com/celestiaorg/celestia-core	v0.40.9	h1:1THcmnRXGqedv2lwEM/HSZsTdo6R0PavTn4Idk5hehk=
+	
+	dep	github.com/cometbft/cometbft-db	v1.0.4	h1:cezb8yx/ZWcF124wqUtAFjAuDksS1y1yXedvtprUFxs=
+	dep	github.com/consensys/gnark	v0.14.0	h1:RG+8WxRanFSFBSlmCDRJnYMYYKpH3Ncs5SMzg24B5HQ=
+	dep	github.com/consensys/gnark-crypto	v0.19.2	h1:qrEAIXq3T4egxqiliFFoNrepkIWVEeIYwt3UL0fvS80=
+	dep	github.com/cosmos/btcutil	v1.0.5	h1:t+ZFcX77LpKtDBhjucvnOH8C2l2ioGsBNEQ3jef8xFk=
+	dep	github.com/cosmos/cosmos-db	v1.1.3	h1:7QNT77+vkefostcKkhrzDK9uoIEryzFrU9eoMeaQOPY=
+	dep	github.com/cosmos/cosmos-proto	v1.0.0-beta.5	h1:eNcayDLpip+zVLRLYafhzLvQlSmyab+RC5W7ZfmxJLA=
+	dep	github.com/cosmos/cosmos-sdk	v0.50.13
+	=>	github.com/celestiaorg/cosmos-sdk	v0.52.8	h1:8L8YG90DjO23T9lsEI2AXJ7kXIJ/SQWGoA4X9Zz9dy0=
+	
+	dep	github.com/cosmos/go-bip39	v1.0.0	h1:pcomnQdrdH22njcAatO0yWojsUnCO3y2tNoV1cb6hHY=
+	dep	github.com/cosmos/gogogateway	v1.2.0	h1:Ae/OivNhp8DqBi/sh2A8a1D0y638GpL3tkmLQAiKxTE=
+	dep	github.com/cosmos/gogoproto	v1.7.2	h1:5G25McIraOC0mRFv9TVO139Uh3OklV2hczr13KKVHCA=
+	dep	github.com/cosmos/iavl	v1.2.8	h1:55F96BGUJ7KT7h+Ky/cEqS+pEvhFqsU4O8Th3F0N1js=
+	dep	github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8	v8.2.0	h1:rM+S14DFiqmu6Rc3PuhvWqwywPsnt/CbIslSnBftPFs=
+	dep	github.com/cosmos/ibc-go/modules/capability	v1.0.1	h1:ibwhrpJ3SftEEZRxCRkH0fQZ9svjthrX2+oXdZvzgGI=
+	dep	github.com/cosmos/ibc-go/v8	v8.7.0
+	=>	github.com/celestiaorg/ibc-go/v8	v8.7.2	h1:AWae851fdX7pJWlGnUBKlKJzpr4c2t5m4TLs6vDfmAY=
+	
+	dep	github.com/cosmos/ics23/go	v0.11.0	h1:jk5skjT0TqX5e5QJbEnwXIS2yI2vnmLOgpQPeM5RtnU=
+	dep	github.com/davecgh/go-spew	v1.1.2-0.20180830191138-d8f796af33cc	h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
+	dep	github.com/decred/dcrd/dcrec/secp256k1/v4	v4.4.0	h1:NMZiJj8QnKe1LgsbDayM4UoHwbvwDRwnI3hwNaAHRnc=
+	dep	github.com/desertbit/timer	v1.0.1	h1:yRpYNn5Vaaj6QXecdLMPMJsW81JLiI1eokUft5nBmeo=
+	dep	github.com/dvsekhvalnov/jose2go	v1.7.0	h1:bnQc8+GMnidJZA8zc6lLEAb4xNrIqHwO+9TzqvtQZPo=
+	dep	github.com/emicklei/dot	v1.6.2	h1:08GN+DD79cy/tzN6uLCT84+2Wk9u+wvqP+Hkx/dIR8A=
+	dep	github.com/envoyproxy/go-control-plane/envoy	v1.37.0	h1:u3riX6BoYRfF4Dr7dwSOroNfdSbEPe9Yyl09/B6wBrQ=
+	dep	github.com/envoyproxy/protoc-gen-validate	v1.3.3	h1:MVQghNeW+LZcmXe7SY1V36Z+WFMDjpqGAGacLe2T0ds=
+	dep	github.com/ethereum/go-ethereum	v1.17.0	h1:2D+1Fe23CwZ5tQoAS5DfwKFNI1HGcTwi65/kRlAVxes=
+	dep	github.com/fatih/color	v1.18.0	h1:S8gINlzdQ840/4pfAwic/ZE0djQEH3wM94VfqLTZcOM=
+	dep	github.com/felixge/httpsnoop	v1.0.4	h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
+	dep	github.com/fsnotify/fsnotify	v1.9.0	h1:2Ml+OJNzbYCTzsxtv8vKSFD9PbJjmhYF14k/jKC7S9k=
+	dep	github.com/fxamacker/cbor/v2	v2.9.0	h1:NpKPmjDBgUfBms6tr6JZkTHtfFGcMKsw3eGcmD/sapM=
+	dep	github.com/getsentry/sentry-go	v0.42.0	h1:eeFMACuZTbUQf90RE8dE4tXeSe4CZyfvR1MBL7RLEt8=
+	dep	github.com/go-jose/go-jose/v4	v4.1.6	h1:sNRkftxFJxwsILiQukqp5z83QBSmntVwmgRY7AqBDO4=
+	dep	github.com/go-kit/kit	v0.13.0	h1:OoneCcHKHQ03LfBpoQCUfCluwd2Vt3ohz+kvbJneZAU=
+	dep	github.com/go-kit/log	v0.2.1	h1:MRVx0/zhvdseW+Gza6N9rVzU/IVzaeE1SFI4raAhmBU=
+	dep	github.com/go-logfmt/logfmt	v0.6.1	h1:4hvbpePJKnIzH1B+8OR/JPbTx37NktoI9LE2QZBBkvE=
+	dep	github.com/go-logr/logr	v1.4.4	h1:tG4xh9yMsRCAiodLVTxyrkzSZ9+o0L1Kg/+cPVcbP/8=
+	dep	github.com/go-logr/stdr	v1.2.2	h1:hSWxHoqTgW2S2qGc0LTAI563KZ5YKYRhT3MFKZMbjag=
+	dep	github.com/go-viper/mapstructure/v2	v2.5.0	h1:vM5IJoUAy3d7zRSVtIwQgBj7BiWtMPfmPEgAXnvj1Ro=
+	dep	github.com/gogo/googleapis	v1.4.1	h1:1Yx4Myt7BxzvUr5ldGSbwYiZG6t9wGBZ+8/fX3Wvtq0=
+	dep	github.com/gogo/protobuf	v1.3.2	h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=
+	dep	github.com/golang/mock	v1.6.0	h1:ErTB+efbowRARo13NNdxyJji2egdxLGQhRaY+DUumQc=
+	dep	github.com/golang/protobuf	v1.5.4	h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+	dep	github.com/golang/snappy	v1.0.0	h1:Oy607GVXHs7RtbggtPBnr2RmDArIsAefDwvrdWvRhGs=
+	dep	github.com/google/btree	v1.1.3	h1:CVpQJjYgC4VbzxeGVHfvZrv1ctoYCAI8vbl07Fcxlyg=
+	dep	github.com/google/go-cmp	v0.7.0	h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
+	dep	github.com/google/orderedcode	v0.0.1	h1:UzfcAexk9Vhv8+9pNOgRu41f16lHq725vPwnSeiG/Us=
+	dep	github.com/google/pprof	v0.0.0-20250820193118-f64d9cf942d6	h1:EEHtgt9IwisQ2AZ4pIsMjahcegHh6rmhqxzIRQIyepY=
+	dep	github.com/google/s2a-go	v0.1.9	h1:LGD7gtMgezd8a/Xak7mEWL0PjoTQFvpRudN895yqKW0=
+	dep	github.com/google/uuid	v1.6.0	h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
+	dep	github.com/googleapis/enterprise-certificate-proxy	v0.3.15	h1:xolVQTEXusUcAA5UgtyRLjelpFFHWlPQ4XfWGc7MBas=
+	dep	github.com/googleapis/gax-go/v2	v2.22.0	h1:PjIWBpgGIVKGoCXuiCoP64altEJCj3/Ei+kSU5vlZD4=
+	dep	github.com/gorilla/handlers	v1.5.2	h1:cLTUSsNkgcwhgRqvCNmdbRWG0A3N4F+M2nWKdScwyEE=
+	dep	github.com/gorilla/mux	v1.8.1	h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=
+	dep	github.com/gorilla/websocket	v1.5.3	h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
+	dep	github.com/grafana/otel-profiling-go	v0.5.1	h1:stVPKAFZSa7eGiqbYuG25VcqYksR6iWvF3YH66t4qL8=
+	dep	github.com/grafana/pyroscope-go	v1.3.0	h1:t3Jehad8vvqN4oRAB0LdmfQ5ZSUXQw3asoft+K4GAT8=
+	dep	github.com/grafana/pyroscope-go/godeltaprof	v0.1.10	h1:dvhndEbyavTb59vFCd6PsrAG5qi69/qZZtegh/TJKSY=
+	dep	github.com/grpc-ecosystem/go-grpc-middleware	v1.4.0	h1:UH//fgunKIs4JdUbpDl1VZCDaL56wXCB/5+wF6uHfaI=
+	dep	github.com/grpc-ecosystem/grpc-gateway	v1.16.0	h1:gmcG1KaJ57LophUzW0Hy8NmPhnMZb4M0+kPpLofRdBo=
+	dep	github.com/hashicorp/aws-sdk-go-base/v2	v2.0.0-beta.72	h1:vTCWu1wbdYo7PEZFem/rlr01+Un+wwVmI7wiegFdRLk=
+	dep	github.com/hashicorp/go-cleanhttp	v0.5.2	h1:035FKYIWjmULyFRBKPs8TBQoi0x6d9G4xc9neXJWAZQ=
+	dep	github.com/hashicorp/go-getter	v1.8.6	h1:9sQboWULaydVphxc4S64oAI4YqpuCk7nPmvbk131ebY=
+	dep	github.com/hashicorp/go-hclog	v1.6.3	h1:Qr2kF+eVWjTiYmU7Y31tYlP1h0q/X3Nl3tPGdaB11/k=
+	dep	github.com/hashicorp/go-immutable-radix	v1.3.1	h1:DKHmCUm2hRBK510BaiZlwvpD40f8bJFeZnpfm2KLowc=
+	dep	github.com/hashicorp/go-metrics	v0.5.4	h1:8mmPiIJkTPPEbAiV97IxdAGNdRdaWwVap1BU6elejKY=
+	dep	github.com/hashicorp/go-plugin	v1.6.3	h1:xgHB+ZUSYeuJi96WtxEjzi23uh7YQpznjGh0U0UUrwg=
+	dep	github.com/hashicorp/go-version	v1.8.0	h1:KAkNb1HAiZd1ukkxDFGmokVZe1Xy9HG6NUp+bPle2i4=
+	dep	github.com/hashicorp/golang-lru	v1.0.2	h1:dV3g9Z/unq5DpblPpw+Oqcv4dU/1omnb4Ok8iPY6p1c=
+	dep	github.com/hashicorp/golang-lru/v2	v2.0.7	h1:a+bsQ5rvGLjzHuww6tVxozPZFVghXaHOwFs4luLUK2k=
+	dep	github.com/hashicorp/yamux	v0.1.2	h1:XtB8kyFOyHXYVFnwT5C3+Bdo8gArse7j2AQ0DA0Uey8=
+	dep	github.com/hdevalence/ed25519consensus	v0.2.0	h1:37ICyZqdyj0lAZ8P4D1d1id3HqbbG1N3iBb1Tb4rdcU=
+	dep	github.com/holiman/uint256	v1.3.2	h1:a9EgMPSC1AAaj1SZL5zIQD3WbwTuHrMGOerLjGmM/TA=
+	dep	github.com/huandu/skiplist	v1.2.1	h1:dTi93MgjwErA/8idWTzIw4Y1kZsMWx35fmI2c8Rij7w=
+	dep	github.com/iancoleman/orderedmap	v0.3.0	h1:5cbR2grmZR/DiVt+VJopEhtVs9YGInGIxAoMJn+Ichc=
+	dep	github.com/iancoleman/strcase	v0.3.0	h1:nTXanmYxhfFAMjZL34Ov6gkzEsSJZ5DbhxWjvSASxEI=
+	dep	github.com/improbable-eng/grpc-web	v0.15.0	h1:BN+7z6uNXZ1tQGcNAuaU1YjsLTApzkjt2tzCixLaUPQ=
+	dep	github.com/klauspost/compress	v1.18.7	h1:aUyZsS4kH3QTKurYhAOwAHxllVPnOthb3vPfnF1Ehjw=
+	dep	github.com/klauspost/cpuid/v2	v2.3.0	h1:S4CRMLnYUhGeDFDqkGriYKdfoFlDnMtqTiI/sFzhA9Y=
+	dep	github.com/klauspost/reedsolomon	v1.14.0	h1:5YSZeclzSYg5nl349+GDG/agDtQ6MZiwUYXvVKN1Jx0=
+	dep	github.com/kr/pretty	v0.3.1	h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
+	dep	github.com/kr/text	v0.2.0	h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
+	dep	github.com/lib/pq	v1.12.3	h1:tTWxr2YLKwIvK90ZXEw8GP7UFHtcbTtty8zsI+YjrfQ=
+	dep	github.com/manifoldco/promptui	v0.9.0	h1:3V4HzJk1TtXW1MTZMP7mdlwbBpIinw3HztaIlYthEiA=
+	dep	github.com/mattn/go-colorable	v0.1.14	h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE=
+	dep	github.com/mattn/go-isatty	v0.0.20	h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
+	dep	github.com/minio/highwayhash	v1.0.4	h1:asJizugGgchQod2ja9NJlGOWq4s7KsAWr5XUc9Clgl4=
+	dep	github.com/mitchellh/go-homedir	v1.1.0	h1:lukF9ziXFxDFPkA1vsr5zpc1XuPDn/wFntq5mG+4E0Y=
+	dep	github.com/mtibben/percent	v0.2.1	h1:5gssi8Nqo8QU/r2pynCm+hBQHpkB/uNK7BJCFogWdzs=
+	dep	github.com/munnerz/goautoneg	v0.0.0-20191010083416-a7dc8b61c822	h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
+	dep	github.com/oasisprotocol/curve25519-voi	v0.0.0-20230904125328-1f23a7beb09a	h1:dlRvE5fWabOchtH7znfiFCcOvmIYgOeAS5ifBXBlh9Q=
+	dep	github.com/oklog/run	v1.1.0	h1:GEenZ1cK0+q0+wsJew9qUg/DyD8k3JzYsZAi5gYi2mA=
+	dep	github.com/pelletier/go-toml/v2	v2.3.1	h1:MYEvvGnQjeNkRF1qUuGolNtNExTDwct51yp7olPtrEc=
+	dep	github.com/pkg/errors	v0.9.1	h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
+	dep	github.com/pmezard/go-difflib	v1.0.1-0.20181226105442-5d4384ee4fb2	h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
+	dep	github.com/prometheus/client_golang	v1.23.2	h1:Je96obch5RDVy3FDMndoUsjAhG5Edi49h0RJWRi/o0o=
+	dep	github.com/prometheus/client_model	v0.6.2	h1:oBsgwpGs7iVziMvrGhE53c/GrLUsZdHnqNwqPLxwZyk=
+	dep	github.com/prometheus/common	v0.67.5	h1:pIgK94WWlQt1WLwAC5j2ynLaBRDiinoAb86HZHTUGI4=
+	dep	github.com/rcrowley/go-metrics	v0.0.0-20201227073835-cf1acfcdf475	h1:N/ElC8H3+5XpJzTSTfLsJV/mx9Q9g7kxmchpfZyxgzM=
+	dep	github.com/rogpeppe/go-internal	v1.14.1	h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
+	dep	github.com/ronanh/intcomp	v1.1.1	h1:+1bGV/wEBiHI0FvzS7RHgzqOpfbBJzLIxkqMJ9e6yxY=
+	dep	github.com/rs/cors	v1.11.1	h1:eU3gRzXLRK57F5rKMGMZURNdIG4EoAmX8k94r9wXWHA=
+	dep	github.com/rs/zerolog	v1.35.1	h1:m7xQeoiLIiV0BCEY4Hs+j2NG4Gp2o2KPKmhnnLiazKI=
+	dep	github.com/sagikazarmark/locafero	v0.11.0	h1:1iurJgmM9G3PA/I+wWYIOw/5SyBtxapeHDcg+AAIFXc=
+	dep	github.com/sourcegraph/conc	v0.3.1-0.20240121214520-5f936abd7ae8	h1:+jumHNA0Wrelhe64i8F6HNlS8pkoyMv5sreGx2Ry5Rw=
+	dep	github.com/spf13/afero	v1.15.0	h1:b/YBCLWAJdFWJTN9cLhiXXcD7mzKn9Dm86dNnfyQw1I=
+	dep	github.com/spf13/cast	v1.10.0	h1:h2x0u2shc1QuLHfxi+cTJvs30+ZAHOGRic8uyGTDWxY=
+	dep	github.com/spf13/cobra	v1.10.2	h1:DMTTonx5m65Ic0GOoRY2c16WCbHxOOw6xxezuLaBpcU=
+	dep	github.com/spf13/pflag	v1.0.10	h1:4EBh2KAYBwaONj6b2Ye1GiHfwjqyROoF4RwYO+vPwFk=
+	dep	github.com/spf13/viper	v1.21.0	h1:x5S+0EU27Lbphp4UKm1C+1oQO+rKx36vfCoaVebLFSU=
+	dep	github.com/spiffe/go-spiffe/v2	v2.7.0	h1:uXe1MflJoHw58wAUvxVlcM7WpKtijWG7I1UidcGh6g4=
+	dep	github.com/stretchr/testify	v1.11.1	h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
+	dep	github.com/subosito/gotenv	v1.6.0	h1:9NlTDc1FTs4qu0DDq7AEtTPNw6SVm7uBMsUCUjABIf8=
+	dep	github.com/syndtr/goleveldb	v1.0.1-0.20220721030215-126854af5e6d
+	=>	github.com/syndtr/goleveldb	v1.0.1-0.20210819022825-2ae1ddf74ef7	h1:epCh84lMvA70Z7CTTCmYQn2CKbY8j86K7/FAIr141uY=
+	
+	dep	github.com/tendermint/go-amino	v0.16.0	h1:GyhmgQKvqF82e2oZeuMSp9JTN0N09emoSZlb2lyGa2E=
+	dep	github.com/tidwall/btree	v1.7.0	h1:L1fkJH/AuEh5zBnnBbmTwQ5Lt+bRJ5A8EWecslvo9iI=
+	dep	github.com/ulikunitz/xz	v0.5.15	h1:9DNdB5s+SgV3bQ2ApL10xRc35ck0DuIX/isZvIk+ubY=
+	dep	github.com/x448/float16	v0.8.4	h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
+	dep	go.opentelemetry.io/auto/sdk	v1.2.1	h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
+	dep	go.opentelemetry.io/contrib/detectors/gcp	v1.44.0	h1:NmLfL734pJhM0JKaYd2Y28+nY9dPRWYAAbxhRCrKXPw=
+	dep	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc	v0.68.0	h1:0Qx7VGBacMm9ZENQ7TnNObTYI4ShC+lHI16seduaxZo=
+	dep	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp	v0.67.0	h1:OyrsyzuttWTSur2qN/Lm0m2a8yqyIjUVBZcxFPuXq2o=
+	dep	go.opentelemetry.io/otel	v1.45.0	h1:pdrWmLHofpubmArBv1LgFSv1Z0Ie/ppdZzu+kUN5EeU=
+	dep	go.opentelemetry.io/otel/exporters/stdout/stdouttrace	v1.43.0	h1:mS47AX77OtFfKG4vtp+84kuGSFZHTyxtXIN269vChY0=
+	dep	go.opentelemetry.io/otel/metric	v1.45.0	h1:7Eg1uH7CJ5cXv9is6tnBe1FI6rj1nwUdbFypRm3br/M=
+	dep	go.opentelemetry.io/otel/sdk	v1.45.0	h1:4VVSMgQ83dUgW2aoX5f6JgLvHwIvzcuLnF9lUdCSpCw=
+	dep	go.opentelemetry.io/otel/sdk/metric	v1.45.0	h1:oVFszMfyj1Am6s24Vtc7wBb8BKLcwepJjNEYILuiE3o=
+	dep	go.opentelemetry.io/otel/trace	v1.45.0	h1:l/mP6Uv7oNO7/TblbhpbgMidxhq1uO/rPsikOyVhxag=
+	dep	go.yaml.in/yaml/v2	v2.4.3	h1:6gvOSjQoTB3vt1l+CU+tSyi/HOjfOjRLJ4YwYZGwRO0=
+	dep	go.yaml.in/yaml/v3	v3.0.4	h1:tfq32ie2Jv2UxXFdLJdh3jXuOzWiL1fo0bu/FbuKpbc=
+	dep	golang.org/x/crypto	v0.57.0	h1:3ZVCjf8Ggz7zneR/EHRVx68Ctf+2pmIMP2UFhh9cC6M=
+	dep	golang.org/x/exp	v0.0.0-20260410095643-746e56fc9e2f	h1:W3F4c+6OLc6H2lb//N1q4WpJkhzJCK5J6kUi1NTVXfM=
+	dep	golang.org/x/net	v0.60.0	h1:79p50tfZlm0J9YfoDsSi639qSXNGVwEzOPLCxM2FsYU=
+	dep	golang.org/x/oauth2	v0.36.0	h1:peZ/1z27fi9hUOFCAZaHyrpWG5lwe0RJEEEeH0ThlIs=
+	dep	golang.org/x/sync	v0.23.0	h1:KameEIfc1IkluZyXWLn39Wd4tURc6GbCiISGiZm2bQk=
+	dep	golang.org/x/sys	v0.48.0	h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=
+	dep	golang.org/x/term	v0.46.0	h1:3+OXuTbaKDgwk8jTi3aSLHRlmWqHEUDUtxnbFigO4YE=
+	dep	golang.org/x/text	v0.42.0	h1:JbOZXgfeCPU9gacVtYliJqOhD+zhrEqK4LfdpmlUZqI=
+	dep	golang.org/x/time	v0.15.0	h1:bbrp8t3bGUeFOx08pvsMYRTCVSMk89u4tKbNOZbp88U=
+	dep	google.golang.org/api	v0.277.0	h1:HJfyJUiNeBBUMai7ez8u14wkp/gH/I4wpGbbO9o+cSk=
+	dep	google.golang.org/genproto	v0.0.0-20260319201613-d00831a3d3e7	h1:XzmzkmB14QhVhgnawEVsOn6OFsnpyxNPRY9QV01dNB0=
+	dep	google.golang.org/genproto/googleapis/api	v0.0.0-20260803160001-6ac0973c030d	h1:FarXi840EJWSHYTN3ERkADbPWjl307+FGrA22KAVjjc=
+	dep	google.golang.org/genproto/googleapis/rpc	v0.0.0-20260803160001-6ac0973c030d	h1:IL4hdHzcUv2l/gcg98/Rj3FbtE6axwqslOW8SW0C+S0=
+	dep	google.golang.org/grpc	v1.83.2	h1:EManeRomTObA0BU7I8vXgg/78uE5MJ9M8B39EX2WscU=
+	dep	google.golang.org/protobuf	v1.36.11	h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
+	dep	gopkg.in/yaml.v2	v2.4.0	h1:D8xgwECY7CYvx+Y2n4sBz93Jn9JRvxdiyyo8CTfuKaY=
+	dep	gopkg.in/yaml.v3	v3.0.1	h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
+	dep	gotest.tools/v3	v3.5.2	h1:7koQfIKdy+I8UTetycgUqXWSDwpgv193Ka+qRsmBY8Q=
+	dep	nhooyr.io/websocket	v1.8.17	h1:KEVeLJkUywCKVsnLIDlD/5gtayKp8VoCkksHCGGfT9Y=
+	dep	pgregory.net/rapid	v1.2.0	h1:keKAYRcjm+e1F0oAuU5F5+YPAWcyxNNRK2wud503Gnk=
+	dep	sigs.k8s.io/yaml	v1.6.0	h1:G8fkbMSAFqgEFgh4b1wmtzDnioxFCUgTZhlbj5P9QYs=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=arm64
+	build	GOOS=darwin
+	build	GOARM64=v8.0

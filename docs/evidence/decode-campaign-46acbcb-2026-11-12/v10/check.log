@@ -1,0 +1,2 @@
+app version 10: 6137 tx seeds, 77 amino seeds, ops ["tx", "blobtx", "iw", "fibre"]
+done: 402000100 inputs in 7200s; per op (inputs, Go accepts): {"blobtx": (100494277, 743788), "fibre": (100509090, 104216), "iw": (100494977, 2307045), "tx": (100501756, 8827015)}
