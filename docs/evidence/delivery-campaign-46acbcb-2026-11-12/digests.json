@@ -1,0 +1,13 @@
+{
+  "go-build-info.txt": "4c8c00dcfa0ed9144151f1b2cbb0470c5d70cf21b5f312e758e4df81366b368d",
+  "job.txt": "01bf102ff3ad4cf48948b880b80a7a14d1a83a16a2a2b1f2a424b5d0a44fcb57",
+  "oracle-provenance.json": "5b77a3bb5bc44af6bc4d022ccda2dcca67707457d090d690e0e72a90cba6af31",
+  "qualification/check.log": "89f06bb1c1e3331ebfd00029dc267e94a47839b2ee682d697f7381452592fd5a",
+  "qualification/evidence.json": "9e164e9898cfdeb9ba41e35aa5d8caee39e54cb3b0a44f5930676661a158455a",
+  "revision.txt": "15370a209bbc18d15e4aaf6270b1aacdcd38964ae1fe45da55367e125bcde9ac",
+  "runs.jsonl.gz": "20db0f3983befe6df2cce844ae6c60e4dba62f5c186c27407991b22afe48e0cd",
+  "summary.json": "1d42df8b790f53f0cdcef2a83d027391811851a02cb23f82f27751842b23a3b2",
+  "summary.txt": "89f06bb1c1e3331ebfd00029dc267e94a47839b2ee682d697f7381452592fd5a",
+  "worktree.patch": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "worktree.status": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
