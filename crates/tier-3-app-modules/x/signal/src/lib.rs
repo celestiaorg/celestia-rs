@@ -1,4 +1,5 @@
-//! celestia-app v10 `x/signal`.
+//! celestia-app v10 `x/signal`, with the v11 version check
+//! ([`CONSENSUS_APP_VERSION_FROM`]).
 //!
 //! Store layout: `0x00` → pending `Upgrade`; `valoper address bytes` →
 //! signalled version (`u64` big-endian). The module has no genesis state and
@@ -109,12 +110,27 @@ fn app_version(ctx: &Context<'_>) -> u64 {
     ctx.consensus_params.version.as_ref().map_or(0, |v| v.app)
 }
 
-/// `sdkCtx.BlockHeader().Version.App`, which the msg server compares
-/// signalled versions with: `BaseApp` builds every block header
+/// `sdkCtx.BlockHeader().Version.App`, which the v9 / v10 msg server
+/// compares signalled versions with: `BaseApp` builds every block header
 /// (`FinalizeBlock`, the proposal handlers, `Commit`'s check state,
 /// `InitChain`) without a `Version`, so it is always 0 (the app version
 /// lives in the consensus params).
 const HEADER_APP_VERSION: u64 = 0;
+
+/// First app version (celestia-app v11, PROTOCO-3757) whose msg server
+/// compares with the consensus params' app version, and whose `EndBlocker`
+/// clears a reached upgrade that does not raise the app version.
+pub const CONSENSUS_APP_VERSION_FROM: u64 = 11;
+
+/// The current version the msg server compares signalled versions with.
+fn current_version(ctx: &Context<'_>) -> u64 {
+    let version = app_version(ctx);
+    if sdk::version::executing(version) >= CONSENSUS_APP_VERSION_FROM {
+        version
+    } else {
+        HEADER_APP_VERSION
+    }
+}
 
 /// `VersionToBytes`.
 #[must_use]
@@ -210,7 +226,7 @@ pub fn signal_version(
         return Err(errors::upgrade_pending().wrap("can not signal version"));
     }
     let val = val_from_bech32(&msg.validator_address)?;
-    let current = HEADER_APP_VERSION;
+    let current = current_version(ctx);
     if msg.version < current {
         return Err(errors::invalid_signal_version().wrap(format!(
             "signalled version {}, current version {current}",
@@ -247,10 +263,10 @@ pub fn try_upgrade(
         .to_i64()
         .ok_or_else(|| sdk::error::sdk::logic("threshold overflows int64"))?;
     if let Some(version) = tally_voting_power(ctx, staking, threshold)? {
-        let header_version = HEADER_APP_VERSION;
-        if version <= header_version {
+        let current_app = current_version(ctx);
+        if version <= current_app {
             return Err(errors::invalid_upgrade_version().wrap(format!(
-                "can not upgrade to version {version} because it is less than or equal to current version {header_version}"
+                "can not upgrade to version {version} because it is less than or equal to current version {current_app}"
             )));
         }
         // The binary's version (v9.0.8 / v10.4.0 delays).
@@ -289,6 +305,23 @@ pub fn validate_basic_try_upgrade(msg: &MsgTryUpgrade) -> Result<()> {
 /// `ShouldUpgrade`: the pending upgrade once its height is reached.
 pub fn should_upgrade(ctx: &mut Context<'_>) -> Result<Option<Upgrade>> {
     Ok(get_upgrade(ctx)?.filter(|u| ctx.header.height >= u.upgrade_height))
+}
+
+/// The upgrade the app `EndBlocker` applies: the pending upgrade once its
+/// height is reached, if it raises the `current` app version. From
+/// [`CONSENSUS_APP_VERSION_FROM`] a reached upgrade that does not raise it is
+/// cleared (`ResetTally`); earlier versions leave it pending.
+pub fn upgrade_to_apply(ctx: &mut Context<'_>, current: u64) -> Result<Option<Upgrade>> {
+    let Some(upgrade) = should_upgrade(ctx)? else {
+        return Ok(None);
+    };
+    if upgrade.app_version > current {
+        return Ok(Some(upgrade));
+    }
+    if sdk::version::executing(current) >= CONSENSUS_APP_VERSION_FROM {
+        reset_tally(ctx)?;
+    }
+    Ok(None)
 }
 
 /// `ResetTally`: deletes every key of the store (signals and the upgrade).
@@ -405,6 +438,85 @@ mod tests {
         reset_tally(&mut ctx)?;
         assert_eq!(get_upgrade(&mut ctx)?, None);
         assert!(!ctx.has(STORE_KEY, &a)?);
+        Ok(())
+    }
+
+    fn ctx_at(ms: &mut MultiStore, app: u64) -> Context<'_> {
+        let header = Header {
+            chain_id: "test".into(),
+            height: 10,
+            ..Header::default()
+        };
+        let mut ctx = Context::new(ms, header, ExecMode::Finalize);
+        ctx.consensus_params = ConsensusParams {
+            version: Some(VersionParams { app }),
+            ..ConsensusParams::default()
+        };
+        ctx
+    }
+
+    #[test]
+    fn v11_compares_with_consensus_app_version() -> Result<()> {
+        let mut ms = MultiStore::new();
+        ms.mount(STORE_KEY, Kind::Iavl)?;
+        let mut ctx = ctx_at(&mut ms, 11);
+        let a = vec![1u8; 20];
+        let b = vec![2u8; 20];
+        let mut s = Staking {
+            vals: vec![(a.clone(), 50, true), (b.clone(), 50, true)],
+        };
+        let sig = |v: &[u8], version| MsgSignalVersion {
+            validator_address: to_bech32(VALOPER_PREFIX, v),
+            version,
+        };
+        let try_msg = MsgTryUpgrade {
+            signer: to_bech32("celestia", &a),
+        };
+        assert_eq!(
+            signal_version(&mut ctx, &mut s, &sig(&a, 10)).map_err(|e| e.code),
+            Err(1)
+        );
+        signal_version(&mut ctx, &mut s, &sig(&a, 11))?;
+        signal_version(&mut ctx, &mut s, &sig(&b, 11))?;
+        assert_eq!(
+            try_upgrade(&mut ctx, &mut s, &try_msg).map_err(|e| e.code),
+            Err(3)
+        );
+        assert_eq!(get_upgrade(&mut ctx)?, None);
+        signal_version(&mut ctx, &mut s, &sig(&a, 12))?;
+        signal_version(&mut ctx, &mut s, &sig(&b, 12))?;
+        try_upgrade(&mut ctx, &mut s, &try_msg)?;
+        assert_eq!(get_upgrade(&mut ctx)?.map(|u| u.app_version), Some(12));
+        Ok(())
+    }
+
+    #[test]
+    fn non_increasing_upgrade_is_cleared_from_v11() -> Result<()> {
+        for (app, cleared) in [(10, false), (11, true)] {
+            let mut ms = MultiStore::new();
+            ms.mount(STORE_KEY, Kind::Iavl)?;
+            let mut ctx = ctx_at(&mut ms, app);
+            set_validator_version(&mut ctx, &[1; 20], app)?;
+            let stale = Upgrade {
+                app_version: app,
+                upgrade_height: 10,
+            };
+            set_upgrade(&mut ctx, &stale)?;
+            assert_eq!(upgrade_to_apply(&mut ctx, app)?, None);
+            assert_eq!(is_upgrade_pending(&mut ctx)?, !cleared, "app version {app}");
+            assert_eq!(ctx.has(STORE_KEY, &[1; 20])?, !cleared, "app version {app}");
+
+            let up = Upgrade {
+                app_version: app + 1,
+                upgrade_height: 10,
+            };
+            reset_tally(&mut ctx)?;
+            set_upgrade(&mut ctx, &up)?;
+            assert_eq!(upgrade_to_apply(&mut ctx, app)?, Some(up));
+            ctx.header.height = 9;
+            assert_eq!(upgrade_to_apply(&mut ctx, app)?, None);
+            assert!(is_upgrade_pending(&mut ctx)?);
+        }
         Ok(())
     }
 }
