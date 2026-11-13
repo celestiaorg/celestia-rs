@@ -132,12 +132,15 @@ pub fn validate_params(p: &Params) -> core::result::Result<(), String> {
 }
 
 /// `Keeper.GetParams`: the module store, falling back to the legacy
-/// subspace when unset.
+/// subspace when unset before app version 11. From app version 11 an unset
+/// store decodes as empty params (the v11 upgrade guarantees the key).
 pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
+    let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
     match ctx.get(STORE_KEY, PARAMS_KEY)? {
         Some(bz) if !bz.is_empty() => {
             Params::decode(bz.as_slice()).map_err(|e| undefined(e.to_string()))
         }
+        _ if sdk::version::executing(v) >= 11 => Ok(Params::default()),
         _ => {
             let gas = x_params::get_raw(ctx, MODULE_NAME, b"GasPerBlobByte")?;
             let sq = x_params::get_raw(ctx, MODULE_NAME, b"GovMaxSquareSize")?;
@@ -498,6 +501,29 @@ mod tests {
             &serde_json::json!({"params": {"gas_per_blob_byte": 8, "gov_max_square_size": "100"}}),
         );
         assert!(bad.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_subspace_fallback_ends_at_app_version_11() -> Result<()> {
+        use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+        for (app, want) in [
+            (
+                10,
+                Params {
+                    gas_per_blob_byte: 8,
+                    gov_max_square_size: 64,
+                },
+            ),
+            (11, Params::default()),
+        ] {
+            let mut ms = ms();
+            let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+            ctx.consensus_params.version = Some(VersionParams { app });
+            x_params::set_raw(&mut ctx, "blob", b"GasPerBlobByte", b"8".to_vec())?;
+            x_params::set_raw(&mut ctx, "blob", b"GovMaxSquareSize", b"\"64\"".to_vec())?;
+            assert_eq!(get_params(&mut ctx)?, want, "app version {app}");
+        }
         Ok(())
     }
 
