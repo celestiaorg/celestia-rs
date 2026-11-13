@@ -47,7 +47,7 @@ const ERROR_ACK_PREFIX: &str = "packet-forward-middleware error: ";
 fn error_ack(ctx: &mut Context<'_>, err: &str) -> Acknowledgement {
     let text = format!("{ERROR_ACK_PREFIX}{err}");
     if is_v11(ctx) {
-        return Acknowledgement::error_string(&fixed_error_ack(ctx, &text));
+        return Acknowledgement::error_string(&fixed_error_ack());
     }
     Acknowledgement::error_string(&text)
 }
@@ -58,15 +58,12 @@ fn is_v11(ctx: &Context<'_>) -> bool {
     sdk::version::is_v11(sdk::version::executing(v))
 }
 
-/// celestia-app v11 `fixedPFMErrorAck`: emits the original PFM error text
-/// as an event and returns the text of
+/// celestia-app v11 `fixedPFMErrorAck`: the text of
 /// `channeltypes.NewErrorAcknowledgement(apperrors.ErrPacketForward)`
-/// (codespace `app`, code 11151), which carries only the ABCI code.
-fn fixed_error_ack(ctx: &mut Context<'_>, text: &str) -> String {
-    ctx.events.emit(sdk::event::event(
-        "packet_forward_error",
-        [("error", text.to_owned())],
-    ));
+/// (codespace `app`, code 11151), which carries only the ABCI code. Go
+/// writes the original PFM error text to the node log only, never to an
+/// event, so no Go error text is needed from app version 11.
+fn fixed_error_ack() -> String {
     "ABCI code: 11151: error handling packet: see events for details".to_owned()
 }
 
@@ -367,7 +364,7 @@ fn write_ack_for_forwarded_packet(
 fn fixed_forwarded_ack(ctx: &mut Context<'_>, ack: &AckResponse) -> Option<AckResponse> {
     match ack {
         AckResponse::Error(e) if e.starts_with(ERROR_ACK_PREFIX) && is_v11(ctx) => {
-            Some(AckResponse::Error(fixed_error_ack(ctx, e)))
+            Some(AckResponse::Error(fixed_error_ack()))
         }
         _ => None,
     }
@@ -840,10 +837,11 @@ mod tests {
                 r#"{"error":"ABCI code: 11151: error handling packet: see events for details"}"#,
                 "{memo}"
             );
-            let events = ctx.events.events();
-            assert_eq!(
-                events.last().unwrap().r#type,
-                "packet_forward_error",
+            assert!(
+                ctx.events
+                    .events()
+                    .iter()
+                    .all(|e| e.r#type != "packet_forward_error"),
                 "{memo}"
             );
         }
