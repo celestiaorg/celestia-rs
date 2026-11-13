@@ -1,0 +1,22 @@
+package main
+import (
+ "encoding/hex"
+ "encoding/json"
+ "fmt"
+ "os"
+ "github.com/cockroachdb/pebble"
+ snapshot "cosmossdk.io/store/snapshots/types"
+)
+func main(){
+ if len(os.Args)!=2 { panic("catalog directory required") }
+ db,err:=pebble.Open(os.Args[1],&pebble.Options{ReadOnly:true});if err!=nil{panic(err)};defer db.Close()
+ it,err:=db.NewIter(nil);if err!=nil{panic(err)};defer it.Close()
+ for it.First();it.Valid();it.Next(){
+  var s snapshot.Snapshot
+  err=s.Unmarshal(it.Value())
+  row:=map[string]any{"key_hex":hex.EncodeToString(it.Key()),"value_bytes":len(it.Value())}
+  if err==nil&&s.Height>0&&s.Format>0&&s.Chunks>0 {row["height"]=s.Height;row["format"]=s.Format;row["chunks"]=s.Chunks;row["hash_hex"]=hex.EncodeToString(s.Hash)} else {row["decode_error"]=fmt.Sprint(err)}
+  if err:=json.NewEncoder(os.Stdout).Encode(row);err!=nil{panic(err)}
+ }
+ if err:=it.Error();err!=nil{panic(err)}
+}

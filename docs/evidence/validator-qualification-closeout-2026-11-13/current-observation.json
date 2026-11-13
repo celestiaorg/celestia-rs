@@ -1,0 +1,36 @@
+{
+  "time_utc": "2026-11-13T23:43:50.613657+00:00",
+  "networks": {
+    "mocha": {
+      "height": "2596265",
+      "catching_up": false,
+      "block_time": "2026-11-13T23:43:45.490877239Z",
+      "counts": {
+        "samples": {
+          "observed": 29596,
+          "unavailable": 3
+        },
+        "heights": {
+          "match": 53211
+        }
+      }
+    },
+    "mainnet": {
+      "height": "15869118",
+      "catching_up": false,
+      "block_time": "2026-11-13T23:43:46.824735088Z",
+      "counts": {
+        "samples": {
+          "observed": 29565,
+          "unavailable": 27
+        },
+        "heights": {
+          "match": 53513,
+          "unavailable": 32
+        }
+      }
+    }
+  },
+  "scope": "Current spot checks and aggregate observed/unavailable counts; not continuous qualification.",
+  "hold_until_unix": 1794724137
+}

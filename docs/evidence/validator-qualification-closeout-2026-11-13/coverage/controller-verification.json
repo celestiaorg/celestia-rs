@@ -1,0 +1,11 @@
+{
+  "verified_at_utc": "2026-11-12T06:52:54.536356+00:00",
+  "original_controller_source": "449ffa25b5679f5791bfddcccc8344ce8f5bf1c5",
+  "pre_run_controller_sha256": "49272fcd9f54ebcdc7f22a29de8d444ccdc82a3e9742687297b9fb91abaef56f",
+  "post_run_controller_sha256": "49272fcd9f54ebcdc7f22a29de8d444ccdc82a3e9742687297b9fb91abaef56f",
+  "controller_pre_receipt_birthtime_unix": 1794461878.5312185,
+  "qualification_started_at_unix": 1794461878.7938938,
+  "only_adaptation": "explicit source ROOT selection",
+  "status": "verified",
+  "scope": "Independent external-controller pre/post identity check; original qualification receipt is preserved unchanged."
+}
