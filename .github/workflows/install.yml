@@ -83,7 +83,7 @@ jobs:
           - { image: "ubuntu:24.04", setup: "apt-get update && apt-get install -y --no-install-recommends python3 curl ca-certificates busybox", shell: "busybox sh" }
           - { image: "fedora:latest", setup: "dnf install -y python3 tar gzip", shell: bash }
           - { image: "amazonlinux:2023", setup: "dnf install -y --allowerasing python3 tar gzip", shell: sh }
-          - { image: "archlinux:latest", setup: "pacman -Sy --noconfirm python", shell: sh }
+          - { image: "archlinux:latest", setup: "pacman -Syu --noconfirm python", shell: sh }
     container: ${{ matrix.image }}
     steps:
       # Before checkout, which needs tar (not in amazonlinux).
