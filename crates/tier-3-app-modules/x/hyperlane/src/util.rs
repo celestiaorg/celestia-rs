@@ -307,12 +307,12 @@ impl MerkleTree {
         self.count += 1;
         let mut size = self.count;
         let mut node = node;
-        for i in 0..TREE_DEPTH {
+        for branch in self.branch.iter_mut().take(TREE_DEPTH) {
             if size & 1 == 1 {
-                self.branch[i] = node;
+                *branch = node;
                 return Ok(());
             }
-            node = keccak256(&[&self.branch[i], &node]);
+            node = keccak256(&[&*branch, &node]);
             size /= 2;
         }
         Err("unreachable code".into())
