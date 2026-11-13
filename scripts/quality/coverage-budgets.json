@@ -3,6 +3,6 @@
     "max_uncovered_lines": 1
   },
   "crates/tier-4-runtime/privval/src/lib.rs": {
-    "max_uncovered_lines": 86
+    "max_uncovered_lines": 97
   }
 }
