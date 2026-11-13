@@ -32,6 +32,7 @@
     clippy::many_single_char_names
 )]
 
+mod canonical;
 mod convert;
 mod custom;
 mod go_types;
@@ -420,6 +421,11 @@ fn default_tx_decode_inner(tx_bytes: &[u8]) -> sdk::Result<Tx> {
     let mut auth = gogo::unmarshal("cosmos.tx.v1beta1.AuthInfo", &auth_info_bytes)
         .map_err(|e| tx_decode_err(&e))?;
     unpack::unpack_auth_info(&mut auth).map_err(unpack_err)?;
+
+    // celestia-app v11 `canonicalTxDecoder`.
+    if !v9() && sdk::version::app_version() >= 11 {
+        canonical::check_tx(tx_bytes).map_err(|e| tx_decode_err(&e))?;
+    }
 
     build_tx(
         tx_bytes,
