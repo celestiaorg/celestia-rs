@@ -401,13 +401,13 @@ impl Fixture {
                 self.require_proposal(&proposal, gov::ProposalStatus::VotingPeriod)?;
                 require_phase_indexes(rust, &proposal, true)?;
                 require_no_vote(rust, self.first_id, &gn.accts[0].acc)?;
-                for i in 1..ACCOUNTS - 1 {
+                for (i, acct) in gn.accts.iter().enumerate().take(ACCOUNTS - 1).skip(1) {
                     let vote = query_rust::<gov::QueryVoteResponse>(
                         rust,
                         "/cosmos.gov.v1.Query/Vote",
                         &gov::QueryVoteRequest {
                             proposal_id: self.first_id,
-                            voter: gn.accts[i].acc.clone(),
+                            voter: acct.acc.clone(),
                         },
                     )?
                     .vote
