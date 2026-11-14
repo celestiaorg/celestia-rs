@@ -260,7 +260,7 @@ fn compare_prepare(
                 report.compared.prepare_with_txs += 1;
             }
             // Go aborts on a tx that panics; celestia-rs drops the tx.
-            o == g || app::proposal::is_go_prepare_abort(r, g)
+            o == g || app.replaces_go_prepare_abort(r, g, o)
         }
         (Err(_), response::Value::Exception(_)) => true,
         _ => false,

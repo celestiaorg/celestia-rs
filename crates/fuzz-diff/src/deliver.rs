@@ -5971,7 +5971,7 @@ pub fn run(
                 let same = match (&o, &g) {
                     // Go aborts on a tx that panics; celestia-rs drops the tx.
                     (Ok(o), response::Value::PrepareProposal(g)) => {
-                        o == g || app::proposal::is_go_prepare_abort(pp, g)
+                        o == g || rust.replaces_go_prepare_abort(pp, g, o)
                     }
                     _ => false,
                 };
@@ -7442,7 +7442,10 @@ pub fn run(
         }
         let op = rust.prepare_proposal(&prep);
         // Go aborts on a tx that panics; celestia-rs drops the tx.
-        if op.as_ref().ok() != Some(&gp) && !app::proposal::is_go_prepare_abort(&prep, &gp) {
+        let replaces_abort = op
+            .as_ref()
+            .is_ok_and(|o| rust.replaces_go_prepare_abort(&prep, &gp, o));
+        if op.as_ref().ok() != Some(&gp) && !replaces_abort {
             stats.mismatches.push(format!(
                 "{scenario} h={height} PrepareProposal differs: go txs={} square={} rust={:?}\n  go only={}\n  rust only={}\n  txs={}",
                 gp.txs.len(),

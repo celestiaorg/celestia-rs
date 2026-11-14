@@ -52,8 +52,8 @@ pub const SQUARE_SIZE_UPPER_BOUND: u64 = 512;
 /// Whether `resp` is what Go celestia-app v9 / v10 returns when its
 /// PrepareProposal handler fails or panics: `BaseApp` returns the request's
 /// txs with no square size or data root. celestia-rs drops a tx that panics
-/// instead (see the module docs), so differential checks against Go accept
-/// any celestia-rs response to such a request.
+/// instead (see the module docs), so differential checks against Go use
+/// [`App::replaces_go_prepare_abort`] for such a request.
 #[must_use]
 pub fn is_go_prepare_abort(req: &RequestPrepareProposal, resp: &ResponsePrepareProposal) -> bool {
     resp.square_size == 0 && resp.data_root_hash.is_empty() && resp.txs == req.txs
@@ -411,6 +411,33 @@ impl App {
             txs: req.txs.clone(),
             ..ResponsePrepareProposal::default()
         }))
+    }
+
+    /// Whether `ours` may stand in for `go` in a differential check: `go`
+    /// is the Go abort response to `req` (see [`is_go_prepare_abort`]) and
+    /// `ours` is a proposal that `ProcessProposal` accepts.
+    pub fn replaces_go_prepare_abort(
+        &mut self,
+        req: &RequestPrepareProposal,
+        go: &ResponsePrepareProposal,
+        ours: &ResponsePrepareProposal,
+    ) -> bool {
+        if !is_go_prepare_abort(req, go) {
+            return false;
+        }
+        let status = self
+            .process_proposal(&RequestProcessProposal {
+                txs: ours.txs.clone(),
+                square_size: ours.square_size,
+                data_root_hash: ours.data_root_hash.clone(),
+                height: req.height,
+                time: req.time,
+                proposer_address: req.proposer_address.clone(),
+                next_validators_hash: req.next_validators_hash.clone(),
+                ..RequestProcessProposal::default()
+            })
+            .map(|r| r.status);
+        status.ok() == Some(ProposalStatus::Accept as i32)
     }
 
     /// `ProcessProposal`.

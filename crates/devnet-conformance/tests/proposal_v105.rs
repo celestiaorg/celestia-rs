@@ -96,6 +96,19 @@ fn v10_5_proposal_drops_tx_whose_ante_panics() {
                 let expected = hex::decode(row["response"].as_str().unwrap()).unwrap();
                 assert_eq!(resp.encode_to_vec(), expected, "{}", row["name"]);
                 assert!(!app::proposal::is_go_prepare_abort(&req, &resp));
+                // What Go v10 returns for this request. The differential
+                // checks accept the celestia-rs proposal in its place, but
+                // only a proposal that ProcessProposal accepts.
+                let go_abort = abci::ResponsePrepareProposal {
+                    txs: req.txs.clone(),
+                    ..Default::default()
+                };
+                assert!(app.replaces_go_prepare_abort(&req, &go_abort, &resp));
+                let mut bad_root = resp.clone();
+                bad_root.data_root_hash = vec![0; 32];
+                assert!(!app.replaces_go_prepare_abort(&req, &go_abort, &bad_root));
+                assert!(!app.replaces_go_prepare_abort(&req, &go_abort, &go_abort));
+                assert!(!app.replaces_go_prepare_abort(&req, &resp, &resp));
                 let status = app
                     .process_proposal(&abci::RequestProcessProposal {
                         txs: resp.txs,
