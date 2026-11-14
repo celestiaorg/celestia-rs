@@ -4992,6 +4992,7 @@ dependencies = [
  "gojson",
  "gostr",
  "hash",
+ "proptest",
  "prost",
  "sdk",
  "serde_json",

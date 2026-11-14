@@ -13,6 +13,7 @@ use x_ibc::channel::AckResponse;
 use x_ibc::router::{Acknowledgement, IbcModule};
 use x_transfer::relay::{self, PacketData};
 
+use crate::limits;
 use crate::memo::{self, ForwardMetadata, Memo};
 use crate::{STORE_KEY, refund_packet_key};
 
@@ -602,6 +603,12 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
         let Ok(data) = PacketData::decode(&p.data) else {
             return self.app.on_recv_packet(ctx, p, relayer);
         };
+        // celestia-app v11 `pfmIBCMiddleware.OnRecvPacket`: a forward memo
+        // outside its limits gets the fixed error acknowledgement before PFM
+        // runs (no store access, events or gas).
+        if is_v11(ctx) && limits::reject_forward_memo(&data.memo) {
+            return Ok(Some(Acknowledgement::error_string(&fixed_error_ack())));
+        }
         let md = match memo::classify(&data.memo) {
             Memo::NotForward => return self.app.on_recv_packet(ctx, p, relayer),
             Memo::ParseError(e) => {
@@ -697,6 +704,19 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
         let Ok(data) = PacketData::decode(&p.data) else {
             return self.app.on_timeout_packet(ctx, p, relayer);
         };
+        // celestia-app v11 `pfmIBCMiddleware.OnTimeoutPacket`: a forwarded
+        // packet whose memo is outside the retry limits is not retried; PFM
+        // gives up on it as it does with no retries left, with the fixed
+        // error acknowledgement. Not forwarded or no retries left: PFM runs
+        // (and reads the in-flight record again, as in Go).
+        if is_v11(ctx)
+            && !limits::retry_memo_within_limits(&data.memo)
+            && let Some((ifp, None)) = timeout_should_retry(ctx, p)?
+        {
+            remove_in_flight_packet(ctx, p)?;
+            let ack = AckResponse::Error(fixed_error_ack());
+            return write_ack_for_forwarded_packet(ctx, p, &data, &ifp, &ack);
+        }
         let Some((ifp, err)) = timeout_should_retry(ctx, p)? else {
             return self.app.on_timeout_packet(ctx, p, relayer);
         };
@@ -943,5 +963,134 @@ mod tests {
             "failed to get user recoverable account: failed to decode bech32 addresses: \
              decoding bech32 failed: invalid bech32 string length 1"
         );
+    }
+
+    const FIXED_ACK: &str =
+        r#"{"error":"ABCI code: 11151: error handling packet: see events for details"}"#;
+
+    fn module() -> PacketForwardMiddleware<x_transfer::relay::TransferModule> {
+        PacketForwardMiddleware {
+            app: x_transfer::relay::TransferModule,
+            retries_on_timeout: 0,
+            forward_timeout: DEFAULT_FORWARD_TIMEOUT_NS,
+        }
+    }
+
+    fn transfer_packet(memo: &str) -> Packet {
+        Packet {
+            sequence: 1,
+            source_port: "transfer".into(),
+            source_channel: "channel-1".into(),
+            destination_port: "transfer".into(),
+            destination_channel: "channel-0".into(),
+            data: serde_json::to_vec(&serde_json::json!({
+                "denom": "uatom", "amount": "1", "sender": "remote", "receiver": "pfm",
+                "memo": memo,
+            }))
+            .unwrap(),
+            ..Default::default()
+        }
+    }
+
+    fn set_app_version(ctx: &mut Context<'_>, app: u64) {
+        ctx.consensus_params.version =
+            Some(celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app });
+    }
+
+    /// `TestPFMIBCMiddlewareRejectsForwardMemo`: from app version 11 a
+    /// forward memo outside celestia-app's limits gets the fixed error
+    /// acknowledgement before PFM runs (no store access, gas or events).
+    /// Before it, PFM handles the memo as in v8.2.0.
+    #[test]
+    fn forward_memo_limits_from_v11() {
+        let deep = format!(
+            r#"{{"forward":{{"receiver":"r","port":"transfer","channel":"channel-0","next":{}{{}}{}}}}}"#,
+            "{\"a\":".repeat(15),
+            "}".repeat(15)
+        );
+        for memo in [
+            r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0","timeout":1e19}}"#,
+            r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0"},"Forward":null}"#,
+            r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0","next":5}}"#,
+            &deep,
+        ] {
+            assert!(crate::limits::reject_forward_memo(memo), "{memo}");
+            for app in [10, 11] {
+                let mut store = sdk::MultiStore::new();
+                let mut ctx =
+                    Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
+                set_app_version(&mut ctx, app);
+                let res = module().on_recv_packet(&mut ctx, &transfer_packet(memo), &[]);
+                let rejected = matches!(&res, Ok(Some(ack))
+                    if !ack.success && ack.bytes == FIXED_ACK.as_bytes())
+                    && ctx.gas.consumed() == 0
+                    && ctx.events.events().is_empty();
+                assert_eq!(rejected, app == 11, "app {app}: {memo}: {res:?}");
+            }
+        }
+    }
+
+    /// Runs `OnTimeoutPacket` for a forwarded packet with `memo` and an
+    /// in-flight record with `retries` retries left. Returns the error
+    /// text, whether the in-flight record is left, and the gas used.
+    fn timeout(app: u64, memo: &str, retries: i32) -> (String, bool, u64) {
+        let mut store = sdk::MultiStore::new();
+        store.mount(STORE_KEY, sdk::Kind::Iavl).unwrap();
+        let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
+        set_app_version(&mut ctx, app);
+        let p = transfer_packet(memo);
+        let key = refund_packet_key(&p.source_channel, &p.source_port, p.sequence);
+        crate::set_in_flight_packet(
+            &mut ctx,
+            &key,
+            &InFlightPacket {
+                refund_channel_id: "channel-0".into(),
+                refund_port_id: "transfer".into(),
+                retries_remaining: retries,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let before = ctx.gas.consumed();
+        let err = module()
+            .on_timeout_packet(&mut ctx, &p, &[])
+            .map_or_else(|e| e.log, |()| String::new());
+        let gas = ctx.gas.consumed() - before;
+        let left = ctx.has(STORE_KEY, &key).unwrap();
+        (err, left, gas)
+    }
+
+    /// From app version 11 a forwarded packet whose memo is outside the
+    /// retry limits is not retried: the in-flight record is removed and
+    /// the original packet gets the fixed error acknowledgement (here the
+    /// write stops at the missing channel capability). Otherwise PFM's
+    /// timeout handling runs, after the wrapper's own `TimeoutShouldRetry`
+    /// when the memo is outside the limits.
+    #[test]
+    fn retry_memo_limits_from_v11() {
+        let deep = format!("{}{{}}{}", "{\"a\":".repeat(16), "}".repeat(16));
+        let ok = r#"{"forward":{"receiver":"r2","port":"transfer","channel":"channel-2"}}"#;
+        assert!(!crate::limits::retry_memo_within_limits(&deep));
+        assert!(crate::limits::retry_memo_within_limits(ok));
+
+        let no_retry = timeout(11, &deep, 1);
+        assert!(
+            no_retry
+                .0
+                .contains("could not retrieve module from port-id"),
+            "{no_retry:?}"
+        );
+        assert!(!no_retry.1);
+        // Before app version 11, and for a memo within the limits, PFM
+        // refunds and retries (here the refund fails on missing stores).
+        let pfm = timeout(10, &deep, 1);
+        assert!(!pfm.0.contains("could not retrieve module"), "{pfm:?}");
+        assert_eq!(timeout(11, ok, 1), timeout(10, ok, 1));
+        // No retries left: PFM gives up as before, after the wrapper read
+        // the in-flight record once more.
+        let (v10, v11) = (timeout(10, &deep, 0), timeout(11, &deep, 0));
+        assert_eq!((&v10.0, v10.1), (&v11.0, v11.1));
+        assert!(v11.2 > v10.2, "{v10:?} {v11:?}");
+        assert_eq!(timeout(11, ok, 0), timeout(10, ok, 0));
     }
 }
