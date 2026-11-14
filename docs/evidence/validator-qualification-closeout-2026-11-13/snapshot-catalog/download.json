@@ -1,0 +1,79 @@
+{
+  "archive_url": "https://snaps.qubelabs.io/celestia/celestia_2026-11-03.tar",
+  "etag": "\"6aea4a03-95f79f8e800\"",
+  "scope": "Only the public snapshot catalog database; no application-state, validator-state or key files extracted.",
+  "files": [
+    {
+      "name": "./snapshots/metadata.db/LOCK",
+      "size": 0,
+      "type": "0",
+      "header_offset": 9870929408,
+      "data_offset": 9870929920,
+      "header_sha256": "e8f35d8d80ffd1845bc8bfe0a1a39282818ee0f9d973b47a7e3c1030ccbd9400",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "./snapshots/metadata.db/CURRENT",
+      "size": 16,
+      "type": "0",
+      "header_offset": 9870929920,
+      "data_offset": 9870930432,
+      "header_sha256": "733e10ddfe4ccbc236d54d18353a57c171942587010f0d0554fd78beab293691",
+      "sha256": "11bd2a78a925ddb17f3b6c615a3998b65247a99eb21f5c70e90bf00a81857355"
+    },
+    {
+      "name": "./snapshots/metadata.db/MANIFEST-000087",
+      "size": 316,
+      "type": "0",
+      "header_offset": 9870930944,
+      "data_offset": 9870931456,
+      "header_sha256": "833c5660aa030606daf576cb5445b0f5bf581466f23b60fba0ae09869cfd51b4",
+      "sha256": "421bdf9ad37a93e79d5f9621d416b4adc31b48963ff0eda21515f608207d414a"
+    },
+    {
+      "name": "./snapshots/metadata.db/000086.log",
+      "size": 256786,
+      "type": "0",
+      "header_offset": 9870931968,
+      "data_offset": 9870932480,
+      "header_sha256": "3449d978f63af8c223607d2c7273a99c3dc6b4ceaeec1370150fb1ad48a89bb4",
+      "sha256": "e9b7ddfa9622d0bab02b1808f4f601d8dcab0377d6c30588d64d1f4b618a2763"
+    },
+    {
+      "name": "./snapshots/metadata.db/OPTIONS-000088",
+      "size": 1171,
+      "type": "0",
+      "header_offset": 9871189504,
+      "data_offset": 9871190016,
+      "header_sha256": "a8f778a84123c253530e5f1cd3a614ab109981f3a937445f3b85822b3b8bbb77",
+      "sha256": "636769302ecf05bdf59772e0ac3001d4b865cfbbc3689e816977e929c2ee5ee0"
+    },
+    {
+      "name": "./snapshots/metadata.db/MANIFEST-000081",
+      "size": 114,
+      "type": "0",
+      "header_offset": 9871191552,
+      "data_offset": 9871192064,
+      "header_sha256": "e465ddba91574aa307a7494660faa90df64e7055237a824ebc5ec4f164c64bcc",
+      "sha256": "a3a042bbdfe68abc8cc8470e2431765454973ca09acbadcdf5ae028c5c17e34a"
+    },
+    {
+      "name": "./snapshots/metadata.db/000089.sst",
+      "size": 5589,
+      "type": "0",
+      "header_offset": 9871192576,
+      "data_offset": 9871193088,
+      "header_sha256": "ab3023b8840126cba56bf3583e83d5a23c0b18a83d43d8ae4ea81becb4c411d0",
+      "sha256": "359c1b545b1fb5324964c61a9ded46c905c202495171ce4b5a1a6daee9c74fc7"
+    },
+    {
+      "name": "./snapshots/metadata.db/000090.log",
+      "size": 469454,
+      "type": "0",
+      "header_offset": 9871198720,
+      "data_offset": 9871199232,
+      "header_sha256": "c44076e97112c77d178264f2ab6b982dc7390ec77e16b5889af927fccdf1d2b2",
+      "sha256": "3bb3002f4f94babc679b50cdedaa3b71c53d00bcce54c00cd345303ac0319bf6"
+    }
+  ]
+}

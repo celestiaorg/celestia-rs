@@ -39,9 +39,32 @@ fn plain(log: impl Into<String>) -> SdkError {
     x_ibc::errors::unregistered(log)
 }
 
-/// `newErrorAcknowledgement`.
-fn error_ack(err: &str) -> Acknowledgement {
-    Acknowledgement::error_string(&format!("packet-forward-middleware error: {err}"))
+/// The prefix of every error acknowledgement text PFM creates.
+const ERROR_ACK_PREFIX: &str = "packet-forward-middleware error: ";
+
+/// `newErrorAcknowledgement`, then (from app version 11) celestia-app's
+/// `pfmIBCMiddleware`, which commits [`fixed_error_ack`] instead.
+fn error_ack(ctx: &mut Context<'_>, err: &str) -> Acknowledgement {
+    let text = format!("{ERROR_ACK_PREFIX}{err}");
+    if is_v11(ctx) {
+        return Acknowledgement::error_string(&fixed_error_ack());
+    }
+    Acknowledgement::error_string(&text)
+}
+
+/// Whether the context executes app version 11 or later.
+fn is_v11(ctx: &Context<'_>) -> bool {
+    let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    sdk::version::is_v11(sdk::version::executing(v))
+}
+
+/// celestia-app v11 `fixedPFMErrorAck`: the text of
+/// `channeltypes.NewErrorAcknowledgement(apperrors.ErrPacketForward)`
+/// (codespace `app`, code 11151), which carries only the ABCI code. Go
+/// writes the original PFM error text to the node log only, never to an
+/// event, so no Go error text is needed from app version 11.
+fn fixed_error_ack() -> String {
+    "ABCI code: 11151: error handling packet: see events for details".to_owned()
 }
 
 /// `GetReceiver`: `bech32(address.Hash(ModuleName, "<channel>/<sender>")[:20])`.
@@ -335,6 +358,18 @@ fn write_ack_for_forwarded_packet(
     write_refund_ack(ctx, &cap, ifp, &ack)
 }
 
+/// celestia-app v11 `pfmICS4Wrapper`: a PFM error acknowledgement of a
+/// forwarded packet (made here or relayed from the next chain) is replaced
+/// before it is written. `None` keeps `ack`.
+fn fixed_forwarded_ack(ctx: &mut Context<'_>, ack: &AckResponse) -> Option<AckResponse> {
+    match ack {
+        AckResponse::Error(e) if e.starts_with(ERROR_ACK_PREFIX) && is_v11(ctx) => {
+            Some(AckResponse::Error(fixed_error_ack()))
+        }
+        _ => None,
+    }
+}
+
 /// `ics4Wrapper.WriteAcknowledgement` on the reconstructed inbound packet.
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn write_refund_ack(
@@ -345,6 +380,8 @@ fn write_refund_ack(
 ) -> Result<()> {
     let timeout_height = x_ibc::height::parse(&ifp.packet_timeout_height)
         .map_err(|e| sdk::error::go_panic(format!("MustParseHeight: {}", e.log)))?;
+    let fixed = fixed_forwarded_ack(ctx, ack);
+    let ack = fixed.as_ref().unwrap_or(ack);
     let packet = Packet {
         sequence: ifp.refund_sequence,
         source_port: ifp.packet_src_port_id.clone(),
@@ -568,9 +605,10 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
         let md = match memo::classify(&data.memo) {
             Memo::NotForward => return self.app.on_recv_packet(ctx, p, relayer),
             Memo::ParseError(e) => {
-                return Ok(Some(error_ack(&format!(
-                    "error parsing forward metadata: {e}"
-                ))));
+                return Ok(Some(error_ack(
+                    ctx,
+                    &format!("error parsing forward metadata: {e}"),
+                )));
             }
             Memo::NilForward => {
                 return Err(sdk::error::go_panic(
@@ -580,11 +618,14 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
             Memo::Forward(m) => m,
         };
         if let Err(e) = memo::validate(&md) {
-            return Ok(Some(error_ack(&e)));
+            return Ok(Some(error_ack(ctx, &e)));
         }
         let override_receiver = get_receiver(&p.destination_channel, &data.sender);
         if let Err(e) = self.receive_funds(ctx, p, &data, &override_receiver, relayer)? {
-            return Ok(Some(error_ack(&format!("error receiving packet: {e}"))));
+            return Ok(Some(error_ack(
+                ctx,
+                &format!("error receiving packet: {e}"),
+            )));
         }
         let denom = denom_for_this_chain(
             &p.destination_port,
@@ -594,10 +635,10 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
             &data.denom,
         );
         let Some(amount) = parse_amount(&data.amount) else {
-            return Ok(Some(error_ack(&format!(
-                "error parsing amount for forward: {}",
-                data.amount
-            ))));
+            return Ok(Some(error_ack(
+                ctx,
+                &format!("error parsing amount for forward: {}", data.amount),
+            )));
         };
         let token = relay::new_coin(&denom, amount)?;
         let timeout = if md.timeout <= 0 {
@@ -621,7 +662,7 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
             if is_panic(&e) {
                 return Err(e);
             }
-            return Ok(Some(error_ack(&e.log)));
+            return Ok(Some(error_ack(ctx, &e.log)));
         }
         Ok(None)
     }
@@ -748,6 +789,91 @@ mod tests {
                     case["name"]
                 );
             }
+        }
+    }
+
+    /// From app version 11, celestia-app commits a fixed PFM error
+    /// acknowledgement that carries only the ABCI code of its
+    /// `ErrPacketForward` (PROTOCO-3759), whatever the error text.
+    #[test]
+    fn error_acknowledgements_are_fixed_from_v11() {
+        let module = PacketForwardMiddleware {
+            app: x_transfer::relay::TransferModule,
+            retries_on_timeout: 0,
+            forward_timeout: DEFAULT_FORWARD_TIMEOUT_NS,
+        };
+        let memos = [
+            r#"{"forward":{"receiver":"cosmos1abc","port":"","channel":"channel-0"}}"#,
+            r#"{"forward":{"receiver":"cosmos1abc","port":"transfer","channel":"channel/0"}}"#,
+            r#"{"forward":{"receiver":"","port":"transfer","channel":"channel-0"}}"#,
+            r#"{"forward":{"receiver":1}}"#,
+            r#"{"forward":{"receiver":"cosmos1abc","port":"transfer","channel":"channel-0","retries":-1}}"#,
+        ];
+        for memo in memos {
+            let mut store = sdk::MultiStore::new();
+            let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
+            ctx.consensus_params.version = Some(
+                celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app: 11 },
+            );
+            let packet = Packet {
+                source_port: "transfer".into(),
+                source_channel: "channel-0".into(),
+                destination_port: "transfer".into(),
+                destination_channel: "channel-1".into(),
+                data: serde_json::to_vec(&serde_json::json!({
+                    "denom": "uatom", "amount": "1", "sender": "remote", "receiver": "pfm",
+                    "memo": memo,
+                }))
+                .unwrap(),
+                ..Default::default()
+            };
+            let ack = module
+                .on_recv_packet(&mut ctx, &packet, &[])
+                .unwrap()
+                .unwrap();
+            assert!(!ack.success, "{memo}");
+            assert_eq!(
+                String::from_utf8(ack.bytes).unwrap(),
+                r#"{"error":"ABCI code: 11151: error handling packet: see events for details"}"#,
+                "{memo}"
+            );
+            assert!(
+                ctx.events
+                    .events()
+                    .iter()
+                    .all(|e| e.r#type != "packet_forward_error"),
+                "{memo}"
+            );
+        }
+    }
+
+    #[test]
+    fn forwarded_error_acknowledgements_are_fixed_from_v11() {
+        let timeout = AckResponse::Error(
+            "packet-forward-middleware error: giving up on packet on channel (channel-1) port (transfer) after max retries".into(),
+        );
+        let ibc_go = AckResponse::Error(
+            "ABCI code: 5: error handling packet: see events for details".into(),
+        );
+        let result = AckResponse::Result(b"packet-forward-middleware error: x".to_vec());
+        for app in [10, 11] {
+            let mut store = sdk::MultiStore::new();
+            let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
+            ctx.consensus_params.version =
+                Some(celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app });
+            let fixed = fixed_forwarded_ack(&mut ctx, &timeout);
+            if app == 11 {
+                assert_eq!(
+                    fixed.map(|a| a.marshal()).as_deref(),
+                    Some(
+                        r#"{"error":"ABCI code: 11151: error handling packet: see events for details"}"#
+                    )
+                );
+            } else {
+                assert!(fixed.is_none());
+            }
+            assert!(fixed_forwarded_ack(&mut ctx, &ibc_go).is_none());
+            assert!(fixed_forwarded_ack(&mut ctx, &result).is_none());
         }
     }
 
