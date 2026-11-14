@@ -1,0 +1,18 @@
+{
+  "/private/tmp/celestia-branch-coverage-46acbcb/run/llvm.json": {
+    "bytes": 35650212,
+    "sha256": "0a59340c00601062bdde859e08b1c6bce9edb3a5f132f9aab80332477c08ee51"
+  },
+  "/private/tmp/celestia-branch-coverage-46acbcb/run/lcov.info": {
+    "bytes": 14308869,
+    "sha256": "4d9384434a3948efb9693b41766902826a541e173551006a44a400711f3cfecb"
+  },
+  "/private/tmp/celestia-branch-coverage-46acbcb/target/celestia-rs.profdata": {
+    "bytes": 1810232,
+    "sha256": "5d28c56aab86270ce00a70538d366a1f9fc3b69fc08f3243a8ff7bba7719dba3"
+  },
+  "/private/tmp/celestia-branch-coverage-46acbcb/target/release/fuzz-diff": {
+    "bytes": 64907120,
+    "sha256": "29d976c722819bd60124b77a4a8894ded2c4f2f7587f723e2280882c672e7f37"
+  }
+}

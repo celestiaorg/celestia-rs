@@ -74,6 +74,12 @@ fn fail_unsupported(
     Ok(())
 }
 
+/// Whether the context executes app version 11 or later.
+fn is_v11(ctx: &Context<'_>) -> bool {
+    let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    sdk::version::is_v11(sdk::version::executing(v))
+}
+
 /// `EndBlocker`.
 #[allow(clippy::too_many_lines)]
 pub fn end_block(ctx: &mut Context<'_>, router: &dyn MsgRouter) -> Result<()> {
@@ -155,8 +161,16 @@ pub fn end_block(ctx: &mut Context<'_>, router: &dyn MsgRouter) -> Result<()> {
                     tag = "proposal_passed";
                     log = "passed".to_owned();
                 }
-                Some((idx, url, e)) => {
+                Some((idx, url, mut e)) => {
                     ctx.discard(cp);
+                    // celestia-app v11 `govMsgRouter`: only the codespace
+                    // and code of the error (a panic is `ErrPanic`).
+                    if is_v11(ctx) {
+                        e.log = format!(
+                            "proposal message failed: codespace {}, code {}",
+                            e.codespace, e.code
+                        );
+                    }
                     proposal.status = ProposalStatus::Failed as i32;
                     proposal.failed_reason.clone_from(&e.log);
                     tag = "proposal_failed";

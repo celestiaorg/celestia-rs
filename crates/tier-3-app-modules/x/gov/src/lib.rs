@@ -264,7 +264,7 @@ pub fn expired_queue_entries(
 mod tests {
     use super::*;
     use sdk::coins::Coin;
-    use sdk::{ExecMode, Header, Kind, MultiStore};
+    use sdk::{ExecMode, Header, Kind, MultiStore, SdkError};
 
     struct NoRouter;
 
@@ -606,6 +606,18 @@ mod tests {
     /// lowercase or the all-uppercase Bech32 form, has its operator vote YES on
     /// proposal 1, and tallies it.
     fn tally_with_validator_address_case(uppercase: bool) -> Result<Proposal> {
+        passed_proposal(uppercase, &NoRouter, 0, false)
+    }
+
+    /// The voting flow of `tally_with_validator_address_case`, executed with
+    /// `router` at `app_version`. With `with_message`, the proposal holds a
+    /// `MsgSend` for the router to execute.
+    fn passed_proposal(
+        uppercase: bool,
+        router: &dyn MsgRouter,
+        app_version: u64,
+        with_message: bool,
+    ) -> Result<Proposal> {
         use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
         use celestia_proto::cosmos::gov::v1::{MsgVote, VoteOption};
         use celestia_proto::cosmos::staking::v1beta1 as staking_pb;
@@ -652,6 +664,21 @@ mod tests {
             "voting_end_time": "1970-01-12T13:48:20Z", "total_deposit": []
         }]);
         init_genesis_json(&mut ctx, &g)?;
+        if with_message {
+            let mut p = keeper::must_get_proposal(&mut ctx, 1)?;
+            p.messages = vec![celestia_proto::Any {
+                type_url: "/cosmos.bank.v1beta1.MsgSend".to_owned(),
+                value: vec![],
+            }];
+            set_proposal(&mut ctx, &p)?;
+        }
+        if app_version != 0 {
+            ctx.consensus_params.version = Some(
+                celestia_proto::celestia_core_proto::tendermint::types::VersionParams {
+                    app: app_version,
+                },
+            );
+        }
 
         let op = [1u8; 20];
         let del = [2u8; 20];
@@ -691,8 +718,67 @@ mod tests {
             },
         )?;
         ctx.header.time = end;
-        end_block(&mut ctx, &NoRouter)?;
+        end_block(&mut ctx, router)?;
         keeper::must_get_proposal(&mut ctx, 1)
+    }
+
+    /// Fails every message with `error`.
+    struct FailingRouter(SdkError);
+
+    impl MsgRouter for FailingRouter {
+        fn has_handler(&self, _: &str) -> bool {
+            true
+        }
+        fn validate_basic(&self, _: &celestia_proto::Any) -> Result<()> {
+            Ok(())
+        }
+        fn handle(
+            &self,
+            _: &mut Context<'_>,
+            _: &celestia_proto::Any,
+        ) -> Result<celestia_proto::Any> {
+            Err(self.0.clone())
+        }
+        fn msg_text(&self, _: &celestia_proto::Any) -> String {
+            "msg".to_owned()
+        }
+    }
+
+    /// From app version 11, celestia-app's `govMsgRouter` makes x/gov store
+    /// only the codespace and code of a failed proposal message, not its
+    /// error text (PROTOCO-3759). Earlier versions store the text.
+    #[test]
+    fn failed_reason_has_no_error_text_from_v11() -> Result<()> {
+        let error = SdkError::new(
+            "sdk",
+            5,
+            "spendable balance 0utia is smaller than 1utia: insufficient funds",
+        );
+        let panic = SdkError::new("undefined", 111_222, "boom [file.go:1]");
+        let cases = [
+            (
+                &error,
+                10,
+                "spendable balance 0utia is smaller than 1utia: insufficient funds",
+            ),
+            (
+                &panic,
+                10,
+                "handling x/gov proposal msg [msg] PANICKED: boom [file.go:1]",
+            ),
+            (&error, 11, "proposal message failed: codespace sdk, code 5"),
+            (
+                &panic,
+                11,
+                "proposal message failed: codespace undefined, code 111222",
+            ),
+        ];
+        for (e, version, want) in cases {
+            let p = passed_proposal(false, &FailingRouter(e.clone()), version, true)?;
+            assert_eq!(p.status, ProposalStatus::Failed as i32);
+            assert_eq!(p.failed_reason, want, "v{version}");
+        }
+        Ok(())
     }
 
     #[test]

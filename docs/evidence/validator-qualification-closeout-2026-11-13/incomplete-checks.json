@@ -1,0 +1,36 @@
+{
+  "checked_at_utc": "2026-11-13T23:43:50.613457+00:00",
+  "checks": [
+    {
+      "path": "/private/tmp/celestia-mocharun-dual-1cb60aa/replay",
+      "manifest_status": "running",
+      "qualified": false,
+      "reason": "No final receipt; API execution handle missing at closeout. Recorded replay child/relay PIDs were also absent. Cause and precise interruption time are unproven.",
+      "log_sha256": "4501c20372e63ce54703084d76f0b57de7eddf775f6c047537f1d40c9736ed00"
+    },
+    {
+      "path": "/private/tmp/celestia-rc-46acbcb/fuzz-v10-consensus-7200s",
+      "manifest_status": "running",
+      "qualified": false,
+      "reason": "No final receipt; API execution handle missing at closeout. Recorded replay child/relay PIDs were also absent. Cause and precise interruption time are unproven.",
+      "log_sha256": "73be1f568bfe173103abd6e1df37649b5bfbe5a3887f4cc089849eab1dc49c31"
+    },
+    {
+      "path": "/private/tmp/celestia-rc-46acbcb/fuzz-v9-consensus-7200s",
+      "manifest_status": "running",
+      "qualified": false,
+      "reason": "No final receipt; API execution handle missing at closeout. Recorded replay child/relay PIDs were also absent. Cause and precise interruption time are unproven.",
+      "log_sha256": "03a8cd27791825bfc0e2706c0b67bf5049c91b85b26763e8f87647ff289a7017"
+    },
+    {
+      "path": "/private/tmp/celestia-rc-1cb60aa/campaign-20261115-r2/qualification",
+      "manifest_status": "running",
+      "qualified": false,
+      "reason": "No final receipt; API execution handle missing at closeout. Recorded replay child/relay PIDs were also absent. Cause and precise interruption time are unproven.",
+      "log_sha256": "11c4f85057528aa1a3363bb9632fb6761f5f7c17c7196fe75c7354b33ae5709c"
+    }
+  ],
+  "last_replay_receipt_height": 112904,
+  "last_replay_receipt_time_utc": "2026-11-12T06:57:27.312893Z",
+  "scope": "Original unfinished manifests retained unchanged. No complete replay or consensus-volume claim."
+}

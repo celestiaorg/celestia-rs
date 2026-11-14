@@ -49,7 +49,8 @@ pub struct Config {
     pub mempool: Arc<dyn Mempool>,
     /// Chain ID.
     pub chain_id: String,
-    /// `ConsensusParams.Block.MaxBytes` at start.
+    /// `ConsensusParams.Block.MaxBytes` at start; consensus updates it
+    /// through [`Propagator::set_block_max_bytes`].
     pub block_max_bytes: i64,
 }
 
@@ -87,6 +88,8 @@ struct State {
     round: i32,
     current_proposer: Option<PubKey>,
     current_proposal_parts_count: i64,
+    /// `ConsensusParams.Block.MaxBytes` for the current height.
+    block_max_bytes: i64,
     peers: HashMap<NodeId, PeerState>,
     retry_deadline: Instant,
 }
@@ -346,6 +349,7 @@ impl Reactor {
                 round: 0,
                 current_proposer: None,
                 current_proposal_parts_count: 0,
+                block_max_bytes: config.block_max_bytes,
                 peers: HashMap::new(),
                 retry_deadline: Instant::now() + RETRY_TIME,
             }),
@@ -645,7 +649,7 @@ impl Reactor {
         if !proposer.verify_signature(&sb, &p.signature) {
             return Err("error invalid proposal signature".into());
         }
-        let mut max_bytes = self.config.block_max_bytes;
+        let mut max_bytes = st.block_max_bytes;
         if max_bytes == -1 {
             max_bytes = ctypes::part_set::MAX_BLOCK_SIZE_BYTES;
         }
@@ -1533,6 +1537,10 @@ impl Propagator for Reactor {
         }
     }
 
+    fn set_block_max_bytes(&self, max_bytes: i64) {
+        lock(&self.state).block_max_bytes = max_bytes;
+    }
+
     fn set_consensus_state(&self, height: i64, round: i32, proposer: &PubKey) {
         {
             let mut st = lock(&self.state);
@@ -1790,6 +1798,44 @@ mod forwarding_tests {
         cb.proposal.block_id.hash = vec![4; 32];
         cb.proposal.block_id.part_set_header = original.header();
         Arc::new(cb)
+    }
+
+    /// The parts-count check follows `Block.MaxBytes` updates without
+    /// restarting the reactor (a governance change raises the limit).
+    #[test]
+    fn compact_block_size_check_follows_block_max_bytes_updates() {
+        let key = crypto::ed25519::private_key_from_seed(&[9; 32]);
+        let proposer = PubKey::Ed25519(crypto::ed25519::public_key_from_private_key(&key).unwrap());
+        let mut cb = (*recoverable_compact_block(&vec![7; 200_000])).clone();
+        assert!(cb.proposal.block_id.part_set_header.total > 1);
+        cb.proposal.pol_round = -1;
+        let chain_id = "test-chain";
+        cb.proposal.signature =
+            crypto::ed25519::sign(&key, &cb.proposal.sign_bytes(chain_id).unwrap())
+                .unwrap()
+                .to_vec();
+        let raw = ctypes::canonical::raw_bytes_message_sign_bytes(
+            chain_id,
+            COMPACT_BLOCK_UID,
+            &cb.sign_bytes(),
+        )
+        .unwrap();
+        cb.signature = crypto::ed25519::sign(&key, &raw).unwrap().to_vec();
+
+        let reactor = reactor();
+        reactor.set_consensus_state(cb.proposal.height, cb.proposal.round, &proposer);
+
+        // A one-part limit is below the compact block's size.
+        reactor.set_block_max_bytes(i64::from(BLOCK_PART_SIZE_BYTES));
+        let err = reactor
+            .validate_compact_block(&lock(&reactor.state), &cb)
+            .unwrap_err();
+        assert!(err.contains("too many parts"), "{err}");
+
+        reactor.set_block_max_bytes(ctypes::part_set::MAX_BLOCK_SIZE_BYTES);
+        reactor
+            .validate_compact_block(&lock(&reactor.state), &cb)
+            .unwrap();
     }
 
     #[test]
