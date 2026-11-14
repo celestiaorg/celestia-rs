@@ -138,7 +138,7 @@ pub fn export_module(ctx: &mut Context<'_>, module: &str) -> Result<ModuleGenesi
         "bank" => proto(&x_bank::export_genesis(ctx)?),
         "authz" => proto(&x_authz::export_genesis(ctx)?),
         "blob" => proto(&celestia_proto::celestia::blob::v1::GenesisState {
-            params: Some(x_blob::get_params(ctx)?),
+            params: Some(x_blob::get_params_for_query(ctx)?),
         }),
         "capability" => proto(&x_capability::export_genesis(ctx)?),
         "circuit" => proto(&x_circuit::export_genesis(ctx)?),
