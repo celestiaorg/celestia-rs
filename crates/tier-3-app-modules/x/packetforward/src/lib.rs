@@ -11,6 +11,7 @@ use celestia_proto::packetforward::v1::{GenesisState, InFlightPacket};
 use prost::Message;
 use sdk::{Context, Result};
 
+pub mod limits;
 pub mod memo;
 pub mod middleware;
 

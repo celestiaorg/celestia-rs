@@ -32,7 +32,7 @@ fn dedup(members: &[(String, Value)]) -> Vec<(&str, &Value)> {
 
 /// A number literal as Go's `interface{}` decoding reads it: `None` when it
 /// does not fit a `float64` (`strconv.ParseFloat` range error).
-fn float64(lit: &str) -> Option<f64> {
+pub(crate) fn float64(lit: &str) -> Option<f64> {
     lit.parse::<f64>().ok().filter(|f| f.is_finite())
 }
 
@@ -166,7 +166,7 @@ fn type_error(value: &str, strukt: &str, field: &str, ty: &str) -> String {
 
 /// Go's struct field matching: the exact name, else `foldName` (Unicode
 /// simple folding: `ſ` matches `s`, `K` (Kelvin) matches `k`).
-fn field_is(key: &str, name: &str) -> bool {
+pub(crate) fn field_is(key: &str, name: &str) -> bool {
     key == name || gostr::equal_fold(&go(key), name)
 }
 
@@ -268,6 +268,24 @@ pub fn classify(memo: &str) -> Memo {
     gojson::on_large_stack(src.len(), || classify_bytes(&src))
 }
 
+/// PFM's forward check on a memo that `json.Unmarshal` accepted
+/// (`gojson::parse`): the map decode `json.Unmarshal(memo,
+/// &map[string]interface{})` succeeds (an object, every number a
+/// `float64`) and `d["forward"] != nil` (the last exact `forward` key wins).
+pub(crate) fn is_forward_memo(root: &Value) -> bool {
+    let Kind::Object(members) = &root.kind else {
+        return false;
+    };
+    if !root.all(|v| !matches!(&v.kind, Kind::Number(n) if float64(n).is_none())) {
+        return false;
+    }
+    members
+        .iter()
+        .rev()
+        .find(|(k, _)| k == "forward")
+        .is_some_and(|(_, v)| !matches!(v.kind, Kind::Null))
+}
+
 fn classify_bytes(src: &[u8]) -> Memo {
     // `json.Unmarshal(memo, &map[string]interface{})`: valid JSON nested at
     // most 10 000 levels, an object (`null` leaves a nil map), every number
@@ -275,18 +293,12 @@ fn classify_bytes(src: &[u8]) -> Memo {
     let Ok(root) = gojson::parse(src) else {
         return Memo::NotForward;
     };
+    if !is_forward_memo(&root) {
+        return Memo::NotForward;
+    }
     let Kind::Object(members) = &root.kind else {
         return Memo::NotForward;
     };
-    if !root.all(|v| !matches!(&v.kind, Kind::Number(n) if float64(n).is_none())) {
-        return Memo::NotForward;
-    }
-    // `d["forward"] == nil` on the map decode (last duplicate wins).
-    match members.iter().rev().find(|(k, _)| k == "forward") {
-        None => return Memo::NotForward,
-        Some((_, v)) if matches!(v.kind, Kind::Null) => return Memo::NotForward,
-        Some(_) => {}
-    }
     let mut fwd: Option<ForwardMetadata> = None;
     let mut saved: Option<String> = None;
     for (k, v) in members {
