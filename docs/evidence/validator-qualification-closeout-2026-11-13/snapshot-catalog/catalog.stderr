@@ -1,0 +1,2 @@
+2026/11/13 15:35:39 [JOB 1] WAL file /private/tmp/celestia-mainnet-snapshot-catalog/metadata.db/000086.log with log number 000086 stopped reading at offset: 256775; replayed 210 keys in 210 batches
+2026/11/13 15:35:39 [JOB 1] WAL file /private/tmp/celestia-mainnet-snapshot-catalog/metadata.db/000090.log with log number 000090 stopped reading at offset: 469454; replayed 380 keys in 380 batches

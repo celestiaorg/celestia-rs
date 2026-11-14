@@ -1,0 +1,11 @@
+{
+  "execution_candidate": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+  "controller_source": "449ffa25b5679f5791bfddcccc8344ce8f5bf1c5",
+  "original_controller_sha256": "930b7e2fbc7ffb18ef0196a1fc2a08fd2c13a5bf19081efdbd5780013e799c29",
+  "controller_sha256": "49272fcd9f54ebcdc7f22a29de8d444ccdc82a3e9742687297b9fb91abaef56f",
+  "adaptation": "Only resolve ROOT from the explicit COVERAGE_SOURCE_ROOT environment so the newer macOS-compatible controller can instrument the unchanged candidate worktree.",
+  "rustup_home": "/private/tmp/celestia-coverage-rustup",
+  "cargo_llvm_cov": "0.9.1",
+  "toolchain": "nightly-2026-11-02",
+  "scope": "Branch coverage of exact candidate source under a separate instrumentation compiler; not a validator executable replacement or complete qualification."
+}

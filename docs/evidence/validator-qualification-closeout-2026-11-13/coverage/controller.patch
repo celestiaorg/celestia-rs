@@ -1,0 +1,11 @@
+--- coverage.sh@449ffa25b5679f5791bfddcccc8344ce8f5bf1c5
++++ coverage-driver.sh
+@@ -18,7 +18,7 @@
+ mkdir -- "$OUT_ARG" || { echo "coverage requires a fresh output directory" >&2; exit 1; }
+ OUT=$(cd "$OUT_ARG" && pwd) || exit 1
+ BLOCKS=${2:-150}
+-ROOT=$(cd "$(dirname "$0")/../.." && pwd)
++ROOT=${COVERAGE_SOURCE_ROOT:?COVERAGE_SOURCE_ROOT}
+ BIN=$(cd "${DEVNET_BIN:?DEVNET_BIN}" && pwd)
+ cd "$ROOT"
+ CARGO=(cargo)
