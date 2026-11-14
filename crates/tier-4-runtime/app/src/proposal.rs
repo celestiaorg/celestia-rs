@@ -9,6 +9,13 @@
 //! each ante run, so a rejected transaction leaves no partial writes or
 //! replacement gas meter behind. v9 keeps its original in-place ante runs.
 //!
+//! Unlike Go v9 / v10, a tx whose decoding or ante handler panics is
+//! dropped from the proposal instead of aborting the whole PrepareProposal
+//! (Go's `BaseApp` then returns the request's txs with no square, which the
+//! proposer's own ProcessProposal rejects: the round is lost). This is a
+//! deliberate, proposer-local divergence (`docs/security.md` findings 38
+//! and 92); ProcessProposal is unchanged.
+//!
 //! The `RequestProcessProposal.header` celestia-core sends is not read by
 //! v10 (BaseApp builds the header from the request fields and the handler
 //! only logs it).
@@ -42,6 +49,16 @@ pub const SUBTREE_ROOT_THRESHOLD: usize = 64;
 /// `appconsts.SquareSizeUpperBound`.
 pub const SQUARE_SIZE_UPPER_BOUND: u64 = 512;
 
+/// Whether `resp` is what Go celestia-app v9 / v10 returns when its
+/// PrepareProposal handler fails or panics: `BaseApp` returns the request's
+/// txs with no square size or data root. celestia-rs drops a tx that panics
+/// instead (see the module docs), so differential checks against Go use
+/// [`App::replaces_go_prepare_abort`] for such a request.
+#[must_use]
+pub fn is_go_prepare_abort(req: &RequestPrepareProposal, resp: &ResponsePrepareProposal) -> bool {
+    resp.square_size == 0 && resp.data_root_hash.is_empty() && resp.txs == req.txs
+}
+
 /// A Go panic (or handler error) that aborts the whole handler.
 #[derive(Debug)]
 struct Abort(#[allow(dead_code)] String);
@@ -52,14 +69,18 @@ impl From<SdkError> for Abort {
     }
 }
 
-/// A tx decoding in `Fill`: `None` when the decoder returns an error (the
-/// tx is skipped); a Go panic in the decoder (`UnpackInterfaces` through a
-/// nil pointer) is not recovered there and aborts the handler.
-fn fill_decode(r: sdk::Result<Tx>) -> Result<Option<Tx>, Abort> {
+/// A tx decoding in `Fill`: `None` when the decoder returns an error,
+/// including a Go panic in the decoder (`UnpackInterfaces` through a nil
+/// pointer); the tx is skipped.
+fn fill_decode(r: sdk::Result<Tx>) -> Option<Tx> {
     match r {
-        Ok(tx) => Ok(Some(tx)),
-        Err(e) if e.is_panic() => Err(Abort(e.log)),
-        Err(_) => Ok(None),
+        Ok(tx) => Some(tx),
+        Err(e) => {
+            if e.is_panic() {
+                tracing::error!(error = %e.log, "dropping tx whose decoding panicked in PrepareProposal");
+            }
+            None
+        }
     }
 }
 
@@ -268,41 +289,50 @@ fn ante(ctx: &mut Context<'_>, tx: &Tx, deps: &x_ante::StoreDeps) -> Result<(), 
     x_ante::ante_handle_in_place(ctx, tx, false, deps).map(|_| ())
 }
 
-/// The ante handler as `FilteredSquareBuilder.Fill` runs it: celestia's
-/// `HandlePanicDecorator` re-panics, and nothing in `Fill` recovers, so a
-/// Go panic in the ante chain aborts the whole PrepareProposal (`BaseApp`
-/// then returns the request's txs unchanged).
+/// The ante handler as `FilteredSquareBuilder.Fill` runs it in place
+/// (v9, pay-for-fibre txs). Go's `HandlePanicDecorator` re-panics and
+/// `Fill` does not recover, which aborts the whole PrepareProposal; here a
+/// panic fails the tx, and its writes and events are discarded so the
+/// following txs see the state ProcessProposal will see without it.
 fn ante_fill(
     ctx: &mut Context<'_>,
     tx: &Tx,
     deps: &x_ante::StoreDeps,
-) -> Result<Result<(), x_ante::AnteError>, Abort> {
-    match ante(ctx, tx, deps) {
-        Err(e) if e.panicked => Err(Abort(e.error.log)),
-        r => Ok(r),
+) -> Result<(), x_ante::AnteError> {
+    let cp = ctx.branch();
+    let result = ante(ctx, tx, deps);
+    match &result {
+        Err(e) if e.panicked => {
+            ctx.discard(cp);
+            tracing::error!(error = %e.error.log, "dropping tx whose ante handler panicked in PrepareProposal");
+        }
+        _ => ctx.write(cp),
     }
+    result
 }
 
 /// v10.5.0's per-tx `CacheContext` in `FilteredSquareBuilder.Fill`.
 /// On error Go keeps the parent context, including its gas meter; on
 /// success it keeps the tx meter and writes only the cached store changes.
-fn ante_fill_cached(
-    ctx: &mut Context<'_>,
-    tx: &Tx,
-    deps: &x_ante::StoreDeps,
-) -> Result<bool, Abort> {
+/// A panic fails the tx like an error (Go aborts the whole handler).
+fn ante_fill_cached(ctx: &mut Context<'_>, tx: &Tx, deps: &x_ante::StoreDeps) -> bool {
     let gas = ctx.gas.clone();
     let events = std::mem::take(&mut ctx.events);
     let cp = ctx.branch();
-    let result = ante_fill(ctx, tx, deps);
-    if matches!(result, Ok(Ok(()))) {
+    let result = ante(ctx, tx, deps);
+    if result.is_ok() {
         ctx.write(cp);
     } else {
+        if let Err(e) = &result
+            && e.panicked
+        {
+            tracing::error!(error = %e.error.log, "dropping tx whose ante handler panicked in PrepareProposal");
+        }
         ctx.discard(cp);
         ctx.gas = gas;
     }
     ctx.events = events;
-    result.map(|r| r.is_ok())
+    result.is_ok()
 }
 
 impl App {
@@ -383,6 +413,33 @@ impl App {
         }))
     }
 
+    /// Whether `ours` may stand in for `go` in a differential check: `go`
+    /// is the Go abort response to `req` (see [`is_go_prepare_abort`]) and
+    /// `ours` is a proposal that `ProcessProposal` accepts.
+    pub fn replaces_go_prepare_abort(
+        &mut self,
+        req: &RequestPrepareProposal,
+        go: &ResponsePrepareProposal,
+        ours: &ResponsePrepareProposal,
+    ) -> bool {
+        if !is_go_prepare_abort(req, go) {
+            return false;
+        }
+        let status = self
+            .process_proposal(&RequestProcessProposal {
+                txs: ours.txs.clone(),
+                square_size: ours.square_size,
+                data_root_hash: ours.data_root_hash.clone(),
+                height: req.height,
+                time: req.time,
+                proposer_address: req.proposer_address.clone(),
+                next_validators_hash: req.next_validators_hash.clone(),
+                ..RequestProcessProposal::default()
+            })
+            .map(|r| r.status);
+        status.ok() == Some(ProposalStatus::Accept as i32)
+    }
+
     /// `ProcessProposal`.
     pub fn process_proposal(
         &mut self,
@@ -430,7 +487,7 @@ struct Separated<'a> {
 }
 
 /// `separateTxs`.
-fn separate<'a>(txs: impl Iterator<Item = &'a [u8]>) -> Result<Separated<'a>, Abort> {
+fn separate<'a>(txs: impl Iterator<Item = &'a [u8]>) -> Separated<'a> {
     let mut s = Separated::default();
     for raw in txs {
         if raw.len() > MAX_TX_SIZE {
@@ -440,7 +497,7 @@ fn separate<'a>(txs: impl Iterator<Item = &'a [u8]>) -> Result<Separated<'a>, Ab
             Some(Ok(u)) => s.blob.push((raw, u)),
             Some(Err(_)) => {}
             None => {
-                let Some(tx) = fill_decode(txdecode::decode(raw))? else {
+                let Some(tx) = fill_decode(txdecode::decode(raw)) else {
                     continue;
                 };
                 if has_pfb(&tx) {
@@ -456,7 +513,7 @@ fn separate<'a>(txs: impl Iterator<Item = &'a [u8]>) -> Result<Separated<'a>, Ab
             }
         }
     }
-    Ok(s)
+    s
 }
 
 /// `PrepareProposalHandler`.
@@ -504,7 +561,7 @@ fn fill(
         }
         within_bytes.push(tx);
     }
-    let sep = separate(within_bytes.into_iter())?;
+    let sep = separate(within_bytes.into_iter());
 
     let mut kept = Vec::new();
 
@@ -519,7 +576,7 @@ fn fill(
         if !builder.append_tx(raw) {
             continue;
         }
-        if !ante_fill_cached(ctx, tx, deps)? {
+        if !ante_fill_cached(ctx, tx, deps) {
             let _ = builder.revert_last_tx();
             continue;
         }
@@ -532,7 +589,7 @@ fn fill(
 
     let mut blob_msgs = 0usize;
     for (raw, u) in &sep.blob {
-        let Some(tx) = fill_decode(txdecode::decode(&u.tx))? else {
+        let Some(tx) = fill_decode(txdecode::decode(&u.tx)) else {
             continue;
         };
         ctx.tx_bytes.clone_from(&u.tx);
@@ -549,7 +606,7 @@ fn fill(
             Ok(true) => {}
             Ok(false) | Err(_) => continue,
         }
-        if !ante_fill_cached(ctx, &tx, deps)? {
+        if !ante_fill_cached(ctx, &tx, deps) {
             let _ = builder.revert_last_blob_tx();
             continue;
         }
@@ -602,7 +659,7 @@ fn fill_v9(
             Some(Ok(u)) => blobs.push(u),
             Some(Err(_)) => {}
             None => {
-                if fill_decode(txdecode::decode_v9(raw))?.is_some() {
+                if fill_decode(txdecode::decode_v9(raw)).is_some() {
                     normal.push(raw);
                 }
             }
@@ -613,7 +670,7 @@ fn fill_v9(
     let mut kept = Vec::new();
     let mut sdk_count = 0usize;
     for raw in &normal {
-        let Some(tx) = fill_decode(txdecode::decode_v9(raw))? else {
+        let Some(tx) = fill_decode(txdecode::decode_v9(raw)) else {
             continue;
         };
         ctx.tx_bytes = raw.to_vec();
@@ -628,7 +685,7 @@ fn fill_v9(
             let _ = builder.revert_last_tx();
             continue;
         }
-        if let Err(e) = ante_fill(ctx, &tx, deps)? {
+        if let Err(e) = ante_fill(ctx, &tx, deps) {
             zeroed |= e.zero_ctx;
             let _ = builder.revert_last_tx();
             continue;
@@ -639,7 +696,7 @@ fn fill_v9(
 
     let mut blob_msgs = 0usize;
     for u in &blobs {
-        let Some(tx) = fill_decode(txdecode::decode_v9(&u.tx))? else {
+        let Some(tx) = fill_decode(txdecode::decode_v9(&u.tx)) else {
             continue;
         };
         ctx.tx_bytes.clone_from(&u.tx);
@@ -657,7 +714,7 @@ fn fill_v9(
             let _ = builder.revert_last_blob_tx();
             continue;
         }
-        if let Err(e) = ante_fill(ctx, &tx, deps)? {
+        if let Err(e) = ante_fill(ctx, &tx, deps) {
             zeroed |= e.zero_ctx;
             let _ = builder.revert_last_blob_tx();
             continue;
@@ -769,14 +826,7 @@ fn process_fibre_txs(
             discard(ctx);
             continue;
         }
-        let ok = match ante_fill(ctx, &tx, deps) {
-            Ok(r) => r.is_ok(),
-            Err(abort) => {
-                discard(ctx);
-                return Err(abort);
-            }
-        };
-        if !ok || execute_tx_msgs(ctx, &tx).is_err() {
+        if ante_fill(ctx, &tx, deps).is_err() || execute_tx_msgs(ctx, &tx).is_err() {
             let _ = builder.revert_last_pay_for_fibre_tx();
             discard(ctx);
             continue;
@@ -951,12 +1001,47 @@ mod tests {
         validate_blob_tx(&tx, &u).unwrap();
     }
 
-    /// A `MsgCreateClient` whose solo machine `ClientState` has no
-    /// consensus state: Go's tx decoder panics in `UnpackInterfaces`, and
-    /// `separateTxs` does not recover, so the whole PrepareProposal aborts
-    /// (`BaseApp` then returns the request's txs unchanged).
+    /// A tx without a fee: the ante handler dereferences the nil fee and
+    /// panics. Fill drops the tx and keeps no writes instead of aborting
+    /// the whole PrepareProposal (both the v10 per-tx branch and the v9
+    /// in-place run).
     #[test]
-    fn decoder_panic_aborts_fill() {
+    fn ante_panic_drops_tx() {
+        use celestia_proto::Any;
+        use celestia_proto::cosmos::tx::v1beta1::{AuthInfo, TxBody, TxRaw};
+        use prost::Message as _;
+        let mut ms = sdk::MultiStore::new();
+        for (name, kind) in crate::stores::all() {
+            ms.mount(name, kind).unwrap();
+        }
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::PrepareProposal);
+        let deps = x_ante::StoreDeps::new(None);
+        let raw = TxRaw {
+            body_bytes: TxBody {
+                messages: vec![Any {
+                    type_url: "/cosmos.bank.v1beta1.MsgSend".into(),
+                    value: Vec::new(),
+                }],
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            auth_info_bytes: AuthInfo::default().encode_to_vec(),
+            signatures: vec![Vec::new()],
+        }
+        .encode_to_vec();
+        let tx = txdecode::decode(&raw).unwrap();
+        let depth = ctx.multistore().depth();
+        assert!(!ante_fill_cached(&mut ctx, &tx, &deps));
+        assert!(ante_fill(&mut ctx, &tx, &deps).is_err_and(|e| e.panicked));
+        assert_eq!(ctx.multistore().depth(), depth);
+    }
+
+    /// A `MsgCreateClient` whose solo machine `ClientState` has no
+    /// consensus state: Go's tx decoder panics in `UnpackInterfaces`.
+    /// `separate` drops the tx like one that fails to decode instead of
+    /// aborting the whole PrepareProposal.
+    #[test]
+    fn decoder_panic_skips_tx() {
         use celestia_proto::Any;
         use celestia_proto::cosmos::tx::v1beta1::{TxBody, TxRaw};
         use prost::Message as _;
@@ -983,8 +1068,9 @@ mod tests {
         }
         .encode_to_vec();
         assert!(txdecode::decode(&raw).is_err_and(|e| e.is_panic()));
-        assert!(separate(std::iter::once(raw.as_slice())).is_err());
-        assert!(fill_decode(txdecode::decode(b"\x01")).is_ok_and(|t| t.is_none()));
+        let s = separate(std::iter::once(raw.as_slice()));
+        assert!(s.normal.is_empty() && s.pff.is_empty());
+        assert!(fill_decode(txdecode::decode(b"\x01")).is_none());
     }
 
     #[test]
