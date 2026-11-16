@@ -42,27 +42,27 @@ fn plain(log: impl Into<String>) -> SdkError {
 /// The prefix of every error acknowledgement text PFM creates.
 const ERROR_ACK_PREFIX: &str = "packet-forward-middleware error: ";
 
-/// `newErrorAcknowledgement`, then (from app version 11) celestia-app's
+/// `newErrorAcknowledgement`, then (from app version 12) celestia-app's
 /// `pfmIBCMiddleware`, which commits [`fixed_error_ack`] instead.
 fn error_ack(ctx: &mut Context<'_>, err: &str) -> Acknowledgement {
     let text = format!("{ERROR_ACK_PREFIX}{err}");
-    if is_v11(ctx) {
+    if is_v12(ctx) {
         return Acknowledgement::error_string(&fixed_error_ack());
     }
     Acknowledgement::error_string(&text)
 }
 
-/// Whether the context executes app version 11 or later.
-fn is_v11(ctx: &Context<'_>) -> bool {
+/// Whether the context executes app version 12 or later.
+fn is_v12(ctx: &Context<'_>) -> bool {
     let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    sdk::version::is_v11(sdk::version::executing(v))
+    sdk::version::is_v12(sdk::version::executing(v))
 }
 
-/// celestia-app v11 `fixedPFMErrorAck`: the text of
+/// celestia-app v12 `fixedPFMErrorAck`: the text of
 /// `channeltypes.NewErrorAcknowledgement(apperrors.ErrPacketForward)`
 /// (codespace `app`, code 11151), which carries only the ABCI code. Go
 /// writes the original PFM error text to the node log only, never to an
-/// event, so no Go error text is needed from app version 11.
+/// event, so no Go error text is needed from app version 12.
 fn fixed_error_ack() -> String {
     "ABCI code: 11151: error handling packet: see events for details".to_owned()
 }
@@ -358,12 +358,12 @@ fn write_ack_for_forwarded_packet(
     write_refund_ack(ctx, &cap, ifp, &ack)
 }
 
-/// celestia-app v11 `pfmICS4Wrapper`: a PFM error acknowledgement of a
+/// celestia-app v12 `pfmICS4Wrapper`: a PFM error acknowledgement of a
 /// forwarded packet (made here or relayed from the next chain) is replaced
 /// before it is written. `None` keeps `ack`.
 fn fixed_forwarded_ack(ctx: &mut Context<'_>, ack: &AckResponse) -> Option<AckResponse> {
     match ack {
-        AckResponse::Error(e) if e.starts_with(ERROR_ACK_PREFIX) && is_v11(ctx) => {
+        AckResponse::Error(e) if e.starts_with(ERROR_ACK_PREFIX) && is_v12(ctx) => {
             Some(AckResponse::Error(fixed_error_ack()))
         }
         _ => None,
@@ -792,11 +792,11 @@ mod tests {
         }
     }
 
-    /// From app version 11, celestia-app commits a fixed PFM error
+    /// From app version 12, celestia-app commits a fixed PFM error
     /// acknowledgement that carries only the ABCI code of its
     /// `ErrPacketForward` (PROTOCO-3759), whatever the error text.
     #[test]
-    fn error_acknowledgements_are_fixed_from_v11() {
+    fn error_acknowledgements_are_fixed_from_v12() {
         let module = PacketForwardMiddleware {
             app: x_transfer::relay::TransferModule,
             retries_on_timeout: 0,
@@ -813,7 +813,7 @@ mod tests {
             let mut store = sdk::MultiStore::new();
             let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
             ctx.consensus_params.version = Some(
-                celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app: 11 },
+                celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app: 12 },
             );
             let packet = Packet {
                 source_port: "transfer".into(),
@@ -848,7 +848,7 @@ mod tests {
     }
 
     #[test]
-    fn forwarded_error_acknowledgements_are_fixed_from_v11() {
+    fn forwarded_error_acknowledgements_are_fixed_from_v12() {
         let timeout = AckResponse::Error(
             "packet-forward-middleware error: giving up on packet on channel (channel-1) port (transfer) after max retries".into(),
         );
@@ -856,13 +856,13 @@ mod tests {
             "ABCI code: 5: error handling packet: see events for details".into(),
         );
         let result = AckResponse::Result(b"packet-forward-middleware error: x".to_vec());
-        for app in [10, 11] {
+        for app in [10, 11, 12] {
             let mut store = sdk::MultiStore::new();
             let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
             ctx.consensus_params.version =
                 Some(celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app });
             let fixed = fixed_forwarded_ack(&mut ctx, &timeout);
-            if app == 11 {
+            if app == 12 {
                 assert_eq!(
                     fixed.map(|a| a.marshal()).as_deref(),
                     Some(

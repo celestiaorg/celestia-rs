@@ -1,4 +1,4 @@
-//! celestia-app v10 `x/signal`, with the v11 version check
+//! celestia-app v10 `x/signal`, with the v12 version check
 //! ([`CONSENSUS_APP_VERSION_FROM`]).
 //!
 //! Store layout: `0x00` → pending `Upgrade`; `valoper address bytes` →
@@ -117,7 +117,7 @@ fn app_version(ctx: &Context<'_>) -> u64 {
 /// lives in the consensus params).
 const HEADER_APP_VERSION: u64 = 0;
 
-/// First app version (celestia-app v11, PROTOCO-3757) whose msg server
+/// First app version (celestia-app v12, PROTOCO-3757) whose msg server
 /// compares with the consensus params' app version, and whose `EndBlocker`
 /// clears a reached upgrade that does not raise the app version.
 pub const CONSENSUS_APP_VERSION_FROM: u64 = sdk::version::MAINLINE_RULES_FROM;
@@ -456,10 +456,19 @@ mod tests {
     }
 
     #[test]
-    fn v11_compares_with_consensus_app_version() -> Result<()> {
+    fn v11_patch_keeps_the_header_version_comparison() {
+        for app in [10, 11, 12] {
+            let mut ms = MultiStore::new();
+            let ctx = ctx_at(&mut ms, app);
+            assert_eq!(current_version(&ctx), if app >= 12 { app } else { 0 });
+        }
+    }
+
+    #[test]
+    fn v12_compares_with_consensus_app_version() -> Result<()> {
         let mut ms = MultiStore::new();
         ms.mount(STORE_KEY, Kind::Iavl)?;
-        let mut ctx = ctx_at(&mut ms, 11);
+        let mut ctx = ctx_at(&mut ms, 12);
         let a = vec![1u8; 20];
         let b = vec![2u8; 20];
         let mut s = Staking {
@@ -476,23 +485,23 @@ mod tests {
             signal_version(&mut ctx, &mut s, &sig(&a, 10)).map_err(|e| e.code),
             Err(1)
         );
-        signal_version(&mut ctx, &mut s, &sig(&a, 11))?;
-        signal_version(&mut ctx, &mut s, &sig(&b, 11))?;
+        signal_version(&mut ctx, &mut s, &sig(&a, 12))?;
+        signal_version(&mut ctx, &mut s, &sig(&b, 12))?;
         assert_eq!(
             try_upgrade(&mut ctx, &mut s, &try_msg).map_err(|e| e.code),
             Err(3)
         );
         assert_eq!(get_upgrade(&mut ctx)?, None);
-        signal_version(&mut ctx, &mut s, &sig(&a, 12))?;
-        signal_version(&mut ctx, &mut s, &sig(&b, 12))?;
+        signal_version(&mut ctx, &mut s, &sig(&a, 13))?;
+        signal_version(&mut ctx, &mut s, &sig(&b, 13))?;
         try_upgrade(&mut ctx, &mut s, &try_msg)?;
-        assert_eq!(get_upgrade(&mut ctx)?.map(|u| u.app_version), Some(12));
+        assert_eq!(get_upgrade(&mut ctx)?.map(|u| u.app_version), Some(13));
         Ok(())
     }
 
     #[test]
-    fn non_increasing_upgrade_is_cleared_from_v11() -> Result<()> {
-        for (app, cleared) in [(10, false), (11, true)] {
+    fn non_increasing_upgrade_is_cleared_from_v12() -> Result<()> {
+        for (app, cleared) in [(10, false), (11, false), (12, true)] {
             let mut ms = MultiStore::new();
             ms.mount(STORE_KEY, Kind::Iavl)?;
             let mut ctx = ctx_at(&mut ms, app);
