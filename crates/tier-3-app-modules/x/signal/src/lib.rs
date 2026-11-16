@@ -120,7 +120,7 @@ const HEADER_APP_VERSION: u64 = 0;
 /// First app version (celestia-app v11, PROTOCO-3757) whose msg server
 /// compares with the consensus params' app version, and whose `EndBlocker`
 /// clears a reached upgrade that does not raise the app version.
-pub const CONSENSUS_APP_VERSION_FROM: u64 = 11;
+pub const CONSENSUS_APP_VERSION_FROM: u64 = sdk::version::MAINLINE_RULES_FROM;
 
 /// The current version the msg server compares signalled versions with.
 fn current_version(ctx: &Context<'_>) -> u64 {
