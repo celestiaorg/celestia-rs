@@ -1,5 +1,5 @@
-//! celestia-app v11's encoding rule for txs (`canonicalTxDecoder` in
-//! `app/encoding/canonical_tx_decoder.go`), applied from app version 11.
+//! celestia-app's proposed strict SDK encoding rule for txs
+//! (`StrictTxDecoder`, cosmos-sdk #186), applied from app version 11.
 //!
 //! A tx decodes only if every message in it (`TxRaw`, `TxBody`, `AuthInfo`
 //! and the message in every `Any`, at any depth) uses an encoding that all
@@ -11,14 +11,15 @@
 //! `LegacyDec` values present when not nullable and in canonical decimal
 //! form. Proto3 defaults written out and empty messages left out stay valid.
 //!
-//! Error texts match Go's (they reach the tx log only).
+//! Acceptance follows the SDK strict walker; error details reach the tx log only.
 
 use celestia_proto::wire_table::{FieldInfo, MessageInfo, ty};
 
 use crate::gogo::{self, GoError};
 use crate::protowire::{self, WireType};
 
-/// Go's `maxCanonicalDepth`.
+/// SDK `RejectAmbiguousEncoding`: each of TxRaw, TxBody and AuthInfo gets
+/// 100 message levels, including the root and both an Any and its value.
 const MAX_DEPTH: usize = 100;
 
 const ANY: &str = "google.protobuf.Any";
@@ -33,6 +34,7 @@ fn in_message(info: &MessageInfo, detail: &str) -> GoError {
 
 /// `checkCanonicalTx`: the encoding of `TxRaw` bytes and of the `TxBody` and
 /// `AuthInfo` they hold.
+#[cfg(test)]
 pub(crate) fn check_tx(tx: &[u8]) -> Result<(), GoError> {
     check_message(tx, gogo::info("cosmos.tx.v1beta1.TxRaw")?, 0)?;
     // `check_message` accepted the bytes, so each field below is well formed
@@ -40,12 +42,12 @@ pub(crate) fn check_tx(tx: &[u8]) -> Result<(), GoError> {
     check_message(
         field_value(tx, 1),
         gogo::info("cosmos.tx.v1beta1.TxBody")?,
-        1,
+        0,
     )?;
     check_message(
         field_value(tx, 2),
         gogo::info("cosmos.tx.v1beta1.AuthInfo")?,
-        1,
+        0,
     )
 }
 
@@ -132,8 +134,8 @@ fn check_packed(mut b: &[u8], t: u8) -> Result<(), &'static str> {
 }
 
 /// `checkMessage`.
-fn check_message(mut b: &[u8], info: &MessageInfo, depth: usize) -> Result<(), GoError> {
-    if depth > MAX_DEPTH {
+pub(crate) fn check_message(mut b: &[u8], info: &MessageInfo, depth: usize) -> Result<(), GoError> {
+    if depth >= MAX_DEPTH {
         return Err(in_message(info, &format!("nested deeper than {MAX_DEPTH}")));
     }
     let is_required = |f: &FieldInfo| is_decimal(f.custom) && !f.nullable && !f.repeated;
@@ -262,24 +264,19 @@ fn check_bytes_value(
     Ok(())
 }
 
-/// `checkAnyValue`: an `Any` without a type URL must be empty.
+/// Resolve Any values through the same exact type-URL registry as the SDK,
+/// including empty Anys (which the SDK cannot resolve).
 fn check_any_value(type_url: &[u8], value: &[u8], depth: usize) -> Result<(), GoError> {
-    if type_url.is_empty() {
-        if !value.is_empty() {
-            return Err(not_canonical("Any has a value but no type URL"));
-        }
-        return Ok(());
-    }
     // The type URL passed the UTF-8 check above.
     let url = String::from_utf8_lossy(type_url);
-    let name = url.rsplit('/').next().unwrap_or_default();
-    let info = celestia_proto::wire_table::message(name)
-        .ok_or_else(|| not_canonical(&format!("Any {url}: unknown message type {name}")))?;
+    let info = crate::registry::resolve(type_url)
+        .ok_or_else(|| not_canonical(&format!("unable to resolve type URL {url}")))?;
     check_message(value, info, depth + 1)
 }
 
 /// `fieldValue`: the value of length-delimited field `num` in bytes that
 /// [`check_message`] accepted.
+#[cfg(test)]
 fn field_value(mut b: &[u8], num: i64) -> &[u8] {
     while !b.is_empty() {
         let (n, typ, k) = protowire::consume_tag(b);
@@ -624,6 +621,67 @@ mod tests {
         raw.extend(b);
         raw.extend(field(2, &default_auth()));
         assert!(super::check_tx(&raw).is_err());
+    }
+
+    #[test]
+    fn worker_thread_keeps_the_executing_version() {
+        let memo = vec![b'x'; crate::LARGE_INPUT];
+        let mut b = body(&memo, &[any(SEND, &canonical_send())]);
+        b.extend(field(2, b"duplicate"));
+        let raw = tx(&b, &default_auth());
+        assert!(raw.len() > crate::LARGE_INPUT);
+        assert!(decode_at(10, &raw).is_ok());
+        assert!(decode_at(11, &raw).is_err());
+        assert!(crate::decode_for(11, &raw).is_err());
+        sdk::version::set_app_version(11);
+        assert!(crate::decode_for(10, &raw).is_ok());
+        assert!(crate::default_tx_decode(&raw).is_err());
+        // The explicit historical decoder remains lenient on the worker.
+        assert!(crate::decode_v9(&raw).is_ok());
+        assert!(crate::default_tx_decode_v9(&raw).is_ok());
+        assert_eq!(sdk::version::app_version(), 11);
+        sdk::version::set_app_version(0);
+    }
+
+    #[test]
+    fn sdk_depth_budget_starts_at_each_tx_component() {
+        // AuthInfo -> SignerInfo -> ModeInfo, followed by alternating
+        // ModeInfo.Multi and ModeInfo messages. 48 pairs put the leaf at
+        // level 99 (root is level 1). Its Single child is level 100.
+        let mut mode = mode_info(1);
+        for _ in 0..48 {
+            mode = field(2, &field(2, &mode));
+        }
+        let raw = tx(
+            &body(b"", &[any(SEND, &canonical_send())]),
+            &auth_info(&signer_info(&mode, Some(1)), &coin(b"utia", Some(b"1"))),
+        );
+        assert_eq!(super::check_tx(&raw), Ok(()));
+        assert!(decode_at(11, &raw).is_ok());
+        let too_deep = field(2, &field(2, &mode));
+        let raw = tx(
+            &body(b"", &[any(SEND, &canonical_send())]),
+            &auth_info(&signer_info(&too_deep, Some(1)), &coin(b"utia", Some(b"1"))),
+        );
+        assert!(super::check_tx(&raw).is_err());
+        assert!(decode_at(10, &raw).is_ok());
+        assert!(decode_at(11, &raw).is_err());
+    }
+
+    #[test]
+    fn strict_any_resolution_uses_exact_registered_urls() {
+        for msg in [
+            Vec::new(),
+            any("", &canonical_send()),
+            any(
+                "https://example.com/cosmos.bank.v1beta1.MsgSend",
+                &canonical_send(),
+            ),
+        ] {
+            let raw = tx(&body(b"", &[msg]), &default_auth());
+            let err = decode_at(11, &raw).unwrap_err();
+            assert_eq!((err.codespace, err.code), ("sdk", 2));
+        }
     }
 
     #[test]

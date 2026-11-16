@@ -88,11 +88,14 @@ fn with_stack(len: usize, f: impl FnOnce() -> sdk::Result<Tx> + Send) -> sdk::Re
     if len <= LARGE_INPUT {
         return f();
     }
+    let app_version = sdk::version::app_version();
     std::thread::scope(|s| {
         match std::thread::Builder::new()
             .stack_size(LARGE_STACK)
-            .spawn_scoped(s, f)
-        {
+            .spawn_scoped(s, || {
+                sdk::version::set_app_version(app_version);
+                f()
+            }) {
             Ok(h) => match h.join() {
                 Ok(v) => v,
                 Err(e) => std::panic::resume_unwind(e),
@@ -312,11 +315,15 @@ pub fn prost_compatible(any: &celestia_proto::Any) -> Option<celestia_proto::Any
 
 /// [`decode`] or [`decode_v9`] by app version.
 pub fn decode_for(app_version: u64, raw: &[u8]) -> sdk::Result<Tx> {
-    if app_version != 0 && app_version < 10 {
+    let previous = sdk::version::app_version();
+    sdk::version::set_app_version(app_version);
+    let result = if sdk::version::is_v9(app_version) {
         decode_v9(raw)
     } else {
         decode(raw)
-    }
+    };
+    sdk::version::set_app_version(previous);
+    result
 }
 
 /// celestia-app's `TxConfig.TxDecoder()`: decodes raw block tx bytes.
@@ -394,12 +401,27 @@ pub fn default_tx_decode_v9(tx_bytes: &[u8]) -> sdk::Result<Tx> {
     })
 }
 
+/// SDK StrictTxDecoder replaces the unknown-field walk at each component,
+/// before gogoproto decoding and UnpackInterfaces, with a fresh depth budget.
+fn reject_tx_fields(
+    bytes: &[u8],
+    info: &'static celestia_proto::wire_table::MessageInfo,
+    allow_non_critical: bool,
+) -> sdk::Result<bool> {
+    if !v9() && sdk::version::is_v11(sdk::version::app_version()) {
+        canonical::check_message(bytes, info, 0).map_err(|e| tx_decode_err(&e))?;
+        Ok(false)
+    } else {
+        let (has, result) = unknownproto::reject_unknown_fields(bytes, info, allow_non_critical);
+        result.map_err(|e| tx_decode_err(&e))?;
+        Ok(has)
+    }
+}
+
 fn default_tx_decode_inner(tx_bytes: &[u8]) -> sdk::Result<Tx> {
     reject_non_adr027_tx_raw(tx_bytes).map_err(|e| tx_decode_err(&e))?;
     let tx_raw_info = gogo::info("cosmos.tx.v1beta1.TxRaw").map_err(|e| tx_decode_err(&e))?;
-    unknownproto::reject_unknown_fields(tx_bytes, tx_raw_info, false)
-        .1
-        .map_err(|e| tx_decode_err(&e))?;
+    reject_tx_fields(tx_bytes, tx_raw_info, false)?;
     // cdc.Unmarshal(txBytes, &raw): its error is returned unwrapped.
     let raw = gogo::unmarshal("cosmos.tx.v1beta1.TxRaw", tx_bytes).map_err(|e| undefined(e.0))?;
     let body_bytes = raw.bytes(1).to_vec();
@@ -407,25 +429,16 @@ fn default_tx_decode_inner(tx_bytes: &[u8]) -> sdk::Result<Tx> {
     let signatures = raw.bytes_list(3);
 
     let body_info = gogo::info("cosmos.tx.v1beta1.TxBody").map_err(|e| tx_decode_err(&e))?;
-    let (has_unknown_non_criticals, r) =
-        unknownproto::reject_unknown_fields(&body_bytes, body_info, true);
-    r.map_err(|e| tx_decode_err(&e))?;
+    let has_unknown_non_criticals = reject_tx_fields(&body_bytes, body_info, true)?;
     let mut body =
         gogo::unmarshal("cosmos.tx.v1beta1.TxBody", &body_bytes).map_err(|e| tx_decode_err(&e))?;
     unpack::unpack_tx_body(&mut body).map_err(unpack_err)?;
 
     let auth_info = gogo::info("cosmos.tx.v1beta1.AuthInfo").map_err(|e| tx_decode_err(&e))?;
-    unknownproto::reject_unknown_fields(&auth_info_bytes, auth_info, false)
-        .1
-        .map_err(|e| tx_decode_err(&e))?;
+    reject_tx_fields(&auth_info_bytes, auth_info, false)?;
     let mut auth = gogo::unmarshal("cosmos.tx.v1beta1.AuthInfo", &auth_info_bytes)
         .map_err(|e| tx_decode_err(&e))?;
     unpack::unpack_auth_info(&mut auth).map_err(unpack_err)?;
-
-    // celestia-app v11 `canonicalTxDecoder`.
-    if !v9() && sdk::version::app_version() >= 11 {
-        canonical::check_tx(tx_bytes).map_err(|e| tx_decode_err(&e))?;
-    }
 
     build_tx(
         tx_bytes,
