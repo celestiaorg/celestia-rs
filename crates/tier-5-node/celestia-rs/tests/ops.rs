@@ -285,7 +285,7 @@ fn shutdown_stops_the_node() {
 }
 
 /// A fresh single-validator chain `test` (upgrade delay 3 blocks) whose
-/// validator signals v11 and calls try-upgrade at height 1.
+/// validator signals v12 and calls try-upgrade at height 1.
 #[test]
 fn signalled_upgrade_halts_like_go() {
     let dir = tempfile::tempdir().unwrap();
@@ -337,7 +337,7 @@ fn signalled_upgrade_halts_like_go() {
     let msgs = [
         Any::pack(&celestia_proto::celestia::signal::v1::MsgSignalVersion {
             validator_address: key.bech32(keys::VAL_PREFIX),
-            version: 11,
+            version: 12,
         }),
         Any::pack(&celestia_proto::celestia::signal::v1::MsgTryUpgrade {
             signer: key.bech32(keys::ACC_PREFIX),
@@ -381,15 +381,15 @@ fn signalled_upgrade_halts_like_go() {
     node::start(&o).unwrap();
     assert!(watch.join().unwrap(), "no upgrade-info.json");
     let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&info).unwrap()).unwrap();
-    assert_eq!(v["name"], "v11");
+    assert_eq!(v["name"], "v12");
     assert_eq!(v["time"], "0001-01-01T00:00:00Z");
     let halt = v["height"].as_i64().unwrap();
     let (_, state, app_h) = heights(home);
     assert_eq!(app_h, halt - 1, "the upgrade block is not executed");
     assert_eq!(state, halt - 1);
-    // The app version is 11 at the halt (bumped by the signal EndBlocker).
+    // The app version is 12 at the halt (bumped by the signal EndBlocker).
     let (_, ss) = node::open_stores(home).unwrap();
-    assert_eq!(ss.load().unwrap().unwrap().consensus_params.version.app, 11);
+    assert_eq!(ss.load().unwrap().unwrap().consensus_params.version.app, 12);
     drop(ss);
     // The same binary halts again on restart without executing the block:
     // like Go, replaying the saved upgrade block in the handshake fails
@@ -402,7 +402,7 @@ fn signalled_upgrade_halts_like_go() {
     });
     match node::start(&o) {
         Ok(()) => {}
-        Err(e) => assert!(format!("{e:#}").contains("UPGRADE \"v11\" NEEDED"), "{e:#}"),
+        Err(e) => assert!(format!("{e:#}").contains("UPGRADE \"v12\" NEEDED"), "{e:#}"),
     }
     t.join().unwrap();
     assert_eq!(heights(home).2, halt - 1);

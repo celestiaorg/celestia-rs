@@ -1,6 +1,6 @@
 //! celestia-app's limits on packet-forward memos (`app/pfm_memo_limits.go`
 //! and `app/pfm_timeout.go`, PROTOCO-3780 / PROTOCO-3781), applied from app
-//! version 11 by its `pfmIBCMiddleware` wrapper around PFM v8.2.0.
+//! version 12 by its `pfmIBCMiddleware` wrapper around PFM v8.2.0.
 
 use std::collections::HashSet;
 

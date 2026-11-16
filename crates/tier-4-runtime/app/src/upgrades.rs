@@ -12,6 +12,8 @@ use x_upgrade::VersionMap;
 
 /// `appconsts.Version`.
 pub const APP_VERSION: u64 = 10;
+/// Patch-release version supported alongside historical v9/v10 replay.
+pub const V11_APP_VERSION: u64 = 11;
 /// `appconsts.MaxAgeDuration` (337 h).
 pub const EVIDENCE_MAX_AGE_SECONDS: i64 = 337 * 3600;
 /// `appconsts.MaxAgeNumBlocks`.
@@ -30,6 +32,8 @@ pub struct Handlers {
 
 /// Plan names with a handler at app version 10.
 pub const HANDLER_NAMES: &[&str] = &["v10"];
+/// Plan names understood by the v11 patch binary.
+pub const V11_HANDLER_NAMES: &[&str] = &["v11"];
 /// Plan names with a handler at app version 9 (celestia-app v9.0.8).
 pub const V9_HANDLER_NAMES: &[&str] = &["v9"];
 
@@ -43,6 +47,8 @@ impl Handlers {
     const fn names(self) -> &'static [&'static str] {
         if crate::stores::is_v9(self.app_version) {
             V9_HANDLER_NAMES
+        } else if self.app_version >= V11_APP_VERSION {
+            V11_HANDLER_NAMES
         } else {
             HANDLER_NAMES
         }
@@ -56,7 +62,8 @@ impl x_upgrade::UpgradeHandlers for Handlers {
 
     fn apply(&self, ctx: &mut Context<'_>, plan: &Plan, from: VersionMap) -> Result<VersionMap> {
         match plan.name.as_str() {
-            "v10" if !crate::stores::is_v9(self.app_version) => v10(ctx, from),
+            "v10" if self.names() == HANDLER_NAMES => v10(ctx, from),
+            "v11" if self.names() == V11_HANDLER_NAMES => v11(ctx, from),
             // v9.0.8's own handler (the v8 -> v9 upgrade) only ran on chains
             // that are past it; it is registered for the last-completed-plan
             // check but not ported.
@@ -68,6 +75,17 @@ impl x_upgrade::UpgradeHandlers for Handlers {
             ))),
         }
     }
+}
+
+/// A signal changes consensus params, not the executable already running.
+/// Unset version 0 is the current v10 binary; historical v9 replay can still
+/// cross into v10 before pinning that release. v11 is selected by the loader.
+pub(crate) fn select_execution_version(selected: &mut Option<u64>, consensus: u64) -> u64 {
+    let release = selected.unwrap_or(consensus);
+    if selected.is_none() && !crate::stores::is_v9(consensus) {
+        *selected = Some(if release == 0 { APP_VERSION } else { release });
+    }
+    release
 }
 
 /// `BaseApp.SetAppVersion` via the consensus version modifier.
@@ -154,10 +172,82 @@ fn v10(ctx: &mut Context<'_>, from: VersionMap) -> Result<VersionMap> {
     run_migrations(ctx, &from)
 }
 
+/// v11 has no new modules and no frozen-account store migration. Corto alone
+/// shortens future unbondings, after module migrations (app #8621).
+fn v11(ctx: &mut Context<'_>, from: VersionMap) -> Result<VersionMap> {
+    let versions = run_migrations(ctx, &from)?;
+    if ctx.header.chain_id == "corto-1" {
+        let mut params = x_staking::store::get_params(ctx)?;
+        params.unbonding_time = pbjson_types::Duration {
+            seconds: 600,
+            nanos: 0,
+        };
+        x_staking::store::set_params(ctx, &params)?;
+    }
+    Ok(versions)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use x_upgrade::UpgradeHandlers as _;
+
+    #[test]
+    fn signals_do_not_select_a_new_executable_during_replay() {
+        let mut selected = None;
+        assert_eq!(select_execution_version(&mut selected, 9), 9);
+        assert_eq!(select_execution_version(&mut selected, 10), 10);
+        assert_eq!(select_execution_version(&mut selected, 11), 10);
+        let mut selected = None;
+        assert_eq!(select_execution_version(&mut selected, 0), 0);
+        assert_eq!(select_execution_version(&mut selected, 11), 10);
+        let mut selected = Some(11);
+        assert_eq!(select_execution_version(&mut selected, 10), 11);
+    }
+
+    #[test]
+    fn v11_migration_is_corto_only_and_does_not_reset_accounts() -> Result<()> {
+        for chain in ["corto-1", "mocha-5", "celestia", "test"] {
+            let mut ms = sdk::MultiStore::new();
+            ms.mount(x_staking::STORE_KEY, sdk::Kind::Iavl)?;
+            let mut ctx = Context::new(
+                &mut ms,
+                sdk::Header {
+                    chain_id: chain.into(),
+                    ..Default::default()
+                },
+                sdk::ExecMode::Finalize,
+            );
+            let mut p = x_staking::types::Params {
+                unbonding_time: Duration {
+                    seconds: 337 * 3600,
+                    nanos: 0,
+                },
+                ..Default::default()
+            };
+            x_staking::store::set_params(&mut ctx, &p)?;
+            let versions: VersionMap = crate::modules::VERSION_MAP
+                .iter()
+                .map(|(n, v)| ((*n).into(), *v))
+                .collect();
+            let out = Handlers::at(11).apply(
+                &mut ctx,
+                &Plan {
+                    name: "v11".into(),
+                    ..Default::default()
+                },
+                versions.clone(),
+            )?;
+            assert_eq!(out, versions);
+            let after = x_staking::store::get_params(&mut ctx)?;
+            p.unbonding_time.seconds = if chain == "corto-1" { 600 } else { 337 * 3600 };
+            assert_eq!(after, p);
+        }
+        assert!(Handlers::at(11).has_handler("v11"));
+        assert!(!Handlers::at(11).has_handler("v10"));
+        assert!(!Handlers::at(10).has_handler("v11"));
+        Ok(())
+    }
 
     /// celestia-app v9.0.8 `TestUpgrades`: the v9 binary has a `v9`
     /// handler and no `v8` one; v10.4.0's has `v10`. Mainnet's last

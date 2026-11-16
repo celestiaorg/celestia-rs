@@ -132,11 +132,11 @@ pub fn validate_params(p: &Params) -> core::result::Result<(), String> {
 }
 
 /// `Keeper.GetParams`: the module store, falling back to the legacy
-/// subspace when unset before app version 11. From app version 11 an unset
-/// store decodes as empty params (the v11 upgrade guarantees the key).
+/// subspace when unset before app version 12. From app version 12 an unset
+/// store decodes as empty params (the v12 upgrade guarantees the key).
 pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
     let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    read_params(ctx, sdk::version::executing(v) < 11)
+    read_params(ctx, !sdk::version::is_v12(sdk::version::executing(v)))
 }
 
 /// `Keeper.GetParamsForQuery`: [`get_params`] for queries and exports. They
@@ -517,7 +517,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_subspace_fallback_ends_at_app_version_11() -> Result<()> {
+    fn legacy_subspace_fallback_ends_at_app_version_12() -> Result<()> {
         use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
         for (app, want) in [
             (
@@ -527,7 +527,14 @@ mod tests {
                     gov_max_square_size: 64,
                 },
             ),
-            (11, Params::default()),
+            (
+                11,
+                Params {
+                    gas_per_blob_byte: 8,
+                    gov_max_square_size: 64,
+                },
+            ),
+            (12, Params::default()),
         ] {
             let mut ms = ms();
             let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);

@@ -43,27 +43,27 @@ fn plain(log: impl Into<String>) -> SdkError {
 /// The prefix of every error acknowledgement text PFM creates.
 const ERROR_ACK_PREFIX: &str = "packet-forward-middleware error: ";
 
-/// `newErrorAcknowledgement`, then (from app version 11) celestia-app's
+/// `newErrorAcknowledgement`, then (from app version 12) celestia-app's
 /// `pfmIBCMiddleware`, which commits [`fixed_error_ack`] instead.
 fn error_ack(ctx: &mut Context<'_>, err: &str) -> Acknowledgement {
     let text = format!("{ERROR_ACK_PREFIX}{err}");
-    if is_v11(ctx) {
+    if is_v12(ctx) {
         return Acknowledgement::error_string(&fixed_error_ack());
     }
     Acknowledgement::error_string(&text)
 }
 
-/// Whether the context executes app version 11 or later.
-fn is_v11(ctx: &Context<'_>) -> bool {
+/// Whether the context executes app version 12 or later.
+fn is_v12(ctx: &Context<'_>) -> bool {
     let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    sdk::version::is_v11(sdk::version::executing(v))
+    sdk::version::is_v12(sdk::version::executing(v))
 }
 
-/// celestia-app v11 `fixedPFMErrorAck`: the text of
+/// celestia-app v12 `fixedPFMErrorAck`: the text of
 /// `channeltypes.NewErrorAcknowledgement(apperrors.ErrPacketForward)`
 /// (codespace `app`, code 11151), which carries only the ABCI code. Go
 /// writes the original PFM error text to the node log only, never to an
-/// event, so no Go error text is needed from app version 11.
+/// event, so no Go error text is needed from app version 12.
 fn fixed_error_ack() -> String {
     "ABCI code: 11151: error handling packet: see events for details".to_owned()
 }
@@ -359,12 +359,12 @@ fn write_ack_for_forwarded_packet(
     write_refund_ack(ctx, &cap, ifp, &ack)
 }
 
-/// celestia-app v11 `pfmICS4Wrapper`: a PFM error acknowledgement of a
+/// celestia-app v12 `pfmICS4Wrapper`: a PFM error acknowledgement of a
 /// forwarded packet (made here or relayed from the next chain) is replaced
 /// before it is written. `None` keeps `ack`.
 fn fixed_forwarded_ack(ctx: &mut Context<'_>, ack: &AckResponse) -> Option<AckResponse> {
     match ack {
-        AckResponse::Error(e) if e.starts_with(ERROR_ACK_PREFIX) && is_v11(ctx) => {
+        AckResponse::Error(e) if e.starts_with(ERROR_ACK_PREFIX) && is_v12(ctx) => {
             Some(AckResponse::Error(fixed_error_ack()))
         }
         _ => None,
@@ -603,10 +603,10 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
         let Ok(data) = PacketData::decode(&p.data) else {
             return self.app.on_recv_packet(ctx, p, relayer);
         };
-        // celestia-app v11 `pfmIBCMiddleware.OnRecvPacket`: a forward memo
+        // celestia-app v12 `pfmIBCMiddleware.OnRecvPacket`: a forward memo
         // outside its limits gets the fixed error acknowledgement before PFM
         // runs (no store access, events or gas).
-        if is_v11(ctx) && limits::reject_forward_memo(&data.memo) {
+        if is_v12(ctx) && limits::reject_forward_memo(&data.memo) {
             return Ok(Some(Acknowledgement::error_string(&fixed_error_ack())));
         }
         let md = match memo::classify(&data.memo) {
@@ -704,12 +704,12 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
         let Ok(data) = PacketData::decode(&p.data) else {
             return self.app.on_timeout_packet(ctx, p, relayer);
         };
-        // celestia-app v11 `pfmIBCMiddleware.OnTimeoutPacket`: a forwarded
+        // celestia-app v12 `pfmIBCMiddleware.OnTimeoutPacket`: a forwarded
         // packet whose memo is outside the retry limits is not retried; PFM
         // gives up on it as it does with no retries left, with the fixed
         // error acknowledgement. Not forwarded or no retries left: PFM runs
         // (and reads the in-flight record again, as in Go).
-        if is_v11(ctx)
+        if is_v12(ctx)
             && !limits::retry_memo_within_limits(&data.memo)
             && let Some((ifp, None)) = timeout_should_retry(ctx, p)?
         {
@@ -812,11 +812,11 @@ mod tests {
         }
     }
 
-    /// From app version 11, celestia-app commits a fixed PFM error
+    /// From app version 12, celestia-app commits a fixed PFM error
     /// acknowledgement that carries only the ABCI code of its
     /// `ErrPacketForward` (PROTOCO-3759), whatever the error text.
     #[test]
-    fn error_acknowledgements_are_fixed_from_v11() {
+    fn error_acknowledgements_are_fixed_from_v12() {
         let module = PacketForwardMiddleware {
             app: x_transfer::relay::TransferModule,
             retries_on_timeout: 0,
@@ -833,7 +833,7 @@ mod tests {
             let mut store = sdk::MultiStore::new();
             let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
             ctx.consensus_params.version = Some(
-                celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app: 11 },
+                celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app: 12 },
             );
             let packet = Packet {
                 source_port: "transfer".into(),
@@ -868,7 +868,7 @@ mod tests {
     }
 
     #[test]
-    fn forwarded_error_acknowledgements_are_fixed_from_v11() {
+    fn forwarded_error_acknowledgements_are_fixed_from_v12() {
         let timeout = AckResponse::Error(
             "packet-forward-middleware error: giving up on packet on channel (channel-1) port (transfer) after max retries".into(),
         );
@@ -876,13 +876,13 @@ mod tests {
             "ABCI code: 5: error handling packet: see events for details".into(),
         );
         let result = AckResponse::Result(b"packet-forward-middleware error: x".to_vec());
-        for app in [10, 11] {
+        for app in [10, 11, 12] {
             let mut store = sdk::MultiStore::new();
             let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
             ctx.consensus_params.version =
                 Some(celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app });
             let fixed = fixed_forwarded_ack(&mut ctx, &timeout);
-            if app == 11 {
+            if app == 12 {
                 assert_eq!(
                     fixed.map(|a| a.marshal()).as_deref(),
                     Some(
@@ -997,12 +997,12 @@ mod tests {
             Some(celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app });
     }
 
-    /// `TestPFMIBCMiddlewareRejectsForwardMemo`: from app version 11 a
+    /// `TestPFMIBCMiddlewareRejectsForwardMemo`: from app version 12 a
     /// forward memo outside celestia-app's limits gets the fixed error
     /// acknowledgement before PFM runs (no store access, gas or events).
     /// Before it, PFM handles the memo as in v8.2.0.
     #[test]
-    fn forward_memo_limits_from_v11() {
+    fn forward_memo_limits_from_v12() {
         let deep = format!(
             r#"{{"forward":{{"receiver":"r","port":"transfer","channel":"channel-0","next":{}{{}}{}}}}}"#,
             "{\"a\":".repeat(15),
@@ -1015,7 +1015,7 @@ mod tests {
             &deep,
         ] {
             assert!(crate::limits::reject_forward_memo(memo), "{memo}");
-            for app in [10, 11] {
+            for app in [10, 11, 12] {
                 let mut store = sdk::MultiStore::new();
                 let mut ctx =
                     Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
@@ -1025,7 +1025,7 @@ mod tests {
                     if !ack.success && ack.bytes == FIXED_ACK.as_bytes())
                     && ctx.gas.consumed() == 0
                     && ctx.events.events().is_empty();
-                assert_eq!(rejected, app == 11, "app {app}: {memo}: {res:?}");
+                assert_eq!(rejected, app == 12, "app {app}: {memo}: {res:?}");
             }
         }
     }
@@ -1060,20 +1060,20 @@ mod tests {
         (err, left, gas)
     }
 
-    /// From app version 11 a forwarded packet whose memo is outside the
+    /// From app version 12 a forwarded packet whose memo is outside the
     /// retry limits is not retried: the in-flight record is removed and
     /// the original packet gets the fixed error acknowledgement (here the
     /// write stops at the missing channel capability). Otherwise PFM's
     /// timeout handling runs, after the wrapper's own `TimeoutShouldRetry`
     /// when the memo is outside the limits.
     #[test]
-    fn retry_memo_limits_from_v11() {
+    fn retry_memo_limits_from_v12() {
         let deep = format!("{}{{}}{}", "{\"a\":".repeat(16), "}".repeat(16));
         let ok = r#"{"forward":{"receiver":"r2","port":"transfer","channel":"channel-2"}}"#;
         assert!(!crate::limits::retry_memo_within_limits(&deep));
         assert!(crate::limits::retry_memo_within_limits(ok));
 
-        let no_retry = timeout(11, &deep, 1);
+        let no_retry = timeout(12, &deep, 1);
         assert!(
             no_retry
                 .0
@@ -1081,16 +1081,17 @@ mod tests {
             "{no_retry:?}"
         );
         assert!(!no_retry.1);
-        // Before app version 11, and for a memo within the limits, PFM
+        // Before app version 12, and for a memo within the limits, PFM
         // refunds and retries (here the refund fails on missing stores).
         let pfm = timeout(10, &deep, 1);
+        assert_eq!(timeout(11, &deep, 1), pfm, "v11 preserves retry behavior");
         assert!(!pfm.0.contains("could not retrieve module"), "{pfm:?}");
-        assert_eq!(timeout(11, ok, 1), timeout(10, ok, 1));
+        assert_eq!(timeout(12, ok, 1), timeout(10, ok, 1));
         // No retries left: PFM gives up as before, after the wrapper read
         // the in-flight record once more.
-        let (v10, v11) = (timeout(10, &deep, 0), timeout(11, &deep, 0));
-        assert_eq!((&v10.0, v10.1), (&v11.0, v11.1));
-        assert!(v11.2 > v10.2, "{v10:?} {v11:?}");
-        assert_eq!(timeout(11, ok, 0), timeout(10, ok, 0));
+        let (v10, v12) = (timeout(10, &deep, 0), timeout(12, &deep, 0));
+        assert_eq!((&v10.0, v10.1), (&v12.0, v12.1));
+        assert!(v12.2 > v10.2, "{v10:?} {v12:?}");
+        assert_eq!(timeout(12, ok, 0), timeout(10, ok, 0));
     }
 }

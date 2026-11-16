@@ -219,6 +219,17 @@ fn validate_payment_promise(
     let expiration = x_fibre::msgs::validate_payment_promise_stateful_internal(ctx, &p, false)
         .map_err(|e| crate::error::internal(e.log))?
         .map_err(crate::error::internal)?;
+    if x_fibre::promise::signer_is_frozen(&ctx.header.chain_id, &p)? {
+        let version = x_consensus::get_params(ctx)?
+            .and_then(|cp| cp.version)
+            .map_or(0, |v| v.app);
+        if version >= sdk::frozen::ACTIVATION_VERSION {
+            return Err(QueryError::Status(
+                crate::error::Code::FailedPrecondition,
+                sdk::frozen::ERROR.into(),
+            ));
+        }
+    }
     x_fibre::promise::from_proto_check(&p)
         .map_err(|e| invalid_arg(format!("invalid payment promise format: {e}")))?;
     x_fibre::promise::validate(&p).map_err(invalid_arg)?;

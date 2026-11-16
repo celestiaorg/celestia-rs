@@ -426,7 +426,7 @@ impl App {
                 sdk::error::sdk::logic("invalid node-local execution version metadata")
             })?;
             let version = u64::from_be_bytes(bytes);
-            if version != upgrades::APP_VERSION {
+            if ![upgrades::APP_VERSION, upgrades::V11_APP_VERSION].contains(&version) {
                 return Err(sdk::error::sdk::logic(format!(
                     "unsupported node-local execution version {version}"
                 )));
@@ -440,7 +440,7 @@ impl App {
             // A restored post-governance state may not carry node-local
             // metadata, but the two v10-only committed stores prove that its
             // executable semantics have crossed the boundary.
-            self.execution_version = Some(upgrades::APP_VERSION);
+            self.execution_version = Some(self.app_version().max(10));
         }
 
         let Some(home) = self.node.home.as_deref() else {
@@ -460,9 +460,11 @@ impl App {
             .map_err(|e| {
             sdk::error::sdk::logic(format!("unable to decode upgrade info: {e}"))
         })?;
-        if disk.name != "v10" {
-            return Ok(());
-        }
+        let target = match disk.name.as_str() {
+            "v10" => upgrades::APP_VERSION,
+            "v11" => upgrades::V11_APP_VERSION,
+            _ => return Ok(()),
+        };
 
         let next_height = self.last_height.saturating_add(1);
         let header = self.init_check_header();
@@ -471,19 +473,19 @@ impl App {
         drop(ctx);
         let exact_next = disk.height == next_height && committed.as_ref() == Some(&disk);
         if exact_next {
-            if self.execution_version.is_none() && stores::is_v9(self.app_version()) {
-                self.execution_version = Some(upgrades::APP_VERSION);
-                self.ms.root_mut().set_metadata(
-                    EXECUTION_VERSION_KEY,
-                    upgrades::APP_VERSION.to_be_bytes().to_vec(),
-                );
+            if self.execution_version.unwrap_or(self.app_version()) < target {
+                self.execution_version = Some(target);
+                self.ms
+                    .root_mut()
+                    .set_metadata(EXECUTION_VERSION_KEY, target.to_be_bytes().to_vec());
             }
-            if !self.node.unsafe_skip_upgrades.contains(&disk.height) {
+            if target == 10 && !self.node.unsafe_skip_upgrades.contains(&disk.height) {
                 self.upgrade_store_height = Some(disk.height);
             }
-        } else if self.execution_version.is_none() && stores::is_v9(self.app_version()) {
+        } else if self.execution_version.unwrap_or(self.app_version()) < target {
             return Err(sdk::error::sdk::logic(format!(
-                "v10 upgrade info does not match the committed plan at next height {next_height}"
+                "{} upgrade info does not match the committed plan at next height {next_height}",
+                disk.name
             )));
         }
         Ok(())
@@ -660,11 +662,11 @@ impl App {
             app_hash: self.last_commit_hash.clone(),
             next_validators_hash: req.next_validators_hash.clone(),
         };
-        let configured_execution_version = self.execution_version;
         let mut ctx = Context::new(&mut self.ms, header.clone(), ExecMode::Finalize);
         ctx.consensus_params = x_consensus::get_params(&mut ctx)?.unwrap_or_default();
         let consensus_app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-        let execution_version = configured_execution_version.unwrap_or(consensus_app_version);
+        let execution_version =
+            upgrades::select_execution_version(&mut self.execution_version, consensus_app_version);
         sdk::version::set_app_version(execution_version);
         ctx.vote_infos = req
             .decided_last_commit
@@ -1609,6 +1611,51 @@ mod node_options_tests {
     }
 
     #[test]
+    fn authenticated_v11_patch_upgrade_persists_its_execution_version() {
+        let home = tempfile::tempdir().unwrap();
+        let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
+            name: "v11".into(),
+            height: 2,
+            ..Default::default()
+        };
+        let mut app = App::open_with(home.path(), AppOptions::default()).unwrap();
+        let mut ctx = Context::new(
+            &mut app.ms,
+            Header {
+                height: 1,
+                ..Default::default()
+            },
+            ExecMode::Finalize,
+        );
+        x_consensus::set_params(
+            &mut ctx,
+            &ConsensusParams {
+                version: Some(VersionParams { app: 10 }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        x_upgrade::schedule_upgrade(&mut ctx, &plan).unwrap();
+        drop(ctx);
+        app.ms.flush().unwrap();
+        app.ms.commit().unwrap();
+        drop(app);
+        dump_upgrade_info(home.path(), 2, &plan).unwrap();
+        let mut app = App::open_with(home.path(), v10_options(home.path())).unwrap();
+        assert_eq!(app.execution_version(), 11);
+        assert!(app.upgrade_store_height.is_none(), "v11 adds no stores");
+        let mut ctx = Context::new(&mut app.ms, Header::default(), ExecMode::Finalize);
+        x_upgrade::clear_upgrade_plan(&mut ctx).unwrap();
+        drop(ctx);
+        app.ms.flush().unwrap();
+        app.ms.commit().unwrap();
+        drop(app);
+        std::fs::remove_file(home.path().join("data/upgrade-info.json")).unwrap();
+        let app = App::open_with(home.path(), v10_options(home.path())).unwrap();
+        assert_eq!(app.execution_version(), 11);
+    }
+
+    #[test]
     fn governance_upgrade_info_must_match_the_committed_next_plan() {
         let home = tempfile::tempdir().expect("temporary app home");
         let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
@@ -1636,7 +1683,7 @@ mod node_options_tests {
         let mut app = App::open_with(home.path(), AppOptions::default()).expect("open app");
         app.ms
             .root_mut()
-            .set_metadata(EXECUTION_VERSION_KEY, 11u64.to_be_bytes().to_vec());
+            .set_metadata(EXECUTION_VERSION_KEY, 12u64.to_be_bytes().to_vec());
         app.ms.commit().expect("commit invalid metadata fixture");
         drop(app);
         let Err(err) = App::open_with(home.path(), AppOptions::default()) else {
@@ -1644,7 +1691,7 @@ mod node_options_tests {
         };
         assert_eq!(
             err.log,
-            "unsupported node-local execution version 11: internal logic error"
+            "unsupported node-local execution version 12: internal logic error"
         );
     }
 

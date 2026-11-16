@@ -211,6 +211,7 @@ jobs:
           - rpccorpus/recorder
           - mainnet-rpc/module-closure/proofcheck
           - txdecode
+          - v11-frozen
     env:
       GOFLAGS: -mod=mod
       GOPROXY: https://proxy.golang.org,direct

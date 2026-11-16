@@ -226,6 +226,15 @@ pub fn verify_ed25519_go(public_key: &[u8], msg: &[u8], sig: &[u8]) -> bool {
     r.compress().as_bytes() == &sig[..32]
 }
 
+/// v11 frozen-account query/ante check. Callers select the activation version.
+/// Matches Go's compressed-key length check without parsing the curve point.
+pub fn signer_is_frozen(chain_id: &str, p: &PaymentPromise) -> sdk::Result<bool> {
+    let key: &[u8; 33] = signer_key(p)
+        .try_into()
+        .map_err(|_| sdk::error::sdk::invalid_pub_key("payment promise signer key"))?;
+    Ok(sdk::frozen::network(chain_id).is_some_and(|n| n.has(&crypto::secp256k1::address(key))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
