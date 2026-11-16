@@ -45,11 +45,16 @@ pub const fn is_v9(v: u64) -> bool {
     v != 0 && v < 10
 }
 
-/// Whether `v` is executed with celestia-app v11 semantics (0 = unset is
+/// First app version for the mainline consensus changes excluded from the
+/// v11 patch release (v11.0.0-corto / v11.0.0-mocha, issue #385).
+/// Frozen-account recovery rules activate independently at version 11.
+pub const MAINLINE_RULES_FROM: u64 = 12;
+
+/// Whether `v` is executed with celestia-app v12 semantics (0 = unset is
 /// the current release, v10).
 #[must_use]
-pub const fn is_v11(v: u64) -> bool {
-    v >= 11
+pub const fn is_v12(v: u64) -> bool {
+    v >= MAINLINE_RULES_FROM
 }
 
 /// The `%v` frame `cosmossdk.io/errors` appends to an error wrapped at

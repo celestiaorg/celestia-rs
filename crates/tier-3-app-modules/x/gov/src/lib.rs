@@ -744,11 +744,11 @@ mod tests {
         }
     }
 
-    /// From app version 11, celestia-app's `govMsgRouter` makes x/gov store
+    /// From app version 12, celestia-app's `govMsgRouter` makes x/gov store
     /// only the codespace and code of a failed proposal message, not its
     /// error text (PROTOCO-3759). Earlier versions store the text.
     #[test]
-    fn failed_reason_has_no_error_text_from_v11() -> Result<()> {
+    fn failed_reason_has_no_error_text_from_v12() -> Result<()> {
         let error = SdkError::new(
             "sdk",
             5,
@@ -766,10 +766,20 @@ mod tests {
                 10,
                 "handling x/gov proposal msg [msg] PANICKED: boom [file.go:1]",
             ),
-            (&error, 11, "proposal message failed: codespace sdk, code 5"),
+            (
+                &error,
+                11,
+                "spendable balance 0utia is smaller than 1utia: insufficient funds",
+            ),
             (
                 &panic,
                 11,
+                "handling x/gov proposal msg [msg] PANICKED: boom [file.go:1]",
+            ),
+            (&error, 12, "proposal message failed: codespace sdk, code 5"),
+            (
+                &panic,
+                12,
                 "proposal message failed: codespace undefined, code 111222",
             ),
         ];

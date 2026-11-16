@@ -1,5 +1,5 @@
 //! celestia-app's proposed strict SDK encoding rule for txs
-//! (`StrictTxDecoder`, cosmos-sdk #186), applied from app version 11.
+//! (`StrictTxDecoder`, cosmos-sdk #186), applied from app version 12.
 //!
 //! A tx decodes only if every message in it (`TxRaw`, `TxBody`, `AuthInfo`
 //! and the message in every `Any`, at any depth) uses an encoding that all
@@ -464,13 +464,13 @@ mod tests {
         ];
         for (i, raw) in cases.iter().enumerate() {
             assert_eq!(super::check_tx(raw), Ok(()), "case {i}");
-            assert!(decode_at(11, raw).is_ok(), "case {i}");
+            assert!(decode_at(12, raw).is_ok(), "case {i}");
         }
     }
 
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn rejects_ambiguous_encodings_from_v11_only() {
+    fn rejects_ambiguous_encodings_from_v12_only() {
         let send_any = any(SEND, &canonical_send());
         let mut non_minimal = body(b"memo", std::slice::from_ref(&send_any));
         append_tag(&mut non_minimal, 3, VARINT);
@@ -606,7 +606,11 @@ mod tests {
         ];
         for (name, raw) in &cases {
             assert!(decode_at(10, raw).is_ok(), "{name}: v10 decodes as before");
-            let err = decode_at(11, raw).expect_err(name);
+            assert!(
+                decode_at(11, raw).is_ok(),
+                "{name}: v11 keeps the legacy decoder"
+            );
+            let err = decode_at(12, raw).expect_err(name);
             assert!(
                 err.log.contains("tx is not canonically encoded"),
                 "{name}: {}",
@@ -631,15 +635,15 @@ mod tests {
         let raw = tx(&b, &default_auth());
         assert!(raw.len() > crate::LARGE_INPUT);
         assert!(decode_at(10, &raw).is_ok());
-        assert!(decode_at(11, &raw).is_err());
-        assert!(crate::decode_for(11, &raw).is_err());
-        sdk::version::set_app_version(11);
+        assert!(decode_at(12, &raw).is_err());
+        assert!(crate::decode_for(12, &raw).is_err());
+        sdk::version::set_app_version(12);
         assert!(crate::decode_for(10, &raw).is_ok());
         assert!(crate::default_tx_decode(&raw).is_err());
         // The explicit historical decoder remains lenient on the worker.
         assert!(crate::decode_v9(&raw).is_ok());
         assert!(crate::default_tx_decode_v9(&raw).is_ok());
-        assert_eq!(sdk::version::app_version(), 11);
+        assert_eq!(sdk::version::app_version(), 12);
         sdk::version::set_app_version(0);
     }
 
@@ -657,7 +661,7 @@ mod tests {
             &auth_info(&signer_info(&mode, Some(1)), &coin(b"utia", Some(b"1"))),
         );
         assert_eq!(super::check_tx(&raw), Ok(()));
-        assert!(decode_at(11, &raw).is_ok());
+        assert!(decode_at(12, &raw).is_ok());
         let too_deep = field(2, &field(2, &mode));
         let raw = tx(
             &body(b"", &[any(SEND, &canonical_send())]),
@@ -665,7 +669,7 @@ mod tests {
         );
         assert!(super::check_tx(&raw).is_err());
         assert!(decode_at(10, &raw).is_ok());
-        assert!(decode_at(11, &raw).is_err());
+        assert!(decode_at(12, &raw).is_err());
     }
 
     #[test]
@@ -679,7 +683,7 @@ mod tests {
             ),
         ] {
             let raw = tx(&body(b"", &[msg]), &default_auth());
-            let err = decode_at(11, &raw).unwrap_err();
+            let err = decode_at(12, &raw).unwrap_err();
             assert_eq!((err.codespace, err.code), ("sdk", 2));
         }
     }

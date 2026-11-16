@@ -408,7 +408,7 @@ fn reject_tx_fields(
     info: &'static celestia_proto::wire_table::MessageInfo,
     allow_non_critical: bool,
 ) -> sdk::Result<bool> {
-    if !v9() && sdk::version::is_v11(sdk::version::app_version()) {
+    if !v9() && sdk::version::is_v12(sdk::version::app_version()) {
         canonical::check_message(bytes, info, 0).map_err(|e| tx_decode_err(&e))?;
         Ok(false)
     } else {
