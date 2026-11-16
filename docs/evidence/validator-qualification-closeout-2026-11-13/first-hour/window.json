@@ -1,0 +1,50 @@
+{
+  "start_utc": "2026-11-12T05:25:00+00:00",
+  "end_utc": "2026-11-12T06:25:00+00:00",
+  "networks": {
+    "mocha": {
+      "first": 2543075,
+      "last": 2544330,
+      "executed_heights": 1256,
+      "inputs": {
+        "events": {
+          "source_bytes": 2402,
+          "copied_complete_prefix_bytes": 2402,
+          "sha256": "1e5de7fd8bcae77129d8d0c582f1564d230bd579d6bf446a755ef4db30be625f"
+        },
+        "samples": {
+          "source_bytes": 2450901,
+          "copied_complete_prefix_bytes": 2450901,
+          "sha256": "8a687e52952aef4d5bae24d3c753ca64e08ae32b7ba784cdc7f80f35f54a8475"
+        },
+        "heights": {
+          "source_bytes": 3213839,
+          "copied_complete_prefix_bytes": 3213839,
+          "sha256": "d40442c495c4e13f0ecb0074b0735ed1733b125a9a3cffb0f7fd6c4fe85f21c4"
+        }
+      }
+    },
+    "mainnet": {
+      "first": 15815626,
+      "last": 15816886,
+      "executed_heights": 1261,
+      "inputs": {
+        "events": {
+          "source_bytes": 2418,
+          "copied_complete_prefix_bytes": 2418,
+          "sha256": "8cba61653da1ed315de80df22bbc84d9a996497ba0efe9d8fabcba93da769fdb"
+        },
+        "samples": {
+          "source_bytes": 2432541,
+          "copied_complete_prefix_bytes": 2432541,
+          "sha256": "2d1e61686f4dddcc2dcf447eb9a1b58db41dddd4f45d87b6dc0a0b681ad6ee2a"
+        },
+        "heights": {
+          "source_bytes": 5882051,
+          "copied_complete_prefix_bytes": 5882051,
+          "sha256": "051c11f1f16e297d0f4dd2b686be39a9488172fb90399801bb8a10127244a3a0"
+        }
+      }
+    }
+  }
+}

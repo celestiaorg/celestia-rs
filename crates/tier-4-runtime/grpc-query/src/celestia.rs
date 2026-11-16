@@ -92,7 +92,7 @@ fn blob_params(
     _: blob::v1::QueryParamsRequest,
 ) -> QResult<blob::v1::QueryParamsResponse> {
     Ok(blob::v1::QueryParamsResponse {
-        params: Some(x_blob::get_params(ctx)?),
+        params: Some(x_blob::get_params_for_query(ctx)?),
     })
 }
 

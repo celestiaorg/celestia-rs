@@ -329,16 +329,15 @@ pub fn handle_try_upgrade(
 
 /// celestia `App.EndBlocker` after the module manager's EndBlock: once a
 /// signalled upgrade's height is reached, schedule the `v<N>` plan for the
-/// next height, bump the app version and reset the signal tally. The next
+/// next height, bump the app version and reset the signal tally (from v11,
+/// also reset it for an upgrade that does not raise the version). The next
 /// block's `PreBlocker` then runs the `v<N>` handler, or halts the chain if
 /// this binary has none (exactly like Go).
 pub fn app_end_block(ctx: &mut Context<'_>) -> Result<()> {
     let current = x_consensus::get_params(ctx)?
         .and_then(|p| p.version)
         .map_or(0, |v| v.app);
-    if let Some(up) = x_signal::should_upgrade(ctx)?
-        && up.app_version > current
-    {
+    if let Some(up) = x_signal::upgrade_to_apply(ctx, current)? {
         let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
             name: format!("v{}", up.app_version),
             height: up.upgrade_height + 1,

@@ -1,0 +1,86 @@
+{
+  "binary_sha256": {
+    "/private/tmp/celestia-rc-46acbcb/fuzz-diff-release-46acbcb": "0ba760fd0d6b857b9b06beb0aedd664f7943c59779e02e7d9aa3084b7a919f07",
+    "/private/tmp/celestia-rc-46acbcb/go-bin/celestia-appd": "996c8d3477ac26df6937d48b4ae434c553f3b5ded05a5ac8d01f63743931fb05",
+    "/private/tmp/celestia-rc-46acbcb/go-bin/v9/celestia-appd": "20a2410f3f31a3680ffc17c1e99409cb7c53aca931403302c3f1e354b3233f52",
+    "/private/tmp/celestia-signed-upgrade-50-driver.py": "d3f54c15fe7176ca54363d524f064edcece4815b4ef6af65add768e690bf43dd"
+  },
+  "command": [
+    "/usr/sbin/taskpolicy",
+    "-b",
+    "nice",
+    "-n",
+    "19",
+    "python3",
+    "/private/tmp/celestia-signed-upgrade-50-driver.py",
+    "--out",
+    "/private/tmp/celestia-rc-46acbcb/signed-upgrade-50/runs",
+    "--binary",
+    "/private/tmp/celestia-rc-46acbcb/fuzz-diff-release-46acbcb",
+    "--candidate",
+    "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "--port-offset",
+    "1200"
+  ],
+  "exit_code": 0,
+  "finished_at_unix": 1794465748.6677198,
+  "inputs_unchanged": true,
+  "log_sha256": "040be00d8471539c8524e20f704cb683332ffe711d85a51cb3a20784efa51288",
+  "machine": "arm64",
+  "platform": "Darwin-25.2.0-arm64-arm-64bit-Mach-O",
+  "protobuf_go_detrand": {
+    "/private/tmp/celestia-rc-46acbcb/fuzz-diff-release-46acbcb": {
+      "seed_hex": "0x5170770a9a8cab96",
+      "separator": "space",
+      "separator_utf8_hex": "20"
+    },
+    "/private/tmp/celestia-rc-46acbcb/go-bin/celestia-appd": {
+      "seed_hex": "0xb2c2c53299667b87",
+      "separator": "nonbreaking-space",
+      "separator_utf8_hex": "c2a0"
+    },
+    "/private/tmp/celestia-rc-46acbcb/go-bin/v9/celestia-appd": {
+      "seed_hex": "0x7e42b28fd79c8b13",
+      "separator": "nonbreaking-space",
+      "separator_utf8_hex": "c2a0"
+    },
+    "/private/tmp/celestia-signed-upgrade-50-driver.py": {
+      "seed_hex": "0x4d5afd4402953502",
+      "separator": "space",
+      "separator_utf8_hex": "20"
+    }
+  },
+  "schema_version": 1,
+  "scope": "one check only; remaining F1 gates require separate evidence",
+  "source": {
+    "index_flags": [],
+    "revision": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "status": "",
+    "tree": "48ec947ee96f5e85d7bffd0e7f6a9a014502f151"
+  },
+  "source_after": {
+    "index_flags": [],
+    "revision": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+    "status": "",
+    "tree": "48ec947ee96f5e85d7bffd0e7f6a9a014502f151"
+  },
+  "started_at_unix": 1794464310.672214,
+  "status": "passed",
+  "toolchains": {
+    "cargo": {
+      "error": "",
+      "exit_code": 0,
+      "output": "cargo 1.99.1 (5f94df478 2026-08-27)"
+    },
+    "go": {
+      "error": "",
+      "exit_code": 0,
+      "output": "go version go1.26.3 darwin/arm64"
+    },
+    "rustc": {
+      "error": "",
+      "exit_code": 0,
+      "output": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1"
+    }
+  }
+}

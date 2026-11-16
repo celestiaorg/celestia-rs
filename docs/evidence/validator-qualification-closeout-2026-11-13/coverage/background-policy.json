@@ -1,0 +1,31 @@
+{
+  "root_qualifier_pid": 62818,
+  "owned_processes": [
+    {
+      "pid": 62818,
+      "returncode": 0,
+      "stderr": ""
+    },
+    {
+      "pid": 62855,
+      "returncode": 0,
+      "stderr": ""
+    },
+    {
+      "pid": 62891,
+      "returncode": 0,
+      "stderr": ""
+    },
+    {
+      "pid": 72097,
+      "returncode": 0,
+      "stderr": ""
+    },
+    {
+      "pid": 72098,
+      "returncode": 0,
+      "stderr": ""
+    }
+  ],
+  "scope": "Only this coverage process tree; future children inherit background resource policy."
+}

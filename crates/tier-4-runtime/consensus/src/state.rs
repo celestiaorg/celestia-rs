@@ -787,6 +787,10 @@ impl ConsensusState {
         self.rs.commit_round = -1;
         self.rs.last_validators = state.last_validators.clone();
         self.rs.triggered_timeout_precommit = false;
+        // Block.MaxBytes can change through governance: keep the
+        // propagator's compact block size check on the new height's limit.
+        self.propagator
+            .set_block_max_bytes(state.consensus_params.block.max_bytes);
         self.state = state;
         self.state_set = true;
         self.new_step();

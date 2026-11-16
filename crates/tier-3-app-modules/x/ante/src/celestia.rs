@@ -143,6 +143,47 @@ pub fn nested_msg(tx: &Tx) -> R<()> {
     Ok(())
 }
 
+/// Messages that are routed but can never succeed with celestia-app's
+/// configuration: no evidence router, an empty gov legacy proposal router,
+/// vesting handlers that always fail, and channel callbacks that reject
+/// user-initiated close and host-initiated upgrades.
+const UNSUPPORTED_TYPE_URLS: [&str; 7] = [
+    "/cosmos.evidence.v1beta1.MsgSubmitEvidence",
+    "/cosmos.gov.v1.MsgExecLegacyContent",
+    "/cosmos.gov.v1beta1.MsgSubmitProposal",
+    "/cosmos.vesting.v1beta1.MsgCreatePeriodicVestingAccount",
+    "/cosmos.vesting.v1beta1.MsgCreatePermanentLockedAccount",
+    "/ibc.core.channel.v1.MsgChannelCloseInit",
+    "/ibc.core.channel.v1.MsgChannelUpgradeInit",
+];
+
+fn reject_unsupported(msgs: &[Any], location: &str) -> R<()> {
+    match msgs
+        .iter()
+        .find(|m| UNSUPPORTED_TYPE_URLS.contains(&m.type_url.as_str()))
+    {
+        Some(m) => {
+            Err(errs::not_supported(format!("{}{location} is not supported", m.type_url)).into())
+        }
+        None => Ok(()),
+    }
+}
+
+/// `UnsupportedMsgDecorator` (app version 11): reject the messages in
+/// [`UNSUPPORTED_TYPE_URLS`] at the top level, then inside a `MsgExec` or
+/// gov v1 `MsgSubmitProposal`.
+pub fn unsupported_msg(tx: &Tx) -> R<()> {
+    reject_unsupported(tx.msgs(), "")?;
+    for m in tx.msgs() {
+        if let Some(nested) = txview::msg_exec_msgs(m)? {
+            reject_unsupported(&nested, " inside MsgExec")?;
+        } else if let Some(nested) = txview::submit_proposal_msgs(m)? {
+            reject_unsupported(&nested, " inside MsgSubmitProposal")?;
+        }
+    }
+    Ok(())
+}
+
 /// `FibreLegacyEscrowDecorator` (celestia-app v10.6.0): reject deposits
 /// which would require a v11 migration outside consensus execution.
 pub fn fibre_legacy_escrow(ctx: &Context<'_>, tx: &Tx) -> R<()> {
@@ -465,6 +506,74 @@ mod tests {
         match fail {
             Fail::Err(e) | Fail::ZeroCtx(e) => (e.codespace, e.code),
             Fail::Panic(_) => panic!("unexpected panic"),
+        }
+    }
+
+    fn tx_of(msgs: Vec<Any>) -> Tx {
+        Tx {
+            body: TxBody {
+                messages: msgs,
+                ..TxBody::default()
+            },
+            ..Tx::default()
+        }
+    }
+
+    fn msg_exec(msgs: Vec<Any>) -> Any {
+        Any::pack(&celestia_proto::cosmos::authz::v1beta1::MsgExec {
+            grantee: String::new(),
+            msgs,
+        })
+    }
+
+    fn submit_proposal(messages: Vec<Any>) -> Any {
+        Any::pack(&celestia_proto::cosmos::gov::v1::MsgSubmitProposal {
+            messages,
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn unsupported_msgs_are_rejected_also_when_nested() {
+        use celestia_proto::cosmos::bank::v1beta1::MsgSend;
+        use celestia_proto::cosmos::evidence::v1beta1::MsgSubmitEvidence;
+        use celestia_proto::cosmos::gov::{v1::MsgExecLegacyContent, v1beta1};
+        use celestia_proto::cosmos::vesting::v1beta1::{
+            MsgCreatePeriodicVestingAccount, MsgCreatePermanentLockedAccount,
+            MsgCreateVestingAccount,
+        };
+        use celestia_proto::ibc::core::channel::v1::{
+            MsgChannelCloseConfirm, MsgChannelCloseInit, MsgChannelUpgradeInit,
+        };
+
+        let unsupported = [
+            Any::pack(&MsgSubmitEvidence::default()),
+            Any::pack(&MsgExecLegacyContent::default()),
+            Any::pack(&v1beta1::MsgSubmitProposal::default()),
+            Any::pack(&MsgCreatePeriodicVestingAccount::default()),
+            Any::pack(&MsgCreatePermanentLockedAccount::default()),
+            Any::pack(&MsgChannelCloseInit::default()),
+            Any::pack(&MsgChannelUpgradeInit::default()),
+        ];
+        for msg in unsupported {
+            for wrapped in [
+                msg.clone(),
+                msg_exec(vec![msg.clone()]),
+                submit_proposal(vec![msg.clone()]),
+            ] {
+                let e = unsupported_msg(&tx_of(vec![wrapped])).unwrap_err();
+                assert_eq!(code(e), ("sdk", 37), "{}", msg.type_url);
+            }
+        }
+        let supported = [
+            Any::pack(&MsgSend::default()),
+            Any::pack(&MsgCreateVestingAccount::default()),
+            Any::pack(&MsgChannelCloseConfirm::default()),
+            msg_exec(vec![Any::pack(&MsgSend::default())]),
+            submit_proposal(vec![Any::pack(&MsgSend::default())]),
+        ];
+        for msg in supported {
+            assert!(unsupported_msg(&tx_of(vec![msg])).is_ok());
         }
     }
 

@@ -126,6 +126,10 @@ pub trait Propagator: Send + Sync {
     /// `SetConsensusState`: the height, round and proposer compact blocks
     /// are verified against.
     fn set_consensus_state(&self, height: i64, round: i32, proposer: &PubKey);
+    /// `SetBlockMaxBytes`: the `ConsensusParams.Block.MaxBytes` that applies
+    /// to the height consensus is entering (it can change through
+    /// governance).
+    fn set_block_max_bytes(&self, max_bytes: i64);
     /// `StartProcessing`.
     fn start_processing(&self);
     /// `IsCatchingUp`: unfinished heights remain.
@@ -152,6 +156,7 @@ impl Propagator for NoOpPropagator {
     fn add_commitment(&self, _: i64, _: i32, _: &PartSetHeader) {}
     fn prune(&self, _: i64) {}
     fn set_consensus_state(&self, _: i64, _: i32, _: &PubKey) {}
+    fn set_block_max_bytes(&self, _: i64) {}
     fn start_processing(&self) {}
     fn is_catching_up(&self) -> bool {
         false

@@ -45,6 +45,13 @@ pub const fn is_v9(v: u64) -> bool {
     v != 0 && v < 10
 }
 
+/// Whether `v` is executed with celestia-app v11 semantics (0 = unset is
+/// the current release, v10).
+#[must_use]
+pub const fn is_v11(v: u64) -> bool {
+    v >= 11
+}
+
 /// The `%v` frame `cosmossdk.io/errors` appends to an error wrapped at
 /// `file_line` (`x/staking/types/authz.go:193`) of the executing
 /// celestia-app's cosmos-sdk: ` [celestiaorg/cosmos-sdk@v0.52.12/...]`.

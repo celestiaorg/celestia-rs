@@ -1,0 +1,14 @@
+{
+  "candidate": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+  "runs": 50,
+  "generated_blocks": 12000,
+  "finalized_transactions": 73587,
+  "code_zero": 52633,
+  "log_only_differences": 1422,
+  "ism_runs": {
+    "message-id": 25,
+    "merkle-root": 25
+  },
+  "post_upgrade_both_signed_paths_runs": 45,
+  "scope": "50 complete signed devnet-shaped v9.0.8 to v10.6.0 upgrades; mainnet-shaped rehearsal and other gates remain open."
+}
