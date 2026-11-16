@@ -45,11 +45,17 @@ pub const fn is_v9(v: u64) -> bool {
     v != 0 && v < 10
 }
 
+/// First app version that executes the breaking changes currently tracked
+/// against celestia-app main (issue #385). The release assignment is provisional:
+/// if v11 becomes a patch-only release, move this boundary only after the Go
+/// v11/v12 contents are confirmed. This is not the node's current app version.
+pub const MAINLINE_RULES_FROM: u64 = 11;
+
 /// Whether `v` is executed with celestia-app v11 semantics (0 = unset is
 /// the current release, v10).
 #[must_use]
 pub const fn is_v11(v: u64) -> bool {
-    v >= 11
+    v >= MAINLINE_RULES_FROM
 }
 
 /// The `%v` frame `cosmossdk.io/errors` appends to an error wrapped at

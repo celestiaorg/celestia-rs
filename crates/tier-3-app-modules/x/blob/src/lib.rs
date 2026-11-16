@@ -136,7 +136,7 @@ pub fn validate_params(p: &Params) -> core::result::Result<(), String> {
 /// store decodes as empty params (the v11 upgrade guarantees the key).
 pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
     let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    read_params(ctx, sdk::version::executing(v) < 11)
+    read_params(ctx, !sdk::version::is_v11(sdk::version::executing(v)))
 }
 
 /// `Keeper.GetParamsForQuery`: [`get_params`] for queries and exports. They

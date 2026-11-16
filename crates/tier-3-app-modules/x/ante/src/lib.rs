@@ -329,7 +329,7 @@ pub fn is_v9(ctx: &Context<'_>) -> bool {
 #[must_use]
 pub fn is_v11(ctx: &Context<'_>) -> bool {
     let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    sdk::version::executing(v) >= 11
+    sdk::version::is_v11(sdk::version::executing(v))
 }
 
 fn run_chain(
