@@ -147,6 +147,19 @@ mod tests {
             );
             assert_eq!(network(chain).unwrap().listed.len(), count);
         }
+        for (chain, expected) in [
+            (
+                "celestia",
+                "celestia1atuap9kfnt6y8ykvn3437e7j3z8qffh33pzt53",
+            ),
+            ("mocha-5", "celestia1xk4tasrhcr3w6jyq4xzd8x6aapv9hmfuh8mcxn"),
+            ("corto-1", "celestia1yny4dz396zd2vp85fnqynnnq6pnj00lz95xv09"),
+        ] {
+            let n = network(chain).unwrap();
+            assert_eq!(n.whitehat_text, expected);
+            assert_eq!(n.whitehat, decode(expected));
+            assert!(!n.has(&n.whitehat));
+        }
         assert!(network("mocha-4").is_none());
         let n = network("corto-1").unwrap();
         let sender = decode("celestia1g4vjdrx32rq0vd4qckv4d93g05062lsprfdpmy");
