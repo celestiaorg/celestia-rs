@@ -7,9 +7,53 @@ use celestia_proto::ibc::applications::interchain_accounts::host::v1::MsgModuleQ
 use celestia_proto::ibc::core::channel::v1::{Channel, MsgRecvPacket, Packet};
 use prost::{Message, Name};
 use sdk::Context;
+use x_ante::txview::{msg_exec_msgs, submit_proposal_msgs};
 
 /// `appconsts.MaxSDKMessages`.
 pub const MAX_SDK_MESSAGES: usize = 600;
+
+/// The first released app with the local policy (celestia-app #8535).
+/// Multiplexed execution before v11 uses the original v10.6.0 release.
+const MODULE_QUERY_LIMIT_FROM: u64 = 11;
+const MAX_MODULE_QUERY_REQUESTS: usize = 1;
+
+/// Limits query batches in CheckTx and PrepareProposal, including one level
+/// of authz or governance messages, as in celestia-app v11.0.0-mocha.
+pub(crate) fn validate_module_query_requests(version: u64, msgs: &[Any]) -> sdk::Result<()> {
+    if version < MODULE_QUERY_LIMIT_FROM {
+        return Ok(());
+    }
+    for msg in msgs {
+        check_module_query_requests(msg)?;
+        // Let the ante handler report inner decode errors.
+        let nested = msg_exec_msgs(msg).and_then(|exec| match exec {
+            Some(msgs) => Ok(Some(msgs)),
+            None => submit_proposal_msgs(msg),
+        });
+        if let Ok(Some(nested)) = nested {
+            for inner in nested {
+                if inner.type_url == MsgModuleQuerySafe::type_url()
+                    && let Some(inner) = txdecode::prost_compatible(&inner)
+                {
+                    check_module_query_requests(&inner)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn check_module_query_requests(msg: &Any) -> sdk::Result<()> {
+    if let Some(Ok(query)) = msg.unpack::<MsgModuleQuerySafe>()
+        && query.requests.len() > MAX_MODULE_QUERY_REQUESTS
+    {
+        return Err(sdk::error::sdk::invalid_request(format!(
+            "MsgModuleQuerySafe has {} requests, limit is {MAX_MODULE_QUERY_REQUESTS}",
+            query.requests.len()
+        )));
+    }
+    Ok(())
+}
 
 /// `icatypes.HostPortID`.
 const ICA_HOST_PORT: &str = "icahost";
