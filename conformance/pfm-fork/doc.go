@@ -4,4 +4,4 @@
 package pfmfork
 
 // ForkCommit is the fork commit that go.mod pins.
-const ForkCommit = "34b056cdd1ea870aa95d8c52ebc9c8032b849afd"
+const ForkCommit = "15b9622da053b82091a89be4c4e42677297858d8"

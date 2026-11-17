@@ -275,7 +275,8 @@ func recvMemos() []named {
 	add("length", padded(maxMemo, "x"), padded(maxMemo+1, "x"), padded(maxMemo+2, "x"),
 		padded(maxMemo, "é"), padded(maxMemo+1, "é"), padded(maxMemo+2, "é"),
 		cat(lit(`{"pad":"`), big, lit(`"}`)), cat(lit(`{"forward":null,"pad":"`), big, lit(`"}`)),
-		cat(lit(`{"Forward":{},"pad":"`), big, lit(`"}`)), big, cat(lit(`{"forward":5,"pad":"`), big, lit(`"}`)))
+		cat(lit(`{"Forward":{},"pad":"`), big, lit(`"}`)), big, cat(lit(`{"forward":5,"pad":"`), big, lit(`"}`)),
+		padded(1<<20, "x"), cat(lit(`{"forward":`), runOf("r", 40<<10)))
 	return out
 }
 

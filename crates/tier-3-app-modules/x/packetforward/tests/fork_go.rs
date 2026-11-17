@@ -8,12 +8,7 @@ use x_packetforward::memo::{self, MAX_FORWARD_MEMO_LENGTH, Pfm, Recv};
 use x_packetforward::middleware::{DEFAULT_FORWARD_TIMEOUT_NS, FORK_ERROR_ACK_MESSAGE};
 
 /// The fork commit the fixture was generated from (`conformance/pfm-fork`).
-const FORK_COMMIT: &str = "34b056cdd1ea870aa95d8c52ebc9c8032b849afd";
-
-/// Whether the pinned fork commit lacks the 32768-byte limit on forward
-/// memos at receive, which celestia-rs already applies. Set to `false`
-/// when the oracle is re-pinned to a fork commit that has it.
-const RECEIVE_LIMIT_PENDING: bool = true;
+const FORK_COMMIT: &str = "15b9622da053b82091a89be4c4e42677297858d8";
 
 fn memo_of(v: &Value) -> String {
     v.as_array()
@@ -50,7 +45,7 @@ fn memo_decisions_match_the_fork() {
     );
     let recv = f["recv"].as_array().unwrap();
     assert!(recv.len() >= 90);
-    let mut pending = 0;
+    let mut over_limit = 0;
     for v in recv {
         let name = v["name"].as_str().unwrap();
         let memo = memo_of(&v["memo"]);
@@ -59,13 +54,10 @@ fn memo_decisions_match_the_fork() {
             "pass" => assert_eq!(got, Recv::NotForward, "{name}"),
             "error" => {
                 assert!(matches!(got, Recv::Error(_)), "{name}: {got:?}");
+                if gostr::go_len(&memo) > MAX_FORWARD_MEMO_LENGTH {
+                    over_limit += 1;
+                }
                 assert_eq!(v["ack_hex"].as_str().unwrap(), error_ack, "{name}");
-            }
-            "forward"
-                if RECEIVE_LIMIT_PENDING && gostr::go_len(&memo) > MAX_FORWARD_MEMO_LENGTH =>
-            {
-                assert!(matches!(got, Recv::Error(_)), "{name}: {got:?}");
-                pending += 1;
             }
             "forward" => {
                 let Recv::Forward(m) = got else {
@@ -101,8 +93,9 @@ fn memo_decisions_match_the_fork() {
             other => panic!("{name}: {other}"),
         }
     }
-    // 32769 and 32770 bytes, with ASCII and with two-byte padding.
-    assert_eq!(pending, if RECEIVE_LIMIT_PENDING { 4 } else { 0 });
+    // Forward memos over the receive limit: 32769 and 32770 bytes (ASCII
+    // and two-byte padding), 1 MiB, and a 40 KiB `forward` of another type.
+    assert_eq!(over_limit, 6);
 
     let retry = f["retry"].as_array().unwrap();
     assert!(retry.len() >= 13);

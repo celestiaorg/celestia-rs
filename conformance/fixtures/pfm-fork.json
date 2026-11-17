@@ -1,5 +1,5 @@
 {
-  "fork_commit": "34b056cdd1ea870aa95d8c52ebc9c8032b849afd",
+  "fork_commit": "15b9622da053b82091a89be4c4e42677297858d8",
   "recv": [
     {
       "name": "basic/0",
@@ -2036,18 +2036,8 @@
           "n": 1
         }
       ],
-      "outcome": "forward",
-      "forwarded": {
-        "memo": {
-          "len": 0,
-          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        },
-        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
-        "port": "transfer",
-        "channel": "channel-0",
-        "timeout_ns": 600000000000,
-        "retries": 0
-      }
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
     },
     {
       "name": "length/2",
@@ -2069,18 +2059,8 @@
           "n": 1
         }
       ],
-      "outcome": "forward",
-      "forwarded": {
-        "memo": {
-          "len": 0,
-          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        },
-        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
-        "port": "transfer",
-        "channel": "channel-0",
-        "timeout_ns": 600000000000,
-        "retries": 0
-      }
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
     },
     {
       "name": "length/3",
@@ -2135,18 +2115,8 @@
           "n": 1
         }
       ],
-      "outcome": "forward",
-      "forwarded": {
-        "memo": {
-          "len": 0,
-          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        },
-        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
-        "port": "transfer",
-        "channel": "channel-0",
-        "timeout_ns": 600000000000,
-        "retries": 0
-      }
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
     },
     {
       "name": "length/5",
@@ -2168,18 +2138,8 @@
           "n": 1
         }
       ],
-      "outcome": "forward",
-      "forwarded": {
-        "memo": {
-          "len": 0,
-          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        },
-        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
-        "port": "transfer",
-        "channel": "channel-0",
-        "timeout_ns": 600000000000,
-        "retries": 0
-      }
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
     },
     {
       "name": "length/6",
@@ -2267,6 +2227,44 @@
       ],
       "outcome": "error",
       "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "length/11",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 1048455
+        },
+        {
+          "s": "x",
+          "n": 0
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "length/12",
+      "memo": [
+        {
+          "s": "{\"forward\":",
+          "n": 1
+        },
+        {
+          "s": "r",
+          "n": 40960
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
     }
   ],
   "retry": [

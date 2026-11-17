@@ -158,7 +158,7 @@ require (
 
 // The Celestia fork of packet-forward-middleware v8.2.0
 // (celestiaorg/ibc-apps#3) at the commit celestia-rs mirrors.
-replace github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8 => github.com/celestiaorg/ibc-apps/middleware/packet-forward-middleware/v8 v8.2.1-0.20261116221744-34b056cdd1ea
+replace github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8 => github.com/celestiaorg/ibc-apps/middleware/packet-forward-middleware/v8 v8.2.1-0.20261117023558-15b9622da053
 
 // From the fork's go.mod (replace directives of a dependency do not apply).
 replace (
