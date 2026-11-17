@@ -13,8 +13,7 @@ use x_ibc::channel::AckResponse;
 use x_ibc::router::{Acknowledgement, IbcModule};
 use x_transfer::relay::{self, PacketData};
 
-use crate::limits;
-use crate::memo::{self, ForwardMetadata, Memo};
+use crate::memo::{self, ForwardMetadata, Pfm, Recv};
 use crate::{STORE_KEY, refund_packet_key};
 
 /// `DefaultForwardTransferPacketTimeoutTimestamp`: 10 minutes.
@@ -43,20 +42,41 @@ fn plain(log: impl Into<String>) -> SdkError {
 /// The prefix of every error acknowledgement text PFM creates.
 const ERROR_ACK_PREFIX: &str = "packet-forward-middleware error: ";
 
+/// The fork's `ErrorAcknowledgementMessage`: the text of every error
+/// acknowledgement it creates (it logs the error instead).
+pub const FORK_ERROR_ACK_MESSAGE: &str = "packet-forward-middleware error: forward failed";
+
+/// The text of PFM's `newErrorAcknowledgement(err)`.
+fn pfm_error_text(ctx: &Context<'_>, err: &str) -> String {
+    match pfm(ctx) {
+        Pfm::Upstream => format!("{ERROR_ACK_PREFIX}{err}"),
+        Pfm::Fork => FORK_ERROR_ACK_MESSAGE.to_owned(),
+    }
+}
+
 /// `newErrorAcknowledgement`, then (from app version 12) celestia-app's
 /// `pfmIBCMiddleware`, which commits [`fixed_error_ack`] instead.
 fn error_ack(ctx: &mut Context<'_>, err: &str) -> Acknowledgement {
-    let text = format!("{ERROR_ACK_PREFIX}{err}");
     if is_v12(ctx) {
         return Acknowledgement::error_string(&fixed_error_ack());
     }
-    Acknowledgement::error_string(&text)
+    Acknowledgement::error_string(&pfm_error_text(ctx, err))
 }
 
 /// Whether the context executes app version 12 or later.
 fn is_v12(ctx: &Context<'_>) -> bool {
     let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
     sdk::version::is_v12(sdk::version::executing(v))
+}
+
+/// The PFM release of the executing app version: the Celestia fork from
+/// app version 12, upstream v8.2.0 before.
+fn pfm(ctx: &Context<'_>) -> Pfm {
+    if is_v12(ctx) {
+        Pfm::Fork
+    } else {
+        Pfm::Upstream
+    }
 }
 
 /// celestia-app v12 `fixedPFMErrorAck`: the text of
@@ -441,12 +461,9 @@ fn retry_timeout(
         port: port.to_owned(),
         ..ForwardMetadata::default()
     };
-    if !data.memo.is_empty() {
-        md.next = Some(
-            memo::unmarshal_next(&data.memo)
-                .map_err(|e| plain(format!("error unmarshaling memo json: {e}")))?,
-        );
-    }
+    // Upstream decodes and re-encodes the memo; the fork sends it as is.
+    md.next = memo::retry_next(&data.memo, pfm(ctx))
+        .map_err(|e| plain(format!("error unmarshaling memo json: {e}")))?;
     let amount = parse_amount(&data.amount).ok_or_else(|| {
         plain(format!(
             "error parsing amount from string for packetforward retry: {}",
@@ -603,30 +620,16 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
         let Ok(data) = PacketData::decode(&p.data) else {
             return self.app.on_recv_packet(ctx, p, relayer);
         };
-        // celestia-app v12 `pfmIBCMiddleware.OnRecvPacket`: a forward memo
-        // outside its limits gets the fixed error acknowledgement before PFM
-        // runs (no store access, events or gas).
-        if is_v12(ctx) && limits::reject_forward_memo(&data.memo) {
-            return Ok(Some(Acknowledgement::error_string(&fixed_error_ack())));
-        }
-        let md = match memo::classify(&data.memo) {
-            Memo::NotForward => return self.app.on_recv_packet(ctx, p, relayer),
-            Memo::ParseError(e) => {
-                return Ok(Some(error_ack(
-                    ctx,
-                    &format!("error parsing forward metadata: {e}"),
-                )));
-            }
-            Memo::NilForward => {
+        let md = match memo::on_recv(&data.memo, pfm(ctx)) {
+            Recv::NotForward => return self.app.on_recv_packet(ctx, p, relayer),
+            Recv::Error(e) => return Ok(Some(error_ack(ctx, &e))),
+            Recv::NilForwardPanic => {
                 return Err(sdk::error::go_panic(
                     "runtime error: invalid memory address or nil pointer dereference",
                 ));
             }
-            Memo::Forward(m) => m,
+            Recv::Forward(m) => m,
         };
-        if let Err(e) = memo::validate(&md) {
-            return Ok(Some(error_ack(ctx, &e)));
-        }
         let override_receiver = get_receiver(&p.destination_channel, &data.sender);
         if let Err(e) = self.receive_funds(ctx, p, &data, &override_receiver, relayer)? {
             return Ok(Some(error_ack(
@@ -704,25 +707,12 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
         let Ok(data) = PacketData::decode(&p.data) else {
             return self.app.on_timeout_packet(ctx, p, relayer);
         };
-        // celestia-app v12 `pfmIBCMiddleware.OnTimeoutPacket`: a forwarded
-        // packet whose memo is outside the retry limits is not retried; PFM
-        // gives up on it as it does with no retries left, with the fixed
-        // error acknowledgement. Not forwarded or no retries left: PFM runs
-        // (and reads the in-flight record again, as in Go).
-        if is_v12(ctx)
-            && !limits::retry_memo_within_limits(&data.memo)
-            && let Some((ifp, None)) = timeout_should_retry(ctx, p)?
-        {
-            remove_in_flight_packet(ctx, p)?;
-            let ack = AckResponse::Error(fixed_error_ack());
-            return write_ack_for_forwarded_packet(ctx, p, &data, &ifp, &ack);
-        }
         let Some((ifp, err)) = timeout_should_retry(ctx, p)? else {
             return self.app.on_timeout_packet(ctx, p, relayer);
         };
         remove_in_flight_packet(ctx, p)?;
         if let Some(e) = err {
-            let ack = AckResponse::Error(format!("packet-forward-middleware error: {e}"));
+            let ack = AckResponse::Error(pfm_error_text(ctx, &e));
             return write_ack_for_forwarded_packet(ctx, p, &data, &ifp, &ack);
         }
         self.app.on_timeout_packet(ctx, p, relayer)?;
@@ -771,7 +761,7 @@ mod tests {
                     assert!(
                         matches!(
                             memo::classify(case["memo"].as_str().unwrap()),
-                            Memo::ParseError(_)
+                            memo::Memo::ParseError(_)
                         ),
                         "{}",
                         case["name"]
@@ -968,14 +958,6 @@ mod tests {
     const FIXED_ACK: &str =
         r#"{"error":"ABCI code: 11151: error handling packet: see events for details"}"#;
 
-    fn module() -> PacketForwardMiddleware<x_transfer::relay::TransferModule> {
-        PacketForwardMiddleware {
-            app: x_transfer::relay::TransferModule,
-            retries_on_timeout: 0,
-            forward_timeout: DEFAULT_FORWARD_TIMEOUT_NS,
-        }
-    }
-
     fn transfer_packet(memo: &str) -> Packet {
         Packet {
             sequence: 1,
@@ -997,43 +979,189 @@ mod tests {
             Some(celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app });
     }
 
-    /// `TestPFMIBCMiddlewareRejectsForwardMemo`: from app version 12 a
-    /// forward memo outside celestia-app's limits gets the fixed error
-    /// acknowledgement before PFM runs (no store access, gas or events).
-    /// Before it, PFM handles the memo as in v8.2.0.
+    /// PFM's own error text: upstream's carries the Go error; the fork's
+    /// is fixed (celestia-app then commits [`fixed_error_ack`] from 12).
     #[test]
-    fn forward_memo_limits_from_v12() {
-        let deep = format!(
-            r#"{{"forward":{{"receiver":"r","port":"transfer","channel":"channel-0","next":{}{{}}{}}}}}"#,
-            "{\"a\":".repeat(15),
-            "}".repeat(15)
-        );
-        for memo in [
-            r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0","timeout":1e19}}"#,
-            r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0"},"Forward":null}"#,
-            r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0","next":5}}"#,
-            &deep,
+    fn pfm_error_text_is_fixed_in_the_fork() {
+        let give_up =
+            "giving up on packet on channel (channel-0) port (transfer) after max retries";
+        for (app, want) in [
+            (10, format!("{ERROR_ACK_PREFIX}{give_up}")),
+            (11, format!("{ERROR_ACK_PREFIX}{give_up}")),
+            (12, FORK_ERROR_ACK_MESSAGE.to_owned()),
         ] {
-            assert!(crate::limits::reject_forward_memo(memo), "{memo}");
-            for app in [10, 11, 12] {
-                let mut store = sdk::MultiStore::new();
-                let mut ctx =
-                    Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
-                set_app_version(&mut ctx, app);
-                let res = module().on_recv_packet(&mut ctx, &transfer_packet(memo), &[]);
-                let rejected = matches!(&res, Ok(Some(ack))
-                    if !ack.success && ack.bytes == FIXED_ACK.as_bytes())
-                    && ctx.gas.consumed() == 0
-                    && ctx.events.events().is_empty();
-                assert_eq!(rejected, app == 12, "app {app}: {memo}: {res:?}");
-            }
+            let mut store = sdk::MultiStore::new();
+            let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
+            set_app_version(&mut ctx, app);
+            assert_eq!(pfm_error_text(&ctx, give_up), want);
+            let ack = error_ack(&mut ctx, give_up);
+            let committed = if app == 12 {
+                FIXED_ACK.to_owned()
+            } else {
+                format!(r#"{{"error":"{want}"}}"#)
+            };
+            assert_eq!(String::from_utf8(ack.bytes).unwrap(), committed);
+            // The fork's text keeps the prefix that celestia-app replaces.
+            assert!(FORK_ERROR_ACK_MESSAGE.starts_with(ERROR_ACK_PREFIX));
         }
     }
 
-    /// Runs `OnTimeoutPacket` for a forwarded packet with `memo` and an
-    /// in-flight record with `retries` retries left. Returns the error
-    /// text, whether the in-flight record is left, and the gas used.
-    fn timeout(app: u64, memo: &str, retries: i32) -> (String, bool, u64) {
+    /// An application that accepts every packet and counts the packets it
+    /// receives (PFM's `receiveFunds` and pass-through).
+    #[derive(Default)]
+    struct OkApp {
+        received: std::cell::Cell<u32>,
+    }
+
+    impl IbcModule for OkApp {
+        fn on_chan_open_init(
+            &self,
+            _: &mut Context<'_>,
+            _: Order,
+            _: &[String],
+            _: &str,
+            _: &str,
+            _: &Capability,
+            _: &Counterparty,
+            _: &str,
+        ) -> Result<String> {
+            unreachable!()
+        }
+        fn on_chan_open_try(
+            &self,
+            _: &mut Context<'_>,
+            _: Order,
+            _: &[String],
+            _: &str,
+            _: &str,
+            _: &Capability,
+            _: &Counterparty,
+            _: &str,
+        ) -> Result<String> {
+            unreachable!()
+        }
+        fn on_chan_open_ack(
+            &self,
+            _: &mut Context<'_>,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<()> {
+            unreachable!()
+        }
+        fn on_chan_open_confirm(&self, _: &mut Context<'_>, _: &str, _: &str) -> Result<()> {
+            unreachable!()
+        }
+        fn on_chan_close_init(&self, _: &mut Context<'_>, _: &str, _: &str) -> Result<()> {
+            unreachable!()
+        }
+        fn on_chan_close_confirm(&self, _: &mut Context<'_>, _: &str, _: &str) -> Result<()> {
+            unreachable!()
+        }
+        fn on_recv_packet(
+            &self,
+            _: &mut Context<'_>,
+            _: &Packet,
+            _: &[u8],
+        ) -> Result<Option<Acknowledgement>> {
+            self.received.set(self.received.get() + 1);
+            Ok(Some(Acknowledgement::result(&[1])))
+        }
+        fn on_acknowledgement_packet(
+            &self,
+            _: &mut Context<'_>,
+            _: &Packet,
+            _: &[u8],
+            _: &[u8],
+        ) -> Result<()> {
+            Ok(())
+        }
+        fn on_timeout_packet(&self, _: &mut Context<'_>, _: &Packet, _: &[u8]) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    fn ok_module() -> PacketForwardMiddleware<OkApp> {
+        PacketForwardMiddleware {
+            app: OkApp::default(),
+            retries_on_timeout: 0,
+            forward_timeout: DEFAULT_FORWARD_TIMEOUT_NS,
+        }
+    }
+
+    /// `OnRecvPacket` at app version `app`: the result and how many packets
+    /// reached the wrapped app.
+    fn recv(app: u64, memo: &str) -> (Result<Option<Acknowledgement>>, u32) {
+        let mut store = sdk::MultiStore::new();
+        let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
+        set_app_version(&mut ctx, app);
+        let m = ok_module();
+        let res = m.on_recv_packet(&mut ctx, &transfer_packet(memo), &[]);
+        (res, m.app.received.get())
+    }
+
+    fn forward(fields: &str) -> String {
+        format!(
+            r#"{{"forward":{{"receiver":"r","port":"transfer","channel":"channel-0"{fields}}}}}"#
+        )
+    }
+
+    /// From app version 12 the fork rejects these memos with an error
+    /// acknowledgement (celestia-app commits its fixed one) before any
+    /// funds are received. Before 12, upstream v8.2.0 receives the funds
+    /// first (or panics on a forward that decodes to nil).
+    #[test]
+    fn recv_uses_the_fork_from_v12() {
+        let over = forward(&format!(
+            r#","pad":"{}""#,
+            "x".repeat(crate::memo::MAX_FORWARD_MEMO_LENGTH)
+        ));
+        let nil = format!(
+            r#"{},"Forward":null}}"#,
+            &forward("")[..forward("").len() - 1]
+        );
+        for (memo, upstream_panics) in [
+            (nil.as_str(), true),
+            (&forward(r#","timeout":1e19"#), false),
+            (&forward(r#","next":"hello""#), false),
+            (&over, false),
+        ] {
+            for app in [10, 11] {
+                let (res, received) = recv(app, memo);
+                if upstream_panics {
+                    assert!(res.is_err_and(|e| is_panic(&e)), "{app} {memo:.80}");
+                } else {
+                    assert_eq!(received, 1, "{app} {memo:.80}: {res:?}");
+                }
+            }
+            let (res, received) = recv(12, memo);
+            assert_eq!(received, 0, "{memo:.80}");
+            let ack = res.unwrap().unwrap();
+            assert!(!ack.success);
+            assert_eq!(ack.bytes, FIXED_ACK.as_bytes(), "{memo:.80}");
+        }
+        // Memos the fork accepts, and memos that are no forward (of any
+        // length), behave alike in every version.
+        let big = format!(r#"{{"pad":"{}"}}"#, "x".repeat(40 << 10));
+        for memo in [
+            &forward(r#","next":{"a":"<"}"#),
+            &forward(r#","timeout":"1s""#),
+        ] {
+            for app in [10, 11, 12] {
+                assert_eq!(recv(app, memo).1, 1, "{app} {memo}");
+            }
+        }
+        for app in [10, 11, 12] {
+            let (res, received) = recv(app, &big);
+            assert_eq!(received, 1);
+            assert!(res.unwrap().unwrap().success);
+        }
+    }
+
+    /// Runs `OnTimeoutPacket` (wrapped app: [`OkApp`]) for a forwarded
+    /// packet with `memo` and one retry left; returns the error text.
+    fn retry(app: u64, memo: &str) -> String {
         let mut store = sdk::MultiStore::new();
         store.mount(STORE_KEY, sdk::Kind::Iavl).unwrap();
         let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
@@ -1046,52 +1174,46 @@ mod tests {
             &InFlightPacket {
                 refund_channel_id: "channel-0".into(),
                 refund_port_id: "transfer".into(),
-                retries_remaining: retries,
+                retries_remaining: 1,
                 ..Default::default()
             },
         )
         .unwrap();
-        let before = ctx.gas.consumed();
-        let err = module()
+        ok_module()
             .on_timeout_packet(&mut ctx, &p, &[])
-            .map_or_else(|e| e.log, |()| String::new());
-        let gas = ctx.gas.consumed() - before;
-        let left = ctx.has(STORE_KEY, &key).unwrap();
-        (err, left, gas)
+            .map_or_else(|e| e.log, |()| String::new())
     }
 
-    /// From app version 12 a forwarded packet whose memo is outside the
-    /// retry limits is not retried: the in-flight record is removed and
-    /// the original packet gets the fixed error acknowledgement (here the
-    /// write stops at the missing channel capability). Otherwise PFM's
-    /// timeout handling runs, after the wrapper's own `TimeoutShouldRetry`
-    /// when the memo is outside the limits.
+    /// From app version 12 a timed-out packet is retried with its memo as
+    /// is, whatever the memo; upstream fails on a memo it cannot decode.
     #[test]
-    fn retry_memo_limits_from_v12() {
-        let deep = format!("{}{{}}{}", "{\"a\":".repeat(16), "}".repeat(16));
-        let ok = r#"{"forward":{"receiver":"r2","port":"transfer","channel":"channel-2"}}"#;
-        assert!(!crate::limits::retry_memo_within_limits(&deep));
-        assert!(crate::limits::retry_memo_within_limits(ok));
-
-        let no_retry = timeout(12, &deep, 1);
-        assert!(
-            no_retry
-                .0
-                .contains("could not retrieve module from port-id"),
-            "{no_retry:?}"
-        );
-        assert!(!no_retry.1);
-        // Before app version 12, and for a memo within the limits, PFM
-        // refunds and retries (here the refund fails on missing stores).
-        let pfm = timeout(10, &deep, 1);
-        assert_eq!(timeout(11, &deep, 1), pfm, "v11 preserves retry behavior");
-        assert!(!pfm.0.contains("could not retrieve module"), "{pfm:?}");
-        assert_eq!(timeout(12, ok, 1), timeout(10, ok, 1));
-        // No retries left: PFM gives up as before, after the wrapper read
-        // the in-flight record once more.
-        let (v10, v12) = (timeout(10, &deep, 0), timeout(12, &deep, 0));
-        assert_eq!((&v10.0, v10.1), (&v12.0, v12.1));
-        assert!(v12.2 > v10.2, "{v10:?} {v12:?}");
-        assert_eq!(timeout(12, ok, 0), timeout(10, ok, 0));
+    fn retry_keeps_the_memo_from_v12() {
+        let over = forward(&format!(r#","pad":"{}""#, "x".repeat(40 << 10)));
+        let deep = format!("{}{}", "[".repeat(10_001), "]".repeat(10_001));
+        for memo in ["hello", deep.as_str()] {
+            for app in [10, 11] {
+                assert!(
+                    retry(app, memo).starts_with("error unmarshaling memo json"),
+                    "{app} {memo:.80}"
+                );
+            }
+        }
+        for memo in [
+            "hello",
+            deep.as_str(),
+            over.as_str(),
+            "null",
+            r#"{"a":1,"a":2}"#,
+        ] {
+            let err = retry(12, memo);
+            // The retry reaches the transfer, which fails on missing stores.
+            assert!(
+                !err.is_empty() && !err.contains("memo"),
+                "{memo:.80}: {err}"
+            );
+            if memo != "hello" && memo != deep {
+                assert_eq!(err, retry(10, r#"{"a":1}"#), "{memo:.80}");
+            }
+        }
     }
 }

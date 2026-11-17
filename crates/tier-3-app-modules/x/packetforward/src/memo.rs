@@ -8,6 +8,12 @@
 //! `json.Marshal`'s compaction of a marshaler's output. Values are decoded
 //! with `gojson` (no recursion); the recursive re-encoding runs on a large
 //! stack for long memos.
+//!
+//! From app version 12 celestia-app runs the Celestia fork of PFM
+//! ([`Pfm::Fork`], celestiaorg/ibc-apps#3): it keeps `next` and retried
+//! memos as the sender's bytes, rejects numeric timeouts outside the
+//! `int64` range, a forward that decodes to null and forward memos longer
+//! than [`MAX_FORWARD_MEMO_LENGTH`].
 
 use gojson::{Kind, Value};
 use x_ibc::gojson::{escape_string, format_float};
@@ -142,6 +148,24 @@ pub fn go_f64_to_i64(f: f64) -> i64 {
     }
 }
 
+/// The packet-forward-middleware release that handles a memo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pfm {
+    /// Upstream v8.2.0 (app versions before 12).
+    Upstream,
+    /// The Celestia fork of v8.2.0 (celestiaorg/ibc-apps#3), from app
+    /// version 12.
+    Fork,
+}
+
+/// The fork's limit on a forward memo at receive:
+/// `transfertypes.MaximumMemoLength`, in Go bytes.
+pub const MAX_FORWARD_MEMO_LENGTH: usize = x_transfer::relay::MAXIMUM_MEMO_LENGTH;
+
+/// 2^63: the fork accepts a numeric timeout `v` (a `float64`) only when
+/// `-2^63 <= v < 2^63` (`maxDurationFloat`).
+const MAX_DURATION_FLOAT: f64 = 9_223_372_036_854_775_808.0;
+
 /// `types.ForwardMetadata`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ForwardMetadata {
@@ -155,8 +179,9 @@ pub struct ForwardMetadata {
     pub timeout: i64,
     /// `retries`.
     pub retries: Option<u8>,
-    /// `next`: `json.Marshal(metadata.Next)` (the next hop's memo, or the
-    /// marshaling error Go returns when it forwards).
+    /// `next`: the next hop's memo. Upstream, `json.Marshal(metadata.Next)`
+    /// (or the marshaling error Go returns when it forwards); in the fork,
+    /// `metadata.Next.Memo()`, never an error.
     pub next: Option<Result<String, String>>,
 }
 
@@ -175,6 +200,7 @@ fn decode_forward(
     members: &[(String, Value)],
     src: &[u8],
     saved: &mut Option<String>,
+    pfm: Pfm,
 ) -> Result<(), String> {
     let mut save = |e: String| {
         if saved.is_none() {
@@ -207,6 +233,9 @@ fn decode_forward(
                             "json: cannot unmarshal number {lit} into Go value of type float64"
                         ));
                     };
+                    if pfm == Pfm::Fork && !(-MAX_DURATION_FLOAT..MAX_DURATION_FLOAT).contains(&f) {
+                        return Err("invalid duration: number out of range".into());
+                    }
                     go_f64_to_i64(f)
                 }
                 Kind::String(s) => parse_duration(s)?,
@@ -238,9 +267,13 @@ fn decode_forward(
                 }
             }
         } else if field_is(k, "next") {
-            m.next = match &v.kind {
-                Kind::Null => None,
-                _ => Some(marshal_next(v, src)),
+            m.next = match (&v.kind, pfm) {
+                (Kind::Null, _) => None,
+                (_, Pfm::Upstream) => Some(marshal_next(v, src)),
+                // `JSONObject.UnmarshalJSON`: a string's unquoted content,
+                // else the value's bytes.
+                (Kind::String(s), Pfm::Fork) => Some(Ok(go(s))),
+                (_, Pfm::Fork) => Some(Ok(gostr::from_go_bytes(&src[v.span.clone()]).into_owned())),
             };
         }
     }
@@ -261,11 +294,77 @@ pub enum Memo {
     Forward(ForwardMetadata),
 }
 
-/// Classifies a transfer memo as PFM's `OnRecvPacket` does.
+/// Classifies a transfer memo as upstream PFM's `OnRecvPacket` does.
 #[must_use]
 pub fn classify(memo: &str) -> Memo {
+    classify_as(memo, Pfm::Upstream)
+}
+
+/// Classifies a transfer memo as `pfm`'s `OnRecvPacket` decodes it.
+#[must_use]
+pub fn classify_as(memo: &str, pfm: Pfm) -> Memo {
     let src = gostr::to_go_bytes(memo);
-    gojson::on_large_stack(src.len(), || classify_bytes(&src))
+    gojson::on_large_stack(src.len(), || match forward_root(&src) {
+        None => Memo::NotForward,
+        Some(root) => decode_metadata(&root, &src, pfm),
+    })
+}
+
+/// What `OnRecvPacket` does with a memo before it receives any funds.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Recv {
+    /// Not a forward: the packet goes to the transfer app.
+    NotForward,
+    /// An error acknowledgement with this error (upstream puts it in the
+    /// acknowledgement; the fork logs it).
+    Error(String),
+    /// Upstream only: `forward` decoded to nil and Go panics.
+    NilForwardPanic,
+    /// Valid forward metadata.
+    Forward(ForwardMetadata),
+}
+
+/// `OnRecvPacket` from the map decode to `metadata.Validate()`, for `pfm`.
+#[must_use]
+pub fn on_recv(memo: &str, pfm: Pfm) -> Recv {
+    let src = gostr::to_go_bytes(memo);
+    gojson::on_large_stack(src.len(), || {
+        let Some(root) = forward_root(&src) else {
+            return Recv::NotForward;
+        };
+        // The fork checks `len(data.Memo)` before it decodes the metadata.
+        if pfm == Pfm::Fork && src.len() > MAX_FORWARD_MEMO_LENGTH {
+            return Recv::Error(format!(
+                "forward memo length {} exceeds {MAX_FORWARD_MEMO_LENGTH} bytes",
+                src.len()
+            ));
+        }
+        match decode_metadata(&root, &src, pfm) {
+            Memo::NotForward => Recv::NotForward,
+            Memo::ParseError(e) => Recv::Error(format!("error parsing forward metadata: {e}")),
+            Memo::NilForward => match pfm {
+                Pfm::Upstream => Recv::NilForwardPanic,
+                Pfm::Fork => Recv::Error("forward metadata is null".into()),
+            },
+            Memo::Forward(m) => match validate_as(&m, pfm) {
+                Ok(()) => Recv::Forward(m),
+                Err(e) => Recv::Error(e),
+            },
+        }
+    })
+}
+
+/// `RetryTimeout`'s `metadata.Next` for the memo of the timed-out packet:
+/// `None` for the empty memo. Upstream decodes it (`Err`: the decode
+/// error) and re-encodes it when it forwards; the fork keeps it as is.
+pub fn retry_next(memo: &str, pfm: Pfm) -> Result<Option<Result<String, String>>, String> {
+    if memo.is_empty() {
+        return Ok(None);
+    }
+    match pfm {
+        Pfm::Upstream => unmarshal_next(memo).map(Some),
+        Pfm::Fork => Ok(Some(Ok(memo.to_owned()))),
+    }
 }
 
 /// PFM's forward check on a memo that `json.Unmarshal` accepted
@@ -286,16 +385,16 @@ pub(crate) fn is_forward_memo(root: &Value) -> bool {
         .is_some_and(|(_, v)| !matches!(v.kind, Kind::Null))
 }
 
-fn classify_bytes(src: &[u8]) -> Memo {
-    // `json.Unmarshal(memo, &map[string]interface{})`: valid JSON nested at
-    // most 10 000 levels, an object (`null` leaves a nil map), every number
-    // a `float64`.
-    let Ok(root) = gojson::parse(src) else {
-        return Memo::NotForward;
-    };
-    if !is_forward_memo(&root) {
-        return Memo::NotForward;
-    }
+/// `json.Unmarshal(memo, &map[string]interface{})` and the forward check:
+/// the decoded memo when PFM treats it as a forward memo. Valid JSON
+/// nested at most 10 000 levels, an object (`null` leaves a nil map),
+/// every number a `float64`.
+fn forward_root(src: &[u8]) -> Option<Value> {
+    gojson::parse(src).ok().filter(is_forward_memo)
+}
+
+/// `json.Unmarshal(memo, &PacketMetadata{})` of a forward memo.
+fn decode_metadata(root: &Value, src: &[u8], pfm: Pfm) -> Memo {
     let Kind::Object(members) = &root.kind else {
         return Memo::NotForward;
     };
@@ -309,7 +408,7 @@ fn classify_bytes(src: &[u8]) -> Memo {
             Kind::Null => fwd = None,
             Kind::Object(fields) => {
                 let mut m = fwd.take().unwrap_or_default();
-                if let Err(e) = decode_forward(&mut m, fields, src, &mut saved) {
+                if let Err(e) = decode_forward(&mut m, fields, src, &mut saved, pfm) {
                     return Memo::ParseError(e);
                 }
                 fwd = Some(m);
@@ -333,13 +432,25 @@ fn classify_bytes(src: &[u8]) -> Memo {
     fwd.map_or(Memo::NilForward, Memo::Forward)
 }
 
-/// `ForwardMetadata.Validate`.
+/// Upstream `ForwardMetadata.Validate`.
 pub fn validate(m: &ForwardMetadata) -> Result<(), String> {
+    validate_as(m, Pfm::Upstream)
+}
+
+/// `pfm`'s `ForwardMetadata.Validate`. The fork also requires the next
+/// memo to be JSON (`json.Valid`, at most 10 000 nested levels).
+pub fn validate_as(m: &ForwardMetadata, pfm: Pfm) -> Result<(), String> {
     if m.receiver.is_empty() {
         return Err("failed to validate metadata. receiver cannot be empty".into());
     }
     identifier(&m.port, 2, x_ibc::host::DEFAULT_MAX_PORT_CHARACTER_LENGTH)?;
     identifier(&m.channel, 8, x_ibc::host::DEFAULT_MAX_CHARACTER_LENGTH)?;
+    if pfm == Pfm::Fork
+        && let Some(Ok(next)) = &m.next
+        && gojson::check_valid(&gostr::to_go_bytes(next)).is_err()
+    {
+        return Err("failed to validate metadata: next is not JSON".into());
+    }
     Ok(())
 }
 
@@ -497,5 +608,371 @@ mod tests {
         );
         assert_eq!(go_f64_to_i64(1.9), 1);
         assert_eq!(go_f64_to_i64(1e30), i64::MIN);
+    }
+}
+
+/// The Celestia fork's memo handling (celestiaorg/ibc-apps #3), from its Go
+/// tests (`types/duration_test.go`, `memo_handling_test.go`), next to
+/// upstream v8.2.0 for the same memos.
+#[cfg(test)]
+mod fork_tests {
+    use super::*;
+
+    const RECEIVER: &str = "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k";
+
+    /// `forwardMemo`: a forward memo to channel-0 with the given extra
+    /// fields of the forward object (each starting with a comma).
+    fn forward_memo(fields: &str) -> String {
+        format!(
+            r#"{{"forward":{{"receiver":"{RECEIVER}","port":"transfer","channel":"channel-0"{fields}}}}}"#
+        )
+    }
+
+    fn forwarded(memo: &str, pfm: Pfm) -> ForwardMetadata {
+        match on_recv(memo, pfm) {
+            Recv::Forward(m) => m,
+            other => panic!("{memo}: expected a forward, got {other:?}"),
+        }
+    }
+
+    fn rejected(memo: &str, pfm: Pfm) -> bool {
+        matches!(on_recv(memo, pfm), Recv::Error(_))
+    }
+
+    /// The Go bytes of the forwarded packet's memo (empty: no memo).
+    fn next_memo(memo: &str, pfm: Pfm) -> Vec<u8> {
+        match forwarded(memo, pfm).next {
+            None => Vec::new(),
+            Some(Ok(s)) => gostr::to_go_bytes(&s).into_owned(),
+            Some(Err(e)) => panic!("{memo}: {e}"),
+        }
+    }
+
+    /// `TestDurationUnmarshalNumberRange`,
+    /// `TestPacketMetadataOutOfRangeTimeout`: a numeric timeout is accepted
+    /// only in `[-2^63, 2^63)` as a `float64`. Upstream converts any
+    /// `float64` (amd64 gives `MinInt64` out of range).
+    #[test]
+    fn timeout_range() {
+        let cases: &[(&str, Option<i64>)] = &[
+            ("0", Some(0)),
+            ("-1", Some(-1)),
+            ("1.9", Some(1)),
+            ("9223372036854774784", Some(9_223_372_036_854_774_784)),
+            // Rounds down to 2^63 - 1024 as a float64.
+            ("9223372036854775295", Some(9_223_372_036_854_774_784)),
+            // Rounds to 2^63.
+            ("9223372036854775807", None),
+            ("9223372036854775808", None),
+            ("-9223372036854775808", Some(i64::MIN)),
+            // Rounds to -2^63.
+            ("-9223372036854775809", Some(i64::MIN)),
+            ("-9223372036854777856", None),
+            ("1e19", None),
+            ("-1e19", None),
+            ("1e308", None),
+            (r#""1s""#, Some(1_000_000_000)),
+            (r#""1e19""#, None),
+            ("null", None),
+            ("true", None),
+        ];
+        for (timeout, want) in cases {
+            let memo = forward_memo(&format!(r#","timeout":{timeout}"#));
+            match want {
+                Some(ns) => assert_eq!(forwarded(&memo, Pfm::Fork).timeout, *ns, "{memo}"),
+                None => assert!(rejected(&memo, Pfm::Fork), "{memo}"),
+            }
+        }
+        // A number that does not fit a float64 fails the map decode: not a
+        // forward memo at all.
+        let memo = forward_memo(r#","timeout":1e400"#);
+        assert_eq!(on_recv(&memo, Pfm::Fork), Recv::NotForward);
+        assert_eq!(on_recv(&memo, Pfm::Upstream), Recv::NotForward);
+        // Upstream forwards an out-of-range timeout as `MinInt64`.
+        for timeout in ["1e19", "-1e19", "9223372036854775807"] {
+            let memo = forward_memo(&format!(r#","timeout":{timeout}"#));
+            assert_eq!(forwarded(&memo, Pfm::Upstream).timeout, i64::MIN, "{memo}");
+        }
+        // Keys match without case; a decode error stops at the first bad
+        // value, wherever a later key would put the field.
+        for fields in [
+            r#","timeout":"1s","TIMEOUT":1e19"#,
+            r#","Timeout":1e19,"timeout":5"#,
+        ] {
+            assert!(rejected(&forward_memo(fields), Pfm::Fork), "{fields}");
+        }
+        assert_eq!(
+            forwarded(
+                &forward_memo(r#","Timeout":1e19,"timeout":5"#),
+                Pfm::Upstream
+            )
+            .timeout,
+            5
+        );
+        assert!(rejected(
+            &forward_memo(r#","timeout":1e19,"tImeout":"2ns""#),
+            Pfm::Fork
+        ));
+        assert_eq!(
+            forwarded(&forward_memo(r#","timeout":"1s","tImeout":2"#), Pfm::Fork).timeout,
+            2
+        );
+    }
+
+    /// `TestOnRecvPacket_ForwardDecodesToNil`: a later key that folds to
+    /// `forward` and is null leaves no forward metadata. The fork answers
+    /// with an error acknowledgement; upstream dereferences nil.
+    #[test]
+    fn forward_decodes_to_nil() {
+        let fwd = format!(r#"{{"receiver":"{RECEIVER}","port":"transfer","channel":"channel-0"}}"#);
+        for memo in [
+            format!(r#"{{"forward":{fwd},"Forward":null}}"#),
+            format!(r#"{{"forward":{fwd},"FORWARD":null}}"#),
+            format!(r#"{{"Forward":null,"forward":{fwd},"fORWARD":null}}"#),
+            format!(r#"{{"forward":{fwd},"forward":{fwd},"Forward":null}}"#),
+        ] {
+            assert!(rejected(&memo, Pfm::Fork), "{memo}");
+            assert_eq!(
+                on_recv(&memo, Pfm::Upstream),
+                Recv::NilForwardPanic,
+                "{memo}"
+            );
+        }
+        // The map decode sees the exact key only: not a forward.
+        let memo = format!(r#"{{"Forward":{fwd},"forward":null}}"#);
+        for pfm in [Pfm::Upstream, Pfm::Fork] {
+            assert_eq!(on_recv(&memo, pfm), Recv::NotForward);
+        }
+        // `forward` of another type is a decode error in both.
+        for memo in [
+            r#"{"forward":"x"}"#,
+            r#"{"forward":5}"#,
+            r#"{"forward":[]}"#,
+            r#"{"forward":true}"#,
+        ] {
+            assert!(rejected(memo, Pfm::Fork), "{memo}");
+            assert!(rejected(memo, Pfm::Upstream), "{memo}");
+        }
+    }
+
+    /// `TestForwardedMemoIsNextAsSent`: the fork forwards `next` as the
+    /// sender's bytes (a JSON string: its unquoted content, which must be
+    /// JSON). Upstream re-encodes it.
+    #[test]
+    fn forwarded_memo_is_next_as_sent() {
+        // (next value, fork memo, upstream memo; None: error ack).
+        let q = |s: &str| serde_json::to_string(s).unwrap();
+        let cases: Vec<(String, Option<&str>, Option<&str>)> = vec![
+            (
+                r#"{"forward":{"receiver":"r2"}}"#.into(),
+                Some(r#"{"forward":{"receiver":"r2"}}"#),
+                Some(r#"{"forward":{"receiver":"r2"}}"#),
+            ),
+            (
+                r#"{ "b" : 1,  "a" : [ 1 , 2 ] }"#.into(),
+                Some(r#"{ "b" : 1,  "a" : [ 1 , 2 ] }"#),
+                Some(r#"{"b":1,"a":[1,2]}"#),
+            ),
+            (
+                "  \t{\"a\":1}\n ".into(),
+                Some(r#"{"a":1}"#),
+                Some(r#"{"a":1}"#),
+            ),
+            (
+                r#"{"a":"<&>"}"#.into(),
+                Some(r#"{"a":"<&>"}"#),
+                Some(r#"{"a":"\u003c\u0026\u003e"}"#),
+            ),
+            (
+                r#"{"a":"\u003c\ud800"}"#.into(),
+                Some(r#"{"a":"\u003c\ud800"}"#),
+                Some("{\"a\":\"\\u003c\u{fffd}\"}"),
+            ),
+            (
+                "{\"a\":\"\u{2028}\"}".into(),
+                Some("{\"a\":\"\u{2028}\"}"),
+                Some(r#"{"a":"\u2028"}"#),
+            ),
+            (
+                r#"{"a":1,"a":2}"#.into(),
+                Some(r#"{"a":1,"a":2}"#),
+                Some(r#"{"a":2}"#),
+            ),
+            (
+                r#"{"a":1e20,"b":1.0}"#.into(),
+                Some(r#"{"a":1e20,"b":1.0}"#),
+                Some(r#"{"a":100000000000000000000,"b":1}"#),
+            ),
+            ("1e20".into(), Some("1e20"), Some("1e20")),
+            ("-0".into(), Some("-0"), Some("-0")),
+            ("[ 1 ]".into(), Some("[ 1 ]"), Some("[1]")),
+            ("true".into(), Some("true"), Some("true")),
+            (
+                q(r#"{ "a" : "<" }"#),
+                Some(r#"{ "a" : "<" }"#),
+                Some(r#"{"a":"\u003c"}"#),
+            ),
+            (q("null"), Some("null"), Some("null")),
+            (q(r#""x""#), Some(r#""x""#), Some(r#""x""#)),
+            (q(" [1] "), Some(" [1] "), Some("[1]")),
+            (q("hello"), None, Some("")),
+            (q(""), None, Some("")),
+            (
+                r#"{"a":1},"next":{"b":2}"#.into(),
+                Some(r#"{"b":2}"#),
+                Some(r#"{"b":2}"#),
+            ),
+            (
+                r#""hello","NEXT":{"b":2}"#.into(),
+                Some(r#"{"b":2}"#),
+                Some(r#"{"b":2}"#),
+            ),
+            (r#"{"b":2},"Next":"hello""#.into(), None, Some("")),
+            ("null".into(), Some(""), Some("")),
+            (r#"{"a":1},"next":null"#.into(), Some(""), Some("")),
+        ];
+        for (next, fork, upstream) in cases {
+            let memo = forward_memo(&format!(r#","next":{next}"#));
+            match fork {
+                Some(want) => assert_eq!(
+                    String::from_utf8(next_memo(&memo, Pfm::Fork)).unwrap(),
+                    want,
+                    "fork: {memo}"
+                ),
+                None => assert!(rejected(&memo, Pfm::Fork), "fork: {memo}"),
+            }
+            // Upstream accepts every form here and fails only when it
+            // forwards (`Some("")` marks a marshal error or no memo).
+            let m = forwarded(&memo, Pfm::Upstream);
+            let got = match m.next {
+                None | Some(Err(_)) => String::new(),
+                Some(Ok(s)) => s,
+            };
+            assert_eq!(Some(got.as_str()), upstream, "upstream: {memo}");
+        }
+    }
+
+    /// Bytes that are not UTF-8 stay as sent in an object `next`; a string
+    /// `next` is unquoted as Go does (invalid UTF-8 becomes U+FFFD).
+    #[test]
+    fn forwarded_memo_keeps_go_bytes() {
+        let memo = |next: &[u8]| {
+            let mut b = forward_memo(",\"next\":").into_bytes();
+            let tail = b.split_off(b.len() - 2);
+            b.extend_from_slice(next);
+            b.extend_from_slice(&tail);
+            gostr::from_go_vec(b)
+        };
+        assert_eq!(
+            next_memo(&memo(b"{\"a\":\"\xff\"}"), Pfm::Fork),
+            b"{\"a\":\"\xff\"}"
+        );
+        assert_eq!(
+            next_memo(&memo(b"\"\\\"\xff\\\"\""), Pfm::Fork),
+            "\"\u{fffd}\"".as_bytes()
+        );
+        assert!(rejected(&memo(b"\"\xff\""), Pfm::Fork));
+    }
+
+    /// `Validate` uses `json.Valid`, with its limit of 10 000 nested
+    /// levels, on a string `next`.
+    #[test]
+    fn string_next_nesting_limit() {
+        let nested = |d: usize| format!("{}{}", "[".repeat(d), "]".repeat(d));
+        let memo = |d: usize| forward_memo(&format!(r#","next":"{}""#, nested(d)));
+        assert_eq!(
+            next_memo(&memo(10_000), Pfm::Fork),
+            nested(10_000).into_bytes()
+        );
+        assert!(rejected(&memo(10_001), Pfm::Fork));
+    }
+
+    /// A forward memo of [`MAX_FORWARD_MEMO_LENGTH`] Go bytes is decoded;
+    /// a longer one gets the error acknowledgement before it is decoded.
+    /// Other memos are not limited.
+    #[test]
+    fn forward_memo_length() {
+        let padded = |len: usize, c: char| {
+            let base = forward_memo("");
+            let fixed = base.len() + r#","pad":"""#.len();
+            let n = (len - fixed) / c.len_utf8();
+            let memo = format!(
+                r#"{},"pad":"{}{}"}}"#,
+                &base[..base.len() - 1],
+                c.to_string().repeat(n),
+                "x".repeat((len - fixed) % c.len_utf8())
+            );
+            assert_eq!(gostr::go_len(&memo), len);
+            memo
+        };
+        for c in ['x', '\u{e9}'] {
+            let at = padded(MAX_FORWARD_MEMO_LENGTH, c);
+            assert!(matches!(on_recv(&at, Pfm::Fork), Recv::Forward(_)));
+            let over = padded(MAX_FORWARD_MEMO_LENGTH + 2, c);
+            assert!(rejected(&over, Pfm::Fork));
+            assert!(matches!(on_recv(&over, Pfm::Upstream), Recv::Forward(_)));
+        }
+        let over = padded(MAX_FORWARD_MEMO_LENGTH + 1, 'x');
+        assert!(rejected(&over, Pfm::Fork));
+        // Any error ack, even for a memo that would fail to decode anyway.
+        let bad = format!(r#"{{"forward":5,"pad":"{}"}}"#, "x".repeat(40 << 10));
+        assert!(rejected(&bad, Pfm::Fork));
+
+        let big = "x".repeat(40 << 10);
+        for memo in [
+            format!(r#"{{"pad":"{big}"}}"#),
+            format!(r#"{{"forward":null,"pad":"{big}"}}"#),
+            format!(r#"{{"Forward":{{}},"pad":"{big}"}}"#),
+            big.clone(),
+        ] {
+            for pfm in [Pfm::Upstream, Pfm::Fork] {
+                assert_eq!(on_recv(&memo, pfm), Recv::NotForward);
+            }
+        }
+    }
+
+    /// `TestRetryResendsMemoAsIs`: the fork sends the memo of a timed-out
+    /// packet again as is, without decoding it. Upstream decodes and
+    /// re-encodes it, and fails on a memo that does not decode.
+    #[test]
+    fn retry_resends_memo_as_is() {
+        let deep = |d: usize| format!("{}1{}", r#"{"a":"#.repeat(d), "}".repeat(d));
+        let lists = |d: usize| format!("{}{}", "[".repeat(d), "]".repeat(d));
+        let big = forward_memo(&format!(r#","pad":"{}""#, "x".repeat(40 << 10)));
+        let memos = [
+            forward_memo(""),
+            " { \"a\" : 1 } ".into(),
+            r#"{"a":"<&>"}"#.into(),
+            r#""x""#.into(),
+            "null".into(),
+            "5".into(),
+            "hello".into(),
+            r#"{"a":1,"a":2}"#.into(),
+            deep(3000),
+            lists(10_001),
+            r#"{"a":"\x"}"#.into(),
+            big,
+            gostr::from_go_vec(b"{\"a\":\"\xff\"}".to_vec()),
+        ];
+        for memo in &memos {
+            assert_eq!(
+                retry_next(memo, Pfm::Fork),
+                Ok(Some(Ok(memo.clone()))),
+                "{memo:.80}"
+            );
+        }
+        assert_eq!(retry_next("", Pfm::Fork), Ok(None));
+        assert_eq!(retry_next("", Pfm::Upstream), Ok(None));
+        // Upstream.
+        assert_eq!(
+            retry_next(r#"{"a":"<&>"}"#, Pfm::Upstream),
+            Ok(Some(Ok(r#"{"a":"\u003c\u0026\u003e"}"#.into())))
+        );
+        assert!(retry_next("hello", Pfm::Upstream).is_err());
+        assert!(retry_next(&lists(10_001), Pfm::Upstream).is_err());
+        assert!(matches!(
+            retry_next("null", Pfm::Upstream),
+            Ok(Some(Err(_)))
+        ));
     }
 }
