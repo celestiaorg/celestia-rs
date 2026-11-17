@@ -32,10 +32,17 @@ pub fn ante(
     tx: &Tx,
     simulate: bool,
 ) -> core::result::Result<u64, (sdk::SdkError, u64)> {
-    let deps = x_ante::StoreDeps::new(None);
+    let deps = ante_deps(None);
     x_ante::ante_handle(ctx, tx, simulate, &deps)
         .map(|o| o.gas_wanted)
         .map_err(|e| (e.error, e.gas_wanted))
+}
+
+pub(crate) fn ante_deps(node_min_gas_price: Option<math::LegacyDec>) -> x_ante::StoreDeps {
+    x_ante::StoreDeps {
+        sdk_message_counter: Some(crate::msg_count::count_sdk_message_gas_weight),
+        ..x_ante::StoreDeps::new(node_min_gas_price)
+    }
 }
 
 /// `stakingKeeper.ApplyAndReturnValidatorSetUpdates`.

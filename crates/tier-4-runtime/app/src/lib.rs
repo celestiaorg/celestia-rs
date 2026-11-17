@@ -1355,9 +1355,9 @@ mod finalize_gas_tests {
     };
     use prost::Message as _;
 
-    /// A DIRECT-signed MsgSend from a funded account with a 100,000 gas
+    /// DIRECT-signed MsgSend messages from a funded account with a 100,000 gas
     /// limit, chain "test", sequence 0.
-    fn signed_send(ctx: &mut Context<'_>) -> Vec<u8> {
+    fn signed_sends(ctx: &mut Context<'_>, count: usize) -> Vec<u8> {
         let sk = crypto::secp256k1::secret_key_from_secret(b"end-block-gas");
         let pk = crypto::secp256k1::public_key_from_secret_key(&sk).unwrap_or([0; 33]);
         let addr = crypto::secp256k1::address(&pk).to_vec();
@@ -1404,14 +1404,17 @@ mod finalize_gas_tests {
             .encode_to_vec(),
         ));
         let body = TxBody {
-            messages: vec![Any::pack(&MsgSend {
-                from_address: x_auth::bech32(&addr).unwrap_or_default(),
-                to_address: x_auth::bech32(&[7; 20]).unwrap_or_default(),
-                amount: vec![PbCoin {
-                    denom: "utia".into(),
-                    amount: "10".into(),
-                }],
-            })],
+            messages: vec![
+                Any::pack(&MsgSend {
+                    from_address: x_auth::bech32(&addr).unwrap_or_default(),
+                    to_address: x_auth::bech32(&[7; 20]).unwrap_or_default(),
+                    amount: vec![PbCoin {
+                        denom: "utia".into(),
+                        amount: "10".into(),
+                    }],
+                });
+                count
+            ],
             ..Default::default()
         };
         let mut key = vec![0x0a, 33];
@@ -1466,7 +1469,7 @@ mod finalize_gas_tests {
             ..Default::default()
         };
         let mut ctx = Context::new(&mut app.ms, header, ExecMode::Finalize);
-        let tx = signed_send(&mut ctx);
+        let tx = signed_sends(&mut ctx, 1);
         let results = execute_txs_phased(&mut ctx, std::slice::from_ref(&tx));
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].code, 0, "{}", results[0].log);
@@ -1478,6 +1481,26 @@ mod finalize_gas_tests {
         );
         assert_eq!(ctx.gas.consumed(), 0);
         assert!(ctx.tx_bytes.is_empty());
+    }
+
+    #[test]
+    fn finalize_charges_for_additional_sdk_messages_from_v12() {
+        let gas_used = |app_version, message_count| {
+            let mut app = App::new();
+            let header = Header {
+                chain_id: "test".into(),
+                height: 5,
+                ..Default::default()
+            };
+            let mut ctx = Context::new(&mut app.ms, header, ExecMode::Finalize);
+            ctx.consensus_params.version = Some(VersionParams { app: app_version });
+            let tx = signed_sends(&mut ctx, message_count);
+            let result = execute_txs_phased(&mut ctx, &[tx]).remove(0);
+            assert_eq!(result.code, 0, "{}", result.log);
+            result.gas_used
+        };
+        assert_eq!(gas_used(12, 1), gas_used(11, 1));
+        assert_eq!(gas_used(12, 2), gas_used(11, 2) + 10_000);
     }
 }
 

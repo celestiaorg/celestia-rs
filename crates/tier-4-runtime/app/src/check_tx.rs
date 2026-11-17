@@ -208,7 +208,7 @@ impl App {
         decode: tx::DecodeFn,
     ) -> ResponseCheckTx {
         let header = self.check_header.clone();
-        let deps = x_ante::StoreDeps::new(self.node_min_gas_price.clone())
+        let deps = crate::txpipe::ante_deps(self.node_min_gas_price.clone())
             .with_ibc(crate::ibc::ANTE_HOOKS);
         let mut ctx = Context::new(&mut self.ms, header, mode);
         ctx.consensus_params = x_consensus::get_params(&mut ctx)

@@ -366,7 +366,7 @@ impl App {
         mode: ExecMode,
         f: impl FnOnce(&mut Context<'_>, &x_ante::StoreDeps) -> T,
     ) -> T {
-        let deps = x_ante::StoreDeps::new(None);
+        let deps = crate::txpipe::ante_deps(None);
         let configured_execution_version = self.execution_version;
         let mut ctx = Context::new(&mut self.ms, header, mode);
         let base = ctx.multistore().depth();
