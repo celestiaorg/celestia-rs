@@ -101,13 +101,16 @@ fn leaf_weight<E>(
     Ok(1)
 }
 
+fn ica_payload(packet: &Packet) -> Option<Vec<u8>> {
+    (packet.destination_port == ICA_HOST_PORT)
+        .then(|| ica_packet_data(&packet.data))
+        .flatten()
+}
+
 /// `data.UnmarshalJSON` (`InterchainAccountPacketData`, jsonpb) with
 /// `type == EXECUTE_TX`; returns its `data`.
-fn ica_payload(packet: &Packet) -> Option<Vec<u8>> {
-    if packet.destination_port != ICA_HOST_PORT {
-        return None;
-    }
-    let (ty, data) = x_icahost::host::packet_data(&packet.data)?;
+fn ica_packet_data(bz: &[u8]) -> Option<Vec<u8>> {
+    let (ty, data) = x_icahost::host::packet_data(bz)?;
     (ty == 1).then_some(data)
 }
 
