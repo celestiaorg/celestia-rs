@@ -1,0 +1,2484 @@
+{
+  "fork_commit": "34b056cdd1ea870aa95d8c52ebc9c8032b849afd",
+  "recv": [
+    {
+      "name": "basic/0",
+      "memo": [
+        {
+          "s": "",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/1",
+      "memo": [
+        {
+          "s": "{}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/2",
+      "memo": [
+        {
+          "s": "null",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/3",
+      "memo": [
+        {
+          "s": "[]",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/4",
+      "memo": [
+        {
+          "s": "\"text\"",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/5",
+      "memo": [
+        {
+          "s": "hello",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/6",
+      "memo": [
+        {
+          "s": "{\"forward\":null}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/7",
+      "memo": [
+        {
+          "s": "{\"Forward\":{}}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/8",
+      "memo": [
+        {
+          "s": "{\"forward\":{}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "basic/9",
+      "memo": [
+        {
+          "s": "{\"forward\":\"x\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "basic/10",
+      "memo": [
+        {
+          "s": "{\"forward\":5}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "basic/11",
+      "memo": [
+        {
+          "s": "{\"forward\":[]}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "basic/12",
+      "memo": [
+        {
+          "s": "{\"forward\":true}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "basic/13",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"r\"},\"forward\":{\"port\":\"transfer\",\"channel\":\"channel-1\"}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "r",
+        "port": "transfer",
+        "channel": "channel-1",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "fields/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "fields/1",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"retries\":3",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 3
+      }
+    },
+    {
+      "name": "fields/2",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"retries\":256",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "fields/3",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"retries\":-1",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "fields/4",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"retries\":null",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "fields/5",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"receiver\":\"\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "fields/6",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"port\":\"x\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "fields/7",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"channel\":\"!\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "fields/8",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"receiver\":5",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "fields/9",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"Receiver\":\"r2\",\"CHANNEL\":\"channel-3\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "r2",
+        "port": "transfer",
+        "channel": "channel-3",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "nil/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"Forward\":null}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "nil/1",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"FORWARD\":null}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "nil/2",
+      "memo": [
+        {
+          "s": "{\"Forward\":null,\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"fORWARD\":null}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "nil/3",
+      "memo": [
+        {
+          "s": "{\"Forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"forward\":null}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "timeout/0/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":0",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/-1/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":-1",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/1.9/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":1.9",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 1,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/600/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":600",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/9223372036854774784/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":9223372036854774784",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 9223372036854774784,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/9223372036854775295/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":9223372036854775295",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 9223372036854774784,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/9223372036854775807/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":9223372036854775807",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "timeout/9223372036854775808/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":9223372036854775808",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "timeout/-9223372036854775808/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":-9223372036854775808",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/-9223372036854775809/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":-9223372036854775809",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/-9223372036854777856/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":-9223372036854777856",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "timeout/1e19/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":1e19",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "timeout/-1e19/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":-1e19",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "timeout/1e308/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":1e308",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "timeout/1e400/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":1e400",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "timeout/\"1s\"/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":\"1s\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 1000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/\"-1s\"/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":\"-1s\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/\"1e19\"/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":\"1e19\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "timeout/null/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":null",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "timeout/true/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":true",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "timeout/{}/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":{}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "timeout-keys/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":\"1s\",\"TIMEOUT\":1e19",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "timeout-keys/1",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"Timeout\":1e19,\"timeout\":5",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "timeout-keys/2",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":\"1s\",\"tImeout\":2",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 2,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/0/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"forward\":{\"receiver\":\"r2\"}}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 29,
+          "sha256": "32400719335a74b56124c5c25daef9954684fef2567abbc203b3360f9efa3828",
+          "text": "{\"forward\":{\"receiver\":\"r2\"}}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/1/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{ \"b\" : 1,  \"a\" : [ 1 , 2 ] }",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 29,
+          "sha256": "f93b308d9d10bdd6dc64bf97e6b0dc82b79b7b5f0f14bf59bbe1df2218ba7d73",
+          "text": "{ \"b\" : 1,  \"a\" : [ 1 , 2 ] }"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/2/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "  \t{\"a\":1}\n ",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 7,
+          "sha256": "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862",
+          "text": "{\"a\":1}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/3/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":\"\u003c\u0026\u003e\"}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 11,
+          "sha256": "8658fe1f872cd0d087e206ab8fd59cbc9873d8a4d5701620f4d3d17b0f2fb388",
+          "text": "{\"a\":\"\u003c\u0026\u003e\"}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/4/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":\"\\u003c\\ud800\\n\"}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 22,
+          "sha256": "655c57d6f54bf995a80fed754f0f87376134c2659a2da194cc12560a4be7b91b",
+          "text": "{\"a\":\"\\u003c\\ud800\\n\"}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/5/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":\"\u2028\"}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 11,
+          "sha256": "c0f545e4a8a9c4d8ab310c65a4e2c3ec788c89d5bf91845869f66fb4aa396e8a",
+          "text": "{\"a\":\"\u2028\"}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/6/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":1,\"a\":2}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 13,
+          "sha256": "1c53ee0df7b12fd4d65b976120c7fa6b847dc41dffd7f0331c3237a1ceab1756",
+          "text": "{\"a\":1,\"a\":2}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/7/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":1e20,\"b\":1.0}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 18,
+          "sha256": "f3c0607f1d909431eb304d7b548fe9e27de24c1efb9a6784c3c8e84149cccd66",
+          "text": "{\"a\":1e20,\"b\":1.0}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/8/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "1e20",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 4,
+          "sha256": "c84d2746ff82882dece808df5db17ab5318da3cb18a8a6d5768a202d25120ed4",
+          "text": "1e20"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/9/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "-0",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 2,
+          "sha256": "ed79f26d03f412bde3db206601a698e0bb451bea9e3cc25289636ac17ea74b0a",
+          "text": "-0"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/10/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "[ 1 ]",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 5,
+          "sha256": "005dc7dff71d4b97ee66f4dc1b3cf4874b3087243dd0b21308841c625bc4233d",
+          "text": "[ 1 ]"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/11/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "true",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 4,
+          "sha256": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+          "text": "true"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/12/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "false",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 5,
+          "sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+          "text": "false"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/13/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"{ \\\"a\\\" : \\\"\u003c\\\" }\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 13,
+          "sha256": "ea5bcab4b5670c95ea1274f10133cd1777092a06ce191c28c877e38443d363c1",
+          "text": "{ \"a\" : \"\u003c\" }"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/14/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"null\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 4,
+          "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "text": "null"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/15/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"\\\"x\\\"\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 3,
+          "sha256": "ba2df4903a2c14e86dc3bcca58911b44ac1d2514b7227bf6eb08cfb978f55a1b",
+          "text": "\"x\""
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/16/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\" [1] \"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 5,
+          "sha256": "4e0215adbf7031c7da06ce50305e26f3da4d02ac934bc71bdb24b748ba83c00c",
+          "text": " [1] "
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/17/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"hello\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "next/18/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "next/19/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"{\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "next/20/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"{\\\"a\\\":1,\\\"a\\\":2}\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 13,
+          "sha256": "1c53ee0df7b12fd4d65b976120c7fa6b847dc41dffd7f0331c3237a1ceab1756",
+          "text": "{\"a\":1,\"a\":2}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/21/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":1},\"next\":{\"b\":2}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 7,
+          "sha256": "0ab1a6d394cd30195f0642b67ae1180c375ffadf5dd7f39c390668b5fdb6da93",
+          "text": "{\"b\":2}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/22/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"hello\",\"NEXT\":{\"b\":2}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 7,
+          "sha256": "0ab1a6d394cd30195f0642b67ae1180c375ffadf5dd7f39c390668b5fdb6da93",
+          "text": "{\"b\":2}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/23/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"b\":2},\"Next\":\"hello\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "next/24/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "null",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/25/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":1},\"next\":null",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/26/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"",
+          "n": 1
+        },
+        {
+          "s": "[",
+          "n": 10000
+        },
+        {
+          "s": "]",
+          "n": 10000
+        },
+        {
+          "s": "\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 20000,
+          "sha256": "88b516df742a232dad9132d8e5173704287f890c30624fd29fb22abfe7b58e37"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/27/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"",
+          "n": 1
+        },
+        {
+          "s": "[",
+          "n": 10001
+        },
+        {
+          "s": "]",
+          "n": 10001
+        },
+        {
+          "s": "\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    },
+    {
+      "name": "next/28/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "[",
+          "n": 9998
+        },
+        {
+          "s": "]",
+          "n": 9998
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 19996,
+          "sha256": "cdb58e9d30a9d04217fdba96159996170a0a8e670102db215622a2e36ceedf78"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/29/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "[",
+          "n": 9999
+        },
+        {
+          "s": "]",
+          "n": 9999
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "length/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 32647
+        },
+        {
+          "s": "x",
+          "n": 0
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "length/1",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 32648
+        },
+        {
+          "s": "x",
+          "n": 0
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "length/2",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 32649
+        },
+        {
+          "s": "x",
+          "n": 0
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "length/3",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "é",
+          "n": 16323
+        },
+        {
+          "s": "x",
+          "n": 1
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "length/4",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "é",
+          "n": 16324
+        },
+        {
+          "s": "x",
+          "n": 0
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "length/5",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "é",
+          "n": 16324
+        },
+        {
+          "s": "x",
+          "n": 1
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "length/6",
+      "memo": [
+        {
+          "s": "{\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 40960
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "length/7",
+      "memo": [
+        {
+          "s": "{\"forward\":null,\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 40960
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "length/8",
+      "memo": [
+        {
+          "s": "{\"Forward\":{},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 40960
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "length/9",
+      "memo": [
+        {
+          "s": "x",
+          "n": 40960
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "length/10",
+      "memo": [
+        {
+          "s": "{\"forward\":5,\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 40960
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+    }
+  ],
+  "retry": [
+    {
+      "name": "retry/0",
+      "memo": [
+        {
+          "s": "",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "retry/1",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 112,
+        "sha256": "a28ece1b8f6d0fb1a2c3eac46505aa19ffeef4ae752d8773483a381877e756bb",
+        "text": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"}}"
+      }
+    },
+    {
+      "name": "retry/2",
+      "memo": [
+        {
+          "s": " { \"a\" : 1 } ",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 13,
+        "sha256": "626e9dd911468347f80b47dcba5156ca69a565012f85cf10f2090b74aad41c95",
+        "text": " { \"a\" : 1 } "
+      }
+    },
+    {
+      "name": "retry/3",
+      "memo": [
+        {
+          "s": "{\"a\":\"\u003c\u0026\u003e\"}",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 11,
+        "sha256": "8658fe1f872cd0d087e206ab8fd59cbc9873d8a4d5701620f4d3d17b0f2fb388",
+        "text": "{\"a\":\"\u003c\u0026\u003e\"}"
+      }
+    },
+    {
+      "name": "retry/4",
+      "memo": [
+        {
+          "s": "\"x\"",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 3,
+        "sha256": "ba2df4903a2c14e86dc3bcca58911b44ac1d2514b7227bf6eb08cfb978f55a1b",
+        "text": "\"x\""
+      }
+    },
+    {
+      "name": "retry/5",
+      "memo": [
+        {
+          "s": "null",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 4,
+        "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "text": "null"
+      }
+    },
+    {
+      "name": "retry/6",
+      "memo": [
+        {
+          "s": "5",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 1,
+        "sha256": "ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d",
+        "text": "5"
+      }
+    },
+    {
+      "name": "retry/7",
+      "memo": [
+        {
+          "s": "hello",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 5,
+        "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        "text": "hello"
+      }
+    },
+    {
+      "name": "retry/8",
+      "memo": [
+        {
+          "s": "{\"a\":1,\"a\":2}",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 13,
+        "sha256": "1c53ee0df7b12fd4d65b976120c7fa6b847dc41dffd7f0331c3237a1ceab1756",
+        "text": "{\"a\":1,\"a\":2}"
+      }
+    },
+    {
+      "name": "retry/9",
+      "memo": [
+        {
+          "s": "{\"a\":",
+          "n": 3000
+        },
+        {
+          "s": "1",
+          "n": 1
+        },
+        {
+          "s": "}",
+          "n": 3000
+        }
+      ],
+      "retried": {
+        "len": 18001,
+        "sha256": "b2e26ac9689495fede68b5fef390bdee95d5152461f0d9cc339f78d5a9fb2983"
+      }
+    },
+    {
+      "name": "retry/10",
+      "memo": [
+        {
+          "s": "[",
+          "n": 10001
+        },
+        {
+          "s": "]",
+          "n": 10001
+        }
+      ],
+      "retried": {
+        "len": 20002,
+        "sha256": "435880ce431297d79345bf598a01589c14a2a5223539a271cca074a0bc4e8bd6"
+      }
+    },
+    {
+      "name": "retry/11",
+      "memo": [
+        {
+          "s": "{\"a\":\"\\x\"}",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 10,
+        "sha256": "a3e11777af1caa9ff6e2f749660786d85680827ccd6615cb5ae92c746d223322",
+        "text": "{\"a\":\"\\x\"}"
+      }
+    },
+    {
+      "name": "retry/12",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 40960
+        },
+        {
+          "s": "\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 41081,
+        "sha256": "88ecb4a98b9a7a1daa77cd0f84a93e530e19c1d4cde413f921ca96b5817208d3"
+      }
+    }
+  ]
+}

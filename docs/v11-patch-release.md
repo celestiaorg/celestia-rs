@@ -19,7 +19,7 @@ binary can differ from the committed consensus version during an upgrade.
 | PFM error acknowledgements / gov failure reason (Go #8602) | Historical error text | Fixed acknowledgement / codespace and code |
 | Signal version checks (Go #8599) | Header version, including historical zero-header behavior | Consensus app version; clear non-increasing reached upgrades |
 | Strict transaction encoding (Rust #377, Go #8611 / SDK #186) | Historical decoder | Strict decoder, once its pending PR merges |
-| Bounded forward/retry memos (Rust #387, Go #8629) | Historical middleware | Memo limits, once its pending PR merges |
+| PFM memo handling (Rust #387, celestiaorg/ibc-apps#3) | Upstream PFM v8.2.0 | Celestia PFM fork, once celestia-app main uses its release |
 
 The reference tag's ante chain, blob keeper, signal keeper, encoding config,
 and absence of the mainline PFM/gov wrappers establish these exclusions.

@@ -205,7 +205,7 @@ jobs:
           - mathvectors
           - mintvectors
           - p2pvectors
-          - pfm-limits
+          - pfm-fork
           - provider-client
           - rpc-relay
           - rpccorpus/recorder
@@ -234,6 +234,6 @@ jobs:
         working-directory: conformance/${{ matrix.module }}
         run: go build ./...
       - name: Test
-        if: matrix.module == 'fixturegen' || matrix.module == 'antereplay' || matrix.module == 'fuzzoracle/v10'
+        if: matrix.module == 'fixturegen' || matrix.module == 'antereplay' || matrix.module == 'fuzzoracle/v10' || matrix.module == 'pfm-fork'
         working-directory: conformance/${{ matrix.module }}
         run: go test ./...
