@@ -57,7 +57,9 @@ to 600 seconds. It leaves other chains and existing unbonding queue entries
 unchanged. It does not reset fibre accounts, rewrite grants or fee allowances,
 change withdraw addresses, or add stores. Those operations are not in the tag.
 
-The runtime recognizes committed v11 state and authenticates a `v11`
+The runtime recognizes a completed v11 upgrade or an explicit v11 genesis.
+A signalled consensus version alone leaves a restored v10 node on v10.
+The runtime authenticates a `v11`
 `upgrade-info.json` against the committed next-height plan before recording
 the executing release. A v10 execution remains v10 until activation/restart;
 historical v9-to-v10 replay remains supported. New genesis defaults and the

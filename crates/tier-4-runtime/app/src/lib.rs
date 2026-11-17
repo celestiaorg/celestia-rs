@@ -437,10 +437,15 @@ impl App {
                 .iter()
                 .all(|name| info.store_info(name).is_some())
         }) {
-            // A restored post-governance state may not carry node-local
-            // metadata, but the two v10-only committed stores prove that its
-            // executable semantics have crossed the boundary.
-            self.execution_version = Some(self.app_version().max(10));
+            // These stores establish v10 at minimum. A signal can advance
+            // consensus params before the v11 executable has been activated.
+            let header = self.init_check_header();
+            let mut ctx = Context::new(&mut self.ms, header, ExecMode::Check);
+            self.execution_version = Some(if x_upgrade::get_done_height(&mut ctx, "v11")? > 0 {
+                upgrades::V11_APP_VERSION
+            } else {
+                upgrades::APP_VERSION
+            });
         }
 
         let Some(home) = self.node.home.as_deref() else {
@@ -635,6 +640,15 @@ impl App {
         }
         drop(ctx);
 
+        // An explicit v11 genesis starts under v11 without an upgrade plan.
+        // Persist its release with the first commit so reopens retain it.
+        if genesis_app_version == upgrades::V11_APP_VERSION {
+            self.execution_version = Some(genesis_app_version);
+            self.ms.root_mut().set_metadata(
+                EXECUTION_VERSION_KEY,
+                genesis_app_version.to_be_bytes().to_vec(),
+            );
+        }
         self.finalize_header = Some(Header {
             height: self.initial_height,
             ..header
@@ -1630,7 +1644,7 @@ mod node_options_tests {
         x_consensus::set_params(
             &mut ctx,
             &ConsensusParams {
-                version: Some(VersionParams { app: 10 }),
+                version: Some(VersionParams { app: 11 }),
                 ..Default::default()
             },
         )
@@ -1640,6 +1654,10 @@ mod node_options_tests {
         app.ms.flush().unwrap();
         app.ms.commit().unwrap();
         drop(app);
+        let pending = App::open_with(home.path(), v10_options(home.path())).unwrap();
+        assert_eq!(pending.info().app_version, 11);
+        assert_eq!(pending.execution_version(), 10);
+        drop(pending);
         dump_upgrade_info(home.path(), 2, &plan).unwrap();
         let mut app = App::open_with(home.path(), v10_options(home.path())).unwrap();
         assert_eq!(app.execution_version(), 11);
@@ -1652,6 +1670,33 @@ mod node_options_tests {
         drop(app);
         std::fs::remove_file(home.path().join("data/upgrade-info.json")).unwrap();
         let app = App::open_with(home.path(), v10_options(home.path())).unwrap();
+        assert_eq!(app.execution_version(), 11);
+    }
+
+    #[test]
+    fn completed_v11_plan_identifies_release_without_local_metadata() {
+        let home = tempfile::tempdir().unwrap();
+        let mut app = App::open_with(home.path(), AppOptions::default()).unwrap();
+        let mut ctx = Context::new(
+            &mut app.ms,
+            Header {
+                height: 1,
+                ..Header::default()
+            },
+            ExecMode::Finalize,
+        );
+        x_upgrade::set_module_version_map(&mut ctx, modules::VERSION_MAP.iter().copied()).unwrap();
+        let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
+            name: "v11".into(),
+            height: 1,
+            ..Default::default()
+        };
+        x_upgrade::apply_upgrade(&mut ctx, &upgrades::Handlers::at(11), &plan).unwrap();
+        drop(ctx);
+        app.ms.flush().unwrap();
+        app.ms.commit().unwrap();
+        drop(app);
+        let app = App::open_with(home.path(), AppOptions::default()).unwrap();
         assert_eq!(app.execution_version(), 11);
     }
 
