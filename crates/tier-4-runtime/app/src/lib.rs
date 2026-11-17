@@ -1355,9 +1355,9 @@ mod finalize_gas_tests {
     };
     use prost::Message as _;
 
-    /// DIRECT-signed MsgSend messages from a funded account with a 100,000 gas
-    /// limit, chain "test", sequence 0.
-    fn signed_sends(ctx: &mut Context<'_>, count: usize) -> Vec<u8> {
+    /// DIRECT-signed MsgSend messages from a funded account on chain "test",
+    /// sequence 0.
+    fn signed_sends(ctx: &mut Context<'_>, count: usize, gas_limit: u64) -> Vec<u8> {
         let sk = crypto::secp256k1::secret_key_from_secret(b"end-block-gas");
         let pk = crypto::secp256k1::public_key_from_secret_key(&sk).unwrap_or([0; 33]);
         let addr = crypto::secp256k1::address(&pk).to_vec();
@@ -1435,7 +1435,7 @@ mod finalize_gas_tests {
                     denom: "utia".into(),
                     amount: "2000".into(),
                 }],
-                gas_limit: 100_000,
+                gas_limit,
                 ..Default::default()
             }),
             ..Default::default()
@@ -1469,7 +1469,7 @@ mod finalize_gas_tests {
             ..Default::default()
         };
         let mut ctx = Context::new(&mut app.ms, header, ExecMode::Finalize);
-        let tx = signed_sends(&mut ctx, 1);
+        let tx = signed_sends(&mut ctx, 1, 100_000);
         let results = execute_txs_phased(&mut ctx, std::slice::from_ref(&tx));
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].code, 0, "{}", results[0].log);
@@ -1494,7 +1494,7 @@ mod finalize_gas_tests {
             };
             let mut ctx = Context::new(&mut app.ms, header, ExecMode::Finalize);
             ctx.consensus_params.version = Some(VersionParams { app: app_version });
-            let tx = signed_sends(&mut ctx, message_count);
+            let tx = signed_sends(&mut ctx, message_count, 200_000);
             let result = execute_txs_phased(&mut ctx, &[tx]).remove(0);
             assert_eq!(result.code, 0, "{}", result.log);
             result.gas_used
