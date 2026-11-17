@@ -460,20 +460,6 @@ mod tests {
         Ok(())
     }
 
-    fn ctx_at(ms: &mut MultiStore, app: u64) -> Context<'_> {
-        let header = Header {
-            chain_id: "test".into(),
-            height: 10,
-            ..Header::default()
-        };
-        let mut ctx = Context::new(ms, header, ExecMode::Finalize);
-        ctx.consensus_params = ConsensusParams {
-            version: Some(VersionParams { app }),
-            ..ConsensusParams::default()
-        };
-        ctx
-    }
-
     #[test]
     fn threshold_uses_exact_integers_from_v12() -> Result<()> {
         let mut ms = MultiStore::new();
@@ -522,6 +508,20 @@ mod tests {
             );
         }
         Ok(())
+    }
+
+    fn ctx_at(ms: &mut MultiStore, app: u64) -> Context<'_> {
+        let header = Header {
+            chain_id: "test".into(),
+            height: 10,
+            ..Header::default()
+        };
+        let mut ctx = Context::new(ms, header, ExecMode::Finalize);
+        ctx.consensus_params = ConsensusParams {
+            version: Some(VersionParams { app }),
+            ..ConsensusParams::default()
+        };
+        ctx
     }
 
     #[test]
