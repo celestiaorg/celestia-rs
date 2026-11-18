@@ -723,6 +723,14 @@ pub fn pay_for_fibre(ctx: &mut Context<'_>, m: &MsgPayForFibre) -> Result<MsgPay
     Ok(MsgPayForFibreResponse {})
 }
 
+#[derive(serde::Serialize)]
+struct TimeoutEvent {
+    #[serde(flatten)]
+    base: EventPaymentPromiseTimeout,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    creation_timestamp: Option<Timestamp>,
+}
+
 /// `PaymentPromiseTimeout`.
 pub fn payment_promise_timeout(
     ctx: &mut Context<'_>,
@@ -758,14 +766,20 @@ pub fn payment_promise_timeout(
             processed_at: Some(ctx.header.time),
         },
     )?;
-    emit(
-        ctx,
-        &EventPaymentPromiseTimeout {
-            processor: m.signer.clone(),
-            escrow_signer,
-            payment_promise_hash: hash,
+    let event = sdk::event::typed_event_with_name(
+        <EventPaymentPromiseTimeout as prost::Name>::full_name(),
+        &TimeoutEvent {
+            base: EventPaymentPromiseTimeout {
+                processor: m.signer.clone(),
+                escrow_signer,
+                payment_promise_hash: hash,
+            },
+            creation_timestamp: sdk::version::is_v12(crate::executing_version(ctx))
+                .then(|| ts_or_zero(p.creation_timestamp)),
         },
-    )?;
+    )
+    .map_err(|e| errs::json_marshal(e.to_string()))?;
+    ctx.events.emit(event);
     Ok(MsgPaymentPromiseTimeoutResponse {})
 }
 
@@ -1109,6 +1123,14 @@ mod tests {
         };
         assert!(validate_payment_promise_stateful(&mut ctx, &old).is_err());
         payment_promise_timeout(&mut ctx, &t)?;
+        let event = ctx.events.events().last().unwrap();
+        assert_eq!(event.r#type, "celestia.fibre.v1.EventPaymentPromiseTimeout");
+        assert!(
+            event
+                .attributes
+                .iter()
+                .all(|a| a.key != "creation_timestamp")
+        );
         assert_eq!(escrow(&mut ctx, &signer), ("610000".into(), "0".into()));
         assert!(payment_promise_timeout(&mut ctx, &t).is_err());
         let fresh = promise(&k, 10, now - 1, 1000);
@@ -1200,6 +1222,22 @@ mod tests {
                 payment_promise: Some(promise(&k, 10, now - 4000, 1000)),
             },
         )?;
+        let event = ctx.events.events().last().unwrap();
+        assert_eq!(event.r#type, "celestia.fibre.v1.EventPaymentPromiseTimeout");
+        assert_eq!(
+            event
+                .attributes
+                .iter()
+                .map(|a| a.key.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "creation_timestamp",
+                "escrow_signer",
+                "payment_promise_hash",
+                "processor"
+            ]
+        );
+        assert_eq!(event.attributes[0].value, r#""2027-01-15T06:53:20Z""#);
         assert_eq!(escrow(&mut ctx, &signer), ("0".into(), "0".into()));
         let fee = x_bank::get_balance(&mut ctx, &x_auth::module_address(FEE_COLLECTOR), "utia")?;
         assert_eq!(fee, Coin::new("utia", 5_560));
