@@ -1,6 +1,6 @@
 # Tagged v11 upgrade replay
 
-The original [`upgrade`](../upgrade) recording has 99 commits on the local `test` chain. At height 99, celestia-app v10.4.0 sets the consensus app version to 11. Its next `FinalizeBlock` halts and writes `data/upgrade-info.json` for plan `v11` at height 100.
+The original [`upgrade`](..) recording has 99 commits on the local `test` chain. At height 99, celestia-app v10.4.0 sets the consensus app version to 11. Its next `FinalizeBlock` halts and writes `data/upgrade-info.json` for plan `v11` at height 100.
 
 The capture driver replays the original ABCI requests through that halt. It verifies all 99 app hashes and opens separate copies of the committed v10 home with the official Mocha and Corto v11 binaries. Each binary receives the original height-100 `PrepareProposal`, `ProcessProposal` and `FinalizeBlock` bytes, then a `Commit` request. The two recordings are byte-identical, and both binaries report the same app hash on reopen.
 
@@ -25,7 +25,7 @@ The replay covers the offline application restart on chain ID `test` with an emp
 | --- | --- |
 | `upgrade/genesis.json` | `55cf51151c75725e067fdd2cce8b6e091e36d6dff2b7abbac5cd60d72e18bab3` |
 | `upgrade/abci.rec` | `7d3de22df1c1f1a0cad3d7895fc3f950fabcacc76ef1b80ee6ecb63cd4631b20` |
-| `v11-tagged-upgrade/abci.rec` | `a3233b9e71ff04868828f8afeae3e1f26223f7cbcc9f1a02294d5641d4c4f6c3` |
+| `upgrade/v11-tagged-upgrade/abci.rec` | `a3233b9e71ff04868828f8afeae3e1f26223f7cbcc9f1a02294d5641d4c4f6c3` |
 
 ## Reproduce
 
@@ -47,6 +47,6 @@ for tag in v10.4.0 v11.0.0-mocha v11.0.0-corto; do
 done
 python3 conformance/devnet/probe-v11-upgrade.py \
     --artifacts "$artifact_dir" --out target/v11-upgrade-capture
-cmp target/v11-upgrade-capture/abci.rec conformance/fixtures/devnet/v11-tagged-upgrade/abci.rec
+cmp target/v11-upgrade-capture/abci.rec conformance/fixtures/devnet/upgrade/v11-tagged-upgrade/abci.rec
 cargo test --locked -p devnet-conformance --test v11_tagged_upgrade
 ```

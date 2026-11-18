@@ -41,7 +41,7 @@ fn v11_tagged_upgrade() -> anyhow::Result<()> {
 
     let mut app = App::open_with(home.path(), options.clone())?;
     assert_eq!(app.info(), before);
-    let exchanges = load_exchanges("v11-tagged-upgrade")?;
+    let exchanges = load_exchanges("upgrade/v11-tagged-upgrade")?;
     let [prepare, process, finalize, commit] = exchanges.as_slice() else {
         anyhow::bail!("expected four upgrade ABCI exchanges");
     };
