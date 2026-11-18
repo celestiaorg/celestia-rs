@@ -297,10 +297,35 @@ pub fn is_payment_processed_by_hash(ctx: &mut Context<'_>, hash: &[u8]) -> Resul
     ctx.has(STORE_KEY, &processed_by_hash_key(hash))
 }
 
+/// Checks the legacy payment fields in v12's `GenesisState.ValidateRecords`.
+fn validate_legacy_payments(payments: &[ProcessedPayment]) -> Result<()> {
+    let mut hashes = std::collections::HashSet::new();
+    for payment in payments {
+        let hash = payment.payment_promise_hash.as_slice();
+        let error = if hash.is_empty() {
+            "invalid hash"
+        } else if !hashes.insert(hash) {
+            "duplicate hash"
+        } else if is_zero(&ts_or_zero(payment.processed_at)) {
+            "invalid timestamp"
+        } else {
+            continue;
+        };
+        return Err(sdk::error::go_panic(format!(
+            "invalid fibre genesis state: {error}"
+        )));
+    }
+    Ok(())
+}
+
 /// `InitGenesis`.
 pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
+    let is_v12 = sdk::version::is_v12(executing_version(ctx));
+    if is_v12 {
+        validate_legacy_payments(&gs.processed_payments)?;
+    }
     set_params(ctx, &gs.params.unwrap_or_default())?;
-    if sdk::version::is_v12(executing_version(ctx)) {
+    if is_v12 {
         ctx.set(
             STORE_KEY,
             GENESIS_HEIGHT_KEY.to_vec(),
@@ -572,6 +597,59 @@ mod tests {
             ctx.get(STORE_KEY, &[0x07])?,
             Some(b"2026-10-13T05:29:15.701265606".to_vec())
         );
+        Ok(())
+    }
+
+    #[test]
+    fn validates_legacy_payments_before_v12_genesis_writes() -> Result<()> {
+        use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+
+        // Unix epoch is a valid processed time. Go's zero time is year one.
+        let payment = ProcessedPayment {
+            payment_promise_hash: vec![1],
+            processed_at: Some(Timestamp::default()),
+        };
+        for (invalid, reason) in [
+            (
+                ProcessedPayment {
+                    payment_promise_hash: vec![],
+                    ..payment.clone()
+                },
+                "invalid hash",
+            ),
+            (payment.clone(), "duplicate hash"),
+            (
+                ProcessedPayment {
+                    payment_promise_hash: vec![2],
+                    processed_at: None,
+                },
+                "invalid timestamp",
+            ),
+            (
+                ProcessedPayment {
+                    payment_promise_hash: vec![2],
+                    processed_at: Some(sdk::time::go_zero()),
+                },
+                "invalid timestamp",
+            ),
+        ] {
+            let mut ms = ms();
+            let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+            let gs = GenesisState {
+                processed_payments: vec![payment.clone(), invalid],
+                ..Default::default()
+            };
+            ctx.consensus_params.version = Some(VersionParams { app: 12 });
+            let err = init_genesis(&mut ctx, &gs).unwrap_err();
+            assert!(err.is_panic());
+            assert_eq!(err.log, format!("invalid fibre genesis state: {reason}"));
+            assert!(!ctx.has(STORE_KEY, PARAMS_KEY)?);
+            assert!(!is_payment_processed_by_hash(&mut ctx, &[1])?);
+
+            ctx.consensus_params.version = Some(VersionParams { app: 11 });
+            init_genesis(&mut ctx, &gs)?;
+            assert!(is_payment_processed_by_hash(&mut ctx, &[1])?);
+        }
         Ok(())
     }
 
