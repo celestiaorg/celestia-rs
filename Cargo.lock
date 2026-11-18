@@ -1352,9 +1352,7 @@ dependencies = [
  "curve25519-dalek-ng",
  "hex",
  "rand_core 0.6.4",
- "serde",
  "sha2 0.9.9",
- "thiserror 1.0.69",
  "zeroize",
 ]
 
@@ -4651,7 +4649,6 @@ dependencies = [
  "celestia-core-proto",
  "celestia-proto",
  "crypto",
- "ed25519-consensus",
  "encoding",
  "gostr",
  "hash",
