@@ -423,6 +423,14 @@ fn process_available_withdrawals(ctx: &mut Context<'_>) -> Result<()> {
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+struct PaymentEvent<T> {
+    #[serde(flatten)]
+    base: T,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    creation_timestamp: Option<Timestamp>,
+}
+
 fn prune_processed_payments(ctx: &mut Context<'_>, params: &Params) -> Result<()> {
     let retention =
         duration_nanos(&params.withdrawal_delay.unwrap_or_default()) + MAX_PROMISE_CLOCK_SKEW_NANOS;
@@ -430,7 +438,8 @@ fn prune_processed_payments(ctx: &mut Context<'_>, params: &Params) -> Result<()
     let mut upto = vec![PROCESSED_BY_TIME_PREFIX];
     upto.extend_from_slice(&format_time_bytes(&cutoff));
     let end = sdk::context::prefix_end(&upto);
-    let budget = if sdk::version::is_v12(executing_version(ctx)) {
+    let is_v12 = sdk::version::is_v12(executing_version(ctx));
+    let budget = if is_v12 {
         MAX_PROCESSED_PAYMENT_PRUNES_PER_BLOCK
     } else {
         usize::MAX
@@ -456,10 +465,18 @@ fn prune_processed_payments(ctx: &mut Context<'_>, params: &Params) -> Result<()
         }
         let p: ProcessedPayment = decode(&v)?;
         delete_processed_payment(ctx, &p)?;
-        if let Ok(ev) = typed_event(&EventProcessedPaymentPruned {
-            payment_promise_hash: hash.to_vec(),
-            processed_at: Some(processed_at),
-        }) {
+        let event = PaymentEvent {
+            base: EventProcessedPaymentPruned {
+                payment_promise_hash: hash.to_vec(),
+                processed_at: Some(processed_at),
+            },
+            // Payments in the legacy index predate the creation-time field.
+            creation_timestamp: is_v12.then(sdk::time::go_zero),
+        };
+        if let Ok(ev) = sdk::event::typed_event_with_name(
+            <EventProcessedPaymentPruned as prost::Name>::full_name(),
+            &event,
+        ) {
             ctx.events.emit(ev);
         }
     }
@@ -628,6 +645,14 @@ mod tests {
             ctx.consensus_params.version = Some(VersionParams { app: version });
             begin_block(&mut ctx)?;
             assert_eq!(ctx.events.len(), if version == 12 { 2000 } else { 2001 });
+            let creation = ctx.events.events()[0]
+                .attributes
+                .iter()
+                .find(|attr| attr.key == "creation_timestamp");
+            assert_eq!(
+                creation.map(|attr| attr.value.as_str()),
+                (version == 12).then_some(r#""0001-01-01T00:00:00Z""#)
+            );
             assert!(!is_payment_processed_by_hash(&mut ctx, &hash(1999))?);
             assert_eq!(
                 is_payment_processed_by_hash(&mut ctx, &hash(2000))?,
