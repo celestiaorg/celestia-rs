@@ -103,6 +103,8 @@ pub struct App {
 /// `app.toml`; unsafe upgrade skips are start-time options only.
 #[derive(Debug, Clone, Default)]
 pub struct NodeOptions {
+    /// Allow ABCI store prefix queries on app versions that require an opt-in.
+    pub enable_subspace_queries: bool,
     /// `min-retain-blocks`: `ResponseCommit.retain_height` keeps at least
     /// this many blocks (0 = no block pruning).
     pub min_retain_blocks: u64,
