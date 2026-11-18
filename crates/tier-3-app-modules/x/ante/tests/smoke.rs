@@ -241,6 +241,11 @@ fn v12_ante_limits_module_query_requests() {
         height: 5,
         ..Default::default()
     };
+    // The fixture has one top-level SDK message with no nested SDK messages.
+    let deps = StoreDeps {
+        sdk_message_counter: Some(<[Any]>::len),
+        ..StoreDeps::default()
+    };
     for (version, requests) in [(11, 2), (12, 1), (12, 2)] {
         let mut ms = funded_ms(&header, &addr);
         let mut ctx = Context::new(&mut ms, header.clone(), ExecMode::Finalize);
@@ -266,7 +271,7 @@ fn v12_ante_limits_module_query_requests() {
             },
         );
         ctx.tx_bytes.clone_from(&tx.tx_bytes);
-        let result = ante_handle(&mut ctx, &tx, false, &StoreDeps::default());
+        let result = ante_handle(&mut ctx, &tx, false, &deps);
         assert!(ctx.gas.consumed() > 0);
         if (version, requests) == (12, 2) {
             let err = result.expect_err("v12 ante rejects the second request");
