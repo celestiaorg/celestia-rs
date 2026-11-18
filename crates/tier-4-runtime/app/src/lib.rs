@@ -294,7 +294,9 @@ impl App {
             .rollback_to_version(height)
             .map_err(store_err)?;
         self.finalize_header = None;
-        self.load_committed_state()
+        self.load_committed_state()?;
+        self.check_header = self.init_check_header();
+        Ok(())
     }
 
     /// `BaseApp.GetBlockRetentionHeight(commitHeight)`.
@@ -388,6 +390,7 @@ impl App {
         }
         app.set_node_options(options.node.clone());
         app.configure_execution_version()?;
+        app.check_header = app.init_check_header();
         app.mount_upgrade_stores()?;
         Ok(app)
     }
@@ -410,7 +413,6 @@ impl App {
             self.chain_id = String::from_utf8_lossy(&chain_id).into_owned();
         }
         self.ms.reset_check();
-        self.check_header = self.init_check_header();
         Ok(())
     }
 
@@ -429,7 +431,10 @@ impl App {
                 sdk::error::sdk::logic("invalid node-local execution version metadata")
             })?;
             let version = u64::from_be_bytes(bytes);
-            if ![upgrades::APP_VERSION, upgrades::V11_APP_VERSION].contains(&version) {
+            if !matches!(
+                version,
+                upgrades::APP_VERSION | upgrades::V11_APP_VERSION | upgrades::V12_APP_VERSION
+            ) {
                 return Err(sdk::error::sdk::logic(format!(
                     "unsupported node-local execution version {version}"
                 )));
@@ -499,17 +504,32 @@ impl App {
         Ok(())
     }
 
-    /// `BaseApp.Init`: `setState(execModeCheck, Header{ChainID})`, height 0
-    /// and Go's zero `time.Time` (0001-01-01, security.md 70).
+    /// SDK v0.53.5 seeds check state from the last commit. Earlier releases
+    /// start at height zero with Go's zero time (security.md 70).
     fn init_check_header(&self) -> Header {
-        Header {
+        let mut header = Header {
             chain_id: self.chain_id.clone(),
             time: pbjson_types::Timestamp {
                 seconds: -62_135_596_800,
                 nanos: 0,
             },
             ..Header::default()
+        };
+        if sdk::version::is_v12(self.execution_version()) {
+            header.height = self.last_height;
+            if let Some(time) = self
+                .ms
+                .root()
+                .last_commit_info()
+                .and_then(|ci| ci.timestamp.as_ref())
+            {
+                header.time = pbjson_types::Timestamp {
+                    seconds: time.seconds,
+                    nanos: time.nanos,
+                };
+            }
         }
+        header
     }
 
     /// The snapshot manager of a storage-backed app.
@@ -643,9 +663,12 @@ impl App {
         }
         drop(ctx);
 
-        // An explicit v11 genesis starts under v11 without an upgrade plan.
+        // An explicit v11 or v12 genesis selects its release without an upgrade plan.
         // Persist its release with the first commit so reopens retain it.
-        if genesis_app_version == upgrades::V11_APP_VERSION {
+        if matches!(
+            genesis_app_version,
+            upgrades::V11_APP_VERSION | upgrades::V12_APP_VERSION
+        ) {
             self.execution_version = Some(genesis_app_version);
             self.ms.root_mut().set_metadata(
                 EXECUTION_VERSION_KEY,
@@ -798,10 +821,8 @@ impl App {
         self.check_header = header;
         if std::mem::take(&mut self.switch_on_commit) {
             // The multiplexer stops this binary after the commit and opens
-            // the next app version's (`multiplexer/abci` `Commit`): its
-            // `LoadLatestVersion` / `Init` sets the check state (CheckTx,
-            // queries) to `Header{ChainID}`, height 0 and zero time, until
-            // the next commit (ADR 0004; security.md 70).
+            // the next app version (ADR 0004). Rebuild the check header
+            // as that executable would on startup.
             self.check_header = self.init_check_header();
             // The next binary also starts with empty memory stores: until
             // its first BeginBlock (`x/capability` `InitMemStore`) CheckTx
@@ -1021,6 +1042,7 @@ impl App {
                         tracing::error!(error = %e, "failed to select restored execution version");
                         return abort();
                     }
+                    self.check_header = self.init_check_header();
                     if let Err(e) = self.mount_upgrade_stores() {
                         tracing::error!(error = %e, "failed to mount restored upgrade stores");
                         return abort();
@@ -1737,12 +1759,65 @@ mod node_options_tests {
     }
 
     #[test]
+    fn explicit_genesis_restores_release_and_check_header() {
+        let genesis: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../conformance/fixtures/devnet/empty/genesis.json"
+        ))
+        .unwrap();
+        let time = pbjson_types::Timestamp {
+            seconds: 1_700_000_000,
+            nanos: 123,
+        };
+        for version in [11, 12] {
+            let home = tempfile::tempdir().unwrap();
+            let mut app = App::open(home.path()).unwrap();
+            app.init_chain(abci::RequestInitChain {
+                chain_id: genesis["chain_id"].as_str().unwrap().into(),
+                time: Some(pbjson_types::Timestamp {
+                    seconds: time.seconds - 1,
+                    nanos: 0,
+                }),
+                consensus_params: Some(ConsensusParams {
+                    version: Some(VersionParams { app: version }),
+                    ..Default::default()
+                }),
+                app_state_bytes: serde_json::to_vec(&genesis["app_state"]).unwrap(),
+                ..Default::default()
+            })
+            .unwrap();
+            app.finalize_block(abci::RequestFinalizeBlock {
+                height: 1,
+                time: Some(time),
+                ..Default::default()
+            })
+            .unwrap();
+            app.commit().unwrap();
+            let info = app.info();
+            drop(app);
+            let reopened = App::open(home.path()).unwrap();
+            assert_eq!(reopened.info(), info);
+            assert_eq!(reopened.execution_version(), version);
+            assert_eq!(
+                reopened.check_header.chain_id,
+                genesis["chain_id"].as_str().unwrap()
+            );
+            if version == 12 {
+                assert_eq!(reopened.check_header.height, info.last_block_height);
+                assert_eq!(reopened.check_header.time, time);
+            } else {
+                assert_eq!(reopened.check_header.height, 0);
+                assert_eq!(reopened.check_header.time.seconds, -62_135_596_800);
+            }
+        }
+    }
+
+    #[test]
     fn unsupported_execution_metadata_fails_closed() {
         let home = tempfile::tempdir().expect("temporary app home");
         let mut app = App::open_with(home.path(), AppOptions::default()).expect("open app");
         app.ms
             .root_mut()
-            .set_metadata(EXECUTION_VERSION_KEY, 12u64.to_be_bytes().to_vec());
+            .set_metadata(EXECUTION_VERSION_KEY, 13u64.to_be_bytes().to_vec());
         app.ms.commit().expect("commit invalid metadata fixture");
         drop(app);
         let Err(err) = App::open_with(home.path(), AppOptions::default()) else {
@@ -1750,7 +1825,7 @@ mod node_options_tests {
         };
         assert_eq!(
             err.log,
-            "unsupported node-local execution version 12: internal logic error"
+            "unsupported node-local execution version 13: internal logic error"
         );
     }
 
