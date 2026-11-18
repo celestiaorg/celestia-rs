@@ -65,21 +65,13 @@ fn v11_tagged_upgrade() -> anyhow::Result<()> {
         anyhow::bail!("missing upgrade FinalizeBlock exchange");
     };
     assert_eq!(req.height, UPGRADE_HEIGHT);
-    let ours = app.finalize_block(req.clone())?;
-    assert_eq!(ours.app_hash, go.app_hash);
-    assert_eq!(ours.consensus_param_updates, go.consensus_param_updates);
-    assert_eq!(ours.timeout_info, go.timeout_info);
-    assert_eq!(ours.tx_results, go.tx_results);
-    assert_eq!(ours.validator_updates, go.validator_updates);
-    assert!(matches!(
-        commit.request.value,
-        Some(request::Value::Commit(_))
-    ));
-    assert!(matches!(
-        commit.response.value,
-        Some(response::Value::Commit(_))
-    ));
-    app.commit()?;
+    assert_eq!(&app.finalize_block(req.clone())?, go);
+    let (Some(request::Value::Commit(_)), Some(response::Value::Commit(go_commit))) =
+        (&commit.request.value, &commit.response.value)
+    else {
+        anyhow::bail!("missing upgrade Commit exchange");
+    };
+    assert_eq!(&app.commit()?, go_commit);
     let after = app.info();
     assert_eq!(after.app_version, 11);
     assert_eq!(after.last_block_height, UPGRADE_HEIGHT);
