@@ -4,7 +4,7 @@ use base64::Engine as _;
 use proptest::prelude::*;
 use rpc::json::J;
 use rpc::params::{Arg, ArgType, cmtjson_decode, json_args, uri_arg};
-use rpc::server::{Id, parse_requests};
+use rpc::server::{Id, RpcResponse, parse_requests};
 use serde_json::json;
 
 fn signed() -> impl Strategy<Value = i64> {
@@ -83,6 +83,27 @@ proptest! {
         let expected = if entries.is_empty() { Arg::Null } else { Arg::BytesList(entries) };
 
         prop_assert_eq!(cmtjson_decode(&encoded, ArgType::BytesList), Ok(expected));
+    }
+
+    #[test]
+    fn responses_echo_unicode_request_ids(
+        prefix in rpc_string(),
+        private_use in prop::char::range('\u{10ff80}', '\u{10fffd}'),
+        suffix in rpc_string(),
+    ) {
+        let id = format!("{prefix}{private_use}{suffix}");
+        let body = json!({ "jsonrpc": "2.0", "id": id, "method": "status" }).to_string();
+        let requests = parse_requests(&body).unwrap();
+        let [request] = requests.as_slice() else {
+            return Err(TestCaseError::fail("expected one request"));
+        };
+        for response in [
+            RpcResponse::ok(request.id.clone(), &J::Null),
+            RpcResponse::method_not_found(request.id.clone()),
+        ] {
+            let decoded: serde_json::Value = serde_json::from_str(&response.encode()).unwrap();
+            prop_assert_eq!(decoded["id"].as_str(), Some(id.as_str()));
+        }
     }
 
     #[test]
