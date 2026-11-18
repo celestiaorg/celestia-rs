@@ -417,6 +417,49 @@ mod tests {
         assert_eq!(x_auth::get_params(&mut ctx).unwrap(), p);
     }
 
+    #[test]
+    fn fibre_escrow_messages_require_the_bond_denom_from_v12() {
+        let signer = sdk::address::to_bech32(sdk::address::ACC_PREFIX, &[1; 20]);
+        for (version, denom, quantity, expected_error) in [
+            (11, "hyperlane/foo", 1, None),
+            (12, "utia", 1, None),
+            (
+                12,
+                "hyperlane/foo",
+                1,
+                Some("denom must be utia, got hyperlane/foo: invalid coins"),
+            ),
+            (
+                12,
+                "hyperlane/foo",
+                0,
+                Some("amount must be positive: invalid coins"),
+            ),
+        ] {
+            sdk::version::set_app_version(version);
+            let amount = Some(sdk::coins::Coin::new(denom, quantity).to_proto());
+            for msg in [
+                Any::pack(&fibre::MsgDepositToEscrow {
+                    signer: signer.clone(),
+                    amount: amount.clone(),
+                }),
+                Any::pack(&fibre::MsgRequestWithdrawal {
+                    signer: signer.clone(),
+                    amount,
+                }),
+            ] {
+                let error = validate_basic(&msg).err();
+                assert_eq!(
+                    error
+                        .as_ref()
+                        .map(|e| (e.codespace, e.code, e.log.as_str())),
+                    expected_error.map(|text| ("sdk", 10, text))
+                );
+            }
+        }
+        sdk::version::set_app_version(0);
+    }
+
     // Found by `fuzz-diff deliver`: the ICA controller messages have no
     // msg server in celestia-app, but `validateBasicTxMsgs` runs their
     // `ValidateBasic` first (Rust skipped it: `no message handler` instead
