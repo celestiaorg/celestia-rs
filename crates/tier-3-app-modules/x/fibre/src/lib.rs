@@ -63,6 +63,9 @@ fn executing_version(ctx: &Context<'_>) -> u64 {
     sdk::version::executing(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app))
 }
 
+/// Upstream `maxProcessedPaymentPrunesPerBlock` in x/fibre/keeper/abci.go.
+const MAX_PROCESSED_PAYMENT_PRUNES_PER_BLOCK: usize = 2_000;
+
 const HOUR: i64 = 3600;
 
 /// `DefaultParams`.
@@ -427,8 +430,16 @@ fn prune_processed_payments(ctx: &mut Context<'_>, params: &Params) -> Result<()
     let mut upto = vec![PROCESSED_BY_TIME_PREFIX];
     upto.extend_from_slice(&format_time_bytes(&cutoff));
     let end = sdk::context::prefix_end(&upto);
+    let budget = if sdk::version::is_v12(executing_version(ctx)) {
+        MAX_PROCESSED_PAYMENT_PRUNES_PER_BLOCK
+    } else {
+        usize::MAX
+    };
     let mut it = ctx.iterator(STORE_KEY, Some(&[PROCESSED_BY_TIME_PREFIX]), end.as_deref())?;
-    while let Some((k, v)) = it.next(ctx)? {
+    for _ in 0..budget {
+        let Some((k, v)) = it.next(ctx)? else {
+            break;
+        };
         let Some(ts_bytes) = k.get(1..=SORTABLE_TIME_LEN) else {
             // Go slices key[:29] and would panic on a short key.
             return Err(sdkerr::logic("processed payment key too short"));
@@ -576,6 +587,57 @@ mod tests {
             ctx.events.events()[0].r#type,
             "celestia.fibre.v1.EventProcessedPaymentPruned"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn prune_budget_for_payments_inherited_from_v11() -> Result<()> {
+        use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+
+        let now = Timestamp {
+            seconds: 10 * 86_400,
+            nanos: 0,
+        };
+        let expired = add(&now, -(25 * 3600) * 1_000_000_000);
+        let hash = |i: u32| {
+            let mut bytes = [0; 32];
+            bytes[28..].copy_from_slice(&i.to_be_bytes());
+            bytes
+        };
+
+        for version in [11, 12] {
+            let mut ms = ms();
+            let mut ctx = Context::new(
+                &mut ms,
+                Header {
+                    time: now,
+                    ..Header::default()
+                },
+                ExecMode::Finalize,
+            );
+            ctx.consensus_params.version = Some(VersionParams { app: 11 });
+            for i in 0..=2000 {
+                set_processed_payment(
+                    &mut ctx,
+                    &ProcessedPayment {
+                        payment_promise_hash: hash(i).to_vec(),
+                        processed_at: Some(expired),
+                    },
+                )?;
+            }
+            ctx.consensus_params.version = Some(VersionParams { app: version });
+            begin_block(&mut ctx)?;
+            assert_eq!(ctx.events.len(), if version == 12 { 2000 } else { 2001 });
+            assert!(!is_payment_processed_by_hash(&mut ctx, &hash(1999))?);
+            assert_eq!(
+                is_payment_processed_by_hash(&mut ctx, &hash(2000))?,
+                version == 12
+            );
+            ctx.header.height += 1;
+            begin_block(&mut ctx)?;
+            assert_eq!(ctx.events.len(), 2001);
+            assert!(!is_payment_processed_by_hash(&mut ctx, &hash(2000))?);
+        }
         Ok(())
     }
 
