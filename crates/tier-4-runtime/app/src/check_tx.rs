@@ -58,11 +58,13 @@ impl App {
         }
         let raw = &req.tx;
         if raw.len() > MAX_TX_SIZE {
+            // Zero selects the default executable before the first block.
+            let release = version.max(crate::upgrades::APP_VERSION);
             let e = SdkError::new(
                 "app",
                 11_142,
                 format!(
-                    "tx size {} bytes is larger than the application's configured MaxTxSize of {MAX_TX_SIZE} bytes for version 10: transaction size exceeds maximum allowed limit",
+                    "tx size {} bytes is larger than the application's configured MaxTxSize of {MAX_TX_SIZE} bytes for version {release}: transaction size exceeds maximum allowed limit",
                     raw.len()
                 ),
             );
@@ -249,10 +251,33 @@ mod tests {
     }
 
     #[test]
+    fn size_limit_reports_the_executing_release() -> Result<(), String> {
+        let request = RequestCheckTx {
+            tx: vec![0; MAX_TX_SIZE + 1],
+            r#type: 0,
+        };
+        let mut app = App::new();
+        for (selected, release) in [(None, 10), (Some(9), 9), (Some(10), 10), (Some(11), 11)] {
+            app.execution_version = selected;
+            let response = app.check_tx(&request)?;
+            assert_eq!(
+                (response.codespace.as_str(), response.code),
+                ("app", 11_142)
+            );
+            assert_eq!((response.gas_used, response.gas_wanted), (0, 0));
+            assert_eq!(
+                response.log,
+                format!(
+                    "tx size {} bytes is larger than the application's configured MaxTxSize of {MAX_TX_SIZE} bytes for version {release}: transaction size exceeds maximum allowed limit",
+                    request.tx.len()
+                )
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn stateless_rejections() {
-        // Oversized: app/11142, no gas.
-        let r = check(vec![0; MAX_TX_SIZE + 1]).unwrap_or_default();
-        assert_eq!((r.codespace.as_str(), r.code), ("app", 11_142));
         // Non-canonical BlobTx: app/11147.
         let r = check(b"\x1a\x04BLOB\x78\x01".to_vec()).unwrap_or_default();
         assert_eq!((r.codespace.as_str(), r.code), ("app", 11_147));
