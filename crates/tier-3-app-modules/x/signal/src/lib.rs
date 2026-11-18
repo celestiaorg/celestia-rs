@@ -94,7 +94,17 @@ pub fn upgrade_height_delay_v9(chain_id: &str) -> i64 {
     }
 }
 
-/// `Threshold`: 5/6 for every app version.
+fn upgrade_height_delay_v12(chain_id: &str, committed_version: u64) -> i64 {
+    match chain_id {
+        "test" => 3,
+        "corto-1" if committed_version >= 12 => 4_500,
+        "corto-1" => 108_000,
+        "mocha-5" => 216_000,
+        _ => 756_000,
+    }
+}
+
+/// Legacy `Threshold`: 5/6 rounded to an 18-digit decimal.
 #[must_use]
 pub fn threshold_fraction() -> LegacyDec {
     LegacyDec::new(5)
@@ -176,6 +186,13 @@ pub fn voting_power_threshold(
     staking: &mut dyn StakingKeeper,
 ) -> Result<Int> {
     let total = staking.last_total_power(ctx)?;
+    if sdk::version::executing(app_version(ctx)) >= 12 {
+        return total
+            .checked_mul_raw(5)
+            .and_then(|n| n.checked_add_raw(5))
+            .and_then(|n| n.checked_quo_raw(6))
+            .map_err(math_err);
+    }
     Ok(threshold_fraction()
         .checked_mul_int(&total)
         .and_then(|d| d.ceil())
@@ -269,16 +286,18 @@ pub fn try_upgrade(
                 "can not upgrade to version {version} because it is less than or equal to current version {current_app}"
             )));
         }
-        // The binary's version (v9.0.8 / v10.4.0 delays).
-        let current = sdk::version::executing(app_version(ctx));
+        let committed = app_version(ctx);
+        let current = sdk::version::executing(committed);
+        let delay = if sdk::version::is_v9(current) {
+            upgrade_height_delay_v9(&ctx.header.chain_id)
+        } else if current >= 12 {
+            upgrade_height_delay_v12(&ctx.header.chain_id, committed)
+        } else {
+            upgrade_height_delay(&ctx.header.chain_id)
+        };
         let upgrade = Upgrade {
             app_version: version,
-            upgrade_height: ctx.header.height
-                + if current != 0 && current < 10 {
-                    upgrade_height_delay_v9(&ctx.header.chain_id)
-                } else {
-                    upgrade_height_delay(&ctx.header.chain_id)
-                },
+            upgrade_height: ctx.header.height + delay,
         };
         set_upgrade(ctx, &upgrade)?;
     }
@@ -438,6 +457,56 @@ mod tests {
         reset_tally(&mut ctx)?;
         assert_eq!(get_upgrade(&mut ctx)?, None);
         assert!(!ctx.has(STORE_KEY, &a)?);
+        Ok(())
+    }
+
+    #[test]
+    fn threshold_uses_exact_integers_from_v12() -> Result<()> {
+        let mut ms = MultiStore::new();
+        let mut staking = Staking {
+            vals: vec![(vec![1; 20], 500_000_000_000_000_003, true)],
+        };
+        for (version, want) in [(11, 416_666_666_666_666_669), (12, 416_666_666_666_666_670)] {
+            let mut ctx = ctx_at(&mut ms, version);
+            assert_eq!(
+                voting_power_threshold(&mut ctx, &mut staking)?,
+                Int::from_i64(want)
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn v12_schedules_upgrade_with_rescaled_chain_delays() -> Result<()> {
+        let validator = vec![1; 20];
+        let mut staking = Staking {
+            vals: vec![(validator.clone(), 100, true)],
+        };
+        let try_msg = MsgTryUpgrade {
+            signer: to_bech32("celestia", &validator),
+        };
+        for (app, chain, delay) in [
+            (11, "corto-1", 33_231),
+            (12, "corto-1", 4_500),
+            (12, "mocha-5", 216_000),
+            (12, "celestia", 756_000),
+            (12, "test", 3),
+        ] {
+            let mut ms = MultiStore::new();
+            ms.mount(STORE_KEY, Kind::Iavl)?;
+            let mut ctx = ctx_at(&mut ms, app);
+            ctx.header.chain_id = chain.into();
+            set_validator_version(&mut ctx, &validator, 13)?;
+            try_upgrade(&mut ctx, &mut staking, &try_msg)?;
+            assert_eq!(
+                get_upgrade(&mut ctx)?,
+                Some(Upgrade {
+                    app_version: 13,
+                    upgrade_height: 10 + delay,
+                }),
+                "{chain} at app version {app}",
+            );
+        }
         Ok(())
     }
 
