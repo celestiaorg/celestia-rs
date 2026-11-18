@@ -91,6 +91,10 @@ CHAIN_ID=test ALLOW_HALT=1 conformance/devnet/devnet.sh upgrade 10 conformance/d
 conformance/devnet/inject-evidence.sh staking evidence 20 30
 ```
 
+The v11 restart replay extends `upgrade` with the original height-100 ABCI
+requests and responses captured with the official Mocha and Corto v11 builds.
+[Fixture and reproduction instructions](../fixtures/devnet/v11-tagged-upgrade)
+
 The `ibc` workload starts a second Go chain at port offset
 `DEVNET_PORT_OFFSET + 500` and links the two with cosmos/relayer v2.6.0
 (`build-rly.sh` builds it into `$DEVNET_BIN`, patched to use a fixed gas
