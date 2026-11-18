@@ -11,7 +11,9 @@ use sdk::tx::Tx;
 use sdk::{Context, ExecMode, SdkError};
 use txdecode::{BlobTxError, UnwrappedBlobTx};
 
-use crate::msg_count::{MAX_SDK_MESSAGES, count_executable_msgs};
+use crate::msg_count::{
+    MAX_SDK_MESSAGES, count_executable_msgs, validate_local_module_query_requests,
+};
 use crate::proposal::{MAX_TX_SIZE, validate_blob_tx};
 use crate::{App, fibre_tx, tx};
 
@@ -97,6 +99,9 @@ impl App {
             return Ok(error_response(&e, 0, 0));
         }
         if let Err(e) = fibre_tx::validate_shape(&sdk_tx) {
+            return Ok(error_response(&e, 0, 0));
+        }
+        if let Err(e) = validate_local_module_query_requests(version, sdk_tx.gogo_msgs()) {
             return Ok(error_response(&e, 0, 0));
         }
         self.forward_check_tx(req.r#type, raw, &sdk_tx, crate::txpipe::decode_tx)
@@ -255,6 +260,100 @@ mod tests {
         // (ResponseException).
         assert!(check(b"\x0a\x02\x0a\x00\x1a\x04BLOB".to_vec()).is_err());
         assert!(check(vec![0xff, 0xff]).is_err());
+    }
+
+    #[test]
+    fn module_query_request_limit_matches_v11_admission() -> TestResult {
+        use celestia_proto::Any;
+        use celestia_proto::cosmos::authz::v1beta1::MsgExec;
+        use celestia_proto::cosmos::gov::v1::MsgSubmitProposal;
+        use celestia_proto::cosmos::tx::v1beta1::{AuthInfo, Fee, TxBody, TxRaw};
+        use celestia_proto::ibc::applications::interchain_accounts::host::v1::{
+            MsgModuleQuerySafe, QueryRequest,
+        };
+        use prost::Message;
+
+        let signer = x_auth::bech32(&[1; 20])?;
+        let query = |requests| {
+            Any::pack(&MsgModuleQuerySafe {
+                signer: signer.clone(),
+                requests: vec![
+                    QueryRequest {
+                        path: "/cosmos.bank.v1beta1.Query/TotalSupply".into(),
+                        ..Default::default()
+                    };
+                    requests
+                ],
+            })
+        };
+        let encoded = |msg| {
+            TxRaw {
+                body_bytes: TxBody {
+                    messages: vec![msg],
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+                auth_info_bytes: AuthInfo {
+                    fee: Some(Fee {
+                        gas_limit: 100_000,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+                ..Default::default()
+            }
+            .encode_to_vec()
+        };
+        let two_requests = [
+            query(2),
+            Any::pack(&MsgExec {
+                grantee: signer.clone(),
+                msgs: vec![query(2)],
+            }),
+            Any::pack(&MsgSubmitProposal {
+                proposer: signer.clone(),
+                messages: vec![query(2)],
+                ..Default::default()
+            }),
+        ];
+
+        let mut app = App::new();
+        app.execution_version = Some(11);
+        for check_type in [CheckTxType::New, CheckTxType::Recheck] {
+            for msg in &two_requests {
+                let response = app.check_tx(&RequestCheckTx {
+                    tx: encoded(msg.clone()),
+                    r#type: i32::from(check_type),
+                })?;
+                assert_eq!((response.codespace.as_str(), response.code), ("sdk", 18));
+                assert_eq!((response.gas_wanted, response.gas_used), (0, 0));
+                assert_eq!(
+                    response.log,
+                    "MsgModuleQuerySafe has 2 requests, limit is 1: invalid request"
+                );
+            }
+        }
+
+        let one = app.check_tx(&RequestCheckTx {
+            tx: encoded(query(1)),
+            r#type: i32::from(CheckTxType::New),
+        })?;
+        app.execution_version = Some(10);
+        let historical = app.check_tx(&RequestCheckTx {
+            tx: encoded(query(2)),
+            r#type: i32::from(CheckTxType::New),
+        })?;
+        app.execution_version = Some(12);
+        let v12 = app.check_tx(&RequestCheckTx {
+            tx: encoded(query(2)),
+            r#type: i32::from(CheckTxType::New),
+        })?;
+        // These reach the existing unsigned-transaction check.
+        assert_eq!(one.code, 15, "{}", one.log);
+        assert_eq!(historical.code, 15, "{}", historical.log);
+        assert_eq!(v12.code, 15, "{}", v12.log);
+        Ok(())
     }
 
     type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;

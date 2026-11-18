@@ -11,6 +11,15 @@ use sdk::Context;
 /// `appconsts.MaxSDKMessages`.
 pub const MAX_SDK_MESSAGES: usize = 600;
 
+/// Applies celestia-app v11's local admission policy. v10.6.0 predates
+/// the limit, and v12 moved it into the ante chain.
+pub(crate) fn validate_local_module_query_requests(version: u64, msgs: &[Any]) -> sdk::Result<()> {
+    if version == 11 {
+        x_ante::celestia::validate_module_query_requests(msgs)?;
+    }
+    Ok(())
+}
+
 /// `icatypes.HostPortID`.
 const ICA_HOST_PORT: &str = "icahost";
 
