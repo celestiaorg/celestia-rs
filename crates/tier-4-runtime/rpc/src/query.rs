@@ -145,27 +145,17 @@ struct Scanner<'a> {
 }
 
 fn is_tag_rune(c: char) -> bool {
-    c == '.' || c == '_' || c == '-' || c.is_alphabetic() || is_go_digit(c)
+    matches!(c, '.' | '-') || is_first_tag_rune(c)
 }
 
 fn is_first_tag_rune(c: char) -> bool {
-    c == '_' || c.is_alphabetic() || is_go_digit(c)
-}
-
-/// `unicode.IsDigit` (Nd).
-fn is_go_digit(c: char) -> bool {
-    c.is_ascii_digit() || (!c.is_ascii() && unicode_nd(c))
-}
-
-fn unicode_nd(c: char) -> bool {
-    // Decimal digits outside ASCII: char::is_numeric covers Nd, Nl and No;
-    // approximate Nd by requiring a contiguous 0-9 block.
-    if !c.is_numeric() {
-        return false;
+    if c.is_ascii() {
+        return c == '_' || c.is_ascii_alphanumeric();
     }
-    let cp = u32::from(c);
-    let zero = cp - (cp % 16) % 10;
-    (0..10).all(|d| char::from_u32(zero + d).is_some_and(char::is_numeric))
+    // Go accepts Unicode Letter and Decimal_Number. An odd count of range
+    // boundaries at or below the code point places it inside a member range.
+    let boundaries = crate::query_tag_ranges::BOUNDARIES;
+    boundaries.partition_point(|&boundary| boundary <= u32::from(c)) % 2 == 1
 }
 
 fn is_go_space(c: char) -> bool {
@@ -1061,6 +1051,16 @@ mod tests {
             Query::new("a.b = 'x' OR a.c = 'y'").unwrap_err(),
             "offset 10: got tag, want 6"
         );
+    }
+
+    #[test]
+    fn event_tags_follow_go_unicode_categories() {
+        // Devanagari decimal digit one, then Roman numeral one (category Nl)
+        // and a combining alphabetic mark (category Mc).
+        assert!(Query::new("१.amount EXISTS").is_ok());
+        assert!(Query::new("tx.height१ EXISTS").is_ok());
+        assert!(Query::new("tx.heightⅠ EXISTS").is_err());
+        assert!(Query::new("tx.heightा EXISTS").is_err());
     }
 
     #[test]
