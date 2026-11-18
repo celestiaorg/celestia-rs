@@ -4688,6 +4688,7 @@ dependencies = [
  "txdecode",
  "x-auth",
  "x-bank",
+ "x-distribution",
  "x-feegrant",
  "x-fibre",
  "zstd",

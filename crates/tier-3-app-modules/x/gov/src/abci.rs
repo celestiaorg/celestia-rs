@@ -74,10 +74,10 @@ fn fail_unsupported(
     Ok(())
 }
 
-/// Whether the context executes app version 11 or later.
-fn is_v11(ctx: &Context<'_>) -> bool {
+/// Whether the context executes app version 12 or later.
+fn is_v12(ctx: &Context<'_>) -> bool {
     let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    sdk::version::is_v11(sdk::version::executing(v))
+    sdk::version::is_v12(sdk::version::executing(v))
 }
 
 /// `EndBlocker`.
@@ -163,9 +163,9 @@ pub fn end_block(ctx: &mut Context<'_>, router: &dyn MsgRouter) -> Result<()> {
                 }
                 Some((idx, url, mut e)) => {
                     ctx.discard(cp);
-                    // celestia-app v11 `govMsgRouter`: only the codespace
+                    // celestia-app v12 `govMsgRouter`: only the codespace
                     // and code of the error (a panic is `ErrPanic`).
-                    if is_v11(ctx) {
+                    if is_v12(ctx) {
                         e.log = format!(
                             "proposal message failed: codespace {}, code {}",
                             e.codespace, e.code

@@ -145,6 +145,7 @@ pub fn input_output_coins(ctx: &mut Context<'_>, input: &Input, outputs: &[Outpu
         .emit(event("message", [("sender", input.address.clone())]));
     for out in outputs {
         let out_addr = x_auth::parse_bech32(&out.address)?;
+        sdk::frozen::check_send(ctx, &in_addr, &out_addr)?;
         let coins = Coins::from_proto(&out.coins)?;
         add_coins(ctx, &out_addr, &coins)?;
         ctx.events.emit(event(

@@ -241,6 +241,7 @@ pub fn add_coins(ctx: &mut Context<'_>, addr: &[u8], amt: &Coins) -> Result<()> 
 /// `SendCoins`.
 pub fn send_coins(ctx: &mut Context<'_>, from: &[u8], to: &[u8], amt: &Coins) -> Result<()> {
     sub_unlocked_coins(ctx, from, amt)?;
+    sdk::frozen::check_send(ctx, from, to)?;
     add_coins(ctx, to, amt)?;
     if !x_auth::has_account(ctx, to)? {
         let acc = x_auth::new_account_with_address(ctx, to)?;
@@ -637,6 +638,62 @@ mod tests {
         assert!(x_auth::has_account(&mut ctx, &b)?);
         let err = send_coins(&mut ctx, &a, &b, &Coins(vec![Coin::new("utia", 1)])).unwrap_err();
         assert_eq!(err.code, 5);
+        Ok(())
+    }
+
+    #[test]
+    fn frozen_restriction_covers_account_module_and_multisend_routes() -> Result<()> {
+        use celestia_proto::cosmos::bank::v1beta1::{Input, Output};
+        let from = x_auth::parse_bech32("celestia1g4vjdrx32rq0vd4qckv4d93g05062lsprfdpmy")?;
+        let whitehat = &sdk::frozen::network("corto-1").unwrap().whitehat;
+        for version in [10, 11, 12] {
+            for route in [0, 1, 2, 3, 4] {
+                let mut ms = MultiStore::new();
+                ms.mount(STORE_KEY, Kind::Iavl)?;
+                ms.mount(x_auth::STORE_KEY, Kind::Iavl)?;
+                let mut ctx = Context::new(
+                    &mut ms,
+                    Header {
+                        chain_id: "corto-1".into(),
+                        ..Default::default()
+                    },
+                    ExecMode::Finalize,
+                );
+                ctx.consensus_params.version = Some(
+                    celestia_proto::celestia_core_proto::tendermint::types::VersionParams {
+                        app: version,
+                    },
+                );
+                set_balance(&mut ctx, &from, &Coin::new("utia", 10))?;
+                let coins = Coins(vec![Coin::new("utia", 1)]);
+                let result = match route {
+                    0 => send_coins(&mut ctx, &from, &[7; 20], &coins),
+                    1 => send_from_account_to_module(&mut ctx, &from, "gov", &coins),
+                    2 => send_from_account_to_module(&mut ctx, &from, "fee_collector", &coins),
+                    3 => send_coins(&mut ctx, &from, whitehat, &coins),
+                    _ => msgs::input_output_coins(
+                        &mut ctx,
+                        &Input {
+                            address: x_auth::bech32(&from)?,
+                            coins: coins.to_proto(),
+                        },
+                        &[Output {
+                            address: x_auth::bech32(&[7; 20])?,
+                            coins: coins.to_proto(),
+                        }],
+                    ),
+                };
+                let rejected = version >= 11 && matches!(route, 0 | 1 | 4);
+                assert_eq!(
+                    result.is_err(),
+                    rejected,
+                    "route {route} version {version}: {result:?}"
+                );
+                if let Err(e) = result {
+                    assert_eq!((e.codespace, e.code), ("frozen", 2));
+                }
+            }
+        }
         Ok(())
     }
 

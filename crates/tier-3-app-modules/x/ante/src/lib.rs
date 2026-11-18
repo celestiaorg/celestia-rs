@@ -7,7 +7,7 @@
 //! | 1 | `HandlePanicDecorator` (celestia) | [`ante_handle`] (Go panics become [`AnteError::panicked`]) |
 //! | 2 | `SetUpContextDecorator` (sdk) | [`setup::set_up_context`] |
 //! | 3 | `CircuitBreakerDecorator` (x/circuit) | [`basic::circuit_breaker`] |
-//! | 3a | `UnsupportedMsgDecorator` (celestia, app version 11) | [`celestia::unsupported_msg`] |
+//! | 3a | `UnsupportedMsgDecorator` (celestia, app version 12) | [`celestia::unsupported_msg`] |
 //! | 4 | `RejectExtensionOptionsDecorator` (sdk) | [`basic::extension_options`] |
 //! | 5 | `ValidateBasicDecorator` (sdk) | [`basic::validate_basic`] |
 //! | 6 | `TxTimeoutHeightDecorator` (sdk) | [`basic::timeout_height`] |
@@ -59,6 +59,7 @@ pub mod basic;
 pub mod celestia;
 pub mod deps;
 pub mod fee;
+pub mod frozen;
 pub mod gogotext;
 pub use celestia_proto::getsigners_schema;
 pub mod pubkey;
@@ -324,12 +325,12 @@ pub fn is_v9(ctx: &Context<'_>) -> bool {
     sdk::version::is_v9(sdk::version::executing(v))
 }
 
-/// Whether the executing app version is 11 or later (0 = unset is current,
+/// Whether the executing app version is 12 or later (0 = unset is current,
 /// app version 10).
 #[must_use]
-pub fn is_v11(ctx: &Context<'_>) -> bool {
+pub fn is_v12(ctx: &Context<'_>) -> bool {
     let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    sdk::version::is_v11(sdk::version::executing(v))
+    sdk::version::is_v12(sdk::version::executing(v))
 }
 
 fn run_chain(
@@ -340,7 +341,7 @@ fn run_chain(
 ) -> R<i64> {
     setup::set_up_context(ctx, tx, simulate)?;
     basic::circuit_breaker(ctx, tx, deps)?;
-    if is_v11(ctx) {
+    if is_v12(ctx) {
         celestia::unsupported_msg(tx)?;
     }
     basic::extension_options(tx)?;
@@ -360,6 +361,7 @@ fn run_chain(
         celestia::msg_exec_v9(tx)?;
     } else {
         celestia::nested_msg(tx)?;
+        frozen::ante(ctx, tx)?;
         let committed = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
         if sdk::version::executing(committed) >= 12 {
             let extra = deps.sdk_message_weight(tx.gogo_msgs())?.saturating_sub(1);

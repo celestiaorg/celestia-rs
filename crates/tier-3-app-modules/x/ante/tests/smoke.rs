@@ -351,7 +351,7 @@ fn ibc_callback_cannot_translate_or_swallow_out_of_gas() {
 }
 
 #[test]
-fn unsupported_msgs_are_rejected_from_app_version_11() {
+fn unsupported_msgs_are_rejected_from_app_version_12() {
     use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
     use celestia_proto::cosmos::evidence::v1beta1::MsgSubmitEvidence;
     let (sk, pk, _) = key();
@@ -360,7 +360,7 @@ fn unsupported_msgs_are_rejected_from_app_version_11() {
         ..Default::default()
     };
     let tx = sign_body(&sk, &pk, 0, "test", 1, body);
-    for (app, rejected) in [(0, false), (9, false), (10, false), (11, true)] {
+    for (app, rejected) in [(0, false), (9, false), (10, false), (11, false), (12, true)] {
         let mut ms = setup();
         let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
         ctx.consensus_params.version = Some(VersionParams { app });

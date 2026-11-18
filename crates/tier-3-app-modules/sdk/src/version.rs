@@ -45,16 +45,15 @@ pub const fn is_v9(v: u64) -> bool {
     v != 0 && v < 10
 }
 
-/// First app version that executes the breaking changes currently tracked
-/// against celestia-app main (issue #385). The release assignment is provisional:
-/// if v11 becomes a patch-only release, move this boundary only after the Go
-/// v11/v12 contents are confirmed. This is not the node's current app version.
-pub const MAINLINE_RULES_FROM: u64 = 11;
+/// First app version for the mainline consensus changes excluded from the
+/// v11 patch release (v11.0.0-corto / v11.0.0-mocha, issue #385).
+/// Frozen-account recovery rules activate independently at version 11.
+pub const MAINLINE_RULES_FROM: u64 = 12;
 
-/// Whether `v` is executed with celestia-app v11 semantics (0 = unset is
+/// Whether `v` is executed with celestia-app v12 semantics (0 = unset is
 /// the current release, v10).
 #[must_use]
-pub const fn is_v11(v: u64) -> bool {
+pub const fn is_v12(v: u64) -> bool {
     v >= MAINLINE_RULES_FROM
 }
 
