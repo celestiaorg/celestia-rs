@@ -406,7 +406,7 @@ pub fn pff_sig_cache_key(msg: &MsgPayForFibre) -> [u8; 32] {
 }
 
 /// `FibreSignatureVerificationDecorator` (skipped in simulation and
-/// FinalizeBlock).
+/// FinalizeBlock; v12 also skips ReCheckTx).
 pub fn fibre_sig_verification(
     ctx: &mut Context<'_>,
     tx: &Tx,
@@ -419,8 +419,27 @@ pub fn fibre_sig_verification(
     if simulate || ctx.mode == ExecMode::Finalize {
         return Ok(());
     }
-    let key = pff_sig_cache_key(&msg);
+    let version =
+        sdk::version::executing(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app));
+    let v12 = sdk::version::is_v12(version);
+    if v12 && ctx.mode == ExecMode::ReCheck {
+        return Ok(());
+    }
+    let mut key = pff_sig_cache_key(&msg);
+    if v12 {
+        // A pre-upgrade cache entry verified a different historical height.
+        let mut digest = hash::Sha256Hasher::new();
+        digest.update(b"fibre-v12");
+        digest.update(&key);
+        key = digest.finalize();
+    }
     if deps.pff_sig_cached(&key) {
+        if v12 {
+            let height = msg.payment_promise.as_ref().map_or(0, |p| p.height);
+            with_infinite_gas(ctx, |c| {
+                x_fibre::msgs::validate_validator_set_available(c, height)
+            })?;
+        }
         return Ok(());
     }
     with_infinite_gas(ctx, |c| deps.fibre_validate_signatures(c, &msg))?;
