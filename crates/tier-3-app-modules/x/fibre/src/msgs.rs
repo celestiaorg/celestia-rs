@@ -66,7 +66,18 @@ pub fn estimate_gas_for_pay_for_fibre(blob_size: u32) -> u64 {
 /// `PaymentAmount`.
 #[must_use]
 pub fn payment_amount(blob_size: u32) -> Coin {
-    Coin::new(BOND_DENOM, estimate_gas_for_pay_for_fibre(blob_size))
+    payment_amount_for(sdk::version::app_version(), blob_size)
+}
+
+fn payment_amount_for(version: u64, blob_size: u32) -> Coin {
+    let gas = estimate_gas_for_pay_for_fibre(blob_size);
+    // From v12 the default price is 0.004 utia per gas, or 250 gas per utia.
+    let amount = if sdk::version::is_v12(version) {
+        gas.div_ceil(250)
+    } else {
+        gas
+    };
+    Coin::new(BOND_DENOM, amount)
 }
 
 /// The gov module address, the fibre authority.
@@ -423,7 +434,7 @@ pub fn validate_payment_promise_stateful_internal(
     let Some(escrow) = get_escrow_account(ctx, &signer)? else {
         return Ok(Err(format!("escrow account not found for signer {signer}")));
     };
-    let required = payment_amount(p.blob_size);
+    let required = payment_amount_for(crate::executing_version(ctx), p.blob_size);
     let balance = coin(escrow.balance.as_ref())?;
     // IsGTE panics on mismatched denominations.
     if coin_lt(&balance, &required)? {
@@ -685,7 +696,7 @@ pub fn pay_for_fibre(ctx: &mut Context<'_>, m: &MsgPayForFibre) -> Result<MsgPay
             "escrow account not found for signer: {signer}"
         )));
     };
-    let amount = payment_amount(p.blob_size);
+    let amount = payment_amount_for(crate::executing_version(ctx), p.blob_size);
     deduct_payment_from_escrow(ctx, &mut escrow, &amount)?;
     set_processed_payment(
         ctx,
@@ -724,7 +735,7 @@ pub fn payment_promise_timeout(
             sdk::time::go_time_string(&now)
         )));
     }
-    let amount = payment_amount(p.blob_size);
+    let amount = payment_amount_for(crate::executing_version(ctx), p.blob_size);
     let hash = promise::hash(&p)
         .map_err(|e| errs::invalid_request(format!("failed to hash payment promise: {e}")))?;
     let escrow_signer = escrow_signer(&p);
@@ -1132,6 +1143,60 @@ mod tests {
         other.chain_id = "x".into();
         assert!(!check(&mut ctx, &other));
         assert!(!check(&mut ctx, &promise(&k, 2000, now, u32::MAX)));
+        Ok(())
+    }
+
+    #[test]
+    fn escrow_prices_match_upstream_versions() {
+        for (size, gas, v12_amount) in [
+            (0, 650_000, 2_600),
+            (1, 695_000, 2_780),
+            (262_144, 695_000, 2_780),
+            (262_145, 740_000, 2_960),
+            (u32::MAX, 737_930_000, 2_951_720),
+        ] {
+            assert_eq!(payment_amount_for(11, size), Coin::new("utia", gas));
+            assert_eq!(payment_amount_for(12, size), Coin::new("utia", v12_amount));
+        }
+    }
+
+    #[test]
+    fn v12_settles_a_payment_and_a_timeout_from_exactly_funded_escrow() -> Result<()> {
+        use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+        let k = keys();
+        let mut ms = ms();
+        let now = 1_800_000_000;
+        let mut ctx = Context::new(&mut ms, header(now, 10), ExecMode::Finalize);
+        ctx.consensus_params.version = Some(VersionParams { app: 12 });
+        let signer = setup(&mut ctx, &k)?;
+        deposit_to_escrow(
+            &mut ctx,
+            &MsgDepositToEscrow {
+                signer: signer.clone(),
+                amount: Some(Coin::new("utia", 5_560).to_proto()),
+            },
+        )?;
+        let p = promise(&k, 10, now - 5, 1000);
+        let signature = crypto::ed25519::sign(&k.ed, &promise::sign_bytes(&p).unwrap()).unwrap();
+        pay_for_fibre(
+            &mut ctx,
+            &MsgPayForFibre {
+                signer: signer.clone(),
+                payment_promise: Some(p),
+                validator_signatures: vec![signature.to_vec()],
+            },
+        )?;
+        assert_eq!(escrow(&mut ctx, &signer), ("2780".into(), "2780".into()));
+        payment_promise_timeout(
+            &mut ctx,
+            &MsgPaymentPromiseTimeout {
+                signer: signer.clone(),
+                payment_promise: Some(promise(&k, 10, now - 4000, 1000)),
+            },
+        )?;
+        assert_eq!(escrow(&mut ctx, &signer), ("0".into(), "0".into()));
+        let fee = x_bank::get_balance(&mut ctx, &x_auth::module_address(FEE_COLLECTOR), "utia")?;
+        assert_eq!(fee, Coin::new("utia", 5_560));
         Ok(())
     }
 
