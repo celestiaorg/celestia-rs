@@ -101,6 +101,7 @@ pub fn new_tx_inclusion_proof(txs: &[Vec<u8>], tx_index: u64) -> Result<pb::Shar
         return Err(plain(format!("txIndex {tx_index} out of bounds")));
     }
     let classified = classify(txs)?;
+    validate_tx_order(&classified)?;
     let mut builder =
         Builder::new(MAX_SQUARE, SUBTREE_ROOT_THRESHOLD).map_err(|e| square_err(&e))?;
     for (idx, tx) in classified.iter().enumerate() {
@@ -136,6 +137,30 @@ pub fn new_tx_inclusion_proof(txs: &[Vec<u8>], tx_index: u64) -> Result<pb::Shar
         ClassifiedTx::Normal(_) => TX_NAMESPACE,
     };
     new_share_inclusion_proof(data_square.as_shares(), namespace, start, end)
+}
+
+fn validate_tx_order(txs: &[ClassifiedTx]) -> Result<(), SdkError> {
+    // The builder groups transactions by kind when resolving the share range
+    // for a block transaction index.
+    let (mut seen_blob, mut seen_fibre) = (false, false);
+    for (index, tx) in txs.iter().enumerate() {
+        match tx {
+            ClassifiedTx::Fibre(_) => seen_fibre = true,
+            ClassifiedTx::Blob(_) if seen_fibre => {
+                return Err(plain(format!(
+                    "blob tx at index {index} is after a pay-for-fibre tx"
+                )));
+            }
+            ClassifiedTx::Blob(_) => seen_blob = true,
+            ClassifiedTx::Normal(_) if seen_blob || seen_fibre => {
+                return Err(plain(format!(
+                    "normal tx at index {index} is after a blob or pay-for-fibre tx"
+                )));
+            }
+            ClassifiedTx::Normal(_) => {}
+        }
+    }
+    Ok(())
 }
 
 /// `QueryShareInclusionProof`.
@@ -396,4 +421,115 @@ pub fn new_share_inclusion_proof(
         }),
         namespace_version: u32::from(namespace.version()),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use celestia_proto::Any;
+    use celestia_proto::celestia::fibre::v1::{MsgPayForFibre, PaymentPromise};
+    use celestia_proto::cosmos::crypto::secp256k1::PubKey;
+    use celestia_proto::cosmos::tx::v1beta1::{TxBody, TxRaw};
+    use shares::{FIBRE_COMMITMENT_SIZE, NAMESPACE_VERSION_ZERO_ID_SIZE, SIGNER_SIZE};
+
+    fn proof_transactions() -> [Vec<u8>; 3] {
+        let encode_tx = |body: TxBody| {
+            TxRaw {
+                body_bytes: body.encode_to_vec(),
+                ..Default::default()
+            }
+            .encode_to_vec()
+        };
+        let normal = encode_tx(TxBody {
+            memo: "proof fixture".to_owned(),
+            ..Default::default()
+        });
+        let blob_namespace =
+            Namespace::new_v0(&[1; NAMESPACE_VERSION_ZERO_ID_SIZE]).expect("blob namespace");
+        let blob = txdecode::marshal_blob_tx(
+            &normal,
+            &[sdk::tx::Blob {
+                namespace_id: blob_namespace.id().to_vec(),
+                namespace_version: 0,
+                share_version: 0,
+                data: b"proof fixture".to_vec(),
+                signer: vec![],
+            }],
+        );
+        let fibre_namespace =
+            Namespace::new_v0(&[2; NAMESPACE_VERSION_ZERO_ID_SIZE]).expect("fibre namespace");
+        let message = MsgPayForFibre {
+            signer: encoding::bech32::encode("celestia", &[3; SIGNER_SIZE]).expect("signer"),
+            payment_promise: Some(PaymentPromise {
+                namespace: fibre_namespace.as_bytes().to_vec(),
+                commitment: vec![4; FIBRE_COMMITMENT_SIZE],
+                // The Go encoder includes these non-nullable fields.
+                creation_timestamp: Some(pbjson_types::Timestamp {
+                    seconds: -62_135_596_800,
+                    nanos: 0,
+                }),
+                signer_public_key: Some(PubKey::default()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let fibre = encode_tx(TxBody {
+            messages: vec![Any {
+                type_url: crate::fibre_tx::pff_type_url(),
+                value: message.encode_to_vec(),
+            }],
+            ..Default::default()
+        });
+        [normal, blob, fibre]
+    }
+
+    #[test]
+    fn tx_proofs_match_go_v11_release() {
+        let txs = proof_transactions();
+        // SHA-256 of ShareProof.Marshal() on celestia-app v11.0.0-mocha and
+        // v11.0.0-corto, both at 58be8ae9.
+        for (index, namespace, expected) in [
+            (
+                0,
+                TX_NAMESPACE,
+                "22817e45819b3bffd9417047ad16d917a703ceceb42ed476ccc1d75bfcbd3291",
+            ),
+            (
+                1,
+                PAY_FOR_BLOB_NAMESPACE,
+                "3c4ab05c9c79a017a7bda1729d31f8c7a9f75ce28b80d7ffc79941b51f1d7223",
+            ),
+            (
+                2,
+                PAY_FOR_FIBRE_NAMESPACE,
+                "b498c987992eaa69c911f3f98f65389da52cf9305619fa3cb42def7e31e598fb",
+            ),
+        ] {
+            let proof = new_tx_inclusion_proof(&txs, index).expect("ordered transaction proof");
+            assert_eq!(proof.namespace_id.as_slice(), namespace.id());
+            assert_eq!(hex::encode(hash::sha256(&proof.encode_to_vec())), expected);
+        }
+    }
+
+    #[test]
+    fn tx_proofs_require_square_transaction_order() {
+        let [normal, blob, fibre] = proof_transactions();
+        for (txs, expected) in [
+            (
+                [blob.clone(), normal.clone(), fibre.clone()],
+                "normal tx at index 1 is after a blob or pay-for-fibre tx",
+            ),
+            (
+                [fibre.clone(), normal.clone(), blob.clone()],
+                "normal tx at index 1 is after a blob or pay-for-fibre tx",
+            ),
+            (
+                [normal, fibre, blob],
+                "blob tx at index 2 is after a pay-for-fibre tx",
+            ),
+        ] {
+            let error = new_tx_inclusion_proof(&txs, 0).expect_err("unordered transactions");
+            assert_eq!(error.log, expected);
+        }
+    }
 }
