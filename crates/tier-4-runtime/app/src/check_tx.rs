@@ -14,7 +14,7 @@ use txdecode::{BlobTxError, UnwrappedBlobTx};
 use crate::msg_count::{
     MAX_SDK_MESSAGES, count_executable_msgs, validate_local_module_query_requests,
 };
-use crate::proposal::{MAX_TX_SIZE, validate_blob_tx};
+use crate::proposal::{MAX_SDK_GAS, MAX_TX_SIZE, remaining_sdk_gas, validate_blob_tx};
 use crate::{App, fibre_tx, tx};
 
 /// `responseCheckTxWithEvents(err, gw, gu, nil, false)`.
@@ -104,6 +104,17 @@ impl App {
             return Ok(error_response(&e, 0, 0));
         }
         if let Err(e) = validate_local_module_query_requests(version, sdk_tx.gogo_msgs()) {
+            return Ok(error_response(&e, 0, 0));
+        }
+        let gas = sdk_tx.gas_limit();
+        if remaining_sdk_gas(version, MAX_SDK_GAS, gas).is_none() && !fibre_tx::is_pff(&sdk_tx) {
+            let e = SdkError::new(
+                "app",
+                11_150,
+                format!(
+                    "tx gas limit is {gas}, limit is {MAX_SDK_GAS}: transaction gas limit exceeds maximum allowed SDK gas per block"
+                ),
+            );
             return Ok(error_response(&e, 0, 0));
         }
         self.forward_check_tx(req.r#type, raw, &sdk_tx, crate::txpipe::decode_tx)
@@ -285,6 +296,49 @@ mod tests {
         // (ResponseException).
         assert!(check(b"\x0a\x02\x0a\x00\x1a\x04BLOB".to_vec()).is_err());
         assert!(check(vec![0xff, 0xff]).is_err());
+    }
+
+    #[test]
+    fn sdk_gas_limit_applies_to_new_and_rechecked_transactions_from_v12() -> TestResult {
+        use celestia_proto::Any;
+        use celestia_proto::cosmos::bank::v1beta1::MsgSend;
+        use celestia_proto::cosmos::tx::v1beta1::{AuthInfo, Fee, TxBody, TxRaw};
+        use prost::Message;
+
+        let tx = TxRaw {
+            body_bytes: TxBody {
+                messages: vec![Any::pack(&MsgSend::default())],
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            auth_info_bytes: AuthInfo {
+                fee: Some(Fee {
+                    gas_limit: MAX_SDK_GAS + 1,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let mut app = App::new();
+        for kind in [CheckTxType::New, CheckTxType::Recheck] {
+            let request = RequestCheckTx {
+                tx: tx.clone(),
+                r#type: kind.into(),
+            };
+            app.execution_version = Some(11);
+            assert_ne!(app.check_tx(&request)?.code, 11_150);
+            app.execution_version = Some(12);
+            let response = app.check_tx(&request)?;
+            assert_eq!(
+                (response.codespace.as_str(), response.code),
+                ("app", 11_150)
+            );
+            assert_eq!((response.gas_wanted, response.gas_used), (0, 0));
+        }
+        Ok(())
     }
 
     #[test]

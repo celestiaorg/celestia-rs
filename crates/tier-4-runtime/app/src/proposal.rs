@@ -40,6 +40,18 @@ use crate::msg_count::{
 };
 use crate::{App, fibre_tx, router};
 
+/// `appconsts.MaxSDKGas` for normal SDK transactions in a v12 block.
+pub(crate) const MAX_SDK_GAS: u64 = 100_000_000;
+
+/// Budget left if this transaction is included. Earlier versions have no SDK gas cap.
+pub(crate) fn remaining_sdk_gas(version: u64, remaining: u64, tx_gas: u64) -> Option<u64> {
+    if sdk::version::is_v12(version) {
+        remaining.checked_sub(tx_gas)
+    } else {
+        Some(remaining)
+    }
+}
+
 /// `appconsts.MaxTxSize`.
 pub const MAX_TX_SIZE: usize = 8_388_608;
 /// `appconsts.MaxPFBMessages`.
@@ -568,6 +580,7 @@ fn fill(
     let mut kept = Vec::new();
 
     let mut sdk_count = 0usize;
+    let mut remaining_gas = MAX_SDK_GAS;
     let version = sdk::version::app_version();
     for (raw, tx) in &sep.normal {
         ctx.tx_bytes = raw.to_vec();
@@ -579,6 +592,9 @@ fn fill(
         if sdk_count + exec > MAX_SDK_MESSAGES {
             continue;
         }
+        let Some(next_gas) = remaining_sdk_gas(version, remaining_gas, tx.gas_limit()) else {
+            continue;
+        };
         if !builder.append_tx(raw) {
             continue;
         }
@@ -589,6 +605,7 @@ fn fill(
         if fibre_tx::contains_fibre_state_msg(tx) {
             let _ = execute_tx_msgs(ctx, tx);
         }
+        remaining_gas = next_gas;
         sdk_count += exec;
         kept.push(raw.to_vec());
     }
@@ -860,6 +877,7 @@ fn process(
     if x_fibre::begin_block(ctx).is_err() {
         return Ok(false);
     }
+    let mut remaining_gas = MAX_SDK_GAS;
     let (mut sdk_msgs, mut blob_msgs, mut fibre_msgs) = (0usize, 0usize, 0usize);
     for raw in &req.txs {
         if raw.len() > MAX_TX_SIZE {
@@ -891,6 +909,11 @@ fn process(
                 if sdk_msgs > MAX_SDK_MESSAGES {
                     return Ok(false);
                 }
+                let Some(next_gas) = remaining_sdk_gas(version, remaining_gas, tx.gas_limit())
+                else {
+                    return Ok(false);
+                };
+                remaining_gas = next_gas;
             }
             if ante(ctx, &tx, deps).is_err() {
                 return Ok(false);
@@ -933,6 +956,17 @@ fn process(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sdk_gas_budget_is_cumulative_from_v12() {
+        let first = remaining_sdk_gas(12, MAX_SDK_GAS, 60_000_000).unwrap();
+        assert_eq!(remaining_sdk_gas(12, first, 40_000_000), Some(0));
+        assert_eq!(remaining_sdk_gas(12, first, 40_000_001), None);
+        assert_eq!(
+            remaining_sdk_gas(11, MAX_SDK_GAS, u64::MAX),
+            Some(MAX_SDK_GAS)
+        );
+    }
 
     #[test]
     fn empty_block_data_root_matches_go() {
