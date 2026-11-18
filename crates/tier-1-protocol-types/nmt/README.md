@@ -14,7 +14,6 @@ data availability headers.
 
 ## Depends on
 
-- `encoding`
 - `hash`
 
 The crate uses the workspace `hash` crate for SHA-256 so hash behavior stays
