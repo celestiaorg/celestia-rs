@@ -52,6 +52,7 @@ pub fn route(path: &str) -> Option<AppHandler> {
 /// `BaseApp.Simulate`: `runTx(execModeSimulate)` on a branch of the check
 /// state that is discarded afterwards.
 pub fn simulate(app: &mut App, tx_bytes: &[u8]) -> (GasInfo, Result<SdkResult, SdkError>) {
+    sdk::version::set_app_version(app.execution_version());
     let header = app.check_header.clone();
     let mut ctx = Context::new(&mut app.ms, header, ExecMode::Check);
     ctx.mode = ExecMode::Simulate;

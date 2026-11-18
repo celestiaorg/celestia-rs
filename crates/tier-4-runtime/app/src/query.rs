@@ -549,10 +549,13 @@ mod store_errs {
 /// `SplitABCIQueryPath`.
 #[must_use]
 pub fn split_path(path: &str) -> Vec<&str> {
-    let mut parts: Vec<&str> = path.split('/').collect();
-    if parts.first() == Some(&"") {
-        parts.remove(0);
-    }
+    query_path_parts(path).collect()
+}
+
+/// Iterates the same segments when only a route prefix is needed.
+pub(super) fn query_path_parts(path: &str) -> impl Iterator<Item = &str> {
+    let mut parts = path.split('/').peekable();
+    parts.next_if_eq(&"");
     parts
 }
 

@@ -58,7 +58,7 @@ pub enum Error {
         /// Expected byte length.
         expected: usize,
     },
-    /// A data availability header had too few or too many roots.
+    /// A data availability header's root count was out of bounds or not a power of two.
     InvalidDataAvailabilityRootCount {
         /// Observed root count.
         actual: usize,

@@ -1,7 +1,7 @@
 # Crate: `nmt`
 
 **Tier:** 1 (protocol types)
-**Depends on:** `encoding`, `hash`
+**Depends on:** `hash`
 **Consumed by:** `shares`, `square`, M1 integration tests, M2 proof
 verification, data-availability sampling helpers, and downstream light-client
 proof machinery.

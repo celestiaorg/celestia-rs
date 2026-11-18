@@ -76,6 +76,9 @@ impl DataAvailabilityHeader {
         if rows != columns {
             return Err(Error::DataAvailabilityAxisMismatch { rows, columns });
         }
+        if !rows.is_power_of_two() {
+            return Err(Error::InvalidDataAvailabilityRootCount { actual: rows });
+        }
         Ok(())
     }
 
@@ -180,6 +183,15 @@ mod tests {
             );
         }
         assert!(DataAvailabilityHeader::new(roots(2048), roots(2048)).is_err());
+    }
+
+    #[test]
+    fn root_count_must_be_a_power_of_two() {
+        let result = DataAvailabilityHeader::new(roots(3), roots(3));
+        assert_eq!(
+            result,
+            Err(Error::InvalidDataAvailabilityRootCount { actual: 3 })
+        );
     }
 
     /// Regression (soak): a 256x256 square extends to a 512-wide EDS whose

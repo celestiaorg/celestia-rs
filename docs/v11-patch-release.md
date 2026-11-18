@@ -57,11 +57,23 @@ to 600 seconds. It leaves other chains and existing unbonding queue entries
 unchanged. It does not reset fibre accounts, rewrite grants or fee allowances,
 change withdraw addresses, or add stores. Those operations are not in the tag.
 
-The runtime recognizes committed v11 state and authenticates a `v11`
+The runtime recognizes a completed v11 upgrade or an explicit v11 genesis.
+A signalled consensus version alone leaves a restored v10 node on v10.
+The runtime authenticates a `v11`
 `upgrade-info.json` against the committed next-height plan before recording
 the executing release. A v10 execution remains v10 until activation/restart;
 historical v9-to-v10 replay remains supported. New genesis defaults and the
 existing v10 qualification target are unchanged.
+
+## SDK inclusion-proof queries after the testnet tags
+
+For executing releases 11 and later, the SDK's Tendermint `ABCIQuery`
+service follows the v11.x backport at `1336489d9fed94210d06d4710404617efe0d8c57`.
+It returns `PermissionDenied` for the two custom inclusion-proof routes.
+Clients can use CometBFT's `tx`, `tx_search` and `prove_shares_v2` RPCs.
+The Corto and Mocha binaries at `58be8ae9` predate this endpoint change.
+Rust uses the executing release to select this service policy, including for
+historical queries issued to a v11 node.
 
 ## Verification scope
 

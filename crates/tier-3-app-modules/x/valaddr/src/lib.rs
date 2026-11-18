@@ -2,7 +2,8 @@
 //!
 //! Store layout: `0x01 || consensus address` → `FibreProviderInfo`.
 //! EndBlocker removes entries of validators that no longer exist or that are
-//! jailed, unbonded and past `unbonding_time + 7 days`. The staking lookup is
+//! unbonded and past `unbonding_time + 7 days` (through v11, they also had to
+//! be jailed). The staking lookup is
 //! the [`StakingKeeper`] trait (implemented in `app`). The Msg server is
 //! [`set_fibre_provider_info_msg`] (with [`validate_basic`]).
 
@@ -37,6 +38,14 @@ pub struct ValidatorInfo {
     pub unbonding_time: Timestamp,
 }
 
+/// Staking fields read for a Fibre provider registration.
+pub struct RegistrationValidator {
+    /// `IsBonded()`.
+    pub bonded: bool,
+    /// `ConsPubKey().Address()`.
+    pub consensus_address: core::result::Result<Vec<u8>, String>,
+}
+
 /// Expected staking keeper.
 pub trait StakingKeeper {
     /// `GetValidatorByConsAddr`; `Ok(None)` is `ErrNoValidatorFound`.
@@ -46,14 +55,12 @@ pub trait StakingKeeper {
         cons_addr: &[u8],
     ) -> Result<Option<ValidatorInfo>>;
 
-    /// `GetValidator(valAddr)` followed by `ConsPubKey().Address()`:
-    /// `Ok(None)` when the validator does not exist, `Ok(Some(Err(_)))`
-    /// when its consensus key cannot be read.
-    fn validator_cons_addr(
+    /// `GetValidator(valAddr)`, or `Ok(None)` if the validator is absent.
+    fn registration_validator(
         &mut self,
         ctx: &mut Context<'_>,
         val_addr: &[u8],
-    ) -> Result<Option<core::result::Result<Vec<u8>, String>>>;
+    ) -> Result<Option<RegistrationValidator>>;
 }
 
 /// `EventTypeSetFibreProviderInfo`.
@@ -169,6 +176,10 @@ fn atoi_go(s: &str) -> core::result::Result<i64, String> {
 
 /// `ValidateHost`.
 pub fn validate_host(host: &str) -> Result<()> {
+    validate_host_for_version(host, sdk::version::app_version())
+}
+
+fn validate_host_for_version(host: &str, version: u64) -> Result<()> {
     if host.is_empty() {
         return Err(err_invalid_host_address("host cannot be empty"));
     }
@@ -196,7 +207,55 @@ pub fn validate_host(host: &str) -> Result<()> {
             "port {port} in {q} out of range [1, 65535]"
         )));
     }
+    if version >= 12 {
+        let canonical = if h.contains(':') {
+            format!("[{h}]:{port}")
+        } else {
+            format!("{h}:{port}")
+        };
+        if canonical != host {
+            return Err(err_invalid_host_address(format!(
+                "host {q} is not in canonical form {}",
+                gostr::quote(&canonical)
+            )));
+        }
+        if h.parse::<std::net::IpAddr>().is_err() {
+            validate_host_name(h)
+                .map_err(|e| err_invalid_host_address(format!("invalid host name in {q}: {e}")))?;
+        }
+    }
     Ok(())
+}
+
+fn validate_host_name(name: &str) -> core::result::Result<(), String> {
+    for &b in gostr::to_go_bytes(name).as_ref() {
+        if !b.is_ascii_alphanumeric() && !b"-_.".contains(&b) {
+            let c = char::from(b);
+            let q = match c {
+                '\'' => "'\\''".to_owned(),
+                '"' => "'\"'".to_owned(),
+                _ => {
+                    let q = gostr::quote(&c.to_string());
+                    format!("'{}'", &q[1..q.len() - 1])
+                }
+            };
+            return Err(format!("character {q} is not allowed"));
+        }
+    }
+    let q = gostr::quote(name);
+    if name.starts_with(['-', '.']) || name.ends_with(['-', '.']) {
+        return Err(format!("{q} must not start or end with '-' or '.'"));
+    }
+    match name.to_ascii_lowercase().as_str() {
+        "dns" | "passthrough" | "unix" | "unix-abstract" | "xds" | "google-c2p" => {
+            Err(format!("{q} is a gRPC resolver scheme"))
+        }
+        _ => Ok(()),
+    }
+}
+
+fn executing_version(ctx: &Context<'_>) -> u64 {
+    sdk::version::executing(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app))
 }
 
 /// `MsgSetFibreProviderInfo.ValidateBasic`.
@@ -218,26 +277,29 @@ pub fn set_fibre_provider_info_msg(
     let val = sdk::address::val_from_bech32(&m.signer).map_err(|_| {
         err_invalid_validator(format!("signer {} does not match a validator", m.signer))
     })?;
-    let cons = match staking.validator_cons_addr(ctx, &val)? {
-        None => {
-            return Err(err_invalid_validator(
-                "validator not found: validator does not exist",
-            ));
-        }
-        Some(Err(e)) => {
-            return Err(err_invalid_validator(format!(
-                "failed to get consensus public key: {e}"
-            )));
-        }
-        Some(Ok(c)) => c,
+    let version = executing_version(ctx);
+    let validator = staking.registration_validator(ctx, &val);
+    let validator = if version >= 12 {
+        validator.map_err(|e| err_invalid_validator(format!("validator not found: {}", e.log)))?
+    } else {
+        validator?
     };
-    if gostr::go_len(&m.host) > MAX_HOST_LEN {
+    let validator = validator
+        .ok_or_else(|| err_invalid_validator("validator not found: validator does not exist"))?;
+    if version >= 12 && !validator.bonded {
+        return Err(err_invalid_validator("validator must be bonded"));
+    }
+    let cons = validator
+        .consensus_address
+        .map_err(|e| err_invalid_validator(format!("failed to get consensus public key: {e}")))?;
+    if version >= 12 {
+        validate_host_for_version(&m.host, version)?;
+    } else if gostr::go_len(&m.host) > MAX_HOST_LEN {
         return Err(err_invalid_host_address(format!(
             "address must be less or equal than {MAX_HOST_LEN} characters, got {}",
             gostr::go_len(&m.host)
         )));
-    }
-    if m.host.is_empty() {
+    } else if m.host.is_empty() {
         return Err(err_invalid_host_address("address cannot be empty"));
     }
     set_fibre_provider_info(
@@ -326,6 +388,7 @@ pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> 
 /// `EndBlock` (`RemoveStaleFibreProviders`).
 pub fn end_block(ctx: &mut Context<'_>, staking: &mut dyn StakingKeeper) -> Result<()> {
     let now = sdk::time::to_nanos(&ctx.header.time);
+    let version = executing_version(ctx);
     let mut stale = Vec::new();
     let prefix = [FIBRE_PROVIDER_INFO_PREFIX];
     let end = sdk::context::prefix_end(&prefix);
@@ -337,7 +400,7 @@ pub fn end_block(ctx: &mut Context<'_>, staking: &mut dyn StakingKeeper) -> Resu
             None => stale.push(addr),
             Some(v) => {
                 let grace_end = sdk::time::to_nanos(&v.unbonding_time) + JAILED_GRACE_PERIOD_NANOS;
-                if v.jailed && !v.bonded && now > grace_end {
+                if !v.bonded && (version >= 12 || v.jailed) && now > grace_end {
                     stale.push(addr);
                 }
             }
@@ -353,6 +416,7 @@ pub fn end_block(ctx: &mut Context<'_>, staking: &mut dyn StakingKeeper) -> Resu
 mod tests {
     use super::*;
     use celestia_proto::celestia::valaddr::v1::FibreProvider;
+    use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
     use sdk::{ExecMode, Header, Kind, MultiStore};
 
     struct Staking(Vec<(Vec<u8>, ValidatorInfo)>);
@@ -370,12 +434,18 @@ mod tests {
                 .map(|(_, v)| v.clone()))
         }
 
-        fn validator_cons_addr(
+        fn registration_validator(
             &mut self,
             _ctx: &mut Context<'_>,
             val_addr: &[u8],
-        ) -> Result<Option<core::result::Result<Vec<u8>, String>>> {
-            Ok((val_addr == [9u8; 20]).then(|| Ok(vec![1u8; 20])))
+        ) -> Result<Option<RegistrationValidator>> {
+            Ok(match val_addr.first() {
+                Some(8 | 9) => Some(RegistrationValidator {
+                    bonded: val_addr[0] == 9,
+                    consensus_address: Ok(vec![1u8; 20]),
+                }),
+                _ => None,
+            })
         }
     }
 
@@ -415,6 +485,81 @@ mod tests {
     }
 
     #[test]
+    fn v12_requires_canonical_provider_host() {
+        for host in [
+            "node.example:7980",
+            "node_1:443",
+            "127.0.0.1:1",
+            "[::1]:65535",
+        ] {
+            assert!(validate_host_for_version(host, 12).is_ok(), "{host}");
+        }
+        for (host, expected) in [
+            (
+                "[node]:80",
+                "host \"[node]:80\" is not in canonical form \"node:80\"",
+            ),
+            (
+                "node:080",
+                "host \"node:080\" is not in canonical form \"node:80\"",
+            ),
+            (
+                "node:+80",
+                "host \"node:+80\" is not in canonical form \"node:80\"",
+            ),
+            (
+                "DNS:9090",
+                "invalid host name in \"DNS:9090\": \"DNS\" is a gRPC resolver scheme",
+            ),
+            (
+                "node/path:80",
+                "invalid host name in \"node/path:80\": character '/' is not allowed",
+            ),
+            (
+                "node.:80",
+                "invalid host name in \"node.:80\": \"node.\" must not start or end with '-' or '.'",
+            ),
+        ] {
+            assert!(validate_host_for_version(host, 11).is_ok(), "{host}");
+            assert_eq!(
+                validate_host_for_version(host, 12).unwrap_err().log,
+                format!("{expected}: invalid host address"),
+            );
+        }
+    }
+
+    #[test]
+    fn v12_registration_checks_bond_and_host_without_validate_basic() -> Result<()> {
+        let mut ms = MultiStore::new();
+        ms.mount(STORE_KEY, Kind::Iavl)?;
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        let mut staking = Staking(Vec::new());
+        let unbonded = MsgSetFibreProviderInfo {
+            signer: sdk::address::to_bech32("celestiavaloper", &[8; 20]),
+            host: "node:80".into(),
+        };
+        let noncanonical = MsgSetFibreProviderInfo {
+            signer: sdk::address::to_bech32("celestiavaloper", &[9; 20]),
+            host: "node:080".into(),
+        };
+        ctx.consensus_params.version = Some(VersionParams { app: 11 });
+        set_fibre_provider_info_msg(&mut ctx, &mut staking, &unbonded)?;
+        set_fibre_provider_info_msg(&mut ctx, &mut staking, &noncanonical)?;
+        ctx.consensus_params.version = Some(VersionParams { app: 12 });
+        assert_eq!(
+            set_fibre_provider_info_msg(&mut ctx, &mut staking, &unbonded),
+            Err(err_invalid_validator("validator must be bonded")),
+        );
+        assert_eq!(
+            set_fibre_provider_info_msg(&mut ctx, &mut staking, &noncanonical)
+                .unwrap_err()
+                .code,
+            1,
+        );
+        Ok(())
+    }
+
+    #[test]
     fn msg_server_sets_info_by_consensus_address() -> Result<()> {
         let mut ms = MultiStore::new();
         ms.mount(STORE_KEY, Kind::Iavl)?;
@@ -432,7 +577,7 @@ mod tests {
         );
         assert_eq!(ctx.events.events()[0].r#type, "set_fibre_provider_info");
         let other = MsgSetFibreProviderInfo {
-            signer: sdk::address::to_bech32("celestiavaloper", &[8u8; 20]),
+            signer: sdk::address::to_bech32("celestiavaloper", &[7u8; 20]),
             ..msg
         };
         let e = set_fibre_provider_info_msg(&mut ctx, &mut staking, &other).err();
@@ -452,7 +597,7 @@ mod tests {
             ..Header::default()
         };
         let mut ctx = Context::new(&mut ms, header, ExecMode::Finalize);
-        let addrs: Vec<Vec<u8>> = (1u8..=3).map(|i| vec![i; 20]).collect();
+        let addrs: Vec<Vec<u8>> = (1u8..=4).map(|i| vec![i; 20]).collect();
         let gs = GenesisState {
             fibre_providers: addrs
                 .iter()
@@ -480,12 +625,24 @@ mod tests {
         // addrs[0] unknown, addrs[1] jailed past grace, addrs[2] active.
         let mut staking = Staking(vec![
             (addrs[1].clone(), jailed_long_ago),
-            (addrs[2].clone(), active),
+            (addrs[2].clone(), active.clone()),
+            (
+                addrs[3].clone(),
+                ValidatorInfo {
+                    bonded: false,
+                    ..active
+                },
+            ),
         ]);
         end_block(&mut ctx, &mut staking)?;
         assert_eq!(get_fibre_provider_info(&mut ctx, &addrs[0])?, None);
         assert_eq!(get_fibre_provider_info(&mut ctx, &addrs[1])?, None);
         assert!(get_fibre_provider_info(&mut ctx, &addrs[2])?.is_some());
+        assert!(get_fibre_provider_info(&mut ctx, &addrs[3])?.is_some());
+        ctx.consensus_params.version = Some(VersionParams { app: 12 });
+        end_block(&mut ctx, &mut staking)?;
+        assert!(get_fibre_provider_info(&mut ctx, &addrs[2])?.is_some());
+        assert_eq!(get_fibre_provider_info(&mut ctx, &addrs[3])?, None);
         Ok(())
     }
 }

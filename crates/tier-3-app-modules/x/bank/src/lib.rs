@@ -646,7 +646,15 @@ mod tests {
         use celestia_proto::cosmos::bank::v1beta1::{Input, Output};
         let from = x_auth::parse_bech32("celestia1g4vjdrx32rq0vd4qckv4d93g05062lsprfdpmy")?;
         let whitehat = &sdk::frozen::network("corto-1").unwrap().whitehat;
-        for version in [10, 11, 12] {
+        for (executable, version, active) in [
+            (10, 11, false),
+            (11, 10, false),
+            (11, 11, true),
+            (11, 12, true),
+            (12, 11, false),
+            (12, 12, false),
+        ] {
+            sdk::version::set_app_version(executable);
             for route in [0, 1, 2, 3, 4] {
                 let mut ms = MultiStore::new();
                 ms.mount(STORE_KEY, Kind::Iavl)?;
@@ -683,17 +691,18 @@ mod tests {
                         }],
                     ),
                 };
-                let rejected = version >= 11 && matches!(route, 0 | 1 | 4);
+                let rejected = active && matches!(route, 0 | 1 | 4);
                 assert_eq!(
                     result.is_err(),
                     rejected,
-                    "route {route} version {version}: {result:?}"
+                    "route {route}, executable {executable}, consensus {version}: {result:?}"
                 );
                 if let Err(e) = result {
                     assert_eq!((e.codespace, e.code), ("frozen", 2));
                 }
             }
         }
+        sdk::version::set_app_version(0);
         Ok(())
     }
 

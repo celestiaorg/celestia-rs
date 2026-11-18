@@ -505,25 +505,44 @@ fn abci_query_service(
             "empty query path".into(),
         ));
     }
-    let first = req
-        .path
-        .split('/')
-        .find(|s| !s.is_empty())
-        .unwrap_or_default();
-    let split_nonempty = req.path.split('/').any(|s| !s.is_empty()) || req.path.starts_with('/');
-    if split_nonempty && !matches!(first, "app" | "store" | "p2p" | "custom") {
-        return Err(QueryError::Status(
-            Code::InvalidArgument,
-            format!("unsupported ABCI query path: {}", req.path),
-        ));
-    }
+    let proof_query = {
+        let mut parts = crate::query::query_path_parts(&req.path);
+        let first = parts.next();
+        if !matches!(first, Some("app" | "store" | "p2p" | "custom")) {
+            return Err(QueryError::Status(
+                Code::InvalidArgument,
+                format!("unsupported ABCI query path: {}", req.path),
+            ));
+        }
+        first == Some("custom")
+            && matches!(
+                parts.next(),
+                Some(
+                    crate::inclusion_proof::TX_INCLUSION_QUERY_PATH
+                        | crate::inclusion_proof::SHARE_INCLUSION_QUERY_PATH
+                )
+            )
+    };
     let q = RequestQuery {
         data: req.data,
         path: req.path,
         height: req.height,
         prove: req.prove,
     };
-    let res = env.with_app(|a| a.query(&q))?;
+    let res = env.with_app(|app| {
+        // The v11.x wrapper restricts the SDK service. CometBFT still
+        // queries the underlying custom routes when serving proofs.
+        if proof_query && app.execution_version() >= crate::upgrades::V11_APP_VERSION {
+            return Err(QueryError::Status(
+                Code::PermissionDenied,
+                format!(
+                    "query path {} is not served over this endpoint; use the CometBFT RPC routes tx, tx_search or prove_shares_v2",
+                    gostr::quote(&q.path)
+                ),
+            ));
+        }
+        Ok(app.query(&q))
+    })??;
     Ok(cmt::AbciQueryResponse {
         code: res.code,
         log: res.log,
@@ -1151,6 +1170,44 @@ fn estimate_gas_price_and_usage(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn external_proof_routes_follow_the_executing_release() {
+        for version in [10, 11, 12] {
+            let mut app = App::new();
+            app.execution_version = Some(version);
+            let app = AbciApp::new(app);
+            let env = Env {
+                app: &app,
+                height: 0,
+                latest: true,
+            };
+            for path in [
+                "custom/txInclusionProof/0",
+                "/custom/shareInclusionProof/0/1",
+                "/app/version",
+            ] {
+                let request = cmt::AbciQueryRequest {
+                    path: path.into(),
+                    ..cmt::AbciQueryRequest::default()
+                };
+                let result = abci_query_service(&env, request);
+                if version >= 11 && path != "/app/version" {
+                    assert_eq!(
+                        result.unwrap_err(),
+                        QueryError::Status(
+                            Code::PermissionDenied,
+                            format!(
+                                "query path \"{path}\" is not served over this endpoint; use the CometBFT RPC routes tx, tx_search or prove_shares_v2"
+                            )
+                        )
+                    );
+                } else {
+                    assert!(result.is_ok(), "{path}: {result:?}");
+                }
+            }
+        }
+    }
 
     #[test]
     fn default_latest_block_is_bound_to_application_query_height() {

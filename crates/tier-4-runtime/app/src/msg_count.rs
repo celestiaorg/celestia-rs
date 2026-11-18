@@ -11,6 +11,15 @@ use sdk::Context;
 /// `appconsts.MaxSDKMessages`.
 pub const MAX_SDK_MESSAGES: usize = 600;
 
+/// Applies celestia-app v11's local admission policy. v10.6.0 predates
+/// the limit, and v12 moved it into the ante chain.
+pub(crate) fn validate_local_module_query_requests(version: u64, msgs: &[Any]) -> sdk::Result<()> {
+    if version == 11 {
+        x_ante::celestia::validate_module_query_requests(msgs)?;
+    }
+    Ok(())
+}
+
 /// `icatypes.HostPortID`.
 const ICA_HOST_PORT: &str = "icahost";
 
@@ -27,9 +36,33 @@ pub fn count_executable_msgs(
     mut ctx: Option<&mut Context<'_>>,
     msgs: &[Any],
 ) -> Result<usize, NoStore> {
+    sum_msg_weights(msgs, |packet| {
+        count_ica_packet_msgs(ctx.as_deref_mut(), packet)
+    })
+}
+
+/// The ante gas count must stay the same when an ICA channel changes
+/// encoding between proposal and execution. Count under both encodings.
+pub(crate) fn count_sdk_message_gas_weight(msgs: &[Any]) -> usize {
+    use std::convert::Infallible;
+    match sum_msg_weights(msgs, |packet| {
+        Ok::<_, Infallible>(ica_payload(packet).map_or(0, |data| {
+            count_proto_msgs(&data)
+                .unwrap_or(0)
+                .max(count_json_msgs(&data).unwrap_or(0))
+        }))
+    }) {
+        Ok(weight) => weight,
+    }
+}
+
+fn sum_msg_weights<E>(
+    msgs: &[Any],
+    mut ica_count: impl FnMut(&Packet) -> Result<usize, E>,
+) -> Result<usize, E> {
     let mut count = 0;
     for msg in msgs {
-        count += msg_weight(ctx.as_deref_mut(), msg)?;
+        count += msg_weight(msg, &mut ica_count)?;
         if count > MAX_SDK_MESSAGES {
             return Ok(count);
         }
@@ -37,7 +70,10 @@ pub fn count_executable_msgs(
     Ok(count)
 }
 
-fn msg_weight(mut ctx: Option<&mut Context<'_>>, msg: &Any) -> Result<usize, NoStore> {
+fn msg_weight<E>(
+    msg: &Any,
+    ica_count: &mut impl FnMut(&Packet) -> Result<usize, E>,
+) -> Result<usize, E> {
     if msg.type_url == MsgExec::type_url() {
         let Ok(exec) = MsgExec::decode(msg.value.as_slice()) else {
             return Ok(1);
@@ -48,14 +84,17 @@ fn msg_weight(mut ctx: Option<&mut Context<'_>>, msg: &Any) -> Result<usize, NoS
         let mut n = 1;
         for m in &exec.msgs {
             let m = txdecode::prost_compatible(m).unwrap_or_else(|| m.clone());
-            n += leaf_weight(ctx.as_deref_mut(), &m)?;
+            n += leaf_weight(&m, ica_count)?;
         }
         return Ok(n);
     }
-    leaf_weight(ctx, msg)
+    leaf_weight(msg, ica_count)
 }
 
-fn leaf_weight(ctx: Option<&mut Context<'_>>, msg: &Any) -> Result<usize, NoStore> {
+fn leaf_weight<E>(
+    msg: &Any,
+    ica_count: &mut impl FnMut(&Packet) -> Result<usize, E>,
+) -> Result<usize, E> {
     if msg.type_url == MsgModuleQuerySafe::type_url() {
         return Ok(
             MsgModuleQuerySafe::decode(msg.value.as_slice()).map_or(1, |m| 1 + m.requests.len())
@@ -66,9 +105,15 @@ fn leaf_weight(ctx: Option<&mut Context<'_>>, msg: &Any) -> Result<usize, NoStor
             .ok()
             .and_then(|m| m.packet)
             .unwrap_or_default();
-        return Ok(1 + count_ica_packet_msgs(ctx, &packet)?);
+        return Ok(1 + ica_count(&packet)?);
     }
     Ok(1)
+}
+
+fn ica_payload(packet: &Packet) -> Option<Vec<u8>> {
+    (packet.destination_port == ICA_HOST_PORT)
+        .then(|| ica_packet_data(&packet.data))
+        .flatten()
 }
 
 /// `data.UnmarshalJSON` (`InterchainAccountPacketData`, jsonpb) with
@@ -104,10 +149,7 @@ fn metadata_encoding(version: &str) -> Option<String> {
 
 /// `countICAPacketMsgs`.
 fn count_ica_packet_msgs(ctx: Option<&mut Context<'_>>, packet: &Packet) -> Result<usize, NoStore> {
-    if packet.destination_port != ICA_HOST_PORT {
-        return Ok(0);
-    }
-    let Some(data) = ica_packet_data(&packet.data) else {
+    let Some(data) = ica_payload(packet) else {
         return Ok(0);
     };
     if !valid_channel_id(&packet.destination_channel) {
@@ -213,6 +255,7 @@ pub fn count_json_msgs(bz: &[u8]) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use celestia_proto::cosmos::bank::v1beta1::MsgSend;
 
     /// A `MsgRecvPacket` of an ICA `EXECUTE_TX` packet with a protobuf key
     /// past `u32::MAX` (nightly fuzz-exec, deliver `ibc-edge` seed 3020):
@@ -254,6 +297,36 @@ mod tests {
         let tx = txdecode::decode(&raw).unwrap();
         assert_eq!(count_executable_msgs(None, tx.msgs()), Ok(1));
         assert_eq!(count_executable_msgs(None, tx.gogo_msgs()), Err(NoStore));
+    }
+
+    #[test]
+    fn gas_weight_counts_authz_and_ica_fanout_without_channel_state() {
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        let ica = |payload: &[u8]| {
+            Any::pack(&MsgRecvPacket {
+                packet: Some(Packet {
+                    destination_port: ICA_HOST_PORT.into(),
+                    destination_channel: "channel-123".into(),
+                    data: format!(
+                        r#"{{"type":"TYPE_EXECUTE_TX","data":"{}"}}"#,
+                        STANDARD.encode(payload)
+                    )
+                    .into_bytes(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+        };
+        let send = Any::pack(&MsgSend::default());
+        for payload in [&[0x0a, 0, 0x0a, 0][..], &br#"{"messages":[{},{}]}"#[..]] {
+            assert_eq!(count_sdk_message_gas_weight(&[ica(payload)]), 3);
+            let exec = Any::pack(&MsgExec {
+                msgs: vec![send.clone(), ica(payload)],
+                ..Default::default()
+            });
+            assert_eq!(count_sdk_message_gas_weight(&[exec]), 5);
+        }
+        assert_eq!(count_sdk_message_gas_weight(&[ica(&[0xff])]), 1);
     }
 
     #[test]

@@ -14,6 +14,7 @@ fn frozen_ante_matches_the_v11_go_release() {
     );
     let vectors = fixtures["vectors"].as_array().unwrap();
     assert!(vectors.len() >= 60);
+    sdk::version::set_app_version(11);
     for v in vectors {
         let mut ms = MultiStore::new();
         ms.mount(x_distribution::STORE_KEY, Kind::Iavl).unwrap();
@@ -81,5 +82,11 @@ fn frozen_ante_matches_the_v11_go_release() {
             "{}",
             v["name"]
         );
+        for executable in [10, 12] {
+            sdk::version::set_app_version(executable);
+            assert!(x_ante::frozen::ante(&mut ctx, &tx).is_ok());
+        }
+        sdk::version::set_app_version(11);
     }
+    sdk::version::set_app_version(0);
 }
