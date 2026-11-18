@@ -25,5 +25,3 @@ x-bank = { path = "../bank" }
 x-ibc = { path = "../ibc" }
 x-transfer = { path = "../transfer" }
 
-[dev-dependencies]
-proptest = "1"

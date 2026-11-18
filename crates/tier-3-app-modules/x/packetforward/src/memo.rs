@@ -38,7 +38,7 @@ fn dedup(members: &[(String, Value)]) -> Vec<(&str, &Value)> {
 
 /// A number literal as Go's `interface{}` decoding reads it: `None` when it
 /// does not fit a `float64` (`strconv.ParseFloat` range error).
-pub(crate) fn float64(lit: &str) -> Option<f64> {
+fn float64(lit: &str) -> Option<f64> {
     lit.parse::<f64>().ok().filter(|f| f.is_finite())
 }
 
@@ -191,7 +191,7 @@ fn type_error(value: &str, strukt: &str, field: &str, ty: &str) -> String {
 
 /// Go's struct field matching: the exact name, else `foldName` (Unicode
 /// simple folding: `ſ` matches `s`, `K` (Kelvin) matches `k`).
-pub(crate) fn field_is(key: &str, name: &str) -> bool {
+fn field_is(key: &str, name: &str) -> bool {
     key == name || gostr::equal_fold(&go(key), name)
 }
 
@@ -371,7 +371,7 @@ pub fn retry_next(memo: &str, pfm: Pfm) -> Result<Option<Result<String, String>>
 /// (`gojson::parse`): the map decode `json.Unmarshal(memo,
 /// &map[string]interface{})` succeeds (an object, every number a
 /// `float64`) and `d["forward"] != nil` (the last exact `forward` key wins).
-pub(crate) fn is_forward_memo(root: &Value) -> bool {
+fn is_forward_memo(root: &Value) -> bool {
     let Kind::Object(members) = &root.kind else {
         return false;
     };
