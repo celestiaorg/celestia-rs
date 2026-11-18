@@ -723,6 +723,14 @@ pub fn pay_for_fibre(ctx: &mut Context<'_>, m: &MsgPayForFibre) -> Result<MsgPay
     Ok(MsgPayForFibreResponse {})
 }
 
+#[derive(serde::Serialize)]
+struct TimeoutEvent {
+    #[serde(flatten)]
+    base: EventPaymentPromiseTimeout,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    creation_timestamp: Option<Timestamp>,
+}
+
 /// `PaymentPromiseTimeout`.
 pub fn payment_promise_timeout(
     ctx: &mut Context<'_>,
@@ -758,14 +766,6 @@ pub fn payment_promise_timeout(
             processed_at: Some(ctx.header.time),
         },
     )?;
-    #[derive(serde::Serialize)]
-    struct TimeoutEvent {
-        #[serde(flatten)]
-        base: EventPaymentPromiseTimeout,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        creation_timestamp: Option<Timestamp>,
-    }
-
     let event = sdk::event::typed_event_with_name(
         <EventPaymentPromiseTimeout as prost::Name>::full_name(),
         &TimeoutEvent {
