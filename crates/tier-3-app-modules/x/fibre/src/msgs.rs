@@ -129,7 +129,7 @@ fn emit<T: prost::Name + serde::Serialize>(ctx: &mut Context<'_>, ev: &T) -> Res
 
 // ---- ValidateBasic ----
 
-fn validate_coin_positive(c: Option<&PbCoin>) -> Result<()> {
+fn validate_escrow_amount(c: Option<&PbCoin>) -> Result<()> {
     // A nil amount fails `IsValid`; `Coin.String()` prints it `<nil>`.
     if c.is_none_or(|c| c.amount.is_empty()) {
         return Err(errs::invalid_coins(sdk::coins::raw_coins_string(&[c
@@ -143,6 +143,12 @@ fn validate_coin_positive(c: Option<&PbCoin>) -> Result<()> {
     if c.amount.is_zero() || c.amount.is_negative() {
         return Err(errs::invalid_coins("amount must be positive"));
     }
+    if sdk::version::is_v12(sdk::version::app_version()) && c.denom != BOND_DENOM {
+        return Err(errs::invalid_coins(format!(
+            "denom must be {BOND_DENOM}, got {}",
+            c.denom
+        )));
+    }
     Ok(())
 }
 
@@ -155,7 +161,7 @@ fn validate_signer(signer: &str) -> Result<()> {
 /// `MsgDepositToEscrow.ValidateBasic` / `MsgRequestWithdrawal.ValidateBasic`.
 pub fn validate_basic_escrow(signer: &str, amount: Option<&PbCoin>) -> Result<()> {
     validate_signer(signer)?;
-    validate_coin_positive(amount)
+    validate_escrow_amount(amount)
 }
 
 /// go-square v4 `share.NewNamespaceFromBytes` (29 bytes) with Go's texts.
