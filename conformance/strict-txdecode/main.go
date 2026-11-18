@@ -19,7 +19,7 @@ import (
 	"google.golang.org/protobuf/encoding/protowire"
 )
 
-const sdkCommit = "30a73d35dfaa41c662688acf819f864e15008b68"
+const sdkCommit = "aeb605c12be19efae4cf614000c7dbb5fc15785a"
 
 func field(n protowire.Number, v []byte) []byte {
 	return protowire.AppendBytes(protowire.AppendTag(nil, n, protowire.BytesType), v)
@@ -61,14 +61,63 @@ func main() {
 	msg := any("/cosmos.bank.v1beta1.MsgSend", send([]byte("1")))
 	body := join(field(1, msg), field(2, []byte("memo")))
 	mode := field(1, vint(1, 1))
-	auth := func(mode []byte) []byte {
-		signer := join(field(1, any("/cosmos.crypto.secp256k1.PubKey", field(1, bytes.Repeat([]byte{2}, 33)))), field(2, mode), vint(3, 1))
+	key := any("/cosmos.crypto.secp256k1.PubKey", field(1, bytes.Repeat([]byte{2}, 33)))
+	authForKey := func(key, mode []byte) []byte {
+		signer := join(field(1, key), field(2, mode), vint(3, 1))
 		return join(field(1, signer), field(2, join(field(1, coin([]byte("1"))), vint(2, 100000))))
 	}
-	raw := func(body, auth []byte) []byte {
-		return join(field(1, body), field(2, auth), field(3, bytes.Repeat([]byte{7}, 64)))
+	auth := func(mode []byte) []byte { return authForKey(key, mode) }
+	signature := bytes.Repeat([]byte{7}, 64)
+	otherSignature := bytes.Repeat([]byte{8}, 64)
+	rawWithSignatures := func(body, auth []byte, signatures ...[]byte) []byte {
+		raw := join(field(1, body), field(2, auth))
+		for _, signature := range signatures {
+			raw = append(raw, field(3, signature)...)
+		}
+		return raw
 	}
+	raw := func(body, auth []byte) []byte { return rawWithSignatures(body, auth, signature) }
 	add("canonical", raw(body, auth(mode)))
+	add("no top-level signature", rawWithSignatures(body, auth(mode)))
+	add("extra top-level signature", rawWithSignatures(body, auth(mode), signature, otherSignature))
+
+	multiKey := func(keys ...[]byte) []byte {
+		pk := vint(1, uint64(len(keys)))
+		for _, key := range keys {
+			pk = append(pk, field(2, key)...)
+		}
+		return any("/cosmos.crypto.multisig.LegacyAminoPubKey", pk)
+	}
+	multiMode := func(modes ...[]byte) []byte {
+		// These cases have one or two members, all selected in the bit array.
+		bits := join(vint(1, uint64(len(modes))), field(2, []byte{0xff << (8 - len(modes))}))
+		multi := field(1, bits)
+		for _, mode := range modes {
+			multi = append(multi, field(2, mode)...)
+		}
+		return field(2, multi)
+	}
+	multiSignature := func(signatures ...[]byte) []byte {
+		var multi []byte
+		for _, signature := range signatures {
+			multi = append(multi, field(1, signature)...)
+		}
+		return multi
+	}
+	otherKey := any("/cosmos.crypto.secp256k1.PubKey", field(1, join([]byte{3}, bytes.Repeat([]byte{2}, 32))))
+	multiAuth := authForKey(multiKey(key, otherKey), multiMode(mode, mode))
+	twoSignatures := multiSignature(signature, otherSignature)
+	add("canonical multisignature", rawWithSignatures(body, multiAuth, twoSignatures))
+	add("no top-level multisignature", rawWithSignatures(body, multiAuth))
+	add("extra top-level signature after multisignature", rawWithSignatures(body, multiAuth, twoSignatures, signature))
+	add("multisignature with no children", rawWithSignatures(body, multiAuth, multiSignature()))
+	add("multisignature with one missing child", rawWithSignatures(body, multiAuth, multiSignature(signature)))
+	add("multisignature with one extra child", rawWithSignatures(body, multiAuth, multiSignature(signature, otherSignature, signature)))
+	nestedAuth := authForKey(multiKey(key, multiKey(otherKey)), multiMode(mode, multiMode(mode)))
+	add("canonical nested multisignature", rawWithSignatures(body, nestedAuth, multiSignature(signature, multiSignature(otherSignature))))
+	add("nested multisignature with one missing child", rawWithSignatures(body, nestedAuth, multiSignature(signature, multiSignature())))
+	add("nested multisignature with one extra child", rawWithSignatures(body, nestedAuth, multiSignature(signature, multiSignature(otherSignature, signature))))
+
 	add("empty Any", raw(field(1, nil), auth(mode)))
 	add("Any missing URL", raw(field(1, field(2, send([]byte("1")))), auth(mode)))
 	add("Any URL prefix", raw(field(1, any("https://example.com/cosmos.bank.v1beta1.MsgSend", send([]byte("1")))), auth(mode)))
@@ -97,16 +146,18 @@ func main() {
 	// levels, each Multi -> ModeInfo pair adds two more.
 	for n := 46; n <= 51; n++ {
 		m := mode
+		sig := signature
 		for i := 0; i < n; i++ {
 			m = field(2, field(2, m))
+			sig = multiSignature(sig)
 		}
-		add("mode depth "+strconv.Itoa(n), raw(body, auth(m)))
+		add("mode depth "+strconv.Itoa(n), rawWithSignatures(body, auth(m), sig))
 	}
 	// Public-key Anys count both the Any and its resolved value.
 	for n := 46; n <= 51; n++ {
-		pk := any("/cosmos.crypto.secp256k1.PubKey", field(1, bytes.Repeat([]byte{2}, 33)))
+		pk := key
 		for i := 0; i < n; i++ {
-			pk = any("/cosmos.crypto.multisig.LegacyAminoPubKey", join(vint(1, 1), field(2, pk)))
+			pk = multiKey(pk)
 		}
 		a := join(field(1, join(field(1, pk), field(2, mode))), field(2, field(1, coin([]byte("1")))))
 		add("Any depth "+strconv.Itoa(n), raw(body, a))

@@ -461,6 +461,15 @@ fn build_tx(
     auth: &Dyn,
     body_has_unknown_non_criticals: bool,
 ) -> sdk::Result<Tx> {
+    let auth_info = convert::auth_info(auth);
+    if !v9() && sdk::version::is_v12(sdk::version::app_version()) {
+        for (signer, signature) in auth_info.signer_infos.iter().zip(&signatures) {
+            if let Some(mode) = &signer.mode_info {
+                canonical::check_multisignature(mode, signature).map_err(|e| tx_decode_err(&e))?;
+            }
+        }
+    }
+
     // `GetMsgs` panics if a message was not unpacked (empty type URL).
     let mut normalized_msgs = Vec::new();
     for any in body.msg_list(1) {
@@ -480,7 +489,7 @@ fn build_tx(
         auth_info_bytes,
         signatures,
         body: convert::tx_body(body),
-        auth_info: convert::auth_info(auth),
+        auth_info,
         body_has_unknown_non_criticals,
         normalized_msgs,
         ..Tx::default()

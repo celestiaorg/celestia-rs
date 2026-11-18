@@ -23,7 +23,7 @@ fn strict_and_historical_decoders_match_go() {
     .unwrap();
     assert_eq!(
         fixtures.sdk_commit,
-        "30a73d35dfaa41c662688acf819f864e15008b68"
+        "aeb605c12be19efae4cf614000c7dbb5fc15785a"
     );
     assert!(fixtures.vectors.len() >= 40);
     for v in fixtures.vectors {

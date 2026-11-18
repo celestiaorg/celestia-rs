@@ -179,7 +179,7 @@ replace (
 	cosmossdk.io/x/upgrade => github.com/celestiaorg/cosmos-sdk/x/upgrade v0.2.0
 	github.com/bcp-innovations/hyperlane-cosmos => github.com/celestiaorg/hyperlane-cosmos v1.3.1
 	github.com/cometbft/cometbft => github.com/celestiaorg/celestia-core v0.42.3
-	github.com/cosmos/cosmos-sdk => github.com/celestiaorg/cosmos-sdk v1.29.6-sdk-v0.50.14.0.20261113212905-30a73d35dfaa
+	github.com/cosmos/cosmos-sdk => github.com/celestiaorg/cosmos-sdk v1.29.6-sdk-v0.50.14.0.20261117021826-aeb605c12be1
 	github.com/cosmos/ibc-go/v8 => github.com/celestiaorg/ibc-go/v8 v8.7.2
 	github.com/cosmos/ledger-cosmos-go => github.com/cosmos/ledger-cosmos-go v0.16.0
 	github.com/syndtr/goleveldb => github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7

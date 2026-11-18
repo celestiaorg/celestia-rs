@@ -13,7 +13,10 @@
 //!
 //! Acceptance follows the SDK strict walker; error details reach the tx log only.
 
+use celestia_proto::cosmos::crypto::multisig::v1beta1::MultiSignature;
+use celestia_proto::cosmos::tx::v1beta1::{ModeInfo, mode_info};
 use celestia_proto::wire_table::{FieldInfo, MessageInfo, ty};
+use prost::Message;
 
 use crate::gogo::{self, GoError};
 use crate::protowire::{self, WireType};
@@ -49,6 +52,31 @@ pub(crate) fn check_tx(tx: &[u8]) -> Result<(), GoError> {
         gogo::info("cosmos.tx.v1beta1.AuthInfo")?,
         0,
     )
+}
+
+/// The strict decoder validates each multisignature against the corresponding
+/// signer mode. AuthInfo has already passed the SDK's nesting limit here.
+pub(crate) fn check_multisignature(mode: &ModeInfo, signature: &[u8]) -> Result<(), GoError> {
+    let Some(mode_info::Sum::Multi(multi)) = &mode.sum else {
+        return Ok(());
+    };
+    check_message(
+        signature,
+        gogo::info("cosmos.crypto.multisig.v1beta1.MultiSignature")?,
+        0,
+    )?;
+    let decoded = MultiSignature::decode(signature).map_err(|err| GoError::new(err.to_string()))?;
+    if decoded.signatures.len() != multi.mode_infos.len() {
+        return Err(GoError::new(format!(
+            "multisignature has {} signatures for {} mode infos",
+            decoded.signatures.len(),
+            multi.mode_infos.len()
+        )));
+    }
+    for (inner, bytes) in multi.mode_infos.iter().zip(&decoded.signatures) {
+        check_multisignature(inner, bytes)?;
+    }
+    Ok(())
 }
 
 fn is_decimal(custom: &str) -> bool {
@@ -653,13 +681,19 @@ mod tests {
         // ModeInfo.Multi and ModeInfo messages. 48 pairs put the leaf at
         // level 99 (root is level 1). Its Single child is level 100.
         let mut mode = mode_info(1);
+        let mut signature = vec![7; 64];
         for _ in 0..48 {
+            signature = field(1, &signature);
             mode = field(2, &field(2, &mode));
         }
-        let raw = tx(
-            &body(b"", &[any(SEND, &canonical_send())]),
-            &auth_info(&signer_info(&mode, Some(1)), &coin(b"utia", Some(b"1"))),
-        );
+        let raw = cat(&[
+            &field(1, &body(b"", &[any(SEND, &canonical_send())])),
+            &field(
+                2,
+                &auth_info(&signer_info(&mode, Some(1)), &coin(b"utia", Some(b"1"))),
+            ),
+            &field(3, &signature),
+        ]);
         assert_eq!(super::check_tx(&raw), Ok(()));
         assert!(decode_at(12, &raw).is_ok());
         let too_deep = field(2, &field(2, &mode));
