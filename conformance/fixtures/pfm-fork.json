@@ -98,7 +98,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 53,
+            "sha256": "e02d6ec02cae87ce62c3fc10e7299d61a12ad16dc2cc89e1cf32b78d08c406d4",
+            "text": "failed to validate metadata. receiver cannot be empty"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "basic/9",
@@ -109,7 +143,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 135,
+            "sha256": "487df84fb1e90ffc912aab789e99b3cf7ecba65ac7b0947f33ac4e106022d45f",
+            "text": "error parsing forward metadata: json: cannot unmarshal string into Go struct field PacketMetadata.forward of type types.ForwardMetadata"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "basic/10",
@@ -120,7 +188,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 135,
+            "sha256": "7c9598ea6a2202cd8edf4efbf819a9a33261988435351c6b5c69abcadc0ff873",
+            "text": "error parsing forward metadata: json: cannot unmarshal number into Go struct field PacketMetadata.forward of type types.ForwardMetadata"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "basic/11",
@@ -131,7 +233,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 134,
+            "sha256": "0d0ede4a7ffa6f760c0968fdb7a1803fe77d0fbec1cac5ac55347ad58b6646b6",
+            "text": "error parsing forward metadata: json: cannot unmarshal array into Go struct field PacketMetadata.forward of type types.ForwardMetadata"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "basic/12",
@@ -142,7 +278,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 133,
+            "sha256": "e5a9bcb65d6f09536c8c031b9070e08f27b36162724f091bad44b7f75d5ecc93",
+            "text": "error parsing forward metadata: json: cannot unmarshal bool into Go struct field PacketMetadata.forward of type types.ForwardMetadata"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "basic/13",
@@ -236,7 +406,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 132,
+            "sha256": "274be93afe9fe5ad3774ca7432d41692c5aabd503762d228c0d035bb7493c95b",
+            "text": "error parsing forward metadata: json: cannot unmarshal number 256 into Go struct field ForwardMetadata.forward.retries of type uint8"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "fields/3",
@@ -255,7 +459,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 131,
+            "sha256": "8073a19bc894465a702711b9cc6f6300f29eadee5352266aea4d0cf8894dd1e7",
+            "text": "error parsing forward metadata: json: cannot unmarshal number -1 into Go struct field ForwardMetadata.forward.retries of type uint8"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "fields/4",
@@ -303,7 +541,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 53,
+            "sha256": "e02d6ec02cae87ce62c3fc10e7299d61a12ad16dc2cc89e1cf32b78d08c406d4",
+            "text": "failed to validate metadata. receiver cannot be empty"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "fields/6",
@@ -322,7 +594,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 184,
+            "sha256": "5cc734b8b2021427427ad65abee40d43005b14de052c1ba0d2d694b89610c001",
+            "text": "failed to validate metadata: identifier x has invalid length: 1, must be between 2-128 characters: invalid identifier [celestiaorg/ibc-go/v8@v8.7.3/modules/core/24-host/validate.go:49]"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "fields/7",
@@ -341,7 +647,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 183,
+            "sha256": "4dc527011a15a6ae4a48746909db44610772c349df5e063a34cca91559d77a30",
+            "text": "failed to validate metadata: identifier ! has invalid length: 1, must be between 8-64 characters: invalid identifier [celestiaorg/ibc-go/v8@v8.7.3/modules/core/24-host/validate.go:49]"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "fields/8",
@@ -360,7 +700,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 130,
+            "sha256": "1f9f5179584dff688735375ded325a8c2a008f8471ca67370ffa3900462d6136",
+            "text": "error parsing forward metadata: json: cannot unmarshal number into Go struct field ForwardMetadata.forward.receiver of type string"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "fields/9",
@@ -400,7 +774,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 24,
+            "sha256": "9a17a960aedc0e3c903afa404c6b393761244135e20c0f56f87edaa79f3b46d2",
+            "text": "forward metadata is null"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "nil/1",
@@ -411,7 +819,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 24,
+            "sha256": "9a17a960aedc0e3c903afa404c6b393761244135e20c0f56f87edaa79f3b46d2",
+            "text": "forward metadata is null"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "nil/2",
@@ -422,7 +864,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 24,
+            "sha256": "9a17a960aedc0e3c903afa404c6b393761244135e20c0f56f87edaa79f3b46d2",
+            "text": "forward metadata is null"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "nil/3",
@@ -626,7 +1102,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "timeout/9223372036854775808/0",
@@ -645,7 +1155,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "timeout/-9223372036854775808/0",
@@ -722,7 +1266,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "timeout/1e19/0",
@@ -741,7 +1319,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "timeout/-1e19/0",
@@ -760,7 +1372,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "timeout/1e308/0",
@@ -779,7 +1425,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "timeout/1e400/0",
@@ -875,7 +1555,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 73,
+            "sha256": "1ccc3c7f6920837d2160425b8715e0e96020f85f769d500cb7081c321457e547",
+            "text": "error parsing forward metadata: time: unknown unit \"e\" in duration \"1e19\""
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "timeout/null/0",
@@ -894,7 +1608,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 48,
+            "sha256": "55fd40d98e0301310d736321de0319e1ff4ec9da9143adf49ea14ac8851ffa0f",
+            "text": "error parsing forward metadata: invalid duration"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "timeout/true/0",
@@ -913,7 +1661,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 48,
+            "sha256": "55fd40d98e0301310d736321de0319e1ff4ec9da9143adf49ea14ac8851ffa0f",
+            "text": "error parsing forward metadata: invalid duration"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "timeout/{}/0",
@@ -932,7 +1714,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 48,
+            "sha256": "55fd40d98e0301310d736321de0319e1ff4ec9da9143adf49ea14ac8851ffa0f",
+            "text": "error parsing forward metadata: invalid duration"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "timeout-keys/0",
@@ -951,7 +1767,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "timeout-keys/1",
@@ -970,7 +1820,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "timeout-keys/2",
@@ -1600,7 +2484,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "97bf627fb1c41ec2547b357308f570695022830747a347da17700d96e0d9dd45",
+            "text": "failed to validate metadata: next is not JSON"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "next/18/0",
@@ -1623,7 +2541,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "97bf627fb1c41ec2547b357308f570695022830747a347da17700d96e0d9dd45",
+            "text": "failed to validate metadata: next is not JSON"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "next/19/0",
@@ -1646,7 +2598,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "97bf627fb1c41ec2547b357308f570695022830747a347da17700d96e0d9dd45",
+            "text": "failed to validate metadata: next is not JSON"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "next/20/0",
@@ -1771,7 +2757,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "97bf627fb1c41ec2547b357308f570695022830747a347da17700d96e0d9dd45",
+            "text": "failed to validate metadata: next is not JSON"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "next/24/0",
@@ -1917,7 +2937,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "97bf627fb1c41ec2547b357308f570695022830747a347da17700d96e0d9dd45",
+            "text": "failed to validate metadata: next is not JSON"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "next/28/0",
@@ -2037,7 +3091,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "c6670c806435d46623711b56ec535fe98e862937ba9697e2aa0bc582fd92c072",
+            "text": "forward memo length 32769 exceeds 32768 bytes"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "length/2",
@@ -2060,7 +3148,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "8ad5b2afa905f0d9b4369a222d564357ba440d21476dbef0619797262e4e8501",
+            "text": "forward memo length 32770 exceeds 32768 bytes"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "length/3",
@@ -2116,7 +3238,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "c6670c806435d46623711b56ec535fe98e862937ba9697e2aa0bc582fd92c072",
+            "text": "forward memo length 32769 exceeds 32768 bytes"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "length/5",
@@ -2139,7 +3295,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "8ad5b2afa905f0d9b4369a222d564357ba440d21476dbef0619797262e4e8501",
+            "text": "forward memo length 32770 exceeds 32768 bytes"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "length/6",
@@ -2226,7 +3416,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "fabc70534880a1002b00928a791c31658388250b10dd7404e778bd52d615e95b",
+            "text": "forward memo length 40982 exceeds 32768 bytes"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "length/11",
@@ -2249,7 +3473,41 @@
         }
       ],
       "outcome": "error",
-      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d"
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 47,
+            "sha256": "422280a058cba7694ff6adb3f21a4fb55686b55a3d355ede3b14e5cd35e65a1d",
+            "text": "forward memo length 1048576 exceeds 32768 bytes"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
     },
     {
       "name": "length/12",
@@ -2478,5 +3736,44 @@
         "sha256": "88ecb4a98b9a7a1daa77cd0f84a93e530e19c1d4cde413f921ca96b5817208d3"
       }
     }
-  ]
+  ],
+  "give_up": {
+    "sequence": 9,
+    "dst_port": "transfer",
+    "dst_channel": "channel-99",
+    "event": [
+      {
+        "key": "error",
+        "value": {
+          "len": 77,
+          "sha256": "7a3f22cc8f27b2d0652bc0e40b177c0e2c1c3fc3ea153912d04757a539b0248c",
+          "text": "giving up on packet on channel (channel-99) port (transfer) after max retries"
+        }
+      },
+      {
+        "key": "packet_sequence",
+        "value": {
+          "len": 1,
+          "sha256": "19581e27de7ced00ff1ce50b2047e7a567c76b1cbaebabe5ef03f7c3017bb5b7",
+          "text": "9"
+        }
+      },
+      {
+        "key": "packet_dst_port",
+        "value": {
+          "len": 8,
+          "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+          "text": "transfer"
+        }
+      },
+      {
+        "key": "packet_dst_channel",
+        "value": {
+          "len": 10,
+          "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+          "text": "channel-99"
+        }
+      }
+    ]
+  }
 }

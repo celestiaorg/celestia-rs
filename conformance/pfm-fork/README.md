@@ -15,10 +15,17 @@ fork's own mocked keepers (`test.NewTestSetup`), as its unit tests do. For each
 receive memo it records whether the packet goes to the transfer app, gets an
 error acknowledgement (its bytes), or is forwarded (the `MsgTransfer`
 receiver, port, channel, timeout at block time 0, retries, and memo bytes).
-For each retry memo it records the memo of the packet sent again. Long memos
+With each error acknowledgement the fork emits a `packet_forward_error` event
+that carries the Go error text; the test records its attributes, and checks
+that no other outcome emits one. For each retry memo it records the memo of
+the packet sent again, and for a forward that times out with no retries left
+the event of the error acknowledgement written for the source packet.
+
+The error text can hold ibc-go source paths, so the module also replaces
+ibc-go with the `celestiaorg/ibc-go` release that celestia-app builds with. Long memos
 are stored as runs, and forwarded memos by length and SHA-256.
 
 The Rust test `x/packetforward/tests/fork_go.rs` checks the app version 12
-decisions against this fixture. It does not cover gas, store writes, refunds,
-or celestia-app's replacement of the error acknowledgement (Rust middleware
-tests cover those).
+decisions and error events against this fixture. It does not cover gas, store
+writes, refunds, or celestia-app's replacement of the error acknowledgement
+(Rust middleware tests cover those).

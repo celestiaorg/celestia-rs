@@ -443,8 +443,18 @@ pub fn validate_as(m: &ForwardMetadata, pfm: Pfm) -> Result<(), String> {
     if m.receiver.is_empty() {
         return Err("failed to validate metadata. receiver cannot be empty".into());
     }
-    identifier(&m.port, 2, x_ibc::host::DEFAULT_MAX_PORT_CHARACTER_LENGTH)?;
-    identifier(&m.channel, 8, x_ibc::host::DEFAULT_MAX_CHARACTER_LENGTH)?;
+    identifier(
+        &m.port,
+        2,
+        x_ibc::host::DEFAULT_MAX_PORT_CHARACTER_LENGTH,
+        pfm,
+    )?;
+    identifier(
+        &m.channel,
+        8,
+        x_ibc::host::DEFAULT_MAX_CHARACTER_LENGTH,
+        pfm,
+    )?;
     if pfm == Pfm::Fork
         && let Some(Ok(next)) = &m.next
         && gojson::check_valid(&gostr::to_go_bytes(next)).is_err()
@@ -457,10 +467,16 @@ pub fn validate_as(m: &ForwardMetadata, pfm: Pfm) -> Result<(), String> {
 /// `fmt.Errorf("failed to validate metadata: %w", err)` of a 24-host
 /// identifier error. `%w` formats the `errorsmod` error with `%v`, which
 /// appends the source location of its innermost `Wrap` (`[file:line]`, the
-/// path cut after `github.com/`); that string ends up in the committed
-/// error acknowledgement.
-fn identifier(id: &str, min: usize, max: usize) -> Result<(), String> {
-    const FILE: &str = "celestiaorg/ibc-go/v8@v8.7.2/modules/core/24-host/validate.go";
+/// path cut after `github.com/`). Upstream puts that string in the
+/// committed error acknowledgement (celestia-app v10 and v11 build with
+/// celestiaorg/ibc-go v8.7.2); the fork puts it in the
+/// `packet_forward_error` event only (celestia-app's app version 12 builds
+/// with v8.7.3), so the path follows the ibc-go of that build.
+fn identifier(id: &str, min: usize, max: usize, pfm: Pfm) -> Result<(), String> {
+    let file = match pfm {
+        Pfm::Upstream => "celestiaorg/ibc-go/v8@v8.7.2/modules/core/24-host/validate.go",
+        Pfm::Fork => "celestiaorg/ibc-go/v8@v8.7.3/modules/core/24-host/validate.go",
+    };
     let length = gostr::go_len(id);
     let (msg, line) = if id.trim().is_empty() {
         ("identifier cannot be blank".to_owned(), 41)
@@ -484,7 +500,7 @@ fn identifier(id: &str, min: usize, max: usize) -> Result<(), String> {
         return Ok(());
     };
     Err(format!(
-        "failed to validate metadata: {msg}: invalid identifier [{FILE}:{line}]"
+        "failed to validate metadata: {msg}: invalid identifier [{file}:{line}]"
     ))
 }
 

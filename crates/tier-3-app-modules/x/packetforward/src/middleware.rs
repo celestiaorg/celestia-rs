@@ -30,6 +30,32 @@ pub struct PacketForwardMiddleware<A> {
     pub forward_timeout: i64,
 }
 
+impl<A> PacketForwardMiddleware<A> {
+    /// `NewIBCMiddleware(app, k, 0, DefaultForwardTransferPacketTimeoutTimestamp)`,
+    /// as celestia-app wires it: no retries and a 10 minute timeout unless
+    /// the memo sets them.
+    pub const fn new(app: A) -> Self {
+        Self {
+            app,
+            retries_on_timeout: 0,
+            forward_timeout: DEFAULT_FORWARD_TIMEOUT_NS,
+        }
+    }
+
+    /// `OnRecvPacket`'s timeout (nanoseconds) and retries for the forward
+    /// metadata `md`: the middleware's own when the memo sets none (or a
+    /// timeout that is not positive).
+    #[must_use]
+    pub fn timeout_and_retries(&self, md: &ForwardMetadata) -> (i64, u8) {
+        let timeout = if md.timeout <= 0 {
+            self.forward_timeout
+        } else {
+            md.timeout
+        };
+        (timeout, md.retries.unwrap_or(self.retries_on_timeout))
+    }
+}
+
 fn is_panic(e: &SdkError) -> bool {
     e.codespace == "undefined" && e.code == 111_222
 }
@@ -46,6 +72,39 @@ const ERROR_ACK_PREFIX: &str = "packet-forward-middleware error: ";
 /// acknowledgement it creates (it logs the error instead).
 pub const FORK_ERROR_ACK_MESSAGE: &str = "packet-forward-middleware error: forward failed";
 
+/// The fork's `types.EventTypeForwardError`: the event it emits with each
+/// error acknowledgement it creates.
+pub const EVENT_TYPE_FORWARD_ERROR: &str = "packet_forward_error";
+
+/// The fork's `types.AttributeKeyError`: the error text.
+pub const ATTRIBUTE_KEY_ERROR: &str = "error";
+
+/// The event of the fork's `newErrorAcknowledgement(ctx, dstPort,
+/// dstChannel, sequence, err)`: `packet_forward_error` with the error text
+/// and ibc-go's identifiers of the packet the acknowledgement is for.
+/// Upstream v8.2.0 (before app version 12) emits none. Events are not part
+/// of any consensus hash and use no gas.
+fn emit_forward_error(
+    ctx: &mut Context<'_>,
+    dst_port: &str,
+    dst_channel: &str,
+    sequence: u64,
+    err: &str,
+) {
+    if pfm(ctx) != Pfm::Fork {
+        return;
+    }
+    ctx.events.emit(sdk::event::event(
+        EVENT_TYPE_FORWARD_ERROR,
+        [
+            (ATTRIBUTE_KEY_ERROR, err.to_owned()),
+            ("packet_sequence", sequence.to_string()),
+            ("packet_dst_port", dst_port.to_owned()),
+            ("packet_dst_channel", dst_channel.to_owned()),
+        ],
+    ));
+}
+
 /// The text of PFM's `newErrorAcknowledgement(err)`.
 fn pfm_error_text(ctx: &Context<'_>, err: &str) -> String {
     match pfm(ctx) {
@@ -54,9 +113,17 @@ fn pfm_error_text(ctx: &Context<'_>, err: &str) -> String {
     }
 }
 
-/// `newErrorAcknowledgement`, then (from app version 12) celestia-app's
+/// `newErrorAcknowledgement` for the received packet `p` (the fork's
+/// `recvErrorAcknowledgement`), then (from app version 12) celestia-app's
 /// `pfmIBCMiddleware`, which commits [`fixed_error_ack`] instead.
-fn error_ack(ctx: &mut Context<'_>, err: &str) -> Acknowledgement {
+fn error_ack(ctx: &mut Context<'_>, p: &Packet, err: &str) -> Acknowledgement {
+    emit_forward_error(
+        ctx,
+        &p.destination_port,
+        &p.destination_channel,
+        p.sequence,
+        err,
+    );
     if is_v12(ctx) {
         return Acknowledgement::error_string(&fixed_error_ack());
     }
@@ -622,7 +689,7 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
         };
         let md = match memo::on_recv(&data.memo, pfm(ctx)) {
             Recv::NotForward => return self.app.on_recv_packet(ctx, p, relayer),
-            Recv::Error(e) => return Ok(Some(error_ack(ctx, &e))),
+            Recv::Error(e) => return Ok(Some(error_ack(ctx, p, &e))),
             Recv::NilForwardPanic => {
                 return Err(sdk::error::go_panic(
                     "runtime error: invalid memory address or nil pointer dereference",
@@ -634,6 +701,7 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
         if let Err(e) = self.receive_funds(ctx, p, &data, &override_receiver, relayer)? {
             return Ok(Some(error_ack(
                 ctx,
+                p,
                 &format!("error receiving packet: {e}"),
             )));
         }
@@ -647,16 +715,12 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
         let Some(amount) = parse_amount(&data.amount) else {
             return Ok(Some(error_ack(
                 ctx,
+                p,
                 &format!("error parsing amount for forward: {}", data.amount),
             )));
         };
         let token = relay::new_coin(&denom, amount)?;
-        let timeout = if md.timeout <= 0 {
-            self.forward_timeout
-        } else {
-            md.timeout
-        };
-        let retries = md.retries.unwrap_or(self.retries_on_timeout);
+        let (timeout, retries) = self.timeout_and_retries(&md);
         if let Err(e) = forward_transfer_packet(
             ctx,
             None,
@@ -672,7 +736,7 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
             if is_panic(&e) {
                 return Err(e);
             }
-            return Ok(Some(error_ack(ctx, &e.log)));
+            return Ok(Some(error_ack(ctx, p, &e.log)));
         }
         Ok(None)
     }
@@ -712,6 +776,15 @@ impl<A: IbcModule> IbcModule for PacketForwardMiddleware<A> {
         };
         remove_in_flight_packet(ctx, p)?;
         if let Some(e) = err {
+            // The fork emits the event (for the source packet) before it
+            // writes the acknowledgement.
+            emit_forward_error(
+                ctx,
+                &ifp.refund_port_id,
+                &ifp.refund_channel_id,
+                ifp.refund_sequence,
+                &e,
+            );
             let ack = AckResponse::Error(pfm_error_text(ctx, &e));
             return write_ack_for_forwarded_packet(ctx, p, &data, &ifp, &ack);
         }
@@ -804,7 +877,8 @@ mod tests {
 
     /// From app version 12, celestia-app commits a fixed PFM error
     /// acknowledgement that carries only the ABCI code of its
-    /// `ErrPacketForward` (PROTOCO-3759), whatever the error text.
+    /// `ErrPacketForward` (PROTOCO-3759), whatever the error text. The
+    /// fork emits the error text in a `packet_forward_error` event instead.
     #[test]
     fn error_acknowledgements_are_fixed_from_v12() {
         let module = PacketForwardMiddleware {
@@ -813,19 +887,35 @@ mod tests {
             forward_timeout: DEFAULT_FORWARD_TIMEOUT_NS,
         };
         let memos = [
-            r#"{"forward":{"receiver":"cosmos1abc","port":"","channel":"channel-0"}}"#,
-            r#"{"forward":{"receiver":"cosmos1abc","port":"transfer","channel":"channel/0"}}"#,
-            r#"{"forward":{"receiver":"","port":"transfer","channel":"channel-0"}}"#,
-            r#"{"forward":{"receiver":1}}"#,
-            r#"{"forward":{"receiver":"cosmos1abc","port":"transfer","channel":"channel-0","retries":-1}}"#,
+            (
+                r#"{"forward":{"receiver":"cosmos1abc","port":"","channel":"channel-0"}}"#,
+                "failed to validate metadata: identifier cannot be blank: invalid identifier [celestiaorg/ibc-go/v8@v8.7.3/modules/core/24-host/validate.go:41]",
+            ),
+            (
+                r#"{"forward":{"receiver":"cosmos1abc","port":"transfer","channel":"channel/0"}}"#,
+                "failed to validate metadata: identifier channel/0 cannot contain separator '/': invalid identifier [celestiaorg/ibc-go/v8@v8.7.3/modules/core/24-host/validate.go:45]",
+            ),
+            (
+                r#"{"forward":{"receiver":"","port":"transfer","channel":"channel-0"}}"#,
+                "failed to validate metadata. receiver cannot be empty",
+            ),
+            (
+                r#"{"forward":{"receiver":1}}"#,
+                "error parsing forward metadata: json: cannot unmarshal number into Go struct field ForwardMetadata.forward.receiver of type string",
+            ),
+            (
+                r#"{"forward":{"receiver":"cosmos1abc","port":"transfer","channel":"channel-0","retries":-1}}"#,
+                "error parsing forward metadata: json: cannot unmarshal number -1 into Go struct field ForwardMetadata.forward.retries of type uint8",
+            ),
         ];
-        for memo in memos {
+        for (memo, error) in memos {
             let mut store = sdk::MultiStore::new();
             let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
             ctx.consensus_params.version = Some(
                 celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app: 12 },
             );
             let packet = Packet {
+                sequence: 7,
                 source_port: "transfer".into(),
                 source_channel: "channel-0".into(),
                 destination_port: "transfer".into(),
@@ -847,14 +937,90 @@ mod tests {
                 r#"{"error":"ABCI code: 11151: error handling packet: see events for details"}"#,
                 "{memo}"
             );
-            assert!(
-                ctx.events
-                    .events()
-                    .iter()
-                    .all(|e| e.r#type != "packet_forward_error"),
+            assert_eq!(
+                forward_error_events(&ctx),
+                vec![vec![
+                    ("error".to_owned(), error.to_owned()),
+                    ("packet_sequence".to_owned(), "7".to_owned()),
+                    ("packet_dst_port".to_owned(), "transfer".to_owned()),
+                    ("packet_dst_channel".to_owned(), "channel-1".to_owned()),
+                ]],
                 "{memo}"
             );
         }
+    }
+
+    /// The attributes of each `packet_forward_error` event emitted so far.
+    fn forward_error_events(ctx: &Context<'_>) -> ErrorEvents {
+        ctx.events
+            .events()
+            .iter()
+            .filter(|e| e.r#type == "packet_forward_error")
+            .map(|e| {
+                e.attributes
+                    .iter()
+                    .map(|a| (a.key.clone(), a.value.clone()))
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Upstream v8.2.0 emits no `packet_forward_error` event: before app
+    /// version 12 the error text is in the acknowledgement.
+    #[test]
+    fn no_forward_error_event_before_v12() {
+        for app in [10, 11] {
+            let (res, _, events) = recv_events(app, r#"{"forward":{"receiver":""}}"#);
+            assert!(!res.unwrap().unwrap().success);
+            assert!(events.is_empty(), "{app}");
+            let (_, events) = give_up(app);
+            assert!(events.is_empty(), "{app}");
+        }
+    }
+
+    /// From app version 12, each error acknowledgement of `OnRecvPacket`
+    /// emits one `packet_forward_error` event, also after funds are
+    /// received; a forward emits none.
+    #[test]
+    fn forward_error_event_from_v12() {
+        // The forward fails at the transfer (no IBC state here), after the
+        // funds were received.
+        let (res, received, events) = recv_events(12, &forward(""));
+        assert!(!res.unwrap().unwrap().success);
+        assert_eq!(received, 1);
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events[0][0].0, "error");
+        assert!(
+            events[0][0].1.ends_with(": insufficient funds"),
+            "{events:?}"
+        );
+        assert_eq!(events[0][1], ("packet_sequence".into(), "1".into()));
+        // Not a forward: the transfer app answers, no event.
+        let (res, _, events) = recv_events(12, "hello");
+        assert!(res.unwrap().unwrap().success);
+        assert!(events.is_empty());
+    }
+
+    /// From app version 12, the error acknowledgement written when a
+    /// forwarded packet times out with no retries left emits one
+    /// `packet_forward_error` event for the source packet (refund port,
+    /// channel and sequence), before the acknowledgement is written.
+    #[test]
+    fn give_up_emits_forward_error_event_from_v12() {
+        let (_, events) = give_up(12);
+        assert_eq!(
+            events,
+            vec![vec![
+                (
+                    "error".to_owned(),
+                    "giving up on packet on channel (channel-99) port (transfer) after max retries"
+                        .to_owned()
+                ),
+                ("packet_sequence".to_owned(), "9".to_owned()),
+                ("packet_dst_port".to_owned(), "transfer".to_owned()),
+                ("packet_dst_channel".to_owned(), "channel-99".to_owned()),
+            ]]
+        );
     }
 
     #[test]
@@ -994,7 +1160,7 @@ mod tests {
             let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
             set_app_version(&mut ctx, app);
             assert_eq!(pfm_error_text(&ctx, give_up), want);
-            let ack = error_ack(&mut ctx, give_up);
+            let ack = error_ack(&mut ctx, &Packet::default(), give_up);
             let committed = if app == 12 {
                 FIXED_ACK.to_owned()
             } else {
@@ -1099,6 +1265,46 @@ mod tests {
         let m = ok_module();
         let res = m.on_recv_packet(&mut ctx, &transfer_packet(memo), &[]);
         (res, m.app.received.get())
+    }
+
+    /// The attributes of `packet_forward_error` events.
+    type ErrorEvents = Vec<Vec<(String, String)>>;
+
+    /// [`recv`] and the `packet_forward_error` events it emitted.
+    fn recv_events(app: u64, memo: &str) -> (Result<Option<Acknowledgement>>, u32, ErrorEvents) {
+        let mut store = sdk::MultiStore::new();
+        let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
+        set_app_version(&mut ctx, app);
+        let m = ok_module();
+        let res = m.on_recv_packet(&mut ctx, &transfer_packet(memo), &[]);
+        (res, m.app.received.get(), forward_error_events(&ctx))
+    }
+
+    /// Times out a forwarded packet with no retries left (source packet:
+    /// sequence 9 on transfer/channel-99). Writing the acknowledgement
+    /// fails here (no IBC state); returns that result and the
+    /// `packet_forward_error` events.
+    fn give_up(app: u64) -> (Result<()>, ErrorEvents) {
+        let mut store = sdk::MultiStore::new();
+        store.mount(STORE_KEY, sdk::Kind::Iavl).unwrap();
+        let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
+        set_app_version(&mut ctx, app);
+        let p = transfer_packet("");
+        let key = refund_packet_key(&p.source_channel, &p.source_port, p.sequence);
+        crate::set_in_flight_packet(
+            &mut ctx,
+            &key,
+            &InFlightPacket {
+                refund_channel_id: "channel-99".into(),
+                refund_port_id: "transfer".into(),
+                refund_sequence: 9,
+                retries_remaining: 0,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let res = ok_module().on_timeout_packet(&mut ctx, &p, &[]);
+        (res, forward_error_events(&ctx))
     }
 
     fn forward(fields: &str) -> String {

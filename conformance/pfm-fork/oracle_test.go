@@ -14,9 +14,13 @@ import (
 	"testing"
 	"time"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/packetforward/types"
 	"github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8/test"
+	capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
 	transfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
 	channeltypes "github.com/cosmos/ibc-go/v8/modules/core/04-channel/types"
+	ibcexported "github.com/cosmos/ibc-go/v8/modules/core/exported"
 	"go.uber.org/mock/gomock"
 )
 
@@ -25,8 +29,13 @@ var update = flag.Bool("update", false, "rewrite the fixture instead of comparin
 const (
 	fixturePath = "../fixtures/pfm-fork.json"
 	sender      = "cosmos1wnlew8ss0sqclfalvj6jkcyvnwq79fd74qxxue"
-	receiver    = "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k"
-	maxMemo     = transfertypes.MaximumMemoLength
+	// recvSequence is the sequence of each received packet.
+	recvSequence = 7
+	// giveUpSequence is the sequence of the packet whose forward times out
+	// with no retries left.
+	giveUpSequence = 9
+	receiver       = "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k"
+	maxMemo        = transfertypes.MaximumMemoLength
 )
 
 // Part is a run of a memo: S repeated N times.
@@ -83,13 +92,23 @@ type Forwarded struct {
 	Retries   int32  `json:"retries"`
 }
 
+// Attr is an event attribute; the value is kept as Bytes because it can
+// hold memo bytes that are not UTF-8.
+type Attr struct {
+	Key   string `json:"key"`
+	Value Bytes  `json:"value"`
+}
+
 // Recv is what OnRecvPacket did with a memo: "pass" (to the transfer app),
-// "error" (an error acknowledgement) or "forward".
+// "error" (an error acknowledgement) or "forward". Event holds the
+// attributes of the packet_forward_error event that the fork emits with
+// each error acknowledgement (none otherwise).
 type Recv struct {
 	Name      string     `json:"name"`
 	Memo      Memo       `json:"memo"`
 	Outcome   string     `json:"outcome"`
 	AckHex    string     `json:"ack_hex,omitempty"`
+	Event     []Attr     `json:"event,omitempty"`
 	Forwarded *Forwarded `json:"forwarded,omitempty"`
 }
 
@@ -100,11 +119,42 @@ type Retry struct {
 	Retried Bytes  `json:"retried"`
 }
 
+// GiveUp is the packet_forward_error event of the error acknowledgement
+// that OnTimeoutPacket writes for a forwarded packet with no retries left.
+type GiveUp struct {
+	Sequence   uint64 `json:"sequence"`
+	DstPort    string `json:"dst_port"`
+	DstChannel string `json:"dst_channel"`
+	Event      []Attr `json:"event"`
+}
+
 // Fixture is the generated file.
 type Fixture struct {
 	ForkCommit string  `json:"fork_commit"`
 	Recv       []Recv  `json:"recv"`
 	Retry      []Retry `json:"retry"`
+	GiveUp     GiveUp  `json:"give_up"`
+}
+
+// errorEvent returns the attributes of the one packet_forward_error event
+// in events, or nil when there is none.
+func errorEvent(t *testing.T, name string, events sdk.Events) []Attr {
+	t.Helper()
+	var out []Attr
+	n := 0
+	for _, e := range events {
+		if e.Type != types.EventTypeForwardError {
+			continue
+		}
+		n++
+		for _, a := range e.Attributes {
+			out = append(out, Attr{Key: a.Key, Value: bytesOf(a.Value)})
+		}
+	}
+	if n > 1 {
+		t.Fatalf("%s: %d packet_forward_error events", name, n)
+	}
+	return out
 }
 
 type harness struct {
@@ -149,9 +199,12 @@ func packet(t *testing.T, seq uint64, port, channel, memo string) channeltypes.P
 func recv(t *testing.T, name string, parts Memo) Recv {
 	memo := parts.String()
 	h := newHarness(t)
-	ctx := h.setup.Initializer.Ctx
-	ack := h.setup.ForwardMiddleware.OnRecvPacket(ctx, packet(t, 1, "transfer", "channel-7", memo), nil)
-	r := Recv{Name: name, Memo: parts}
+	ctx := h.setup.Initializer.Ctx.WithEventManager(sdk.NewEventManager())
+	ack := h.setup.ForwardMiddleware.OnRecvPacket(ctx, packet(t, recvSequence, "transfer", "channel-7", memo), nil)
+	r := Recv{Name: name, Memo: parts, Event: errorEvent(t, name, ctx.EventManager().Events())}
+	if (r.Event != nil) != (ack != nil && !ack.Success()) {
+		t.Fatalf("%s: error event %v with ack %v", name, r.Event, ack)
+	}
 	if ack != nil {
 		r.AckHex = hex.EncodeToString(ack.Acknowledgement())
 	}
@@ -199,6 +252,42 @@ func retry(t *testing.T, name string, parts Memo) Retry {
 		t.Fatalf("%s: not retried", name)
 	}
 	return Retry{Name: name, Memo: parts, Retried: bytesOf(h.msgs[1].Memo)}
+}
+
+// giveUp forwards a packet with no retries, times the forward out and
+// returns the error event of the acknowledgement written for the source
+// packet (the refund to its escrow is mocked).
+func giveUp(t *testing.T) GiveUp {
+	h := newHarness(t)
+	m := h.setup.Mocks
+	ctx := h.setup.Initializer.Ctx
+	src := packet(t, giveUpSequence, "transfer", "channel-7", forwardMemo(`,"retries":0`).String())
+	if ack := h.setup.ForwardMiddleware.OnRecvPacket(ctx, src, nil); ack != nil {
+		t.Fatalf("give up: not forwarded: %s", ack.Acknowledgement())
+	}
+	chanCap := capabilitytypes.NewCapability(1)
+	m.ChannelKeeperMock.EXPECT().LookupModuleByChannel(gomock.Any(), src.DestinationPort, src.DestinationChannel).
+		Return(transfertypes.ModuleName, chanCap, nil)
+	m.BankKeeperMock.EXPECT().SendCoins(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	m.ICS4WrapperMock.EXPECT().WriteAcknowledgement(gomock.Any(), chanCap, gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ sdk.Context, _ *capabilitytypes.Capability, p ibcexported.PacketI, ack ibcexported.Acknowledgement) error {
+			if p.GetSequence() != giveUpSequence || ack.Success() {
+				t.Fatalf("give up: acknowledgement %s for sequence %d", ack.Acknowledgement(), p.GetSequence())
+			}
+			return nil
+		})
+	ctx = ctx.WithEventManager(sdk.NewEventManager())
+	if err := h.setup.ForwardMiddleware.OnTimeoutPacket(ctx, packet(t, 1, "transfer", "channel-0", ""), nil); err != nil {
+		t.Fatalf("give up: %v", err)
+	}
+	if len(h.msgs) != 1 {
+		t.Fatal("give up: retried")
+	}
+	event := errorEvent(t, "give up", ctx.EventManager().Events())
+	if event == nil {
+		t.Fatal("give up: no error event")
+	}
+	return GiveUp{Sequence: src.Sequence, DstPort: src.DestinationPort, DstChannel: src.DestinationChannel, Event: event}
 }
 
 func forwardMemo(fields ...any) Memo {
@@ -302,6 +391,7 @@ func TestFixture(t *testing.T) {
 	for _, m := range retryMemos() {
 		f.Retry = append(f.Retry, retry(t, m.name, m.memo))
 	}
+	f.GiveUp = giveUp(t)
 	var buf bytes.Buffer
 	e := json.NewEncoder(&buf)
 	e.SetIndent("", "  ")

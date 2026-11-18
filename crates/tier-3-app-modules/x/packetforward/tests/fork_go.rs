@@ -3,9 +3,16 @@
 //! `OnTimeoutPacket` (`conformance/pfm-fork`), against the Rust code that
 //! runs from app version 12.
 #![allow(clippy::unwrap_used)]
+use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+use celestia_proto::ibc::core::channel::v1::Packet;
 use serde_json::Value;
+use x_ibc::router::IbcModule;
 use x_packetforward::memo::{self, MAX_FORWARD_MEMO_LENGTH, Pfm, Recv};
-use x_packetforward::middleware::{DEFAULT_FORWARD_TIMEOUT_NS, FORK_ERROR_ACK_MESSAGE};
+use x_packetforward::middleware::{
+    DEFAULT_FORWARD_TIMEOUT_NS, EVENT_TYPE_FORWARD_ERROR, FORK_ERROR_ACK_MESSAGE,
+    PacketForwardMiddleware,
+};
+use x_packetforward::{STORE_KEY, refund_packet_key, set_in_flight_packet};
 
 /// The fork commit the fixture was generated from (`conformance/pfm-fork`).
 const FORK_COMMIT: &str = "106efffd6a4be3460e33ccf63b0e034b9be709f9";
@@ -25,12 +32,61 @@ fn memo_of(v: &Value) -> String {
 
 fn assert_bytes(got: &str, want: &Value, name: &str) {
     let got = gostr::to_go_bytes(got);
-    assert_eq!(got.len() as u64, want["len"].as_u64().unwrap(), "{name}");
+    assert_eq!(
+        got.len() as u64,
+        want["len"].as_u64().unwrap(),
+        "{name}: {:?}",
+        String::from_utf8_lossy(&got)
+    );
     assert_eq!(
         encoding::hex::encode(&hash::sha256(&got)),
         want["sha256"].as_str().unwrap(),
-        "{name}"
+        "{name}: {:?}",
+        String::from_utf8_lossy(&got)
     );
+}
+
+/// The packets of the fixture: ICS-20 data as the oracle builds it.
+fn packet(sequence: u64, port: &str, channel: &str, memo: &str) -> Packet {
+    Packet {
+        sequence,
+        source_port: port.into(),
+        source_channel: channel.into(),
+        destination_port: "transfer".into(),
+        destination_channel: "channel-99".into(),
+        data: serde_json::to_vec(&serde_json::json!({
+            "denom": "uatom", "amount": "100",
+            "sender": "cosmos1wnlew8ss0sqclfalvj6jkcyvnwq79fd74qxxue",
+            "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+            "memo": memo,
+        }))
+        .unwrap(),
+        ..Default::default()
+    }
+}
+
+fn v12(store: &mut sdk::MultiStore) -> sdk::Context<'_> {
+    let mut ctx = sdk::Context::new(store, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 12 });
+    ctx
+}
+
+/// Checks that `ctx` holds exactly one `packet_forward_error` event, with
+/// the fixture's attributes `want` (keys, order and value bytes).
+fn assert_error_event(ctx: &sdk::Context<'_>, want: &Value, name: &str) {
+    let events: Vec<_> = ctx
+        .events
+        .events()
+        .iter()
+        .filter(|e| e.r#type == EVENT_TYPE_FORWARD_ERROR)
+        .collect();
+    assert_eq!(events.len(), 1, "{name}: {events:?}");
+    let want = want.as_array().unwrap();
+    assert_eq!(events[0].attributes.len(), want.len(), "{name}");
+    for (got, want) in events[0].attributes.iter().zip(want) {
+        assert_eq!(got.key, want["key"].as_str().unwrap(), "{name}");
+        assert_bytes(&got.value, &want["value"], name);
+    }
 }
 
 #[test]
@@ -43,6 +99,7 @@ fn memo_decisions_match_the_fork() {
     let error_ack = encoding::hex::encode(
         &x_ibc::router::Acknowledgement::error_string(FORK_ERROR_ACK_MESSAGE).bytes,
     );
+    let module = PacketForwardMiddleware::new(x_transfer::relay::TransferModule);
     let recv = f["recv"].as_array().unwrap();
     assert!(recv.len() >= 90);
     let mut over_limit = 0;
@@ -58,6 +115,14 @@ fn memo_decisions_match_the_fork() {
                     over_limit += 1;
                 }
                 assert_eq!(v["ack_hex"].as_str().unwrap(), error_ack, "{name}");
+                // The middleware rejects the memo before it touches the
+                // transfer app or any store.
+                let mut store = sdk::MultiStore::new();
+                let mut ctx = v12(&mut store);
+                let p = packet(7, "transfer", "channel-7", &memo);
+                let ack = module.on_recv_packet(&mut ctx, &p, &[]).unwrap().unwrap();
+                assert!(!ack.success, "{name}");
+                assert_error_event(&ctx, &v["event"], name);
             }
             "forward" => {
                 let Recv::Forward(m) = got else {
@@ -109,4 +174,27 @@ fn memo_decisions_match_the_fork() {
         };
         assert_bytes(&next, &v["retried"], name);
     }
+
+    // A forwarded packet times out with no retries left: the event names
+    // the source packet. Writing the acknowledgement then fails here (no
+    // IBC state); the event comes first, as in Go.
+    let g = &f["give_up"];
+    let mut store = sdk::MultiStore::new();
+    store.mount(STORE_KEY, sdk::Kind::Iavl).unwrap();
+    let mut ctx = v12(&mut store);
+    let p = packet(1, "transfer", "channel-0", "");
+    set_in_flight_packet(
+        &mut ctx,
+        &refund_packet_key(&p.source_channel, &p.source_port, p.sequence),
+        &celestia_proto::packetforward::v1::InFlightPacket {
+            refund_channel_id: g["dst_channel"].as_str().unwrap().into(),
+            refund_port_id: g["dst_port"].as_str().unwrap().into(),
+            refund_sequence: g["sequence"].as_u64().unwrap(),
+            retries_remaining: 0,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let _ = module.on_timeout_packet(&mut ctx, &p, &[]);
+    assert_error_event(&ctx, &g["event"], "give up");
 }
