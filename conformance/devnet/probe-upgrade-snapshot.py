@@ -100,7 +100,10 @@ def run(args, **kwargs):
 def check_port():
     # Never send fixture traffic to a pre-existing local ABCI application.
     with socket.socket() as probe:
+        # Go reuses the port when connections from the last binary are in TIME_WAIT.
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         probe.bind(ADDR)
+        probe.listen()
 
 
 def start(binary, home, label):
