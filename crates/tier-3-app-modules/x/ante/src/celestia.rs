@@ -482,16 +482,16 @@ fn check_module_query_requests(msg: &Any) -> sdk::Result<()> {
 }
 
 /// `ParamFilterDecorator.validateMsgs`.
-fn validate_param_msgs(msgs: &[Any], deps: &impl AnteDeps) -> R<()> {
+fn validate_param_msgs(ctx: &Context<'_>, msgs: &[Any], deps: &impl AnteDeps) -> R<()> {
     if msgs.is_empty() {
         return Err(errs::invalid_request("must include at least one message").into());
     }
     for m in msgs {
         if let Some(nested) = txview::msg_exec_msgs(m)? {
-            validate_param_msgs(&nested, deps)?;
+            validate_param_msgs(ctx, &nested, deps)?;
         } else if let Some(nested) = txview::submit_proposal_msgs(m)? {
-            validate_param_msgs(&nested, deps)?;
-        } else if let Some(r) = deps.param_filter(m) {
+            validate_param_msgs(ctx, &nested, deps)?;
+        } else if let Some(r) = deps.param_filter(ctx, m) {
             r?;
         }
     }
@@ -499,13 +499,13 @@ fn validate_param_msgs(msgs: &[Any], deps: &impl AnteDeps) -> R<()> {
 }
 
 /// `ParamFilterDecorator`.
-pub fn param_filter(tx: &Tx, deps: &impl AnteDeps) -> R<()> {
+pub fn param_filter(ctx: &Context<'_>, tx: &Tx, deps: &impl AnteDeps) -> R<()> {
     for m in tx.msgs() {
         if let Some(nested) = txview::submit_proposal_msgs(m)? {
-            validate_param_msgs(&nested, deps)?;
+            validate_param_msgs(ctx, &nested, deps)?;
         }
         if let Some(nested) = txview::msg_exec_msgs(m)? {
-            validate_param_msgs(&nested, deps)?;
+            validate_param_msgs(ctx, &nested, deps)?;
         }
     }
     Ok(())
@@ -621,6 +621,78 @@ mod tests {
             messages,
             ..Default::default()
         })
+    }
+
+    #[test]
+    fn governance_proposals_use_chain_and_release_age_limits() {
+        use celestia_proto::celestia_core_proto::tendermint::types::{
+            BlockParams, EvidenceParams, ValidatorParams, VersionParams,
+        };
+        use celestia_proto::cosmos::{consensus, staking};
+
+        let previous = sdk::version::app_version();
+        for (release, committed, chain, seconds, blocks) in [
+            (11, 11, "corto-1", 337 * 3600, 404_400),
+            (11, 12, "corto-1", 337 * 3600, 404_400),
+            (12, 11, "corto-1", 337 * 3600, 1_011_000),
+            (12, 12, "corto-1", 600, 500),
+            (12, 12, "mocha-5", 337 * 3600, 1_011_000),
+        ] {
+            sdk::version::set_app_version(release);
+            let mut ms = MultiStore::new();
+            let mut ctx = Context::new(
+                &mut ms,
+                Header {
+                    chain_id: chain.into(),
+                    ..Default::default()
+                },
+                ExecMode::Finalize,
+            );
+            ctx.consensus_params.version = Some(VersionParams { app: committed });
+            let check = |m| {
+                param_filter(
+                    &ctx,
+                    &tx_of(vec![msg_exec(vec![submit_proposal(vec![m])])]),
+                    &crate::deps::StoreDeps::default(),
+                )
+            };
+            for duration in [600, 337 * 3600] {
+                let staking = Any::pack(&staking::v1beta1::MsgUpdateParams {
+                    params: Some(staking::v1beta1::Params {
+                        bond_denom: "utia".into(),
+                        unbonding_time: Some(pbjson_types::Duration {
+                            seconds: duration,
+                            nanos: 0,
+                        }),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                });
+                assert_eq!(check(staking).is_ok(), duration == seconds);
+                for age in [500, 404_400, 1_011_000] {
+                    let evidence = Any::pack(&consensus::v1::MsgUpdateParams {
+                        block: Some(BlockParams::default()),
+                        evidence: Some(EvidenceParams {
+                            max_age_num_blocks: age,
+                            max_age_duration: Some(pbjson_types::Duration {
+                                seconds: duration,
+                                nanos: 0,
+                            }),
+                            max_bytes: 1_048_576,
+                        }),
+                        validator: Some(ValidatorParams {
+                            pub_key_types: vec!["ed25519".into()],
+                        }),
+                        ..Default::default()
+                    });
+                    assert_eq!(
+                        check(evidence).is_ok(),
+                        duration == seconds && age == blocks
+                    );
+                }
+            }
+        }
+        sdk::version::set_app_version(previous);
     }
 
     #[test]

@@ -414,7 +414,7 @@ fn run_chain(
         celestia::fibre_stateful_validation(ctx, tx, simulate, deps)?;
         celestia::fibre_sig_verification(ctx, tx, simulate, deps)?;
     }
-    celestia::param_filter(tx, deps)?;
+    celestia::param_filter(ctx, tx, deps)?;
     sigverify::increment_sequence(ctx, tx)?;
     celestia::redundant_relay(ctx, tx, simulate, deps)?;
     Ok(priority)
