@@ -14,6 +14,7 @@
 //! validation and validator-signature checks are in [`msgs`]; payment
 //! promise encoding and signatures in [`promise`].
 
+mod genesis;
 pub mod msgs;
 pub mod promise;
 
@@ -297,32 +298,11 @@ pub fn is_payment_processed_by_hash(ctx: &mut Context<'_>, hash: &[u8]) -> Resul
     ctx.has(STORE_KEY, &processed_by_hash_key(hash))
 }
 
-/// Checks the legacy payment fields in v12's `GenesisState.ValidateRecords`.
-fn validate_legacy_payments(payments: &[ProcessedPayment]) -> Result<()> {
-    let mut hashes = std::collections::HashSet::new();
-    for payment in payments {
-        let hash = payment.payment_promise_hash.as_slice();
-        let error = if hash.is_empty() {
-            "invalid hash"
-        } else if !hashes.insert(hash) {
-            "duplicate hash"
-        } else if is_zero(&ts_or_zero(payment.processed_at)) {
-            "invalid timestamp"
-        } else {
-            continue;
-        };
-        return Err(sdk::error::go_panic(format!(
-            "invalid fibre genesis state: {error}"
-        )));
-    }
-    Ok(())
-}
-
 /// `InitGenesis`.
 pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
     let is_v12 = sdk::version::is_v12(executing_version(ctx));
     if is_v12 {
-        validate_legacy_payments(&gs.processed_payments)?;
+        genesis::validate_records(gs)?;
     }
     set_params(ctx, &gs.params.unwrap_or_default())?;
     if is_v12 {
