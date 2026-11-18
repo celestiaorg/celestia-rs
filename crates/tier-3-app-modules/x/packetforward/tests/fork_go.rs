@@ -9,8 +9,7 @@ use serde_json::Value;
 use x_ibc::router::IbcModule;
 use x_packetforward::memo::{self, MAX_FORWARD_MEMO_LENGTH, Pfm, Recv};
 use x_packetforward::middleware::{
-    DEFAULT_FORWARD_TIMEOUT_NS, EVENT_TYPE_FORWARD_ERROR, FORK_ERROR_ACK_MESSAGE,
-    PacketForwardMiddleware,
+    EVENT_TYPE_FORWARD_ERROR, FORK_ERROR_ACK_MESSAGE, PacketForwardMiddleware, forward_msg_transfer,
 };
 use x_packetforward::{STORE_KEY, refund_packet_key, set_in_flight_packet};
 
@@ -128,32 +127,24 @@ fn memo_decisions_match_the_fork() {
                 let Recv::Forward(m) = got else {
                     panic!("{name}: {got:?}");
                 };
+                // The middleware's own defaults and the MsgTransfer it
+                // builds, at block time 0 (as the oracle runs).
+                let (timeout, retries) = module.timeout_and_retries(&m);
+                let mut store = sdk::MultiStore::new();
+                let ctx = v12(&mut store);
+                let token = sdk::coins::Coin::new("uatom", 100);
+                let msg = forward_msg_transfer(&ctx, &m, &token, "pfm", timeout).unwrap();
                 let fw = &v["forwarded"];
-                assert_eq!(fw["receiver"], m.receiver.as_str(), "{name}");
-                assert_eq!(fw["port"], m.port.as_str(), "{name}");
-                assert_eq!(fw["channel"], m.channel.as_str(), "{name}");
-                // Block time 0: the timeout timestamp is the timeout.
-                let timeout = if m.timeout <= 0 {
-                    DEFAULT_FORWARD_TIMEOUT_NS
-                } else {
-                    m.timeout
-                };
+                assert_eq!(fw["receiver"], msg.receiver.as_str(), "{name}");
+                assert_eq!(fw["port"], msg.source_port.as_str(), "{name}");
+                assert_eq!(fw["channel"], msg.source_channel.as_str(), "{name}");
                 assert_eq!(
                     fw["timeout_ns"].as_u64(),
-                    u64::try_from(timeout).ok(),
+                    Some(msg.timeout_timestamp),
                     "{name}"
                 );
-                assert_eq!(
-                    fw["retries"].as_u64(),
-                    Some(u64::from(m.retries.unwrap_or(0))),
-                    "{name}"
-                );
-                let next = match m.next {
-                    None => String::new(),
-                    Some(Ok(s)) => s,
-                    Some(Err(e)) => panic!("{name}: {e}"),
-                };
-                assert_bytes(&next, &fw["memo"], name);
+                assert_eq!(fw["retries"].as_u64(), Some(u64::from(retries)), "{name}");
+                assert_bytes(&msg.memo, &fw["memo"], name);
             }
             other => panic!("{name}: {other}"),
         }

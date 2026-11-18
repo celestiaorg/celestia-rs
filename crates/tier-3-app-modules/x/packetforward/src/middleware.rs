@@ -192,6 +192,43 @@ fn parse_amount(s: &str) -> Option<Amount> {
     Amount::parse(s).ok()
 }
 
+/// The `MsgTransfer` that `ForwardTransferPacket` sends for the forward
+/// metadata `md`: `token` from `sender` to `md`'s receiver, port and
+/// channel, `timeout` nanoseconds after the block time, with `md`'s next
+/// memo (upstream: re-encoded, the fork: as sent).
+pub fn forward_msg_transfer(
+    ctx: &Context<'_>,
+    md: &ForwardMetadata,
+    token: &Coin,
+    sender: &str,
+    timeout: i64,
+) -> Result<MsgTransfer> {
+    let memo = match &md.next {
+        Some(Ok(s)) => s.clone(),
+        Some(Err(e)) => return Err(sdk::error::sdk::json_marshal(e.clone())),
+        None => String::new(),
+    };
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let now = x_ibc::lightclients::tendermint::block_time(ctx) as i64 as u64;
+    #[allow(clippy::cast_sign_loss)]
+    Ok(MsgTransfer {
+        source_port: md.port.clone(),
+        source_channel: md.channel.clone(),
+        token: Some(token.to_proto()),
+        sender: sender.to_owned(),
+        receiver: md.receiver.clone(),
+        timeout_height: Some(Height::default()),
+        timeout_timestamp: now.wrapping_add(timeout as u64),
+        memo,
+    })
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Every `MsgTransfer` sent to the transfer keeper (tests only).
+    static SENT: std::cell::RefCell<Vec<MsgTransfer>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 /// `ForwardTransferPacket`.
 #[allow(clippy::too_many_arguments)]
 fn forward_transfer_packet(
@@ -206,24 +243,9 @@ fn forward_transfer_packet(
     timeout: i64,
     nonrefundable: bool,
 ) -> Result<()> {
-    let memo = match &md.next {
-        Some(Ok(s)) => s.clone(),
-        Some(Err(e)) => return Err(sdk::error::sdk::json_marshal(e.clone())),
-        None => String::new(),
-    };
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    let now = x_ibc::lightclients::tendermint::block_time(ctx) as i64 as u64;
-    #[allow(clippy::cast_sign_loss)]
-    let msg = MsgTransfer {
-        source_port: md.port.clone(),
-        source_channel: md.channel.clone(),
-        token: Some(token.to_proto()),
-        sender: receiver.to_owned(),
-        receiver: md.receiver.clone(),
-        timeout_height: Some(Height::default()),
-        timeout_timestamp: now.wrapping_add(timeout as u64),
-        memo,
-    };
+    let msg = forward_msg_transfer(ctx, md, token, receiver, timeout)?;
+    #[cfg(test)]
+    SENT.with(|s| s.borrow_mut().push(msg.clone()));
     let res = relay::transfer(ctx, &msg).map_err(|e| {
         if is_panic(&e) {
             e
@@ -1121,6 +1143,12 @@ mod tests {
         );
     }
 
+    /// The `MsgTransfer`s sent to the transfer keeper on this thread since
+    /// the last call.
+    fn take_sent() -> Vec<MsgTransfer> {
+        SENT.with(|s| std::mem::take(&mut *s.borrow_mut()))
+    }
+
     const FIXED_ACK: &str =
         r#"{"error":"ABCI code: 11151: error handling packet: see events for details"}"#;
 
@@ -1368,6 +1396,13 @@ mod tests {
     /// Runs `OnTimeoutPacket` (wrapped app: [`OkApp`]) for a forwarded
     /// packet with `memo` and one retry left; returns the error text.
     fn retry(app: u64, memo: &str) -> String {
+        retry_sent(app, memo).0
+    }
+
+    /// [`retry`], and the `MsgTransfer` that the retry sent to the transfer
+    /// keeper (if any).
+    fn retry_sent(app: u64, memo: &str) -> (String, Option<MsgTransfer>) {
+        take_sent();
         let mut store = sdk::MultiStore::new();
         store.mount(STORE_KEY, sdk::Kind::Iavl).unwrap();
         let mut ctx = Context::new(&mut store, sdk::Header::default(), sdk::ExecMode::Finalize);
@@ -1385,9 +1420,56 @@ mod tests {
             },
         )
         .unwrap();
-        ok_module()
+        let err = ok_module()
             .on_timeout_packet(&mut ctx, &p, &[])
-            .map_or_else(|e| e.log, |()| String::new())
+            .map_or_else(|e| e.log, |()| String::new());
+        let mut sent = take_sent();
+        assert!(sent.len() <= 1);
+        (err, sent.pop())
+    }
+
+    /// From app version 12 the forwarded `MsgTransfer` carries `next` as
+    /// the sender's bytes (a JSON string: its unquoted content); upstream
+    /// re-encodes it. Both send the memo of the forward metadata to its
+    /// receiver, port and channel, with the middleware's default timeout.
+    #[test]
+    fn forwarded_transfer_memo_from_v12() {
+        let q = |s: &str| serde_json::to_string(s).unwrap();
+        for (next, fork, upstream) in [
+            (
+                r#"{ "b" : 1, "a" : "<" }"#.to_owned(),
+                r#"{ "b" : 1, "a" : "<" }"#,
+                r#"{"b":1,"a":"\u003c"}"#,
+            ),
+            (
+                q(r#"{ "a" : [ 1 ] }"#),
+                r#"{ "a" : [ 1 ] }"#,
+                r#"{"a":[1]}"#,
+            ),
+            (
+                r#"{"a":1,"a":2}"#.to_owned(),
+                r#"{"a":1,"a":2}"#,
+                r#"{"a":2}"#,
+            ),
+            ("null".to_owned(), "", ""),
+        ] {
+            let memo = forward(&format!(r#","next":{next}"#));
+            for (app, want) in [(10, upstream), (11, upstream), (12, fork)] {
+                take_sent();
+                let (res, received) = recv(app, &memo);
+                // The transfer fails on missing stores, after it was sent.
+                assert!(!res.unwrap().unwrap().success);
+                assert_eq!(received, 1);
+                let sent = take_sent();
+                assert_eq!(sent.len(), 1, "{app} {memo}");
+                let msg = &sent[0];
+                assert_eq!(msg.memo, want, "{app} {memo}");
+                assert_eq!(msg.receiver, "r");
+                assert_eq!(msg.source_port, "transfer");
+                assert_eq!(msg.source_channel, "channel-0");
+                assert_eq!(msg.timeout_timestamp, DEFAULT_FORWARD_TIMEOUT_NS as u64);
+            }
+        }
     }
 
     /// From app version 12 a timed-out packet is retried with its memo as
@@ -1398,12 +1480,17 @@ mod tests {
         let deep = format!("{}{}", "[".repeat(10_001), "]".repeat(10_001));
         for memo in ["hello", deep.as_str()] {
             for app in [10, 11] {
+                let (err, sent) = retry_sent(app, memo);
                 assert!(
-                    retry(app, memo).starts_with("error unmarshaling memo json"),
+                    err.starts_with("error unmarshaling memo json"),
                     "{app} {memo:.80}"
                 );
+                assert!(sent.is_none());
             }
         }
+        // Upstream re-encodes the memo it sends again.
+        let (_, sent) = retry_sent(10, r#"{ "a" : "<" }"#);
+        assert_eq!(sent.unwrap().memo, r#"{"a":"\u003c"}"#);
         for memo in [
             "hello",
             deep.as_str(),
@@ -1411,12 +1498,16 @@ mod tests {
             "null",
             r#"{"a":1,"a":2}"#,
         ] {
-            let err = retry(12, memo);
+            let (err, sent) = retry_sent(12, memo);
             // The retry reaches the transfer, which fails on missing stores.
             assert!(
                 !err.is_empty() && !err.contains("memo"),
                 "{memo:.80}: {err}"
             );
+            // It sent the memo exactly as the timed-out packet carried it.
+            let sent = sent.unwrap_or_else(|| panic!("{memo:.80}: not sent"));
+            assert_eq!(sent.memo, memo, "{memo:.80}");
+            assert_eq!(sent.receiver, "pfm");
             if memo != "hello" && memo != deep {
                 assert_eq!(err, retry(10, r#"{"a":1}"#), "{memo:.80}");
             }
