@@ -2,7 +2,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use encoding::{protobuf, varint};
+use encoding::{bech32, protobuf, varint};
 use proptest::prelude::*;
 use prost::Message;
 
@@ -46,6 +46,35 @@ proptest! {
         let written = varint::put_varint(&mut buf, value).expect("10-byte buffer is enough");
         prop_assert_eq!(written, encoded.len());
         prop_assert_eq!(&buf[..written], encoded.as_slice());
+    }
+
+    #[test]
+    fn sdk_and_fibre_bech32_decoders_enforce_their_length_limits(
+        (prefix, payload) in prop_oneof![
+            ("[a-z]{2,4}", prop::collection::vec(any::<u8>(), 50)),
+            ("[a-z]{7,9}", prop::collection::vec(any::<u8>(), 630)),
+            ("[a-z][a-z0-9]{0,15}", prop::collection::vec(any::<u8>(), 0..=80)),
+        ],
+        uppercase in any::<bool>(),
+    ) {
+        // The first two strategies yield 89–91 and 1022–1024 encoded characters.
+        let mut address = bech32::encode(&prefix, &payload).expect("valid prefix");
+        if uppercase {
+            address.make_ascii_uppercase();
+        }
+        let expected = (prefix, payload);
+        let sdk = bech32::decode_and_convert(&address);
+        if address.len() <= 1023 {
+            prop_assert_eq!(sdk.as_ref(), Ok(&expected));
+        } else {
+            prop_assert!(sdk.is_err());
+        }
+        let fibre = bech32::decode_to_base256(&address);
+        if address.len() <= 90 {
+            prop_assert_eq!(fibre.as_ref(), Ok(&expected));
+        } else {
+            prop_assert!(fibre.is_err());
+        }
     }
 
     #[test]
