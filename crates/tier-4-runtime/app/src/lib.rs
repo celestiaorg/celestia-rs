@@ -184,6 +184,9 @@ pub struct AppOptions {
     /// Chain ID to use when the database does not know it yet (a node
     /// bootstrapped by state sync never sees InitChain).
     pub chain_id: Option<String>,
+    /// App version in the trusted local genesis for `chain_id`. A node
+    /// bootstrapped by state sync has no InitChain execution marker.
+    pub genesis_app_version: Option<u64>,
     /// Node-local settings (block retention, halt, upgrade info).
     pub node: NodeOptions,
 }
@@ -388,6 +391,24 @@ impl App {
                 .root_mut()
                 .set_metadata(CHAIN_ID_KEY, chain_id.clone().into_bytes());
         }
+        // Stage the trusted genesis identity before a fresh state sync.
+        // Snapshot import commits staged local metadata atomically with the
+        // restored state. A signal in a snapshot cannot select a new binary.
+        if options.genesis_app_version == Some(upgrades::V12_APP_VERSION)
+            && options.chain_id.as_ref() == Some(&app.chain_id)
+            && (app.last_height == 0 || sdk::version::is_v12(app.app_version()))
+            && app
+                .ms
+                .root()
+                .get_metadata(EXECUTION_VERSION_KEY)
+                .map_err(store_err)?
+                .is_none()
+        {
+            app.ms.root_mut().set_metadata(
+                EXECUTION_VERSION_KEY,
+                upgrades::V12_APP_VERSION.to_be_bytes().to_vec(),
+            );
+        }
         app.set_node_options(options.node.clone());
         app.configure_execution_version()?;
         app.check_header = app.init_check_header();
@@ -447,8 +468,18 @@ impl App {
         }) {
             // These stores establish v10 at minimum. A signal can advance
             // consensus params before the v11 executable has been activated.
+            let committed_version = self.app_version();
             let header = self.init_check_header();
             let mut ctx = Context::new(&mut self.ms, header, ExecMode::Check);
+            if committed_version == upgrades::V12_APP_VERSION
+                && !x_upgrade::get_upgrade_plan(&mut ctx)?.is_some_and(|plan| {
+                    plan.name == "v12" && plan.height == self.last_height.saturating_add(1)
+                })
+            {
+                return Err(sdk::error::sdk::logic(
+                    "cannot determine the v12 executable from consensus parameters alone; supply the chain's genesis",
+                ));
+            }
             self.execution_version = Some(if x_upgrade::get_done_height(&mut ctx, "v11")? > 0 {
                 upgrades::V11_APP_VERSION
             } else {
@@ -1809,6 +1840,107 @@ mod node_options_tests {
                 assert_eq!(reopened.check_header.time.seconds, -62_135_596_800);
             }
         }
+    }
+
+    #[test]
+    fn v12_snapshot_uses_local_genesis_and_preserves_release_on_restart() {
+        let source_home = tempfile::tempdir().unwrap();
+        let mut source = App::open(source_home.path()).unwrap();
+        let mut ctx = Context::new(&mut source.ms, Header::default(), ExecMode::Finalize);
+        x_consensus::set_params(
+            &mut ctx,
+            &ConsensusParams {
+                version: Some(VersionParams { app: 12 }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        drop(ctx);
+        source.ms.flush().unwrap();
+        source.ms.commit().unwrap();
+        let manager = source.snapshot_manager().unwrap();
+        let snapshot = manager.create(source.ms.root(), 1).unwrap();
+        for genesis_version in [Some(12), None] {
+            let home = tempfile::tempdir().unwrap();
+            let mut dest = App::open_with(
+                home.path(),
+                AppOptions {
+                    chain_id: Some("v12-test".into()),
+                    genesis_app_version: genesis_version,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let offer = dest.offer_snapshot(abci::RequestOfferSnapshot {
+                snapshot: Some(abci::Snapshot {
+                    height: snapshot.height,
+                    format: snapshot.format,
+                    chunks: snapshot.chunks,
+                    hash: snapshot.hash.clone(),
+                    metadata: snapshot.metadata_bytes(),
+                }),
+                app_version: 12,
+                ..Default::default()
+            });
+            assert_eq!(
+                offer.result,
+                abci::response_offer_snapshot::Result::Accept as i32
+            );
+            for index in 0..snapshot.chunks {
+                let chunk = manager
+                    .load_chunk(snapshot.height, snapshot.format, index)
+                    .unwrap()
+                    .unwrap();
+                let reply = dest.apply_snapshot_chunk(abci::RequestApplySnapshotChunk {
+                    index,
+                    chunk,
+                    ..Default::default()
+                });
+                let result = if genesis_version.is_none() && index + 1 == snapshot.chunks {
+                    abci::response_apply_snapshot_chunk::Result::Abort
+                } else {
+                    abci::response_apply_snapshot_chunk::Result::Accept
+                };
+                assert_eq!(reply.result, result as i32);
+            }
+            if genesis_version.is_some() {
+                assert_eq!(dest.execution_version(), 12);
+                assert_eq!(dest.check_header.height, 1);
+                drop(dest);
+                assert_eq!(App::open(home.path()).unwrap().execution_version(), 12);
+            }
+        }
+    }
+
+    #[test]
+    fn pending_v12_signal_does_not_select_v12_execution_on_reopen() {
+        let home = tempfile::tempdir().unwrap();
+        let mut app = App::open(home.path()).unwrap();
+        let mut ctx = Context::new(&mut app.ms, Header::default(), ExecMode::Finalize);
+        x_consensus::set_params(
+            &mut ctx,
+            &ConsensusParams {
+                version: Some(VersionParams { app: 12 }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        x_upgrade::schedule_upgrade(
+            &mut ctx,
+            &celestia_proto::cosmos::upgrade::v1beta1::Plan {
+                name: "v12".into(),
+                height: 2,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        drop(ctx);
+        app.ms.flush().unwrap();
+        app.ms.commit().unwrap();
+        drop(app);
+        let reopened = App::open(home.path()).unwrap();
+        assert_eq!(reopened.app_version(), 12);
+        assert_eq!(reopened.execution_version(), 10);
     }
 
     #[test]
