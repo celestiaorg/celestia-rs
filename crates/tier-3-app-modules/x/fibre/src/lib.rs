@@ -8,6 +8,7 @@
 //! - `0x05 || hash` → `ProcessedPayment`
 //! - `0x06 || time(processed) || "/" || hash` → `ProcessedPayment`
 //! - `0x07` → promise freshness floor (`sdk.FormatTimeBytes`)
+//! - `0x08` → first block height (v12 genesis, big-endian int64)
 //!
 //! `time(t)` is `sdk.FormatTimeBytes`. The Msg server, stateful promise
 //! validation and validator-signature checks are in [`msgs`]; payment
@@ -54,6 +55,13 @@ pub const PROCESSED_BY_TIME_PREFIX: u8 = 0x06;
 pub const PROMISE_FRESHNESS_FLOOR_KEY: &[u8] = &[0x07];
 /// `MaxPromiseClockSkew` (10 minutes) in nanoseconds.
 pub const MAX_PROMISE_CLOCK_SKEW_NANOS: i128 = 600 * 1_000_000_000;
+
+/// Height of the first block, introduced by the v12 executable.
+const GENESIS_HEIGHT_KEY: &[u8] = &[0x08];
+
+fn executing_version(ctx: &Context<'_>) -> u64 {
+    sdk::version::executing(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app))
+}
 
 const HOUR: i64 = 3600;
 
@@ -138,10 +146,7 @@ pub(crate) fn decode<M: Message + Default>(bz: &[u8]) -> Result<M> {
 pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
     match ctx.get(STORE_KEY, PARAMS_KEY)? {
         Some(bz) if !bz.is_empty() => decode(&bz),
-        _ => {
-            let version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-            Ok(default_params_at(sdk::version::executing(version)))
-        }
+        _ => Ok(default_params_at(executing_version(ctx))),
     }
 }
 
@@ -292,6 +297,13 @@ pub fn is_payment_processed_by_hash(ctx: &mut Context<'_>, hash: &[u8]) -> Resul
 /// `InitGenesis`.
 pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
     set_params(ctx, &gs.params.unwrap_or_default())?;
+    if sdk::version::is_v12(executing_version(ctx)) {
+        ctx.set(
+            STORE_KEY,
+            GENESIS_HEIGHT_KEY.to_vec(),
+            ctx.height().max(1).to_be_bytes().to_vec(),
+        )?;
+    }
     for a in &gs.escrow_accounts {
         set_escrow_account(ctx, a)?;
     }

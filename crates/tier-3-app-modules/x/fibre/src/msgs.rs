@@ -462,6 +462,40 @@ pub fn validate_pay_for_fibre_signatures(ctx: &mut Context<'_>, m: &MsgPayForFib
     })
 }
 
+/// Staking records the set signing H at H-1, except at the first block.
+fn certificate_historical_height(ctx: &mut Context<'_>, promise_height: i64) -> Result<i64> {
+    if !sdk::version::is_v12(crate::executing_version(ctx)) {
+        return Ok(promise_height);
+    }
+    // The Go keeper reads this marker with an infinite gas meter.
+    let bytes = ctx
+        .multistore()
+        .get(crate::STORE_KEY, crate::GENESIS_HEIGHT_KEY)?;
+    let genesis_height = bytes
+        .as_deref()
+        .and_then(|b| b.try_into().ok())
+        .map_or(0, i64::from_be_bytes);
+    Ok(if promise_height == genesis_height {
+        promise_height
+    } else {
+        promise_height.wrapping_sub(1)
+    })
+}
+
+/// `Keeper.ValidateValidatorSetAvailable` on a v12 certificate cache hit.
+pub fn validate_validator_set_available(ctx: &mut Context<'_>, promise_height: i64) -> Result<()> {
+    let height = certificate_historical_height(ctx, promise_height)?;
+    if !ctx.has(
+        x_staking::STORE_KEY,
+        &x_staking::keys::historical_info(height),
+    )? {
+        return Err(errs::invalid_request(format!(
+            "validator signature validation failed: failed to get historical validator set at height {height}: no historical info found"
+        )));
+    }
+    Ok(())
+}
+
 fn validate_validator_signatures(
     ctx: &mut Context<'_>,
     sign_bytes: &[u8],
@@ -470,6 +504,7 @@ fn validate_validator_signatures(
 ) -> Result<()> {
     use celestia_proto::cosmos::crypto::ed25519::PubKey as Ed25519PubKey;
     use prost::{Message, Name};
+    let height = certificate_historical_height(ctx, height)?;
     let info = x_staking::store::get_historical_info(ctx, height)?.ok_or_else(|| {
         SdkError::new(
             "staking",
@@ -919,6 +954,58 @@ mod tests {
             a.balance.map(|c| c.amount).unwrap_or_default(),
             a.available_balance.map(|c| c.amount).unwrap_or_default(),
         )
+    }
+
+    #[test]
+    fn certificate_uses_the_validator_set_that_signed_the_promise_height() -> Result<()> {
+        use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+        let k = keys();
+        for (genesis_version, version, initial_height, promise_height) in [
+            (11, 11, 0, 10),
+            (11, 12, 0, 11),
+            (12, 12, 10, 10),
+            (12, 12, 10, 11),
+            (12, 12, 0, 11),
+        ] {
+            let mut ms = ms();
+            let now = 1_800_000_000;
+            let mut ctx = Context::new(&mut ms, header(now, initial_height), ExecMode::Finalize);
+            ctx.consensus_params.version = Some(VersionParams {
+                app: genesis_version,
+            });
+            crate::init_genesis(&mut ctx, &crate::GenesisState::default())?;
+            let marker = ctx.get(crate::STORE_KEY, crate::GENESIS_HEIGHT_KEY)?;
+            assert_eq!(
+                marker,
+                (genesis_version == 12).then(|| initial_height.max(1).to_be_bytes().to_vec())
+            );
+            let signer = setup(&mut ctx, &k)?; // Only height 10 has a validator set.
+            ctx.consensus_params.version = Some(VersionParams { app: version });
+            ctx.header.height = promise_height;
+            let gas = ctx.gas.consumed();
+            assert_eq!(certificate_historical_height(&mut ctx, promise_height)?, 10);
+            assert_eq!(ctx.gas.consumed(), gas);
+            let p = promise(&k, promise_height, now - 5, 1000);
+            let sb = promise::sign_bytes(&p).unwrap_or_default();
+            let sig = crypto::ed25519::sign(&k.ed, &sb).unwrap_or([0; 64]);
+            let msg = MsgPayForFibre {
+                signer,
+                payment_promise: Some(p),
+                validator_signatures: vec![sig.to_vec()],
+            };
+            validate_validator_set_available(&mut ctx, promise_height)?;
+            validate_pay_for_fibre_signatures(&mut ctx, &msg)?;
+            if version == 12 {
+                ctx.delete(x_staking::STORE_KEY, &x_staking::keys::historical_info(10))?;
+                let error = validate_validator_set_available(&mut ctx, promise_height)
+                    .expect_err("staking pruned height 10");
+                assert_eq!(
+                    error.log,
+                    "validator signature validation failed: failed to get historical validator set at height 10: no historical info found: invalid request"
+                );
+            }
+        }
+        Ok(())
     }
 
     #[test]
