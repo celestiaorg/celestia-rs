@@ -68,6 +68,7 @@ fn v11_tagged_upgrade() -> anyhow::Result<()> {
     let ours = app.finalize_block(req.clone())?;
     assert_eq!(ours.app_hash, go.app_hash);
     assert_eq!(ours.consensus_param_updates, go.consensus_param_updates);
+    assert_eq!(ours.timeout_info, go.timeout_info);
     assert_eq!(ours.tx_results, go.tx_results);
     assert_eq!(ours.validator_updates, go.validator_updates);
     assert!(matches!(
