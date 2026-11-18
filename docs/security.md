@@ -144,6 +144,15 @@ reason; re-check them at every triage (next: 2027-01-15, or when
 reed-solomon-erasure / ark-ff release). On 2026-10-15 `cargo audit`
 reported no vulnerability, only these three warnings.
 
+### Chrono maintenance advisory (2026-11-17)
+
+RustSec lists every Chrono version as unmaintained. The workspace resolves
+Chrono 0.4.45 solely through `pbjson-types` 0.7.0, which uses Chrono for
+protobuf timestamps. The scoped exception for RUSTSEC-2026-0543 expires
+on 2026-12-17. A change to the direct dependent or a separate advisory
+still triggers CI. Revisit the exception when upstream ships a replacement
+or by its expiry. [RustSec advisory](https://rustsec.org/advisories/RUSTSEC-2026-0543.html) · [Upstream issue](https://github.com/influxdata/pbjson/issues/162)
+
 ### Updates (2026-10-15)
 
 - `cargo update`: every dependency at its newest semver-compatible
