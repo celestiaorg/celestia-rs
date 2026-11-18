@@ -136,6 +136,8 @@ fn run_migrations(ctx: &mut Context<'_>, from: &VersionMap) -> Result<VersionMap
     for (name, to) in crate::modules::VERSION_MAP {
         match from.get(*name) {
             Some(v) if v == to => {}
+            Some(2) if *name == "blob" && *to == 3 => x_blob::migrate_params(ctx)?,
+            Some(1) if *name == "minfee" && *to == 2 => x_minfee::migrate_params(ctx)?,
             Some(v) => {
                 return Err(sdk::error::sdk::not_supported(format!(
                     "migration of module {name} from version {v} to {to}"
@@ -203,6 +205,67 @@ mod tests {
         assert_eq!(select_execution_version(&mut selected, 11), 10);
         let mut selected = Some(11);
         assert_eq!(select_execution_version(&mut selected, 10), 11);
+    }
+
+    #[test]
+    fn v11_handler_migrates_legacy_blob_and_minfee_parameters() -> Result<()> {
+        let mut ms = sdk::MultiStore::new();
+        ms.mount(x_blob::STORE_KEY, sdk::Kind::Iavl)?;
+        ms.mount(x_minfee::STORE_KEY, sdk::Kind::Iavl)?;
+        ms.mount(x_params::STORE_KEY, sdk::Kind::Iavl)?;
+        ms.mount(x_params::TSTORE_KEY, sdk::Kind::Transient)?;
+        let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        let mut versions: VersionMap = crate::modules::VERSION_MAP
+            .iter()
+            .map(|(name, version)| ((*name).to_owned(), *version))
+            .collect();
+        versions.insert("blob".into(), 2);
+        versions.insert("minfee".into(), 1);
+        let handler = Handlers::at(11);
+        let plan = Plan {
+            name: "v11".into(),
+            ..Plan::default()
+        };
+        x_params::set_raw(&mut ctx, "blob", b"GasPerBlobByte", b"12".to_vec())?;
+        x_params::set_raw(&mut ctx, "blob", b"GovMaxSquareSize", br#""0""#.to_vec())?;
+        x_params::set_raw(
+            &mut ctx,
+            "minfee",
+            b"NetworkMinGasPrice",
+            br#""0.000005""#.to_vec(),
+        )?;
+        let error = handler
+            .apply(&mut ctx, &plan, versions.clone())
+            .expect_err("zero square size");
+        assert_eq!(error.log, "gov max square size cannot be zero");
+        assert!(!ctx.has(x_blob::STORE_KEY, x_blob::PARAMS_KEY)?);
+
+        x_params::set_raw(&mut ctx, "blob", b"GovMaxSquareSize", br#""64""#.to_vec())?;
+        let migrated = handler.apply(&mut ctx, &plan, versions)?;
+        assert_eq!(migrated.get("blob"), Some(&3));
+        assert_eq!(migrated.get("minfee"), Some(&2));
+        assert!(ctx.has(x_minfee::STORE_KEY, x_minfee::PARAMS_KEY)?);
+        x_params::set_raw(
+            &mut ctx,
+            "minfee",
+            b"NetworkMinGasPrice",
+            br#""0.01""#.to_vec(),
+        )?;
+        assert!(ctx.has(x_blob::STORE_KEY, x_blob::PARAMS_KEY)?);
+        x_params::set_raw(&mut ctx, "blob", b"GasPerBlobByte", b"8".to_vec())?;
+        handler.apply(&mut ctx, &plan, migrated)?;
+        assert_eq!(
+            x_minfee::get_params(&mut ctx)?
+                .network_min_gas_price
+                .to_string(),
+            "0.000005000000000000"
+        );
+        let params = x_blob::get_params(&mut ctx)?;
+        assert_eq!(
+            (params.gas_per_blob_byte, params.gov_max_square_size),
+            (12, 64)
+        );
+        Ok(())
     }
 
     #[test]

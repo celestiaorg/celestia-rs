@@ -180,6 +180,13 @@ fn legacy_params(ctx: &mut Context<'_>) -> Result<Params> {
     })
 }
 
+/// `Migrator.MigrateParams` (blob module version 2 to 3).
+pub fn migrate_params(ctx: &mut Context<'_>) -> Result<()> {
+    let params = legacy_params(ctx)?;
+    validate_params(&params).map_err(undefined)?;
+    set_params(ctx, &params)
+}
+
 /// `Keeper.SetParams`.
 pub fn set_params(ctx: &mut Context<'_>, p: &Params) -> Result<()> {
     ctx.set(STORE_KEY, PARAMS_KEY.to_vec(), p.encode_to_vec())
