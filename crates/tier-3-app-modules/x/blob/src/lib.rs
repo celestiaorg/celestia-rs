@@ -135,8 +135,16 @@ pub fn validate_params(p: &Params) -> core::result::Result<(), String> {
 /// subspace when unset before app version 12. From app version 12 an unset
 /// store decodes as empty params (the v12 upgrade guarantees the key).
 pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
-    let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    read_params(ctx, !sdk::version::is_v12(sdk::version::executing(v)))
+    let bytes = ctx.get(STORE_KEY, PARAMS_KEY)?.unwrap_or_default();
+    if bytes.is_empty() && !uses_v12_params(ctx) {
+        return legacy_params(ctx);
+    }
+    Params::decode(bytes.as_slice()).map_err(|e| undefined(e.to_string()))
+}
+
+fn uses_v12_params(ctx: &Context<'_>) -> bool {
+    let version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    sdk::version::is_v12(sdk::version::executing(version))
 }
 
 /// `Keeper.GetParamsForQuery`: [`get_params`] for queries and exports. They
@@ -144,38 +152,32 @@ pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
 /// params are only in the legacy subspace, while the executing version is
 /// the binary's current one. Do not use it in the state machine.
 pub fn get_params_for_query(ctx: &mut Context<'_>) -> Result<Params> {
-    read_params(ctx, true)
+    if uses_v12_params(ctx) && !ctx.has(STORE_KEY, PARAMS_KEY)? {
+        return legacy_params(ctx);
+    }
+    get_params(ctx)
 }
 
-fn read_params(ctx: &mut Context<'_>, legacy_fallback: bool) -> Result<Params> {
-    match ctx.get(STORE_KEY, PARAMS_KEY)? {
-        Some(bz) if !bz.is_empty() => {
-            Params::decode(bz.as_slice()).map_err(|e| undefined(e.to_string()))
-        }
-        _ if !legacy_fallback => Ok(Params::default()),
-        _ => {
-            let gas = x_params::get_raw(ctx, MODULE_NAME, b"GasPerBlobByte")?;
-            let sq = x_params::get_raw(ctx, MODULE_NAME, b"GovMaxSquareSize")?;
-            let (Some(gas), Some(sq)) = (gas, sq) else {
-                return Err(undefined("UnmarshalJSON cannot decode empty bytes"));
-            };
-            let gas: serde_json::Value =
-                serde_json::from_slice(&gas).map_err(|e| undefined(e.to_string()))?;
-            let sq: serde_json::Value =
-                serde_json::from_slice(&sq).map_err(|e| undefined(e.to_string()))?;
-            let num = |v: &serde_json::Value| -> Option<u64> {
-                v.as_u64()
-                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
-            };
-            Ok(Params {
-                gas_per_blob_byte: num(&gas)
-                    .and_then(|v| u32::try_from(v).ok())
-                    .ok_or_else(|| undefined("invalid GasPerBlobByte"))?,
-                gov_max_square_size: num(&sq)
-                    .ok_or_else(|| undefined("invalid GovMaxSquareSize"))?,
-            })
-        }
-    }
+fn legacy_params(ctx: &mut Context<'_>) -> Result<Params> {
+    let gas = x_params::get_raw(ctx, MODULE_NAME, b"GasPerBlobByte")?;
+    let sq = x_params::get_raw(ctx, MODULE_NAME, b"GovMaxSquareSize")?;
+    let (Some(gas), Some(sq)) = (gas, sq) else {
+        return Err(undefined("UnmarshalJSON cannot decode empty bytes"));
+    };
+    let gas: serde_json::Value =
+        serde_json::from_slice(&gas).map_err(|e| undefined(e.to_string()))?;
+    let sq: serde_json::Value =
+        serde_json::from_slice(&sq).map_err(|e| undefined(e.to_string()))?;
+    let num = |v: &serde_json::Value| -> Option<u64> {
+        v.as_u64()
+            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+    };
+    Ok(Params {
+        gas_per_blob_byte: num(&gas)
+            .and_then(|v| u32::try_from(v).ok())
+            .ok_or_else(|| undefined("invalid GasPerBlobByte"))?,
+        gov_max_square_size: num(&sq).ok_or_else(|| undefined("invalid GovMaxSquareSize"))?,
+    })
 }
 
 /// `Keeper.SetParams`.
@@ -552,6 +554,9 @@ mod tests {
                 },
                 "app version {app}"
             );
+            // Empty proto bytes are a present record encoding zero-valued params.
+            set_params(&mut ctx, &Params::default())?;
+            assert_eq!(get_params_for_query(&mut ctx)?, want, "app version {app}");
         }
         Ok(())
     }
