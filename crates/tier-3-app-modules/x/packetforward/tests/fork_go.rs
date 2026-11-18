@@ -8,7 +8,7 @@ use x_packetforward::memo::{self, MAX_FORWARD_MEMO_LENGTH, Pfm, Recv};
 use x_packetforward::middleware::{DEFAULT_FORWARD_TIMEOUT_NS, FORK_ERROR_ACK_MESSAGE};
 
 /// The fork commit the fixture was generated from (`conformance/pfm-fork`).
-const FORK_COMMIT: &str = "15b9622da053b82091a89be4c4e42677297858d8";
+const FORK_COMMIT: &str = "106efffd6a4be3460e33ccf63b0e034b9be709f9";
 
 fn memo_of(v: &Value) -> String {
     v.as_array()

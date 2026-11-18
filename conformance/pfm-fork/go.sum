@@ -102,8 +102,8 @@ github.com/bytedance/sonic v1.5.0/go.mod h1:ED5hyg4y6t3/9Ku1R6dU/4KyJ48DZ4jPhfY1
 github.com/bytedance/sonic v1.8.0 h1:ea0Xadu+sHlu7x5O3gKhRpQ1IKiMrSiHttPF0ybECuA=
 github.com/bytedance/sonic v1.8.0/go.mod h1:i736AoUSYt75HyZLoJW9ERYxcy6eaN6h4BZXU064P/U=
 github.com/casbin/casbin/v2 v2.1.2/go.mod h1:YcPU1XXisHhLzuxH9coDNf2FbKpjGlbCg3n9yuLkIJQ=
-github.com/celestiaorg/ibc-apps/middleware/packet-forward-middleware/v8 v8.2.1-0.20261117023558-15b9622da053 h1:lzezuyEmfSfn23Ww00i/WVE6kH97qJjzOXpRT2gd++U=
-github.com/celestiaorg/ibc-apps/middleware/packet-forward-middleware/v8 v8.2.1-0.20261117023558-15b9622da053/go.mod h1:iQr34QYdwkJ7IUIaGTZFElQZOqnOqL1gXhYyYgF0FnA=
+github.com/celestiaorg/ibc-apps/middleware/packet-forward-middleware/v8 v8.2.1-celestia h1:zyBvSN2gcyKvEnpD/p9oN0fDxjzw3/YZgPwYt6f3N+o=
+github.com/celestiaorg/ibc-apps/middleware/packet-forward-middleware/v8 v8.2.1-celestia/go.mod h1:iQr34QYdwkJ7IUIaGTZFElQZOqnOqL1gXhYyYgF0FnA=
 github.com/cenkalti/backoff v2.2.1+incompatible/go.mod h1:90ReRw6GdpyfrHakVjL/QHaoyV4aDUVVkXQJJJ3NXXM=
 github.com/cenkalti/backoff/v4 v4.1.1/go.mod h1:scbssz8iZGpm3xbr14ovlUdkxfGXNInqkPWOWmG2CLw=
 github.com/cenkalti/backoff/v4 v4.1.3 h1:cFAlzYUlVYDysBEH2T5hyJZMh3+5+WCBvSnK6Q8UtC4=
