@@ -3387,6 +3387,7 @@ dependencies = [
  "mempool",
  "nodestore",
  "pbjson-types",
+ "proptest",
  "prost",
  "rustls",
  "rustls-pki-types",
