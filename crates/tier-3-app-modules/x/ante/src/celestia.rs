@@ -80,7 +80,7 @@ pub fn sparse_shares_needed(len: u32, contains_signer: bool) -> u64 {
 
 /// The message as Go's decorators see it (gogoproto's decoding; see
 /// `txdecode::prost_compatible`).
-fn decode<M: Message + Default>(any: &Any) -> R<M> {
+pub(crate) fn decode<M: Message + Default>(any: &Any) -> R<M> {
     let fixed = txdecode::prost_compatible(any);
     let any = fixed.as_ref().unwrap_or(any);
     M::decode(any.value.as_slice()).map_err(|e| Fail::Err(errs::tx_decode(e.to_string())))
@@ -169,7 +169,7 @@ fn reject_unsupported(msgs: &[Any], location: &str) -> R<()> {
     }
 }
 
-/// `UnsupportedMsgDecorator` (app version 11): reject the messages in
+/// `UnsupportedMsgDecorator` (app version 12): reject the messages in
 /// [`UNSUPPORTED_TYPE_URLS`] at the top level, then inside a `MsgExec` or
 /// gov v1 `MsgSubmitProposal`.
 pub fn unsupported_msg(tx: &Tx) -> R<()> {
@@ -185,7 +185,7 @@ pub fn unsupported_msg(tx: &Tx) -> R<()> {
 }
 
 /// `FibreLegacyEscrowDecorator` (celestia-app v10.6.0): reject deposits
-/// which would require a v11 migration outside consensus execution.
+/// which would require a v12 migration outside consensus execution.
 pub fn fibre_legacy_escrow(ctx: &Context<'_>, tx: &Tx) -> R<()> {
     if !matches!(
         ctx.mode,
