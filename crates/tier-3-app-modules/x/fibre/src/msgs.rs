@@ -600,17 +600,26 @@ fn validate_validator_signatures(
 
 // ---- Msg server ----
 
+fn escrow_signer_address(signer: &str) -> Result<Vec<u8>> {
+    sdk::address::acc_from_bech32_go(signer)
+        .map_err(|err| errs::invalid_address(format!("invalid signer address: {err}")))
+}
+
 /// `DepositToEscrow`.
 pub fn deposit_to_escrow(
     ctx: &mut Context<'_>,
     m: &MsgDepositToEscrow,
 ) -> Result<MsgDepositToEscrowResponse> {
-    let signer_addr = acc_from_bech32(&m.signer)
-        .map_err(|e| errs::invalid_address(format!("invalid signer address: {}", e.log)))?;
+    let signer_addr = escrow_signer_address(&m.signer)?;
+    let signer = if sdk::version::is_v12(crate::executing_version(ctx)) {
+        to_bech32(ACC_PREFIX, &signer_addr)
+    } else {
+        m.signer.clone()
+    };
     let amount = coin(m.amount.as_ref())?;
-    let mut escrow = get_escrow_account(ctx, &m.signer)?.unwrap_or_else(|| {
+    let mut escrow = get_escrow_account(ctx, &signer)?.unwrap_or_else(|| {
         celestia_proto::celestia::fibre::v1::EscrowAccount {
-            signer: m.signer.clone(),
+            signer: signer.clone(),
             balance: Some(Coin::new(amount.denom.clone(), 0).to_proto()),
             available_balance: Some(Coin::new(amount.denom.clone(), 0).to_proto()),
         }
@@ -625,7 +634,7 @@ pub fn deposit_to_escrow(
     emit(
         ctx,
         &EventDepositToEscrow {
-            signer: m.signer.clone(),
+            signer,
             amount: Some(amount.to_proto()),
         },
     )?;
@@ -637,10 +646,14 @@ pub fn request_withdrawal(
     ctx: &mut Context<'_>,
     m: &MsgRequestWithdrawal,
 ) -> Result<MsgRequestWithdrawalResponse> {
-    let Some(mut escrow) = get_escrow_account(ctx, &m.signer)? else {
+    let signer = if sdk::version::is_v12(crate::executing_version(ctx)) {
+        to_bech32(ACC_PREFIX, &escrow_signer_address(&m.signer)?)
+    } else {
+        m.signer.clone()
+    };
+    let Some(mut escrow) = get_escrow_account(ctx, &signer)? else {
         return Err(errs::not_found(format!(
-            "escrow account not found for signer: {}",
-            m.signer
+            "escrow account not found for signer: {signer}"
         )));
     };
     let amount = coin(m.amount.as_ref())?;
@@ -655,19 +668,18 @@ pub fn request_withdrawal(
     if ctx
         .get(
             STORE_KEY,
-            &crate::withdrawal_by_signer_key(&m.signer, &requested),
+            &crate::withdrawal_by_signer_key(&signer, &requested),
         )?
         .is_some()
     {
         return Err(errs::invalid_request(format!(
-            "withdrawal request already exists for signer {} at timestamp {}",
-            m.signer,
+            "withdrawal request already exists for signer {signer} at timestamp {}",
             sdk::time::go_time_string(&requested)
         )));
     }
     let available_at = add(&requested, dur(params.withdrawal_delay.as_ref()));
     let w = Withdrawal {
-        signer: m.signer.clone(),
+        signer: signer.clone(),
         amount: Some(amount.to_proto()),
         requested_timestamp: Some(requested),
         available_timestamp: Some(available_at),
@@ -678,7 +690,7 @@ pub fn request_withdrawal(
     emit(
         ctx,
         &EventWithdrawFromEscrowRequest {
-            signer: m.signer.clone(),
+            signer,
             amount: Some(amount.to_proto()),
             requested_at: Some(requested),
             available_at: Some(available_at),
@@ -1027,6 +1039,56 @@ mod tests {
                     "validator signature validation failed: failed to get historical validator set at height 10: no historical info found: invalid request"
                 );
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn escrow_messages_use_the_releases_signer_spelling() -> Result<()> {
+        use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+
+        for version in [11, 12] {
+            let mut ms = ms();
+            let mut ctx = Context::new(&mut ms, header(1_800_000_000, 10), ExecMode::Finalize);
+            ctx.consensus_params.version = Some(VersionParams { app: version });
+            let lower = setup(&mut ctx, &keys())?;
+            let upper = lower.to_ascii_uppercase();
+            let expected = if version == 12 { &lower } else { &upper };
+            let other = if version == 12 { &upper } else { &lower };
+            let amount = Some(Coin::new("utia", 100).to_proto());
+            deposit_to_escrow(
+                &mut ctx,
+                &MsgDepositToEscrow {
+                    signer: upper.clone(),
+                    amount: amount.clone(),
+                },
+            )?;
+            let assert_event_signer = |ctx: &Context<'_>| {
+                let event = ctx.events.events().last().unwrap();
+                let attr = event
+                    .attributes
+                    .iter()
+                    .find(|attr| attr.key == "signer")
+                    .unwrap();
+                assert_eq!(attr.value, format!(r#""{expected}""#));
+            };
+            assert_event_signer(&ctx);
+            assert!(get_escrow_account(&mut ctx, other)?.is_none());
+            let withdrawal = MsgRequestWithdrawal {
+                signer: upper.clone(),
+                amount,
+            };
+            request_withdrawal(&mut ctx, &withdrawal)?;
+            assert_event_signer(&ctx);
+            assert_eq!(escrow(&mut ctx, expected), ("100".into(), "0".into()));
+            let key = crate::withdrawal_by_signer_key(expected, &ctx.header.time);
+            let stored = ctx.get(STORE_KEY, &key)?.unwrap();
+            assert_eq!(
+                Withdrawal::decode(stored.as_slice()).unwrap().signer,
+                *expected
+            );
+            let key = crate::withdrawal_by_signer_key(other, &ctx.header.time);
+            assert!(!ctx.has(STORE_KEY, &key)?);
         }
         Ok(())
     }
