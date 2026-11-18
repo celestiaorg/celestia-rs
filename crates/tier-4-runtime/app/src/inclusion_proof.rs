@@ -428,6 +428,7 @@ mod tests {
     use super::*;
     use celestia_proto::Any;
     use celestia_proto::celestia::fibre::v1::{MsgPayForFibre, PaymentPromise};
+    use celestia_proto::cosmos::crypto::secp256k1::PubKey;
     use celestia_proto::cosmos::tx::v1beta1::{TxBody, TxRaw};
     use shares::{FIBRE_COMMITMENT_SIZE, NAMESPACE_VERSION_ZERO_ID_SIZE, SIGNER_SIZE};
 
@@ -467,7 +468,7 @@ mod tests {
                     seconds: -62_135_596_800,
                     nanos: 0,
                 }),
-                signer_public_key: Some(Default::default()),
+                signer_public_key: Some(PubKey::default()),
                 ..Default::default()
             }),
             ..Default::default()
