@@ -276,13 +276,17 @@ impl x_valaddr::StakingKeeper for ValaddrStaking {
         )
     }
 
-    fn validator_cons_addr(
+    fn registration_validator(
         &mut self,
         ctx: &mut Context<'_>,
         val_addr: &[u8],
-    ) -> Result<Option<core::result::Result<Vec<u8>, String>>> {
-        Ok(x_staking::store::get_validator(ctx, val_addr)?
-            .map(|v| v.cons_addr().map_err(|e| e.log)))
+    ) -> Result<Option<x_valaddr::RegistrationValidator>> {
+        Ok(x_staking::store::get_validator(ctx, val_addr)?.map(|v| {
+            x_valaddr::RegistrationValidator {
+                bonded: v.is_bonded(),
+                consensus_address: v.cons_addr().map_err(|e| e.log),
+            }
+        }))
     }
 }
 
