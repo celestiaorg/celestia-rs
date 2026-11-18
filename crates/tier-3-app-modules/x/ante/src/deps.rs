@@ -26,8 +26,11 @@ pub enum IbcPacketMsg {
     TimeoutOnClose,
 }
 
-/// State the ante handler reads from modules outside `x/auth` and `x/bank`.
+/// App hooks and state the ante handler reads outside `x/auth` and `x/bank`.
 pub trait AnteDeps {
+    /// Stateless SDK message weight, including authz and ICA fan-out.
+    fn sdk_message_weight(&self, msgs: &[Any]) -> sdk::Result<usize>;
+
     /// circuit `Keeper.IsAllowed(ctx, typeURL)` (cosmossdk.io/x/circuit
     /// v0.1.1): `!DisableList.Has(ctx, typeURL)`.
     fn circuit_is_allowed(&self, ctx: &mut Context<'_>, type_url: &str) -> sdk::Result<bool>;
@@ -233,6 +236,8 @@ pub struct StoreDeps {
     /// The app's IBC checks (CheckTx); without them IBC packet txs fail
     /// with `ErrNotSupported` in CheckTx.
     pub ibc: Option<IbcHooks>,
+    /// State-independent SDK message counter supplied by the app.
+    pub sdk_message_counter: Option<fn(&[Any]) -> usize>,
 }
 
 impl StoreDeps {
@@ -242,6 +247,7 @@ impl StoreDeps {
         Self {
             node_min_gas_price,
             ibc: None,
+            sdk_message_counter: None,
         }
     }
 
@@ -303,6 +309,13 @@ pub fn pff_sig_cache() -> &'static Mutex<PffSigCache> {
 }
 
 impl AnteDeps for StoreDeps {
+    fn sdk_message_weight(&self, msgs: &[Any]) -> sdk::Result<usize> {
+        let count = self
+            .sdk_message_counter
+            .ok_or_else(|| errs::logic("missing SDK message gas counter"))?;
+        Ok(count(msgs))
+    }
+
     fn circuit_is_allowed(&self, ctx: &mut Context<'_>, type_url: &str) -> sdk::Result<bool> {
         // collections.KeySet[string] with prefix 2: terminal string key.
         let mut key = vec![2u8];

@@ -363,6 +363,19 @@ fn run_chain(
     } else {
         celestia::nested_msg(tx)?;
         frozen::ante(ctx, tx)?;
+        let committed = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+        if sdk::version::executing(committed) >= 12 {
+            let extra = deps.sdk_message_weight(tx.gogo_msgs())?.saturating_sub(1);
+            if extra > 0 {
+                // The count is bounded by the number of entries that fit in a transaction.
+                const GAS_PER_ADDITIONAL_SDK_MESSAGE: u64 = 10_000;
+                consume_gas(
+                    ctx,
+                    extra as u64 * GAS_PER_ADDITIONAL_SDK_MESSAGE,
+                    "ante: additional sdk messages",
+                )?;
+            }
+        }
         celestia::fibre_legacy_escrow(ctx, tx)?;
         let consensus_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
         if sdk::version::executing(consensus_version) >= 12 {
