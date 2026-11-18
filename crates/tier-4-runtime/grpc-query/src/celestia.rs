@@ -219,7 +219,10 @@ fn validate_payment_promise(
     let expiration = x_fibre::msgs::validate_payment_promise_stateful_internal(ctx, &p, false)
         .map_err(|e| crate::error::internal(e.log))?
         .map_err(crate::error::internal)?;
-    if x_fibre::promise::signer_is_frozen(&ctx.header.chain_id, &p)? {
+    if sdk::frozen::enabled_for_executable()
+        && x_fibre::promise::signer_is_frozen(&ctx.header.chain_id, &p)?
+    {
+        // The v11 query checks consensus params at the requested height.
         let version = x_consensus::get_params(ctx)?
             .and_then(|cp| cp.version)
             .map_or(0, |v| v.app);

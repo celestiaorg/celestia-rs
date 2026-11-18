@@ -437,10 +437,15 @@ impl App {
                 .iter()
                 .all(|name| info.store_info(name).is_some())
         }) {
-            // A restored post-governance state may not carry node-local
-            // metadata, but the two v10-only committed stores prove that its
-            // executable semantics have crossed the boundary.
-            self.execution_version = Some(self.app_version().max(10));
+            // These stores establish v10 at minimum. A signal can advance
+            // consensus params before the v11 executable has been activated.
+            let header = self.init_check_header();
+            let mut ctx = Context::new(&mut self.ms, header, ExecMode::Check);
+            self.execution_version = Some(if x_upgrade::get_done_height(&mut ctx, "v11")? > 0 {
+                upgrades::V11_APP_VERSION
+            } else {
+                upgrades::APP_VERSION
+            });
         }
 
         let Some(home) = self.node.home.as_deref() else {
@@ -635,6 +640,15 @@ impl App {
         }
         drop(ctx);
 
+        // An explicit v11 genesis starts under v11 without an upgrade plan.
+        // Persist its release with the first commit so reopens retain it.
+        if genesis_app_version == upgrades::V11_APP_VERSION {
+            self.execution_version = Some(genesis_app_version);
+            self.ms.root_mut().set_metadata(
+                EXECUTION_VERSION_KEY,
+                genesis_app_version.to_be_bytes().to_vec(),
+            );
+        }
         self.finalize_header = Some(Header {
             height: self.initial_height,
             ..header
@@ -1357,9 +1371,9 @@ mod finalize_gas_tests {
     };
     use prost::Message as _;
 
-    /// A DIRECT-signed MsgSend from a funded account with a 100,000 gas
-    /// limit, chain "test", sequence 0.
-    fn signed_send(ctx: &mut Context<'_>) -> Vec<u8> {
+    /// DIRECT-signed MsgSend messages from a funded account on chain "test",
+    /// sequence 0.
+    fn signed_sends(ctx: &mut Context<'_>, count: usize, gas_limit: u64) -> Vec<u8> {
         let sk = crypto::secp256k1::secret_key_from_secret(b"end-block-gas");
         let pk = crypto::secp256k1::public_key_from_secret_key(&sk).unwrap_or([0; 33]);
         let addr = crypto::secp256k1::address(&pk).to_vec();
@@ -1406,14 +1420,17 @@ mod finalize_gas_tests {
             .encode_to_vec(),
         ));
         let body = TxBody {
-            messages: vec![Any::pack(&MsgSend {
-                from_address: x_auth::bech32(&addr).unwrap_or_default(),
-                to_address: x_auth::bech32(&[7; 20]).unwrap_or_default(),
-                amount: vec![PbCoin {
-                    denom: "utia".into(),
-                    amount: "10".into(),
-                }],
-            })],
+            messages: vec![
+                Any::pack(&MsgSend {
+                    from_address: x_auth::bech32(&addr).unwrap_or_default(),
+                    to_address: x_auth::bech32(&[7; 20]).unwrap_or_default(),
+                    amount: vec![PbCoin {
+                        denom: "utia".into(),
+                        amount: "10".into(),
+                    }],
+                });
+                count
+            ],
             ..Default::default()
         };
         let mut key = vec![0x0a, 33];
@@ -1434,7 +1451,7 @@ mod finalize_gas_tests {
                     denom: "utia".into(),
                     amount: "2000".into(),
                 }],
-                gas_limit: 100_000,
+                gas_limit,
                 ..Default::default()
             }),
             ..Default::default()
@@ -1468,7 +1485,7 @@ mod finalize_gas_tests {
             ..Default::default()
         };
         let mut ctx = Context::new(&mut app.ms, header, ExecMode::Finalize);
-        let tx = signed_send(&mut ctx);
+        let tx = signed_sends(&mut ctx, 1, 100_000);
         let results = execute_txs_phased(&mut ctx, std::slice::from_ref(&tx));
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].code, 0, "{}", results[0].log);
@@ -1480,6 +1497,26 @@ mod finalize_gas_tests {
         );
         assert_eq!(ctx.gas.consumed(), 0);
         assert!(ctx.tx_bytes.is_empty());
+    }
+
+    #[test]
+    fn finalize_charges_for_additional_sdk_messages_from_v12() {
+        let gas_used = |app_version, message_count| {
+            let mut app = App::new();
+            let header = Header {
+                chain_id: "test".into(),
+                height: 5,
+                ..Default::default()
+            };
+            let mut ctx = Context::new(&mut app.ms, header, ExecMode::Finalize);
+            ctx.consensus_params.version = Some(VersionParams { app: app_version });
+            let tx = signed_sends(&mut ctx, message_count, 200_000);
+            let result = execute_txs_phased(&mut ctx, &[tx]).remove(0);
+            assert_eq!(result.code, 0, "{}", result.log);
+            result.gas_used
+        };
+        assert_eq!(gas_used(12, 1), gas_used(11, 1));
+        assert_eq!(gas_used(12, 2), gas_used(11, 2) + 10_000);
     }
 }
 
@@ -1630,7 +1667,7 @@ mod node_options_tests {
         x_consensus::set_params(
             &mut ctx,
             &ConsensusParams {
-                version: Some(VersionParams { app: 10 }),
+                version: Some(VersionParams { app: 11 }),
                 ..Default::default()
             },
         )
@@ -1640,6 +1677,10 @@ mod node_options_tests {
         app.ms.flush().unwrap();
         app.ms.commit().unwrap();
         drop(app);
+        let pending = App::open_with(home.path(), v10_options(home.path())).unwrap();
+        assert_eq!(pending.info().app_version, 11);
+        assert_eq!(pending.execution_version(), 10);
+        drop(pending);
         dump_upgrade_info(home.path(), 2, &plan).unwrap();
         let mut app = App::open_with(home.path(), v10_options(home.path())).unwrap();
         assert_eq!(app.execution_version(), 11);
@@ -1652,6 +1693,33 @@ mod node_options_tests {
         drop(app);
         std::fs::remove_file(home.path().join("data/upgrade-info.json")).unwrap();
         let app = App::open_with(home.path(), v10_options(home.path())).unwrap();
+        assert_eq!(app.execution_version(), 11);
+    }
+
+    #[test]
+    fn completed_v11_plan_identifies_release_without_local_metadata() {
+        let home = tempfile::tempdir().unwrap();
+        let mut app = App::open_with(home.path(), AppOptions::default()).unwrap();
+        let mut ctx = Context::new(
+            &mut app.ms,
+            Header {
+                height: 1,
+                ..Header::default()
+            },
+            ExecMode::Finalize,
+        );
+        x_upgrade::set_module_version_map(&mut ctx, modules::VERSION_MAP.iter().copied()).unwrap();
+        let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
+            name: "v11".into(),
+            height: 1,
+            ..Default::default()
+        };
+        x_upgrade::apply_upgrade(&mut ctx, &upgrades::Handlers::at(11), &plan).unwrap();
+        drop(ctx);
+        app.ms.flush().unwrap();
+        app.ms.commit().unwrap();
+        drop(app);
+        let app = App::open_with(home.path(), AppOptions::default()).unwrap();
         assert_eq!(app.execution_version(), 11);
     }
 

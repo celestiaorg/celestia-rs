@@ -79,13 +79,22 @@ pub fn network(chain_id: &str) -> Option<&'static Network> {
     )
 }
 
-/// Go deliberately checks committed consensus params, not the executing binary.
+/// Whether the executing release includes the v11 recovery hooks. An unset
+/// release allows isolated module calls to exercise the tagged rules.
+#[must_use]
+pub fn enabled_for_executable() -> bool {
+    matches!(crate::version::app_version(), 0 | ACTIVATION_VERSION)
+}
+
+/// In the v11 binary the rules activate using the context's consensus params.
 #[must_use]
 pub fn active(ctx: &Context<'_>) -> bool {
-    ctx.consensus_params
-        .version
-        .as_ref()
-        .is_some_and(|v| v.app >= ACTIVATION_VERSION)
+    enabled_for_executable()
+        && ctx
+            .consensus_params
+            .version
+            .as_ref()
+            .is_some_and(|v| v.app >= ACTIVATION_VERSION)
 }
 
 /// The registered error, optionally wrapped with a Go-style detail prefix.
@@ -104,11 +113,11 @@ pub fn error(detail: &str) -> SdkError {
 
 /// Apply the bank restriction at the SDK's normal send-restriction boundary.
 pub fn check_send(ctx: &Context<'_>, from: &[u8], to: &[u8]) -> Result<()> {
-    if let Some(n) = network(&ctx.header.chain_id)
+    if active(ctx)
+        && let Some(n) = network(&ctx.header.chain_id)
         && n.has(from)
         && to != n.whitehat
         && to != &hash::sha256(b"fee_collector")[..20]
-        && active(ctx)
     {
         return Err(error(""));
     }
@@ -172,15 +181,24 @@ mod tests {
             },
             crate::ExecMode::Finalize,
         );
-        for version in [10, 11, 12] {
+        for (executable, version, restricted) in [
+            (10, 11, false),
+            (11, 10, false),
+            (11, 11, true),
+            (11, 12, true),
+            (12, 11, false),
+            (12, 12, false),
+        ] {
+            crate::version::set_app_version(executable);
             ctx.consensus_params.version = Some(
                 celestia_proto::celestia_core_proto::tendermint::types::VersionParams {
                     app: version,
                 },
             );
-            assert_eq!(check_send(&ctx, &sender, &[7; 20]).is_err(), version >= 11);
+            assert_eq!(check_send(&ctx, &sender, &[7; 20]).is_err(), restricted);
             assert!(check_send(&ctx, &sender, &n.whitehat).is_ok());
             assert!(check_send(&ctx, &sender, &hash::sha256(b"fee_collector")[..20]).is_ok());
         }
+        crate::version::set_app_version(0);
     }
 }

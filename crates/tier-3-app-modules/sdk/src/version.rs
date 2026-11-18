@@ -47,7 +47,7 @@ pub const fn is_v9(v: u64) -> bool {
 
 /// First app version for the mainline consensus changes excluded from the
 /// v11 patch release (v11.0.0-corto / v11.0.0-mocha, issue #385).
-/// Frozen-account recovery rules activate independently at version 11.
+/// The frozen-account rules are specific to the v11 patch executable.
 pub const MAINLINE_RULES_FROM: u64 = 12;
 
 /// Whether `v` is executed with celestia-app v12 semantics (0 = unset is

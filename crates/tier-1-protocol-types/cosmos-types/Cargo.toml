@@ -18,7 +18,6 @@ crypto = { path = "../../tier-0-primitives/crypto" }
 encoding = { path = "../../tier-0-primitives/encoding" }
 hash = { path = "../../tier-0-primitives/hash" }
 prost = "0.13"
-tendermint-types = { path = "../tendermint-types" }
 
 [dev-dependencies]
 hex = "0.4"

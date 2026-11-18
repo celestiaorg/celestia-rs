@@ -390,3 +390,29 @@ fn events_and_logs_parity() -> anyhow::Result<()> {
     assert!(bad.is_empty(), "{bad:#?}");
     Ok(())
 }
+
+/// Official v11.0.0-corto and v11.0.0-mocha standalone binaries returned
+/// identical consensus and transaction responses for these ABCI requests.
+#[test]
+fn v11_cli_candidate_parity() -> anyhow::Result<()> {
+    let report = replay("v11-cli")?;
+    assert!(report.errors.is_empty(), "{:?}", report.errors);
+    assert!(
+        report.init_chain_diffs.is_empty(),
+        "{:?}",
+        report.init_chain_diffs
+    );
+    assert!(
+        report.event_log_diffs.is_empty(),
+        "{:?}",
+        report.event_log_diffs
+    );
+    assert_eq!(report.first_mismatch, None);
+    assert_eq!(report.halted_at, None);
+    assert_eq!(report.matched_heights, (1..=40).collect::<Vec<_>>());
+    assert_eq!(report.compared.prepare, 40);
+    assert_eq!(report.compared.prepare_with_txs, 11);
+    assert_eq!(report.compared.process, 40);
+    assert_eq!(report.compared.check_tx, 22);
+    Ok(())
+}

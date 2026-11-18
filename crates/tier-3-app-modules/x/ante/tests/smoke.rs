@@ -228,6 +228,68 @@ fn funded_ms(header: &Header, addr: &[u8]) -> MultiStore {
 }
 
 #[test]
+fn v12_ante_limits_module_query_requests() {
+    use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+    use celestia_proto::ibc::applications::interchain_accounts::host::v1::{
+        MsgModuleQuerySafe, QueryRequest,
+    };
+
+    let (sk, pk, addr) = key();
+    let signer = x_auth::bech32(&addr).unwrap();
+    let header = Header {
+        chain_id: "test".into(),
+        height: 5,
+        ..Default::default()
+    };
+    // The fixture has one top-level SDK message with no nested SDK messages.
+    let deps = StoreDeps {
+        sdk_message_counter: Some(<[Any]>::len),
+        ..StoreDeps::default()
+    };
+    for (version, requests) in [(11, 2), (12, 1), (12, 2)] {
+        let mut ms = funded_ms(&header, &addr);
+        let mut ctx = Context::new(&mut ms, header.clone(), ExecMode::Finalize);
+        ctx.consensus_params.version = Some(VersionParams { app: version });
+        let tx = sign_body(
+            &sk,
+            &pk,
+            0,
+            "test",
+            1,
+            TxBody {
+                messages: vec![Any::pack(&MsgModuleQuerySafe {
+                    signer: signer.clone(),
+                    requests: vec![
+                        QueryRequest {
+                            path: "/cosmos.bank.v1beta1.Query/TotalSupply".into(),
+                            ..Default::default()
+                        };
+                        requests
+                    ],
+                })],
+                ..Default::default()
+            },
+        );
+        ctx.tx_bytes.clone_from(&tx.tx_bytes);
+        let result = ante_handle(&mut ctx, &tx, false, &deps);
+        assert!(ctx.gas.consumed() > 0);
+        if (version, requests) == (12, 2) {
+            let err = result.expect_err("v12 ante rejects the second request");
+            assert_eq!(err.gas_wanted, 100_000);
+            assert_eq!((err.error.codespace, err.error.code), ("sdk", 18));
+            assert_eq!(
+                err.error.log,
+                "MsgModuleQuerySafe has 2 requests, limit is 1: invalid request"
+            );
+            let account = x_auth::get_account(&mut ctx, &addr).unwrap().unwrap();
+            assert_eq!(account.sequence(), 0);
+        } else {
+            assert!(result.is_ok(), "{result:?}");
+        }
+    }
+}
+
+#[test]
 #[allow(clippy::too_many_lines)] // Keep the signed callback and rollback assertions together.
 fn ibc_callback_cannot_translate_or_swallow_out_of_gas() {
     use celestia_proto::ibc::core::channel::v1::{MsgAcknowledgement, Packet};

@@ -20,6 +20,7 @@
 //! | 13 | `SigVerificationDecorator` (sdk) | [`sigverify::sig_verification`] |
 //! | 14 | `NestedMsgDecorator` (celestia) | [`celestia::nested_msg`] |
 //! | 15 | `FibreLegacyEscrowDecorator` (x/fibre) | [`celestia::fibre_legacy_escrow`] |
+//! | 15a | `ModuleQuerySafeRequestsDecorator` (celestia, from v12) | [`celestia::validate_module_query_requests`] |
 //! | 16 | `FibreSignatureGasDecorator` (x/fibre) | [`celestia::fibre_signature_gas`] |
 //! | 17 | `MinGasPFBDecorator` (x/blob) | [`celestia::min_gas_pfb`] |
 //! | 18 | `BlobShareDecorator` (x/blob) | [`celestia::blob_share`] |
@@ -362,7 +363,24 @@ fn run_chain(
     } else {
         celestia::nested_msg(tx)?;
         frozen::ante(ctx, tx)?;
+        let committed = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+        if sdk::version::executing(committed) >= 12 {
+            let extra = deps.sdk_message_weight(tx.gogo_msgs())?.saturating_sub(1);
+            if extra > 0 {
+                // The count is bounded by the number of entries that fit in a transaction.
+                const GAS_PER_ADDITIONAL_SDK_MESSAGE: u64 = 10_000;
+                consume_gas(
+                    ctx,
+                    extra as u64 * GAS_PER_ADDITIONAL_SDK_MESSAGE,
+                    "ante: additional sdk messages",
+                )?;
+            }
+        }
         celestia::fibre_legacy_escrow(ctx, tx)?;
+        let consensus_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+        if sdk::version::executing(consensus_version) >= 12 {
+            celestia::validate_module_query_requests(tx.gogo_msgs())?;
+        }
         celestia::fibre_signature_gas(ctx, tx)?;
     }
     celestia::min_gas_pfb(ctx, tx)?;
