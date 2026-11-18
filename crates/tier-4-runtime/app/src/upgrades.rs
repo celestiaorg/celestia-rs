@@ -14,6 +14,8 @@ use x_upgrade::VersionMap;
 pub const APP_VERSION: u64 = 10;
 /// Patch-release version supported alongside historical v9/v10 replay.
 pub const V11_APP_VERSION: u64 = 11;
+/// App version declared by current celestia-app main.
+pub const V12_APP_VERSION: u64 = 12;
 /// `appconsts.MaxAgeDuration` (337 h).
 pub const EVIDENCE_MAX_AGE_SECONDS: i64 = 337 * 3600;
 /// `appconsts.MaxAgeNumBlocks`.

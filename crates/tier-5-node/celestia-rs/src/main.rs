@@ -1395,6 +1395,7 @@ async fn abci(home: &Path, home_given: bool, a: AbciArgs) -> anyhow::Result<()> 
             interval: a.snapshot_interval,
             keep_recent: a.snapshot_keep_recent,
         };
+        node::apply_local_genesis(home, &mut options)?;
         options.node = node_options;
         let app = app::App::open_with(home, options)
             .map_err(|e| anyhow!("open {}: {}", home.display(), e.log))?;

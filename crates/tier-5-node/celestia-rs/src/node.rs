@@ -304,6 +304,23 @@ pub fn load_genesis(home: &Path) -> anyhow::Result<GenesisDoc> {
         .map_err(|e| anyhow!("genesis {}: {e}", path.display()))
 }
 
+/// Include the local genesis identity when bootstrapping an app outside the full node.
+pub fn apply_local_genesis(home: &Path, opts: &mut app::AppOptions) -> anyhow::Result<()> {
+    if home.join("config/genesis.json").try_exists()? {
+        let genesis = load_genesis(home)?;
+        if opts
+            .chain_id
+            .as_ref()
+            .is_some_and(|id| *id != genesis.chain_id)
+        {
+            anyhow::bail!("local genesis is for a different chain");
+        }
+        opts.chain_id = Some(genesis.chain_id);
+        opts.genesis_app_version = Some(genesis.consensus_params.version.app);
+    }
+    Ok(())
+}
+
 /// Opens the block and state stores of a home directory.
 pub fn open_stores(home: &Path) -> anyhow::Result<(BlockStore, StateStore)> {
     let data = home.join("data");
@@ -332,6 +349,7 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     }
     let mut app_opts = opts.app.clone();
     app_opts.chain_id = Some(genesis.chain_id.clone());
+    app_opts.genesis_app_version = Some(genesis.consensus_params.version.app);
     app_opts.node.home = Some(home.clone());
     let mut app =
         app::App::open_with(home, app_opts).map_err(|e| anyhow!("open app state: {}", e.log))?;
