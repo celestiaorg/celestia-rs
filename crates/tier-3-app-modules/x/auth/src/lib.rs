@@ -11,7 +11,7 @@ use celestia_proto::cosmos::auth::v1beta1::{BaseAccount, GenesisState, ModuleAcc
 use celestia_proto::cosmos::vesting::v1beta1 as vpb;
 use prost::{Message, Name};
 use sdk::error::sdk as errs;
-use sdk::{Context, Result};
+use sdk::{Context, MultiStore, Result};
 
 pub mod vesting;
 
@@ -271,8 +271,35 @@ pub fn set_params(ctx: &mut Context<'_>, p: &Params) -> Result<()> {
 /// `GetAccount`.
 pub fn get_account(ctx: &mut Context<'_>, addr: &[u8]) -> Result<Option<Account>> {
     ctx.get(STORE_KEY, &account_key(addr))?
-        .map(|b| Account::from_any(&decode::<Any>(&b)?))
+        .as_deref()
+        .map(decode_account)
         .transpose()
+}
+
+/// Reads the account at a committed height, independently of working state.
+pub fn get_account_at_version(
+    ms: &MultiStore,
+    height: i64,
+    addr: &[u8],
+) -> Result<Option<Account>> {
+    let store = ms
+        .root()
+        .get_store(STORE_KEY)
+        .map_err(|error| errs::io(error.to_string()))?;
+    let snapshot = store
+        .tree()
+        .get_immutable(height)
+        .map_err(|error| errs::io(error.to_string()))?;
+    snapshot
+        .get(&account_key(addr))
+        .map_err(|error| errs::io(error.to_string()))?
+        .as_deref()
+        .map(decode_account)
+        .transpose()
+}
+
+fn decode_account(bytes: &[u8]) -> Result<Account> {
+    Account::from_any(&decode::<Any>(bytes)?)
 }
 
 /// `HasAccount`.

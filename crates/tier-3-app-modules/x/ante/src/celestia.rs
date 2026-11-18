@@ -341,6 +341,41 @@ fn with_infinite_gas<T>(
     r
 }
 
+/// `SimulateSequenceDecorator`: lift lagging signer accounts in the
+/// simulation branch without charging gas for the account accesses.
+pub(crate) fn simulate_sequence(
+    ctx: &mut Context<'_>,
+    tx: &Tx,
+    pending_next_sequence: &dyn Fn(&[u8]) -> Option<u64>,
+) -> sdk::Result<()> {
+    let Ok(signers) = txview::signers(tx) else {
+        return Ok(());
+    };
+    with_infinite_gas(ctx, |ctx| {
+        for signer in signers {
+            let Some(mut account) = x_auth::get_account(ctx, &signer)? else {
+                continue;
+            };
+            let Some(next) = pending_next_sequence(&signer) else {
+                continue;
+            };
+            if next <= account.sequence() {
+                continue;
+            }
+            if matches!(account, x_auth::Account::Interchain(_)) {
+                return Err(SdkError::new(
+                    "interchainaccounts",
+                    14,
+                    "cannot set sequence number for interchain account: interchain account does not support this action",
+                ));
+            }
+            account.base_mut().sequence = next;
+            x_auth::set_account(ctx, &account)?;
+        }
+        Ok(())
+    })
+}
+
 /// `FibreStatefulValidationDecorator` (CheckTx and ReCheckTx only).
 pub fn fibre_stateful_validation(
     ctx: &mut Context<'_>,

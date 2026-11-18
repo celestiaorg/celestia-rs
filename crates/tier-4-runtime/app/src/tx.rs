@@ -70,7 +70,7 @@ pub fn run_ante(
     ctx: &mut Context<'_>,
     tx_bytes: &[u8],
     decode: DecodeFn,
-    ante: AnteFn,
+    ante: impl FnOnce(&mut Context<'_>, &Tx, bool) -> core::result::Result<u64, (SdkError, u64)>,
     simulate: bool,
 ) -> (Prepared, Result<()>) {
     ctx.gas = GasMeter::infinite();

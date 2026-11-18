@@ -53,6 +53,7 @@ pub fn route(path: &str) -> Option<AppHandler> {
 /// state that is discarded afterwards.
 pub fn simulate(app: &mut App, tx_bytes: &[u8]) -> (GasInfo, Result<SdkResult, SdkError>) {
     sdk::version::set_app_version(app.execution_version());
+    let next = app.pending_next_sequence_reader();
     let header = app.check_header.clone();
     let mut ctx = Context::new(&mut app.ms, header, ExecMode::Check);
     ctx.mode = ExecMode::Simulate;
@@ -69,7 +70,11 @@ pub fn simulate(app: &mut App, tx_bytes: &[u8]) -> (GasInfo, Result<SdkResult, S
         &mut ctx,
         tx_bytes,
         txpipe::decoder(app_version),
-        txpipe::ante,
+        |ctx, tx, _| {
+            x_ante::ante_simulate(ctx, tx, &txpipe::ante_deps(None), next.as_deref())
+                .map(|out| out.gas_wanted)
+                .map_err(|err| (err.error, err.gas_wanted))
+        },
         true,
     );
     let result = match res {
@@ -296,5 +301,115 @@ pub fn custom(
         _ => Err(errs::unknown_request(format!(
             "no custom querier found for route {route}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use celestia_proto::Any;
+    use celestia_proto::cosmos::auth::v1beta1::{BaseAccount, Params as AuthParams};
+    use celestia_proto::cosmos::bank::v1beta1::{MsgSend, Params as BankParams};
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::cosmos::tx::v1beta1::{
+        AuthInfo, Fee, ModeInfo, SignerInfo, TxBody, mode_info,
+    };
+
+    use super::*;
+
+    const SIGNER: [u8; 20] = [1; 20];
+
+    fn simulate_send(sequence: u64) -> Vec<u8> {
+        TxRaw {
+            body_bytes: TxBody {
+                messages: vec![Any::pack(&MsgSend {
+                    from_address: x_auth::bech32(&SIGNER).unwrap(),
+                    to_address: x_auth::bech32(&[2; 20]).unwrap(),
+                    amount: vec![Coin {
+                        denom: "utia".into(),
+                        amount: "1".into(),
+                    }],
+                })],
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            auth_info_bytes: AuthInfo {
+                signer_infos: vec![SignerInfo {
+                    mode_info: Some(ModeInfo {
+                        sum: Some(mode_info::Sum::Single(mode_info::Single { mode: 1 })),
+                    }),
+                    sequence,
+                    ..Default::default()
+                }],
+                fee: Some(Fee::default()),
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            signatures: vec![vec![0; 64]],
+        }
+        .encode_to_vec()
+    }
+
+    #[test]
+    fn simulate_uses_pending_sequence_without_mutating_check_state() {
+        let mut app = App::new();
+        app.execution_version = Some(12);
+        app.set_pending_sequencer(|signer| (signer == SIGNER).then_some(5));
+        {
+            let mut ctx = Context::new(&mut app.ms, sdk::Header::default(), ExecMode::Check);
+            x_auth::set_params(
+                &mut ctx,
+                &AuthParams {
+                    max_memo_characters: 256,
+                    tx_sig_limit: 7,
+                    tx_size_cost_per_byte: 10,
+                    sig_verify_cost_secp256k1: 1000,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let account_number = x_auth::next_account_number(&mut ctx).unwrap();
+            x_auth::set_account(
+                &mut ctx,
+                &x_auth::Account::Base(BaseAccount {
+                    address: x_auth::bech32(&SIGNER).unwrap(),
+                    account_number,
+                    sequence: 3,
+                    ..Default::default()
+                }),
+            )
+            .unwrap();
+            x_bank::set_params(
+                &mut ctx,
+                BankParams {
+                    default_send_enabled: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            x_blob::set_params(&mut ctx, &x_blob::default_params()).unwrap();
+            x_bank::set_balance(&mut ctx, &SIGNER, &sdk::coins::Coin::new("utia", 10)).unwrap();
+        }
+
+        for sequence in [5, 7] {
+            let (_, result) = simulate(&mut app, &simulate_send(sequence));
+            let error = result.unwrap_err();
+            assert_eq!((error.codespace, error.code), ("sdk", 32));
+            assert!(
+                error
+                    .log
+                    .contains(&format!("sequence mismatch, expected 6, got {sequence}")),
+                "{}",
+                error.log
+            );
+        }
+        let (_, result) = simulate(&mut app, &simulate_send(6));
+        assert!(result.is_ok(), "{result:?}");
+        let mut ctx = Context::new(&mut app.ms, sdk::Header::default(), ExecMode::Check);
+        let account = x_auth::get_account(&mut ctx, &SIGNER).unwrap().unwrap();
+        assert_eq!(account.sequence(), 3);
+        assert!(account.pub_key().is_none());
+        assert!(x_auth::get_account(&mut ctx, &[2; 20]).unwrap().is_none());
     }
 }
