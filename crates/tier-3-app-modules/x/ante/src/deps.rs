@@ -104,8 +104,8 @@ pub trait AnteDeps {
 
     /// `paramFilters[MsgTypeURL(msg)]` (celestia `app/param_filters.go`
     /// `GovParamFilters`); `None` when no filter is registered.
-    fn param_filter(&self, msg: &Any) -> Option<sdk::Result<()>> {
-        default_param_filter(msg)
+    fn param_filter(&self, ctx: &Context<'_>, msg: &Any) -> Option<sdk::Result<()>> {
+        default_param_filter(ctx, msg)
     }
 
     /// `ctx.IsSigverifyTx()` (`BaseApp.sigverifyTx`, true unless disabled).
@@ -115,6 +115,25 @@ pub trait AnteDeps {
 }
 
 const UNBONDING_TIME_SECS: i64 = 337 * 3600;
+
+/// Governance checks use the executing release's defaults. The v12 Corto
+/// override additionally requires the committed consensus version to reach 12.
+fn governance_age_limits(ctx: &Context<'_>) -> (i64, i64) {
+    if !crate::is_v12(ctx) {
+        return (UNBONDING_TIME_SECS, 404_400);
+    }
+    if ctx.header.chain_id == "corto-1"
+        && ctx
+            .consensus_params
+            .version
+            .as_ref()
+            .is_some_and(|v| v.app >= 12)
+    {
+        (600, 500)
+    } else {
+        (UNBONDING_TIME_SECS, 1_011_000)
+    }
+}
 
 fn duration_nanos(d: Option<&pbjson_types::Duration>) -> i128 {
     d.map_or(0, |d| {
@@ -132,9 +151,9 @@ fn decode<M: Message + Default>(any: &Any) -> sdk::Result<M> {
 }
 
 #[must_use]
-/// celestia-app v10 `GovParamFilters`: bank, staking and consensus
+/// celestia-app `GovParamFilters`: bank, staking and consensus
 /// `MsgUpdateParams` filters.
-pub fn default_param_filter(msg: &Any) -> Option<sdk::Result<()>> {
+pub fn default_param_filter(ctx: &Context<'_>, msg: &Any) -> Option<sdk::Result<()>> {
     use celestia_proto::cosmos::{bank, consensus, staking};
     let url = msg.type_url.as_str();
     if url == bank::v1beta1::MsgUpdateParams::type_url() {
@@ -161,7 +180,8 @@ pub fn default_param_filter(msg: &Any) -> Option<sdk::Result<()>> {
                     p.bond_denom
                 )));
             }
-            let want = i128::from(UNBONDING_TIME_SECS) * 1_000_000_000;
+            let (seconds, _) = governance_age_limits(ctx);
+            let want = i128::from(seconds) * 1_000_000_000;
             let got = duration_nanos(p.unbonding_time.as_ref());
             if got != want {
                 return Err(errs::unauthorized(format!(
@@ -184,9 +204,10 @@ pub fn default_param_filter(msg: &Any) -> Option<sdk::Result<()>> {
             if validator.pub_key_types != ["ed25519"] {
                 return Err(errs::unauthorized("invalid validator parameters"));
             }
-            let ev_ok = evidence.max_age_num_blocks == 404_400
+            let (seconds, blocks) = governance_age_limits(ctx);
+            let ev_ok = evidence.max_age_num_blocks == blocks
                 && duration_nanos(evidence.max_age_duration.as_ref())
-                    == i128::from(UNBONDING_TIME_SECS) * 1_000_000_000
+                    == i128::from(seconds) * 1_000_000_000
                 && evidence.max_bytes == 1_048_576;
             if !ev_ok {
                 return Err(errs::unauthorized("invalid evidence parameters"));
