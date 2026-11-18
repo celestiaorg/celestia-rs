@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as B64;
 use chacha20poly1305::aead::{Aead as _, KeyInit as _};
-use rand::RngCore as _;
+use rand_core::{OsRng, RngCore as _};
 
 use crate::Error;
 
@@ -116,7 +116,7 @@ fn argon2_key(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], Error> {
 /// `EncryptArmorPrivKey(privKey, passphrase, "secp256k1")`.
 pub fn encrypt_secp256k1(secret: &[u8; 32], passphrase: &str) -> Result<String, Error> {
     let mut salt = [0u8; 16];
-    rand::rngs::OsRng.fill_bytes(&mut salt);
+    OsRng.fill_bytes(&mut salt);
     let key = argon2_key(passphrase, &salt)?;
     let mut plain = SECP256K1_PRIV_PREFIX.to_vec();
     plain.push(32);

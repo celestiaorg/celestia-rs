@@ -4,7 +4,7 @@
 
 use hmac::{Hmac, Mac as _};
 use k256::elliptic_curve::PrimeField as _;
-use rand::RngCore as _;
+use rand_core::{OsRng, RngCore as _};
 use sha2::Sha512;
 
 use crate::Error;
@@ -18,7 +18,7 @@ pub const DEFAULT_HD_PATH: &str = "m/44'/118'/0'/0/0";
 #[must_use]
 pub fn new_mnemonic() -> String {
     let mut entropy = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut entropy);
+    OsRng.fill_bytes(&mut entropy);
     bip39::Mnemonic::from_entropy(&entropy)
         .map(|m| m.to_string())
         .unwrap_or_default()
