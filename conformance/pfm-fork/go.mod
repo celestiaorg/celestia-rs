@@ -3,6 +3,7 @@ module github.com/rootulp/celestia-rs/conformance/pfm-fork
 go 1.26.10
 
 require (
+	cosmossdk.io/log v1.4.1
 	github.com/cosmos/cosmos-sdk v0.50.9
 	github.com/cosmos/ibc-apps/middleware/packet-forward-middleware/v8 v8.2.0
 	github.com/cosmos/ibc-go/modules/capability v1.0.1
@@ -16,7 +17,6 @@ require (
 	cosmossdk.io/core v0.11.1 // indirect
 	cosmossdk.io/depinject v1.1.0 // indirect
 	cosmossdk.io/errors v1.0.1 // indirect
-	cosmossdk.io/log v1.4.1 // indirect
 	cosmossdk.io/math v1.4.0 // indirect
 	cosmossdk.io/store v1.1.1 // indirect
 	cosmossdk.io/x/tx v0.13.7 // indirect

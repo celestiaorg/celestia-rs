@@ -29,3 +29,9 @@ The Rust test `x/packetforward/tests/fork_go.rs` checks the app version 12
 decisions and error events against this fixture. It does not cover gas, store
 writes, refunds, or celestia-app's replacement of the error acknowledgement
 (Rust middleware tests cover those).
+
+`cmd/fuzzoracle` is the Go side of the differential fuzzer
+(`crates/fuzz-diff`) for app version 12: it answers the `json_pfm`,
+`json_pfm_ack` and `json_pfm_next` ops with this fork (see its doc comment),
+for example `cargo run -p fuzz-diff -- --app-version 12 --ops
+json_pfm,json_pfm_ack,json_pfm_next`.

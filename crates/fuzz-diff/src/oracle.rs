@@ -1,5 +1,7 @@
 //! The Go side: a `conformance/fuzzoracle/{v9,v10}` process answering one
-//! request per line.
+//! request per line. From app version 12 the oracle is
+//! `conformance/pfm-fork/cmd/fuzzoracle`, which answers only the PFM
+//! `json_pfm*` ops, with the Celestia fork of packet-forward-middleware.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -27,13 +29,19 @@ pub fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// The oracle binary for `app_version`: `$FUZZ_ORACLE_V9` / `$FUZZ_ORACLE_V10`
-/// if set, else `target/fuzzoracle/fuzzoracle-v<N>`, built with `go build`
-/// when missing (needs Go and the module cache / proxy; `GOPATH` and
-/// `GOTOOLCHAIN` are taken from the environment).
+/// The oracle binary for `app_version`: `$FUZZ_ORACLE_V9` /
+/// `$FUZZ_ORACLE_V10` / `$FUZZ_ORACLE_PFM_FORK` if set, else
+/// `target/fuzzoracle/fuzzoracle-<name>`, built with `go build` when missing
+/// (needs Go and the module cache / proxy; `GOPATH` and `GOTOOLCHAIN` are
+/// taken from the environment).
 pub fn oracle_binary(app_version: u64) -> anyhow::Result<PathBuf> {
-    let dir = if app_version < 10 { "v9" } else { "v10" };
-    if let Ok(p) = std::env::var(format!("FUZZ_ORACLE_{}", dir.to_uppercase())) {
+    let (dir, src) = match app_version {
+        0..10 => ("v9", "conformance/fuzzoracle/v9"),
+        10..12 => ("v10", "conformance/fuzzoracle/v10"),
+        _ => ("pfm-fork", "conformance/pfm-fork/cmd/fuzzoracle"),
+    };
+    let var = format!("FUZZ_ORACLE_{}", dir.replace('-', "_").to_uppercase());
+    if let Ok(p) = std::env::var(var) {
         return Ok(PathBuf::from(p));
     }
     let root = repo_root();
@@ -45,7 +53,7 @@ pub fn oracle_binary(app_version: u64) -> anyhow::Result<PathBuf> {
         .args(["build", "-o"])
         .arg(&out)
         .arg(".")
-        .current_dir(root.join("conformance/fuzzoracle").join(dir))
+        .current_dir(root.join(src))
         .env("GOFLAGS", "-mod=mod")
         .status()
         .context("running go build (is Go installed?)")?;
@@ -63,7 +71,7 @@ pub const RESTART_EVERY: u64 = 50_000;
 pub const TOO_LARGE: &str = "oracle: input too large";
 
 impl Oracle {
-    /// Starts the oracle for `app_version` (9 or 10).
+    /// Starts the oracle for `app_version` (9, 10 or 12).
     pub fn start(app_version: u64) -> anyhow::Result<Self> {
         let bin = oracle_binary(app_version)?;
         let scratch = tempfile::tempdir().context("creating oracle scratch directory")?;
