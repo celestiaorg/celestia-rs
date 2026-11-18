@@ -89,18 +89,26 @@ impl EventManager {
 /// each invalid UTF-8 byte of a Go string as `\ufffd`; this helper applies
 /// the same escaping so values match byte-for-byte.
 pub fn typed_event<T: prost::Name + serde::Serialize>(msg: &T) -> Result<Event, serde_json::Error> {
+    typed_event_with_name(T::full_name(), msg)
+}
+
+/// Emits a typed event whose JSON fields depend on the executing app version.
+pub fn typed_event_with_name(
+    full_name: String,
+    msg: &impl serde::Serialize,
+) -> Result<Event, serde_json::Error> {
     // Serialized directly (not through `serde_json::Value`, whose maps
     // sort their keys): nested messages keep jsonpb's field order.
     let s = serde_json::to_string(msg)?;
     let Some(members) = object_members(&s) else {
-        return typed_event_from_json(T::full_name(), serde_json::from_str(&s)?);
+        return typed_event_from_json(full_name, serde_json::from_str(&s)?);
     };
     let mut attrs: Vec<(String, String)> = members
         .into_iter()
         .map(|(k, v)| (k.to_owned(), attr_value(&go_timestamps(v))))
         .collect();
     attrs.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(event(T::full_name(), attrs))
+    Ok(event(full_name, attrs))
 }
 
 /// The members of the compact JSON object `s` (keys without escapes, raw
