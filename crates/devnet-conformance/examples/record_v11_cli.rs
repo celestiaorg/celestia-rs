@@ -8,7 +8,8 @@ use std::net::{SocketAddr, TcpStream};
 use abci_server::record::{Direction, Record};
 use anyhow::{Context as _, ensure};
 use celestia_proto::celestia_core_proto::abci::{
-    Request, RequestFinalizeBlock, RequestProcessProposal, Response, request, response,
+    Request, RequestFinalizeBlock, RequestFlush, RequestProcessProposal, Response, request,
+    response,
 };
 use devnet_conformance::querycorpus::net::{read_frame, write_frame};
 use prost::Message;
@@ -23,7 +24,7 @@ fn main() -> anyhow::Result<()> {
     let mut streams = BTreeMap::new();
     let mut capture = Vec::new();
     let flush = Request {
-        value: Some(request::Value::Flush(Default::default())),
+        value: Some(request::Value::Flush(RequestFlush {})),
     }
     .encode_to_vec();
     for exchange in devnet_conformance::load_exchanges("cli")? {
