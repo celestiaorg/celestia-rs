@@ -15,7 +15,7 @@ use sdk::coins::{Coin, Coins};
 use sdk::error::internal;
 use sdk::{Context, Result, SdkError};
 use x_hyperlane::{Deps, HexAddress, HyperlaneMessage, StandardHookMetadata};
-use x_warp::{TOKEN_TYPE_COLLATERAL, TOKEN_TYPE_SYNTHETIC, TransferArgs};
+use x_warp::{HypToken, TOKEN_TYPE_COLLATERAL, TOKEN_TYPE_SYNTHETIC, TransferArgs};
 
 use crate::MODULE_NAME;
 
@@ -176,6 +176,20 @@ pub fn quote_igp_fee(
     ))
 }
 
+/// `Keeper.BankDenomForToken`. From v12, Warp's stored origin denom also
+/// identifies the bank balance for native synthetic tokens.
+fn bank_denom_for_token(token: &HypToken, app_version: u64) -> Result<String> {
+    match token.token_type {
+        TOKEN_TYPE_SYNTHETIC if !sdk::version::is_v12(app_version) => {
+            Ok(format!("hyperlane/{}", token.id))
+        }
+        TOKEN_TYPE_COLLATERAL | TOKEN_TYPE_SYNTHETIC => Ok(token.origin_denom.clone()),
+        _ => Err(internal(
+            "failed to resolve token denom: unsupported token denom",
+        )),
+    }
+}
+
 /// `msgServer.Forward`.
 #[allow(clippy::too_many_lines)]
 pub fn forward(
@@ -232,21 +246,14 @@ pub fn forward(
             token_id.internal_id()
         )));
     };
-    let denom = match token.token_type {
-        TOKEN_TYPE_COLLATERAL => token.origin_denom.clone(),
-        TOKEN_TYPE_SYNTHETIC => format!("hyperlane/{}", token.id),
-        _ => {
-            return Err(internal(
-                "failed to resolve token denom: unsupported token denom",
-            ));
-        }
-    };
+    let consensus_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    let app_version = sdk::version::executing(consensus_version);
+    let denom = bank_denom_for_token(&token, app_version)?;
     // SpendableCoin: GetBalance, then LockedCoins. App version 9
     // (celestia-app v9.0.8) forwards GetBalance and never reads the
     // account's locked coins.
     let balance = x_bank::get_balance(ctx, &forward_addr, &denom)?;
-    let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    let locked = if sdk::version::is_v9(sdk::version::executing(app_version)) {
+    let locked = if sdk::version::is_v9(app_version) {
         math::Int::zero()
     } else {
         x_bank::locked_coins(ctx, &forward_addr)?.amount_of(&denom)
@@ -388,6 +395,32 @@ fn forward_token(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forwarding_denom_follows_the_warp_token_and_app_version() -> Result<()> {
+        let id = HexAddress([2; 32]);
+        let generated = format!("hyperlane/{id}");
+        let mut token = HypToken {
+            id,
+            owner: String::new(),
+            token_type: TOKEN_TYPE_SYNTHETIC,
+            origin_mailbox: HexAddress::default(),
+            origin_denom: generated.clone(),
+            collateral_balance: Int::zero(),
+            ism_id: None,
+        };
+        for version in [11, 12] {
+            assert_eq!(bank_denom_for_token(&token, version)?, generated);
+        }
+        token.origin_denom = "uusdc".into();
+        assert_eq!(bank_denom_for_token(&token, 11)?, generated);
+        assert_eq!(bank_denom_for_token(&token, 12)?, "uusdc");
+        token.token_type = TOKEN_TYPE_COLLATERAL;
+        for version in [11, 12] {
+            assert_eq!(bank_denom_for_token(&token, version)?, "uusdc");
+        }
+        Ok(())
+    }
 
     #[test]
     fn module_address_matches_sdk() {
