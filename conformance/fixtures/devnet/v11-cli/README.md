@@ -22,7 +22,10 @@ A standalone Go 1.26.10 source build of `v11.x` at
 `8d5146e046b6c680639bd5f39a194941ea3b9078` also produced the identical
 recording. Its executable SHA-256 was
 `21c392808d5b53862c97ff82499b5a0a5b2d6461b0e1ee0a0e201ef16226d408`.
-The three captures have SHA-256
+A second standalone Go 1.26.10 build at
+`1336489d9fed94210d06d4710404617efe0d8c57` (executable SHA-256
+`c933576e059e676cbf1d34942a6bdf508ed89e30942c0ff98a4f12fd90c139b5`)
+reproduced the same bytes. All four captures have SHA-256
 `5ceacc180b1939e7cddc08172a3a6bbd486756f0efa8c65fd9dd4f65c0b3cbf5`.
 
 To regenerate, verify the archive against the release's `checksums.txt`.

@@ -65,6 +65,16 @@ the executing release. A v10 execution remains v10 until activation/restart;
 historical v9-to-v10 replay remains supported. New genesis defaults and the
 existing v10 qualification target are unchanged.
 
+## SDK inclusion-proof queries after the testnet tags
+
+For executing releases 11 and later, the SDK's Tendermint `ABCIQuery`
+service follows the v11.x backport at `1336489d9fed94210d06d4710404617efe0d8c57`.
+It returns `PermissionDenied` for the two custom inclusion-proof routes.
+Clients can use CometBFT's `tx`, `tx_search` and `prove_shares_v2` RPCs.
+The Corto and Mocha binaries at `58be8ae9` predate this endpoint change.
+Rust uses the executing release to select this service policy, including for
+historical queries issued to a v11 node.
+
 ## Verification scope
 
 `conformance/v11-frozen` generates decisions using the original tagged Go
