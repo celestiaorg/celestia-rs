@@ -58,6 +58,31 @@ fn must_check_tx(pool: &TxPool, spec: &str) {
     pool.check_tx(spec.as_bytes(), TxInfo::default()).unwrap();
 }
 
+#[test]
+fn highest_pending_sequence_tracks_each_signer_during_pool_updates() {
+    let (pool, app) = setup(100);
+    app.auto_sequence
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    for tx in ["alice=t=7", "alice=t=5", "bob=t=0"] {
+        must_check_tx(&pool, tx);
+    }
+    let (send, receive) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        let guard = pool.lock();
+        let pool = &pool;
+        scope.spawn(move || send.send(pool.highest_pending_sequence(b"alice")).unwrap());
+        let result = receive.recv_timeout(Duration::from_secs(5));
+        drop(guard);
+        assert_eq!(result, Ok(Some(7)));
+    });
+    assert_eq!(pool.highest_pending_sequence(b"bob"), Some(0));
+    assert_eq!(pool.highest_pending_sequence(b"other"), None);
+    pool.remove_tx_by_key(&tx_key(b"alice=t=7"));
+    assert_eq!(pool.highest_pending_sequence(b"alice"), Some(5));
+    pool.flush();
+    assert_eq!(pool.highest_pending_sequence(b"alice"), None);
+}
+
 fn exists(pool: &TxPool, spec: &str) -> bool {
     pool.has(&tx_key(spec.as_bytes()))
 }

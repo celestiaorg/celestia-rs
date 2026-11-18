@@ -17,6 +17,7 @@
 //! | 10 | `SetPubKeyDecorator` (sdk) | [`sigverify::set_pub_key`] |
 //! | 11 | `ValidateSigCountDecorator` (sdk) | [`sigverify::validate_sig_count`] |
 //! | 12 | `SigGasConsumeDecorator` (sdk) | [`sigverify::sig_gas_consume`] |
+//! | 12a | `SimulateSequenceDecorator` (celestia, from v12) | [`ante_simulate`] |
 //! | 13 | `SigVerificationDecorator` (sdk) | [`sigverify::sig_verification`] |
 //! | 14 | `NestedMsgDecorator` (celestia) | [`celestia::nested_msg`] |
 //! | 15 | `FibreLegacyEscrowDecorator` (x/fibre) | [`celestia::fibre_legacy_escrow`] |
@@ -199,7 +200,21 @@ pub fn ante_handle(
     simulate: bool,
     deps: &impl AnteDeps,
 ) -> Result<AnteOutcome, AnteError> {
-    run_ante(ctx, tx, simulate, deps, false)
+    run_ante(ctx, tx, simulate, deps, false, None)
+}
+
+/// Returns one past the highest pending sequence, when representable.
+pub type PendingNextSequence<'a> = dyn Fn(&[u8]) -> Option<u64> + Send + Sync + 'a;
+
+/// Runs simulation ante on a caller-owned scratch branch, optionally
+/// lifting signer sequences to the next sequence published by the mempool.
+pub fn ante_simulate(
+    ctx: &mut Context<'_>,
+    tx: &sdk::tx::Tx,
+    deps: &impl AnteDeps,
+    pending_next_sequence: Option<&PendingNextSequence<'_>>,
+) -> Result<AnteOutcome, AnteError> {
+    run_ante(ctx, tx, true, deps, false, pending_next_sequence)
 }
 
 /// The ante handler called directly on a context, without `runTxAnte`'s
@@ -213,7 +228,7 @@ pub fn ante_handle_in_place(
     simulate: bool,
     deps: &impl AnteDeps,
 ) -> Result<AnteOutcome, AnteError> {
-    run_ante(ctx, tx, simulate, deps, true)
+    run_ante(ctx, tx, simulate, deps, true, None)
 }
 
 fn run_ante(
@@ -222,6 +237,7 @@ fn run_ante(
     simulate: bool,
     deps: &impl AnteDeps,
     in_place: bool,
+    pending_next_sequence: Option<&PendingNextSequence<'_>>,
 ) -> Result<AnteOutcome, AnteError> {
     let original_meter = ctx.gas.clone();
     let cp = ctx.branch();
@@ -229,7 +245,9 @@ fn run_ante(
     // re-panics it with the tx appended), also one raised in code the
     // decorators call (the IBC handlers of the redundant relay check) that
     // Rust turned into another error or ignored.
-    let res = match kvstore::unwind::scope(|| run_chain(ctx, tx, simulate, deps)) {
+    let res = match kvstore::unwind::scope(|| {
+        run_chain(ctx, tx, simulate, deps, pending_next_sequence)
+    }) {
         (_, Some(kvstore::unwind::Unwind::OutOfGas)) => {
             // Go unwinds to SetUpContext even if a callback translated or
             // ignored the store failure. Keep its tx meter at the first panic.
@@ -339,6 +357,7 @@ fn run_chain(
     tx: &sdk::tx::Tx,
     simulate: bool,
     deps: &impl AnteDeps,
+    pending_next_sequence: Option<&PendingNextSequence<'_>>,
 ) -> R<i64> {
     setup::set_up_context(ctx, tx, simulate)?;
     basic::circuit_breaker(ctx, tx, deps)?;
@@ -354,6 +373,12 @@ fn run_chain(
     sigverify::set_pub_key(ctx, tx, simulate, deps)?;
     sigverify::validate_sig_count(ctx, tx)?;
     sigverify::sig_gas_consume(ctx, tx, simulate)?;
+    if simulate
+        && is_v12(ctx)
+        && let Some(pending_next_sequence) = pending_next_sequence
+    {
+        celestia::simulate_sequence(ctx, tx, pending_next_sequence)?;
+    }
     sigverify::sig_verification(ctx, tx, simulate, deps)?;
     // celestia-app v9.0.8 (ADR 0004): `MsgExecDecorator`, no fibre
     // decorators (fibre messages do not decode at app version 9).

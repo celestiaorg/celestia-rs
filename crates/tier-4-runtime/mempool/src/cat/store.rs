@@ -119,6 +119,13 @@ impl Store {
         self.read().txs.get(key).cloned()
     }
 
+    /// Highest sequence in the signer's sequence-ordered transaction set.
+    pub(super) fn highest_sequence(&self, signer: &[u8]) -> Option<u64> {
+        let store = self.read();
+        let id = store.sets_by_signer.get(signer)?;
+        store.sets[id].txs.last().map(|tx| tx.sequence)
+    }
+
     /// `has`.
     #[must_use]
     pub fn has(&self, key: &TxKey) -> bool {

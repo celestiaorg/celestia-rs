@@ -363,6 +363,14 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         .with_pre_check(nodestore::execution::tx_pre_check(&state))
         .with_post_check(nodestore::execution::tx_post_check(&state)),
     );
+    // The pool owns the app connection. A weak reference lets the app read
+    // signer sequences without keeping the node alive after shutdown.
+    let pending_pool = Arc::downgrade(&pool);
+    app.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .set_pending_sequencer(move |signer| {
+            pending_pool.upgrade()?.highest_pending_sequence(signer)
+        });
     let evpool = crate::sync::open_evidence_pool(home, &ss, &bs, &state)?;
     let mut exec = BlockExecutor::new(
         ss.clone(),

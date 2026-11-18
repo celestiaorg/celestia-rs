@@ -17,6 +17,7 @@ pub mod inclusion_proof;
 pub mod modules;
 pub mod msg_count;
 pub mod node_services;
+mod pending_sequence;
 pub mod proposal;
 pub mod query;
 pub use multistore::PruningOptions;
@@ -81,6 +82,7 @@ pub struct App {
     /// Header of the check state (`setState(execModeCheck, ...)` at
     /// InitChain and Commit).
     check_header: Header,
+    pending_sequencer: Option<pending_sequence::PendingSequenceSource>,
     /// The block being finalized changed the app version: its `Commit` is
     /// where the multiplexer switches to the next binary, a fresh process
     /// (`BaseApp.Init`: check state with an empty header).
@@ -267,6 +269,7 @@ impl App {
             snapshots: None,
             snapshot_optional_v10_stores: false,
             check_header: Header::default(),
+            pending_sequencer: None,
             switch_on_commit: false,
             node_min_gas_price: None,
             node: NodeOptions::default(),
@@ -771,18 +774,6 @@ impl App {
             app_hash,
             timeout_info: Some(timeout_info()),
         })
-    }
-
-    /// `QuerySequence` (celestia-core mempool): the signer's sequence in
-    /// check state, 0 for unknown accounts.
-    pub fn query_sequence(&mut self, signer: &[u8]) -> abci::ResponseQuerySequence {
-        let header = self.finalize_header.clone().unwrap_or_default();
-        let mut ctx = Context::new(&mut self.ms, header, ExecMode::Check);
-        let sequence = x_auth::get_account(&mut ctx, signer)
-            .ok()
-            .flatten()
-            .map_or(0, |a| a.sequence());
-        abci::ResponseQuerySequence { sequence }
     }
 
     /// `Commit`.
