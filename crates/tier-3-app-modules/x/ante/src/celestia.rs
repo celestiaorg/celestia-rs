@@ -4,6 +4,7 @@
 use celestia_proto::Any;
 use celestia_proto::celestia::blob::v1::MsgPayForBlobs;
 use celestia_proto::celestia::fibre::v1::{MsgDepositToEscrow, MsgPayForFibre};
+use celestia_proto::ibc::applications::interchain_accounts::host::v1::MsgModuleQuerySafe;
 use kvstore::GasMeter;
 use prost::{Message, Name};
 use sdk::error::sdk as errs;
@@ -31,6 +32,7 @@ pub const PFF_TX_GAS_FIXED_COST: u64 = 1_378;
 /// `appconsts.PFFibreGasPerValidatorSignature`.
 pub const PFF_GAS_PER_VALIDATOR_SIGNATURE: u64 = 1_000;
 
+const MAX_MODULE_QUERY_REQUESTS: usize = 1;
 const SHARE_SIZE: u64 = 512;
 const NAMESPACE_SIZE: u32 = 29;
 const FIRST_COMPACT_SHARE_CONTENT_SIZE: u32 = 512 - NAMESPACE_SIZE - 1 - 4 - 4;
@@ -388,6 +390,40 @@ pub fn fibre_sig_verification(
     }
     with_infinite_gas(ctx, |c| deps.fibre_validate_signatures(c, &msg))?;
     deps.pff_sig_cache(key);
+    Ok(())
+}
+
+/// The request limit shared by v11 local admission and v12 ante. The
+/// nested message decorator reports undecodable inner messages.
+pub fn validate_module_query_requests(msgs: &[Any]) -> sdk::Result<()> {
+    for msg in msgs {
+        check_module_query_requests(msg)?;
+        let nested = txview::msg_exec_msgs(msg).and_then(|exec| match exec {
+            Some(msgs) => Ok(Some(msgs)),
+            None => txview::submit_proposal_msgs(msg),
+        });
+        if let Ok(Some(nested)) = nested {
+            for inner in nested {
+                if inner.type_url == MsgModuleQuerySafe::type_url()
+                    && let Some(inner) = txdecode::prost_compatible(&inner)
+                {
+                    check_module_query_requests(&inner)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn check_module_query_requests(msg: &Any) -> sdk::Result<()> {
+    if let Some(Ok(query)) = msg.unpack::<MsgModuleQuerySafe>()
+        && query.requests.len() > MAX_MODULE_QUERY_REQUESTS
+    {
+        return Err(errs::invalid_request(format!(
+            "MsgModuleQuerySafe has {} requests, limit is {MAX_MODULE_QUERY_REQUESTS}",
+            query.requests.len()
+        )));
+    }
     Ok(())
 }
 

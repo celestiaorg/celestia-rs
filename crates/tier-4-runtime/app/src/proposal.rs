@@ -35,7 +35,9 @@ use sdk::{Context, ExecMode, Header, SdkError};
 use square::v4::{self, BlobTx, Builder, ClassifiedTx};
 use txdecode::UnwrappedBlobTx;
 
-use crate::msg_count::{MAX_SDK_MESSAGES, count_executable_msgs, validate_module_query_requests};
+use crate::msg_count::{
+    MAX_SDK_MESSAGES, count_executable_msgs, validate_local_module_query_requests,
+};
 use crate::{App, fibre_tx, router};
 
 /// `appconsts.MaxTxSize`.
@@ -569,7 +571,7 @@ fn fill(
     let version = sdk::version::app_version();
     for (raw, tx) in &sep.normal {
         ctx.tx_bytes = raw.to_vec();
-        if validate_module_query_requests(version, tx.gogo_msgs()).is_err() {
+        if validate_local_module_query_requests(version, tx.gogo_msgs()).is_err() {
             continue;
         }
         let exec = count_executable_msgs(Some(&mut *ctx), tx.gogo_msgs())

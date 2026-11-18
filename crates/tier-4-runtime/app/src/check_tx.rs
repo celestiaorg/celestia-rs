@@ -11,7 +11,9 @@ use sdk::tx::Tx;
 use sdk::{Context, ExecMode, SdkError};
 use txdecode::{BlobTxError, UnwrappedBlobTx};
 
-use crate::msg_count::{MAX_SDK_MESSAGES, count_executable_msgs, validate_module_query_requests};
+use crate::msg_count::{
+    MAX_SDK_MESSAGES, count_executable_msgs, validate_local_module_query_requests,
+};
 use crate::proposal::{MAX_TX_SIZE, validate_blob_tx};
 use crate::{App, fibre_tx, tx};
 
@@ -99,7 +101,7 @@ impl App {
         if let Err(e) = fibre_tx::validate_shape(&sdk_tx) {
             return Ok(error_response(&e, 0, 0));
         }
-        if let Err(e) = validate_module_query_requests(version, sdk_tx.gogo_msgs()) {
+        if let Err(e) = validate_local_module_query_requests(version, sdk_tx.gogo_msgs()) {
             return Ok(error_response(&e, 0, 0));
         }
         self.forward_check_tx(req.r#type, raw, &sdk_tx, crate::txpipe::decode_tx)
@@ -342,9 +344,15 @@ mod tests {
             tx: encoded(query(2)),
             r#type: i32::from(CheckTxType::New),
         })?;
-        // Both reach the existing unsigned-transaction check.
+        app.execution_version = Some(12);
+        let v12 = app.check_tx(&RequestCheckTx {
+            tx: encoded(query(2)),
+            r#type: i32::from(CheckTxType::New),
+        })?;
+        // These reach the existing unsigned-transaction check.
         assert_eq!(one.code, 15, "{}", one.log);
         assert_eq!(historical.code, 15, "{}", historical.log);
+        assert_eq!(v12.code, 15, "{}", v12.log);
         Ok(())
     }
 
