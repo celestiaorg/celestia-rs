@@ -2296,10 +2296,10 @@ version = "0.0.1"
 dependencies = [
  "base64 0.23.1",
  "ctypes",
+ "getrandom 0.2.17",
  "hex",
  "kvdb",
  "prost",
- "rand 0.9.5",
  "serde",
  "serde_json",
  "tracing",
