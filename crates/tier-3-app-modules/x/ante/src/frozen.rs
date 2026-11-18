@@ -11,14 +11,14 @@ use sdk::{Context, tx::Tx};
 
 use crate::{R, celestia::decode, txview};
 
-/// Go `Rules.AnteHandle`; all decisions use the committed consensus version.
+/// Go v11 `Rules.AnteHandle`, activated by the consensus version.
 pub fn ante(ctx: &mut Context<'_>, tx: &Tx) -> R<()> {
-    let Some(n) = frozen::network(&ctx.header.chain_id) else {
-        return Ok(());
-    };
     if !frozen::active(ctx) {
         return Ok(());
     }
+    let Some(n) = frozen::network(&ctx.header.chain_id) else {
+        return Ok(());
+    };
     if txview::fee_granter(tx)?.is_some_and(|a| n.has(&a)) {
         return Err(frozen::error("listed fee granter").into());
     }
