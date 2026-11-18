@@ -324,13 +324,7 @@ impl AnteDeps for StoreDeps {
     }
 
     fn network_min_gas_price(&self, ctx: &mut Context<'_>) -> sdk::Result<LegacyDec> {
-        let Some(bz) = ctx.get(MINFEE_STORE_KEY, b"params")? else {
-            return Err(not_supported("minfee legacy param subspace fallback"));
-        };
-        let p = celestia_proto::celestia::minfee::v1::Params::decode(bz.as_slice())
-            .map_err(|e| errs::json_unmarshal(e.to_string()))?;
-        LegacyDec::unmarshal(p.network_min_gas_price.as_bytes())
-            .map_err(|e| errs::invalid_type(e.to_string()))
+        Ok(x_minfee::get_params(ctx)?.network_min_gas_price)
     }
 
     fn node_min_gas_price(&self) -> Option<LegacyDec> {
@@ -338,12 +332,7 @@ impl AnteDeps for StoreDeps {
     }
 
     fn blob_gov_max_square_size(&self, ctx: &mut Context<'_>) -> sdk::Result<u64> {
-        let Some(bz) = ctx.get(BLOB_STORE_KEY, b"params")? else {
-            return Err(not_supported("blob legacy param subspace fallback"));
-        };
-        let p = celestia_proto::celestia::blob::v1::Params::decode(bz.as_slice())
-            .map_err(|e| errs::json_unmarshal(e.to_string()))?;
-        Ok(p.gov_max_square_size)
+        Ok(x_blob::get_params(ctx)?.gov_max_square_size)
     }
 
     fn use_granted_fees(

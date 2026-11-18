@@ -15,7 +15,9 @@ use sdk::{Context, ExecMode, Header, Kind, MultiStore};
 use x_ante::{StoreDeps, ante_handle};
 use x_auth::Account;
 
-const STORES: &[&str] = &["acc", "bank", "minfee", "blob", "circuit", "feegrant"];
+const STORES: &[&str] = &[
+    "acc", "bank", "minfee", "blob", "circuit", "feegrant", "params",
+];
 
 #[test]
 fn expired_feegrant_does_not_hide_revoke_out_of_gas() {
@@ -231,6 +233,44 @@ fn funded_ms(header: &Header, addr: &[u8]) -> MultiStore {
             .unwrap();
     }
     ms
+}
+
+#[test]
+fn v11_check_tx_reads_legacy_module_parameters() {
+    use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+    use x_ante::AnteDeps;
+
+    let (sk, pk, addr) = key();
+    let header = Header {
+        chain_id: "test".into(),
+        height: 5,
+        ..Default::default()
+    };
+    let mut ms = funded_ms(&header, &addr);
+    let mut ctx = Context::new(&mut ms, header.clone(), ExecMode::Finalize);
+    ctx.delete("minfee", b"params").unwrap();
+    ctx.delete("blob", b"params").unwrap();
+    for (key, value) in [
+        ("minfee/NetworkMinGasPrice", r#""0.010000000000000000""#),
+        ("blob/GasPerBlobByte", "8"),
+        ("blob/GovMaxSquareSize", r#""64""#),
+    ] {
+        ctx.set("params", key.as_bytes().to_vec(), value.as_bytes().to_vec())
+            .unwrap();
+    }
+    ms.flush().unwrap();
+    ms.commit().unwrap();
+    let mut ctx = Context::new(&mut ms, header, ExecMode::Check);
+    ctx.consensus_params.version = Some(VersionParams { app: 11 });
+    let deps = StoreDeps::default();
+    assert_eq!(deps.blob_gov_max_square_size(&mut ctx).unwrap(), 64);
+    assert_eq!(
+        deps.network_min_gas_price(&mut ctx).unwrap().to_string(),
+        "0.010000000000000000"
+    );
+    let tx = build_tx(&sk, &pk, &addr, 0, "test", 1);
+    ctx.tx_bytes.clone_from(&tx.tx_bytes);
+    ante_handle(&mut ctx, &tx, false, &deps).unwrap();
 }
 
 #[test]
