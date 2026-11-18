@@ -60,6 +60,10 @@ const HOUR: i64 = 3600;
 /// `DefaultParams`.
 #[must_use]
 pub fn default_params() -> Params {
+    default_params_at(sdk::version::app_version())
+}
+
+fn default_params_at(version: u64) -> Params {
     Params {
         withdrawal_delay: Some(Duration {
             seconds: 24 * HOUR,
@@ -69,7 +73,11 @@ pub fn default_params() -> Params {
             seconds: HOUR,
             nanos: 0,
         }),
-        payment_promise_height_window: 1000,
+        payment_promise_height_window: if sdk::version::is_v12(version) {
+            3_250
+        } else {
+            1_000
+        },
         shard_retention: Some(Duration {
             seconds: 4 * HOUR,
             nanos: 0,
@@ -130,7 +138,10 @@ pub(crate) fn decode<M: Message + Default>(bz: &[u8]) -> Result<M> {
 pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
     match ctx.get(STORE_KEY, PARAMS_KEY)? {
         Some(bz) if !bz.is_empty() => decode(&bz),
-        _ => Ok(default_params()),
+        _ => {
+            let version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+            Ok(default_params_at(sdk::version::executing(version)))
+        }
     }
 }
 
@@ -458,6 +469,34 @@ mod tests {
             let _ = write!(s, "{x:02x}");
             s
         })
+    }
+
+    #[test]
+    fn default_height_window_follows_the_executing_release_until_params_are_stored() -> Result<()> {
+        use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+
+        let mut ms = ms();
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        ctx.consensus_params.version = Some(VersionParams { app: 11 });
+        assert_eq!(get_params(&mut ctx)?.payment_promise_height_window, 1_000);
+
+        // The v12 binary can query a height whose consensus version is still 11.
+        let previous = sdk::version::app_version();
+        sdk::version::set_app_version(12);
+        let current = default_params();
+        let historical = get_params(&mut ctx);
+        sdk::version::set_app_version(previous);
+        assert_eq!(current.payment_promise_height_window, 3_250);
+        assert_eq!(historical?, current);
+
+        ctx.consensus_params.version = Some(VersionParams { app: 12 });
+        let stored = Params {
+            payment_promise_height_window: 77,
+            ..current
+        };
+        set_params(&mut ctx, &stored)?;
+        assert_eq!(get_params(&mut ctx)?, stored);
+        Ok(())
     }
 
     #[test]
