@@ -130,6 +130,122 @@ fn validate_legacy_payments(payments: &[ProcessedPayment]) -> Result<()> {
     Ok(())
 }
 
+/// Migrate validated records immediately after InitGenesis writes their raw keys.
+/// Refund in raw-key order, matching the Go keeper's store iteration and bank events.
+pub(super) fn migrate_imported_escrows(
+    ctx: &mut sdk::Context<'_>,
+    gs: &GenesisState,
+) -> Result<()> {
+    use crate::{
+        MODULE_NAME, STORE_KEY, decode, delete_withdrawal, escrow_key, get_escrow_account,
+        set_escrow_account, set_withdrawal,
+    };
+    use sdk::coins::Coins;
+
+    // Remove non-utia records before merging any case aliases that might share their keys.
+    for withdrawal in &gs.withdrawals {
+        if withdrawal
+            .amount
+            .as_ref()
+            .is_some_and(|c| c.denom != BOND_DENOM)
+        {
+            delete_withdrawal(ctx, withdrawal)?;
+        }
+    }
+    for withdrawal in &gs.withdrawals {
+        if withdrawal
+            .amount
+            .as_ref()
+            .is_none_or(|c| c.denom != BOND_DENOM)
+            || !withdrawal.signer.bytes().any(|c| c.is_ascii_uppercase())
+        {
+            continue;
+        }
+        delete_withdrawal(ctx, withdrawal)?;
+        let mut updated = withdrawal.clone();
+        updated.signer = canonical_signer(&withdrawal.signer)?;
+        let key =
+            withdrawal_by_signer_key(&updated.signer, &ts_or_zero(withdrawal.requested_timestamp));
+        if let Some(bytes) = ctx.get(STORE_KEY, &key)? {
+            let existing: Withdrawal = decode(&bytes)?;
+            updated.amount = Some(merged_coin(
+                existing.amount.as_ref(),
+                updated.amount.as_ref(),
+            )?);
+            if before(
+                &ts_or_zero(updated.available_timestamp),
+                &ts_or_zero(existing.available_timestamp),
+            ) {
+                updated.available_timestamp = existing.available_timestamp;
+            }
+            delete_withdrawal(ctx, &existing)?;
+        }
+        set_withdrawal(ctx, &updated)?;
+    }
+
+    let mut refunds: Vec<_> = gs
+        .escrow_accounts
+        .iter()
+        .filter(|escrow| {
+            escrow
+                .balance
+                .as_ref()
+                .is_some_and(|c| c.denom != BOND_DENOM)
+        })
+        .collect();
+    refunds.sort_unstable_by(|a, b| a.signer.cmp(&b.signer));
+    for escrow in refunds {
+        let coin = valid_coin(escrow.balance.as_ref()).ok_or_else(|| invalid("invalid balance"))?;
+        if coin.amount.is_positive() {
+            let addr = acc_from_bech32_go(&escrow.signer).map_err(invalid)?;
+            x_bank::send_from_module_to_account(
+                ctx,
+                MODULE_NAME,
+                &addr,
+                &Coins::sanitized(vec![coin])?,
+            )
+            .map_err(|err| {
+                sdk::error::go_panic(format!(
+                    "migrate fibre genesis state: refund fibre escrow {}: {err}",
+                    escrow.signer
+                ))
+            })?;
+        }
+        ctx.delete(STORE_KEY, &escrow_key(&escrow.signer))?;
+    }
+    for escrow in &gs.escrow_accounts {
+        if escrow
+            .balance
+            .as_ref()
+            .is_none_or(|c| c.denom != BOND_DENOM)
+            || !escrow.signer.bytes().any(|c| c.is_ascii_uppercase())
+        {
+            continue;
+        }
+        ctx.delete(STORE_KEY, &escrow_key(&escrow.signer))?;
+        let mut updated = escrow.clone();
+        updated.signer = canonical_signer(&escrow.signer)?;
+        if let Some(existing) = get_escrow_account(ctx, &updated.signer)? {
+            updated.balance = Some(merged_coin(
+                existing.balance.as_ref(),
+                updated.balance.as_ref(),
+            )?);
+            updated.available_balance = Some(merged_coin(
+                existing.available_balance.as_ref(),
+                updated.available_balance.as_ref(),
+            )?);
+        }
+        set_escrow_account(ctx, &updated)?;
+    }
+    Ok(())
+}
+
+fn merged_coin(a: Option<&PbCoin>, b: Option<&PbCoin>) -> Result<PbCoin> {
+    let a = valid_coin(a).ok_or_else(|| invalid("invalid amount"))?;
+    let b = valid_coin(b).ok_or_else(|| invalid("invalid amount"))?;
+    Ok(Coin::with_amount(a.denom, a.amount.checked_add(&b.amount).map_err(invalid)?).to_proto())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,6 +328,94 @@ mod tests {
         ctx.consensus_params.version = Some(VersionParams { app: 11 });
         crate::init_genesis(&mut ctx, &gs)?;
         assert!(crate::get_escrow_account(&mut ctx, &signer)?.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn imports_aliases_refunds_and_withdrawal_indexes() -> Result<()> {
+        use crate::{STORE_KEY, get_escrow_account, withdrawal_by_available_key};
+        use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+        use sdk::{Context, ExecMode, Header, Kind, MultiStore};
+
+        let merged = to_bech32(ACC_PREFIX, &[1; 20]);
+        let refunded = to_bech32(ACC_PREFIX, &[2; 20]);
+        let mut gs = GenesisState {
+            escrow_accounts: vec![
+                escrow(&merged.to_ascii_uppercase(), BOND_DENOM),
+                escrow(&merged, BOND_DENOM),
+                escrow(&refunded.to_ascii_uppercase(), BOND_DENOM),
+                escrow(&refunded, "other"),
+            ],
+            withdrawals: vec![
+                withdrawal(&merged.to_ascii_uppercase(), BOND_DENOM),
+                withdrawal(&merged, BOND_DENOM),
+                withdrawal(&refunded.to_ascii_uppercase(), BOND_DENOM),
+                withdrawal(&refunded, "other"),
+            ],
+            ..Default::default()
+        };
+        let requested = Timestamp::default();
+        let later = Timestamp {
+            seconds: 60,
+            nanos: 0,
+        };
+        gs.withdrawals[0].available_timestamp = Some(later);
+        let mut ms = MultiStore::new();
+        for store in [STORE_KEY, x_bank::STORE_KEY, x_auth::STORE_KEY] {
+            ms.mount(store, Kind::Iavl)?;
+        }
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        ctx.consensus_params.version = Some(VersionParams { app: 12 });
+        // InitGenesis must be retryable when the bank cannot cover a refund.
+        assert!(crate::init_genesis(&mut ctx, &gs).is_err());
+        assert!(!ctx.has(STORE_KEY, crate::PARAMS_KEY)?);
+        assert!(ctx.events.events().is_empty());
+        x_bank::set_balance(
+            &mut ctx,
+            &x_auth::module_address(crate::MODULE_NAME),
+            &Coin::new("other", 10),
+        )?;
+        crate::init_genesis(&mut ctx, &gs)?;
+        let account = get_escrow_account(&mut ctx, &merged)?.unwrap();
+        assert_eq!(account.balance, Some(Coin::new(BOND_DENOM, 20).to_proto()));
+        assert_eq!(
+            account.available_balance,
+            Some(Coin::new(BOND_DENOM, 8).to_proto())
+        );
+        let bytes = ctx
+            .get(STORE_KEY, &withdrawal_by_signer_key(&merged, &requested))?
+            .unwrap();
+        let w: Withdrawal = crate::decode(&bytes)?;
+        assert_eq!(w.amount, Some(Coin::new(BOND_DENOM, 12).to_proto()));
+        assert_eq!(w.available_timestamp, Some(later));
+        assert!(!ctx.has(
+            STORE_KEY,
+            &withdrawal_by_available_key(&requested, &requested, &merged)
+        )?);
+        assert!(ctx.has(
+            STORE_KEY,
+            &withdrawal_by_available_key(&later, &requested, &merged)
+        )?);
+        for signer in [&merged, &refunded] {
+            let upper = signer.to_ascii_uppercase();
+            assert!(get_escrow_account(&mut ctx, &upper)?.is_none());
+            assert!(!ctx.has(STORE_KEY, &withdrawal_by_signer_key(&upper, &requested))?);
+        }
+        assert_eq!(
+            get_escrow_account(&mut ctx, &refunded)?,
+            Some(escrow(&refunded, BOND_DENOM))
+        );
+        assert_eq!(
+            x_bank::get_balance(&mut ctx, &[2; 20], "other")?,
+            Coin::new("other", 10)
+        );
+        let bytes = ctx
+            .get(STORE_KEY, &withdrawal_by_signer_key(&refunded, &requested))?
+            .unwrap();
+        assert_eq!(
+            crate::decode::<Withdrawal>(&bytes)?,
+            withdrawal(&refunded, BOND_DENOM)
+        );
         Ok(())
     }
 

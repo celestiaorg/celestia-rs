@@ -303,7 +303,19 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
     let is_v12 = sdk::version::is_v12(executing_version(ctx));
     if is_v12 {
         genesis::validate_records(gs)?;
+        let checkpoint = ctx.branch();
+        let result = write_genesis(ctx, gs, true);
+        if result.is_ok() {
+            ctx.write(checkpoint);
+        } else {
+            ctx.discard(checkpoint);
+        }
+        return result;
     }
+    write_genesis(ctx, gs, false)
+}
+
+fn write_genesis(ctx: &mut Context<'_>, gs: &GenesisState, is_v12: bool) -> Result<()> {
     set_params(ctx, &gs.params.unwrap_or_default())?;
     if is_v12 {
         ctx.set(
@@ -317,6 +329,9 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
     }
     for w in &gs.withdrawals {
         set_withdrawal(ctx, w)?;
+    }
+    if is_v12 {
+        genesis::migrate_imported_escrows(ctx, gs)?;
     }
     for p in &gs.processed_payments {
         set_processed_payment(ctx, p)?;
