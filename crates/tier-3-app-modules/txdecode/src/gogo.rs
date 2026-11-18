@@ -316,6 +316,36 @@ fn read_len(data: &[u8], i: &mut i64, l: i64) -> GoResult<(i64, i64)> {
     Ok((*i, post))
 }
 
+/// Number of field-one entries in a protobuf ICA `CosmosTx`, following the
+/// v12 Go wire counter without unpacking the embedded `Any` messages.
+#[must_use]
+pub fn count_cosmos_tx_entries(data: &[u8]) -> Option<usize> {
+    let end = i64::try_from(data.len()).ok()?;
+    let mut pos = 0;
+    let mut count = 0;
+    while pos < end {
+        let start = pos;
+        let tag = read_varint(data, &mut pos, end).ok()?;
+        let number = (tag >> 3) as i32;
+        if number <= 0 || tag & 7 == 4 {
+            return None;
+        }
+        if number == 1 {
+            if tag & 7 != 2 {
+                return None;
+            }
+            pos = read_len(data, &mut pos, end).ok()?.1;
+            count += 1;
+        } else {
+            pos = start.checked_add(skip(&data[start as usize..]).ok()?)?;
+            if pos > end {
+                return None;
+            }
+        }
+    }
+    Some(count)
+}
+
 /// `skipXxx`: the length of the unknown field starting at `data[0]`.
 pub(crate) fn skip(data: &[u8]) -> GoResult<i64> {
     let l = data.len() as i64;
