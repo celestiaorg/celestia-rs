@@ -9,7 +9,7 @@ use prost::{Message, Name};
 use sdk::error::sdk as errs;
 use sdk::{Context, Result};
 use x_ibc::router::{IbcModule, Router};
-use x_packetforward::middleware::{DEFAULT_FORWARD_TIMEOUT_NS, PacketForwardMiddleware};
+use x_packetforward::middleware::PacketForwardMiddleware;
 use x_transfer::relay::TransferModule;
 
 /// The app's `porttypes.Router`.
@@ -46,11 +46,7 @@ pub fn ica_registry() -> x_icahost::host::Registry {
 impl Default for IbcRouter {
     fn default() -> Self {
         Self {
-            transfer: PacketForwardMiddleware {
-                app: TransferModule,
-                retries_on_timeout: 0,
-                forward_timeout: DEFAULT_FORWARD_TIMEOUT_NS,
-            },
+            transfer: PacketForwardMiddleware::new(TransferModule),
             icahost: x_icahost::host::HostModule {
                 router: crate::router::AppRouter,
                 registry: x_icahost::host::Registry {

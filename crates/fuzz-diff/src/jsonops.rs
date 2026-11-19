@@ -1,7 +1,9 @@
 //! The `json_*` ops: every JSON decode reachable from consensus execution,
 //! called on the raw input as the state machine calls it (the Go side is
 //! `conformance/fuzzoracle/*/jsondecode.go`, whose doc lists the ops and
-//! the output format), plus seeds and a JSON-text mutator aimed at what
+//! the output format; from app version 12 the `json_pfm*` ops run the
+//! Celestia fork of packet-forward-middleware,
+//! `conformance/pfm-fork/cmd/fuzzoracle`), plus seeds and a JSON-text mutator aimed at what
 //! differs between JSON decoders: nesting depth, numbers out of `float64`
 //! range, key folding, duplicate keys, invalid UTF-8.
 
@@ -54,6 +56,84 @@ fn pfm_error_ack(error: &str) -> String {
         hex::encode(&ack.bytes),
         hex::encode(x_ibc::channel::commit_acknowledgement(&ack.bytes))
     )
+}
+
+/// The fork's error acknowledgement and its commitment, then the error
+/// text of its `packet_forward_error` event (`json_pfm_ack` from app
+/// version 12).
+fn pfm_fork_error_ack(error: &str) -> String {
+    let ack = x_ibc::router::Acknowledgement::error_string(
+        x_packetforward::middleware::FORK_ERROR_ACK_MESSAGE,
+    );
+    format!(
+        "{} {} {}",
+        hex::encode(&ack.bytes),
+        hex::encode(x_ibc::channel::commit_acknowledgement(&ack.bytes)),
+        h(error)
+    )
+}
+
+/// The fork's `OnRecvPacket` decision on `memo` up to `Validate`.
+fn pfm_fork_ack(memo: &str) -> Out {
+    use x_packetforward::memo::{self, Pfm, Recv};
+    ok(match memo::on_recv(memo, Pfm::Fork) {
+        Recv::NotForward => "not_forward".into(),
+        Recv::Forward(_) => "valid".into(),
+        Recv::Error(e) => pfm_fork_error_ack(&e),
+        Recv::NilForwardPanic => "nil_forward".into(),
+    })
+}
+
+/// The `json_pfm*` ops from app version 12, where celestia-app runs the
+/// Celestia fork of packet-forward-middleware (Go side:
+/// `conformance/pfm-fork/cmd/fuzzoracle`).
+fn pfm_fork(op: &str, text: &str) -> Out {
+    use x_packetforward::memo::{self, Memo, Pfm};
+    match op {
+        // `OnRecvPacket` up to `Validate`, with the memo length limit, on
+        // the memo of an ICS-20 packet that carries `text` (the JSON round
+        // trip turns each invalid UTF-8 byte into U+FFFD).
+        "json_pfm_ack" => {
+            let data = x_transfer::relay::PacketData {
+                denom: "uatom".into(),
+                amount: "1".into(),
+                sender: "remote".into(),
+                receiver: "pfm".into(),
+                memo: text.to_owned(),
+            };
+            let memo = match x_transfer::relay::PacketData::decode(&data.marshal_unsorted()) {
+                Ok(d) => d.memo,
+                Err(e) => return fail(e),
+            };
+            pfm_fork_ack(&memo)
+        }
+        // The retry sends the memo as is.
+        "json_pfm_next" => match memo::retry_next(text, Pfm::Fork) {
+            Ok(Some(Ok(s))) => ok(h(&s)),
+            Ok(None) => ok(String::new()),
+            Ok(Some(Err(e))) | Err(e) => fail(e),
+        },
+        _ => match memo::classify_as(text, Pfm::Fork) {
+            Memo::NotForward => ok("not_forward".into()),
+            Memo::NilForward => ok("nil_forward".into()),
+            Memo::ParseError(e) => fail(e),
+            Memo::Forward(f) => {
+                let retries = f.retries.map_or_else(|| "-".into(), |r| r.to_string());
+                let next = match &f.next {
+                    None => "-".into(),
+                    Some(Ok(s)) => h(s),
+                    Some(Err(_)) => "err".into(),
+                };
+                ok(format!(
+                    "forward {} {} {} {} {retries} {next}",
+                    h(&f.receiver),
+                    h(&f.port),
+                    h(&f.channel),
+                    f.timeout
+                ))
+            }
+        },
+    }
 }
 
 /// The Rust outcome of a `json_*` op.
@@ -114,6 +194,7 @@ pub fn rust_json(app_version: u64, op: &str, input: &[u8]) -> Out {
                 ..Out::default()
             }
         }
+        "json_pfm" | "json_pfm_ack" | "json_pfm_next" if app_version >= 12 => pfm_fork(op, &text),
         "json_pfm" | "json_pfm_ack" => {
             use x_packetforward::memo::{self, Memo};
             match memo::classify(&text) {
@@ -519,6 +600,10 @@ pub fn seeds(op: &str) -> Vec<Vec<u8>> {
             r#"{"forward":{"receiver":"r","port":"transfer","channel":"\udbff\udfff"}}"#,
             r#"{"forward":{"receiver":"r","port":"transfer","channel":"\udbff\udffe"}}"#,
             r#"{"forward":{"receiver":"","port":"transfer","channel":"channel-0"}}"#,
+            // What the Celestia fork (app version 12) rejects.
+            r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0"},"Forward":null}"#,
+            r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0","timeout":1e19}}"#,
+            r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0","next":"hello"}}"#,
         ],
         "json_pfm" | "json_pfm_next" => &[
             r#"{"forward":{"receiver":"r","port":"transfer","channel":"channel-0","timeout":"1m","retries":2,"next":{"b":1,"a":[1.50,"<x>",{"c":null}],"b":2}}}"#,
