@@ -1091,6 +1091,7 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
         min_retain = 3000;
     }
     opts.node = app::NodeOptions {
+        activate_v11_in_process: args.is_some(),
         enable_subspace_queries: files.bool(File::App, "enable-subspace-queries"),
         min_retain_blocks: min_retain,
         halt_height: args
@@ -1366,6 +1367,7 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
 async fn abci(home: &Path, home_given: bool, a: AbciArgs) -> anyhow::Result<()> {
     app::comet::set_rpc_address((!a.rpc_address.is_empty()).then_some(a.rpc_address.clone()));
     let node_options = app::NodeOptions {
+        activate_v11_in_process: false,
         enable_subspace_queries: home_given
             && ConfigFiles::load(home)?.bool(File::App, "enable-subspace-queries"),
         min_retain_blocks: a.min_retain_blocks,
