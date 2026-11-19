@@ -105,6 +105,8 @@ pub struct App {
 pub struct NodeOptions {
     /// Allow ABCI store prefix queries on app versions that require an opt-in.
     pub enable_subspace_queries: bool,
+    /// Activate the bundled v11 release from the committed plan in the embedded node.
+    pub activate_v11_in_process: bool,
     /// `min-retain-blocks`: `ResponseCommit.retain_height` keeps at least
     /// this many blocks (0 = no block pruning).
     pub min_retain_blocks: u64,
@@ -412,7 +414,7 @@ impl App {
             );
         }
         app.set_node_options(options.node.clone());
-        app.configure_execution_version()?;
+        app.restore_execution_version()?;
         app.check_header = app.init_check_header();
         app.mount_upgrade_stores()?;
         Ok(app)
@@ -437,6 +439,42 @@ impl App {
         }
         self.ms.reset_check();
         Ok(())
+    }
+
+    fn restore_execution_version(&mut self) -> Result<()> {
+        self.configure_execution_version()?;
+        self.activate_v11_if_due()?;
+        Ok(())
+    }
+
+    /// The embedded node carries both releases. Switch only when the
+    /// committed version and plan agree on v11 and its block is next.
+    fn activate_v11_if_due(&mut self) -> Result<bool> {
+        let next_height = self.last_height.saturating_add(1);
+        if !self.node.activate_v11_in_process
+            || self.execution_version() != upgrades::APP_VERSION
+            || self.app_version() != upgrades::V11_APP_VERSION
+            || self.node.unsafe_skip_upgrades.contains(&next_height)
+        {
+            return Ok(false);
+        }
+        let header = self.init_check_header();
+        let mut ctx = Context::new(&mut self.ms, header, ExecMode::Check);
+        let due = x_upgrade::get_upgrade_plan(&mut ctx)?
+            .is_some_and(|plan| plan.name == "v11" && plan.height == next_height);
+        if due {
+            self.execution_version = Some(upgrades::V11_APP_VERSION);
+            // Stage the release with the upgrade block's next store commit.
+            self.ms.root_mut().set_metadata(
+                EXECUTION_VERSION_KEY,
+                upgrades::V11_APP_VERSION.to_be_bytes().to_vec(),
+            );
+            tracing::info!(
+                height = next_height,
+                "activating bundled v11 upgrade handler"
+            );
+        }
+        Ok(due)
     }
 
     /// Selects the executable release and authenticates Go's v10 store
@@ -852,7 +890,9 @@ impl App {
         self.last_commit_hash = id.hash.to_vec();
         self.last_height = id.version;
         self.check_header = header;
-        if std::mem::take(&mut self.switch_on_commit) {
+        let consensus_version_changed = std::mem::take(&mut self.switch_on_commit);
+        let release_changed = self.activate_v11_if_due()?;
+        if consensus_version_changed || release_changed {
             // The multiplexer stops this binary after the commit and opens
             // the next app version (ADR 0004). Rebuild the check header
             // as that executable would on startup.
@@ -1071,7 +1111,7 @@ impl App {
                         tracing::error!(error = %e, "failed to load restored state");
                         return abort();
                     }
-                    if let Err(e) = self.configure_execution_version() {
+                    if let Err(e) = self.restore_execution_version() {
                         tracing::error!(error = %e, "failed to select restored execution version");
                         return abort();
                     }
