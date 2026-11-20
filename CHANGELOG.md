@@ -2,13 +2,24 @@
 
 ## Unreleased
 
+## v0.1.0-rc.6 (2026-11-20)
+
 ### Changed
 
+- Implement the Celestia app v11 emergency restrictions on Celestia mainnet,
+  Mocha, and Corto. Frozen accounts follow Go's recovery transfer, fee,
+  fee-grant, authorization, reward withdrawal, and Fibre rules.
+- Compare the v11 upgrade boundary against tagged Go ABCI responses,
+  including the embedded node's uninterrupted transition and restart replay.
+- Prepare version-gated v12 behavior while retaining the v11 execution
+  rules at the v11 upgrade boundary.
 - Runtime metadata now declares celestia-app v10.6.0 and celestia-core
   v0.42.8 as the explicit compatibility targets.
 
 ### Fixed
 
+- Activate the bundled v11 handler at the committed upgrade height without
+  restarting the embedded node.
 - Validator signing fails if the parent directory of its signing-state file
   cannot be opened or synced. Directory metadata is synced before returning
   a signature, with a final full file sync on macOS after the rename.
