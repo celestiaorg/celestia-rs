@@ -508,7 +508,10 @@ pub fn begin_block(ctx: &mut Context<'_>) -> Result<()> {
         .iter()
         .map(|v| v.validator.as_ref().map_or(0, |v| v.power))
         .sum();
-    if ctx.header.height > 1 {
+    // SDK v0.53 leaves carried fees for the next block when there is no
+    // previous commit, including when starting from an exported height.
+    let allocate_without_votes = !sdk::version::is_v12(sdk::version::app_version());
+    if ctx.header.height > 1 && (allocate_without_votes || !votes.is_empty()) {
         allocate_tokens(ctx, total, &votes)?;
     }
     let proposer = ctx.header.proposer_address.clone();

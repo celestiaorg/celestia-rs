@@ -187,6 +187,14 @@ pub fn migrate_params(ctx: &mut Context<'_>) -> Result<()> {
     set_params(ctx, &params)
 }
 
+/// Ensure the v12 parameter key exists, preserving previously migrated values.
+pub fn ensure_params(ctx: &mut Context<'_>) -> Result<()> {
+    if !ctx.has(STORE_KEY, PARAMS_KEY)? {
+        migrate_params(ctx)?;
+    }
+    Ok(())
+}
+
 /// `Keeper.SetParams`.
 pub fn set_params(ctx: &mut Context<'_>, p: &Params) -> Result<()> {
     ctx.set(STORE_KEY, PARAMS_KEY.to_vec(), p.encode_to_vec())

@@ -105,8 +105,8 @@ pub struct App {
 pub struct NodeOptions {
     /// Allow ABCI store prefix queries on app versions that require an opt-in.
     pub enable_subspace_queries: bool,
-    /// Activate the bundled v11 release from the committed plan in the embedded node.
-    pub activate_v11_in_process: bool,
+    /// Activate bundled releases from the committed plan in the embedded node.
+    pub activate_bundled_upgrades: bool,
     /// `min-retain-blocks`: `ResponseCommit.retain_height` keeps at least
     /// this many blocks (0 = no block pruning).
     pub min_retain_blocks: u64,
@@ -234,15 +234,24 @@ fn dur(seconds: i64, nanos: i32) -> Option<Duration> {
 /// `app.TimeoutInfo()` with default config values.
 #[must_use]
 pub fn timeout_info() -> TimeoutInfo {
+    timeout_info_at(upgrades::APP_VERSION)
+}
+
+fn timeout_info_at(version: u64) -> TimeoutInfo {
+    let v12 = sdk::version::is_v12(version);
     TimeoutInfo {
         timeout_propose: dur(3, 0),
         timeout_propose_delta: dur(0, 500_000_000),
         timeout_prevote: dur(2, 0),
         timeout_prevote_delta: dur(0, 500_000_000),
-        timeout_precommit: dur(3, 0),
+        timeout_precommit: dur(if v12 { 2 } else { 3 }, 0),
         timeout_precommit_delta: dur(0, 500_000_000),
-        timeout_commit: dur(0, 500_000_000),
-        delayed_precommit_timeout: dur(2, 100_000_000),
+        timeout_commit: dur(0, if v12 { 100_000_000 } else { 500_000_000 }),
+        delayed_precommit_timeout: if v12 { dur(0, 0) } else { dur(2, 100_000_000) },
+        dynamic_timeout_commit: v12.then_some(Duration {
+            seconds: 0,
+            nanos: 800_000_000,
+        }),
     }
 }
 
@@ -443,35 +452,39 @@ impl App {
 
     fn restore_execution_version(&mut self) -> Result<()> {
         self.configure_execution_version()?;
-        self.activate_v11_if_due()?;
+        self.activate_bundled_upgrade_if_due()?;
         Ok(())
     }
 
-    /// The embedded node carries both releases. Switch only when the
-    /// committed version and plan agree on v11 and its block is next.
-    fn activate_v11_if_due(&mut self) -> Result<bool> {
+    /// Switch only when the committed version and the due plan agree.
+    fn activate_bundled_upgrade_if_due(&mut self) -> Result<bool> {
         let next_height = self.last_height.saturating_add(1);
-        if !self.node.activate_v11_in_process
-            || self.execution_version() != upgrades::APP_VERSION
-            || self.app_version() != upgrades::V11_APP_VERSION
+        if !self.node.activate_bundled_upgrades
             || self.node.unsafe_skip_upgrades.contains(&next_height)
         {
             return Ok(false);
         }
+        let target = self.app_version();
+        let execution = self.execution_version();
+        let plan_name = match (execution, target) {
+            (upgrades::APP_VERSION, upgrades::V11_APP_VERSION) => "v11",
+            (upgrades::APP_VERSION | upgrades::V11_APP_VERSION, upgrades::V12_APP_VERSION) => "v12",
+            _ => return Ok(false),
+        };
         let header = self.init_check_header();
         let mut ctx = Context::new(&mut self.ms, header, ExecMode::Check);
         let due = x_upgrade::get_upgrade_plan(&mut ctx)?
-            .is_some_and(|plan| plan.name == "v11" && plan.height == next_height);
+            .is_some_and(|plan| plan.name == plan_name && plan.height == next_height);
         if due {
-            self.execution_version = Some(upgrades::V11_APP_VERSION);
+            self.execution_version = Some(target);
             // Stage the release with the upgrade block's next store commit.
-            self.ms.root_mut().set_metadata(
-                EXECUTION_VERSION_KEY,
-                upgrades::V11_APP_VERSION.to_be_bytes().to_vec(),
-            );
+            self.ms
+                .root_mut()
+                .set_metadata(EXECUTION_VERSION_KEY, target.to_be_bytes().to_vec());
             tracing::info!(
                 height = next_height,
-                "activating bundled v11 upgrade handler"
+                version = target,
+                "activating bundled upgrade handler"
             );
         }
         Ok(due)
@@ -511,7 +524,9 @@ impl App {
             let committed_version = self.app_version();
             let header = self.init_check_header();
             let mut ctx = Context::new(&mut self.ms, header, ExecMode::Check);
+            let completed_v12 = x_upgrade::get_done_height(&mut ctx, "v12")? > 0;
             if committed_version == upgrades::V12_APP_VERSION
+                && !completed_v12
                 && !x_upgrade::get_upgrade_plan(&mut ctx)?.is_some_and(|plan| {
                     plan.name == "v12" && plan.height == self.last_height.saturating_add(1)
                 })
@@ -520,7 +535,9 @@ impl App {
                     "cannot determine the v12 executable from consensus parameters alone; supply the chain's genesis",
                 ));
             }
-            self.execution_version = Some(if x_upgrade::get_done_height(&mut ctx, "v11")? > 0 {
+            self.execution_version = Some(if completed_v12 {
+                upgrades::V12_APP_VERSION
+            } else if x_upgrade::get_done_height(&mut ctx, "v11")? > 0 {
                 upgrades::V11_APP_VERSION
             } else {
                 upgrades::APP_VERSION
@@ -547,6 +564,7 @@ impl App {
         let target = match disk.name.as_str() {
             "v10" => upgrades::APP_VERSION,
             "v11" => upgrades::V11_APP_VERSION,
+            "v12" => upgrades::V12_APP_VERSION,
             _ => return Ok(()),
         };
 
@@ -635,7 +653,7 @@ impl App {
             app_version: self.app_version(),
             last_block_height: self.last_height,
             last_block_app_hash: self.last_commit_hash.clone(),
-            timeout_info: Some(timeout_info()),
+            timeout_info: Some(timeout_info_at(self.app_version())),
         }
     }
 
@@ -712,9 +730,7 @@ impl App {
         let app_state = &genesis;
         x_upgrade::set_module_version_map(
             &mut ctx,
-            modules::VERSION_MAP
-                .iter()
-                .copied()
+            modules::version_map(genesis_app_version)
                 .filter(|(m, _)| stores::exists_at(m, genesis_app_version)),
         )?;
         let mut validators = Vec::new();
@@ -754,7 +770,7 @@ impl App {
             consensus_params: None,
             validators,
             app_hash: self.last_commit_hash.clone(),
-            timeout_info: Some(timeout_info()),
+            timeout_info: Some(timeout_info_at(genesis_app_version)),
         })
     }
 
@@ -866,7 +882,7 @@ impl App {
             validator_updates,
             consensus_param_updates: cp,
             app_hash,
-            timeout_info: Some(timeout_info()),
+            timeout_info: Some(timeout_info_at(execution_version)),
         })
     }
 
@@ -891,7 +907,7 @@ impl App {
         self.last_height = id.version;
         self.check_header = header;
         let consensus_version_changed = std::mem::take(&mut self.switch_on_commit);
-        let release_changed = self.activate_v11_if_due()?;
+        let release_changed = self.activate_bundled_upgrade_if_due()?;
         if consensus_version_changed || release_changed {
             // The multiplexer stops this binary after the commit and opens
             // the next app version (ADR 0004). Rebuild the check header

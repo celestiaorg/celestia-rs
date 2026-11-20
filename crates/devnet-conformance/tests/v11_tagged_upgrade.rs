@@ -59,7 +59,7 @@ fn assert_embedded_upgrade(reopen: bool) -> anyhow::Result<()> {
     let options = AppOptions {
         node: NodeOptions {
             home: Some(home.path().to_path_buf()),
-            activate_v11_in_process: true,
+            activate_bundled_upgrades: true,
             ..NodeOptions::default()
         },
         ..AppOptions::default()

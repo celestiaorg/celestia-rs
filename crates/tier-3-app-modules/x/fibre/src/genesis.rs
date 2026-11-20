@@ -130,12 +130,9 @@ fn validate_legacy_payments(payments: &[ProcessedPayment]) -> Result<()> {
     Ok(())
 }
 
-/// Migrate validated records immediately after InitGenesis writes their raw keys.
+/// Migrate validated records stored under their legacy keys.
 /// Refund in raw-key order, matching the Go keeper's store iteration and bank events.
-pub(super) fn migrate_imported_escrows(
-    ctx: &mut sdk::Context<'_>,
-    gs: &GenesisState,
-) -> Result<()> {
+pub(super) fn migrate_legacy_escrows(ctx: &mut sdk::Context<'_>, gs: &GenesisState) -> Result<()> {
     use crate::{
         MODULE_NAME, STORE_KEY, decode, delete_withdrawal, escrow_key, get_escrow_account,
         set_escrow_account, set_withdrawal,
