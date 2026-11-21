@@ -4,6 +4,8 @@
 
 #[cfg(feature = "bridge")]
 mod bridge;
+#[cfg(feature = "bridge")]
+pub use bridge::auth::operator_token;
 #[cfg(feature = "da-light")]
 pub use bridge::peer::light::{LightArgs, run_light};
 pub mod client;

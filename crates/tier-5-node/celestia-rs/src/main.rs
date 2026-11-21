@@ -89,6 +89,15 @@ enum Cmd {
     /// Follow a trusted DA checkpoint and sample shares over the DA network.
     #[cfg(feature = "da-light")]
     DaLight(celestia_rs::LightArgs),
+    /// Create a token for the DA JSON-RPC listener using this node home.
+    #[cfg(feature = "bridge")]
+    DaAuth {
+        #[arg(value_parser=["public","read","write","admin"])]
+        level: String,
+        /// Lifetime in seconds, or zero for an unexpiring token.
+        #[arg(long, default_value_t = 0)]
+        ttl_seconds: u64,
+    },
     /// Follow a network over celestia-core RPC (HTTP/HTTPS) instead of
     /// P2P: verify every block with the light client, execute it and stop
     /// at the first app hash / results / validator set divergence.
@@ -960,6 +969,11 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
         }
         #[cfg(feature = "da-light")]
         Cmd::DaLight(args) => celestia_rs::run_light(&home, args).await,
+        #[cfg(feature = "bridge")]
+        Cmd::DaAuth { level, ttl_seconds } => {
+            util::out(celestia_rs::operator_token(&home, &level, ttl_seconds)?);
+            Ok(())
+        }
         Cmd::Start(args) => start(&home, *args).await,
         Cmd::Follow(args) => follow(&home, *args).await,
         Cmd::ExportBlocks { out } => node::export_blocks(&home, &out),
