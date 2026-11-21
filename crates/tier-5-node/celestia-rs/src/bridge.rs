@@ -5,6 +5,7 @@ mod envelope;
 mod header_rpc;
 mod node_rpc;
 mod share_rpc;
+pub(crate) mod submit;
 mod ws;
 
 use std::net::{SocketAddr, TcpListener};
@@ -12,9 +13,9 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 use anyhow::{Context, Result, ensure};
-use axum::extract::{DefaultBodyLimit, State};
+use axum::extract::State;
 use axum::http::header::CONTENT_TYPE;
-use axum::{Router, body::Bytes, routing::post};
+use axum::{Router, routing::post};
 use nodestore::{BlockStore, StateStore};
 use rpc::json::J;
 use serde_json::Value;
@@ -34,6 +35,7 @@ impl Server {
         home: &std::path::Path,
         blocks: BlockStore,
         states: StateStore,
+        wallet: Option<Arc<submit::Wallet>>,
     ) -> Result<Self> {
         ensure!(
             addr.ip().is_loopback(),
@@ -50,6 +52,7 @@ impl Server {
         };
         let (stop, stopped) = oneshot::channel();
         let state = Arc::new(Bridge {
+            wallet,
             waiters: Arc::new(Semaphore::new(32)),
             blocks,
             states,
@@ -58,7 +61,6 @@ impl Server {
         let router = Router::new()
             .route("/", post(handle).get(ws::upgrade))
             .layer(axum::Extension(Arc::new(auth::Auth::open(home)?)))
-            .layer(DefaultBodyLimit::max(64 * 1024))
             .with_state(state);
         let thread = std::thread::Builder::new().name("da-bridge".into()).spawn(move || {
             runtime.block_on(async move {
@@ -87,6 +89,7 @@ impl Drop for Server {
 }
 
 struct Bridge {
+    wallet: Option<Arc<submit::Wallet>>,
     waiters: Arc<Semaphore>,
     blocks: BlockStore,
     states: StateStore,
@@ -229,6 +232,14 @@ struct Committed {
 }
 
 impl Bridge {
+    fn body_limit(&self, permissions: &[String]) -> usize {
+        if self.wallet.is_some() && permissions.iter().any(|p| p == "write") {
+            submit::BODY_LIMIT
+        } else {
+            64 * 1024
+        }
+    }
+
     fn committed(&self, height: i64) -> Result<Committed> {
         let block = self
             .blocks
@@ -483,12 +494,16 @@ async fn handle(
     State(bridge): State<Arc<Bridge>>,
     axum::Extension(auth): axum::Extension<Arc<auth::Auth>>,
     headers: axum::http::HeaderMap,
-    body: Bytes,
+    body: axum::body::Body,
 ) -> axum::response::Response {
     use axum::response::IntoResponse as _;
     let changed = auth.subscribe();
     let Ok((token, permissions)) = credentials(&auth, &headers) else {
         return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    };
+    let limit = bridge.body_limit(&permissions);
+    let Ok(body) = axum::body::to_bytes(body, limit).await else {
+        return axum::http::StatusCode::PAYLOAD_TOO_LARGE.into_response();
     };
     tokio::select! {
         value=dispatch(bridge,&auth,&permissions,&body) => ([(CONTENT_TYPE, "application/json")], value).into_response(),
@@ -559,6 +574,25 @@ async fn dispatch(
                 return Err((-32602, "invalid parameters".to_owned()));
             }
             return Err((1, "module/das: stubbed: dasing is disabled".to_owned()));
+        }
+        if matches!(method, "blob.Submit" | "state.AccountAddress") {
+            let submit = method == "blob.Submit";
+            require(method, if submit { "write" } else { "read" })?;
+            let wallet = bridge
+                .wallet
+                .as_ref()
+                .ok_or_else(|| (1, "bridge signer is not configured".to_owned()))?;
+            if submit {
+                return wallet
+                    .submit(params, bridge.states.clone())
+                    .await
+                    .map(J::num)
+                    .map_err(|e| (1, e.to_string()));
+            }
+            if params != &empty {
+                return Err(invalid());
+            }
+            return Ok(J::str(wallet.address()));
         }
         if header_rpc::handles(method) {
             require(method, "read")?;
