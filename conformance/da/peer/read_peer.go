@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/celestiaorg/celestia-node/header"
+	"github.com/celestiaorg/celestia-node/share/eds"
 	"github.com/celestiaorg/celestia-node/share/shwap"
 	"github.com/celestiaorg/celestia-node/share/shwap/p2p/shrex"
 	exchange "github.com/celestiaorg/go-header/p2p"
@@ -69,6 +70,19 @@ func main() {
 	client, err := shrex.NewClient(params, host)
 	check(err)
 	width := len(eh.DAH.RowRoots)
+	eid, err := shwap.NewEdsID(h)
+	check(err)
+	var square bytes.Buffer
+	_, _, err = client.Get(ctx, &eid, &square, info.ID)
+	check(err)
+	_, err = eds.ReadAccessor(ctx, &square, eh.DAH)
+	check(err)
+	rangeID, err := shwap.NewRangeNamespaceDataID(eid, 0, 1, width/2)
+	check(err)
+	var part shwap.RangeNamespaceData
+	_, _, err = client.Get(ctx, &rangeID, &part, info.ID)
+	check(err)
+	check(part.VerifyInclusion(shwap.SampleCoords{}, shwap.SampleCoords{}, width/2, eh.DAH.RowRoots))
 	for _, row := range []int{0, width - 1} {
 		rid, err := shwap.NewRowID(h, row, width)
 		check(err)

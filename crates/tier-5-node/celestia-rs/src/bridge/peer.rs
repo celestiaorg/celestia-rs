@@ -109,6 +109,7 @@ async fn run(
     for (kind, protocol) in [
         (Kind::Header, "header-ex/v0.0.3"),
         (Kind::Namespace, "shrex/v0.1.0/nd_v0"),
+        (Kind::Range, "shrex/v0.1.0/rangeNamespaceData_v0"),
         (Kind::Row, "shrex/v0.1.0/row_v0"),
         (Kind::Sample, "shrex/v0.1.0/sample_v0"),
         (Kind::Eds, "shrex/v0.1.0/eds_v0"),
@@ -156,6 +157,7 @@ enum Kind {
     Eds,
     Row,
     Sample,
+    Range,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -241,9 +243,10 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
                 write(stream, &response.encode_length_delimited_to_vec()).await?;
             }
         }
-        Kind::Eds | Kind::Namespace | Kind::Row | Kind::Sample => {
+        Kind::Eds | Kind::Namespace | Kind::Row | Kind::Sample | Kind::Range => {
             let extra = match kind {
                 Kind::Namespace => shares::NAMESPACE_SIZE,
+                Kind::Range => 8,
                 Kind::Row => 2,
                 Kind::Sample => 4,
                 _ => 0,
@@ -270,6 +273,20 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
                             .map_err(|e| anyhow::anyhow!("{}", e.log))?;
                         Payload::Rows(rows)
                     }
+                    Kind::Range => {
+                        let from = usize::try_from(u32::from_be_bytes(id[8..12].try_into()?))?;
+                        let end = usize::try_from(u32::from_be_bytes(id[12..16].try_into()?))?;
+                        let width = block.eds.original_width();
+                        ensure!(from < end && end <= width * width, "invalid ODS range");
+                        let first = block.eds.share(from / width, from % width)?;
+                        let last = block.eds.share((end - 1) / width, (end - 1) % width)?;
+                        // Q0 namespaces are sorted in row-major order.
+                        ensure!(
+                            first[..shares::NAMESPACE_SIZE] == last[..shares::NAMESPACE_SIZE],
+                            "range spans namespaces"
+                        );
+                        Payload::Range(Arc::new(block), from, end)
+                    }
                     Kind::Row => {
                         let row = usize::from(u16::from_be_bytes(id[8..10].try_into()?));
                         let half = block.eds.row(row)?[..block.eds.original_width()]
@@ -281,22 +298,21 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
                     Kind::Sample => {
                         let row = usize::from(u16::from_be_bytes(id[8..10].try_into()?));
                         let col = usize::from(u16::from_be_bytes(id[10..12].try_into()?));
-                        let proof =
-                            app::inclusion_proof::sample_proof(&block.eds, &block.dah, row, col)
-                                .map_err(|e| anyhow::anyhow!("{}", e.log))?;
+                        let proof = app::inclusion_proof::row_range_proof(
+                            &block.eds,
+                            &block.dah,
+                            row,
+                            col,
+                            col + 1,
+                        )
+                        .map_err(|e| anyhow::anyhow!("{}", e.log))?;
                         let share = WireShare {
                             data: block.eds.share(row, col)?.to_vec(),
                         };
                         Payload::Frame(
                             Sample {
                                 share: Some(share),
-                                proof: Some(Proof {
-                                    start: i64::from(proof.start),
-                                    end: i64::from(proof.end),
-                                    nodes: proof.nodes,
-                                    leaf_hash: vec![],
-                                    ignore_max: true,
-                                }),
+                                proof: Some(proof.into()),
                             }
                             .encode_length_delimited_to_vec(),
                         )
@@ -312,6 +328,37 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
             };
             write(stream, &[2, 8, status]).await?;
             match data? {
+                Some(Payload::Range(block, from, end)) => {
+                    let width = block.eds.original_width();
+                    for row in from / width..=(end - 1) / width {
+                        let start = from.saturating_sub(row * width);
+                        let stop = (end - row * width).min(width);
+                        let block = block.clone();
+                        let frame = tokio::task::spawn_blocking(move || -> Result<_> {
+                            let shares = (start..stop)
+                                .map(|col| {
+                                    Ok(WireShare {
+                                        data: block.eds.share(row, col)?.to_vec(),
+                                    })
+                                })
+                                .collect::<Result<Vec<_>>>()?;
+                            let proof = if start == 0 && stop == width {
+                                None
+                            } else {
+                                Some(
+                                    app::inclusion_proof::row_range_proof(
+                                        &block.eds, &block.dah, row, start, stop,
+                                    )
+                                    .map_err(|e| anyhow::anyhow!("{}", e.log))?
+                                    .into(),
+                                )
+                            };
+                            Ok(Row { shares, proof }.encode_length_delimited_to_vec())
+                        })
+                        .await??;
+                        write(stream, &frame).await?;
+                    }
+                }
                 Some(Payload::Frame(frame)) => write(stream, &frame).await?,
                 Some(Payload::Rows(rows)) => {
                     for row in rows {
@@ -334,6 +381,7 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
 }
 
 enum Payload {
+    Range(Arc<Committed>, usize, usize),
     Frame(Vec<u8>),
     Rows(Vec<app::inclusion_proof::NamespaceRow>),
     Square(square::ExtendedDataSquare),
@@ -409,13 +457,7 @@ fn row_wire(row: app::inclusion_proof::NamespaceRow) -> Vec<u8> {
             .into_iter()
             .map(|data| WireShare { data })
             .collect(),
-        proof: Some(Proof {
-            start: i64::from(p.start),
-            end: i64::from(p.end),
-            nodes: p.nodes,
-            leaf_hash: p.leaf_hash,
-            ignore_max: true,
-        }),
+        proof: Some(p.into()),
     }
     .encode_length_delimited_to_vec()
 }
@@ -434,4 +476,16 @@ struct Sample {
     share: Option<WireShare>,
     #[prost(message, optional, tag = "2")]
     proof: Option<Proof>,
+}
+
+impl From<celestia_proto::celestia::core::v1::proof::NmtProof> for Proof {
+    fn from(p: celestia_proto::celestia::core::v1::proof::NmtProof) -> Self {
+        Self {
+            start: i64::from(p.start),
+            end: i64::from(p.end),
+            nodes: p.nodes,
+            leaf_hash: p.leaf_hash,
+            ignore_max: true,
+        }
+    }
 }
