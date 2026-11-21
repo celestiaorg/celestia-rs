@@ -27,6 +27,8 @@ struct Claims {
 pub(crate) struct Auth {
     key: [u8; 32],
     revoked: PathBuf,
+    #[cfg(unix)]
+    revoked_dir: std::fs::File,
     changed: watch::Sender<()>,
 }
 
@@ -111,12 +113,14 @@ impl Auth {
         std::fs::create_dir_all(&revoked)?;
         Ok(Self {
             key: secret(home)?,
+            #[cfg(unix)]
+            revoked_dir: std::fs::File::open(&revoked)?,
             revoked,
             changed: watch::channel(()).0,
         })
     }
 
-    fn claims(&self, token: &str) -> Result<(Claims, PathBuf)> {
+    fn claims(&self, token: &str) -> Result<(Claims, [u8; 32])> {
         let (input, sig) = token.rsplit_once('.').context("malformed token")?;
         let (header, payload) = input.split_once('.').context("malformed token")?;
         let signature = URL_SAFE_NO_PAD.decode(sig)?;
@@ -126,12 +130,19 @@ impl Auth {
         let metadata: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(header)?)?;
         ensure!(metadata["alg"] == "HS256", "unsupported token algorithm");
         let claims: Claims = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload)?)?;
-        let marker = self.revoked.join(hex::encode(hash::sha256(&signature)));
-        Ok((claims, marker))
+        Ok((claims, hash::sha256(&signature)))
+    }
+
+    fn marker(&self, digest: &[u8; 32]) -> Result<PathBuf> {
+        let encoded = hex::encode(digest);
+        let component = Path::new(&encoded)
+            .file_name()
+            .context("missing token digest")?;
+        Ok(self.revoked.join(component))
     }
 
     pub(super) fn verify(&self, token: &str) -> Result<Vec<String>> {
-        let (claims, marker) = self.claims(token)?;
+        let (claims, digest) = self.claims(token)?;
         if claims.expires_at != ZERO {
             let (sec, nanos) = sdk::time::parse_rfc3339_nano(claims.expires_at.as_bytes())
                 .context("invalid token expiry")?;
@@ -141,7 +152,11 @@ impl Auth {
                 "token expired"
             );
         }
-        ensure!(!marker.try_exists()?, "token revoked");
+        match std::fs::symlink_metadata(self.marker(&digest)?) {
+            Err(e) if e.kind() == ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+            Ok(_) => anyhow::bail!("token revoked"),
+        }
         Ok(claims.allow)
     }
 
@@ -166,16 +181,15 @@ impl Auth {
         match (method, args.len()) {
             ("node.AuthVerify", 1) => Ok(serde_json::to_value(self.verify(token()?)?)?),
             ("node.AuthRevoke", 1) => {
-                let (_, marker) = self.claims(token()?)?;
-                let file = std::fs::OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .truncate(false)
-                    .open(marker)?;
-                file.sync_all()?;
+                let (_, digest) = self.claims(token()?)?;
+                match std::fs::File::create_new(self.marker(&digest)?) {
+                    Ok(file) => file.sync_all()?,
+                    Err(e) if e.kind() == ErrorKind::AlreadyExists => {}
+                    Err(e) => return Err(e.into()),
+                }
                 self.changed.send_replace(());
                 #[cfg(unix)]
-                std::fs::File::open(&self.revoked)?.sync_all()?;
+                self.revoked_dir.sync_all()?;
                 Ok(Value::Null)
             }
             ("node.AuthNew", 1) | ("node.AuthNewWithExpiry", 2) => {
@@ -211,4 +225,19 @@ mod tests {
         drop(auth);
         assert!(Auth::open(root.path()).unwrap().verify(&token).is_err());
     }
+}
+
+#[cfg(all(test, unix))]
+#[test]
+fn existing_revocation_marker_is_never_followed() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let auth = Auth::open(root.path())?;
+    let token = operator_token(root.path(), "read", 0)?;
+    let (_, digest) = auth.claims(&token)?;
+    let absent = root.path().join("absent");
+    std::os::unix::fs::symlink(&absent, auth.marker(&digest)?)?;
+    assert!(auth.verify(&token).is_err());
+    auth.admin("node.AuthRevoke", &[Value::String(token)])?;
+    assert!(!absent.exists());
+    Ok(())
 }
