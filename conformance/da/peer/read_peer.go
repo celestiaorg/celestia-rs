@@ -191,6 +191,27 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	if connected != network.Connected {
 		panic("admin dial did not connect")
 	}
+	if err := reader.P2P.Protect(ctx, address.ID, "first"); err == nil {
+		panic("read token protected a peer")
+	}
+	check(admin.P2P.Protect(ctx, address.ID, "first"))
+	check(admin.P2P.Protect(ctx, address.ID, "first"))
+	check(admin.P2P.Protect(ctx, address.ID, "second"))
+	present, err := admin.P2P.IsProtected(ctx, address.ID, "")
+	check(err)
+	if !present {
+		panic("wildcard did not see protected peer")
+	}
+	still, err := admin.P2P.Unprotect(ctx, address.ID, "first")
+	check(err)
+	if !still {
+		panic("removing one tag removed all protection")
+	}
+	present, err = admin.P2P.IsProtected(ctx, address.ID, "first")
+	check(err)
+	if present {
+		panic("removed tag still active")
+	}
 	if err := reader.P2P.BlockPeer(ctx, address.ID); err == nil {
 		panic("read token blocked a DA peer")
 	}
@@ -240,6 +261,17 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	if connected != network.NotConnected {
 		panic("admin close did not disconnect")
 	}
+	present, err = admin.P2P.IsProtected(ctx, address.ID, "second")
+	check(err)
+	if !present {
+		panic("tag lost across explicit disconnect")
+	}
+	still, err = admin.P2P.Unprotect(ctx, address.ID, "second")
+	check(err)
+	if still {
+		panic("final tag left protection active")
+	}
+	fmt.Println("Go verified independent connection-manager tags and wildcard protection")
 	check(extra.Close())
 	if err := admin.P2P.Connect(ctx, address); err == nil {
 		panic("dial to stopped peer succeeded")

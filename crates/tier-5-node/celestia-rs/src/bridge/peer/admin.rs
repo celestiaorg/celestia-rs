@@ -32,6 +32,9 @@ impl Control {
             "p2p.Info"
                 | "p2p.Connect"
                 | "p2p.ClosePeer"
+                | "p2p.Protect"
+                | "p2p.Unprotect"
+                | "p2p.IsProtected"
                 | "p2p.BlockPeer"
                 | "p2p.UnblockPeer"
                 | "p2p.ListBlockedPeers"
@@ -227,6 +230,19 @@ fn read(
     args: &[Value],
 ) -> Result<Value> {
     match (method, args) {
+        (action @ ("p2p.Protect" | "p2p.Unprotect" | "p2p.IsProtected"), [id, tag]) => {
+            let id = parse_peer(id)?;
+            let tag = tag.as_str().context("expected a protection tag")?;
+            let policy = &mut swarm.behaviour_mut().protected;
+            Ok(match action {
+                "p2p.Protect" => {
+                    policy.protect(id, tag);
+                    Value::Null
+                }
+                "p2p.Unprotect" => json!(policy.unprotect(id, tag)),
+                _ => json!(policy.contains(id, tag)),
+            })
+        }
         ("p2p.ListBlockedPeers", []) => Ok(json!(
             swarm
                 .behaviour()

@@ -3,6 +3,7 @@ mod admin;
 pub(crate) use admin::Control;
 mod inbound;
 mod network;
+mod protected;
 
 use std::io::{ErrorKind, Write as _};
 use std::net::{IpAddr, SocketAddr};
@@ -119,6 +120,9 @@ async fn run(
 ) -> Result<()> {
     let mut behaviour = network::Behaviour::new(&key, network)?;
     blocklist.restore(&mut behaviour)?;
+    for peer in peers.bootstrap.keys() {
+        behaviour.protected.protect(*peer, "protected-bootstrap");
+    }
     let mut swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(

@@ -11,6 +11,7 @@ mod composed {
     use super::{NetworkBehaviour, gossipsub, identify, kad};
     #[derive(NetworkBehaviour)]
     pub(crate) struct Behaviour {
+        pub(crate) protected: super::super::protected::Protected,
         pub(crate) gate:
             libp2p::allow_block_list::Behaviour<libp2p::allow_block_list::BlockedPeers>,
         pub(crate) streams: super::super::inbound::Inbound,
@@ -60,6 +61,7 @@ impl Behaviour {
         .map_err(anyhow::Error::msg)?;
         gossip.subscribe(&header_topic(network))?;
         Ok(Self {
+            protected: super::protected::Protected::default(),
             gate: libp2p::allow_block_list::Behaviour::default(),
             streams: super::inbound::Inbound::new(network)?,
             identify: identify::Behaviour::new(identify::Config::new(
