@@ -34,3 +34,18 @@ go run "$PROBE" http://127.0.0.1:32658 "$HEIGHT" 726f6c6c7570 68656c6c6f2d6461
 The client recomputes the blob commitment, verifies the namespace rows against
 the signed header, and compares the data and share index returned by
 `blob.Get` and `blob.GetAll`.
+
+For SHREX and go-header, build with `--features bridge-p2p` and add
+`--bridge-p2p-listen 127.0.0.1:32121` to the Rust start command. Use the
+public peer ID in the DA listener log to construct the multiaddress. From
+the pinned celestia-node checkout, run the peer probe against the block
+containing the paid blob:
+
+```sh
+go run "$PROBE_DIR/peer/read_peer.go" celestia-rs-local \
+  "/ip4/127.0.0.1/tcp/32121/p2p/$PEER_ID" "$HEIGHT" 726f6c6c7570 68656c6c6f2d6461
+```
+
+The Go peer exchanges a signed header, reconstructs the EDS, verifies a
+range, verifies half rows and samples in all four quadrants, and retrieves
+the submitted bytes with a namespace inclusion proof.
