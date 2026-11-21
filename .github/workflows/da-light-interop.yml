@@ -1,0 +1,43 @@
+name: Rust DA light interoperability
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'crates/tier-5-node/celestia-rs/src/bridge/peer/light.rs'
+      - 'conformance/da/light/**'
+      - '.github/workflows/da-light-interop.yml'
+permissions:
+  contents: read
+jobs:
+  light:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        revision: [d5dfb21a0885622828e30e8e2daf50e5d1bb72b2, af9897bb471959660a4179048656694f3013b2f5]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: celestiaorg/celestia-app
+          ref: 58be8ae90d00518800df5506b3a1e988f009c1c6
+          path: go-app
+          persist-credentials: false
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: celestiaorg/celestia-node
+          ref: ${{ matrix.revision }}
+          path: go-node
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go-node/go.mod
+          cache-dependency-path: |
+            go-app/go.sum
+            go-node/go.sum
+      - run: cargo build --locked -p celestia-rs --no-default-features --features da-light
+        env:
+          CARGO_PROFILE_DEV_DEBUG: '0'
+      - run: conformance/da/light/test-go-bridge.sh target/debug/celestia-rs go-app go-node
