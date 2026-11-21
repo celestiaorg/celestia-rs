@@ -402,7 +402,7 @@ pub fn blob_tx(tx_raw: &[u8], blobs: &[shares::Blob]) -> Vec<u8> {
             namespace_version: u32::from(b.namespace().as_bytes()[0]),
             share_version: u32::from(b.share_version()),
             data: b.data().to_vec(),
-            signer: Vec::new(),
+            signer: b.signer.map_or_else(Vec::new, |s| s.to_vec()),
         })
         .collect();
     txdecode::marshal_blob_tx(tx_raw, &wire)
@@ -427,8 +427,7 @@ impl Node {
 
     /// Calls `method` with `params`.
     pub fn call(&self, method: &str, params: Value) -> anyhow::Result<Value> {
-        app::comet::set_rpc_address(Some(self.addr.clone()));
-        let client = app::comet::client().map_err(|e| anyhow!(e))?;
+        let client = app::comet::client_for(&self.addr);
         let params = match params {
             Value::Object(m) => m,
             _ => Map::new(),

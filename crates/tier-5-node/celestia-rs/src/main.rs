@@ -86,6 +86,15 @@ enum Cmd {
     /// Run a node: Rust consensus, P2P, mempool and RPC on top of the
     /// in-process state machine.
     Start(Box<StartArgs>),
+    /// Create a token for the DA JSON-RPC listener using this node home.
+    #[cfg(feature = "bridge")]
+    DaAuth {
+        #[arg(value_parser=["public","read","write","admin"])]
+        level: String,
+        /// Lifetime in seconds, or zero for an unexpiring token.
+        #[arg(long, default_value_t = 0)]
+        ttl_seconds: u64,
+    },
     /// Follow a network over celestia-core RPC (HTTP/HTTPS) instead of
     /// P2P: verify every block with the light client, execute it and stop
     /// at the first app hash / results / validator set divergence.
@@ -170,10 +179,14 @@ struct StartArgs {
     #[cfg(feature = "bridge-p2p")]
     #[arg(long)]
     bridge_p2p_listen: Option<std::net::SocketAddr>,
-    /// Serve experimental read-only DA JSON-RPC on this loopback address.
+    /// Serve experimental DA JSON-RPC on this loopback address.
     #[cfg(feature = "bridge")]
     #[arg(long)]
     bridge_rpc_listen: Option<std::net::SocketAddr>,
+    /// Allow write-authorized DA clients to submit blobs with this keyring account.
+    #[cfg(feature = "bridge")]
+    #[arg(long, requires = "bridge_rpc_listen")]
+    bridge_signer: Option<String>,
     /// Built-in network (mainnet, mocha, arabica, local): initializes the
     /// home on first start and checks the genesis.
     #[arg(long, env = "CELESTIA_RS_NETWORK")]
@@ -955,6 +968,11 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
             ));
             Ok(())
         }
+        #[cfg(feature = "bridge")]
+        Cmd::DaAuth { level, ttl_seconds } => {
+            util::out(celestia_rs::operator_token(&home, &level, ttl_seconds)?);
+            Ok(())
+        }
         Cmd::Start(args) => start(&home, *args).await,
         Cmd::Follow(args) => follow(&home, *args).await,
         Cmd::ExportBlocks { out } => node::export_blocks(&home, &out),
@@ -1275,6 +1293,7 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
     #[cfg(feature = "bridge")]
     {
         opts.bridge_rpc_listen = a.bridge_rpc_listen;
+        opts.bridge_signer.clone_from(&a.bridge_signer);
     }
     #[cfg(feature = "bridge-p2p")]
     {
