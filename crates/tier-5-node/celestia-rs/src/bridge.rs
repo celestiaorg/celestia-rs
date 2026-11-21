@@ -509,25 +509,30 @@ fn credentials<'a>(
     Ok((token, permissions))
 }
 
+fn require_permission(
+    permissions: &[String],
+    method: &str,
+    perm: &str,
+) -> Result<(), (i32, String)> {
+    if permissions.iter().any(|p| p == perm) {
+        Ok(())
+    } else {
+        Err((
+            1,
+            format!(
+                "missing permission to invoke '{}' (need '{perm}')",
+                method.rsplit('.').next().unwrap_or(method)
+            ),
+        ))
+    }
+}
+
 async fn dispatch(
     bridge: Arc<Bridge>,
     auth: &auth::Auth,
     permissions: &[String],
     body: &[u8],
 ) -> String {
-    let require = |method: &str, perm: &str| {
-        if permissions.iter().any(|p| p == perm) {
-            Ok(())
-        } else {
-            Err((
-                1,
-                format!(
-                    "missing permission to invoke '{}' (need '{perm}')",
-                    method.rsplit('.').next().unwrap_or(method)
-                ),
-            ))
-        }
-    };
     let mut id = J::Null;
     let result = async {
         let req = envelope::Request::parse(body)?;
@@ -536,11 +541,16 @@ async fn dispatch(
         id = J::Raw(request_id.to_string());
         let method = req.method.as_str().ok_or_else(invalid)?;
         let empty = Value::Array(Vec::new());
+        let params = if req.params.is_null() {
+            &empty
+        } else {
+            &req.params
+        };
         if matches!(
             method,
             "node.AuthNew" | "node.AuthNewWithExpiry" | "node.AuthVerify" | "node.AuthRevoke"
         ) {
-            require(method, "admin")?;
+            require_permission(permissions, method, "admin")?;
             let args = req.params.as_array().ok_or_else(invalid)?;
             return auth
                 .admin(method, args)
@@ -549,47 +559,31 @@ async fn dispatch(
         }
         if matches!(method, "blob.Submit" | "state.AccountAddress") {
             let submit = method == "blob.Submit";
-            require(method, if submit { "write" } else { "read" })?;
+            require_permission(permissions, method, if submit { "write" } else { "read" })?;
             let wallet = bridge
                 .wallet
                 .as_ref()
                 .ok_or_else(|| (1, "bridge signer is not configured".to_owned()))?;
             if submit {
                 return wallet
-                    .submit(&req["params"], bridge.states.clone())
+                    .submit(&req.params, bridge.states.clone())
                     .await
                     .map(J::num)
                     .map_err(|e| (1, e.to_string()));
             }
-            if req
-                .get("params")
-                .is_some_and(|p| !p.is_null() && p != &empty)
-            {
+            if params != &empty {
                 return Err(invalid());
             }
             return Ok(J::str(wallet.address()));
         }
         if header_rpc::handles(method) {
-            require(method, "read")?;
-            let params = if req.params.is_null() {
-                &empty
-            } else {
-                &req.params
-            };
+            require_permission(permissions, method, "read")?;
             return header_rpc::handle(bridge, method, params)
                 .await
                 .map_err(|e| (1, e.to_string()));
         }
-        let query = Query::parse(
-            method,
-            if req.params.is_null() {
-                &empty
-            } else {
-                &req.params
-            },
-        )
-        .map_err(|(code, msg)| (code, msg.to_owned()))?;
-        require(method, "read")?;
+        let query = Query::parse(method, params).map_err(|(code, msg)| (code, msg.to_owned()))?;
+        require_permission(permissions, method, "read")?;
         let permit = bridge
             .worker
             .clone()
