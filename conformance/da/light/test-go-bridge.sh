@@ -15,9 +15,10 @@ da="$work/da"
 consensus=
 bridge=
 light=
+router=
 cleanup() {
     local status=$?
-    for pid in "$light" "$bridge" "$consensus"; do
+    for pid in "$router" "$light" "$bridge" "$consensus"; do
         if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; wait "$pid" || true; fi
     done
     if (( status != 0 )); then
@@ -158,3 +159,22 @@ done
 (cd "$node_src" && go run "$probe" "$endpoint" "$height" "$hash" online)
 data_probe=$(realpath "$(dirname "$0")/../read_bridge.go")
 (cd "$node_src" && go run "$data_probe" "$endpoint" "$height" 0103 "$data_hex")
+
+
+# The only configured peer in this fresh home has no headers or SHREX handler.
+# The nonempty checkpoint and its proofs must come from the discovered provider.
+router_src=$(realpath "$(dirname "$0")/provider_router.go")
+(cd "$node_src" && go build -o "$work/provider-router" "$router_src")
+"$work/provider-router" "$chain" "$peer" >"$work/router.addr" 2>"$work/router.log" &
+router=$!
+for attempt in {1..100}; do
+    kill -0 "$router"
+    if [[ -s "$work/router.addr" ]]; then break; fi
+    sleep 0.1
+done
+seed=$(cat "$work/router.addr")
+[[ "$seed" == */p2p/* ]]
+timeout 120 "$rust" da-light --home "$work/discovered" --network "$chain" --peer "$seed" \
+    --trusted-hash "$hash" --until "$height" >"$work/discovered.log"
+grep -Fq "sampled height $height (16 verified shares), hash $hash" "$work/discovered.log"
+echo "Rust verified the paid checkpoint from a Go provider learned only through a routing peer"

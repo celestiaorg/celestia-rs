@@ -74,6 +74,12 @@ the go-header v0.8.10 agreement threshold and falls back to the highest valid
 trusted response if the peers do not reach agreement. Both modes persist the
 initial trust anchor across restarts.
 
+The light node also queries the network-scoped Kademlia DHT for providers
+advertising the Go `/full/v0.1.0` topic. It dials up to 16 discovered peers
+for header exchange and SHREX. Only configured trusted peers participate in
+initial checkpoint selection. Every fetched header and sample is verified
+against the stored trust chain before it advances the light head.
+
 To use an external checkpoint and an explicit peer on a private chain, run
 the following command with a fresh light home. Repeat `--peer` for additional
 trusted peers.

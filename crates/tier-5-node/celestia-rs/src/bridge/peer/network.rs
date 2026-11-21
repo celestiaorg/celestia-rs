@@ -24,6 +24,13 @@ pub(super) fn header_topic(network: &str) -> gossipsub::IdentTopic {
     gossipsub::IdentTopic::new(format!("/{network}/header-sub/v0.0.1"))
 }
 
+// Go RoutingDiscovery uses the SHA2-256 multihash of the topic as the provider key.
+pub(super) fn provider_key() -> kad::RecordKey {
+    let mut key = vec![0x12, 32];
+    key.extend_from_slice(&hash::sha256(b"/full/v0.1.0"));
+    kad::RecordKey::new(&key)
+}
+
 impl Behaviour {
     pub(super) fn new(key: &identity::Keypair, network: &str) -> Result<Self> {
         let id = key.public().to_peer_id();
@@ -34,10 +41,7 @@ impl Behaviour {
             kad::Config::new(protocol),
         );
         dht.set_mode(Some(kad::Mode::Server));
-        // Go RoutingDiscovery uses the SHA2-256 multihash of the topic as the provider key.
-        let mut provider_key = vec![0x12, 32];
-        provider_key.extend_from_slice(&hash::sha256(b"/full/v0.1.0"));
-        dht.start_providing(kad::RecordKey::new(&provider_key))?;
+        dht.start_providing(provider_key())?;
         let mut cfg = gossipsub::ConfigBuilder::default();
         // This bridge publishes its own verified commits. Hold received gossip for validation.
         cfg.validate_messages().message_id_fn(|message| {

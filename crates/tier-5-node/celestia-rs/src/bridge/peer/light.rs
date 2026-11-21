@@ -1,5 +1,6 @@
 //! Authenticated, sequential DA sync and restartable sampling from a trusted checkpoint.
 mod data;
+mod discovery;
 mod rpc;
 mod stats;
 
@@ -7,9 +8,7 @@ use super::{HeaderResponse, HeaderWire, Origin, Proof, Request, Sample, identity
 use anyhow::{Context, Result, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use kvdb::{KvBackend, RedbBackend, RedbOptions, WriteBatch};
-use libp2p::{
-    Multiaddr, PeerId, StreamProtocol, Swarm, SwarmBuilder, noise, swarm::SwarmEvent, tcp, yamux,
-};
+use libp2p::{Multiaddr, PeerId, StreamProtocol, SwarmBuilder, noise, tcp, yamux};
 use prost::Message;
 use rand::seq::index;
 use std::{collections::BTreeMap, io::Write as _, path::Path, time::Duration};
@@ -40,8 +39,13 @@ pub struct LightArgs {
 
 #[derive(Clone)]
 struct Remote {
-    control: libp2p_stream::Control,
     peer: PeerId,
+    streams: Streams,
+}
+
+#[derive(Clone)]
+struct Streams {
+    control: libp2p_stream::Control,
     headers: StreamProtocol,
     samples: StreamProtocol,
     eds: StreamProtocol,
@@ -57,8 +61,9 @@ impl Remote {
     async fn header(&mut self, origin: Origin) -> Result<Option<Vec<u8>>> {
         tokio::time::timeout(DEADLINE, async {
             let mut stream = self
+                .streams
                 .control
-                .open_stream(self.peer, self.headers.clone())
+                .open_stream(self.peer, self.streams.headers.clone())
                 .await?;
             let req = Request {
                 data: Some(origin),
@@ -88,8 +93,9 @@ impl Remote {
         let (row, col) = (at / width, at % width);
         tokio::time::timeout(DEADLINE, async {
             let mut stream = self
+                .streams
                 .control
-                .open_stream(self.peer, self.samples.clone())
+                .open_stream(self.peer, self.streams.samples.clone())
                 .await?;
             let mut id = height.to_be_bytes().to_vec();
             id.extend_from_slice(&u16::try_from(row)?.to_be_bytes());
@@ -234,20 +240,37 @@ fn sample_indices(db: &RedbBackend, block: &Verified) -> Result<Vec<usize>> {
 
 #[derive(Clone)]
 struct Peers {
-    remotes: Vec<Remote>,
+    trusted: Vec<PeerId>,
+    streams: Streams,
     connected: tokio::sync::watch::Receiver<Vec<PeerId>>,
 }
 
 impl Peers {
+    fn remote(&self, peer: PeerId) -> Remote {
+        Remote {
+            peer,
+            streams: self.streams.clone(),
+        }
+    }
+
+    fn online(&self) -> Vec<Remote> {
+        self.connected
+            .borrow()
+            .iter()
+            .map(|&peer| self.remote(peer))
+            .collect()
+    }
+
     // go-header v0.8.10 returns early on agreement, otherwise the highest
     // valid response from the configured trusted peers once all requests finish.
     async fn trusted_head(&mut self, chain: &str) -> Option<Vec<u8>> {
-        let count = self.remotes.len();
+        let count = self.trusted.len();
         let quorum = (2 * count).div_ceil(3);
         let mut responses = self
-            .remotes
-            .iter_mut()
-            .map(|peer| async move {
+            .trusted
+            .iter()
+            .map(|&id| self.remote(id))
+            .map(|mut peer| async move {
                 let bytes = peer.header(Origin::Height(0)).await.ok()??;
                 Verified::decode(&bytes, chain, None).ok()
             })
@@ -274,8 +297,7 @@ impl Peers {
         chain: &str,
         last: Option<&Verified>,
     ) -> Option<(Vec<u8>, Verified)> {
-        let online = self.connected.borrow().clone();
-        for remote in self.remotes.iter_mut().filter(|r| online.contains(&r.peer)) {
+        for mut remote in self.online() {
             let result = async {
                 let Some(raw) = remote.header(origin.clone()).await? else {
                     return Ok(None);
@@ -299,11 +321,10 @@ impl Peers {
     // Advertised tips are informational. Only the authenticated adjacent path
     // updates storage. Compare available providers before declaring catch-up.
     async fn check_tip(&mut self, head: &Verified, chain: &str) -> (u64, bool) {
-        let online = self.connected.borrow().clone();
         let mut matching = false;
         let mut different = false;
         let mut network = head.height;
-        for remote in self.remotes.iter_mut().filter(|r| online.contains(&r.peer)) {
+        for mut remote in self.online() {
             if let Ok(Some(raw)) = remote.header(Origin::Height(0)).await
                 && let Ok(tip) = Verified::decode(&raw, chain, None)
             {
@@ -316,8 +337,7 @@ impl Peers {
     }
 
     async fn sample(&mut self, block: &Verified, index: usize) -> bool {
-        let online = self.connected.borrow().clone();
-        for remote in self.remotes.iter_mut().filter(|r| online.contains(&r.peer)) {
+        for mut remote in self.online() {
             match remote.sample(block.height, &block.dah, index).await {
                 Ok(_) => return true,
                 Err(error) => {
@@ -326,32 +346,6 @@ impl Peers {
             }
         }
         false
-    }
-}
-
-async fn maintain_connections(
-    mut swarm: Swarm<libp2p_stream::Behaviour>,
-    addresses: &BTreeMap<PeerId, Vec<Multiaddr>>,
-    connected: tokio::sync::watch::Sender<Vec<PeerId>>,
-) {
-    let mut retry = tokio::time::interval(Duration::from_secs(3));
-    retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    loop {
-        tokio::select! {
-            _ = retry.tick() => {
-                for (peer, addr) in addresses {
-                    if !swarm.is_connected(peer) {
-                        let options = libp2p::swarm::dial_opts::DialOpts::peer_id(*peer).addresses(addr.clone()).build();
-                        let _ = swarm.dial(options);
-                    }
-                }
-            }
-            event = swarm.select_next_some() => {
-                if matches!(event, SwarmEvent::ConnectionEstablished { .. } | SwarmEvent::ConnectionClosed { .. }) {
-                    connected.send_replace(swarm.connected_peers().copied().collect());
-                }
-            }
-        }
     }
 }
 
@@ -522,6 +516,7 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     // Bind synchronously with startup so a busy port is reported to the operator.
     let (status, observer) = tokio::sync::watch::channel(stats::Sampling::default());
     let key = identity(&dir.join("peer.key"))?;
+    let behaviour = discovery::Behaviour::new(&key, &args.network)?;
     let mut swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(
@@ -530,7 +525,7 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
             yamux::Config::default,
         )?
         .with_dns()?
-        .with_behaviour(|_| libp2p_stream::Behaviour::new())?
+        .with_behaviour(|_| behaviour)?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(120)))
         .build();
     for (peer, addrs) in &addresses {
@@ -543,18 +538,14 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
         StreamProtocol::try_from_owned(format!("/{}/shrex/v0.1.0/sample_v0", args.network))?;
     let eds = StreamProtocol::try_from_owned(format!("/{}/shrex/v0.1.0/eds_v0", args.network))?;
     let (connected, online) = tokio::sync::watch::channel(Vec::new());
-    let remotes = addresses
-        .keys()
-        .map(|peer| Remote {
-            control: swarm.behaviour().new_control(),
-            peer: *peer,
-            headers: headers.clone(),
-            samples: samples.clone(),
-            eds: eds.clone(),
-        })
-        .collect();
     let mut peers = Peers {
-        remotes,
+        trusted: addresses.keys().copied().collect(),
+        streams: Streams {
+            control: swarm.behaviour().streams.new_control(),
+            headers,
+            samples,
+            eds,
+        },
         connected: online,
     };
     let listener =
@@ -563,6 +554,6 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
         result = listener => result,
         result = follow(&db, &mut peers, &args, anchor, &status) => result,
         result = tokio::signal::ctrl_c() => Ok(result?),
-        () = maintain_connections(swarm, &addresses, connected) => anyhow::bail!("DA network stopped"),
+        () = discovery::maintain_connections(swarm, &addresses, connected) => anyhow::bail!("DA network stopped"),
     }
 }

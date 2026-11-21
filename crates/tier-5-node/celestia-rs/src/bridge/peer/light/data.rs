@@ -89,14 +89,7 @@ impl Client {
                 .try_collect();
             return Ok(J::Arr(tokio::time::timeout(DEADLINE, samples).await??).encode());
         }
-        let online = self.peers.connected.borrow().clone();
-        for peer in self
-            .peers
-            .remotes
-            .iter()
-            .filter(|r| online.contains(&r.peer))
-        {
-            let mut remote = peer.clone();
+        for mut remote in self.peers.online() {
             let fetched =
                 tokio::time::timeout(DEADLINE, remote.original_square(height, width)).await;
             let Ok(Ok(bytes)) = fetched else { continue };
@@ -127,14 +120,8 @@ impl Client {
     ) -> Result<super::VerifiedSample> {
         let width = dah.row_roots.len();
         ensure!(row < width && col < width, "sample coordinate outside EDS");
-        let online = self.peers.connected.borrow().clone();
-        for peer in self
-            .peers
-            .remotes
-            .iter()
-            .filter(|r| online.contains(&r.peer))
-        {
-            if let Ok(sample) = peer.clone().sample(height, dah, row * width + col).await {
+        for mut remote in self.peers.online() {
+            if let Ok(sample) = remote.sample(height, dah, row * width + col).await {
                 return Ok(sample);
             }
         }
@@ -155,8 +142,9 @@ fn sampled_availability(empty: bool, age_ns: i128) -> Result<()> {
 impl Remote {
     async fn original_square(&mut self, height: u64, width: usize) -> Result<Vec<u8>> {
         let mut stream = self
+            .streams
             .control
-            .open_stream(self.peer, self.eds.clone())
+            .open_stream(self.peer, self.streams.eds.clone())
             .await?;
         stream.write_all(&height.to_be_bytes()).await?;
         stream.close().await?;
