@@ -1860,9 +1860,7 @@ mod cli_tests {
     fn skip_heights(args: &[&str]) -> Vec<i64> {
         let cli = Cli::try_parse_from(args).expect("parse CLI");
         match cli.command {
-            #[cfg(feature = "da-light")]
-        Cmd::DaLight(args) => celestia_rs::run_light(&home, args).await,
-        Cmd::Start(args) => args.unsafe_skip_upgrades,
+            Cmd::Start(args) => args.unsafe_skip_upgrades,
             Cmd::Abci(args) => args.unsafe_skip_upgrades,
             Cmd::Follow(args) => args.unsafe_skip_upgrades,
             other => panic!("unexpected command: {other:?}"),
