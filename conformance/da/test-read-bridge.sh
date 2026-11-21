@@ -19,6 +19,7 @@ pid=
 bootstrap_pid=
 light_pid=
 cleanup() {
+    if [[ -n "${subscriber:-}" ]]; then kill "$subscriber" 2>/dev/null || true; wait "$subscriber" || true; fi
     if [[ -n "$bootstrap_pid" ]]; then
         kill "$bootstrap_pid" 2>/dev/null || true
         wait "$bootstrap_pid" || true
@@ -85,7 +86,24 @@ pay_for_blob() {
         --keyring-backend test --fees 50000utia --node tcp://127.0.0.1:26657 --wait >"$work/tx.json"
     height=$(jq -er 'select(.code == 0) | .height | tonumber | select(. > 0)' "$work/tx.json")
 }
+if (( ${#peer_args[@]} )); then
+    peer_id=$(sed -n 's/.*DA peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/node.log" | head -1)
+    (cd "$go_tree" && go build -o "$work/notification" "$(dirname "$probe")/notifications/check.go")
+    "$work/notification" celestia-rs-local "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$work/subscribed" >"$work/announcement" &
+    subscriber=$!
+    for attempt in {1..60}; do
+        if [[ -s "$work/subscribed" ]]; then break; fi
+        kill -0 "$subscriber"
+        sleep 1
+    done
+    test -s "$work/subscribed"
+fi
 pay_for_blob
+if [[ -n "${subscriber:-}" ]]; then
+    wait "$subscriber"
+    subscriber=
+    grep -F "signed EDS notification at height $height from $peer_id" "$work/announcement"
+fi
 kill -0 "$pid"
 echo "celestia-node $revision; chain celestia-rs-local; paid blob at height $height"
 sha256sum "$binary" "$work/node/config/genesis.json"

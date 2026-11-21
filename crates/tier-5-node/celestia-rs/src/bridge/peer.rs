@@ -1,4 +1,5 @@
 //! Inbound go-header exchange and SHREX over negotiated libp2p streams.
+mod flood;
 mod inbound;
 mod network;
 
@@ -137,6 +138,12 @@ async fn run(
     let serving = Arc::new(serving);
     let bridge = &serving.bridge;
     let behaviour = network::Behaviour::new(&key, network)?;
+    flood::start(
+        behaviour.flood.new_control(),
+        key.clone(),
+        network,
+        bridge.clone(),
+    )?;
     let mut swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(

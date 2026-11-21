@@ -12,6 +12,7 @@ mod composed {
     #[derive(NetworkBehaviour)]
     pub(crate) struct Behaviour {
         pub(crate) streams: super::super::inbound::Inbound,
+        pub(crate) flood: libp2p_stream::Behaviour,
         pub(crate) identify: identify::Behaviour,
         pub(crate) dht: kad::Behaviour<kad::store::MemoryStore>,
         pub(crate) gossip: gossipsub::Behaviour,
@@ -59,6 +60,7 @@ impl Behaviour {
         gossip.subscribe(&header_topic(network))?;
         Ok(Self {
             streams: super::inbound::Inbound::new(network)?,
+            flood: libp2p_stream::Behaviour::new(),
             identify: identify::Behaviour::new(identify::Config::new(
                 "ipfs/0.1.0".to_owned(),
                 key.public(),
