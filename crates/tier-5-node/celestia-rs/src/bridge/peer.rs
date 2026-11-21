@@ -49,11 +49,10 @@ pub(crate) fn start(
     network: &str,
     blocks: BlockStore,
     states: StateStore,
+    bootstrap: &[Multiaddr],
+    announce: Vec<Multiaddr>,
 ) -> Result<Server> {
-    ensure!(
-        addr.ip().is_loopback(),
-        "experimental bridge peer requires a loopback address"
-    );
+    let peers = network::Peering::new(network, bootstrap, announce)?;
     let key = identity(&home.join("config/da_peer.key"))?;
     let listen = Multiaddr::from(match addr.ip() {
         IpAddr::V4(ip) => Protocol::Ip4(ip),
@@ -76,7 +75,7 @@ pub(crate) fn start(
                 .enable_all()
                 .build()
                 .map_err(anyhow::Error::from)
-                .and_then(|rt| rt.block_on(run(key, listen, &net, bridge, stopped, &ready)));
+                .and_then(|rt| rt.block_on(run(key, listen, &net, bridge, stopped, &ready, peers)));
             if let Err(e) = result {
                 let _ = ready.try_send(Err(e.to_string()));
                 tracing::error!(error=%e,"DA peer stopped");
@@ -99,6 +98,7 @@ async fn run(
     bridge: Arc<Bridge>,
     mut stopped: oneshot::Receiver<()>,
     ready: &mpsc::SyncSender<Result<(), String>>,
+    peers: network::Peering,
 ) -> Result<()> {
     let behaviour = network::Behaviour::new(&key, network)?;
     let mut swarm = SwarmBuilder::with_existing_identity(key)
@@ -108,10 +108,16 @@ async fn run(
             noise::Config::new,
             yamux::Config::default,
         )?
+        .with_dns()?
         .with_behaviour(move |_| behaviour)?
         .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(120)))
         .build();
     swarm.listen_on(listen)?;
+    for address in &peers.announce {
+        swarm.add_external_address(address.clone());
+    }
+    let mut reconnect = tokio::time::interval(Duration::from_secs(30));
+    reconnect.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let topic = network::header_topic(network);
     let topic_hash = topic.hash();
     let mut timer = tokio::time::interval(Duration::from_millis(500));
@@ -124,6 +130,7 @@ async fn run(
     loop {
         tokio::select! {
             _ = &mut stopped => return Ok(()),
+            _ = reconnect.tick(), if !peers.bootstrap.is_empty() => peers.connect(&mut swarm),
             _ = timer.tick(), if pending.is_empty() && swarm.behaviour().gossip.mesh_peers(&topic_hash).next().is_some() => {
                 let height = bridge.blocks.height();
                 if height > announced {
@@ -143,7 +150,7 @@ async fn run(
             }
             event = swarm.select_next_some() => match event {
                 SwarmEvent::NewListenAddr { address, .. } => {
-                    swarm.add_external_address(address.clone());
+                    if peers.announce.is_empty() { swarm.add_external_address(address.clone()); }
                     tracing::info!(%address, peer=%swarm.local_peer_id(), "DA peer listening");
                     let _ = ready.try_send(Ok(()));
                 }
