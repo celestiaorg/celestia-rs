@@ -63,7 +63,7 @@ pub(crate) fn start(
     let bridge = Arc::new(Bridge {
         blocks,
         states,
-        worker: Arc::new(Semaphore::new(1)),
+        worker: Arc::new(Semaphore::new(2)),
     });
     let thread = std::thread::Builder::new()
         .name("da-peer".into())
@@ -131,6 +131,9 @@ async fn run(
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut announced = 0;
     let mut pending = tokio::task::JoinSet::new();
+    // A Go DAS worker opens a separate stream for each sample in a batch.
+    // Bound queued streams independently of concurrent square reconstruction.
+    let admissions = Arc::new(Semaphore::new(64));
     loop {
         tokio::select! {
             _ = &mut stopped => return Ok(()),
@@ -169,10 +172,11 @@ async fn run(
                 _ => {}
             },
             (kind, peer, mut stream) = streams.select_next_some() => {
-                let Ok(permit) = bridge.worker.clone().try_acquire_owned() else { continue };
+                let Ok(admission) = admissions.clone().try_acquire_owned() else { continue };
                 let bridge = bridge.clone();
                 tokio::spawn(async move {
-                    let _permit = permit;
+                    let _admission = admission;
+                    let Ok(Ok(_worker)) = tokio::time::timeout(TIMEOUT, bridge.worker.acquire()).await else { return };
                     if let Err(error) = serve(&bridge, kind, &mut stream).await {
                         tracing::debug!(%peer, %error, "DA stream ended");
                     }
