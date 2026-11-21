@@ -60,9 +60,16 @@ reachable TCP addresses. The DA RPC listener is configured independently.
 
 ## Standalone Rust DA light mode
 
-Build the same executable with `--features da-light`. Get a recent header hash
-from a trusted source and a TCP multiaddress with the DA peer ID of a bridge
-on that chain. Use a fresh light home:
+Build the same executable with `--features da-light`. A fresh
+`da-light --network celestia` or `da-light --network mocha-5` requests signed
+heads concurrently from the release's trusted bootstrap peers. The node uses
+the go-header v0.8.10 agreement threshold and falls back to the highest valid
+trusted response if the peers do not reach agreement. Both modes persist the
+initial trust anchor across restarts.
+
+To use an external checkpoint and an explicit peer on a private chain, run
+the following command with a fresh light home. Repeat `--peer` for additional
+trusted peers.
 
 ```sh
 celestia-rs da-light --home ./light-home --network "$CHAIN_ID" \
