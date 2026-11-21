@@ -170,10 +170,10 @@ async fn dispatch(
     service: &Service,
     method: &str,
     args: Vec<Value>,
-) -> Result<String, (i64, String)> {
+) -> Result<String, (i32, String)> {
     if super::data::handles(method) {
         let query = crate::bridge::Query::parse(method, &Value::Array(args))
-            .map_err(|(code, text)| (i64::from(code), text.to_owned()))?;
+            .map_err(|(code, text)| (code, text.to_owned()))?;
         return service
             .data
             .read(&service.db, query)
