@@ -1,0 +1,45 @@
+name: DA client interoperability
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'conformance/da/**'
+      - 'crates/tier-5-node/celestia-rs/src/bridge*'
+      - 'crates/tier-5-node/celestia-rs/src/bridge/**'
+      - '.github/workflows/da-interop.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rpc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - network: Mainnet
+            revision: d5dfb21a0885622828e30e8e2daf50e5d1bb72b2
+          - network: Mocha-5
+            revision: af9897bb471959660a4179048656694f3013b2f5
+    name: RPC client (${{ matrix.network }})
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: celestiaorg/celestia-node
+          ref: ${{ matrix.revision }}
+          path: reference-node
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: reference-node/go.mod
+          cache-dependency-path: reference-node/go.sum
+      - name: Build the operator binary with bridge RPC
+        run: cargo build --locked --no-default-features --features bridge -p celestia-rs
+        env:
+          CARGO_PROFILE_DEV_DEBUG: '0'
+      - name: Verify a paid blob with the release client
+        run: conformance/da/test-read-bridge.sh target/debug/celestia-rs reference-node

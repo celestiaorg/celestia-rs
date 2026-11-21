@@ -346,6 +346,67 @@ fn range_proof(
     recurse(leaves, 0, full, true, (start, end), proof).ok_or_else(|| plain("empty tree"))
 }
 
+/// One ordered SHWAP namespace row. An empty share list carries a proof
+/// of absence for a namespace lying between two leaves in the row.
+#[cfg(feature = "bridge")]
+pub struct NamespaceRow {
+    /// Raw shares whose namespace equals the query.
+    pub shares: Vec<Vec<u8>>,
+    /// Inclusion range or first larger leaf and its authentication path.
+    pub proof: pb::NmtProof,
+}
+
+/// Prove every candidate row of an authenticated EDS, as required by
+/// celestia-node's NamespaceData.Verify.
+#[cfg(feature = "bridge")]
+pub fn namespace_rows(
+    eds: &square::ExtendedDataSquare,
+    dah: &square::DataAvailabilityHeader,
+    namespace: Namespace,
+) -> Result<Vec<NamespaceRow>, SdkError> {
+    if namespace.is_parity_shares() || namespace.is_tail_padding() {
+        return Err(plain("invalid data namespace"));
+    }
+    let mut result = Vec::new();
+    for i in dah
+        .rows_with_namespace(namespace)
+        .map_err(|e| square_err(&e))?
+    {
+        let row = eds.row(i).map_err(|e| square_err(&e))?;
+        let leaves: Vec<Node> = row
+            .iter()
+            .enumerate()
+            .map(|(col, sh)| Node::leaf(&nmt_leaf(eds.original_width(), i, col, sh)))
+            .collect();
+        let ns = namespace.as_bytes();
+        let start = leaves.partition_point(|leaf| &leaf.min < ns);
+        let end = leaves.partition_point(|leaf| &leaf.min <= ns);
+        let absent = start == end;
+        let proof_end = if absent { start + 1 } else { end };
+        let mut nodes = Vec::new();
+        let root = range_proof(&leaves, start, proof_end, &mut nodes)?;
+        if root.to_bytes().as_slice() != dah.row_roots[i] {
+            return Err(plain(
+                "namespace row does not match data availability header",
+            ));
+        }
+        result.push(NamespaceRow {
+            shares: row[start..end].to_vec(),
+            proof: pb::NmtProof {
+                start: i32::try_from(start).map_err(|_| plain("invalid proof start"))?,
+                end: i32::try_from(proof_end).map_err(|_| plain("invalid proof end"))?,
+                nodes: nodes.into_iter().map(Node::to_bytes).collect(),
+                leaf_hash: if absent {
+                    leaves[start].to_bytes()
+                } else {
+                    Vec::new()
+                },
+            },
+        });
+    }
+    Ok(result)
+}
+
 /// `NewShareInclusionProof` / `NewShareInclusionProofFromEDS` for the
 /// end-exclusive share range `[start, end)`.
 pub fn new_share_inclusion_proof(
@@ -426,6 +487,33 @@ pub fn new_share_inclusion_proof(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "bridge")]
+    #[test]
+    fn shwap_namespace_ranges_cross_rows_and_prove_absence() {
+        let ns = |n| Namespace::new_v0(&[1, n]).unwrap();
+        let shares: Vec<_> = [1, 3, 3, 5]
+            .into_iter()
+            .map(|n| {
+                let blob = shares::Blob::new_v0(ns(n), vec![n]).unwrap();
+                shares::split_blobs(&[blob]).unwrap().remove(0)
+            })
+            .collect();
+        let eds = square::extend_shares(&shares).unwrap();
+        let dah = square::new_data_availability_header(&eds).unwrap();
+        let found = namespace_rows(&eds, &dah, ns(3)).unwrap();
+        assert_eq!(found.len(), 2);
+        assert_eq!((found[0].proof.start, found[0].proof.end), (1, 2));
+        assert_eq!((found[1].proof.start, found[1].proof.end), (0, 1));
+        assert_eq!(found[0].shares, [eds.share(0, 1).unwrap()]);
+        assert_eq!(found[1].shares, [eds.share(1, 0).unwrap()]);
+        let gap = namespace_rows(&eds, &dah, ns(2)).unwrap();
+        assert_eq!(gap.len(), 1);
+        assert!(gap[0].shares.is_empty());
+        assert_eq!(gap[0].proof.leaf_hash.len(), square::DAH_ROOT_SIZE);
+        assert_eq!(gap[0].proof.start, 1);
+        assert!(namespace_rows(&eds, &dah, ns(6)).unwrap().is_empty());
+    }
+
     use celestia_proto::Any;
     use celestia_proto::celestia::fibre::v1::{MsgPayForFibre, PaymentPromise};
     use celestia_proto::cosmos::crypto::secp256k1::PubKey;
