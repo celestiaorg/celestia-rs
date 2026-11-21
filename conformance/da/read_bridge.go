@@ -98,6 +98,24 @@ func verifyBlob(ctx context.Context, c *client.Client, args []string) error {
 	if !bytes.Equal(got.Data(), data) || !bytes.Equal(got.Commitment, expected.Commitment) {
 		return fmt.Errorf("blob.Get returned different blob")
 	}
+	proof, err := c.Blob.GetProof(ctx, height, ns, expected.Commitment)
+	if err != nil {
+		return err
+	}
+	included, err := c.Blob.Included(ctx, height, ns, proof, expected.Commitment)
+	if err != nil {
+		return err
+	}
+	if !included {
+		return fmt.Errorf("blob inclusion mismatch")
+	}
+	commitmentProof, err := c.Blob.GetCommitmentProof(ctx, height, ns, expected.Commitment)
+	if err != nil {
+		return err
+	}
+	if err := commitmentProof.Verify(header.DataHash, expected.Commitment); err != nil {
+		return err
+	}
 	all, err := c.Blob.GetAll(ctx, height, []share.Namespace{ns})
 	if err != nil {
 		return err

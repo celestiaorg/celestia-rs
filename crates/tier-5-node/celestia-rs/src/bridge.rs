@@ -86,10 +86,17 @@ enum Query {
     Namespace(i64, shares::Namespace),
     Header(i64),
     Head,
+    BlobProof(i64, shares::Namespace, Vec<u8>, ProofRequest),
     Tail,
     Hash(Vec<u8>),
     ShareRead(i64, share_rpc::Read),
     Share(i64, usize, usize),
+}
+
+enum ProofRequest {
+    Get,
+    Commitment,
+    Included(Value),
 }
 
 impl Query {
@@ -149,6 +156,22 @@ impl Query {
                     .collect::<Result<_, _>>()?;
                 Ok(Self::Blobs(height()?, namespaces))
             }
+            "blob.GetProof" | "blob.GetCommitmentProof" if args.len() == 3 => Ok(Self::BlobProof(
+                height()?,
+                namespace(&args[1])?,
+                bytes(&args[2])?,
+                if method == "blob.GetProof" {
+                    ProofRequest::Get
+                } else {
+                    ProofRequest::Commitment
+                },
+            )),
+            "blob.Included" if args.len() == 4 && args[2].is_array() => Ok(Self::BlobProof(
+                height()?,
+                namespace(&args[1])?,
+                bytes(&args[3])?,
+                ProofRequest::Included(args[2].clone()),
+            )),
             "blob.Get" if args.len() == 3 => Ok(Self::Blob(
                 height()?,
                 namespace(&args[1])?,
@@ -171,6 +194,9 @@ impl Query {
             | "share.GetSamples"
             | "header.GetByHeight"
             | "blob.Get"
+            | "blob.GetProof"
+            | "blob.GetCommitmentProof"
+            | "blob.Included"
             | "blob.GetAll"
             | "share.GetNamespaceData"
             | "share.GetShare" => Err(bad),
@@ -249,6 +275,7 @@ impl Bridge {
             | Query::Share(h, ..)
             | Query::Namespace(h, _)
             | Query::Blobs(h, _)
+            | Query::BlobProof(h, ..)
             | Query::Blob(h, ..) => h,
         };
         ensure!(
@@ -262,6 +289,9 @@ impl Bridge {
             eds,
             dah,
         } = self.committed(height)?;
+        if let Query::BlobProof(_, ns, hash, kind) = query {
+            return prove_blob(&eds, &dah, ns, &hash, kind);
+        }
         if let Query::ShareRead(_, method) = query {
             return method.response(&eds, &dah);
         }
@@ -318,6 +348,25 @@ fn read_blobs(
     dah: &square::DataAvailabilityHeader,
     ns: shares::Namespace,
 ) -> Result<Vec<([u8; 32], J)>> {
+    Ok(blob_records(eds, dah, ns)?
+        .into_iter()
+        .map(|r| (r.commitment, r.value))
+        .collect())
+}
+
+struct BlobRecord {
+    commitment: [u8; 32],
+    value: J,
+    start: usize,
+    end: usize,
+    roots: Vec<Vec<u8>>,
+}
+
+fn blob_records(
+    eds: &square::ExtendedDataSquare,
+    dah: &square::DataAvailabilityHeader,
+    ns: shares::Namespace,
+) -> Result<Vec<BlobRecord>> {
     let mut shares = Vec::new();
     let mut starts = Vec::new();
     for row in dah.rows_with_namespace(ns)? {
@@ -359,11 +408,11 @@ fn read_blobs(
                 .pop()
                 .context("invalid blob sequence")?
         };
-        let commitment = square::create_commitment(
+        let roots = square::commitment::commitment_subtree_roots(
             &blob,
-            merkle::root_from_byte_slices,
             square::DEFAULT_SUBTREE_ROOT_THRESHOLD,
         )?;
+        let commitment = merkle::root_from_byte_slices(&roots);
         let mut value = J::obj([
             ("namespace", J::b64(ns.as_bytes())),
             ("data", J::b64(&blob.data)),
@@ -374,7 +423,14 @@ fn read_blobs(
         if let Some(signer) = blob.signer {
             value.push("signer", J::b64(&signer));
         }
-        result.push((commitment, value));
+        let ods_start = index / eds.width() * eds.original_width() + index % eds.width();
+        result.push(BlobRecord {
+            commitment,
+            value,
+            start: ods_start,
+            end: ods_start + end - start,
+            roots,
+        });
     }
     Ok(result)
 }
@@ -455,4 +511,70 @@ fn proof_json(p: &celestia_proto::celestia::core::v1::proof::NmtProof, shwap: bo
         proof.push("leaf_hash", J::b64(&p.leaf_hash));
     }
     proof
+}
+
+fn prove_blob(
+    eds: &square::ExtendedDataSquare,
+    dah: &square::DataAvailabilityHeader,
+    ns: shares::Namespace,
+    hash: &[u8],
+    kind: ProofRequest,
+) -> Result<J> {
+    let Some(record) = blob_records(eds, dah, ns)?
+        .into_iter()
+        .find(|r| r.commitment == hash)
+    else {
+        if matches!(kind, ProofRequest::Included(_)) {
+            return Ok(J::Bool(false));
+        }
+        anyhow::bail!("blob: not found")
+    };
+    if matches!(kind, ProofRequest::Commitment) {
+        return share_rpc::range(eds, dah, record.start, record.end, Some(record.roots));
+    }
+    let width = eds.original_width();
+    let covered = record.start / width..=(record.end - 1) / width;
+    let rows = app::inclusion_proof::namespace_rows(eds, dah, ns)
+        .map_err(|e| anyhow::anyhow!("{}", e.log))?;
+    let mut expected = Vec::new();
+    for (i, row) in dah.rows_with_namespace(ns)?.into_iter().zip(rows) {
+        if covered.contains(&i) {
+            expected.push(row.proof);
+        }
+    }
+    if let ProofRequest::Included(input) = kind {
+        let supplied = input.as_array().context("blob: proof cannot be nil")?;
+        ensure!(expected.len() == supplied.len(), "blob: invalid proof");
+        for (p, v) in expected.iter().zip(supplied) {
+            let equivalent = serde_json::from_value::<InputProof>(v.clone())?;
+            ensure!(equivalent.matches(p), "blob: invalid proof");
+        }
+        Ok(J::Bool(true))
+    } else {
+        Ok(J::Arr(
+            expected.iter().map(|p| proof_json(p, true)).collect(),
+        ))
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(default)]
+#[derive(Default)]
+struct InputProof {
+    start: i32,
+    end: i32,
+    nodes: Option<Vec<String>>,
+    leaf_hash: Option<String>,
+}
+impl InputProof {
+    fn matches(&self, p: &celestia_proto::celestia::core::v1::proof::NmtProof) -> bool {
+        use base64::Engine as _;
+        let enc = base64::engine::general_purpose::STANDARD;
+        let nodes = self.nodes.as_deref().unwrap_or_default();
+        self.start == p.start
+            && self.end == p.end
+            && self.leaf_hash.as_deref().unwrap_or_default() == enc.encode(&p.leaf_hash)
+            && nodes.len() == p.nodes.len()
+            && nodes.iter().zip(&p.nodes).all(|(a, b)| a == &enc.encode(b))
+    }
 }

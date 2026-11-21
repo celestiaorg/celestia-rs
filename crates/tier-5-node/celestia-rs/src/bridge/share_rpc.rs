@@ -61,16 +61,17 @@ impl Read {
                 }
                 Ok(J::Arr(samples))
             }
-            Self::Range(start, end) => range(eds, dah, start, end),
+            Self::Range(start, end) => range(eds, dah, start, end, None),
         }
     }
 }
 
-fn range(
+pub(super) fn range(
     eds: &ExtendedDataSquare,
     dah: &DataAvailabilityHeader,
     start: usize,
     end: usize,
+    subtree_roots: Option<Vec<Vec<u8>>>,
 ) -> Result<J> {
     let width = eds.original_width();
     ensure!(
@@ -95,11 +96,13 @@ fn range(
                 &share[..shares::NAMESPACE_SIZE] == ns.as_bytes(),
                 "range spans namespaces"
             );
-            data.push(J::b64(share));
+            if subtree_roots.is_none() {
+                data.push(J::b64(share));
+            }
         }
         let proof = app::inclusion_proof::row_range_proof(eds, dah, row, from, stop)
             .map_err(|e| anyhow::anyhow!("{}", e.log))?;
-        proofs.push(super::proof_json(&proof, false));
+        proofs.push(super::proof_json(&proof, subtree_roots.is_some()));
         row_paths.push(J::obj([
             ("total", J::u64s(path.total)),
             ("index", J::u64s(path.index)),
@@ -116,7 +119,13 @@ fn range(
             J::Arr(
                 dah.row_roots[first..=last]
                     .iter()
-                    .map(|r| J::hex(r))
+                    .map(|r| {
+                        if subtree_roots.is_some() {
+                            J::b64(r)
+                        } else {
+                            J::hex(r)
+                        }
+                    })
                     .collect(),
             ),
         ),
@@ -124,6 +133,18 @@ fn range(
         ("start_row", J::num(first)),
         ("end_row", J::num(last)),
     ]);
+    if let Some(roots) = subtree_roots {
+        return Ok(J::obj([
+            (
+                "subtree_roots",
+                J::Arr(roots.iter().map(|r| J::b64(r)).collect()),
+            ),
+            ("subtree_root_proofs", J::Arr(proofs)),
+            ("namespace_id", J::b64(&ns.id())),
+            ("namespace_version", J::num(ns.version())),
+            ("row_proof", row_proof),
+        ]));
+    }
     let proof = J::obj([
         ("data", J::Arr(data.clone())),
         ("share_proofs", J::Arr(proofs)),
