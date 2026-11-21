@@ -137,6 +137,7 @@ async fn run(
     let topic_hash = topic.hash();
     let mut timer = tokio::time::interval(Duration::from_millis(500));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut operations = admin::Operations::default();
     let mut announced = 0;
     let mut pending = tokio::task::JoinSet::new();
     // A Go DAS worker opens a separate stream for each sample in a batch.
@@ -144,7 +145,7 @@ async fn run(
     let admissions = Arc::new(Semaphore::new(64));
     loop {
         tokio::select! {
-            Some(request) = requests.recv() => request.respond(&mut swarm, network),
+            Some(request) = requests.recv() => operations.handle(request, &mut swarm, network),
             _ = &mut stopped => return Ok(()),
             _ = reconnect.tick(), if !peers.bootstrap.is_empty() => peers.connect(&mut swarm),
             _ = timer.tick(), if pending.is_empty() && swarm.behaviour().gossip.mesh_peers(&topic_hash).next().is_some() => {
@@ -165,6 +166,9 @@ async fn run(
                 }
             }
             event = swarm.select_next_some() => match event {
+                SwarmEvent::ConnectionEstablished {connection_id, ..} => operations.dial_result(connection_id, Ok(())),
+                SwarmEvent::OutgoingConnectionError {connection_id, error, ..} => operations.dial_result(connection_id, Err(error.into())),
+                SwarmEvent::ConnectionClosed {peer_id, num_established: 0, ..} => operations.closed(peer_id),
                 SwarmEvent::NewListenAddr { address, .. } => {
                     if peers.announce.is_empty() { swarm.add_external_address(address.clone()); }
                     tracing::info!(%address, peer=%swarm.local_peer_id(), "DA peer listening");
