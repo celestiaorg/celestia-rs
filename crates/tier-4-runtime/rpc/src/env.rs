@@ -614,6 +614,7 @@ fn hx(b: &[u8]) -> String {
 }
 
 /// `types.EncodeDataRootTuple`.
+#[must_use]
 pub fn encode_data_root_tuple(height: u64, data_root: &[u8]) -> Vec<u8> {
     let mut out = vec![0u8; 32];
     out[24..].copy_from_slice(&height.to_be_bytes());
