@@ -1,6 +1,7 @@
 //! Opt-in DA RPC backed by the consensus node's committed block and state stores.
 
 pub(crate) mod auth;
+mod envelope;
 mod header_rpc;
 mod share_rpc;
 pub(crate) mod submit;
@@ -554,46 +555,49 @@ fn credentials<'a>(
     Ok((token, permissions))
 }
 
+fn require_permission(
+    permissions: &[String],
+    method: &str,
+    perm: &str,
+) -> Result<(), (i32, String)> {
+    if permissions.iter().any(|p| p == perm) {
+        Ok(())
+    } else {
+        Err((
+            1,
+            format!(
+                "missing permission to invoke '{}' (need '{perm}')",
+                method.rsplit('.').next().unwrap_or(method)
+            ),
+        ))
+    }
+}
+
 async fn dispatch(
     bridge: Arc<Bridge>,
     auth: &auth::Auth,
     permissions: &[String],
     body: &[u8],
 ) -> String {
-    let require = |method: &str, perm: &str| {
-        if permissions.iter().any(|p| p == perm) {
-            Ok(())
-        } else {
-            Err((
-                1,
-                format!(
-                    "missing permission to invoke '{}' (need '{perm}')",
-                    method.rsplit('.').next().unwrap_or(method)
-                ),
-            ))
-        }
-    };
     let mut id = J::Null;
     let result = async {
-        let req: Value =
-            serde_json::from_slice(body).map_err(|_| (-32700, "parse error".to_owned()))?;
+        let req = envelope::Request::parse(body)?;
         let invalid = || (-32600, "invalid request".to_owned());
-        if req["jsonrpc"] != "2.0" {
-            return Err(invalid());
-        }
-        let request_id = req.get("id").ok_or_else(invalid)?;
-        if !(request_id.is_string() || request_id.is_number() || request_id.is_null()) {
-            return Err(invalid());
-        }
+        let request_id = req.id.as_ref().ok_or_else(invalid)?;
         id = J::Raw(request_id.to_string());
-        let method = req["method"].as_str().ok_or_else(invalid)?;
+        let method = req.method.as_str().ok_or_else(invalid)?;
         let empty = Value::Array(Vec::new());
+        let params = if req.params.is_null() {
+            &empty
+        } else {
+            &req.params
+        };
         if matches!(
             method,
             "node.AuthNew" | "node.AuthNewWithExpiry" | "node.AuthVerify" | "node.AuthRevoke"
         ) {
-            require(method, "admin")?;
-            let args = req["params"].as_array().ok_or_else(invalid)?;
+            require_permission(permissions, method, "admin")?;
+            let args = req.params.as_array().ok_or_else(invalid)?;
             return auth
                 .admin(method, args)
                 .map(|value| J::Raw(value.to_string()))
@@ -604,7 +608,7 @@ async fn dispatch(
             "blob.Submit" | "state.SubmitPayForBlob" | "state.AccountAddress"
         ) {
             let submit = method != "state.AccountAddress";
-            require(method, if submit { "write" } else { "read" })?;
+            require_permission(permissions, method, if submit { "write" } else { "read" })?;
             let wallet = bridge
                 .wallet
                 .as_ref()
@@ -612,7 +616,7 @@ async fn dispatch(
             if submit {
                 let core_blobs = method == "state.SubmitPayForBlob";
                 let receipt = wallet
-                    .submit(&req["params"], core_blobs, bridge.states.clone())
+                    .submit(&req.params, core_blobs, bridge.states.clone())
                     .await
                     .map_err(|e| (1, e.to_string()))?;
                 if core_blobs {
@@ -625,27 +629,19 @@ async fn dispatch(
                 }
                 return Ok(J::num(receipt.height));
             }
-            if req
-                .get("params")
-                .is_some_and(|p| !p.is_null() && p != &empty)
-            {
+            if params != &empty {
                 return Err(invalid());
             }
             return Ok(J::str(wallet.address()));
         }
         if header_rpc::handles(method) {
-            require(method, "read")?;
-            let params = req.get("params").filter(|v| !v.is_null()).unwrap_or(&empty);
+            require_permission(permissions, method, "read")?;
             return header_rpc::handle(bridge, method, params)
                 .await
                 .map_err(|e| (1, e.to_string()));
         }
-        let query = Query::parse(
-            method,
-            req.get("params").filter(|v| !v.is_null()).unwrap_or(&empty),
-        )
-        .map_err(|(code, msg)| (code, msg.to_owned()))?;
-        require(method, "read")?;
+        let query = Query::parse(method, params).map_err(|(code, msg)| (code, msg.to_owned()))?;
+        require_permission(permissions, method, "read")?;
         let permit = bridge
             .worker
             .clone()
