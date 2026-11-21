@@ -57,6 +57,7 @@ impl Serving {
     ) -> Self {
         Self {
             bridge: Arc::new(Bridge {
+                wallet: None,
                 waiters: Arc::new(Semaphore::new(32)),
                 blocks,
                 states,

@@ -36,6 +36,13 @@ The client recomputes the blob commitment, verifies the namespace rows against
 the signed header, and compares the data and share index returned by
 `blob.Get` and `blob.GetAll`.
 
+To accept paid submissions, start the bridge with an additional
+`--bridge-signer <account>`. This selects a funded account from the node's
+configured keyring. A client with a write token can spend that account's funds
+on blob submissions. The usual read token can query its address. For a private
+devnet, the submission probe sends both v0 and signer-bearing v1 blobs and
+verifies their commitment proofs at the returned height.
+
 For SHREX and go-header, build with `--features bridge-p2p` and add
 `--bridge-p2p-listen 127.0.0.1:32121` to the Rust start command. Use the
 public peer ID in the DA listener log to construct the multiaddress. From
