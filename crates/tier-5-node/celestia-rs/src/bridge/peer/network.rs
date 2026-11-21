@@ -38,8 +38,10 @@ impl Behaviour {
                 .ok()
                 .and_then(|h| h.commit?.block_id)
                 .and_then(|id| ctypes::BlockId::from_proto(&id).ok())
-                .map(|id| id.to_string().into_bytes())
-                .unwrap_or_else(|| hash::sha256(&message.data).to_vec());
+                .map_or_else(
+                    || hash::sha256(&message.data).to_vec(),
+                    |id| id.to_string().into_bytes(),
+                );
             gossipsub::MessageId::from(id)
         });
         let mut gossip = gossipsub::Behaviour::new(
