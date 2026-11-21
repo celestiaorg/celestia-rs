@@ -146,6 +146,9 @@ pub struct MetricsOptions {
 /// Options of `celestia-rs start`.
 #[derive(Debug, Clone)]
 pub struct StartOptions {
+    /// Experimental libp2p bridge listener.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_p2p_listen: Option<std::net::SocketAddr>,
     /// Explicit listener for the experimental read-only DA bridge.
     #[cfg(feature = "bridge")]
     pub bridge_rpc_listen: Option<std::net::SocketAddr>,
@@ -187,6 +190,8 @@ impl StartOptions {
             stop_height,
             #[cfg(feature = "bridge")]
             bridge_rpc_listen: None,
+            #[cfg(feature = "bridge-p2p")]
+            bridge_p2p_listen: None,
             config,
             mempool: mempool::MempoolConfig::celestia_app(),
             p2p: None,
@@ -426,6 +431,13 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     let _bridge = opts
         .bridge_rpc_listen
         .map(|addr| crate::bridge::Server::start(addr, bs.clone(), ss.clone()))
+        .transpose()?;
+    #[cfg(feature = "bridge-p2p")]
+    let _bridge_peer = opts
+        .bridge_p2p_listen
+        .map(|addr| {
+            crate::bridge::peer::start(addr, home, &genesis.chain_id, bs.clone(), ss.clone())
+        })
         .transpose()?;
     rpc.spawn()?;
     let local_addr = pv.address().to_vec();

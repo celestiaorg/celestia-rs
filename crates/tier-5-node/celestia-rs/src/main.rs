@@ -166,6 +166,10 @@ enum Cmd {
 #[derive(Args, Debug)]
 #[allow(clippy::struct_excessive_bools)]
 struct StartArgs {
+    /// Listen for DA header and share exchange streams over libp2p TCP.
+    #[cfg(feature = "bridge-p2p")]
+    #[arg(long)]
+    bridge_p2p_listen: Option<std::net::SocketAddr>,
     /// Serve experimental read-only DA JSON-RPC on this loopback address.
     #[cfg(feature = "bridge")]
     #[arg(long)]
@@ -1271,6 +1275,10 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
     #[cfg(feature = "bridge")]
     {
         opts.bridge_rpc_listen = a.bridge_rpc_listen;
+    }
+    #[cfg(feature = "bridge-p2p")]
+    {
+        opts.bridge_p2p_listen = a.bridge_p2p_listen;
     }
     opts.mempool = config::mempool_options(&files)?;
     opts.block_sync = !a.no_block_sync;

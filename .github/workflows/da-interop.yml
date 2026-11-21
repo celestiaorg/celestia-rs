@@ -37,9 +37,9 @@ jobs:
         with:
           go-version-file: reference-node/go.mod
           cache-dependency-path: reference-node/go.sum
-      - name: Build the operator binary with bridge RPC
-        run: cargo build --locked --no-default-features --features bridge -p celestia-rs
+      - name: Build the operator binary with bridge RPC and libp2p
+        run: cargo build --locked --no-default-features --features bridge-p2p -p celestia-rs
         env:
           CARGO_PROFILE_DEV_DEBUG: '0'
       - name: Verify a paid blob with the release client
-        run: conformance/da/test-read-bridge.sh target/debug/celestia-rs reference-node
+        run: conformance/da/test-read-bridge.sh target/debug/celestia-rs reference-node --peer

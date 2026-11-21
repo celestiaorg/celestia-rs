@@ -11,6 +11,10 @@ case "$revision" in
     *) echo "unexpected celestia-node revision $revision" >&2; exit 1 ;;
 esac
 work=$(mktemp -d)
+peer_args=()
+if [[ "${3:-}" == --peer ]]; then
+    peer_args=(--bridge-p2p-listen 127.0.0.1:32121)
+fi
 pid=
 cleanup() {
     if [[ -n "$pid" ]]; then
@@ -22,8 +26,8 @@ cleanup() {
 trap cleanup EXIT
 
 # Keep the fresh validator keys and the startup log inside the temporary home.
-"$binary" start --network local --home "$work/node" \
-    --bridge-rpc-listen 127.0.0.1:32658 >"$work/node.log" 2>&1 &
+RUST_LOG=celestia_rs::bridge::peer=info "$binary" start --network local --home "$work/node" \
+    --bridge-rpc-listen 127.0.0.1:32658 "${peer_args[@]}" >"$work/node.log" 2>&1 &
 pid=$!
 for attempt in {1..120}; do
     kill -0 "$pid"
@@ -49,3 +53,9 @@ kill -0 "$pid"
 echo "celestia-node $revision; chain celestia-rs-local; paid blob at height $height"
 sha256sum "$binary" "$work/node/config/genesis.json"
 (cd "$go_tree" && go run "$probe" http://127.0.0.1:32658 "$height" "$namespace" "$data")
+if (( ${#peer_args[@]} )); then
+    peer_id=$(sed -n 's/.*DA peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/node.log" | head -1)
+    [[ -n "$peer_id" ]] || { echo 'missing DA peer identity' >&2; exit 1; }
+    peer_probe=$(dirname "$probe")/peer/read_peer.go
+    (cd "$go_tree" && go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data")
+fi

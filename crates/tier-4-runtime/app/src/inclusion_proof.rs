@@ -356,6 +356,41 @@ pub struct NamespaceRow {
     pub proof: pb::NmtProof,
 }
 
+/// Prove an end-exclusive range of cells against one EDS row, including parity cells.
+#[cfg(feature = "bridge")]
+pub fn row_range_proof(
+    eds: &square::ExtendedDataSquare,
+    dah: &square::DataAvailabilityHeader,
+    row: usize,
+    start: usize,
+    end: usize,
+) -> Result<pb::NmtProof, SdkError> {
+    let cells = eds.row(row).map_err(|e| square_err(&e))?;
+    if start >= end || end > cells.len() {
+        return Err(plain("column range out of bounds"));
+    }
+    let leaves: Vec<_> = cells
+        .iter()
+        .enumerate()
+        .map(|(index, share)| Node::leaf(&nmt_leaf(eds.original_width(), row, index, share)))
+        .collect();
+    let mut nodes = Vec::new();
+    let root = range_proof(&leaves, start, end, &mut nodes)?;
+    if dah
+        .row_roots
+        .get(row)
+        .is_none_or(|expected| expected.as_slice() != root.to_bytes())
+    {
+        return Err(plain("sample row does not match data availability header"));
+    }
+    Ok(pb::NmtProof {
+        start: i32::try_from(start).map_err(|_| plain("invalid proof start"))?,
+        end: i32::try_from(end).map_err(|_| plain("invalid proof end"))?,
+        nodes: nodes.into_iter().map(Node::to_bytes).collect(),
+        leaf_hash: Vec::new(),
+    })
+}
+
 /// Prove every candidate row of an authenticated EDS, as required by
 /// celestia-node's NamespaceData.Verify.
 #[cfg(feature = "bridge")]
