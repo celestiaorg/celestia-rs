@@ -352,6 +352,34 @@ mod tests {
     }
 
     #[test]
+    fn tx_decode_query_keeps_the_legacy_decoder_at_v12() {
+        let mut raw = TxRaw::decode(simulate_send(0).as_slice()).unwrap();
+        for memo in ["first", "second"] {
+            TxBody {
+                memo: memo.into(),
+                ..Default::default()
+            }
+            .encode(&mut raw.body_bytes)
+            .unwrap();
+        }
+        let tx_bytes = raw.encode_to_vec();
+        assert!(txdecode::decode_for(12, &tx_bytes).is_err());
+
+        let mut app = App::new();
+        app.last_height = app.ms.commit().unwrap().version;
+        app.execution_version = Some(12);
+        let (data, _) = app
+            .grpc_query(
+                "/cosmos.tx.v1beta1.Service/TxDecode",
+                &TxDecodeRequest { tx_bytes }.encode_to_vec(),
+                0,
+            )
+            .unwrap();
+        let decoded = TxDecodeResponse::decode(data.as_slice()).unwrap();
+        assert_eq!(decoded.tx.unwrap().body.unwrap().memo, "second");
+    }
+
+    #[test]
     fn simulate_uses_pending_sequence_without_mutating_check_state() {
         let mut app = App::new();
         app.execution_version = Some(12);

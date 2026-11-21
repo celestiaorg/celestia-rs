@@ -211,6 +211,7 @@ jobs:
           - rpccorpus/recorder
           - mainnet-rpc/module-closure/proofcheck
           - txdecode
+          - strict-txdecode
           - v11-frozen
     env:
       GOFLAGS: -mod=mod
