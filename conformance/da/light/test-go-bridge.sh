@@ -15,9 +15,17 @@ da="$work/da"
 consensus=
 bridge=
 cleanup() {
+    local status=$?
     for pid in "$bridge" "$consensus"; do
         if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; wait "$pid" || true; fi
     done
+    if (( status != 0 )); then
+        # Initialization logs contain generated key material. Only report daemon errors.
+        for log in "$work/app.log" "$work/bridge.log"; do
+            if [[ -f "$log" ]]; then grep -Ei '(^Error:|panic:|disk space|address already in use)' "$log" | tail -10 || true; fi
+        done
+        df -h "$work"
+    fi
     rm -rf -- "$work"
 }
 trap cleanup EXIT
@@ -37,7 +45,7 @@ chain=da-oracle
 } >"$work/init.log" 2>&1
 
 "$app" start "${home_arg[@]}" --p2p.laddr tcp://127.0.0.1:36656 --rpc.laddr tcp://127.0.0.1:36657 \
-    --grpc.enable --grpc.address 127.0.0.1:39090 --grpc-web.enable=false >"$work/app.log" 2>&1 &
+    --grpc.enable --grpc.address 127.0.0.1:39090 --grpc-web.enable=false --minimum-gas-prices 0.002utia >"$work/app.log" 2>&1 &
 consensus=$!
 rpc=http://127.0.0.1:36657
 block() { curl -fsS --max-time 3 "$rpc/block?height=$1" 2>/dev/null; }
