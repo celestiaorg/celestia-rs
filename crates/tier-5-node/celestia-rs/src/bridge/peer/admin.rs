@@ -108,7 +108,7 @@ impl Operations {
             },
             ("p2p.ClosePeer", [id]) => match parse_peer(id) {
                 Ok(id) if swarm.disconnect_peer_id(id).is_ok() => {
-                    self.closing.entry(id).or_default().push(reply)
+                    self.closing.entry(id).or_default().push(reply);
                 }
                 result => {
                     let _ = reply.send(result.map(|_| Value::Null));
