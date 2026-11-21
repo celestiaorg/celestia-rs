@@ -116,6 +116,13 @@ celestia-rs start --network local --home ~/.celestia-rs/local
 celestia-rs start --network mocha --home ~/.celestia-rs/mocha
 ```
 
+The experimental DA bridge requires a binary built with
+`cargo build --release -p celestia-rs --features bridge`. To enable its
+read-only HTTP JSON-RPC listener on a private devnet, add
+`--bridge-rpc-listen 127.0.0.1:32658` to `start`. The default build omits
+the bridge. A bridge-enabled build also leaves the listener off until
+given this flag. See the [Go conformance probe](../conformance/da/README.md).
+
 `--network` knows these chains (from celestia-app v10.4.0):
 
 | network | chain ID | genesis SHA-256 | seeds / peers |
