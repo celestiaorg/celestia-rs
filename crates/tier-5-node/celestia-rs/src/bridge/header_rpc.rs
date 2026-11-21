@@ -32,26 +32,7 @@ pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) ->
             .await
         }
         ("header.GetRangeByHeight", [from, to]) => {
-            ensure!(!from.is_null(), "header/service: 'from' header is nil");
-            let start: i64 = from["header"]["height"]
-                .as_str()
-                .context("invalid start height")?
-                .parse()?;
-            let hash = hex::decode(
-                from["commit"]["block_id"]["hash"]
-                    .as_str()
-                    .context("invalid start hash")?,
-            )?;
-            let end = to.as_i64().context("invalid end height")?;
-            ensure!(
-                start > 0 && end > start,
-                "header/p2p: `from` must be less than `to`"
-            );
-            ensure!(end - start != 1, "empty header range");
-            ensure!(
-                end - start <= 65,
-                "header/p2p: header limit per 1 request exceeded"
-            );
+            let (range, hash) = range_bounds(from, to)?;
             let permit = bridge
                 .worker
                 .clone()
@@ -60,9 +41,9 @@ pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) ->
             tokio::task::spawn_blocking(move || {
                 let _permit = permit;
                 let mut previous = hash;
-                ensure!(end - 1 <= head(&bridge)?, "range is not committed");
+                ensure!(range.end - 1 <= head(&bridge)?, "range is not committed");
                 let mut result = Vec::new();
-                for height in start + 1..end {
+                for height in range {
                     let block = bridge.committed(height)?;
                     ensure!(
                         block.header.last_block_id.hash == previous,
@@ -117,6 +98,31 @@ pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) ->
         }
         _ => anyhow::bail!("invalid params"),
     }
+}
+
+/// The released store excludes both the supplied header and the end height.
+pub(super) fn range_bounds(from: &Value, to: &Value) -> Result<(std::ops::Range<i64>, Vec<u8>)> {
+    ensure!(!from.is_null(), "header/service: 'from' header is nil");
+    let start: i64 = from["header"]["height"]
+        .as_str()
+        .context("invalid start height")?
+        .parse()?;
+    let hash = hex::decode(
+        from["commit"]["block_id"]["hash"]
+            .as_str()
+            .context("invalid start hash")?,
+    )?;
+    let end = to.as_i64().context("invalid end height")?;
+    ensure!(
+        start > 0 && end > start,
+        "header/p2p: `from` must be less than `to`"
+    );
+    ensure!(end - start != 1, "empty header range");
+    ensure!(
+        end - start <= 65,
+        "header/p2p: header limit per 1 request exceeded"
+    );
+    Ok((start + 1..end, hash))
 }
 
 fn head(bridge: &Bridge) -> Result<i64> {

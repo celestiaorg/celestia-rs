@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 
 #[derive(Default, Clone)]
 pub(super) struct Sampling {
-    sampled: u64,
+    pub(super) sampled: u64,
     scheduled: u64,
     pub(super) network: u64,
     pub(super) done: bool,

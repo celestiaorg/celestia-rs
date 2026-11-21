@@ -55,6 +55,37 @@ func main() {
 	if tail.Height() != height || !bytes.Equal(tail.Hash(), hash) {
 		panic("wrong trusted tail")
 	}
+	waited, err := c.Header.WaitForHeight(ctx, height+2)
+	check(err)
+	if waited.Height() != height+2 {
+		panic("wait returned wrong sampled height")
+	}
+	future, cancelFuture := context.WithTimeout(ctx, 350*time.Millisecond)
+	_, err = c.Header.WaitForHeight(future, height+3)
+	cancelFuture()
+	if err == nil || future.Err() != context.DeadlineExceeded {
+		panic("future height available offline")
+	}
+	headers, err := c.Header.GetRangeByHeight(ctx, tail, height+3)
+	check(err)
+	if len(headers) != 2 || !bytes.Equal(headers[1].Hash(), waited.Hash()) {
+		panic("wrong sampled header range")
+	}
+	check(tail.Verify(headers[0]))
+	check(headers[0].Verify(headers[1]))
+	if _, err := c.Header.GetRangeByHeight(ctx, tail, height+1); err == nil {
+		panic("empty range accepted")
+	}
+	if _, err := c.Header.GetRangeByHeight(ctx, tail, height+66); err == nil {
+		panic("oversized range accepted")
+	}
+	wrong := *tail
+	commit := *tail.Commit
+	commit.BlockID.Hash = make([]byte, 32)
+	wrong.Commit = &commit
+	if _, err := c.Header.GetRangeByHeight(ctx, &wrong, height+3); err == nil {
+		panic("wrong predecessor accepted")
+	}
 	for h := height; h <= height+2; h++ {
 		header, err := c.Header.GetByHeight(ctx, h)
 		check(err)
@@ -83,5 +114,5 @@ func main() {
 	if _, err := public.Header.LocalHead(ctx); err == nil {
 		panic("public caller read light headers")
 	}
-	fmt.Printf("Go verified sampled height and hash indexes from %d to %d after restart\n", height, height+2)
+	fmt.Printf("Go verified sampled waits, ranges, height and hash indexes from %d to %d after restart\n", height, height+2)
 }
