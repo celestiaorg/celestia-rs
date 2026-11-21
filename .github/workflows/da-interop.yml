@@ -41,5 +41,10 @@ jobs:
         run: cargo build --locked --no-default-features --features bridge-p2p -p celestia-rs
         env:
           CARGO_PROFILE_DEV_DEBUG: '0'
+      - name: Replay pinned Go bridge controls
+        if: matrix.network == 'Mainnet'
+        run: cargo test --locked -p app --no-default-features --features bridge --test bridge_control
+        env:
+          CARGO_PROFILE_DEV_DEBUG: '0'
       - name: Verify a paid blob with the release client
         run: conformance/da/test-read-bridge.sh target/debug/celestia-rs reference-node --stock-light
