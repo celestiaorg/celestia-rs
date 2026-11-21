@@ -52,7 +52,8 @@ for attempt in {1..120}; do
 done
 
 namespace=726f6c6c7570
-data=68656c6c6f2d6461
+# Span four ODS rows to exercise the per-row commitment and inclusion proofs.
+data=$(python3 -c 'print("c0ffee" * 4000)')
 "$binary" tx blob pay-for-blob "$namespace" "$data" \
     --home "$work/node" --chain-id celestia-rs-local --from validator \
     --keyring-backend test --fees 50000utia --node tcp://127.0.0.1:26657 --wait >"$work/tx.json"
