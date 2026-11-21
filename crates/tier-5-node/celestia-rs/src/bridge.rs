@@ -1,6 +1,7 @@
 //! Opt-in DA RPC backed by the consensus node's committed block and state stores.
 
 pub(crate) mod auth;
+mod header_rpc;
 mod share_rpc;
 mod ws;
 
@@ -47,6 +48,7 @@ impl Server {
         };
         let (stop, stopped) = oneshot::channel();
         let state = Arc::new(Bridge {
+            waiters: Arc::new(Semaphore::new(32)),
             blocks,
             states,
             worker: Arc::new(Semaphore::new(1)),
@@ -83,6 +85,7 @@ impl Drop for Server {
 }
 
 struct Bridge {
+    waiters: Arc<Semaphore>,
     blocks: BlockStore,
     states: StateStore,
     worker: Arc<Semaphore>,
@@ -292,35 +295,26 @@ impl Bridge {
             height > 0 && height <= head,
             "height {height} is not committed"
         );
-        let Committed {
-            header: h,
-            commit,
-            validators,
-            eds,
-            dah,
-        } = self.committed(height)?;
+        let block = self.committed(height)?;
+        let Committed { eds, dah, .. } = &block;
         if let Query::BlobProof(_, ns, hash, kind) = query {
-            return prove_blob(&eds, &dah, ns, &hash, kind);
+            return prove_blob(eds, dah, ns, &hash, kind);
         }
         if let Query::ShareRead(_, method) = query {
-            return method.response(&eds, &dah);
+            return method.response(eds, dah);
         }
         if let Query::Share(_, row, col) = query {
             return Ok(J::b64(eds.share(row, col)?));
         }
         if let Query::Namespace(_, ns) = query {
-            let rows = app::inclusion_proof::namespace_rows(&eds, &dah, ns)
+            let rows = app::inclusion_proof::namespace_rows(eds, dah, ns)
                 .map_err(|e| anyhow::anyhow!("{}", e.log))?;
             return Ok(J::Arr(rows.into_iter().map(namespace_row_json).collect()));
         }
         if let Query::Blobs(_, namespaces) = query {
             let mut blobs = Vec::new();
             for ns in namespaces {
-                blobs.extend(
-                    read_blobs(&eds, &dah, ns)?
-                        .into_iter()
-                        .map(|(_, blob)| blob),
-                );
+                blobs.extend(read_blobs(eds, dah, ns)?.into_iter().map(|(_, blob)| blob));
             }
             return Ok(if blobs.is_empty() {
                 J::Null
@@ -329,26 +323,35 @@ impl Bridge {
             });
         }
         if let Query::Blob(_, ns, commitment) = query {
-            return read_blobs(&eds, &dah, ns)?
+            return read_blobs(eds, dah, ns)?
                 .into_iter()
                 .find(|(hash, _)| hash.as_slice() == commitment)
                 .map(|(_, blob)| blob)
                 .context("blob: not found");
         }
+        Ok(block.header_json())
+    }
+}
+
+impl Committed {
+    fn header_json(&self) -> J {
         let roots =
             |rs: &[[u8; square::DAH_ROOT_SIZE]]| J::Arr(rs.iter().map(|r| J::b64(r)).collect());
-        Ok(J::obj([
-            ("header", rpc::encode::header(&h)),
-            ("commit", rpc::encode::commit(&commit)),
-            ("validator_set", rpc::encode::validator_set(&validators)),
+        J::obj([
+            ("header", rpc::encode::header(&self.header)),
+            ("commit", rpc::encode::commit(&self.commit)),
+            (
+                "validator_set",
+                rpc::encode::validator_set(&self.validators),
+            ),
             (
                 "dah",
                 J::obj([
-                    ("row_roots", roots(&dah.row_roots)),
-                    ("column_roots", roots(&dah.column_roots)),
+                    ("row_roots", roots(&self.dah.row_roots)),
+                    ("column_roots", roots(&self.dah.column_roots)),
                 ]),
             ),
-        ]))
+        ])
     }
 }
 
@@ -533,6 +536,13 @@ async fn dispatch(
             return auth
                 .admin(method, args)
                 .map(|value| J::Raw(value.to_string()))
+                .map_err(|e| (1, e.to_string()));
+        }
+        if header_rpc::handles(method) {
+            require(method, "read")?;
+            let params = req.get("params").filter(|v| !v.is_null()).unwrap_or(&empty);
+            return header_rpc::handle(bridge, method, params)
+                .await
                 .map_err(|e| (1, e.to_string()));
         }
         let query = Query::parse(

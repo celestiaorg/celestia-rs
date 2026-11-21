@@ -33,7 +33,7 @@ pub(super) async fn upgrade(
         .max_frame_size(64 * 1024)
         .on_upgrade(move |socket| async move {
             tokio::select! {
-                _=connection(socket,bridge,&auth,&permissions)=>{}
+                _=connection(socket,bridge,auth.clone(), permissions.into())=>{}
                 ()=auth.revoked(changed,token.as_deref())=>{}
             }
         })
@@ -117,37 +117,50 @@ async fn send(socket: &mut WebSocket, data: String) -> Result<()> {
 struct Streams {
     subs: HashMap<String, Subscription>,
     next_channel: u64,
+    calls: tokio::task::JoinSet<(String, String)>,
+    requests: HashMap<String, tokio::task::AbortHandle>,
 }
 
 impl Streams {
-    async fn request(
+    fn request(
         &mut self,
         bridge: &Arc<Bridge>,
-        auth: &Auth,
-        perms: &[String],
-        bytes: &[u8],
+        auth: &Arc<Auth>,
+        perms: &Arc<[String]>,
+        bytes: Vec<u8>,
     ) -> Result<Option<String>> {
-        let Ok(request) = serde_json::from_slice::<Value>(bytes) else {
-            return Ok(Some(dispatch(bridge.clone(), auth, perms, bytes).await));
-        };
+        let request = serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null);
         let method = request["method"].as_str().unwrap_or_default();
         if method == "xrpc.cancel" {
-            return Ok(request["params"]
-                .get(0)
-                .and_then(|id| self.subs.remove(&id.to_string()))
-                .map(|sub| closed(sub.channel)));
+            let Some(id) = request["params"].get(0).map(Value::to_string) else {
+                return Ok(None);
+            };
+            if let Some(call) = self.requests.remove(&id) {
+                call.abort();
+            }
+            return Ok(self.subs.remove(&id).map(|sub| closed(sub.channel)));
+        }
+        let id = &request["id"];
+        let key = id.to_string();
+        if self.requests.contains_key(&key) || self.subs.contains_key(&key) {
+            return Ok(Some(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32600,"message":"duplicate request ID"}}).to_string()));
         }
         if !matches!(
             method,
             "header.Subscribe" | "blob.Subscribe" | "blob.SubscribeFromStartHeight"
         ) {
-            return Ok(Some(dispatch(bridge.clone(), auth, perms, bytes).await));
+            if self.calls.len() >= 16 {
+                return Ok(Some(json!({"jsonrpc":"2.0","id":id,"error":{"code":1,"message":"too many requests"}}).to_string()));
+            }
+            let (bridge, auth, perms) = (bridge.clone(), auth.clone(), perms.clone());
+            let request_id = key.clone();
+            let handle = self
+                .calls
+                .spawn(async move { (request_id, dispatch(bridge, &auth, &perms, &bytes).await) });
+            self.requests.insert(key, handle);
+            return Ok(None);
         }
-        let id = &request["id"];
-        let mut reply = if request["jsonrpc"] != "2.0"
-            || !(id.is_string() || id.is_number())
-            || self.subs.contains_key(&id.to_string())
-        {
+        let mut reply = if request["jsonrpc"] != "2.0" || !(id.is_string() || id.is_number()) {
             json!({"error":{"code":-32600,"message":"invalid request"}})
         } else if !perms.iter().any(|p| p == "read") {
             json!({"error":{"code":1,"message":"subscription requires read permission"}})
@@ -178,8 +191,8 @@ impl Streams {
 async fn connection(
     mut socket: WebSocket,
     bridge: Arc<Bridge>,
-    auth: &Auth,
-    perms: &[String],
+    auth: Arc<Auth>,
+    perms: Arc<[String]>,
 ) -> Result<()> {
     let mut streams = Streams::default();
     let mut tick = tokio::time::interval(Duration::from_millis(200));
@@ -189,8 +202,18 @@ async fn connection(
             frame=socket.recv()=>{
                 let Some(frame)=frame else {return Ok(())};
                 let bytes=match frame? {Message::Text(t)=>t.into_bytes(),Message::Binary(b)=>b,Message::Close(_)=>return Ok(()),_=>continue};
-                if let Some(reply) = streams.request(&bridge, auth, perms, &bytes).await? {
+                if let Some(reply) = streams.request(&bridge, &auth, &perms, bytes)? {
                     send(&mut socket, reply).await?;
+                }
+            }
+            Some(result) = streams.calls.join_next_with_id(), if !streams.calls.is_empty() => {
+                match result {
+                    Ok((task, (key, reply))) if streams.requests.get(&key).is_some_and(|handle|handle.id()==task) => {
+                        streams.requests.remove(&key);
+                        send(&mut socket,reply).await?;
+                    }
+                    Err(error) if !error.is_cancelled() => return Err(error.into()),
+                    _ => {}
                 }
             }
             _=tick.tick(),if !streams.subs.is_empty()=>{

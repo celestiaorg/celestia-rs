@@ -61,6 +61,7 @@ pub(crate) fn start(
     let (stop, stopped) = oneshot::channel();
     let (ready, started) = mpsc::sync_channel(1);
     let bridge = Arc::new(Bridge {
+        waiters: Arc::new(Semaphore::new(32)),
         blocks,
         states,
         worker: Arc::new(Semaphore::new(2)),
