@@ -147,13 +147,6 @@ jobs:
           shared-key: macos-release
       - name: Build celestia-rs (release)
         run: cargo build --release --locked -p celestia-rs
-      - name: Auto-update release selection, health and rollback
-        # Match the installed updater; stubs never contact live services.
-        run: |
-          python3 -m unittest discover -s packaging/macos -p 'test_auto_update_releases.py' -v
-          bash packaging/macos/test-auto-update-hold.sh
-          bash packaging/macos/test-health.sh
-          bash packaging/macos/test-watchdog.sh
       - name: CLI smoke (init, keys, comet, open-files check)
         run: |
           set -eux

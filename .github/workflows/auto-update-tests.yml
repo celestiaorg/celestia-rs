@@ -1,0 +1,25 @@
+name: auto-update-tests
+
+on:
+  pull_request:
+    paths: ["packaging/macos/**", ".github/workflows/auto-update-tests.yml"]
+  push:
+    branches: [main]
+    paths: ["packaging/macos/**", ".github/workflows/auto-update-tests.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  auto-update:
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Release selection, rollout and rollback
+        # Match the installed updater; stubs never contact live services.
+        run: |
+          python3 -m unittest discover -s packaging/macos -p 'test_auto_update_releases.py' -v
+          bash packaging/macos/test-auto-update-hold.sh
+          bash packaging/macos/test-health.sh
+          bash packaging/macos/test-watchdog.sh
