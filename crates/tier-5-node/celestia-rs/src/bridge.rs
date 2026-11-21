@@ -564,7 +564,7 @@ async fn dispatch(
         }
         #[cfg(feature = "bridge-p2p")]
         if peer::Control::handles(method) {
-            require(method, "admin")?;
+            require_permission(permissions, method, "admin")?;
             let control = bridge
                 .peer_control
                 .as_ref()
