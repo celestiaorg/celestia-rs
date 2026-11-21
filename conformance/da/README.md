@@ -59,3 +59,22 @@ For a node behind NAT, repeat `--bridge-announce <multiaddress>` with its
 reachable TCP addresses. The DA RPC listener is configured independently.
 
 The opt-in P2P bridge publishes signed non-empty EDS announcements on the release's FloodSub topic `<chain>/eds-sub/v0.2.0`. This stream runs independently of header GossipSub. The peer fixture subscribes with the released Go SHREX library before paying for its blob, checks the publisher identity, then fetches the signed header to verify the announced height and data hash. The Rust publisher signs locally verified commitments and ignores incoming publications.
+
+## Standalone Rust DA light mode
+
+Build the same executable with `--features da-light`. Get a recent header hash
+from a trusted source and a TCP multiaddress with the DA peer ID of a bridge
+on that chain. Use a fresh light home:
+
+```sh
+celestia-rs da-light --home ./light-home --network "$CHAIN_ID" \
+  --peer "$BRIDGE_MULTIADDR" --trusted-hash "$HEADER_HASH"
+```
+
+The process verifies the checkpoint, follows adjacent signed headers and
+samples up to 16 unique random cells per height. It accepts row and column
+proofs, including parity cells. Its separate light database records the
+coordinates before sampling and advances the head after every proof passes.
+Rerunning the command with the original trust inputs resumes from its last
+sampled height. A header outside the seven-day trusting period requires a
+fresh checkpoint and light home. Use `--until HEIGHT` for a bounded run.
