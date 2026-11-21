@@ -14,9 +14,10 @@ app="$work/app"
 da="$work/da"
 consensus=
 bridge=
+light=
 cleanup() {
     local status=$?
-    for pid in "$bridge" "$consensus"; do
+    for pid in "$light" "$bridge" "$consensus"; do
         if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; wait "$pid" || true; fi
     done
     if (( status != 0 )); then
@@ -59,8 +60,11 @@ for attempt in {1..120}; do
 done
 export CELESTIA_CUSTOM="$chain:${hash:?no genesis block}"
 "$da" bridge init --node.store "$work/bridge" --core.ip 127.0.0.1 --core.port 39090 >"$work/bridge-init.log" 2>&1
-"$da" bridge start --node.store "$work/bridge" --core.ip 127.0.0.1 --core.port 39090 >"$work/bridge.log" 2>&1 &
-bridge=$!
+start_bridge() {
+    "$da" bridge start --node.store "$work/bridge" --core.ip 127.0.0.1 --core.port 39090 >"$work/bridge.log" 2>&1 &
+    bridge=$!
+}
+start_bridge
 for attempt in {1..120}; do
     kill -0 "$bridge"
     peer=$(sed -n 's@.*/ip4/[0-9.]*\(/tcp/[0-9]*/p2p/[[:alnum:]]*\).*@/ip4/127.0.0.1\1@p' "$work/bridge.log" | head -1)
@@ -92,3 +96,38 @@ grep -Fq "sampled height $height (16 verified shares)" "$work/first.log"
 timeout 120 "$rust" "${args[@]}" --until "$((height+2))" | tee "$work/resume.log"
 grep -Fq "sampled height $((height+2)) " "$work/resume.log"
 if grep -Fq "sampled height $height " "$work/resume.log"; then exit 1; fi
+
+# Disconnect the sole reachable provider before reopening the sampled store.
+kill "$bridge"
+wait "$bridge" || true
+bridge=
+
+DA_TEST_READ_TOKEN=$("$rust" da-auth read --home "$work/rust-light")
+export DA_TEST_READ_TOKEN
+endpoint=http://127.0.0.1:39658
+"$rust" "${args[@]}" --rpc-listen 127.0.0.1:39658 >"$work/light.log" 2>&1 &
+light=$!
+for attempt in {1..60}; do
+    kill -0 "$light"
+    if curl -fsS --max-time 2 "$endpoint" -H "Authorization: Bearer $DA_TEST_READ_TOKEN" \
+        -d '{"jsonrpc":"2.0","id":1,"method":"header.LocalHead","params":[]}' 2>/dev/null |
+        jq -e '.result.header.height != null' >/dev/null; then break; fi
+    if [[ "$attempt" == 60 ]]; then echo 'light RPC unavailable' >&2; exit 1; fi
+    sleep 1
+done
+probe=$(realpath "$(dirname "$0")/read.go")
+(cd "$node_src" && go run "$probe" "$endpoint" "$height" "$hash")
+# The same Rust process must reconnect and authenticate a new header once its provider returns.
+start_bridge
+for attempt in {1..90}; do
+    kill -0 "$bridge"
+    kill -0 "$light"
+    if curl -fsS --max-time 2 "$endpoint" -H "Authorization: Bearer $DA_TEST_READ_TOKEN" \
+        -d '{"jsonrpc":"2.0","id":1,"method":"header.LocalHead","params":[]}' |
+        jq -e --argjson old "$((height+2))" '(.result.header.height | tonumber) > $old' >/dev/null; then
+        echo 'Rust resumed sampling after the private Go provider restarted'
+        break
+    fi
+    if [[ "$attempt" == 90 ]]; then echo 'light node did not reconnect' >&2; exit 1; fi
+    sleep 1
+done

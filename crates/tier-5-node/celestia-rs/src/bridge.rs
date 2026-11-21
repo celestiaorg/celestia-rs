@@ -417,24 +417,29 @@ impl Bridge {
 
 impl Committed {
     fn header_json(&self) -> J {
-        let roots =
-            |rs: &[[u8; square::DAH_ROOT_SIZE]]| J::Arr(rs.iter().map(|r| J::b64(r)).collect());
-        J::obj([
-            ("header", rpc::encode::header(&self.header)),
-            ("commit", rpc::encode::commit(&self.commit)),
-            (
-                "validator_set",
-                rpc::encode::validator_set(&self.validators),
-            ),
-            (
-                "dah",
-                J::obj([
-                    ("row_roots", roots(&self.dah.row_roots)),
-                    ("column_roots", roots(&self.dah.column_roots)),
-                ]),
-            ),
-        ])
+        header_json(&self.header, &self.commit, &self.validators, &self.dah)
     }
+}
+
+fn header_json(
+    header: &ctypes::Header,
+    commit: &ctypes::Commit,
+    validators: &ctypes::ValidatorSet,
+    dah: &square::DataAvailabilityHeader,
+) -> J {
+    let roots = |rs: &[[u8; square::DAH_ROOT_SIZE]]| J::Arr(rs.iter().map(|r| J::b64(r)).collect());
+    J::obj([
+        ("header", rpc::encode::header(header)),
+        ("commit", rpc::encode::commit(commit)),
+        ("validator_set", rpc::encode::validator_set(validators)),
+        (
+            "dah",
+            J::obj([
+                ("row_roots", roots(&dah.row_roots)),
+                ("column_roots", roots(&dah.column_roots)),
+            ]),
+        ),
+    ])
 }
 
 /// Walk Q0 in block order, retaining the EDS index used by the Go blob API.
