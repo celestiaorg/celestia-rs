@@ -57,3 +57,22 @@ releases. Private networks have an empty default bootstrap list. Repeat
 `--bridge-bootstrap <multiaddress>/p2p/<peer-id>` to supply an explicit list.
 For a node behind NAT, repeat `--bridge-announce <multiaddress>` with its
 reachable TCP addresses. The DA RPC listener is configured independently.
+
+## Standalone Rust DA light mode
+
+Build the same executable with `--features da-light`. Get a recent header hash
+from a trusted source and a TCP multiaddress with the DA peer ID of a bridge
+on that chain. Use a fresh light home:
+
+```sh
+celestia-rs da-light --home ./light-home --network "$CHAIN_ID" \
+  --peer "$BRIDGE_MULTIADDR" --trusted-hash "$HEADER_HASH"
+```
+
+The process verifies the checkpoint, follows adjacent signed headers and
+samples up to 16 unique random cells per height. It accepts row and column
+proofs, including parity cells. Its separate light database records the
+coordinates before sampling and advances the head after every proof passes.
+Rerunning the command with the original trust inputs resumes from its last
+sampled height. A header outside the seven-day trusting period requires a
+fresh checkpoint and light home. Use `--until HEIGHT` for a bounded run.
