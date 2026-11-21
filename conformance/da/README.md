@@ -50,3 +50,7 @@ go run "$PROBE_DIR/peer/read_peer.go" celestia-rs-local \
 The Go peer exchanges a signed header, reconstructs the EDS, verifies a
 range, verifies half rows and samples in all four quadrants, and retrieves
 the submitted bytes with a namespace inclusion proof.
+
+### Released RPC surface
+
+The Mainnet and Mocha-5 matrix regenerates `inventory/release.tsv` from each pinned Go checkout. Each row records the client method, required permission, call or subscription, ordered OpenRPC parameter names and Go function signature. Run `go run /path/to/conformance/da/inventory/reference.go -openrpc` in that checkout to export the full upstream document with JSON schemas and examples. The inventory describes the Go API. Passing mixed-node probes establish Rust behavior for the individual roles.
