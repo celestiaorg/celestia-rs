@@ -569,12 +569,7 @@ async fn dispatch(
                 .peer_control
                 .as_ref()
                 .ok_or_else(|| (1, "DA peer is disabled".to_owned()))?;
-            let args = req
-                .get("params")
-                .filter(|v| !v.is_null())
-                .unwrap_or(&empty)
-                .as_array()
-                .ok_or_else(invalid)?;
+            let args = params.as_array().ok_or_else(invalid)?;
             return control
                 .call(method, args)
                 .await
