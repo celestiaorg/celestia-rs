@@ -186,6 +186,12 @@ pub(super) fn start(
                 if meta.num_txs == 0 {
                     return Ok(None);
                 }
+                // The block store can lead the committed state during application.
+                // Publish only once go-header can serve the same height immediately.
+                ensure!(
+                    height <= crate::bridge::header_rpc::head(&source)?,
+                    "state not committed"
+                );
                 let block = source.committed(height)?;
                 Ok(Some(Notification {
                     height: u64::try_from(height)?,
