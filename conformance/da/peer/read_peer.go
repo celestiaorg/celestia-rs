@@ -22,6 +22,7 @@ import (
 	"github.com/celestiaorg/go-square/v4/share"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	ma "github.com/multiformats/go-multiaddr"
 	"golang.org/x/sync/errgroup"
@@ -190,6 +191,48 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	if connected != network.Connected {
 		panic("admin dial did not connect")
 	}
+	if err := reader.P2P.BlockPeer(ctx, address.ID); err == nil {
+		panic("read token blocked a DA peer")
+	}
+	check(admin.P2P.BlockPeer(ctx, address.ID))
+	check(admin.P2P.BlockPeer(ctx, address.ID))
+	blocked, err := admin.P2P.ListBlockedPeers(ctx)
+	check(err)
+	if !slices.Contains(blocked, address.ID) {
+		panic("blocked peer missing")
+	}
+	for {
+		state, err := admin.P2P.Connectedness(ctx, address.ID)
+		check(err)
+		if state == network.NotConnected {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			panic(ctx.Err())
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	if err := admin.P2P.Connect(ctx, address); err == nil {
+		panic("blocked outbound dial succeeded")
+	}
+	extra.Peerstore().AddAddrs(server.ID, server.Addrs, time.Minute)
+	if stream, err := extra.NewStream(ctx, server.ID, protocol.ID("/"+chain+"/header-ex/v0.0.3")); err == nil {
+		stream.Reset()
+		panic("blocked inbound header exchange negotiated")
+	}
+	check(admin.P2P.UnblockPeer(ctx, address.ID))
+	check(admin.P2P.UnblockPeer(ctx, address.ID))
+	blocked, err = admin.P2P.ListBlockedPeers(ctx)
+	check(err)
+	if slices.Contains(blocked, address.ID) {
+		panic("unblocked peer still listed")
+	}
+	check(admin.P2P.Connect(ctx, address))
+	stream, err := extra.NewStream(ctx, server.ID, protocol.ID("/"+chain+"/header-ex/v0.0.3"))
+	check(err)
+	check(stream.Close())
+	fmt.Println("Go verified inbound and outbound peer blocking, disconnect and unblock")
 	check(admin.P2P.ClosePeer(ctx, address.ID))
 	check(admin.P2P.ClosePeer(ctx, address.ID))
 	connected, err = admin.P2P.Connectedness(ctx, address.ID)

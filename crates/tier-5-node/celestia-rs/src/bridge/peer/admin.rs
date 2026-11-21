@@ -1,5 +1,6 @@
 //! Administrative reads are evaluated by the task that owns the running DA swarm.
 use anyhow::{Context, Result, ensure};
+use kvdb::{KvBackend as _, RedbBackend, RedbOptions, WriteBatch};
 use libp2p::swarm::{
     ConnectionId,
     dial_opts::{DialOpts, PeerCondition},
@@ -31,6 +32,9 @@ impl Control {
             "p2p.Info"
                 | "p2p.Connect"
                 | "p2p.ClosePeer"
+                | "p2p.BlockPeer"
+                | "p2p.UnblockPeer"
+                | "p2p.ListBlockedPeers"
                 | "p2p.Network"
                 | "p2p.Peers"
                 | "p2p.PeerInfo"
@@ -75,13 +79,23 @@ impl Operations {
         }
     }
 
-    pub(super) fn handle(&mut self, request: Request, swarm: &mut Swarm<Behaviour>, network: &str) {
+    pub(super) fn handle(
+        &mut self,
+        request: Request,
+        swarm: &mut Swarm<Behaviour>,
+        network: &str,
+        blocklist: &Blocklist,
+    ) {
         let Request {
             method,
             args,
             reply,
         } = request;
         if reply.is_closed() {
+            return;
+        }
+        if matches!(method.as_str(), "p2p.BlockPeer" | "p2p.UnblockPeer") {
+            let _ = reply.send(blocklist.update(swarm.behaviour_mut(), &method, &args));
             return;
         }
         if !matches!(method.as_str(), "p2p.Connect" | "p2p.ClosePeer") {
@@ -118,6 +132,51 @@ impl Operations {
                 let _ = reply.send(Err(anyhow::anyhow!("invalid parameters")));
             }
         }
+    }
+}
+
+pub(super) struct Blocklist(RedbBackend);
+
+impl Blocklist {
+    pub(super) fn open(home: &std::path::Path) -> Result<Self> {
+        Ok(Self(RedbBackend::open(
+            home.join("data/da-blocked-peers.redb"),
+            RedbOptions {
+                cache_size: 1 << 20,
+                ..RedbOptions::default()
+            },
+        )?))
+    }
+
+    pub(super) fn restore(&self, behaviour: &mut Behaviour) -> Result<()> {
+        for entry in self.0.range(None, None, false)? {
+            let (bytes, _) = entry?;
+            behaviour.gate.block_peer(PeerId::from_bytes(&bytes)?);
+        }
+        Ok(())
+    }
+
+    fn update(&self, behaviour: &mut Behaviour, method: &str, args: &[Value]) -> Result<Value> {
+        let [value] = args else {
+            anyhow::bail!("expected a peer ID");
+        };
+        let peer = parse_peer(value)?;
+        let block = method == "p2p.BlockPeer";
+        if behaviour.gate.blocked_peers().contains(&peer) != block {
+            let mut batch = WriteBatch::new();
+            if block {
+                batch.put(peer.to_bytes(), vec![]);
+            } else {
+                batch.delete(peer.to_bytes());
+            }
+            self.0.write(batch)?;
+            if block {
+                behaviour.gate.block_peer(peer);
+            } else {
+                behaviour.gate.unblock_peer(peer);
+            }
+        }
+        Ok(Value::Null)
     }
 }
 
@@ -168,6 +227,15 @@ fn read(
     args: &[Value],
 ) -> Result<Value> {
     match (method, args) {
+        ("p2p.ListBlockedPeers", []) => Ok(json!(
+            swarm
+                .behaviour()
+                .gate
+                .blocked_peers()
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        )),
         ("p2p.Network", []) => Ok(json!(network)),
         ("p2p.Info", []) => Ok(info(
             *swarm.local_peer_id(),
@@ -216,5 +284,32 @@ fn read(
             ensure!(Control::handles(method), "unknown peer method");
             anyhow::bail!("invalid parameters")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reconnect_gate_restores_only_durable_blocks() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let key = libp2p::identity::Keypair::generate_ed25519();
+        let id = PeerId::random();
+        let args = [json!(id.to_string())];
+        for action in ["p2p.BlockPeer", "p2p.UnblockPeer"] {
+            let db = Blocklist::open(dir.path())?;
+            let mut gate = Behaviour::new(&key, "private")?;
+            db.restore(&mut gate)?;
+            db.update(&mut gate, action, &args)?;
+            drop(db);
+            let mut restored = Behaviour::new(&key, "private")?;
+            Blocklist::open(dir.path())?.restore(&mut restored)?;
+            assert_eq!(
+                restored.gate.blocked_peers().contains(&id),
+                action == "p2p.BlockPeer"
+            );
+        }
+        Ok(())
     }
 }

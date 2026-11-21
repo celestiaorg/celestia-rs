@@ -63,6 +63,7 @@ pub(crate) fn start(
     let (stop, stopped) = oneshot::channel();
     let (ready, started) = mpsc::sync_channel(1);
     let (control, requests) = admin::Control::channel();
+    let blocklist = admin::Blocklist::open(home)?;
     let bridge = Arc::new(Bridge {
         peer_control: None,
         waiters: Arc::new(Semaphore::new(32)),
@@ -85,7 +86,7 @@ pub(crate) fn start(
                         bridge,
                         stopped,
                         &ready,
-                        (peers, requests),
+                        (peers, requests, blocklist),
                     ))
                 });
             if let Err(e) = result {
@@ -110,12 +111,14 @@ async fn run(
     bridge: Arc<Bridge>,
     mut stopped: oneshot::Receiver<()>,
     ready: &mpsc::SyncSender<Result<(), String>>,
-    (peers, mut requests): (
+    (peers, mut requests, blocklist): (
         network::Peering,
         tokio::sync::mpsc::Receiver<admin::Request>,
+        admin::Blocklist,
     ),
 ) -> Result<()> {
-    let behaviour = network::Behaviour::new(&key, network)?;
+    let mut behaviour = network::Behaviour::new(&key, network)?;
+    blocklist.restore(&mut behaviour)?;
     let mut swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(
@@ -145,7 +148,7 @@ async fn run(
     let admissions = Arc::new(Semaphore::new(64));
     loop {
         tokio::select! {
-            Some(request) = requests.recv() => operations.handle(request, &mut swarm, network),
+            Some(request) = requests.recv() => operations.handle(request, &mut swarm, network, &blocklist),
             _ = &mut stopped => return Ok(()),
             _ = reconnect.tick(), if !peers.bootstrap.is_empty() => peers.connect(&mut swarm),
             _ = timer.tick(), if pending.is_empty() && swarm.behaviour().gossip.mesh_peers(&topic_hash).next().is_some() => {
