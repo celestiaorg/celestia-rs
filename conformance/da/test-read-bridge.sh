@@ -16,8 +16,13 @@ if [[ "${3:-}" == --peer || "${3:-}" == --stock-light ]]; then
     peer_args=(--bridge-p2p-listen 127.0.0.1:32121)
 fi
 pid=
+bootstrap_pid=
 light_pid=
 cleanup() {
+    if [[ -n "$bootstrap_pid" ]]; then
+        kill "$bootstrap_pid" 2>/dev/null || true
+        wait "$bootstrap_pid" || true
+    fi
     if [[ -n "$light_pid" ]]; then
         kill "$light_pid" 2>/dev/null || true
         wait "$light_pid" || true
@@ -30,6 +35,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if (( ${#peer_args[@]} )); then
+    (cd "$go_tree" && go build -o "$work/bootstrap-probe" "$(dirname "$probe")/bootstrap/check.go")
+    "$work/bootstrap-probe" "$work/bootstrap.addr" celestia-rs-local &
+    bootstrap_pid=$!
+    for attempt in {1..30}; do
+        if [[ -s "$work/bootstrap.addr" ]]; then break; fi
+        kill -0 "$bootstrap_pid"
+        sleep 1
+    done
+    peer_args+=(--bridge-bootstrap "$(cat "$work/bootstrap.addr")")
+fi
 # Keep the fresh validator keys and the startup log inside the temporary home.
 RUST_LOG=celestia_rs::bridge::peer=info "$binary" start --network local --home "$work/node" \
     --bridge-rpc-listen 127.0.0.1:32658 "${peer_args[@]}" >"$work/node.log" 2>&1 &
@@ -47,6 +63,11 @@ for attempt in {1..120}; do
     fi
     sleep 1
 done
+
+if [[ -n "$bootstrap_pid" ]]; then
+    wait "$bootstrap_pid"
+    bootstrap_pid=
+fi
 
 namespace=726f6c6c7570
 data=68656c6c6f2d6461

@@ -49,3 +49,10 @@ go run "$PROBE_DIR/peer/read_peer.go" celestia-rs-local \
 The Go peer exchanges a signed header, reconstructs the EDS, verifies a
 range, verifies half rows and samples in all four quadrants, and retrieves
 the submitted bytes with a namespace inclusion proof.
+
+With the DA peer enabled, `--bridge-p2p-listen` selects the TCP interface and
+port. Mainnet and Mocha 5 use the bootstrap addresses from the pinned Go DA
+releases. Private networks have an empty default bootstrap list. Repeat
+`--bridge-bootstrap <multiaddress>/p2p/<peer-id>` to supply an explicit list.
+For a node behind NAT, repeat `--bridge-announce <multiaddress>` with its
+reachable TCP addresses. The DA RPC listener is configured independently.
