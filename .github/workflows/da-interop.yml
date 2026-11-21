@@ -47,4 +47,4 @@ jobs:
         env:
           CARGO_PROFILE_DEV_DEBUG: '0'
       - name: Verify a paid blob with the release client
-        run: conformance/da/test-read-bridge.sh target/debug/celestia-rs reference-node --peer
+        run: conformance/da/test-read-bridge.sh target/debug/celestia-rs reference-node --stock-light

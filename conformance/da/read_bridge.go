@@ -25,7 +25,7 @@ func main() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	c, err := client.NewClient(ctx, os.Args[1], "")
+	c, err := client.NewClient(ctx, os.Args[1], os.Getenv("DA_TEST_READ_TOKEN"))
 	if err != nil {
 		panic(err)
 	}
