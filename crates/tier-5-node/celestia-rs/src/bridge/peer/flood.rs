@@ -1,4 +1,6 @@
 //! Publish locally verified, non-empty EDS commitments on Go's separate FloodSub stream.
+mod relay;
+use relay::Delivery;
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use anyhow::{Context as _, Result, bail, ensure};
@@ -13,13 +15,9 @@ use super::{Bridge, TIMEOUT};
 const PROTOCOL: StreamProtocol = StreamProtocol::new("/floodsub/1.0.0");
 
 #[derive(Message)]
-struct Subscriptions {
+struct Rpc {
     #[prost(message, repeated, tag = "1")]
     subscriptions: Vec<Subscription>,
-}
-
-#[derive(Message)]
-struct Publications {
     #[prost(message, repeated, tag = "2")]
     publish: Vec<Publication>,
 }
@@ -44,6 +42,26 @@ struct Publication {
     topic: String,
     #[prost(bytes, tag = "5")]
     signature: Vec<u8>,
+    #[prost(bytes, tag = "6")]
+    key: Vec<u8>,
+}
+
+impl Publication {
+    fn signing_bytes(&self) -> Result<Vec<u8>> {
+        let mut bytes = b"libp2p-pubsub:".to_vec();
+        self.encode(&mut bytes)?;
+        Ok(bytes)
+    }
+}
+
+impl Rpc {
+    fn publication(msg: Publication) -> Vec<u8> {
+        Self {
+            subscriptions: vec![],
+            publish: vec![msg],
+        }
+        .encode_length_delimited_to_vec()
+    }
 }
 
 #[derive(Message)]
@@ -61,14 +79,13 @@ fn signed(key: &identity::Keypair, topic: &str, seq: u64, data: Notification) ->
         sequence: seq.to_be_bytes().to_vec(),
         topic: topic.to_owned(),
         signature: Vec::new(),
+        key: Vec::new(),
     };
-    let mut bytes = b"libp2p-pubsub:".to_vec();
-    msg.encode(&mut bytes)?;
-    msg.signature = key.sign(&bytes)?;
-    Ok(Publications { publish: vec![msg] }.encode_length_delimited_to_vec())
+    msg.signature = key.sign(&msg.signing_bytes()?)?;
+    Ok(Rpc::publication(msg))
 }
 
-async fn receive(stream: &mut Stream) -> Result<Subscriptions> {
+async fn receive(stream: &mut Stream) -> Result<Rpc> {
     let mut length = 0usize;
     for shift in [0, 7, 14] {
         let mut byte = [0];
@@ -82,7 +99,7 @@ async fn receive(stream: &mut Stream) -> Result<Subscriptions> {
             ensure!(length <= 65_536, "oversized FloodSub frame");
             let mut bytes = vec![0; length];
             tokio::time::timeout(TIMEOUT, stream.read_exact(&mut bytes)).await??;
-            return Ok(Subscriptions::decode(bytes.as_slice())?);
+            return Ok(Rpc::decode(bytes.as_slice())?);
         }
     }
     bail!("invalid FloodSub frame length")
@@ -93,12 +110,19 @@ async fn session(
     mut input: Stream,
     mut control: Control,
     topic: Arc<str>,
-    announcements: broadcast::Sender<Arc<Vec<u8>>>,
+    announcements: broadcast::Sender<Delivery>,
+    incoming: tokio::sync::mpsc::Sender<(PeerId, Publication)>,
 ) -> Result<()> {
     let (subscribed, mut state) = watch::channel(false);
     let read = async {
         loop {
-            for sub in receive(&mut input).await?.subscriptions {
+            let rpc = receive(&mut input).await?;
+            for msg in rpc.publish {
+                if msg.topic == topic.as_ref() && msg.data.len() <= 128 {
+                    let _ = incoming.try_send((peer, msg));
+                }
+            }
+            for sub in rpc.subscriptions {
                 if sub.topic == topic.as_ref() {
                     subscribed.send_if_modified(|prev| {
                         let changed = *prev != sub.subscribe;
@@ -117,7 +141,16 @@ async fn session(
                 tokio::time::timeout(TIMEOUT, control.open_stream(peer, PROTOCOL)).await??;
             // Flush lazy multistream negotiation even while the chain has only empty blocks.
             tokio::time::timeout(TIMEOUT, async {
-                output.write_all(&[0]).await?;
+                let subscription = Rpc {
+                    subscriptions: vec![Subscription {
+                        subscribe: true,
+                        topic: topic.to_string(),
+                    }],
+                    publish: vec![],
+                };
+                output
+                    .write_all(&subscription.encode_length_delimited_to_vec())
+                    .await?;
                 output.flush().await
             })
             .await??;
@@ -129,8 +162,9 @@ async fn session(
                     }
                     event = events.recv() => {
                         match event {
-                            Ok(bytes) => tokio::time::timeout(TIMEOUT, async {
-                                output.write_all(&bytes).await?;
+                            Ok(frame) if frame.author == peer || frame.source == peer => {}
+                            Ok(frame) => tokio::time::timeout(TIMEOUT, async {
+                                output.write_all(&frame.bytes).await?;
                                 output.flush().await
                             }).await??,
                             Err(broadcast::error::RecvError::Lagged(_)) => {},
@@ -153,6 +187,8 @@ pub(super) fn start(
     let mut incoming = control.accept(PROTOCOL)?;
     let topic: Arc<str> = format!("{network}/eds-sub/v0.2.0").into();
     let (events, _) = broadcast::channel(32);
+    let local = key.public().to_peer_id();
+    let relay = relay::start(local, events.clone())?;
     let publisher = events.clone();
     let publish_topic = topic.clone();
     tokio::spawn(async move {
@@ -208,7 +244,11 @@ pub(super) fn start(
                 seq = seq.wrapping_add(1);
                 match signed(&key, &publish_topic, seq, data) {
                     Ok(frame) => {
-                        let _ = publisher.send(Arc::new(frame));
+                        let _ = publisher.send(Delivery {
+                            source: local,
+                            author: local,
+                            bytes: Arc::new(frame),
+                        });
                     }
                     Err(error) => tracing::warn!(%error, "cannot sign EDS notification"),
                 }
@@ -223,7 +263,7 @@ pub(super) fn start(
                 next = incoming.next() => {
                     let Some((peer, stream)) = next else { break };
                     if peers.len() >= 64 || !peers.insert(peer) { continue; }
-                    let task = session(peer, stream, control.clone(), topic.clone(), events.clone());
+                    let task = session(peer, stream, control.clone(), topic.clone(), events.clone(), relay.clone());
                     sessions.spawn(async move {
                         if let Err(error) = task.await { tracing::debug!(%peer, %error, "EDS stream closed"); }
                         peer

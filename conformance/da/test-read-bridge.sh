@@ -102,6 +102,7 @@ pay_for_blob
 if [[ -n "${subscriber:-}" ]]; then
     wait "$subscriber"
     subscriber=
+    grep -F "via Rust relay $peer_id at height $height" "$work/announcement"
     grep -F "signed EDS notification at height $height from $peer_id" "$work/announcement"
 fi
 kill -0 "$pid"

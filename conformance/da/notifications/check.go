@@ -9,12 +9,14 @@ import (
 
 	"github.com/celestiaorg/celestia-node/header"
 	"github.com/celestiaorg/celestia-node/share/shwap/p2p/shrex/shrexsub"
+	notify "github.com/celestiaorg/celestia-node/share/shwap/p2p/shrex/shrexsub/pb"
 	exchange "github.com/celestiaorg/go-header/p2p"
 	"github.com/libp2p/go-libp2p"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
+	"slices"
 )
 
 func check(err error) {
@@ -81,5 +83,59 @@ ready:
 	if !bytes.Equal(n.DataHash, h.DataHash) || h.ChainID() != chain {
 		panic("announced EDS differs from committed header")
 	}
+	checkRelay(ctx, chain, *info, n)
 	fmt.Printf("Go verified signed EDS notification at height %d from %s\n", n.Height, info.ID)
+}
+
+// The endpoint hosts only dial Rust. Require the sink to see the original Go
+// author signature and the Rust peer as the immediate transport sender.
+func checkRelay(ctx context.Context, chain string, bridge peer.AddrInfo, n shrexsub.Notification) {
+	sender, err := libp2p.New(libp2p.NoListenAddrs)
+	check(err)
+	defer sender.Close()
+	sink, err := libp2p.New(libp2p.NoListenAddrs)
+	check(err)
+	defer sink.Close()
+	ps, err := pubsub.NewFloodSub(ctx, sender)
+	check(err)
+	receive, err := pubsub.NewFloodSub(ctx, sink)
+	check(err)
+	name := chain + "/eds-sub/v0.2.0"
+	origin, err := ps.Join(name)
+	check(err)
+	defer origin.Close()
+	// The Go bridge joins as a relay. This also advertises the topic to Rust.
+	release, err := origin.Relay()
+	check(err)
+	defer release()
+	dst, err := receive.Join(name)
+	check(err)
+	defer dst.Close()
+	stream, err := dst.Subscribe()
+	check(err)
+	defer stream.Cancel()
+	check(sender.Connect(ctx, bridge))
+	check(sink.Connect(ctx, bridge))
+	for !slices.Contains(origin.ListPeers(), bridge.ID) || !slices.Contains(dst.ListPeers(), bridge.ID) {
+		select {
+		case <-ctx.Done():
+			panic(ctx.Err())
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	raw, err := (&notify.RecentEDSNotification{Height: n.Height, DataHash: n.DataHash}).Marshal()
+	check(err)
+	check(origin.Publish(ctx, raw))
+	for {
+		msg, err := stream.Next(ctx)
+		check(err)
+		if msg.GetFrom() != sender.ID() {
+			continue
+		}
+		if msg.ReceivedFrom != bridge.ID || !bytes.Equal(msg.Data, raw) {
+			panic("wrong FloodSub relay or payload")
+		}
+		fmt.Printf("Go verified original author %s via Rust relay %s at height %d\n", sender.ID(), bridge.ID, n.Height)
+		return
+	}
 }
