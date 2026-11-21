@@ -15,7 +15,9 @@ into prost bindings by `cargo xtask gen-proto` (pure-Rust `protox`, no
 | `packet-forward-middleware/` | `cosmos/ibc-apps/middleware/packet-forward-middleware/v8` v8.2.0 |
 | `third_party/` | gogoproto, cosmos_proto, google/api, and `cosmos/ics23` proofs.proto reconstructed from the Go descriptor (mapped to the `ics23` crate) |
 
-Local edits (wire-format neutral) are marked `celestia-rs:` in the source:
+Local edits are marked `celestia-rs:` in the source:
 
 - `cosmos/staking/v1beta1/authz.proto`: oneof `validators` → `policy`
   (prost name collision with the nested `Validators` message).
+
+- Core ABCI and state `TimeoutInfo` include field 9, `dynamic_timeout_commit`, from celestia-core v0.43.0-rc1.

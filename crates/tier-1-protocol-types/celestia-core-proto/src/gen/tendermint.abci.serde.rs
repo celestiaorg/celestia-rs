@@ -7232,6 +7232,9 @@ impl serde::Serialize for TimeoutInfo {
         if true {
             len += 1;
         }
+        if true {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("tendermint.abci.TimeoutInfo", len)?;
         if let Some(v) = self.timeout_propose.as_ref() {
             struct_ser.serialize_field("timeout_propose", v)?;
@@ -7256,6 +7259,9 @@ impl serde::Serialize for TimeoutInfo {
         }
         if let Some(v) = self.delayed_precommit_timeout.as_ref() {
             struct_ser.serialize_field("delayed_precommit_timeout", v)?;
+        }
+        if let Some(v) = self.dynamic_timeout_commit.as_ref() {
+            struct_ser.serialize_field("dynamic_timeout_commit", v)?;
         }
         struct_ser.end()
     }
@@ -7283,6 +7289,8 @@ impl<'de> serde::Deserialize<'de> for TimeoutInfo {
             "timeoutCommit",
             "delayed_precommit_timeout",
             "delayedPrecommitTimeout",
+            "dynamic_timeout_commit",
+            "dynamicTimeoutCommit",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -7295,6 +7303,7 @@ impl<'de> serde::Deserialize<'de> for TimeoutInfo {
             TimeoutPrecommitDelta,
             TimeoutCommit,
             DelayedPrecommitTimeout,
+            DynamicTimeoutCommit,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
             fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
@@ -7324,6 +7333,7 @@ impl<'de> serde::Deserialize<'de> for TimeoutInfo {
                             "timeoutPrecommitDelta" | "timeout_precommit_delta" => Ok(GeneratedField::TimeoutPrecommitDelta),
                             "timeoutCommit" | "timeout_commit" => Ok(GeneratedField::TimeoutCommit),
                             "delayedPrecommitTimeout" | "delayed_precommit_timeout" => Ok(GeneratedField::DelayedPrecommitTimeout),
+                            "dynamicTimeoutCommit" | "dynamic_timeout_commit" => Ok(GeneratedField::DynamicTimeoutCommit),
                             _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
                         }
                     }
@@ -7351,6 +7361,7 @@ impl<'de> serde::Deserialize<'de> for TimeoutInfo {
                 let mut timeout_precommit_delta__ = None;
                 let mut timeout_commit__ = None;
                 let mut delayed_precommit_timeout__ = None;
+                let mut dynamic_timeout_commit__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::TimeoutPropose => {
@@ -7401,6 +7412,12 @@ impl<'de> serde::Deserialize<'de> for TimeoutInfo {
                             }
                             delayed_precommit_timeout__ = map_.next_value()?;
                         }
+                        GeneratedField::DynamicTimeoutCommit => {
+                            if dynamic_timeout_commit__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("dynamicTimeoutCommit"));
+                            }
+                            dynamic_timeout_commit__ = map_.next_value()?;
+                        }
                     }
                 }
                 Ok(TimeoutInfo {
@@ -7412,6 +7429,7 @@ impl<'de> serde::Deserialize<'de> for TimeoutInfo {
                     timeout_precommit_delta: timeout_precommit_delta__,
                     timeout_commit: timeout_commit__,
                     delayed_precommit_timeout: delayed_precommit_timeout__,
+                    dynamic_timeout_commit: dynamic_timeout_commit__,
                 })
             }
         }

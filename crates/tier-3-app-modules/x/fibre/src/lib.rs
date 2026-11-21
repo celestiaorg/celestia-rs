@@ -315,6 +315,38 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
     write_genesis(ctx, gs, false)
 }
 
+/// Migrate committed v10/v11 escrow and withdrawal records to v12.
+pub fn migrate_escrows(ctx: &mut Context<'_>) -> Result<()> {
+    let mut records = GenesisState::default();
+    for (key, value) in ctx
+        .prefix_iter(STORE_KEY, &[ESCROW_ACCOUNT_PREFIX])?
+        .into_items()
+    {
+        let account: EscrowAccount = decode(&value)?;
+        if key != escrow_key(&account.signer) {
+            return Err(sdk::error::internal("invalid legacy fibre escrow key"));
+        }
+        records.escrow_accounts.push(account);
+    }
+    for (key, value) in ctx
+        .prefix_iter(STORE_KEY, &[WITHDRAWALS_BY_SIGNER_PREFIX])?
+        .into_items()
+    {
+        let withdrawal: Withdrawal = decode(&value)?;
+        if key
+            != withdrawal_by_signer_key(
+                &withdrawal.signer,
+                &ts_or_zero(withdrawal.requested_timestamp),
+            )
+        {
+            return Err(sdk::error::internal("invalid legacy fibre withdrawal key"));
+        }
+        records.withdrawals.push(withdrawal);
+    }
+    genesis::validate_records(&records)?;
+    genesis::migrate_legacy_escrows(ctx, &records)
+}
+
 fn write_genesis(ctx: &mut Context<'_>, gs: &GenesisState, is_v12: bool) -> Result<()> {
     set_params(ctx, &gs.params.unwrap_or_default())?;
     if is_v12 {
@@ -331,7 +363,7 @@ fn write_genesis(ctx: &mut Context<'_>, gs: &GenesisState, is_v12: bool) -> Resu
         set_withdrawal(ctx, w)?;
     }
     if is_v12 {
-        genesis::migrate_imported_escrows(ctx, gs)?;
+        genesis::migrate_legacy_escrows(ctx, gs)?;
     }
     for p in &gs.processed_payments {
         set_processed_payment(ctx, p)?;

@@ -36,6 +36,8 @@ pub struct Handlers {
 pub const HANDLER_NAMES: &[&str] = &["v10"];
 /// Plan names understood by the v11 patch binary.
 pub const V11_HANDLER_NAMES: &[&str] = &["v11"];
+/// Plan names understood by the v12 binary.
+pub const V12_HANDLER_NAMES: &[&str] = &["v12"];
 /// Plan names with a handler at app version 9 (celestia-app v9.0.8).
 pub const V9_HANDLER_NAMES: &[&str] = &["v9"];
 
@@ -49,7 +51,9 @@ impl Handlers {
     const fn names(self) -> &'static [&'static str] {
         if crate::stores::is_v9(self.app_version) {
             V9_HANDLER_NAMES
-        } else if self.app_version >= V11_APP_VERSION {
+        } else if self.app_version == V12_APP_VERSION {
+            V12_HANDLER_NAMES
+        } else if self.app_version == V11_APP_VERSION {
             V11_HANDLER_NAMES
         } else {
             HANDLER_NAMES
@@ -66,6 +70,7 @@ impl x_upgrade::UpgradeHandlers for Handlers {
         match plan.name.as_str() {
             "v10" if self.names() == HANDLER_NAMES => v10(ctx, from),
             "v11" if self.names() == V11_HANDLER_NAMES => v11(ctx, from),
+            "v12" if self.names() == V12_HANDLER_NAMES => v12(ctx, from),
             // v9.0.8's own handler (the v8 -> v9 upgrade) only ran on chains
             // that are past it; it is registered for the last-completed-plan
             // check but not ported.
@@ -130,22 +135,22 @@ fn ensure_fibre_module_account(ctx: &mut Context<'_>) -> Result<()> {
 }
 
 /// `ModuleManager.RunMigrations` (`DefaultMigrationsOrder`: modules by
-/// name). No module changed its consensus version since v9; modules missing
-/// from `from` (fibre and valaddr, added by v10) run `InitGenesis` with
-/// their default genesis.
-fn run_migrations(ctx: &mut Context<'_>, from: &VersionMap) -> Result<VersionMap> {
+/// name). Run the migrations required by the target release. Modules added
+/// in v10 run `InitGenesis` when missing from the previous version map.
+fn run_migrations(ctx: &mut Context<'_>, from: &VersionMap, target: u64) -> Result<VersionMap> {
     let mut out = VersionMap::new();
-    for (name, to) in crate::modules::VERSION_MAP {
-        match from.get(*name) {
+    for (name, to) in crate::modules::version_map(target) {
+        match from.get(name).copied() {
             Some(v) if v == to => {}
-            Some(2) if *name == "blob" && *to == 3 => x_blob::migrate_params(ctx)?,
-            Some(1) if *name == "minfee" && *to == 2 => x_minfee::migrate_params(ctx)?,
+            Some(2) if name == "blob" && to == 3 => x_blob::migrate_params(ctx)?,
+            Some(1) if name == "minfee" && to == 2 => x_minfee::migrate_params(ctx)?,
+            Some(1) if name == "fibre" && to == 2 => x_fibre::migrate_escrows(ctx)?,
             Some(v) => {
                 return Err(sdk::error::sdk::not_supported(format!(
                     "migration of module {name} from version {v} to {to}"
                 )));
             }
-            None => match *name {
+            None => match name {
                 "fibre" => x_fibre::init_genesis(
                     ctx,
                     &celestia_proto::celestia::fibre::v1::GenesisState {
@@ -164,7 +169,7 @@ fn run_migrations(ctx: &mut Context<'_>, from: &VersionMap) -> Result<VersionMap
                 }
             },
         }
-        out.insert((*name).to_owned(), *to);
+        out.insert(name.to_owned(), to);
     }
     Ok(out)
 }
@@ -173,13 +178,13 @@ fn run_migrations(ctx: &mut Context<'_>, from: &VersionMap) -> Result<VersionMap
 fn v10(ctx: &mut Context<'_>, from: VersionMap) -> Result<VersionMap> {
     set_evidence_params(ctx)?;
     ensure_fibre_module_account(ctx)?;
-    run_migrations(ctx, &from)
+    run_migrations(ctx, &from, APP_VERSION)
 }
 
 /// v11 has no new modules and no frozen-account store migration. Corto alone
 /// shortens future unbondings, after module migrations (app #8621).
 fn v11(ctx: &mut Context<'_>, from: VersionMap) -> Result<VersionMap> {
-    let versions = run_migrations(ctx, &from)?;
+    let versions = run_migrations(ctx, &from, V11_APP_VERSION)?;
     if ctx.header.chain_id == "corto-1" {
         let mut params = x_staking::store::get_params(ctx)?;
         params.unbonding_time = pbjson_types::Duration {
@@ -188,6 +193,51 @@ fn v11(ctx: &mut Context<'_>, from: VersionMap) -> Result<VersionMap> {
         };
         x_staking::store::set_params(ctx, &params)?;
     }
+    Ok(versions)
+}
+
+/// Migrations and block-count parameter changes in upstream v12.
+fn v12(ctx: &mut Context<'_>, from: VersionMap) -> Result<VersionMap> {
+    x_blob::ensure_params(ctx)?;
+    let versions = run_migrations(ctx, &from, V12_APP_VERSION)?;
+
+    let corto = ctx.header.chain_id == "corto-1";
+    let mut consensus = x_consensus::get_params(ctx)?
+        .ok_or_else(|| sdk::error::internal("missing consensus parameters"))?;
+    let evidence = consensus
+        .evidence
+        .as_mut()
+        .ok_or_else(|| sdk::error::internal("missing evidence parameters"))?;
+    evidence.max_age_num_blocks = if corto { 500 } else { 1_011_000 };
+    if corto {
+        evidence.max_age_duration = Some(Duration {
+            seconds: 600,
+            nanos: 0,
+        });
+    }
+    x_consensus::set_params(ctx, &consensus)?;
+
+    let mut slashing = x_slashing::get_params(ctx)?;
+    slashing.signed_blocks_window = 32_500;
+    x_slashing::set_params(ctx, &slashing)?;
+
+    let mut staking = x_staking::store::get_params(ctx)?;
+    staking.historical_entries = 32_500;
+    if corto {
+        staking.unbonding_time = Duration {
+            seconds: 600,
+            nanos: 0,
+        };
+    }
+    x_staking::store::set_params(ctx, &staking)?;
+
+    let mut fibre = x_fibre::get_params(ctx)?;
+    fibre.payment_promise_height_window = 3_250;
+    x_fibre::set_params(ctx, &fibre)?;
+
+    let mut connection = x_ibc::connection::get_params(ctx)?;
+    connection.max_expected_time_per_block = 4_000_000_000;
+    x_ibc::connection::set_params(ctx, &connection)?;
     Ok(versions)
 }
 

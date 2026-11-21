@@ -35,6 +35,8 @@ pub struct Timeouts {
     pub commit: i64,
     /// `DelayedPrecommitTimeout`.
     pub delayed_precommit: i64,
+    /// Floor on the interval between starts of consecutive heights.
+    pub dynamic_commit: i64,
 }
 
 impl Timeouts {
@@ -54,6 +56,7 @@ impl Timeouts {
             precommit_delta: d(t.timeout_precommit_delta.as_ref())?,
             commit: d(t.timeout_commit.as_ref())?,
             delayed_precommit: d(t.delayed_precommit_timeout.as_ref())?,
+            dynamic_commit: d(t.dynamic_timeout_commit.as_ref())?,
         })
     }
 
@@ -70,6 +73,8 @@ impl Timeouts {
             timeout_precommit: d(self.precommit),
             timeout_precommit_delta: d(self.precommit_delta),
             delayed_precommit_timeout: d(self.delayed_precommit),
+            dynamic_timeout_commit: (self.dynamic_commit != 0)
+                .then(|| duration_to_proto(self.dynamic_commit)),
         }
     }
 
@@ -88,6 +93,7 @@ impl Timeouts {
             precommit_delta: d(t.timeout_precommit_delta.as_ref())?,
             commit: d(t.timeout_commit.as_ref())?,
             delayed_precommit: d(t.delayed_precommit_timeout.as_ref())?,
+            dynamic_commit: d(t.dynamic_timeout_commit.as_ref())?,
         })
     }
 }

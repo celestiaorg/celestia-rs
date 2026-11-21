@@ -185,6 +185,8 @@ pub struct TimeoutInfo {
     pub timeout_precommit_delta: ::core::option::Option<::pbjson_types::Duration>,
     #[prost(message, optional, tag = "8")]
     pub delayed_precommit_timeout: ::core::option::Option<::pbjson_types::Duration>,
+    #[prost(message, optional, tag = "9")]
+    pub dynamic_timeout_commit: ::core::option::Option<::pbjson_types::Duration>,
 }
 impl ::prost::Name for TimeoutInfo {
     const NAME: &'static str = "TimeoutInfo";
