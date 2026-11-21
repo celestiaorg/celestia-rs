@@ -9,9 +9,14 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/celestiaorg/celestia-app/v11/pkg/wrapper"
 	"github.com/celestiaorg/celestia-node/api/rpc/client"
 	"github.com/celestiaorg/celestia-node/blob"
+	"github.com/celestiaorg/celestia-node/header"
+	nodeShare "github.com/celestiaorg/celestia-node/share"
+	"github.com/celestiaorg/celestia-node/share/shwap"
 	"github.com/celestiaorg/go-square/v4/share"
+	"github.com/celestiaorg/rsmt2d"
 )
 
 func main() {
@@ -76,6 +81,9 @@ func verifyBlob(ctx context.Context, c *client.Client, args []string) error {
 	if err := header.Validate(); err != nil {
 		return err
 	}
+	if err := verifyShareAPI(ctx, c, header); err != nil {
+		return err
+	}
 	rows, err := c.Share.GetNamespaceData(ctx, height, ns)
 	if err != nil {
 		return err
@@ -101,4 +109,63 @@ func verifyBlob(ctx context.Context, c *client.Client, args []string) error {
 		}
 	}
 	return fmt.Errorf("blob missing from blob.GetAll")
+}
+
+func verifyShareAPI(ctx context.Context, c *client.Client, h *header.ExtendedHeader) error {
+	byHash, err := c.Header.GetByHash(ctx, h.Hash())
+	if err != nil {
+		return err
+	}
+	if !byHash.Equals(h) {
+		return fmt.Errorf("header hash mismatch")
+	}
+	if err := c.Share.SharesAvailable(ctx, h.Height()); err != nil {
+		return err
+	}
+	width := len(h.DAH.RowRoots)
+	indices := []shwap.SampleCoords{{Row: 0, Col: 1}, {Row: width - 1, Col: width - 1}}
+	samples, err := c.Share.GetSamples(ctx, h.Height(), indices)
+	if err != nil {
+		return err
+	}
+	if len(samples) != len(indices) {
+		return fmt.Errorf("wrong sample count")
+	}
+	for i, sample := range samples {
+		if err := sample.Verify(h.DAH, indices[i].Row, indices[i].Col); err != nil {
+			return err
+		}
+	}
+	row, err := c.Share.GetRow(ctx, h.Height(), width-1)
+	if err != nil {
+		return err
+	}
+	if err := row.Verify(h.DAH, width-1); err != nil {
+		return err
+	}
+	square, err := c.Share.GetEDS(ctx, h.Height())
+	if err != nil {
+		return err
+	}
+	square, err = rsmt2d.ImportExtendedDataSquare(square.Flattened(), nodeShare.DefaultRSMT2DCodec(), wrapper.NewConstructor(uint64(width/2)))
+	if err != nil {
+		return err
+	}
+	roots, err := square.RowRoots()
+	if err != nil {
+		return err
+	}
+	if len(roots) != width {
+		return fmt.Errorf("wrong EDS width")
+	}
+	for i, root := range roots {
+		if !bytes.Equal(root, h.DAH.RowRoots[i]) {
+			return fmt.Errorf("EDS row %d disagrees with signed header", i)
+		}
+	}
+	rng, err := c.Share.GetRange(ctx, h.Height(), 0, 1)
+	if err != nil {
+		return err
+	}
+	return rng.Verify(h.DataHash)
 }

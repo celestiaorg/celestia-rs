@@ -1,5 +1,7 @@
 //! Opt-in DA RPC backed by the consensus node's committed block and state stores.
 
+mod share_rpc;
+
 use std::net::{SocketAddr, TcpListener};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -84,6 +86,9 @@ enum Query {
     Namespace(i64, shares::Namespace),
     Header(i64),
     Head,
+    Tail,
+    Hash(Vec<u8>),
+    ShareRead(i64, share_rpc::Read),
     Share(i64, usize, usize),
 }
 
@@ -104,8 +109,36 @@ impl Query {
                 .map_err(|_| bad)
         };
         let namespace = |v: &Value| shares::Namespace::from_slice(&bytes(v)?).map_err(|_| bad);
+        let index = |v: &Value| v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or(bad);
         match method {
-            "header.LocalHead" if args.is_empty() => Ok(Self::Head),
+            "header.LocalHead" | "header.NetworkHead" if args.is_empty() => Ok(Self::Head),
+            "header.Tail" if args.is_empty() => Ok(Self::Tail),
+            "header.GetByHash" if args.len() == 1 => Ok(Self::Hash(
+                hex::decode(args[0].as_str().ok_or(bad)?).map_err(|_| bad)?,
+            )),
+            "share.SharesAvailable" if args.len() == 1 => {
+                Ok(Self::ShareRead(height()?, share_rpc::Read::Available))
+            }
+            "share.GetEDS" if args.len() == 1 => {
+                Ok(Self::ShareRead(height()?, share_rpc::Read::Eds))
+            }
+            "share.GetRow" if args.len() == 2 => Ok(Self::ShareRead(
+                height()?,
+                share_rpc::Read::Row(index(&args[1])?),
+            )),
+            "share.GetRange" if args.len() == 3 => Ok(Self::ShareRead(
+                height()?,
+                share_rpc::Read::Range(index(&args[1])?, index(&args[2])?),
+            )),
+            "share.GetSamples" if args.len() == 2 => {
+                let coords = args[1]
+                    .as_array()
+                    .ok_or(bad)?
+                    .iter()
+                    .map(|v| Ok((index(&v["row"])?, index(&v["col"])?)))
+                    .collect::<Result<_, _>>()?;
+                Ok(Self::ShareRead(height()?, share_rpc::Read::Samples(coords)))
+            }
             "header.GetByHeight" if args.len() == 1 => Ok(Self::Header(height()?)),
             "blob.GetAll" if args.len() == 2 => {
                 let namespaces = args[1]
@@ -125,10 +158,17 @@ impl Query {
                 Ok(Self::Namespace(height()?, namespace(&args[1])?))
             }
             "share.GetShare" if args.len() == 3 => {
-                let index = |v: &Value| v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or(bad);
                 Ok(Self::Share(height()?, index(&args[1])?, index(&args[2])?))
             }
             "header.LocalHead"
+            | "header.NetworkHead"
+            | "header.Tail"
+            | "header.GetByHash"
+            | "share.SharesAvailable"
+            | "share.GetEDS"
+            | "share.GetRow"
+            | "share.GetRange"
+            | "share.GetSamples"
             | "header.GetByHeight"
             | "blob.Get"
             | "blob.GetAll"
@@ -196,6 +236,15 @@ impl Bridge {
             .last_block_height;
         let height = match query {
             Query::Head => head,
+            Query::Tail => self.blocks.base(),
+            Query::Hash(ref hash) => {
+                self.blocks
+                    .load_block_meta_by_hash(hash)?
+                    .context("header not found")?
+                    .header
+                    .height
+            }
+            Query::ShareRead(h, _) => h,
             Query::Header(h)
             | Query::Share(h, ..)
             | Query::Namespace(h, _)
@@ -213,6 +262,9 @@ impl Bridge {
             eds,
             dah,
         } = self.committed(height)?;
+        if let Query::ShareRead(_, method) = query {
+            return method.response(&eds, &dah);
+        }
         if let Query::Share(_, row, col) = query {
             return Ok(J::b64(eds.share(row, col)?));
         }
@@ -328,20 +380,7 @@ fn read_blobs(
 }
 
 fn namespace_row_json(row: app::inclusion_proof::NamespaceRow) -> J {
-    let p = row.proof;
-    let mut proof = J::obj([
-        ("end", J::num(p.end)),
-        ("is_max_namespace_ignored", J::Bool(true)),
-    ]);
-    if p.start != 0 {
-        proof.push("start", J::num(p.start));
-    }
-    if !p.nodes.is_empty() {
-        proof.push("nodes", J::Arr(p.nodes.iter().map(|b| J::b64(b)).collect()));
-    }
-    if !p.leaf_hash.is_empty() {
-        proof.push("leaf_hash", J::b64(&p.leaf_hash));
-    }
+    let proof = proof_json(&row.proof, true);
     let shares = if row.shares.is_empty() {
         J::Null
     } else {
@@ -399,4 +438,21 @@ async fn handle(
         [(CONTENT_TYPE, "application/json")],
         J::obj([("jsonrpc", J::str("2.0")), ("id", id), payload]).encode(),
     )
+}
+
+fn proof_json(p: &celestia_proto::celestia::core::v1::proof::NmtProof, shwap: bool) -> J {
+    let mut proof = J::obj([("end", J::num(p.end))]);
+    if shwap {
+        proof.push("is_max_namespace_ignored", J::Bool(true));
+    }
+    if p.start != 0 {
+        proof.push("start", J::num(p.start));
+    }
+    if !p.nodes.is_empty() {
+        proof.push("nodes", J::Arr(p.nodes.iter().map(|n| J::b64(n)).collect()));
+    }
+    if !p.leaf_hash.is_empty() {
+        proof.push("leaf_hash", J::b64(&p.leaf_hash));
+    }
+    proof
 }
