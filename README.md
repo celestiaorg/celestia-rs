@@ -25,8 +25,8 @@ alongside the Go validators:
 
 | Network | Validator |
 |---|---|
-| Mocha | [Mocha validator](https://www.mintscan.io/celestia-testnet/validators/celestiavaloper13v73gcz3k923ajt23alr5h3wuvsgqxu3jag0sd) |
-| Mainnet | [Mainnet validator](https://www.mintscan.io/celestia/validators/celestiavaloper16v6qxgj2w996jt49tngf9fkvxw6j7u0uh6d9ec) |
+| Mocha | [Mocha validator](https://mocha.celenium.io/validator/122597103?tab=proposed+blocks) |
+| Mainnet | [Mainnet validator](https://celenium.io/validator/1499834894?tab=proposed+blocks) |
 
 Roadmap and progress: [`MILESTONES.md`](MILESTONES.md). Open decisions:
 [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
