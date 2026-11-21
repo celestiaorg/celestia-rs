@@ -87,14 +87,22 @@ pub fn get_params(ctx: &mut Context<'_>) -> Result<MinfeeParams> {
             let p = Params::decode(bz.as_slice()).map_err(|e| undefined(e.to_string()))?;
             MinfeeParams::from_proto(&p)
         }
-        _ => {
-            let raw = x_params::get_raw(ctx, MODULE_NAME, KEY_NETWORK_MIN_GAS_PRICE)?
-                .ok_or_else(|| undefined("UnmarshalJSON cannot decode empty bytes"))?;
-            Ok(MinfeeParams {
-                network_min_gas_price: LegacyDec::from_json(&raw).map_err(math_err)?,
-            })
-        }
+        _ => legacy_params(ctx),
     }
+}
+
+fn legacy_params(ctx: &mut Context<'_>) -> Result<MinfeeParams> {
+    let raw = x_params::get_raw(ctx, MODULE_NAME, KEY_NETWORK_MIN_GAS_PRICE)?
+        .ok_or_else(|| undefined("UnmarshalJSON cannot decode empty bytes"))?;
+    Ok(MinfeeParams {
+        network_min_gas_price: LegacyDec::from_json(&raw).map_err(math_err)?,
+    })
+}
+
+/// `Migrator.MigrateParams` (minfee module version 1 to 2).
+pub fn migrate_params(ctx: &mut Context<'_>) -> Result<()> {
+    let params = legacy_params(ctx)?;
+    set_params(ctx, &params)
 }
 
 /// `Keeper.SetParams`.

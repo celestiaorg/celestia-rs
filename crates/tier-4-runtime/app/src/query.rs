@@ -255,7 +255,7 @@ impl App {
         }
         match path[0] {
             "app" => self.handle_query_app(&path, &req),
-            "store" => self.handle_query_store(&path, &req),
+            "store" => self.handle_query_store(&path, &req, version),
             "custom" => self.handle_query_custom(&path, &req),
             _ => query_result(&errs::unknown_request("unknown query path")),
         }
@@ -330,11 +330,24 @@ impl App {
         ))
     }
 
-    fn handle_query_store(&mut self, path: &[&str], req: &RequestQuery) -> ResponseQuery {
+    fn handle_query_store(
+        &mut self,
+        path: &[&str],
+        req: &RequestQuery,
+        version: u64,
+    ) -> ResponseQuery {
         let sub = format!("/{}", path[1..].join("/"));
         if req.height <= 1 && req.prove {
             return query_result(&errs::invalid_request(
                 "cannot query with proof when height <= 1; please provide a valid height",
+            ));
+        }
+        if sdk::version::is_v12(version)
+            && !self.node.enable_subspace_queries
+            && sub.ends_with("/subspace")
+        {
+            return query_result(&errs::unknown_request(
+                "subspace queries are disabled; set enable-subspace-queries in app.toml",
             ));
         }
         match self.store_query(&sub, req) {
@@ -600,5 +613,45 @@ impl AbciApp {
                     "app lock poisoned".into(),
                 )))
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn subspace_queries_require_opt_in_from_v12() {
+        let mut app = App::new();
+        app.ms
+            .set("bank", b"prefix1".to_vec(), b"value".to_vec())
+            .expect("set key");
+        app.ms.flush().expect("flush");
+        app.last_height = app.ms.commit().expect("commit").version;
+        let request = RequestQuery {
+            path: "/store/bank/subspace".into(),
+            data: b"prefix".to_vec(),
+            ..Default::default()
+        };
+        app.execution_version = Some(11);
+        let legacy = app.query(&request);
+        assert_eq!(legacy.code, 0);
+        assert!(!legacy.value.is_empty());
+
+        app.execution_version = Some(12);
+        assert_eq!(
+            app.query(&request),
+            query_result(&errs::unknown_request(
+                "subspace queries are disabled; set enable-subspace-queries in app.toml"
+            ))
+        );
+        let key = app.query(&RequestQuery {
+            path: "/store/bank/key".into(),
+            data: b"prefix1".to_vec(),
+            ..Default::default()
+        });
+        assert_eq!(key.value, b"value");
+        app.node.enable_subspace_queries = true;
+        assert_eq!(app.query(&request), legacy);
     }
 }

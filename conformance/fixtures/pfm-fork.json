@@ -1,0 +1,3779 @@
+{
+  "fork_commit": "106efffd6a4be3460e33ccf63b0e034b9be709f9",
+  "recv": [
+    {
+      "name": "basic/0",
+      "memo": [
+        {
+          "s": "",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/1",
+      "memo": [
+        {
+          "s": "{}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/2",
+      "memo": [
+        {
+          "s": "null",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/3",
+      "memo": [
+        {
+          "s": "[]",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/4",
+      "memo": [
+        {
+          "s": "\"text\"",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/5",
+      "memo": [
+        {
+          "s": "hello",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/6",
+      "memo": [
+        {
+          "s": "{\"forward\":null}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/7",
+      "memo": [
+        {
+          "s": "{\"Forward\":{}}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "basic/8",
+      "memo": [
+        {
+          "s": "{\"forward\":{}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 53,
+            "sha256": "e02d6ec02cae87ce62c3fc10e7299d61a12ad16dc2cc89e1cf32b78d08c406d4",
+            "text": "failed to validate metadata. receiver cannot be empty"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "basic/9",
+      "memo": [
+        {
+          "s": "{\"forward\":\"x\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 135,
+            "sha256": "487df84fb1e90ffc912aab789e99b3cf7ecba65ac7b0947f33ac4e106022d45f",
+            "text": "error parsing forward metadata: json: cannot unmarshal string into Go struct field PacketMetadata.forward of type types.ForwardMetadata"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "basic/10",
+      "memo": [
+        {
+          "s": "{\"forward\":5}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 135,
+            "sha256": "7c9598ea6a2202cd8edf4efbf819a9a33261988435351c6b5c69abcadc0ff873",
+            "text": "error parsing forward metadata: json: cannot unmarshal number into Go struct field PacketMetadata.forward of type types.ForwardMetadata"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "basic/11",
+      "memo": [
+        {
+          "s": "{\"forward\":[]}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 134,
+            "sha256": "0d0ede4a7ffa6f760c0968fdb7a1803fe77d0fbec1cac5ac55347ad58b6646b6",
+            "text": "error parsing forward metadata: json: cannot unmarshal array into Go struct field PacketMetadata.forward of type types.ForwardMetadata"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "basic/12",
+      "memo": [
+        {
+          "s": "{\"forward\":true}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 133,
+            "sha256": "e5a9bcb65d6f09536c8c031b9070e08f27b36162724f091bad44b7f75d5ecc93",
+            "text": "error parsing forward metadata: json: cannot unmarshal bool into Go struct field PacketMetadata.forward of type types.ForwardMetadata"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "basic/13",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"r\"},\"forward\":{\"port\":\"transfer\",\"channel\":\"channel-1\"}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "r",
+        "port": "transfer",
+        "channel": "channel-1",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "fields/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "fields/1",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"retries\":3",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 3
+      }
+    },
+    {
+      "name": "fields/2",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"retries\":256",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 132,
+            "sha256": "274be93afe9fe5ad3774ca7432d41692c5aabd503762d228c0d035bb7493c95b",
+            "text": "error parsing forward metadata: json: cannot unmarshal number 256 into Go struct field ForwardMetadata.forward.retries of type uint8"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "fields/3",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"retries\":-1",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 131,
+            "sha256": "8073a19bc894465a702711b9cc6f6300f29eadee5352266aea4d0cf8894dd1e7",
+            "text": "error parsing forward metadata: json: cannot unmarshal number -1 into Go struct field ForwardMetadata.forward.retries of type uint8"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "fields/4",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"retries\":null",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "fields/5",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"receiver\":\"\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 53,
+            "sha256": "e02d6ec02cae87ce62c3fc10e7299d61a12ad16dc2cc89e1cf32b78d08c406d4",
+            "text": "failed to validate metadata. receiver cannot be empty"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "fields/6",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"port\":\"x\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 184,
+            "sha256": "5cc734b8b2021427427ad65abee40d43005b14de052c1ba0d2d694b89610c001",
+            "text": "failed to validate metadata: identifier x has invalid length: 1, must be between 2-128 characters: invalid identifier [celestiaorg/ibc-go/v8@v8.7.3/modules/core/24-host/validate.go:49]"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "fields/7",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"channel\":\"!\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 183,
+            "sha256": "4dc527011a15a6ae4a48746909db44610772c349df5e063a34cca91559d77a30",
+            "text": "failed to validate metadata: identifier ! has invalid length: 1, must be between 8-64 characters: invalid identifier [celestiaorg/ibc-go/v8@v8.7.3/modules/core/24-host/validate.go:49]"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "fields/8",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"receiver\":5",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 130,
+            "sha256": "1f9f5179584dff688735375ded325a8c2a008f8471ca67370ffa3900462d6136",
+            "text": "error parsing forward metadata: json: cannot unmarshal number into Go struct field ForwardMetadata.forward.receiver of type string"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "fields/9",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"Receiver\":\"r2\",\"CHANNEL\":\"channel-3\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "r2",
+        "port": "transfer",
+        "channel": "channel-3",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "nil/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"Forward\":null}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 24,
+            "sha256": "9a17a960aedc0e3c903afa404c6b393761244135e20c0f56f87edaa79f3b46d2",
+            "text": "forward metadata is null"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "nil/1",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"FORWARD\":null}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 24,
+            "sha256": "9a17a960aedc0e3c903afa404c6b393761244135e20c0f56f87edaa79f3b46d2",
+            "text": "forward metadata is null"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "nil/2",
+      "memo": [
+        {
+          "s": "{\"Forward\":null,\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"fORWARD\":null}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 24,
+            "sha256": "9a17a960aedc0e3c903afa404c6b393761244135e20c0f56f87edaa79f3b46d2",
+            "text": "forward metadata is null"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "nil/3",
+      "memo": [
+        {
+          "s": "{\"Forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"forward\":null}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "timeout/0/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":0",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/-1/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":-1",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/1.9/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":1.9",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 1,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/600/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":600",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/9223372036854774784/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":9223372036854774784",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 9223372036854774784,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/9223372036854775295/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":9223372036854775295",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 9223372036854774784,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/9223372036854775807/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":9223372036854775807",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "timeout/9223372036854775808/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":9223372036854775808",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "timeout/-9223372036854775808/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":-9223372036854775808",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/-9223372036854775809/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":-9223372036854775809",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/-9223372036854777856/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":-9223372036854777856",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "timeout/1e19/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":1e19",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "timeout/-1e19/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":-1e19",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "timeout/1e308/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":1e308",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "timeout/1e400/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":1e400",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "timeout/\"1s\"/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":\"1s\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 1000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/\"-1s\"/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":\"-1s\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "timeout/\"1e19\"/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":\"1e19\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 73,
+            "sha256": "1ccc3c7f6920837d2160425b8715e0e96020f85f769d500cb7081c321457e547",
+            "text": "error parsing forward metadata: time: unknown unit \"e\" in duration \"1e19\""
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "timeout/null/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":null",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 48,
+            "sha256": "55fd40d98e0301310d736321de0319e1ff4ec9da9143adf49ea14ac8851ffa0f",
+            "text": "error parsing forward metadata: invalid duration"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "timeout/true/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":true",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 48,
+            "sha256": "55fd40d98e0301310d736321de0319e1ff4ec9da9143adf49ea14ac8851ffa0f",
+            "text": "error parsing forward metadata: invalid duration"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "timeout/{}/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":{}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 48,
+            "sha256": "55fd40d98e0301310d736321de0319e1ff4ec9da9143adf49ea14ac8851ffa0f",
+            "text": "error parsing forward metadata: invalid duration"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "timeout-keys/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":\"1s\",\"TIMEOUT\":1e19",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "timeout-keys/1",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"Timeout\":1e19,\"timeout\":5",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 69,
+            "sha256": "e4a742729331b811524be3c48882371b9ea299ce95c43813a3bb050ea7139abd",
+            "text": "error parsing forward metadata: invalid duration: number out of range"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "timeout-keys/2",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"timeout\":\"1s\",\"tImeout\":2",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 2,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/0/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"forward\":{\"receiver\":\"r2\"}}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 29,
+          "sha256": "32400719335a74b56124c5c25daef9954684fef2567abbc203b3360f9efa3828",
+          "text": "{\"forward\":{\"receiver\":\"r2\"}}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/1/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{ \"b\" : 1,  \"a\" : [ 1 , 2 ] }",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 29,
+          "sha256": "f93b308d9d10bdd6dc64bf97e6b0dc82b79b7b5f0f14bf59bbe1df2218ba7d73",
+          "text": "{ \"b\" : 1,  \"a\" : [ 1 , 2 ] }"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/2/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "  \t{\"a\":1}\n ",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 7,
+          "sha256": "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862",
+          "text": "{\"a\":1}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/3/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":\"\u003c\u0026\u003e\"}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 11,
+          "sha256": "8658fe1f872cd0d087e206ab8fd59cbc9873d8a4d5701620f4d3d17b0f2fb388",
+          "text": "{\"a\":\"\u003c\u0026\u003e\"}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/4/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":\"\\u003c\\ud800\\n\"}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 22,
+          "sha256": "655c57d6f54bf995a80fed754f0f87376134c2659a2da194cc12560a4be7b91b",
+          "text": "{\"a\":\"\\u003c\\ud800\\n\"}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/5/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":\"\u2028\"}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 11,
+          "sha256": "c0f545e4a8a9c4d8ab310c65a4e2c3ec788c89d5bf91845869f66fb4aa396e8a",
+          "text": "{\"a\":\"\u2028\"}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/6/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":1,\"a\":2}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 13,
+          "sha256": "1c53ee0df7b12fd4d65b976120c7fa6b847dc41dffd7f0331c3237a1ceab1756",
+          "text": "{\"a\":1,\"a\":2}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/7/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":1e20,\"b\":1.0}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 18,
+          "sha256": "f3c0607f1d909431eb304d7b548fe9e27de24c1efb9a6784c3c8e84149cccd66",
+          "text": "{\"a\":1e20,\"b\":1.0}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/8/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "1e20",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 4,
+          "sha256": "c84d2746ff82882dece808df5db17ab5318da3cb18a8a6d5768a202d25120ed4",
+          "text": "1e20"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/9/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "-0",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 2,
+          "sha256": "ed79f26d03f412bde3db206601a698e0bb451bea9e3cc25289636ac17ea74b0a",
+          "text": "-0"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/10/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "[ 1 ]",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 5,
+          "sha256": "005dc7dff71d4b97ee66f4dc1b3cf4874b3087243dd0b21308841c625bc4233d",
+          "text": "[ 1 ]"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/11/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "true",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 4,
+          "sha256": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+          "text": "true"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/12/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "false",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 5,
+          "sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+          "text": "false"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/13/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"{ \\\"a\\\" : \\\"\u003c\\\" }\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 13,
+          "sha256": "ea5bcab4b5670c95ea1274f10133cd1777092a06ce191c28c877e38443d363c1",
+          "text": "{ \"a\" : \"\u003c\" }"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/14/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"null\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 4,
+          "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "text": "null"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/15/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"\\\"x\\\"\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 3,
+          "sha256": "ba2df4903a2c14e86dc3bcca58911b44ac1d2514b7227bf6eb08cfb978f55a1b",
+          "text": "\"x\""
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/16/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\" [1] \"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 5,
+          "sha256": "4e0215adbf7031c7da06ce50305e26f3da4d02ac934bc71bdb24b748ba83c00c",
+          "text": " [1] "
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/17/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"hello\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "97bf627fb1c41ec2547b357308f570695022830747a347da17700d96e0d9dd45",
+            "text": "failed to validate metadata: next is not JSON"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "next/18/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "97bf627fb1c41ec2547b357308f570695022830747a347da17700d96e0d9dd45",
+            "text": "failed to validate metadata: next is not JSON"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "next/19/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"{\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "97bf627fb1c41ec2547b357308f570695022830747a347da17700d96e0d9dd45",
+            "text": "failed to validate metadata: next is not JSON"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "next/20/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"{\\\"a\\\":1,\\\"a\\\":2}\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 13,
+          "sha256": "1c53ee0df7b12fd4d65b976120c7fa6b847dc41dffd7f0331c3237a1ceab1756",
+          "text": "{\"a\":1,\"a\":2}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/21/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":1},\"next\":{\"b\":2}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 7,
+          "sha256": "0ab1a6d394cd30195f0642b67ae1180c375ffadf5dd7f39c390668b5fdb6da93",
+          "text": "{\"b\":2}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/22/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"hello\",\"NEXT\":{\"b\":2}",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 7,
+          "sha256": "0ab1a6d394cd30195f0642b67ae1180c375ffadf5dd7f39c390668b5fdb6da93",
+          "text": "{\"b\":2}"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/23/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"b\":2},\"Next\":\"hello\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "97bf627fb1c41ec2547b357308f570695022830747a347da17700d96e0d9dd45",
+            "text": "failed to validate metadata: next is not JSON"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "next/24/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "null",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/25/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "{\"a\":1},\"next\":null",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/26/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"",
+          "n": 1
+        },
+        {
+          "s": "[",
+          "n": 10000
+        },
+        {
+          "s": "]",
+          "n": 10000
+        },
+        {
+          "s": "\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 20000,
+          "sha256": "88b516df742a232dad9132d8e5173704287f890c30624fd29fb22abfe7b58e37"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/27/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "\"",
+          "n": 1
+        },
+        {
+          "s": "[",
+          "n": 10001
+        },
+        {
+          "s": "]",
+          "n": 10001
+        },
+        {
+          "s": "\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "97bf627fb1c41ec2547b357308f570695022830747a347da17700d96e0d9dd45",
+            "text": "failed to validate metadata: next is not JSON"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "next/28/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "[",
+          "n": 9998
+        },
+        {
+          "s": "]",
+          "n": 9998
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 19996,
+          "sha256": "cdb58e9d30a9d04217fdba96159996170a0a8e670102db215622a2e36ceedf78"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "next/29/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"next\":",
+          "n": 1
+        },
+        {
+          "s": "[",
+          "n": 9999
+        },
+        {
+          "s": "]",
+          "n": 9999
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "length/0",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 32647
+        },
+        {
+          "s": "x",
+          "n": 0
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "length/1",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 32648
+        },
+        {
+          "s": "x",
+          "n": 0
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "c6670c806435d46623711b56ec535fe98e862937ba9697e2aa0bc582fd92c072",
+            "text": "forward memo length 32769 exceeds 32768 bytes"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "length/2",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 32649
+        },
+        {
+          "s": "x",
+          "n": 0
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "8ad5b2afa905f0d9b4369a222d564357ba440d21476dbef0619797262e4e8501",
+            "text": "forward memo length 32770 exceeds 32768 bytes"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "length/3",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "é",
+          "n": 16323
+        },
+        {
+          "s": "x",
+          "n": 1
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "forward",
+      "forwarded": {
+        "memo": {
+          "len": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "receiver": "cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k",
+        "port": "transfer",
+        "channel": "channel-0",
+        "timeout_ns": 600000000000,
+        "retries": 0
+      }
+    },
+    {
+      "name": "length/4",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "é",
+          "n": 16324
+        },
+        {
+          "s": "x",
+          "n": 0
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "c6670c806435d46623711b56ec535fe98e862937ba9697e2aa0bc582fd92c072",
+            "text": "forward memo length 32769 exceeds 32768 bytes"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "length/5",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "é",
+          "n": 16324
+        },
+        {
+          "s": "x",
+          "n": 1
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "8ad5b2afa905f0d9b4369a222d564357ba440d21476dbef0619797262e4e8501",
+            "text": "forward memo length 32770 exceeds 32768 bytes"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "length/6",
+      "memo": [
+        {
+          "s": "{\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 40960
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "length/7",
+      "memo": [
+        {
+          "s": "{\"forward\":null,\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 40960
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "length/8",
+      "memo": [
+        {
+          "s": "{\"Forward\":{},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 40960
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "length/9",
+      "memo": [
+        {
+          "s": "x",
+          "n": 40960
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    },
+    {
+      "name": "length/10",
+      "memo": [
+        {
+          "s": "{\"forward\":5,\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 40960
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 45,
+            "sha256": "fabc70534880a1002b00928a791c31658388250b10dd7404e778bd52d615e95b",
+            "text": "forward memo length 40982 exceeds 32768 bytes"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "length/11",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"},\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 1048455
+        },
+        {
+          "s": "x",
+          "n": 0
+        },
+        {
+          "s": "\"}",
+          "n": 1
+        }
+      ],
+      "outcome": "error",
+      "ack_hex": "7b226572726f72223a227061636b65742d666f72776172642d6d6964646c6577617265206572726f723a20666f7277617264206661696c6564227d",
+      "event": [
+        {
+          "key": "error",
+          "value": {
+            "len": 47,
+            "sha256": "422280a058cba7694ff6adb3f21a4fb55686b55a3d355ede3b14e5cd35e65a1d",
+            "text": "forward memo length 1048576 exceeds 32768 bytes"
+          }
+        },
+        {
+          "key": "packet_sequence",
+          "value": {
+            "len": 1,
+            "sha256": "7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "text": "7"
+          }
+        },
+        {
+          "key": "packet_dst_port",
+          "value": {
+            "len": 8,
+            "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+            "text": "transfer"
+          }
+        },
+        {
+          "key": "packet_dst_channel",
+          "value": {
+            "len": 10,
+            "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+            "text": "channel-99"
+          }
+        }
+      ]
+    },
+    {
+      "name": "length/12",
+      "memo": [
+        {
+          "s": "{\"forward\":",
+          "n": 1
+        },
+        {
+          "s": "r",
+          "n": 40960
+        }
+      ],
+      "outcome": "pass",
+      "ack_hex": "7b22726573756c74223a2241513d3d227d"
+    }
+  ],
+  "retry": [
+    {
+      "name": "retry/0",
+      "memo": [
+        {
+          "s": "",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "retry/1",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 112,
+        "sha256": "a28ece1b8f6d0fb1a2c3eac46505aa19ffeef4ae752d8773483a381877e756bb",
+        "text": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"}}"
+      }
+    },
+    {
+      "name": "retry/2",
+      "memo": [
+        {
+          "s": " { \"a\" : 1 } ",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 13,
+        "sha256": "626e9dd911468347f80b47dcba5156ca69a565012f85cf10f2090b74aad41c95",
+        "text": " { \"a\" : 1 } "
+      }
+    },
+    {
+      "name": "retry/3",
+      "memo": [
+        {
+          "s": "{\"a\":\"\u003c\u0026\u003e\"}",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 11,
+        "sha256": "8658fe1f872cd0d087e206ab8fd59cbc9873d8a4d5701620f4d3d17b0f2fb388",
+        "text": "{\"a\":\"\u003c\u0026\u003e\"}"
+      }
+    },
+    {
+      "name": "retry/4",
+      "memo": [
+        {
+          "s": "\"x\"",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 3,
+        "sha256": "ba2df4903a2c14e86dc3bcca58911b44ac1d2514b7227bf6eb08cfb978f55a1b",
+        "text": "\"x\""
+      }
+    },
+    {
+      "name": "retry/5",
+      "memo": [
+        {
+          "s": "null",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 4,
+        "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "text": "null"
+      }
+    },
+    {
+      "name": "retry/6",
+      "memo": [
+        {
+          "s": "5",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 1,
+        "sha256": "ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d",
+        "text": "5"
+      }
+    },
+    {
+      "name": "retry/7",
+      "memo": [
+        {
+          "s": "hello",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 5,
+        "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        "text": "hello"
+      }
+    },
+    {
+      "name": "retry/8",
+      "memo": [
+        {
+          "s": "{\"a\":1,\"a\":2}",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 13,
+        "sha256": "1c53ee0df7b12fd4d65b976120c7fa6b847dc41dffd7f0331c3237a1ceab1756",
+        "text": "{\"a\":1,\"a\":2}"
+      }
+    },
+    {
+      "name": "retry/9",
+      "memo": [
+        {
+          "s": "{\"a\":",
+          "n": 3000
+        },
+        {
+          "s": "1",
+          "n": 1
+        },
+        {
+          "s": "}",
+          "n": 3000
+        }
+      ],
+      "retried": {
+        "len": 18001,
+        "sha256": "b2e26ac9689495fede68b5fef390bdee95d5152461f0d9cc339f78d5a9fb2983"
+      }
+    },
+    {
+      "name": "retry/10",
+      "memo": [
+        {
+          "s": "[",
+          "n": 10001
+        },
+        {
+          "s": "]",
+          "n": 10001
+        }
+      ],
+      "retried": {
+        "len": 20002,
+        "sha256": "435880ce431297d79345bf598a01589c14a2a5223539a271cca074a0bc4e8bd6"
+      }
+    },
+    {
+      "name": "retry/11",
+      "memo": [
+        {
+          "s": "{\"a\":\"\\x\"}",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 10,
+        "sha256": "a3e11777af1caa9ff6e2f749660786d85680827ccd6615cb5ae92c746d223322",
+        "text": "{\"a\":\"\\x\"}"
+      }
+    },
+    {
+      "name": "retry/12",
+      "memo": [
+        {
+          "s": "{\"forward\":{\"receiver\":\"cosmos16plylpsgxechajltx9yeseqexzdzut9g8vla4k\",\"port\":\"transfer\",\"channel\":\"channel-0\"",
+          "n": 1
+        },
+        {
+          "s": ",\"pad\":\"",
+          "n": 1
+        },
+        {
+          "s": "x",
+          "n": 40960
+        },
+        {
+          "s": "\"",
+          "n": 1
+        },
+        {
+          "s": "}}",
+          "n": 1
+        }
+      ],
+      "retried": {
+        "len": 41081,
+        "sha256": "88ecb4a98b9a7a1daa77cd0f84a93e530e19c1d4cde413f921ca96b5817208d3"
+      }
+    }
+  ],
+  "give_up": {
+    "sequence": 9,
+    "dst_port": "transfer",
+    "dst_channel": "channel-99",
+    "event": [
+      {
+        "key": "error",
+        "value": {
+          "len": 77,
+          "sha256": "7a3f22cc8f27b2d0652bc0e40b177c0e2c1c3fc3ea153912d04757a539b0248c",
+          "text": "giving up on packet on channel (channel-99) port (transfer) after max retries"
+        }
+      },
+      {
+        "key": "packet_sequence",
+        "value": {
+          "len": 1,
+          "sha256": "19581e27de7ced00ff1ce50b2047e7a567c76b1cbaebabe5ef03f7c3017bb5b7",
+          "text": "9"
+        }
+      },
+      {
+        "key": "packet_dst_port",
+        "value": {
+          "len": 8,
+          "sha256": "27f576cafbb263ed44be8bd094f66114da26877706f96c4c31d5a97ffebf2e29",
+          "text": "transfer"
+        }
+      },
+      {
+        "key": "packet_dst_channel",
+        "value": {
+          "len": 10,
+          "sha256": "38cd99605a7caf4a6e2fb738eeae2b65b8f76194990030255b32af23c313cba6",
+          "text": "channel-99"
+        }
+      }
+    ]
+  }
+}

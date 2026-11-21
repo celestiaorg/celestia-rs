@@ -130,6 +130,16 @@ pub const VERSION_MAP: &[(&str, u64)] = &[
     ("zkism", 1),
 ];
 
+pub(crate) fn version_map(app_version: u64) -> impl Iterator<Item = (&'static str, u64)> {
+    VERSION_MAP.iter().map(move |&(name, version)| {
+        if name == "fibre" && sdk::version::is_v12(app_version) {
+            (name, 2)
+        } else {
+            (name, version)
+        }
+    })
+}
+
 /// Runs one module's `InitGenesis`.
 pub fn init_genesis(
     ctx: &mut Context<'_>,

@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
+use hash::Sha256Hasher;
 use rand::Rng as _;
-use sha2::{Digest as _, Sha256};
 
 /// A peer as the syncer sees it: an ID and a way to send it a message.
 pub trait PeerHandle: Send + Sync {
@@ -50,11 +50,11 @@ impl Snapshot {
     /// `snapshot.Key()`: `sha256(fmt("%v:%v:%v", height, format, chunks) || hash || metadata)`.
     #[must_use]
     pub fn key(&self) -> SnapshotKey {
-        let mut h = Sha256::new();
+        let mut h = Sha256Hasher::new();
         h.update(format!("{}:{}:{}", self.height, self.format, self.chunks).as_bytes());
         h.update(&self.hash);
         h.update(&self.metadata);
-        h.finalize().into()
+        h.finalize()
     }
 }
 
@@ -291,10 +291,10 @@ pub(crate) mod tests {
             metadata: vec![4, 5, 6],
             ..Snapshot::default()
         };
-        let mut h = Sha256::new();
-        h.update(b"1:2:3\x01\x02\x03\x04\x05\x06");
-        let want: [u8; 32] = h.finalize().into();
-        assert_eq!(s.key(), want);
+        assert_eq!(
+            hex::encode(s.key()),
+            "8d268932e69115e28bf0d30d9c6a8d6a56f04644d1e9a5c51cfbe15064b43274"
+        );
     }
 
     /// Ports of Go's `snapshots_test.go`.

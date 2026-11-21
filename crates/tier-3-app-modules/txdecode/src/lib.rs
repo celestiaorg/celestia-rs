@@ -37,6 +37,7 @@ mod convert;
 mod custom;
 mod go_types;
 mod gogo;
+pub use gogo::count_cosmos_tx_entries;
 mod jsonpb;
 mod protowire;
 mod registry;

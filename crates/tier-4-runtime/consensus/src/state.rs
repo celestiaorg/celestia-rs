@@ -185,6 +185,7 @@ pub struct ConsensusState {
     rs: RoundState,
     state: State,
     state_set: bool,
+    pacing_started: bool,
     ticker: TimeoutTicker,
     wal: Box<dyn Wal>,
     clock: Box<dyn Clock>,
@@ -289,6 +290,7 @@ impl ConsensusState {
             rs,
             state: state.clone(),
             state_set: false,
+            pacing_started: false,
             ticker: TimeoutTicker::default(),
             wal,
             clock,
@@ -772,7 +774,19 @@ impl ConsensusState {
         } else {
             self.rs.commit_time
         };
+        let previous_start = self.rs.start_time;
         self.rs.start_time = self.config.commit_with_custom_timeout(base, commit_timeout);
+        let floor = state.timeouts.dynamic_commit;
+        if floor > 0 {
+            let committed = !self.rs.commit_time.is_zero();
+            if committed && self.pacing_started && previous_start <= self.rs.commit_time {
+                self.rs.start_time = self.rs.start_time.max(add_duration(previous_start, floor));
+            }
+            self.pacing_started = committed;
+            self.rs.start_time = self.rs.start_time.max(self.now());
+        } else {
+            self.pacing_started = false;
+        }
         self.rs.validators = state.validators.clone();
         self.rs.proposal = None;
         self.rs.proposal_block = None;
@@ -981,8 +995,10 @@ impl ConsensusState {
         self.rs.votes.set_round(round.saturating_add(1));
         self.rs.triggered_timeout_precommit = false;
         self.sync_propagator_state();
-        let wait_for_txs =
-            self.config.wait_for_txs() && round == 0 && !self.need_proof_block(height);
+        let wait_for_txs = self.config.wait_for_txs()
+            && round == 0
+            && !self.need_proof_block(height)
+            && (self.state.timeouts.dynamic_commit <= 0 || !self.is_proposal_complete());
         if wait_for_txs {
             if self.config.create_empty_blocks_interval > 0 {
                 let d = self.config.create_empty_blocks_interval;
@@ -1741,7 +1757,10 @@ impl ConsensusState {
                 .valid_block_parts
                 .clone_from(&self.rs.proposal_block_parts);
         }
-        if self.rs.step <= RoundStep::Propose && self.is_proposal_complete() {
+        let held = self.state.timeouts.dynamic_commit > 0
+            && !self.replay_mode
+            && self.rs.step == RoundStep::NewHeight;
+        if !held && self.rs.step <= RoundStep::Propose && self.is_proposal_complete() {
             self.enter_prevote(height, round);
             if polka.is_some() {
                 self.enter_precommit(height, round);
@@ -1801,7 +1820,8 @@ impl ConsensusState {
             }
             self.events.push(Event::Vote(vote.clone()));
             let has_all = lc.has_all();
-            if self.config.skip_timeout_commit && has_all {
+            if self.config.skip_timeout_commit && self.state.timeouts.dynamic_commit <= 0 && has_all
+            {
                 let h = self.rs.height;
                 self.enter_new_round(h, 0);
             }
@@ -1954,7 +1974,10 @@ impl ConsensusState {
                 self.enter_precommit_wait(height, vote_round);
             } else {
                 self.enter_commit(height, vote_round);
-                if self.config.skip_timeout_commit && has_all {
+                if self.config.skip_timeout_commit
+                    && self.state.timeouts.dynamic_commit <= 0
+                    && has_all
+                {
                     let h = self.rs.height;
                     self.enter_new_round(h, 0);
                 }

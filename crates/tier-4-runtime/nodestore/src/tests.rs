@@ -66,6 +66,7 @@ fn timeouts() -> abci::TimeoutInfo {
         timeout_precommit_delta: d(0, 500_000_000),
         timeout_commit: d(0, 500_000_000),
         delayed_precommit_timeout: d(2, 100_000_000),
+        dynamic_timeout_commit: None,
     }
 }
 

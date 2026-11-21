@@ -66,7 +66,18 @@ pub fn estimate_gas_for_pay_for_fibre(blob_size: u32) -> u64 {
 /// `PaymentAmount`.
 #[must_use]
 pub fn payment_amount(blob_size: u32) -> Coin {
-    Coin::new(BOND_DENOM, estimate_gas_for_pay_for_fibre(blob_size))
+    payment_amount_for(sdk::version::app_version(), blob_size)
+}
+
+fn payment_amount_for(version: u64, blob_size: u32) -> Coin {
+    let gas = estimate_gas_for_pay_for_fibre(blob_size);
+    // From v12 the default price is 0.004 utia per gas, or 250 gas per utia.
+    let amount = if sdk::version::is_v12(version) {
+        gas.div_ceil(250)
+    } else {
+        gas
+    };
+    Coin::new(BOND_DENOM, amount)
 }
 
 /// The gov module address, the fibre authority.
@@ -129,7 +140,7 @@ fn emit<T: prost::Name + serde::Serialize>(ctx: &mut Context<'_>, ev: &T) -> Res
 
 // ---- ValidateBasic ----
 
-fn validate_coin_positive(c: Option<&PbCoin>) -> Result<()> {
+fn validate_escrow_amount(c: Option<&PbCoin>) -> Result<()> {
     // A nil amount fails `IsValid`; `Coin.String()` prints it `<nil>`.
     if c.is_none_or(|c| c.amount.is_empty()) {
         return Err(errs::invalid_coins(sdk::coins::raw_coins_string(&[c
@@ -143,6 +154,12 @@ fn validate_coin_positive(c: Option<&PbCoin>) -> Result<()> {
     if c.amount.is_zero() || c.amount.is_negative() {
         return Err(errs::invalid_coins("amount must be positive"));
     }
+    if sdk::version::is_v12(sdk::version::app_version()) && c.denom != BOND_DENOM {
+        return Err(errs::invalid_coins(format!(
+            "denom must be {BOND_DENOM}, got {}",
+            c.denom
+        )));
+    }
     Ok(())
 }
 
@@ -155,7 +172,7 @@ fn validate_signer(signer: &str) -> Result<()> {
 /// `MsgDepositToEscrow.ValidateBasic` / `MsgRequestWithdrawal.ValidateBasic`.
 pub fn validate_basic_escrow(signer: &str, amount: Option<&PbCoin>) -> Result<()> {
     validate_signer(signer)?;
-    validate_coin_positive(amount)
+    validate_escrow_amount(amount)
 }
 
 /// go-square v4 `share.NewNamespaceFromBytes` (29 bytes) with Go's texts.
@@ -423,7 +440,7 @@ pub fn validate_payment_promise_stateful_internal(
     let Some(escrow) = get_escrow_account(ctx, &signer)? else {
         return Ok(Err(format!("escrow account not found for signer {signer}")));
     };
-    let required = payment_amount(p.blob_size);
+    let required = payment_amount_for(crate::executing_version(ctx), p.blob_size);
     let balance = coin(escrow.balance.as_ref())?;
     // IsGTE panics on mismatched denominations.
     if coin_lt(&balance, &required)? {
@@ -462,6 +479,40 @@ pub fn validate_pay_for_fibre_signatures(ctx: &mut Context<'_>, m: &MsgPayForFib
     })
 }
 
+/// Staking records the set signing H at H-1, except at the first block.
+fn certificate_historical_height(ctx: &mut Context<'_>, promise_height: i64) -> Result<i64> {
+    if !sdk::version::is_v12(crate::executing_version(ctx)) {
+        return Ok(promise_height);
+    }
+    // The Go keeper reads this marker with an infinite gas meter.
+    let bytes = ctx
+        .multistore()
+        .get(crate::STORE_KEY, crate::GENESIS_HEIGHT_KEY)?;
+    let genesis_height = bytes
+        .as_deref()
+        .and_then(|b| b.try_into().ok())
+        .map_or(0, i64::from_be_bytes);
+    Ok(if promise_height == genesis_height {
+        promise_height
+    } else {
+        promise_height.wrapping_sub(1)
+    })
+}
+
+/// `Keeper.ValidateValidatorSetAvailable` on a v12 certificate cache hit.
+pub fn validate_validator_set_available(ctx: &mut Context<'_>, promise_height: i64) -> Result<()> {
+    let height = certificate_historical_height(ctx, promise_height)?;
+    if !ctx.has(
+        x_staking::STORE_KEY,
+        &x_staking::keys::historical_info(height),
+    )? {
+        return Err(errs::invalid_request(format!(
+            "validator signature validation failed: failed to get historical validator set at height {height}: no historical info found"
+        )));
+    }
+    Ok(())
+}
+
 fn validate_validator_signatures(
     ctx: &mut Context<'_>,
     sign_bytes: &[u8],
@@ -470,6 +521,7 @@ fn validate_validator_signatures(
 ) -> Result<()> {
     use celestia_proto::cosmos::crypto::ed25519::PubKey as Ed25519PubKey;
     use prost::{Message, Name};
+    let height = certificate_historical_height(ctx, height)?;
     let info = x_staking::store::get_historical_info(ctx, height)?.ok_or_else(|| {
         SdkError::new(
             "staking",
@@ -650,7 +702,7 @@ pub fn pay_for_fibre(ctx: &mut Context<'_>, m: &MsgPayForFibre) -> Result<MsgPay
             "escrow account not found for signer: {signer}"
         )));
     };
-    let amount = payment_amount(p.blob_size);
+    let amount = payment_amount_for(crate::executing_version(ctx), p.blob_size);
     deduct_payment_from_escrow(ctx, &mut escrow, &amount)?;
     set_processed_payment(
         ctx,
@@ -689,7 +741,7 @@ pub fn payment_promise_timeout(
             sdk::time::go_time_string(&now)
         )));
     }
-    let amount = payment_amount(p.blob_size);
+    let amount = payment_amount_for(crate::executing_version(ctx), p.blob_size);
     let hash = promise::hash(&p)
         .map_err(|e| errs::invalid_request(format!("failed to hash payment promise: {e}")))?;
     let escrow_signer = escrow_signer(&p);
@@ -706,14 +758,20 @@ pub fn payment_promise_timeout(
             processed_at: Some(ctx.header.time),
         },
     )?;
-    emit(
-        ctx,
-        &EventPaymentPromiseTimeout {
-            processor: m.signer.clone(),
-            escrow_signer,
-            payment_promise_hash: hash,
+    let event = sdk::event::typed_event_with_name(
+        <EventPaymentPromiseTimeout as prost::Name>::full_name(),
+        &crate::PaymentEvent {
+            base: EventPaymentPromiseTimeout {
+                processor: m.signer.clone(),
+                escrow_signer,
+                payment_promise_hash: hash,
+            },
+            creation_timestamp: sdk::version::is_v12(crate::executing_version(ctx))
+                .then(|| ts_or_zero(p.creation_timestamp)),
         },
-    )?;
+    )
+    .map_err(|e| errs::json_marshal(e.to_string()))?;
+    ctx.events.emit(event);
     Ok(MsgPaymentPromiseTimeoutResponse {})
 }
 
@@ -922,6 +980,58 @@ mod tests {
     }
 
     #[test]
+    fn certificate_uses_the_validator_set_that_signed_the_promise_height() -> Result<()> {
+        use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+        let k = keys();
+        for (genesis_version, version, initial_height, promise_height) in [
+            (11, 11, 0, 10),
+            (11, 12, 0, 11),
+            (12, 12, 10, 10),
+            (12, 12, 10, 11),
+            (12, 12, 0, 11),
+        ] {
+            let mut ms = ms();
+            let now = 1_800_000_000;
+            let mut ctx = Context::new(&mut ms, header(now, initial_height), ExecMode::Finalize);
+            ctx.consensus_params.version = Some(VersionParams {
+                app: genesis_version,
+            });
+            crate::init_genesis(&mut ctx, &crate::GenesisState::default())?;
+            let marker = ctx.get(crate::STORE_KEY, crate::GENESIS_HEIGHT_KEY)?;
+            assert_eq!(
+                marker,
+                (genesis_version == 12).then(|| initial_height.max(1).to_be_bytes().to_vec())
+            );
+            let signer = setup(&mut ctx, &k)?; // Only height 10 has a validator set.
+            ctx.consensus_params.version = Some(VersionParams { app: version });
+            ctx.header.height = promise_height;
+            let gas = ctx.gas.consumed();
+            assert_eq!(certificate_historical_height(&mut ctx, promise_height)?, 10);
+            assert_eq!(ctx.gas.consumed(), gas);
+            let p = promise(&k, promise_height, now - 5, 1000);
+            let sb = promise::sign_bytes(&p).unwrap_or_default();
+            let sig = crypto::ed25519::sign(&k.ed, &sb).unwrap_or([0; 64]);
+            let msg = MsgPayForFibre {
+                signer,
+                payment_promise: Some(p),
+                validator_signatures: vec![sig.to_vec()],
+            };
+            validate_validator_set_available(&mut ctx, promise_height)?;
+            validate_pay_for_fibre_signatures(&mut ctx, &msg)?;
+            if version == 12 {
+                ctx.delete(x_staking::STORE_KEY, &x_staking::keys::historical_info(10))?;
+                let error = validate_validator_set_available(&mut ctx, promise_height)
+                    .expect_err("staking pruned height 10");
+                assert_eq!(
+                    error.log,
+                    "validator signature validation failed: failed to get historical validator set at height 10: no historical info found: invalid request"
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn deposit_withdraw_pay_and_timeout() -> Result<()> {
         let k = keys();
         let mut ms = ms();
@@ -1005,6 +1115,14 @@ mod tests {
         };
         assert!(validate_payment_promise_stateful(&mut ctx, &old).is_err());
         payment_promise_timeout(&mut ctx, &t)?;
+        let event = ctx.events.events().last().unwrap();
+        assert_eq!(event.r#type, "celestia.fibre.v1.EventPaymentPromiseTimeout");
+        assert!(
+            event
+                .attributes
+                .iter()
+                .all(|a| a.key != "creation_timestamp")
+        );
         assert_eq!(escrow(&mut ctx, &signer), ("610000".into(), "0".into()));
         assert!(payment_promise_timeout(&mut ctx, &t).is_err());
         let fresh = promise(&k, 10, now - 1, 1000);
@@ -1045,6 +1163,76 @@ mod tests {
         other.chain_id = "x".into();
         assert!(!check(&mut ctx, &other));
         assert!(!check(&mut ctx, &promise(&k, 2000, now, u32::MAX)));
+        Ok(())
+    }
+
+    #[test]
+    fn escrow_prices_match_upstream_versions() {
+        for (size, gas, v12_amount) in [
+            (0, 650_000, 2_600),
+            (1, 695_000, 2_780),
+            (262_144, 695_000, 2_780),
+            (262_145, 740_000, 2_960),
+            (u32::MAX, 737_930_000, 2_951_720),
+        ] {
+            assert_eq!(payment_amount_for(11, size), Coin::new("utia", gas));
+            assert_eq!(payment_amount_for(12, size), Coin::new("utia", v12_amount));
+        }
+    }
+
+    #[test]
+    fn v12_settles_a_payment_and_a_timeout_from_exactly_funded_escrow() -> Result<()> {
+        use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+        let k = keys();
+        let mut ms = ms();
+        let now = 1_800_000_000;
+        let mut ctx = Context::new(&mut ms, header(now, 10), ExecMode::Finalize);
+        ctx.consensus_params.version = Some(VersionParams { app: 12 });
+        let signer = setup(&mut ctx, &k)?;
+        deposit_to_escrow(
+            &mut ctx,
+            &MsgDepositToEscrow {
+                signer: signer.clone(),
+                amount: Some(Coin::new("utia", 5_560).to_proto()),
+            },
+        )?;
+        let p = promise(&k, 10, now - 5, 1000);
+        let signature = crypto::ed25519::sign(&k.ed, &promise::sign_bytes(&p).unwrap()).unwrap();
+        pay_for_fibre(
+            &mut ctx,
+            &MsgPayForFibre {
+                signer: signer.clone(),
+                payment_promise: Some(p),
+                validator_signatures: vec![signature.to_vec()],
+            },
+        )?;
+        assert_eq!(escrow(&mut ctx, &signer), ("2780".into(), "2780".into()));
+        payment_promise_timeout(
+            &mut ctx,
+            &MsgPaymentPromiseTimeout {
+                signer: signer.clone(),
+                payment_promise: Some(promise(&k, 10, now - 4000, 1000)),
+            },
+        )?;
+        let event = ctx.events.events().last().unwrap();
+        assert_eq!(event.r#type, "celestia.fibre.v1.EventPaymentPromiseTimeout");
+        assert_eq!(
+            event
+                .attributes
+                .iter()
+                .map(|a| a.key.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "creation_timestamp",
+                "escrow_signer",
+                "payment_promise_hash",
+                "processor"
+            ]
+        );
+        assert_eq!(event.attributes[0].value, r#""2027-01-15T06:53:20Z""#);
+        assert_eq!(escrow(&mut ctx, &signer), ("0".into(), "0".into()));
+        let fee = x_bank::get_balance(&mut ctx, &x_auth::module_address(FEE_COLLECTOR), "utia")?;
+        assert_eq!(fee, Coin::new("utia", 5_560));
         Ok(())
     }
 

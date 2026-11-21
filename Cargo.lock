@@ -812,7 +812,7 @@ dependencies = [
 
 [[package]]
 name = "celestia-rs"
-version = "0.1.0-rc.5"
+version = "0.1.0-rc.7"
 dependencies = [
  "abci-server",
  "anyhow",
@@ -1249,7 +1249,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a878c850e9e421b20262e9b41f9c860e4785fa07541c266b62ff9d1ef998a80a"
 dependencies = [
  "const-oid",
- "pem-rfc7468",
  "zeroize",
 ]
 
@@ -1353,9 +1352,7 @@ dependencies = [
  "curve25519-dalek-ng",
  "hex",
  "rand_core 0.6.4",
- "serde",
  "sha2 0.9.9",
- "thiserror 1.0.69",
  "zeroize",
 ]
 
@@ -1390,7 +1387,6 @@ dependencies = [
  "ff",
  "group",
  "hybrid-array",
- "pem-rfc7468",
  "pkcs8",
  "rand_core 0.10.1",
  "sec1",
@@ -2151,7 +2147,6 @@ dependencies = [
  "elliptic-curve",
  "primeorder",
  "sha2 0.11.1",
- "signature",
  "wnaf",
 ]
 
@@ -2183,7 +2178,7 @@ dependencies = [
  "k256",
  "pbkdf2",
  "prost",
- "rand 0.8.8",
+ "rand_core 0.6.4",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2299,10 +2294,10 @@ version = "0.0.1"
 dependencies = [
  "base64 0.23.1",
  "ctypes",
+ "getrandom 0.2.17",
  "hex",
  "kvdb",
  "prost",
- "rand 0.9.5",
  "serde",
  "serde_json",
  "tracing",
@@ -2800,15 +2795,6 @@ checksum = "f8ed6a7761f76e3b9f92dfb0a60a6a6477c61024b775147ff0973a02653abaf2"
 dependencies = [
  "digest 0.10.7",
  "hmac 0.12.1",
-]
-
-[[package]]
-name = "pem-rfc7468"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6305423e0e7738146434843d1694d621cce767262b2a86910beab705e4493d9"
-dependencies = [
- "base64ct",
 ]
 
 [[package]]
@@ -3823,6 +3809,7 @@ dependencies = [
  "app",
  "celestia-core-proto",
  "ctypes",
+ "hash",
  "hex",
  "kvdb",
  "light",
@@ -3831,7 +3818,6 @@ dependencies = [
  "prost",
  "rand 0.9.5",
  "serde_json",
- "sha2 0.10.9",
  "snapshots",
  "tempfile",
  "tokio",
@@ -4663,7 +4649,6 @@ dependencies = [
  "celestia-core-proto",
  "celestia-proto",
  "crypto",
- "ed25519-consensus",
  "encoding",
  "gostr",
  "hash",
@@ -4681,9 +4666,11 @@ dependencies = [
  "txdecode",
  "x-auth",
  "x-bank",
+ "x-blob",
  "x-distribution",
  "x-feegrant",
  "x-fibre",
+ "x-minfee",
  "zstd",
 ]
 

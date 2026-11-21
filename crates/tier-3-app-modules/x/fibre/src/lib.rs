@@ -8,11 +8,13 @@
 //! - `0x05 || hash` → `ProcessedPayment`
 //! - `0x06 || time(processed) || "/" || hash` → `ProcessedPayment`
 //! - `0x07` → promise freshness floor (`sdk.FormatTimeBytes`)
+//! - `0x08` → first block height (v12 genesis, big-endian int64)
 //!
 //! `time(t)` is `sdk.FormatTimeBytes`. The Msg server, stateful promise
 //! validation and validator-signature checks are in [`msgs`]; payment
 //! promise encoding and signatures in [`promise`].
 
+mod genesis;
 pub mod msgs;
 pub mod promise;
 
@@ -55,11 +57,25 @@ pub const PROMISE_FRESHNESS_FLOOR_KEY: &[u8] = &[0x07];
 /// `MaxPromiseClockSkew` (10 minutes) in nanoseconds.
 pub const MAX_PROMISE_CLOCK_SKEW_NANOS: i128 = 600 * 1_000_000_000;
 
+/// Height of the first block, introduced by the v12 executable.
+const GENESIS_HEIGHT_KEY: &[u8] = &[0x08];
+
+fn executing_version(ctx: &Context<'_>) -> u64 {
+    sdk::version::executing(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app))
+}
+
+/// Upstream `maxProcessedPaymentPrunesPerBlock` in x/fibre/keeper/abci.go.
+const MAX_PROCESSED_PAYMENT_PRUNES_PER_BLOCK: usize = 2_000;
+
 const HOUR: i64 = 3600;
 
 /// `DefaultParams`.
 #[must_use]
 pub fn default_params() -> Params {
+    default_params_at(sdk::version::app_version())
+}
+
+fn default_params_at(version: u64) -> Params {
     Params {
         withdrawal_delay: Some(Duration {
             seconds: 24 * HOUR,
@@ -69,7 +85,11 @@ pub fn default_params() -> Params {
             seconds: HOUR,
             nanos: 0,
         }),
-        payment_promise_height_window: 1000,
+        payment_promise_height_window: if sdk::version::is_v12(version) {
+            3_250
+        } else {
+            1_000
+        },
         shard_retention: Some(Duration {
             seconds: 4 * HOUR,
             nanos: 0,
@@ -130,7 +150,7 @@ pub(crate) fn decode<M: Message + Default>(bz: &[u8]) -> Result<M> {
 pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
     match ctx.get(STORE_KEY, PARAMS_KEY)? {
         Some(bz) if !bz.is_empty() => decode(&bz),
-        _ => Ok(default_params()),
+        _ => Ok(default_params_at(executing_version(ctx))),
     }
 }
 
@@ -280,12 +300,70 @@ pub fn is_payment_processed_by_hash(ctx: &mut Context<'_>, hash: &[u8]) -> Resul
 
 /// `InitGenesis`.
 pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
+    let is_v12 = sdk::version::is_v12(executing_version(ctx));
+    if is_v12 {
+        genesis::validate_records(gs)?;
+        let checkpoint = ctx.branch();
+        let result = write_genesis(ctx, gs, true);
+        if result.is_ok() {
+            ctx.write(checkpoint);
+        } else {
+            ctx.discard(checkpoint);
+        }
+        return result;
+    }
+    write_genesis(ctx, gs, false)
+}
+
+/// Migrate committed v10/v11 escrow and withdrawal records to v12.
+pub fn migrate_escrows(ctx: &mut Context<'_>) -> Result<()> {
+    let mut records = GenesisState::default();
+    for (key, value) in ctx
+        .prefix_iter(STORE_KEY, &[ESCROW_ACCOUNT_PREFIX])?
+        .into_items()
+    {
+        let account: EscrowAccount = decode(&value)?;
+        if key != escrow_key(&account.signer) {
+            return Err(sdk::error::internal("invalid legacy fibre escrow key"));
+        }
+        records.escrow_accounts.push(account);
+    }
+    for (key, value) in ctx
+        .prefix_iter(STORE_KEY, &[WITHDRAWALS_BY_SIGNER_PREFIX])?
+        .into_items()
+    {
+        let withdrawal: Withdrawal = decode(&value)?;
+        if key
+            != withdrawal_by_signer_key(
+                &withdrawal.signer,
+                &ts_or_zero(withdrawal.requested_timestamp),
+            )
+        {
+            return Err(sdk::error::internal("invalid legacy fibre withdrawal key"));
+        }
+        records.withdrawals.push(withdrawal);
+    }
+    genesis::validate_records(&records)?;
+    genesis::migrate_legacy_escrows(ctx, &records)
+}
+
+fn write_genesis(ctx: &mut Context<'_>, gs: &GenesisState, is_v12: bool) -> Result<()> {
     set_params(ctx, &gs.params.unwrap_or_default())?;
+    if is_v12 {
+        ctx.set(
+            STORE_KEY,
+            GENESIS_HEIGHT_KEY.to_vec(),
+            ctx.height().max(1).to_be_bytes().to_vec(),
+        )?;
+    }
     for a in &gs.escrow_accounts {
         set_escrow_account(ctx, a)?;
     }
     for w in &gs.withdrawals {
         set_withdrawal(ctx, w)?;
+    }
+    if is_v12 {
+        genesis::migrate_legacy_escrows(ctx, gs)?;
     }
     for p in &gs.processed_payments {
         set_processed_payment(ctx, p)?;
@@ -397,6 +475,14 @@ fn process_available_withdrawals(ctx: &mut Context<'_>) -> Result<()> {
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+struct PaymentEvent<T> {
+    #[serde(flatten)]
+    base: T,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    creation_timestamp: Option<Timestamp>,
+}
+
 fn prune_processed_payments(ctx: &mut Context<'_>, params: &Params) -> Result<()> {
     let retention =
         duration_nanos(&params.withdrawal_delay.unwrap_or_default()) + MAX_PROMISE_CLOCK_SKEW_NANOS;
@@ -404,8 +490,17 @@ fn prune_processed_payments(ctx: &mut Context<'_>, params: &Params) -> Result<()
     let mut upto = vec![PROCESSED_BY_TIME_PREFIX];
     upto.extend_from_slice(&format_time_bytes(&cutoff));
     let end = sdk::context::prefix_end(&upto);
+    let is_v12 = sdk::version::is_v12(executing_version(ctx));
+    let budget = if is_v12 {
+        MAX_PROCESSED_PAYMENT_PRUNES_PER_BLOCK
+    } else {
+        usize::MAX
+    };
     let mut it = ctx.iterator(STORE_KEY, Some(&[PROCESSED_BY_TIME_PREFIX]), end.as_deref())?;
-    while let Some((k, v)) = it.next(ctx)? {
+    for _ in 0..budget {
+        let Some((k, v)) = it.next(ctx)? else {
+            break;
+        };
         let Some(ts_bytes) = k.get(1..=SORTABLE_TIME_LEN) else {
             // Go slices key[:29] and would panic on a short key.
             return Err(sdkerr::logic("processed payment key too short"));
@@ -422,10 +517,18 @@ fn prune_processed_payments(ctx: &mut Context<'_>, params: &Params) -> Result<()
         }
         let p: ProcessedPayment = decode(&v)?;
         delete_processed_payment(ctx, &p)?;
-        if let Ok(ev) = typed_event(&EventProcessedPaymentPruned {
-            payment_promise_hash: hash.to_vec(),
-            processed_at: Some(processed_at),
-        }) {
+        let event = PaymentEvent {
+            base: EventProcessedPaymentPruned {
+                payment_promise_hash: hash.to_vec(),
+                processed_at: Some(processed_at),
+            },
+            // Payments in the legacy index predate the creation-time field.
+            creation_timestamp: is_v12.then(sdk::time::go_zero),
+        };
+        if let Ok(ev) = sdk::event::typed_event_with_name(
+            <EventProcessedPaymentPruned as prost::Name>::full_name(),
+            &event,
+        ) {
             ctx.events.emit(ev);
         }
     }
@@ -458,6 +561,34 @@ mod tests {
             let _ = write!(s, "{x:02x}");
             s
         })
+    }
+
+    #[test]
+    fn default_height_window_follows_the_executing_release_until_params_are_stored() -> Result<()> {
+        use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+
+        let mut ms = ms();
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        ctx.consensus_params.version = Some(VersionParams { app: 11 });
+        assert_eq!(get_params(&mut ctx)?.payment_promise_height_window, 1_000);
+
+        // The v12 binary can query a height whose consensus version is still 11.
+        let previous = sdk::version::app_version();
+        sdk::version::set_app_version(12);
+        let current = default_params();
+        let historical = get_params(&mut ctx);
+        sdk::version::set_app_version(previous);
+        assert_eq!(current.payment_promise_height_window, 3_250);
+        assert_eq!(historical?, current);
+
+        ctx.consensus_params.version = Some(VersionParams { app: 12 });
+        let stored = Params {
+            payment_promise_height_window: 77,
+            ..current
+        };
+        set_params(&mut ctx, &stored)?;
+        assert_eq!(get_params(&mut ctx)?, stored);
+        Ok(())
     }
 
     #[test]
@@ -497,6 +628,59 @@ mod tests {
     }
 
     #[test]
+    fn validates_legacy_payments_before_v12_genesis_writes() -> Result<()> {
+        use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+
+        // Unix epoch is a valid processed time. Go's zero time is year one.
+        let payment = ProcessedPayment {
+            payment_promise_hash: vec![1],
+            processed_at: Some(Timestamp::default()),
+        };
+        for (invalid, reason) in [
+            (
+                ProcessedPayment {
+                    payment_promise_hash: vec![],
+                    ..payment.clone()
+                },
+                "invalid hash",
+            ),
+            (payment.clone(), "duplicate hash"),
+            (
+                ProcessedPayment {
+                    payment_promise_hash: vec![2],
+                    processed_at: None,
+                },
+                "invalid timestamp",
+            ),
+            (
+                ProcessedPayment {
+                    payment_promise_hash: vec![2],
+                    processed_at: Some(sdk::time::go_zero()),
+                },
+                "invalid timestamp",
+            ),
+        ] {
+            let mut ms = ms();
+            let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+            let gs = GenesisState {
+                processed_payments: vec![payment.clone(), invalid],
+                ..Default::default()
+            };
+            ctx.consensus_params.version = Some(VersionParams { app: 12 });
+            let err = init_genesis(&mut ctx, &gs).unwrap_err();
+            assert!(err.is_panic());
+            assert_eq!(err.log, format!("invalid fibre genesis state: {reason}"));
+            assert!(!ctx.has(STORE_KEY, PARAMS_KEY)?);
+            assert!(!is_payment_processed_by_hash(&mut ctx, &[1])?);
+
+            ctx.consensus_params.version = Some(VersionParams { app: 11 });
+            init_genesis(&mut ctx, &gs)?;
+            assert!(is_payment_processed_by_hash(&mut ctx, &[1])?);
+        }
+        Ok(())
+    }
+
+    #[test]
     fn prunes_expired_processed_payments() -> Result<()> {
         let mut ms = ms();
         let now = Timestamp {
@@ -525,6 +709,65 @@ mod tests {
             ctx.events.events()[0].r#type,
             "celestia.fibre.v1.EventProcessedPaymentPruned"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn prune_budget_for_payments_inherited_from_v11() -> Result<()> {
+        use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+
+        let now = Timestamp {
+            seconds: 10 * 86_400,
+            nanos: 0,
+        };
+        let expired = add(&now, -(25 * 3600) * 1_000_000_000);
+        let hash = |i: u32| {
+            let mut bytes = [0; 32];
+            bytes[28..].copy_from_slice(&i.to_be_bytes());
+            bytes
+        };
+
+        for version in [11, 12] {
+            let mut ms = ms();
+            let mut ctx = Context::new(
+                &mut ms,
+                Header {
+                    time: now,
+                    ..Header::default()
+                },
+                ExecMode::Finalize,
+            );
+            ctx.consensus_params.version = Some(VersionParams { app: 11 });
+            for i in 0..=2000 {
+                set_processed_payment(
+                    &mut ctx,
+                    &ProcessedPayment {
+                        payment_promise_hash: hash(i).to_vec(),
+                        processed_at: Some(expired),
+                    },
+                )?;
+            }
+            ctx.consensus_params.version = Some(VersionParams { app: version });
+            begin_block(&mut ctx)?;
+            assert_eq!(ctx.events.len(), if version == 12 { 2000 } else { 2001 });
+            let creation = ctx.events.events()[0]
+                .attributes
+                .iter()
+                .find(|attr| attr.key == "creation_timestamp");
+            assert_eq!(
+                creation.map(|attr| attr.value.as_str()),
+                (version == 12).then_some(r#""0001-01-01T00:00:00Z""#)
+            );
+            assert!(!is_payment_processed_by_hash(&mut ctx, &hash(1999))?);
+            assert_eq!(
+                is_payment_processed_by_hash(&mut ctx, &hash(2000))?,
+                version == 12
+            );
+            ctx.header.height += 1;
+            begin_block(&mut ctx)?;
+            assert_eq!(ctx.events.len(), 2001);
+            assert!(!is_payment_processed_by_hash(&mut ctx, &hash(2000))?);
+        }
         Ok(())
     }
 

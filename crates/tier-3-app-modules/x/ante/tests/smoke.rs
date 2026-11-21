@@ -15,7 +15,9 @@ use sdk::{Context, ExecMode, Header, Kind, MultiStore};
 use x_ante::{StoreDeps, ante_handle};
 use x_auth::Account;
 
-const STORES: &[&str] = &["acc", "bank", "minfee", "blob", "circuit", "feegrant"];
+const STORES: &[&str] = &[
+    "acc", "bank", "minfee", "blob", "circuit", "feegrant", "params",
+];
 
 #[test]
 fn expired_feegrant_does_not_hide_revoke_out_of_gas() {
@@ -218,6 +220,12 @@ fn funded_ms(header: &Header, addr: &[u8]) -> MultiStore {
         )
         .unwrap();
         x_bank::set_balance(&mut ctx, addr, &Coin::new("utia", 1_000_000)).unwrap();
+        let params = celestia_proto::celestia::blob::v1::Params {
+            gas_per_blob_byte: 8,
+            gov_max_square_size: 256,
+        };
+        ctx.set("blob", b"params".to_vec(), params.encode_to_vec())
+            .unwrap();
         let p = celestia_proto::celestia::minfee::v1::Params {
             network_min_gas_price: "1000000000000".into(),
         };
@@ -225,6 +233,113 @@ fn funded_ms(header: &Header, addr: &[u8]) -> MultiStore {
             .unwrap();
     }
     ms
+}
+
+#[test]
+fn v11_check_tx_reads_legacy_module_parameters() {
+    use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+    use x_ante::AnteDeps;
+
+    let (sk, pk, addr) = key();
+    let header = Header {
+        chain_id: "test".into(),
+        height: 5,
+        ..Default::default()
+    };
+    let mut ms = funded_ms(&header, &addr);
+    let mut ctx = Context::new(&mut ms, header.clone(), ExecMode::Finalize);
+    ctx.delete("minfee", b"params").unwrap();
+    ctx.delete("blob", b"params").unwrap();
+    for (key, value) in [
+        ("minfee/NetworkMinGasPrice", r#""0.010000000000000000""#),
+        ("blob/GasPerBlobByte", "8"),
+        ("blob/GovMaxSquareSize", r#""64""#),
+    ] {
+        ctx.set("params", key.as_bytes().to_vec(), value.as_bytes().to_vec())
+            .unwrap();
+    }
+    ms.flush().unwrap();
+    ms.commit().unwrap();
+    let mut ctx = Context::new(&mut ms, header, ExecMode::Check);
+    ctx.consensus_params.version = Some(VersionParams { app: 11 });
+    let deps = StoreDeps::default();
+    assert_eq!(deps.blob_gov_max_square_size(&mut ctx).unwrap(), 64);
+    assert_eq!(
+        deps.network_min_gas_price(&mut ctx).unwrap().to_string(),
+        "0.010000000000000000"
+    );
+    let tx = build_tx(&sk, &pk, &addr, 0, "test", 1);
+    ctx.tx_bytes.clone_from(&tx.tx_bytes);
+    ante_handle(&mut ctx, &tx, false, &deps).unwrap();
+}
+
+#[test]
+fn v12_simulate_matches_pending_sequence_without_additional_gas() {
+    use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+
+    let (sk, pk, addr) = key();
+    let header = Header {
+        chain_id: "test".into(),
+        height: 5,
+        ..Default::default()
+    };
+    let deps = StoreDeps {
+        sdk_message_counter: Some(<[Any]>::len),
+        ..StoreDeps::default()
+    };
+    let run = |version, current, sequence, next: Option<u64>| {
+        let mut ms = funded_ms(&header, &addr);
+        ms.flush().unwrap();
+        ms.commit().unwrap();
+        let mut ctx = Context::new(&mut ms, header.clone(), ExecMode::Check);
+        ctx.mode = ExecMode::Simulate;
+        ctx.consensus_params.version = Some(VersionParams { app: version });
+        let mut account = x_auth::get_account(&mut ctx, &addr).unwrap().unwrap();
+        account.base_mut().sequence = current;
+        x_auth::set_account(&mut ctx, &account).unwrap();
+
+        let tx = build_tx(&sk, &pk, &addr, sequence, "test", 1);
+        ctx.tx_bytes.clone_from(&tx.tx_bytes);
+        let pending = |signer: &[u8]| {
+            assert_eq!(signer, addr);
+            next
+        };
+        let branch = ctx.branch();
+        let result = x_ante::ante_simulate(&mut ctx, &tx, &deps, Some(&pending));
+        let gas = ctx.gas.consumed();
+        ctx.discard(branch);
+        assert_eq!(
+            x_auth::get_account(&mut ctx, &addr)
+                .unwrap()
+                .unwrap()
+                .sequence(),
+            current
+        );
+        (result, gas)
+    };
+
+    let (lifted, lifted_gas) = run(12, 3, 6, Some(6));
+    let (present, present_gas) = run(12, 6, 6, None);
+    assert!(lifted.is_ok(), "{lifted:?}");
+    assert!(present.is_ok(), "{present:?}");
+    assert_eq!(lifted_gas, present_gas);
+
+    for (version, current, sequence, next, expected) in [
+        (11, 0, 6, 6, 0), // historical simulation ignores pending sequences
+        (12, 0, 5, 6, 6), // already pending
+        (12, 0, 7, 6, 6), // skipped sequence
+        (12, 7, 6, 6, 7), // check state is already ahead
+    ] {
+        let (result, _) = run(version, current, sequence, Some(next));
+        let error = result.unwrap_err().error;
+        assert_eq!((error.codespace, error.code), ("sdk", 32));
+        assert_eq!(
+            error.log,
+            format!(
+                "account sequence mismatch, expected {expected}, got {sequence}: incorrect account sequence"
+            )
+        );
+    }
 }
 
 #[test]
@@ -330,12 +445,6 @@ fn ibc_callback_cannot_translate_or_swallow_out_of_gas() {
             let mut ms = funded_ms(&header, &addr);
             {
                 let mut ctx = Context::new(&mut ms, header.clone(), ExecMode::Finalize);
-                let params = celestia_proto::celestia::blob::v1::Params {
-                    gas_per_blob_byte: 8,
-                    gov_max_square_size: 256,
-                };
-                ctx.set("blob", b"params".to_vec(), params.encode_to_vec())
-                    .unwrap();
                 x_auth::get_module_account(&mut ctx, "transfer").unwrap();
                 let cp = ctx.branch();
                 x_bank::mint_coins(

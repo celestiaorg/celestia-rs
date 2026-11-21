@@ -466,7 +466,7 @@
         {
           "source": {
             "path": "crates/tier-4-runtime/rpc/src/server.rs",
-            "sha256": "9e8efaf1335e124af116ee67fa6cf0eb4843497116f1dd99b2a9f58cc96549c4"
+            "sha256": "348c4d3e52805fc33ffd702c4af164a5a9ae8f78e10923f271815b3c2a714120"
           },
           "function": "websocket_write_is_bounded"
         },

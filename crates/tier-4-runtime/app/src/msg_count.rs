@@ -31,11 +31,14 @@ pub struct NoStore;
 /// `countExecutableMsgs` over `msgs` as `GetMsgs` returns them
 /// ([`sdk::tx::Tx::gogo_msgs`]). `ctx` is `None` when Go's context is
 /// `sdk.Context{}` (an ante decorator returned it): reading the channel
-/// then panics, reported as [`NoStore`].
+/// then panics, reported as [`NoStore`]. From v12 the count reads no channel state.
 pub fn count_executable_msgs(
     mut ctx: Option<&mut Context<'_>>,
     msgs: &[Any],
 ) -> Result<usize, NoStore> {
+    if sdk::version::is_v12(sdk::version::app_version()) {
+        return Ok(count_sdk_message_gas_weight(msgs));
+    }
     sum_msg_weights(msgs, |packet| {
         count_ica_packet_msgs(ctx.as_deref_mut(), packet)
     })
@@ -47,9 +50,9 @@ pub(crate) fn count_sdk_message_gas_weight(msgs: &[Any]) -> usize {
     use std::convert::Infallible;
     match sum_msg_weights(msgs, |packet| {
         Ok::<_, Infallible>(ica_payload(packet).map_or(0, |data| {
-            count_proto_msgs(&data)
-                .unwrap_or(0)
-                .max(count_json_msgs(&data).unwrap_or(0))
+            txdecode::count_cosmos_tx_entries(&data)
+                .max(count_json_msgs_v12(&data))
+                .unwrap_or(MAX_SDK_MESSAGES)
         }))
     }) {
         Ok(weight) => weight,
@@ -215,6 +218,53 @@ fn count_proto_msgs(mut bz: &[u8]) -> Option<usize> {
     Some(count)
 }
 
+/// v12 reads the first JSON object as a stream of exact "messages" keys.
+/// Go decodes only the last value into the message array.
+fn count_json_msgs_v12(data: &[u8]) -> Option<usize> {
+    fn trim(raw: &[u8]) -> &[u8] {
+        let n = raw
+            .iter()
+            .take_while(|b| matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
+            .count();
+        &raw[n..]
+    }
+
+    let mut rest = trim(data);
+    if rest.starts_with(b"null") {
+        return Some(0);
+    }
+    rest = trim(rest.strip_prefix(b"{")?);
+    if rest.starts_with(b"}") {
+        return Some(0);
+    }
+    loop {
+        let key = gojson::first_value(rest).ok()?.span;
+        let raw = &rest[key.clone()];
+        if raw.first() != Some(&b'"') || gojson::unquote(raw) != "messages" {
+            return None;
+        }
+        rest = trim(&rest[key.end..]).strip_prefix(b":")?;
+        let value = gojson::first_value(rest).ok()?.span;
+        let raw = &rest[value.clone()];
+        rest = trim(&rest[value.end..]);
+        if rest.starts_with(b"}") {
+            use gojson::Kind;
+            return match &gojson::parse(raw).ok()?.kind {
+                Kind::Null => Some(0),
+                Kind::Array(items)
+                    if items
+                        .iter()
+                        .all(|v| matches!(v.kind, Kind::Null | Kind::Object(_))) =>
+                {
+                    Some(items.len())
+                }
+                _ => None,
+            };
+        }
+        rest = trim(rest.strip_prefix(b",")?);
+    }
+}
+
 /// `countJSONMsgs`: `encoding/json` `Unmarshal` into
 /// `struct{ Messages []struct{} }`. Go validates the whole input first
 /// (`checkValid`: at most 10 000 nested levels, also inside values the
@@ -300,8 +350,9 @@ mod tests {
     }
 
     #[test]
-    fn gas_weight_counts_authz_and_ica_fanout_without_channel_state() {
+    fn v12_counts_authz_and_ica_fanout_without_channel_state() {
         use base64::{Engine, engine::general_purpose::STANDARD};
+        use celestia_proto::ibc::applications::interchain_accounts::v1::CosmosTx;
         let ica = |payload: &[u8]| {
             Any::pack(&MsgRecvPacket {
                 packet: Some(Packet {
@@ -318,15 +369,42 @@ mod tests {
             })
         };
         let send = Any::pack(&MsgSend::default());
-        for payload in [&[0x0a, 0, 0x0a, 0][..], &br#"{"messages":[{},{}]}"#[..]] {
-            assert_eq!(count_sdk_message_gas_weight(&[ica(payload)]), 3);
+        let proto = CosmosTx {
+            messages: vec![send.clone(); 2],
+        }
+        .encode_to_vec();
+        let json_send = serde_json::json!({"@type": MsgSend::type_url()});
+        let json = serde_json::json!({"messages": [json_send, json_send]}).to_string();
+        for payload in [proto.as_slice(), json.as_bytes()] {
+            let msgs = [ica(payload)];
+            sdk::version::set_app_version(11);
+            assert_eq!(count_executable_msgs(None, &msgs), Err(NoStore));
+            sdk::version::set_app_version(12);
+            assert_eq!(count_executable_msgs(None, &msgs), Ok(3));
+            assert_eq!(count_sdk_message_gas_weight(&msgs), 3);
             let exec = Any::pack(&MsgExec {
                 msgs: vec![send.clone(), ica(payload)],
                 ..Default::default()
             });
             assert_eq!(count_sdk_message_gas_weight(&[exec]), 5);
         }
-        assert_eq!(count_sdk_message_gas_weight(&[ica(&[0xff])]), 1);
+        assert_eq!(
+            count_sdk_message_gas_weight(&[ica(&[0xff])]),
+            1 + MAX_SDK_MESSAGES
+        );
+        sdk::version::set_app_version(0);
+    }
+
+    #[test]
+    fn v12_json_counts_the_last_exact_messages_key_of_the_first_value() {
+        assert_eq!(
+            count_json_msgs_v12(br#"{"messages":null,"messages":[{}]} {}"#),
+            Some(1)
+        );
+        assert_eq!(count_json_msgs_v12(br#"{"Messages":[{}]}"#), None);
+        assert_eq!(count_json_msgs_v12(br#"{"messages":[],"memo":""}"#), None);
+        assert_eq!(count_json_msgs_v12(br#"{"messages":[{}],}"#), None);
+        assert_eq!(count_json_msgs_v12(b"null"), Some(0));
     }
 
     #[test]

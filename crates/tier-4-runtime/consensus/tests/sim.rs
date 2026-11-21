@@ -72,10 +72,19 @@ struct SimApp {
     disk: Arc<Mutex<AppDisk>>,
     pending: Option<AppDisk>,
     val_updates: Vec<(i64, Vec<abci::ValidatorUpdate>)>,
+    v12_after_commit: Option<i64>,
 }
 
-fn app_timeouts() -> abci::TimeoutInfo {
-    // celestia-app v10 `TimeoutInfo()` defaults.
+impl SimApp {
+    fn timeouts(&self, height: i64) -> abci::TimeoutInfo {
+        let v12 = self
+            .v12_after_commit
+            .is_some_and(|activation| height >= activation);
+        app_timeouts(v12)
+    }
+}
+
+fn app_timeouts(v12: bool) -> abci::TimeoutInfo {
     let d = |s, n| {
         Some(pbjson_types::Duration {
             seconds: s,
@@ -87,10 +96,11 @@ fn app_timeouts() -> abci::TimeoutInfo {
         timeout_propose_delta: d(0, 500_000_000),
         timeout_prevote: d(2, 0),
         timeout_prevote_delta: d(0, 500_000_000),
-        timeout_precommit: d(3, 0),
+        timeout_precommit: d(if v12 { 2 } else { 3 }, 0),
         timeout_precommit_delta: d(0, 500_000_000),
-        timeout_commit: d(0, 500_000_000),
-        delayed_precommit_timeout: d(2, 100_000_000),
+        timeout_commit: d(0, if v12 { 100_000_000 } else { 500_000_000 }),
+        delayed_precommit_timeout: if v12 { d(0, 0) } else { d(2, 100_000_000) },
+        dynamic_timeout_commit: if v12 { d(0, 800_000_000) } else { None },
     }
 }
 
@@ -101,7 +111,7 @@ impl AppConn for SimApp {
             last_block_height: d.height,
             last_block_app_hash: d.hash,
             app_version: 1,
-            timeout_info: Some(app_timeouts()),
+            timeout_info: Some(self.timeouts(d.height)),
             ..Default::default()
         })
     }
@@ -113,7 +123,7 @@ impl AppConn for SimApp {
         self.disk.lock().unwrap().hash.clone_from(&h);
         Ok(abci::ResponseInitChain {
             app_hash: h,
-            timeout_info: Some(app_timeouts()),
+            timeout_info: Some(self.timeouts(0)),
             ..Default::default()
         })
     }
@@ -180,7 +190,7 @@ impl AppConn for SimApp {
                 .map(|(_, u)| u.clone())
                 .unwrap_or_default(),
             app_hash: hash,
-            timeout_info: Some(app_timeouts()),
+            timeout_info: Some(self.timeouts(req.height)),
             ..Default::default()
         })
     }
@@ -372,6 +382,8 @@ struct Scenario {
     val_updates: Vec<(i64, usize, i64)>,
     /// First height with vote extensions (0 = disabled).
     vote_extensions_height: i64,
+    /// Commit that advertises v12 pacing for the following height.
+    v12_after_commit: Option<i64>,
     /// A node whose first boot is asked to stop while it waits in the
     /// delayed precommit (SIGTERM mid-height); `crashes` restarts it.
     stop_in_precommit_wait: Option<usize>,
@@ -537,6 +549,7 @@ impl Sim {
             disk: node.disks.app.clone(),
             pending: None,
             val_updates,
+            v12_after_commit: self.sc.v12_after_commit,
         };
         let height = node.disks.app.lock().unwrap().height;
         let pool = Arc::new(mempool::TxPool::new(
@@ -931,6 +944,22 @@ fn four_validators_reliable_network() {
     assert_eq!(o.max_round, 0);
     // Proposers reap their TxPools; committed txs leave every pool.
     assert!(o.txs >= 10, "only {} txs committed", o.txs);
+}
+
+#[test]
+fn four_validators_switch_to_v12_pacing() {
+    let outcome = Sim::new(Scenario {
+        n: 4,
+        seed: 1,
+        duration_s: 24,
+        target_height: 14,
+        max_delay_ms: 30,
+        v12_after_commit: Some(4),
+        ..Scenario::default()
+    })
+    .run();
+    assert_live(&outcome, 14, &[0, 1, 2, 3]);
+    assert_eq!(outcome.sign_refusals, 0);
 }
 
 #[test]

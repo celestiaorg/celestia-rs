@@ -925,6 +925,9 @@ fn follow_inner(
     let mut app_opts = opts.app.clone();
     app_opts.chain_id = Some(chain_id.clone());
     app_opts.node.home = Some(home.clone());
+    if opts.snapshot.is_some() {
+        crate::node::apply_local_genesis(home, &mut app_opts)?;
+    }
     let app =
         app::App::open_with(home, app_opts).map_err(|e| anyhow!("open app state: {}", e.log))?;
     let app = Arc::new(Mutex::new(app));

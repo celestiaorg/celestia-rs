@@ -25,25 +25,19 @@ alongside the Go validators:
 
 | Network | Validator |
 |---|---|
-| Mocha | [Mocha validator](https://www.mintscan.io/celestia-testnet/validators/celestiavaloper13v73gcz3k923ajt23alr5h3wuvsgqxu3jag0sd) |
-| Mainnet | [Mainnet validator](https://www.mintscan.io/celestia/validators/celestiavaloper16v6qxgj2w996jt49tngf9fkvxw6j7u0uh6d9ec) |
+| Mocha | [Mocha validator](https://mocha.celenium.io/validator/122597103?tab=proposed+blocks) |
+| Mainnet | [Mainnet validator](https://celenium.io/validator/1499834894?tab=proposed+blocks) |
 
-Roadmap and progress: [`MILESTONES.md`](MILESTONES.md). Open decisions:
-[`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
+General mainnet recommendation for non-archival RPC nodes, full consensus
+nodes and validators is pending qualification against Go celestia-app
+v10.6.0. See [ADR 0008](docs/adr/0008-mainnet-recommendation.md) for scope
+and evidence requirements.
+
+See the [milestones](MILESTONES.md) for qualification progress and the
+[open questions](OPEN_QUESTIONS.md) for outstanding owner decisions.
 
 ## Goals
 
-- **Mainnet recommendation:** qualify celestia-rs for non-archival RPC
-  nodes, full consensus nodes and validators. The reference is Go
-  celestia-app **v10.6.0** (ADR 0010). Archival service, HSMs and remote
-  signers are later goals; an external security audit is optional. See
-  [ADR 0008](docs/adr/0008-mainnet-recommendation.md) for scope and evidence
-  requirements. General recommendation remains pending qualification.
-
-- **Compatible with Celestia Mainnet:** run alongside Go
-  [celestia-app](https://github.com/celestiaorg/celestia-app) and
-  [celestia-core](https://github.com/celestiaorg/celestia-core) nodes on the
-  existing network, with matching app hashes and wire formats.
 - **Faster than the Go consensus node:** see
   [Performance vs Go](#performance-vs-go).
 - **Minimal dependencies:** every external crate is a potential supply chain
@@ -70,23 +64,23 @@ Roadmap and progress: [`MILESTONES.md`](MILESTONES.md). Open decisions:
 
 ## Performance vs Go
 
-Release builds of both on the same machine, same recorded heavy chain (513
-heights, 257k txs, blocks up to 27.9 MiB). Linux cloud VM; the reference
-run on the Mac Mini is pending. Full method and caveats:
-[`docs/benchmarks/`](docs/benchmarks/README.md).
+The October 20 reference run used release builds on the same Mac Mini M4
+(16 GB RAM, 256 GB SSD) with Go celestia-appd v10.4.0 and celestia-rs
+`fb42fd2`. The recorded workload covered 511 heights and 386,980
+transactions, with blocks up to 28.2 MiB. Both implementations matched
+every recorded app hash. See the [benchmark report](docs/benchmarks/README.md#results-mac-mini-m4-2026-10-20-b1-reference)
+for the method and caveats.
 
 | | Go | Rust | |
 |---|---|---|---|
-| Block execution (FinalizeBlock + Commit) | 225 tx/s | 802 tx/s | 3.6x faster |
-| CheckTx, new txs | 971 tx/s | 2,007 tx/s | 2.1x faster |
-| State sync to first block | 60.3 s | 16.3 s | 3.7x faster |
-| Block sync | 1.1 blocks/s | 1.3 blocks/s | 1.2x faster |
-| Memory (RSS after block sync) | 1,860 MB | 1,264 MB | 32% less |
-| App state on disk | 329 MB | 549 MB | 1.7x larger ([ADR 0006](docs/adr/0006-compact-iavl-storage.md)) |
-
-Since that run, parallel SIMD erasure coding, a signature cache and
-libsecp256k1 cut PrepareProposal on max-size squares from ~1.1x Go's
-latency to ~0.65x and ProcessProposal to ~0.25x.
+| Block execution (FinalizeBlock + Commit) | 1,189 tx/s | 4,765 tx/s | 4.0x faster |
+| CheckTx, new txs | 6,391 tx/s | 13,178 tx/s | 2.1x faster |
+| State sync to first block | 40.8 s | 11.6 s | 3.5x faster |
+| Block sync (511 heights) | 186.6 s | 134.4 s | 28% less time |
+| Memory (RSS after block sync) | 2,373 MB | 1,381 MB | 42% less |
+| App state on disk after replay | 456 MB | 487 MB | 7% larger |
+| PrepareProposal, max-size squares (median) | 205.6 ms | 211.6 ms | 3% slower |
+| ProcessProposal, max-size squares (median) | 211.9 ms | 58.1 ms | 3.6x faster |
 
 ## Getting started
 
@@ -96,9 +90,9 @@ Install a release ([above](#install)), or build from source:
 cargo build --release -p celestia-rs
 ```
 
-Running a node or a validator on Mocha or mainnet:
-[`docs/operator-guide.md`](docs/operator-guide.md) (§11 is the Mocha
-validator runbook).
+The operator guide covers running a node and has validator runbooks for
+[Mocha](docs/operator-guide.md#11-running-a-mocha-validator-on-a-mac-m13) and
+[mainnet](docs/operator-guide.md#12-mainnet-validator-m14).
 
 ## Development
 
@@ -106,6 +100,17 @@ validator runbook).
 cargo test --workspace
 cargo xtask repo-health --offline   # local gate
 cargo xtask refresh-fixtures        # regenerate Go fixtures (needs Go)
+```
+
+The [static analysis workflow](.github/workflows/static-analysis.yml) runs
+Rust CodeQL scanning and Kani proofs for the `shares` crate. CodeQL findings
+appear under Security → Code scanning. To run the same Kani proofs locally on
+Linux or macOS:
+
+```sh
+cargo install --locked kani-verifier --version 0.68.0
+cargo kani setup
+cargo kani -p shares
 ```
 
 `crates/` holds the workspace, tiered from primitives up to the node

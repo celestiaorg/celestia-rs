@@ -8,7 +8,7 @@ use aes::cipher::{
 use aes_gcm::aead::{Aead as _, Payload};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64URL;
-use rand::RngCore as _;
+use rand_core::{OsRng, RngCore as _};
 
 use crate::Error;
 
@@ -102,7 +102,7 @@ fn kek(password: &str, p2s: &[u8], p2c: u32) -> [u8; 16] {
 /// `jose.Encrypt(payload, PBES2_HS256_A128KW, A256GCM, password,
 /// Headers{"created": created})`.
 pub fn encrypt(payload: &[u8], password: &str, created: &str) -> Result<String, Error> {
-    let mut rng = rand::rngs::OsRng;
+    let mut rng = OsRng;
     let mut p2s = [0u8; 12];
     rng.fill_bytes(&mut p2s);
     let mut cek = [0u8; 32];

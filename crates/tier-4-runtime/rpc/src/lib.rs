@@ -40,6 +40,7 @@ pub mod indexer;
 pub mod json;
 pub mod params;
 pub mod query;
+mod query_tag_ranges;
 pub mod server;
 
 pub use env::{

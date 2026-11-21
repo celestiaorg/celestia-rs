@@ -47,7 +47,7 @@ impl Id {
     fn to_json(&self) -> J {
         match self {
             Self::Int(i) => J::num(i),
-            Self::Str(s) => J::str(s),
+            Self::Str(s) => J::str(gostr::from_go_bytes(s.as_bytes())),
         }
     }
 }

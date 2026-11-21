@@ -786,7 +786,9 @@ fn find_height_phrase(s: &str, suffix: &str) -> bool {
 
 /// `backoffTimeout`: 0.5s·attempt² plus up to 1s jitter.
 fn backoff_timeout(attempt: u16) -> Duration {
-    let jitter = rand::random::<u64>() % 1000;
+    let mut bytes = [0; 8];
+    // Entropy is optional for spreading retries. Keep the base delay if it is unavailable.
+    let jitter = getrandom::getrandom(&mut bytes).map_or(0, |()| u64::from_ne_bytes(bytes) % 1000);
     Duration::from_millis(500 * u64::from(attempt) * u64::from(attempt) + jitter)
 }
 
@@ -970,6 +972,14 @@ pub mod fuzzing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retry_jitter_stays_within_one_second_of_the_base_delay() {
+        for attempt in [0, 1, 2, 5, u16::MAX] {
+            let base = Duration::from_millis(500 * u64::from(attempt).pow(2));
+            assert!((base..base + Duration::from_secs(1)).contains(&backoff_timeout(attempt)));
+        }
+    }
 
     /// Evidence as `/block` renders it (celestia-core v0.42.3 cmtjson,
     /// `conformance/evidencevectors`): decodes to Go's protobuf encoding

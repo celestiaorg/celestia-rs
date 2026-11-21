@@ -148,6 +148,13 @@ impl TxPool {
         self.store.size()
     }
 
+    /// Highest pending sequence for a signer. Only takes the store read lock,
+    /// so the application can call it during a pool update or recheck.
+    #[must_use]
+    pub fn highest_pending_sequence(&self, signer: &[u8]) -> Option<u64> {
+        self.store.highest_sequence(signer)
+    }
+
     /// `SizeBytes`.
     #[must_use]
     pub fn size_bytes(&self) -> i64 {

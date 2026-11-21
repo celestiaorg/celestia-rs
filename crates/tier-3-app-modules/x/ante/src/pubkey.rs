@@ -244,14 +244,10 @@ impl PubKey {
 fn verify_ed25519(key: &[u8], msg: &[u8], sig: &[u8]) -> bool {
     // ed25519 accounts are rejected by the gas consumer before verification;
     // this mirrors cometbft's ZIP-215 verification for completeness.
-    let (Ok(k), Ok(s)) = (<[u8; 32]>::try_from(key), <[u8; 64]>::try_from(sig)) else {
+    let (Ok(key), Ok(sig)) = (key.try_into(), sig.try_into()) else {
         return false;
     };
-    let Ok(vk) = ed25519_consensus::VerificationKey::try_from(k) else {
-        return false;
-    };
-    vk.verify(&ed25519_consensus::Signature::from(s), msg)
-        .is_ok()
+    crypto::ed25519::verify(key, msg, sig)
 }
 
 fn put_uvarint(out: &mut Vec<u8>, mut v: u64) {

@@ -16,12 +16,12 @@ workspace = true
 abci-server = { path = "../abci-server" }
 celestia-core-proto = { path = "../../tier-1-protocol-types/celestia-core-proto" }
 ctypes = { path = "../../tier-1-protocol-types/ctypes" }
+hash = { path = "../../tier-0-primitives/hash" }
 light = { path = "../light" }
 nodestore = { path = "../nodestore" }
 p2p = { path = "../p2p" }
 prost = "0.13"
 rand = "0.9"
-sha2 = "0.10"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 tracing = "0.1"
 
