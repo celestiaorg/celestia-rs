@@ -91,7 +91,7 @@ pub(super) async fn listener(
             .layer(DefaultBodyLimit::max(64 * 1024))
             .with_state(Arc::new(Service {
                 auth: Auth::open(home)?,
-                data: super::data::Client::new(peers),
+                data: super::data::Client::new(peers)?,
                 db,
                 status,
                 waiters: tokio::sync::Semaphore::new(8),

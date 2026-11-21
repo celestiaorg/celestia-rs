@@ -86,7 +86,11 @@ func main() {
 	if _, err := c.Header.GetRangeByHeight(ctx, &wrong, height+3); err == nil {
 		panic("wrong predecessor accepted")
 	}
+	if err := c.Share.SharesAvailable(ctx, height+3); err == nil {
+		panic("unsampled height reported available offline")
+	}
 	for h := height; h <= height+2; h++ {
+		check(c.Share.SharesAvailable(ctx, h))
 		header, err := c.Header.GetByHeight(ctx, h)
 		check(err)
 		check(header.Validate())
