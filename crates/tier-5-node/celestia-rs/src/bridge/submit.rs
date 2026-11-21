@@ -66,7 +66,7 @@ impl Wallet {
     pub(super) async fn submit(
         self: &Arc<Self>,
         params: &Value,
-        core_blobs: bool,
+        method: &str,
         states: nodestore::StateStore,
     ) -> Result<Receipt> {
         // Keep the sequence reserved until inclusion even when the HTTP caller disconnects.
@@ -77,28 +77,59 @@ impl Wallet {
             .context("bridge signer busy")?;
         let params = params
             .as_array()
-            .filter(|p| p.len() == 2)
-            .context("expected blobs and transaction options")?;
-        let blobs = params[0]
-            .as_array()
-            .filter(|v| !v.is_empty())
-            .context("expected a nonempty blob array")?
-            .iter()
-            .map(|value| parse_blob(value, core_blobs))
-            .collect::<Result<Vec<_>>>()?;
+            .context("expected transaction parameters")?;
+        let (options, args) = params
+            .split_last()
+            .context("expected transaction options")?;
         let options =
-            serde_json::from_value::<Option<Options>>(params[1].clone())?.unwrap_or_default();
+            serde_json::from_value::<Option<Options>>(options.clone())?.unwrap_or_default();
+        let (message, blobs, blob_gas) = match (method, args) {
+            ("state.Transfer", [to, amount]) => {
+                let to = to.as_str().context("expected recipient address")?;
+                ensure!(
+                    client::acc_address_from_bech32(to).is_some(),
+                    "invalid recipient address"
+                );
+                let amount: math::Int = amount
+                    .as_str()
+                    .context("expected integer amount")?
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("invalid amount"))?;
+                ensure!(amount.is_positive(), "invalid amount");
+                let msg = client::bank_message(
+                    self.address(),
+                    to,
+                    txs::parse_coins(&format!("{amount}utia"))?,
+                );
+                (msg, None, None)
+            }
+            ("blob.Submit" | "state.SubmitPayForBlob", [values]) => {
+                let blobs = values
+                    .as_array()
+                    .filter(|v| !v.is_empty())
+                    .context("expected a nonempty blob array")?
+                    .iter()
+                    .map(|v| parse_blob(v, method == "state.SubmitPayForBlob"))
+                    .collect::<Result<Vec<_>>>()?;
+                let msg = txs::msg_pay_for_blobs(&self.address(), &blobs)?;
+                let gas = txs::pfb_gas(&msg);
+                (Any::pack(&msg), Some(blobs), Some(gas))
+            }
+            _ => anyhow::bail!("invalid transaction parameters"),
+        };
         let wallet = self.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            wallet.broadcast(blobs, &options, &states)
+            wallet.broadcast(message, blobs, blob_gas, &options, &states)
         })
         .await?
     }
 
     fn broadcast(
         &self,
-        blobs: Vec<shares::Blob>,
+        message: Any,
+        blobs: Option<Vec<shares::Blob>>,
+        blob_gas: Option<u64>,
         options: &Options,
         states: &nodestore::StateStore,
     ) -> Result<Receipt> {
@@ -117,14 +148,20 @@ impl Wallet {
                 || client::acc_address_from_bech32(&options.fee_granter_address).is_some(),
             "invalid fee granter address"
         );
-        let msg = txs::msg_pay_for_blobs(&address, &blobs)?;
         let mut flags = self.flags.clone();
-        let price = options.price(&self.app)?;
-        flags.fee.gas = if options.gas == 0 {
-            txs::pfb_gas(&msg)
+        let (price, gas) = if let Some(default_gas) = blob_gas {
+            (
+                options.price(&self.app)?,
+                if options.gas == 0 {
+                    default_gas
+                } else {
+                    options.gas
+                },
+            )
         } else {
-            options.gas
+            self.message_fee(&message, options)?
         };
+        flags.fee.gas = gas;
         #[allow(clippy::cast_precision_loss)]
         let fee = (price * flags.fee.gas as f64).ceil();
         ensure!(
@@ -134,7 +171,7 @@ impl Wallet {
         flags.fee.fees = format!("{fee:.0}utia");
         flags.fee.granter.clone_from(&options.fee_granter_address);
         let res = client::send_with_signer(&self.home, &flags, &self.signer, false, |_| {
-            Ok((vec![Any::pack(&msg)], Some(blobs)))
+            Ok((vec![message], blobs))
         })?;
         let hash = res["txhash"].as_str().context("missing transaction hash")?;
         let height = committed_height(&txs::Node::new(&flags.node), states, hash)?;
@@ -142,6 +179,58 @@ impl Wallet {
             height,
             hash: hash.to_owned(),
         })
+    }
+    fn message_fee(&self, message: &Any, opts: &Options) -> Result<(f64, u64)> {
+        let explicit = opts.is_gas_price_set && opts.gas_price.to_bits() != (-1.0_f64).to_bits();
+        if explicit && opts.gas != 0 {
+            return Ok((opts.gas_price, opts.gas));
+        }
+        let (account_number, sequence) =
+            txs::Node::new(&self.flags.node).account(&self.address())?;
+        let estimate = txs::UnsignedTx {
+            msgs: vec![message.clone()],
+            memo: String::new(),
+            timeout_height: 0,
+            fee: txs::FeeOptions {
+                fees: "1utia".into(),
+                ..Default::default()
+            }
+            .fee_with_gas(0)?,
+            chain_id: self.flags.chain_id.clone(),
+            account_number,
+            sequence,
+        };
+        let req = gas::EstimateGasPriceAndUsageRequest {
+            tx_priority: opts.priority(),
+            tx_bytes: txs::sign(
+                &estimate,
+                self.signer.key().context("missing configured signer")?,
+            )?
+            .raw,
+        };
+        let (bytes, _) = app::node_services::grpc_query(
+            &self.app,
+            "/celestia.core.v1.gas_estimation.GasEstimator/EstimateGasPriceAndUsage",
+            &req.encode_to_vec(),
+            0,
+        )
+        .context("gas estimator unavailable")?
+        .map_err(|e| anyhow::anyhow!("estimate gas usage: {e:?}"))?;
+        let est = gas::EstimateGasPriceAndUsageResponse::decode(bytes.as_slice())?;
+        let price = if explicit {
+            opts.gas_price
+        } else {
+            est.estimated_gas_price
+        };
+        opts.check_price(price)?;
+        Ok((
+            price,
+            if opts.gas != 0 {
+                opts.gas
+            } else {
+                est.estimated_gas_used
+            },
+        ))
     }
 }
 
@@ -193,10 +282,7 @@ impl Options {
             ensure!(self.gas_price >= 0.0, "invalid gas price");
             return Ok(self.gas_price);
         }
-        let priority = match self.tx_priority {
-            1..=3 => self.tx_priority,
-            _ => 0,
-        };
+        let priority = self.priority();
         let req = gas::EstimateGasPriceRequest {
             tx_priority: priority,
         };
@@ -209,6 +295,18 @@ impl Options {
         .context("gas estimator unavailable")?
         .map_err(|e| anyhow::anyhow!("estimate gas price: {e:?}"))?;
         let price = gas::EstimateGasPriceResponse::decode(bytes.as_slice())?.estimated_gas_price;
+        self.check_price(price)?;
+        Ok(price)
+    }
+
+    fn priority(&self) -> i32 {
+        match self.tx_priority {
+            1..=3 => self.tx_priority,
+            _ => 0,
+        }
+    }
+
+    fn check_price(&self, price: f64) -> Result<()> {
         let max_price = if self.max_gas_price == 0.0 {
             100.0 * txs::DEFAULT_MIN_GAS_PRICE
         } else {
@@ -218,7 +316,7 @@ impl Options {
             price <= max_price,
             "estimated gas price exceeds max gas price in tx config"
         );
-        Ok(price)
+        Ok(())
     }
 }
 

@@ -273,14 +273,15 @@ fn coins(s: &str) -> anyhow::Result<Vec<Coin>> {
 pub fn bank_send(home: &Path, f: &TxFlags, to: &str, amount: &str) -> anyhow::Result<Value> {
     let amount = coins(amount)?;
     send_tx(home, f, |k| {
-        Ok((
-            vec![Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend {
-                from_address: k.bech32(ACC_PREFIX),
-                to_address: to.to_owned(),
-                amount,
-            })],
-            None,
-        ))
+        Ok((vec![bank_message(k.bech32(ACC_PREFIX), to, amount)], None))
+    })
+}
+
+pub(crate) fn bank_message(from_address: String, to: &str, amount: Vec<Coin>) -> Any {
+    Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend {
+        from_address,
+        to_address: to.to_owned(),
+        amount,
     })
 }
 

@@ -598,7 +598,7 @@ async fn dispatch(
         }
         if matches!(
             method,
-            "blob.Submit" | "state.SubmitPayForBlob" | "state.AccountAddress"
+            "blob.Submit" | "state.SubmitPayForBlob" | "state.Transfer" | "state.AccountAddress"
         ) {
             let submit = method != "state.AccountAddress";
             require(method, if submit { "write" } else { "read" })?;
@@ -607,12 +607,11 @@ async fn dispatch(
                 .as_ref()
                 .ok_or_else(|| (1, "bridge signer is not configured".to_owned()))?;
             if submit {
-                let core_blobs = method == "state.SubmitPayForBlob";
                 let receipt = wallet
-                    .submit(&req["params"], core_blobs, bridge.states.clone())
+                    .submit(&req["params"], method, bridge.states.clone())
                     .await
                     .map_err(|e| (1, e.to_string()))?;
-                if core_blobs {
+                if method != "blob.Submit" {
                     return Ok(J::obj([
                         ("height", J::num(receipt.height)),
                         ("txhash", J::str(receipt.hash)),
