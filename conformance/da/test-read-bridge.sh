@@ -12,11 +12,16 @@ case "$revision" in
 esac
 work=$(mktemp -d)
 peer_args=()
-if [[ "${3:-}" == --peer ]]; then
+if [[ "${3:-}" == --peer || "${3:-}" == --stock-light ]]; then
     peer_args=(--bridge-p2p-listen 127.0.0.1:32121)
 fi
 pid=
+light_pid=
 cleanup() {
+    if [[ -n "$light_pid" ]]; then
+        kill "$light_pid" 2>/dev/null || true
+        wait "$light_pid" || true
+    fi
     if [[ -n "$pid" ]]; then
         kill "$pid" 2>/dev/null || true
         wait "$pid" || true
@@ -58,4 +63,28 @@ if (( ${#peer_args[@]} )); then
     [[ -n "$peer_id" ]] || { echo 'missing DA peer identity' >&2; exit 1; }
     peer_probe=$(dirname "$probe")/peer/read_peer.go
     (cd "$go_tree" && go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data")
+fi
+if [[ "${3:-}" == --stock-light ]]; then
+    (cd "$go_tree" && go build -o "$work/go-da" ./cmd/celestia)
+    genesis=$(curl -fsS 'http://127.0.0.1:26657/block?height=1' | jq -er '.result.block_id.hash')
+    addr="/ip4/127.0.0.1/tcp/32121/p2p/$peer_id"
+    export CELESTIA_CUSTOM="celestia-rs-local:$genesis:$addr"
+    "$work/go-da" light init --node.store "$work/light" >"$work/init.log" 2>&1
+    "$work/go-da" light start --node.store "$work/light" --headers.trusted-peers "$addr" \
+        --rpc.port 32659 >"$work/light.log" 2>&1 &
+    light_pid=$!
+    for attempt in {1..120}; do
+        kill -0 "$light_pid"
+        if curl -sS --max-time 1 -o /dev/null http://127.0.0.1:32659 2>/dev/null; then break; fi
+        sleep 1
+    done
+    DA_TEST_READ_TOKEN=$("$work/go-da" light auth read --node.store "$work/light" | tail -1)
+    export DA_TEST_READ_TOKEN
+    for attempt in {1..5}; do
+        if (cd "$go_tree" && go run "$probe" http://127.0.0.1:32659 "$height" "$namespace" "$data"); then exit 0; fi
+        kill -0 "$light_pid"
+        sleep 3
+    done
+    echo 'Go light node did not recover the paid blob' >&2
+    exit 1
 fi
