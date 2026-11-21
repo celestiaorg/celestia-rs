@@ -47,6 +47,7 @@ mod unknownproto;
 mod unpack;
 mod wrappers;
 
+use celestia_proto::cosmos::tx::v1beta1::AuthInfo;
 use sdk::SdkError;
 use sdk::tx::Tx;
 
@@ -157,9 +158,9 @@ pub fn decode_v9(raw: &[u8]) -> sdk::Result<Tx> {
 /// v9 `indexWrapperDecoder`: decodes the wrapped tx, whatever it holds.
 fn index_wrapper_decode_v9(raw: &[u8]) -> sdk::Result<Tx> {
     let Some((inner, share_indexes)) = unmarshal_index_wrapper(raw) else {
-        return default_tx_decode_inner(raw);
+        return decode_sdk_tx(raw, false);
     };
-    let mut tx = default_tx_decode_inner(&inner)?;
+    let mut tx = decode_sdk_tx(&inner, false)?;
     tx.share_indexes = share_indexes;
     Ok(tx)
 }
@@ -356,10 +357,11 @@ fn decode_inner(raw: &[u8]) -> sdk::Result<Tx> {
 
 /// `indexWrapperDecoder` applied to `raw`.
 fn index_wrapper_decode(raw: &[u8]) -> sdk::Result<Tx> {
+    let strict = !v9() && sdk::version::is_v12(sdk::version::app_version());
     let Some((inner, share_indexes)) = unmarshal_index_wrapper(raw) else {
-        return default_tx_decode_inner(raw);
+        return decode_sdk_tx(raw, strict);
     };
-    let mut tx = default_tx_decode_inner(&inner)?;
+    let mut tx = decode_sdk_tx(&inner, strict)?;
     if tx.body.messages.len() != 1 {
         return Err(SdkError::new(
             "app",
@@ -389,16 +391,17 @@ fn unpack_err(e: UnpackError) -> SdkError {
     }
 }
 
-/// cosmos-sdk `DefaultTxDecoder` (no celestia wrappers).
+/// cosmos-sdk `DefaultTxDecoder` (no celestia wrappers), used by transaction
+/// queries to read committed transactions across app versions.
 pub fn default_tx_decode(tx_bytes: &[u8]) -> sdk::Result<Tx> {
-    with_stack(tx_bytes.len(), || default_tx_decode_inner(tx_bytes))
+    with_stack(tx_bytes.len(), || decode_sdk_tx(tx_bytes, false))
 }
 
 /// [`default_tx_decode`] with celestia-app v9.0.8's interface registry
 /// (app version 9).
 pub fn default_tx_decode_v9(tx_bytes: &[u8]) -> sdk::Result<Tx> {
     with_stack(tx_bytes.len(), || {
-        with_v9(|| default_tx_decode_inner(tx_bytes))
+        with_v9(|| decode_sdk_tx(tx_bytes, false))
     })
 }
 
@@ -408,8 +411,9 @@ fn reject_tx_fields(
     bytes: &[u8],
     info: &'static celestia_proto::wire_table::MessageInfo,
     allow_non_critical: bool,
+    strict: bool,
 ) -> sdk::Result<bool> {
-    if !v9() && sdk::version::is_v12(sdk::version::app_version()) {
+    if strict {
         canonical::check_message(bytes, info, 0).map_err(|e| tx_decode_err(&e))?;
         Ok(false)
     } else {
@@ -419,10 +423,10 @@ fn reject_tx_fields(
     }
 }
 
-fn default_tx_decode_inner(tx_bytes: &[u8]) -> sdk::Result<Tx> {
+fn decode_sdk_tx(tx_bytes: &[u8], strict: bool) -> sdk::Result<Tx> {
     reject_non_adr027_tx_raw(tx_bytes).map_err(|e| tx_decode_err(&e))?;
     let tx_raw_info = gogo::info("cosmos.tx.v1beta1.TxRaw").map_err(|e| tx_decode_err(&e))?;
-    reject_tx_fields(tx_bytes, tx_raw_info, false)?;
+    reject_tx_fields(tx_bytes, tx_raw_info, false, strict)?;
     // cdc.Unmarshal(txBytes, &raw): its error is returned unwrapped.
     let raw = gogo::unmarshal("cosmos.tx.v1beta1.TxRaw", tx_bytes).map_err(|e| undefined(e.0))?;
     let body_bytes = raw.bytes(1).to_vec();
@@ -430,16 +434,25 @@ fn default_tx_decode_inner(tx_bytes: &[u8]) -> sdk::Result<Tx> {
     let signatures = raw.bytes_list(3);
 
     let body_info = gogo::info("cosmos.tx.v1beta1.TxBody").map_err(|e| tx_decode_err(&e))?;
-    let has_unknown_non_criticals = reject_tx_fields(&body_bytes, body_info, true)?;
+    let has_unknown_non_criticals = reject_tx_fields(&body_bytes, body_info, true, strict)?;
     let mut body =
         gogo::unmarshal("cosmos.tx.v1beta1.TxBody", &body_bytes).map_err(|e| tx_decode_err(&e))?;
     unpack::unpack_tx_body(&mut body).map_err(unpack_err)?;
 
     let auth_info = gogo::info("cosmos.tx.v1beta1.AuthInfo").map_err(|e| tx_decode_err(&e))?;
-    reject_tx_fields(&auth_info_bytes, auth_info, false)?;
+    reject_tx_fields(&auth_info_bytes, auth_info, false, strict)?;
     let mut auth = gogo::unmarshal("cosmos.tx.v1beta1.AuthInfo", &auth_info_bytes)
         .map_err(|e| tx_decode_err(&e))?;
     unpack::unpack_auth_info(&mut auth).map_err(unpack_err)?;
+
+    let auth_info = convert::auth_info(&auth);
+    if strict {
+        for (signer, signature) in auth_info.signer_infos.iter().zip(&signatures) {
+            if let Some(mode) = &signer.mode_info {
+                canonical::check_multisignature(mode, signature).map_err(|e| tx_decode_err(&e))?;
+            }
+        }
+    }
 
     build_tx(
         tx_bytes,
@@ -447,7 +460,7 @@ fn default_tx_decode_inner(tx_bytes: &[u8]) -> sdk::Result<Tx> {
         auth_info_bytes,
         signatures,
         &body,
-        &auth,
+        auth_info,
         has_unknown_non_criticals,
     )
 }
@@ -459,18 +472,9 @@ fn build_tx(
     auth_info_bytes: Vec<u8>,
     signatures: Vec<Vec<u8>>,
     body: &Dyn,
-    auth: &Dyn,
+    auth_info: AuthInfo,
     body_has_unknown_non_criticals: bool,
 ) -> sdk::Result<Tx> {
-    let auth_info = convert::auth_info(auth);
-    if !v9() && sdk::version::is_v12(sdk::version::app_version()) {
-        for (signer, signature) in auth_info.signer_infos.iter().zip(&signatures) {
-            if let Some(mode) = &signer.mode_info {
-                canonical::check_multisignature(mode, signature).map_err(|e| tx_decode_err(&e))?;
-            }
-        }
-    }
-
     // `GetMsgs` panics if a message was not unpacked (empty type URL).
     let mut normalized_msgs = Vec::new();
     for any in body.msg_list(1) {

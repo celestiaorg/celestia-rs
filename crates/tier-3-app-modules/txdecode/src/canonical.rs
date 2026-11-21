@@ -667,7 +667,9 @@ mod tests {
         assert!(crate::decode_for(12, &raw).is_err());
         sdk::version::set_app_version(12);
         assert!(crate::decode_for(10, &raw).is_ok());
-        assert!(crate::default_tx_decode(&raw).is_err());
+        assert!(crate::decode(&raw).is_err());
+        // Transaction queries can still read bytes accepted before v12.
+        assert!(crate::default_tx_decode(&raw).is_ok());
         // The explicit historical decoder remains lenient on the worker.
         assert!(crate::decode_v9(&raw).is_ok());
         assert!(crate::default_tx_decode_v9(&raw).is_ok());

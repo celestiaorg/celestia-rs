@@ -1065,10 +1065,16 @@ fn inner_tx(raw: &[u8]) -> Vec<u8> {
 
 /// `SortAndExtractGasPrices`.
 #[allow(clippy::cast_precision_loss)]
-fn sort_and_extract(txs: &[Vec<u8>], max_bytes: i64) -> QResult<Vec<f64>> {
+fn sort_and_extract(txs: &[Vec<u8>], max_bytes: i64, app_version: u64) -> QResult<Vec<f64>> {
     let mut items = Vec::new();
+    let strict = sdk::version::is_v12(app_version);
     for raw in txs {
-        let tx = txdecode::default_tx_decode(&inner_tx(raw))?;
+        // Go's gas estimator uses the execution decoder at v12.
+        let tx = if strict {
+            txdecode::decode_for(app_version, raw)?
+        } else {
+            txdecode::default_tx_decode(&inner_tx(raw))?
+        };
         let fee = tx.auth_info.fee.clone().unwrap_or_default();
         let amount: u64 = fee
             .amount
@@ -1099,7 +1105,7 @@ fn estimate_gas_price_inner(env: &Env<'_>, priority: i32) -> QResult<f64> {
         "unconfirmed_txs",
         params(&[("limit", comet::int_param(-1))]),
     )?;
-    let (max_square_bytes, min_gas_price) = env.with_app(gas_inputs)??;
+    let (max_square_bytes, min_gas_price, app_version) = env.with_app(gas_inputs)??;
     let total_bytes = conv(comet::int(&r["total_bytes"]))?;
     if (total_bytes as f64) < (max_square_bytes as f64) * ESTIMATION_THRESHOLD {
         return Ok(DEFAULT_MIN_GAS_PRICE.max(min_gas_price));
@@ -1112,12 +1118,16 @@ fn estimate_gas_price_inner(env: &Env<'_>, priority: i32) -> QResult<f64> {
         .map(comet::b64)
         .collect::<Result<_, _>>()
         .map_err(QueryError::Plain)?;
-    let prices = sort_and_extract(&txs, i64::try_from(max_square_bytes).unwrap_or(i64::MAX))?;
+    let prices = sort_and_extract(
+        &txs,
+        i64::try_from(max_square_bytes).unwrap_or(i64::MAX),
+        app_version,
+    )?;
     Ok(estimate_for(&prices, priority)?.max(min_gas_price))
 }
 
 /// `getGovMaxSquareBytes` and `getMinGasPrice` at the latest height.
-fn gas_inputs(app: &mut App) -> QResult<(u64, f64)> {
+fn gas_inputs(app: &mut App) -> QResult<(u64, f64, u64)> {
     let h = app.last_block_height();
     let mut state = app
         .create_query_context(h, false)
@@ -1132,7 +1142,11 @@ fn gas_inputs(app: &mut App) -> QResult<(u64, f64)> {
         .to_string()
         .parse()
         .unwrap_or(0.0);
-    Ok((size * size * SHARE_SIZE, network.max(local)))
+    Ok((
+        size * size * SHARE_SIZE,
+        network.max(local),
+        app.execution_version(),
+    ))
 }
 
 fn estimate_gas_price(
