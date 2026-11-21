@@ -356,6 +356,36 @@ pub struct NamespaceRow {
     pub proof: pb::NmtProof,
 }
 
+/// Return a row authentication path for one EDS cell, including parity cells.
+#[cfg(feature = "bridge")]
+pub fn sample_proof(
+    eds: &square::ExtendedDataSquare,
+    dah: &square::DataAvailabilityHeader,
+    row: usize,
+    col: usize,
+) -> Result<pb::NmtProof, SdkError> {
+    let cells = eds.row(row).map_err(|e| square_err(&e))?;
+    if col >= cells.len() {
+        return Err(plain("sample column out of bounds"));
+    }
+    let leaves: Vec<_> = cells
+        .iter()
+        .enumerate()
+        .map(|(index, share)| Node::leaf(&nmt_leaf(eds.original_width(), row, index, share)))
+        .collect();
+    let mut nodes = Vec::new();
+    let root = range_proof(&leaves, col, col + 1, &mut nodes)?;
+    if dah.row_roots.get(row).map(|r| r.as_slice()) != Some(root.to_bytes().as_slice()) {
+        return Err(plain("sample row does not match data availability header"));
+    }
+    Ok(pb::NmtProof {
+        start: i32::try_from(col).map_err(|_| plain("invalid proof start"))?,
+        end: i32::try_from(col + 1).map_err(|_| plain("invalid proof end"))?,
+        nodes: nodes.into_iter().map(Node::to_bytes).collect(),
+        leaf_hash: Vec::new(),
+    })
+}
+
 /// Prove every candidate row of an authenticated EDS, as required by
 /// celestia-node's NamespaceData.Verify.
 #[cfg(feature = "bridge")]

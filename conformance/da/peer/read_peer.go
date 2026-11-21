@@ -68,10 +68,27 @@ func main() {
 	params.WithNetworkID(chain)
 	client, err := shrex.NewClient(params, host)
 	check(err)
+	width := len(eh.DAH.RowRoots)
+	for _, row := range []int{0, width - 1} {
+		rid, err := shwap.NewRowID(h, row, width)
+		check(err)
+		var half shwap.Row
+		_, _, err = client.Get(ctx, &rid, &half, info.ID)
+		check(err)
+		check(half.Verify(eh.DAH, row))
+		for _, col := range []int{0, width - 1} {
+			sid, err := shwap.NewSampleID(h, shwap.SampleCoords{Row: row, Col: col}, width)
+			check(err)
+			var sample shwap.Sample
+			_, _, err = client.Get(ctx, &sid, &sample, info.ID)
+			check(err)
+			check(sample.Verify(eh.DAH, row, col))
+		}
+	}
 	id, err := shwap.NewNamespaceDataID(h, ns)
 	check(err)
 	var rows shwap.NamespaceData
-	_, _, err = client.Get(ctx, id, &rows, info.ID)
+	_, _, err = client.Get(ctx, &id, &rows, info.ID)
 	check(err)
 	check(rows.Verify(eh.DAH, ns))
 	blobs, err := share.ParseBlobs(rows.Flatten())

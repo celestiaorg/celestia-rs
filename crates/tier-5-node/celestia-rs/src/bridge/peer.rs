@@ -109,6 +109,8 @@ async fn run(
     for (kind, protocol) in [
         (Kind::Header, "header-ex/v0.0.3"),
         (Kind::Namespace, "shrex/v0.1.0/nd_v0"),
+        (Kind::Row, "shrex/v0.1.0/row_v0"),
+        (Kind::Sample, "shrex/v0.1.0/sample_v0"),
         (Kind::Eds, "shrex/v0.1.0/eds_v0"),
     ] {
         let id = StreamProtocol::try_from_owned(format!("/{network}/{protocol}"))?;
@@ -152,6 +154,8 @@ enum Kind {
     Header,
     Namespace,
     Eds,
+    Row,
+    Sample,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -237,15 +241,14 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
                 write(stream, &response.encode_length_delimited_to_vec()).await?;
             }
         }
-        Kind::Eds | Kind::Namespace => {
-            let mut id = vec![
-                0;
-                if matches!(kind, Kind::Namespace) {
-                    8 + shares::NAMESPACE_SIZE
-                } else {
-                    8
-                }
-            ];
+        Kind::Eds | Kind::Namespace | Kind::Row | Kind::Sample => {
+            let extra = match kind {
+                Kind::Namespace => shares::NAMESPACE_SIZE,
+                Kind::Row => 2,
+                Kind::Sample => 4,
+                _ => 0,
+            };
+            let mut id = vec![0; 8 + extra];
             tokio::time::timeout(TIMEOUT, stream.read_exact(&mut id)).await??;
             let height = i64::try_from(u64::from_be_bytes(id[..8].try_into()?))?;
             ensure!(height > 0, "invalid block height");
@@ -267,6 +270,37 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
                             .map_err(|e| anyhow::anyhow!("{}", e.log))?;
                         Payload::Rows(rows)
                     }
+                    Kind::Row => {
+                        let row = usize::from(u16::from_be_bytes(id[8..10].try_into()?));
+                        let half = block.eds.row(row)?[..block.eds.original_width()]
+                            .iter()
+                            .map(|data| WireShare { data: data.clone() })
+                            .collect();
+                        Payload::Frame(HalfRow { shares: half }.encode_length_delimited_to_vec())
+                    }
+                    Kind::Sample => {
+                        let row = usize::from(u16::from_be_bytes(id[8..10].try_into()?));
+                        let col = usize::from(u16::from_be_bytes(id[10..12].try_into()?));
+                        let proof =
+                            app::inclusion_proof::sample_proof(&block.eds, &block.dah, row, col)
+                                .map_err(|e| anyhow::anyhow!("{}", e.log))?;
+                        let share = WireShare {
+                            data: block.eds.share(row, col)?.to_vec(),
+                        };
+                        Payload::Frame(
+                            Sample {
+                                share: Some(share),
+                                proof: Some(Proof {
+                                    start: i64::from(proof.start),
+                                    end: i64::from(proof.end),
+                                    nodes: proof.nodes,
+                                    leaf_hash: vec![],
+                                    ignore_max: true,
+                                }),
+                            }
+                            .encode_length_delimited_to_vec(),
+                        )
+                    }
                     _ => Payload::Square(block.eds),
                 }))
             })
@@ -278,6 +312,7 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
             };
             write(stream, &[2, 8, status]).await?;
             match data? {
+                Some(Payload::Frame(frame)) => write(stream, &frame).await?,
                 Some(Payload::Rows(rows)) => {
                     for row in rows {
                         write(stream, &row_wire(row)).await?;
@@ -299,6 +334,7 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
 }
 
 enum Payload {
+    Frame(Vec<u8>),
     Rows(Vec<app::inclusion_proof::NamespaceRow>),
     Square(square::ExtendedDataSquare),
 }
@@ -382,4 +418,20 @@ fn row_wire(row: app::inclusion_proof::NamespaceRow) -> Vec<u8> {
         }),
     }
     .encode_length_delimited_to_vec()
+}
+
+// SHWAP Row with half_side LEFT (the protobuf default).
+#[derive(Clone, PartialEq, Message)]
+struct HalfRow {
+    #[prost(message, repeated, tag = "1")]
+    shares: Vec<WireShare>,
+}
+
+// SHWAP Sample with proof_type ROW (the protobuf default).
+#[derive(Clone, PartialEq, Message)]
+struct Sample {
+    #[prost(message, optional, tag = "1")]
+    share: Option<WireShare>,
+    #[prost(message, optional, tag = "2")]
+    proof: Option<Proof>,
 }
