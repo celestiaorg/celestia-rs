@@ -74,9 +74,10 @@ destination=$("$binary" keys show destination --address "${key_args[@]}")
 operator=$("$binary" keys show destination --address --bech val "${key_args[@]}")
 "$binary" tx bank send validator "$destination" 3000000utia "${tx_args[@]}" | jq -e '.code == 0' >/dev/null
 validator_json="$(dirname "$probe")/../../crates/tier-5-node/celestia-rs/tests/fixtures/generate-only/validator.json"
-"$binary" tx staking create-validator "$validator_json" --from destination "${tx_args[@]}" | jq -e '.code == 0' >/dev/null
+created=$("$binary" tx staking create-validator "$validator_json" --from destination "${tx_args[@]}" | jq -er 'select(.code == 0) | .height')
 (cd "$go_tree" && go run "$(dirname "$probe")/staking/check.go" http://127.0.0.1:32658 "$operator")
 (cd "$go_tree" && go run "$(dirname "$probe")/fibre/escrow.go" http://127.0.0.1:32658)
+(cd "$go_tree" && go run "$(dirname "$probe")/staking/validator_set.go" http://127.0.0.1:32658 "$created" "$(jq -er '.pubkey.key' "$validator_json")")
 unset DA_TEST_WRITE_TOKEN
 DA_TEST_ADMIN_TOKEN=$("$binary" da-auth admin --home "$work/node")
 export DA_TEST_ADMIN_TOKEN
