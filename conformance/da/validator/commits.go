@@ -1,0 +1,60 @@
+// Verify each block committed by the private validator during a measured interval.
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/celestiaorg/celestia-node/api/rpc/client"
+	"github.com/celestiaorg/celestia-node/header"
+)
+
+func verify() error {
+	start, err := strconv.ParseUint(os.Args[2], 10, 64)
+	if err != nil {
+		return err
+	}
+	end, err := strconv.ParseUint(os.Args[3], 10, 64)
+	if err != nil {
+		return err
+	}
+	if end <= start {
+		return fmt.Errorf("validator did not advance after height %d", start)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	c, err := client.NewClient(ctx, os.Args[1], os.Getenv("DA_TEST_READ_TOKEN"))
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	var previous *header.ExtendedHeader
+	for n := start; n <= end; n++ {
+		h, err := c.Header.GetByHeight(ctx, n)
+		if err != nil {
+			return err
+		}
+		if h.Height() != n || h.ChainID() != "celestia-rs-local" || len(h.ValidatorSet.Validators) != 1 {
+			return fmt.Errorf("unexpected validator set or chain at %d", n)
+		}
+		if err := h.Validate(); err != nil {
+			return err
+		}
+		if previous != nil {
+			if err := previous.Verify(h); err != nil {
+				return err
+			}
+		}
+		previous = h
+	}
+	return nil
+}
+
+func main() {
+	if err := verify(); err != nil {
+		panic(err)
+	}
+}

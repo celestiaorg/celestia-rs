@@ -76,3 +76,14 @@ coordinates before sampling and advances the head after every proof passes.
 Rerunning the command with the original trust inputs resumes from its last
 sampled height. A header outside the seven-day trusting period requires a
 fresh checkpoint and light home. Use `--until HEIGHT` for a bounded run.
+
+
+On Linux, run `conformance/da/test-read-bridge.sh BINARY GO_NODE --validator-load`
+to compare a private Rust validator's idle and serving intervals on the same
+home. Set `DA_VALIDATOR_SECONDS` to choose the duration of each interval
+(default 30 seconds). During the serving interval two independent clients
+continuously recover the same paid blob and verify its proofs over RPC and
+SHREX. A pinned Go client verifies every validator signature and adjacent
+header across each interval. The command prints height ranges, proof suite
+counts, CPU seconds and the longest observed interval between commits. The
+DA interoperability workflow accepts `validator_seconds` for both release pins.

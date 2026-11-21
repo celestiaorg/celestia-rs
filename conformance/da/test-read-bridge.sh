@@ -12,7 +12,7 @@ case "$revision" in
 esac
 work=$(mktemp -d)
 peer_args=()
-if [[ "${3:-}" == --peer || "${3:-}" == --stock-light ]]; then
+if [[ "${3:-}" == --peer || "${3:-}" == --stock-light || "${3:-}" == --validator-load ]]; then
     peer_args=(--bridge-p2p-listen 127.0.0.1:32121)
 fi
 pid=
@@ -76,6 +76,13 @@ if (( ${#peer_args[@]} )); then
     [[ -n "$peer_id" ]] || { echo 'missing DA peer identity' >&2; exit 1; }
     peer_probe=$(dirname "$probe")/peer/read_peer.go
     (cd "$go_tree" && go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data")
+fi
+if [[ "${3:-}" == --validator-load ]]; then
+    (cd "$go_tree" && go build -o "$work/rpc-read" "$probe" &&
+        go build -o "$work/peer-read" "$peer_probe" &&
+        go build -o "$work/commits" "$(dirname "$probe")/validator/commits.go")
+    python3 "$(dirname "$probe")/validator/measure.py" "$pid" "$work" \
+        "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data"
 fi
 if [[ "${3:-}" == --stock-light ]]; then
     (cd "$go_tree" && go build -o "$work/go-da" ./cmd/celestia)

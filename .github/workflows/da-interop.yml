@@ -1,6 +1,11 @@
 name: DA client interoperability
 on:
   workflow_dispatch:
+    inputs:
+      validator_seconds:
+        description: Seconds per idle and loaded private validator interval (at least 10)
+        required: false
+        type: string
   pull_request:
     paths:
       - 'conformance/da/**'
@@ -51,3 +56,8 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: '0'
       - name: Verify a paid blob with the release client
         run: conformance/da/test-read-bridge.sh target/debug/celestia-rs reference-node --stock-light
+      - name: Verify validator commits under concurrent RPC and SHREX load
+        if: github.event_name == 'workflow_dispatch' && inputs.validator_seconds != ''
+        env:
+          DA_VALIDATOR_SECONDS: ${{ inputs.validator_seconds }}
+        run: conformance/da/test-read-bridge.sh target/debug/celestia-rs reference-node --validator-load
