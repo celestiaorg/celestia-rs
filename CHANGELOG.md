@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## v0.1.0 (2026-11-21)
+
+This first official binary release is for experimental use. It runs a Celestia
+consensus node with RPC and gRPC. The project operates small canaries on Mocha
+and mainnet. General mainnet qualification for non-archival RPC nodes, full
+consensus nodes and validators is still open. Archival RPC, HSM signing and
+remote signing are outside this release's support scope.
+
+### Operator highlights
+
+- Archives cover Apple Silicon macOS and x86-64 and ARM64 Linux. Verify the
+  archive against the published SHA256SUMS and use `celestia-rs version --long`
+  to identify the binary when reporting an issue.
+- The default installer selects this official release. The Mac auto-updater
+  also follows published release candidates, checks Mocha first and rolls
+  back an unhealthy deployment.
+- The declared parity target is celestia-app v10.6.0 with celestia-core
+  v0.42.8. The binary also implements historical v9 replay and the v11
+  emergency upgrade rules. v12 changes are gated by executing app version.
+  Unqualified networks or future upgrades need their own compatibility evidence.
+
 ### Fixed
 
 - At app version 12, Fibre escrow deposits and withdrawal requests use the
