@@ -133,24 +133,41 @@ fn positive_height(value: Option<&Value>) -> Option<i64> {
     value.and_then(Value::as_i64).filter(|h| *h > 0)
 }
 
+fn index(value: &Value) -> Result<usize, (i32, &'static str)> {
+    value
+        .as_u64()
+        .and_then(|i| usize::try_from(i).ok())
+        .ok_or((-32602, "invalid params"))
+}
+
+fn sample_coordinates(value: &Value) -> Result<Vec<(usize, usize)>, (i32, &'static str)> {
+    value
+        .as_array()
+        .ok_or((-32602, "invalid params"))?
+        .iter()
+        .map(|v| Ok((index(&v["row"])?, index(&v["col"])?)))
+        .collect()
+}
+
 impl Query {
+    fn escrow(method: &str, args: &[Value]) -> Result<Self, (i32, &'static str)> {
+        let [signer] = args else {
+            return Err((-32602, "invalid params"));
+        };
+        let signer = signer.as_str().ok_or((-32602, "invalid params"))?;
+        Ok(Self::Escrow(method.into(), signer.into()))
+    }
+
     fn parse(method: &str, params: &Value) -> Result<Self, (i32, &'static str)> {
         let bad = (-32602, "invalid params");
         let args = params.as_array().ok_or(bad)?;
         let height = || positive_height(args.first()).ok_or(bad);
         let namespace = |v: &Value| shares::Namespace::from_slice(&bytes(v)?).map_err(|_| bad);
-        let index = |v: &Value| v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or(bad);
         if matches!(
             method,
             "fibre.QueryEscrowAccount" | "fibre.PendingWithdrawals"
         ) {
-            let [signer] = args.as_slice() else {
-                return Err(bad);
-            };
-            return Ok(Self::Escrow(
-                method.into(),
-                signer.as_str().ok_or(bad)?.into(),
-            ));
+            return Self::escrow(method, args);
         }
         if state_rpc::reads(method) {
             return Ok(Self::Staking(method.to_owned(), args.clone()));
@@ -176,12 +193,7 @@ impl Query {
                 share_rpc::Read::Range(index(&args[1])?, index(&args[2])?),
             )),
             "share.GetSamples" if args.len() == 2 => {
-                let coords = args[1]
-                    .as_array()
-                    .ok_or(bad)?
-                    .iter()
-                    .map(|v| Ok((index(&v["row"])?, index(&v["col"])?)))
-                    .collect::<Result<_, _>>()?;
+                let coords = sample_coordinates(&args[1])?;
                 Ok(Self::ShareRead(height()?, share_rpc::Read::Samples(coords)))
             }
             "state.Balance" if args.is_empty() => Ok(Self::Balance(None)),
