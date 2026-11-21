@@ -43,6 +43,9 @@ chain=da-oracle
         --commission-rate 0.05 --commission-max-rate 1 --commission-max-change-rate 1 "${key_arg[@]}"
     "$app" genesis collect-gentxs "${home_arg[@]}"
 } >"$work/init.log" 2>&1
+# The pinned bridge uses the app gRPC socket below. Keep unrelated Go consensus
+# gRPC listeners from occupying the standard operator ports in the control run.
+sed -i -E 's/^(priv_validator_grpc_laddr|grpc_laddr) = .*/\1 = ""/' "$work/consensus/config/config.toml"
 
 "$app" start "${home_arg[@]}" --p2p.laddr tcp://127.0.0.1:36656 --rpc.laddr tcp://127.0.0.1:36657 \
     --grpc.enable --grpc.address 127.0.0.1:39090 --grpc-web.enable=false --minimum-gas-prices 0.002utia >"$work/app.log" 2>&1 &
