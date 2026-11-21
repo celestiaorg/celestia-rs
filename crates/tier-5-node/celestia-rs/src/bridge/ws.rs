@@ -127,12 +127,13 @@ impl Streams {
         perms: &[String],
         bytes: &[u8],
     ) -> Result<Option<String>> {
-        let Ok(request) = serde_json::from_slice::<Value>(bytes) else {
+        let Ok(request) = super::envelope::Request::parse(bytes) else {
             return Ok(Some(dispatch(bridge.clone(), auth, perms, bytes).await));
         };
-        let method = request["method"].as_str().unwrap_or_default();
+        let method = request.method.as_str().unwrap_or_default();
         if method == "xrpc.cancel" {
-            return Ok(request["params"]
+            return Ok(request
+                .params
                 .get(0)
                 .and_then(|id| self.subs.remove(&id.to_string()))
                 .map(|sub| closed(sub.channel)));
@@ -143,9 +144,8 @@ impl Streams {
         ) {
             return Ok(Some(dispatch(bridge.clone(), auth, perms, bytes).await));
         }
-        let id = &request["id"];
-        let mut reply = if request["jsonrpc"] != "2.0"
-            || !(id.is_string() || id.is_number())
+        let id = request.id.as_ref().unwrap_or(&Value::Null);
+        let mut reply = if !(id.is_string() || id.is_number())
             || self.subs.contains_key(&id.to_string())
         {
             json!({"error":{"code":-32600,"message":"invalid request"}})
@@ -155,10 +155,11 @@ impl Streams {
             json!({"error":{"code":1,"message":"too many subscriptions"}})
         } else {
             let empty = json!([]);
-            let params = request
-                .get("params")
-                .filter(|v| !v.is_null())
-                .unwrap_or(&empty);
+            let params = if request.params.is_null() {
+                &empty
+            } else {
+                &request.params
+            };
             let channel = self.next_channel;
             match Subscription::new(bridge, method, params, channel) {
                 Ok(sub) => {

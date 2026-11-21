@@ -1,6 +1,7 @@
 //! Opt-in DA RPC backed by the consensus node's committed block and state stores.
 
 pub(crate) mod auth;
+mod envelope;
 mod share_rpc;
 mod ws;
 
@@ -511,25 +512,18 @@ async fn dispatch(
     };
     let mut id = J::Null;
     let result = async {
-        let req: Value =
-            serde_json::from_slice(body).map_err(|_| (-32700, "parse error".to_owned()))?;
+        let req = envelope::Request::parse(body)?;
         let invalid = || (-32600, "invalid request".to_owned());
-        if req["jsonrpc"] != "2.0" {
-            return Err(invalid());
-        }
-        let request_id = req.get("id").ok_or_else(invalid)?;
-        if !(request_id.is_string() || request_id.is_number() || request_id.is_null()) {
-            return Err(invalid());
-        }
+        let request_id = req.id.as_ref().ok_or_else(invalid)?;
         id = J::Raw(request_id.to_string());
-        let method = req["method"].as_str().ok_or_else(invalid)?;
+        let method = req.method.as_str().ok_or_else(invalid)?;
         let empty = Value::Array(Vec::new());
         if matches!(
             method,
             "node.AuthNew" | "node.AuthNewWithExpiry" | "node.AuthVerify" | "node.AuthRevoke"
         ) {
             require(method, "admin")?;
-            let args = req["params"].as_array().ok_or_else(invalid)?;
+            let args = req.params.as_array().ok_or_else(invalid)?;
             return auth
                 .admin(method, args)
                 .map(|value| J::Raw(value.to_string()))
@@ -537,7 +531,11 @@ async fn dispatch(
         }
         let query = Query::parse(
             method,
-            req.get("params").filter(|v| !v.is_null()).unwrap_or(&empty),
+            if req.params.is_null() {
+                &empty
+            } else {
+                &req.params
+            },
         )
         .map_err(|(code, msg)| (code, msg.to_owned()))?;
         require(method, "read")?;
