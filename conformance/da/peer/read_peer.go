@@ -82,7 +82,7 @@ func main() {
 	var part shwap.RangeNamespaceData
 	_, _, err = client.Get(ctx, &rangeID, &part, info.ID)
 	check(err)
-	check(part.VerifyInclusion(shwap.SampleCoords{}, shwap.SampleCoords{}, width/2, eh.DAH.RowRoots))
+	check(part.VerifyInclusion(shwap.SampleCoords{}, shwap.SampleCoords{}, width/2, eh.DAH.RowRoots[:1]))
 	for _, row := range []int{0, width - 1} {
 		rid, err := shwap.NewRowID(h, row, width)
 		check(err)
