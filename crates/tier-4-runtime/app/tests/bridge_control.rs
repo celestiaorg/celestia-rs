@@ -4,16 +4,16 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::Value;
 
-fn bytes(v: &Value) -> Vec<u8> {
-    STANDARD.decode(v.as_str().unwrap()).unwrap()
-}
-
-fn list(v: &Value) -> Vec<Vec<u8>> {
-    v.as_array().into_iter().flatten().map(bytes).collect()
-}
-
 #[test]
 fn go_bridge_control() {
+    fn bytes(v: &Value) -> Vec<u8> {
+        STANDARD.decode(v.as_str().unwrap()).unwrap()
+    }
+
+    fn list(v: &Value) -> Vec<Vec<u8>> {
+        v.as_array().into_iter().flatten().map(bytes).collect()
+    }
+
     for raw in [
         include_str!("../../../../conformance/da/fixtures/v11-9.json"),
         include_str!("../../../../conformance/da/fixtures/v11-35.json"),
