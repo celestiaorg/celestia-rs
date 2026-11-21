@@ -52,7 +52,7 @@ export DA_TEST_READ_TOKEN
 rust_token=$DA_TEST_READ_TOKEN
 start_rust() {
     RUST_LOG=celestia_rs::bridge::peer=info "$binary" start --network local --home "$work/node" \
-        --bridge-rpc-listen 127.0.0.1:32658 "${peer_args[@]}" >"$work/node.log" 2>&1 &
+        --bridge-rpc-listen 127.0.0.1:32658 --bridge-signer validator "${peer_args[@]}" >"$work/node.log" 2>&1 &
     pid=$!
     for attempt in {1..120}; do
         kill -0 "$pid"
@@ -91,6 +91,10 @@ echo "celestia-node $revision; chain celestia-rs-local; paid blob at height $hei
 sha256sum "$binary" "$work/node/config/genesis.json"
 (cd "$go_tree" && go run "$probe" http://127.0.0.1:32658 "$height" "$namespace" "$data")
 (cd "$go_tree" && go run "$(dirname "$probe")/subscriptions/check.go" ws://127.0.0.1:32658 "$height" "$namespace" "$data")
+DA_TEST_WRITE_TOKEN=$("$binary" da-auth write --home "$work/node")
+export DA_TEST_WRITE_TOKEN
+(cd "$go_tree" && go run "$(dirname "$probe")/submit/check.go" http://127.0.0.1:32658)
+unset DA_TEST_WRITE_TOKEN
 DA_TEST_ADMIN_TOKEN=$("$binary" da-auth admin --home "$work/node")
 export DA_TEST_ADMIN_TOKEN
 (cd "$go_tree" && go run "$(dirname "$probe")/auth/check.go" http://127.0.0.1:32658)
