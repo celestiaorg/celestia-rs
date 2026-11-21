@@ -544,6 +544,18 @@ fn sparse_splitter_padding_and_error_paths() -> shares::Result<()> {
 }
 
 #[test]
+fn range_overflow_leaves_both_endpoints_unchanged() {
+    for original in [
+        ShareRange::new(usize::MAX, usize::MAX),
+        ShareRange::new(1, usize::MAX),
+    ] {
+        let mut range = original;
+        assert_eq!(range.add(1), Err(Error::InvalidShareRange));
+        assert_eq!(range, original);
+    }
+}
+
+#[test]
 fn parse_and_range_edge_paths() -> shares::Result<()> {
     assert_eq!(
         get_share_range_for_namespace(&[], blob_namespace(1)?)?,
@@ -557,11 +569,6 @@ fn parse_and_range_edge_paths() -> shares::Result<()> {
     assert_eq!(
         get_share_range_for_namespace(&shares, blob_namespace(2)?)?,
         ShareRange::empty()
-    );
-    let mut overflowing = ShareRange::new(usize::MAX, usize::MAX);
-    assert_eq!(
-        overflowing.add(1).expect_err("range overflow"),
-        Error::InvalidShareRange
     );
 
     let mut continuation = ShareBuilder::new(blob_namespace(4)?, 0, false)?;
