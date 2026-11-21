@@ -113,12 +113,10 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
     };
     let mut id = Value::Null;
     let response = (|| {
-        let req: Value =
-            serde_json::from_slice(&body).map_err(|_| (-32700, "parse error".to_owned()))?;
+        let req = crate::bridge::envelope::Request::parse(&body)?;
         let invalid = || (-32600, "invalid request".to_owned());
-        ensure_request(&req).ok_or_else(invalid)?;
-        id = req["id"].clone();
-        let method = req["method"].as_str().ok_or_else(invalid)?;
+        id = req.id.ok_or_else(invalid)?;
+        let method = req.method.as_str().ok_or_else(invalid)?;
         let node_permission = node_rpc::permission(method);
         if node_permission.is_none()
             && !matches!(
@@ -138,10 +136,10 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
             return Err((1, format!("missing {permission} permission")));
         }
         let empty = Vec::new();
-        let args = if req["params"].is_null() {
+        let args = if req.params.is_null() {
             &empty
         } else {
-            req["params"].as_array().ok_or_else(invalid)?
+            req.params.as_array().ok_or_else(invalid)?
         };
         Ok((method.to_owned(), args.clone()))
     })();
@@ -168,7 +166,7 @@ async fn dispatch(
     service: &Service,
     method: &str,
     args: Vec<Value>,
-) -> Result<String, (i64, String)> {
+) -> Result<String, (i32, String)> {
     if node_rpc::permission(method).is_some() {
         return node_rpc::call(&service.auth, "Light", method, &args)
             .map(|v| v.to_string())
@@ -207,14 +205,6 @@ async fn dispatch(
     .map_err(|e| (1, e.to_string()))?
     .map_err(|e| (1, e.to_string()))
 }
-fn ensure_request(req: &Value) -> Option<()> {
-    (req["jsonrpc"] == "2.0"
-        && req
-            .get("id")
-            .is_some_and(|v| v.is_number() || v.is_string() || v.is_null()))
-    .then_some(())
-}
-
 fn read(db: &RedbBackend, method: &str, args: &[Value]) -> Result<rpc::json::J> {
     let key = match (method, args) {
         ("header.LocalHead", []) => b"head".to_vec(),

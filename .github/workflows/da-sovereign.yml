@@ -1,0 +1,35 @@
+name: Sovereign DA adapter interoperability
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/da-sovereign.yml'
+      - 'conformance/da/sovereign/**'
+      - 'crates/tier-5-node/celestia-rs/src/bridge.rs'
+      - 'crates/tier-5-node/celestia-rs/src/bridge/**'
+permissions:
+  contents: read
+jobs:
+  adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: Sovereign-Labs/sovereign-sdk
+          ref: 42d8e5c14930e28cf3162372b6ac52d28502f4bd
+          path: reference-sdk
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build the Rust bridge
+        run: cargo build --locked -p celestia-rs --no-default-features --features bridge
+      - name: Build the probe against the locked Sovereign adapter
+        working-directory: reference-sdk
+        run: |
+          install -D ../conformance/da/sovereign/probe.rs crates/adapters/celestia/src/bin/rust_bridge_client.rs
+          CONSTANTS_MANIFEST="$PWD" cargo build --locked -p sov-celestia-adapter --features native --bin rust_bridge_client
+      - name: Verify both namespaces using the SDK signer and verifier
+        run: conformance/da/sovereign/test-adapter.sh target/debug/celestia-rs reference-sdk/target/debug/rust_bridge_client
