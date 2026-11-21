@@ -60,6 +60,8 @@ for attempt in {1..120}; do
 done
 export CELESTIA_CUSTOM="$chain:${hash:?no genesis block}"
 "$da" bridge init --node.store "$work/bridge" --core.ip 127.0.0.1 --core.port 39090 >"$work/bridge-init.log" 2>&1
+# Run this private Go bridge alongside the forward-direction stock light fixture.
+sed -i -E 's@/(tcp|udp)/2121([/",])@/\1/39221\2@g; s@/tcp/2122/@/tcp/39222/@g' "$work/bridge/config.toml"
 start_bridge() {
     "$da" bridge start --node.store "$work/bridge" --core.ip 127.0.0.1 --core.port 39090 >"$work/bridge.log" 2>&1 &
     bridge=$!
@@ -73,7 +75,8 @@ for attempt in {1..120}; do
 done
 : "${peer:?missing private Go bridge address}"
 before=$(curl -fsS "$rpc/status" | jq -er '.result.sync_info.latest_block_height | tonumber')
-"$app" tx blob pay-for-blob 0x00000000000000000103 0x68656c6c6f2d6461 \
+data_hex=$(python3 -c 'print("c0ffee" * 4000)')
+"$app" tx blob pay-for-blob 0x00000000000000000103 "0x$data_hex" \
     --from validator "${key_arg[@]}" --fees 50000utia --gas 500000 --chain-id "$chain" \
     --node tcp://127.0.0.1:36657 --output json --yes | jq -e '.code == 0' >/dev/null
 height=$((before+1))
@@ -122,6 +125,9 @@ DA_TEST_ADMIN_TOKEN=$("$rust" da-auth admin --home "$work/rust-light")
 export DA_TEST_ADMIN_TOKEN
 (cd "$node_src" && go run "$auth_probe" "$endpoint" Light)
 unset DA_TEST_ADMIN_TOKEN
+curl -fsS "$endpoint" -H "Authorization: Bearer $DA_TEST_READ_TOKEN" \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"share.GetEDS\",\"params\":[$height]}" |
+    jq -e '.error.message | contains("no connected DA peer")' >/dev/null
 # The same Rust process must reconnect and authenticate a new header once its provider returns.
 start_bridge
 for attempt in {1..90}; do
@@ -137,3 +143,5 @@ for attempt in {1..90}; do
     sleep 1
 done
 (cd "$node_src" && go run "$probe" "$endpoint" "$height" "$hash" online)
+data_probe=$(realpath "$(dirname "$0")/../read_bridge.go")
+(cd "$node_src" && go run "$data_probe" "$endpoint" "$height" 0103 "$data_hex")

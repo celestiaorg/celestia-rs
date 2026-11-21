@@ -15,7 +15,7 @@ use prost::Message;
 use serde_json::{Value, json};
 use std::{future::Future, net::SocketAddr, path::Path, sync::Arc};
 
-fn at(height: u64) -> Vec<u8> {
+pub(super) fn at(height: u64) -> Vec<u8> {
     [b"height/".as_slice(), &height.to_be_bytes()].concat()
 }
 fn by_hash(hash: &[u8]) -> Vec<u8> {
@@ -65,6 +65,7 @@ pub(super) fn store_header(
 }
 
 struct Service {
+    data: super::data::Client,
     auth: Auth,
     db: Arc<RedbBackend>,
     workers: Arc<tokio::sync::Semaphore>,
@@ -77,6 +78,7 @@ pub(super) async fn listener(
     home: &Path,
     db: Arc<RedbBackend>,
     status: tokio::sync::watch::Receiver<super::stats::Sampling>,
+    peers: super::Peers,
 ) -> Result<impl Future<Output = Result<()>> + use<>> {
     let server = if let Some(addr) = addr {
         ensure!(
@@ -89,6 +91,7 @@ pub(super) async fn listener(
             .layer(DefaultBodyLimit::max(64 * 1024))
             .with_state(Arc::new(Service {
                 auth: Auth::open(home)?,
+                data: super::data::Client::new(peers),
                 db,
                 status,
                 waiters: tokio::sync::Semaphore::new(8),
@@ -121,6 +124,7 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
         let method = req["method"].as_str().ok_or_else(invalid)?;
         let node_permission = node_rpc::permission(method);
         if node_permission.is_none()
+            && !super::data::handles(method)
             && !matches!(
                 method,
                 "header.LocalHead"
@@ -169,6 +173,15 @@ async fn dispatch(
     method: &str,
     args: Vec<Value>,
 ) -> Result<String, (i64, String)> {
+    if super::data::handles(method) {
+        let query = crate::bridge::Query::parse(method, &Value::Array(args))
+            .map_err(|(code, text)| (i64::from(code), text.to_owned()))?;
+        return service
+            .data
+            .read(&service.db, query)
+            .await
+            .map_err(|e| (1, e.to_string()));
+    }
     if node_rpc::permission(method).is_some() {
         return node_rpc::call(&service.auth, "Light", method, &args)
             .map(|v| v.to_string())

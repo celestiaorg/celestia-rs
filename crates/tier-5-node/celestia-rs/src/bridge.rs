@@ -297,22 +297,36 @@ impl Bridge {
             "height {height} is not committed"
         );
         let block = self.committed(height)?;
-        let Committed { eds, dah, .. } = &block;
-        if let Query::BlobProof(_, ns, hash, kind) = query {
+        match query {
+            Query::Header(_) | Query::Head | Query::Tail | Query::Hash(_) => {
+                Ok(block.header_json())
+            }
+            _ => query.answer_square(&block.eds, &block.dah),
+        }
+    }
+}
+
+impl Query {
+    fn answer_square(
+        self,
+        eds: &square::ExtendedDataSquare,
+        dah: &square::DataAvailabilityHeader,
+    ) -> Result<J> {
+        if let Query::BlobProof(_, ns, hash, kind) = self {
             return prove_blob(eds, dah, ns, &hash, kind);
         }
-        if let Query::ShareRead(_, method) = query {
+        if let Query::ShareRead(_, method) = self {
             return method.response(eds, dah);
         }
-        if let Query::Share(_, row, col) = query {
+        if let Query::Share(_, row, col) = self {
             return Ok(J::b64(eds.share(row, col)?));
         }
-        if let Query::Namespace(_, ns) = query {
+        if let Query::Namespace(_, ns) = self {
             let rows = app::inclusion_proof::namespace_rows(eds, dah, ns)
                 .map_err(|e| anyhow::anyhow!("{}", e.log))?;
             return Ok(J::Arr(rows.into_iter().map(namespace_row_json).collect()));
         }
-        if let Query::Blobs(_, namespaces) = query {
+        if let Query::Blobs(_, namespaces) = self {
             let mut blobs = Vec::new();
             for ns in namespaces {
                 blobs.extend(read_blobs(eds, dah, ns)?.into_iter().map(|(_, blob)| blob));
@@ -323,14 +337,14 @@ impl Bridge {
                 J::Arr(blobs)
             });
         }
-        if let Query::Blob(_, ns, commitment) = query {
+        if let Query::Blob(_, ns, commitment) = self {
             return read_blobs(eds, dah, ns)?
                 .into_iter()
                 .find(|(hash, _)| hash.as_slice() == commitment)
                 .map(|(_, blob)| blob)
                 .context("blob: not found");
         }
-        Ok(block.header_json())
+        anyhow::bail!("expected a blob or share query")
     }
 }
 

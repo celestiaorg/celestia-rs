@@ -1,0 +1,149 @@
+//! Serve light RPC data reads using the ODS authenticated by a sampled header.
+use super::{DEADLINE, HeaderWire, Peers, Remote, Status, frame};
+use crate::bridge::Query;
+use anyhow::{Context, Result, ensure};
+use futures::{AsyncReadExt, AsyncWriteExt};
+use kvdb::{KvBackend, RedbBackend};
+use prost::Message;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
+
+pub(super) fn handles(method: &str) -> bool {
+    method.starts_with("share.") || method.starts_with("blob.")
+}
+
+pub(super) struct Client {
+    peers: Peers,
+    worker: Arc<Semaphore>,
+}
+
+impl Client {
+    pub(super) fn new(peers: Peers) -> Self {
+        Self {
+            peers,
+            worker: Arc::new(Semaphore::new(1)),
+        }
+    }
+
+    pub(super) async fn read(&self, db: &RedbBackend, query: Query) -> Result<String> {
+        let height = match &query {
+            Query::Blobs(h, _)
+            | Query::Blob(h, ..)
+            | Query::Namespace(h, _)
+            | Query::BlobProof(h, ..)
+            | Query::ShareRead(h, _)
+            | Query::Share(h, ..) => u64::try_from(*h)?,
+            _ => anyhow::bail!("expected a blob or share query"),
+        };
+        let worker = Arc::new(
+            self.worker
+                .clone()
+                .try_acquire_owned()
+                .context("light data RPC busy")?,
+        );
+        let raw = db
+            .get(&super::rpc::at(height))?
+            .context("header has not been sampled or has expired")?;
+        let wire = HeaderWire::decode(raw.as_slice())?;
+        let dah = square::DataAvailabilityHeader::from_proto_bytes(&wire.dah)?;
+        let width = dah.row_roots.len() / 2;
+        ensure!(
+            (1..=512).contains(&width) && width.is_power_of_two(),
+            "invalid ODS width"
+        );
+        let online = self.peers.connected.borrow().clone();
+        for peer in self
+            .peers
+            .remotes
+            .iter()
+            .filter(|r| online.contains(&r.peer))
+        {
+            let mut remote = peer.clone();
+            let fetched =
+                tokio::time::timeout(DEADLINE, remote.original_square(height, width)).await;
+            let Ok(Ok(bytes)) = fetched else { continue };
+            let expected = dah.clone();
+            let permit = worker.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                reconstruct(&bytes, width, &expected)
+            })
+            .await?;
+            if let Ok(eds) = result {
+                return tokio::task::spawn_blocking(move || {
+                    let _permit = worker;
+                    query.answer_square(&eds, &dah).map(|v| v.encode())
+                })
+                .await?;
+            }
+        }
+        anyhow::bail!("no connected DA peer supplied the verified square at height {height}")
+    }
+}
+
+impl Remote {
+    async fn original_square(&mut self, height: u64, width: usize) -> Result<Vec<u8>> {
+        let mut stream = self
+            .control
+            .open_stream(self.peer, self.eds.clone())
+            .await?;
+        stream.write_all(&height.to_be_bytes()).await?;
+        stream.close().await?;
+        ensure!(
+            Status::decode(frame(&mut stream, 64).await?.as_slice())?.code == 1,
+            "EDS unavailable"
+        );
+        let size = width * width * shares::SHARE_SIZE;
+        let mut bytes = Vec::new();
+        stream
+            .take(u64::try_from(size)? + 1)
+            .read_to_end(&mut bytes)
+            .await?;
+        Ok(bytes)
+    }
+}
+
+fn reconstruct(
+    bytes: &[u8],
+    width: usize,
+    expected: &square::DataAvailabilityHeader,
+) -> Result<square::ExtendedDataSquare> {
+    ensure!(
+        bytes.len() <= width * width * shares::SHARE_SIZE
+            && bytes.len().is_multiple_of(shares::SHARE_SIZE),
+        "invalid ODS length"
+    );
+    let mut ods = bytes
+        .as_chunks::<{ shares::SHARE_SIZE }>()
+        .0
+        .iter()
+        .copied()
+        .map(shares::Share::from_bytes)
+        .collect::<Result<Vec<_>, _>>()?;
+    // Go EDS streams may omit trailing padding, including the entire empty square.
+    ods.resize_with(width * width, shares::tail_padding_share);
+    let eds = square::extend_shares(&ods)?;
+    ensure!(
+        square::new_data_availability_header(&eds)? == *expected,
+        "EDS does not match sampled header"
+    );
+    Ok(eds)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn padding_is_accepted_only_when_it_recreates_the_sampled_roots() -> Result<()> {
+        let empty = square::extend_shares(square::empty_square().as_shares())?;
+        let root = square::new_data_availability_header(&empty)?;
+        reconstruct(&[], 1, &root)?;
+        let mut different = root.clone();
+        different.row_roots[0][shares::NAMESPACE_SIZE * 2] ^= 1;
+        assert!(reconstruct(&[], 1, &different).is_err());
+        assert!(reconstruct(&[0], 1, &root).is_err());
+        assert!(reconstruct(&vec![0; 2 * shares::SHARE_SIZE], 1, &root).is_err());
+        Ok(())
+    }
+}

@@ -1,4 +1,5 @@
 //! Authenticated, sequential DA sync and restartable sampling from a trusted checkpoint.
+mod data;
 mod rpc;
 mod stats;
 
@@ -38,11 +39,13 @@ pub struct LightArgs {
     until: Option<u64>,
 }
 
+#[derive(Clone)]
 struct Remote {
     control: libp2p_stream::Control,
     peer: PeerId,
     headers: StreamProtocol,
     samples: StreamProtocol,
+    eds: StreamProtocol,
 }
 
 impl Remote {
@@ -220,6 +223,7 @@ fn sample_indices(db: &RedbBackend, block: &Verified) -> Result<Vec<usize>> {
     Ok(indices)
 }
 
+#[derive(Clone)]
 struct Peers {
     remotes: Vec<Remote>,
     connected: tokio::sync::watch::Receiver<Vec<PeerId>>,
@@ -452,7 +456,6 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     )?);
     // Bind synchronously with startup so a busy port is reported to the operator.
     let (status, observer) = tokio::sync::watch::channel(stats::Sampling::default());
-    let listener = rpc::listener(args.rpc_listen, home, db.clone(), observer).await?;
     let key = identity(&dir.join("peer.key"))?;
     let swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
@@ -467,6 +470,7 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     let headers = StreamProtocol::try_from_owned(format!("/{}/header-ex/v0.0.3", args.network))?;
     let samples =
         StreamProtocol::try_from_owned(format!("/{}/shrex/v0.1.0/sample_v0", args.network))?;
+    let eds = StreamProtocol::try_from_owned(format!("/{}/shrex/v0.1.0/eds_v0", args.network))?;
     let (connected, online) = tokio::sync::watch::channel(Vec::new());
     let remotes = addresses
         .keys()
@@ -475,12 +479,15 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
             peer: *peer,
             headers: headers.clone(),
             samples: samples.clone(),
+            eds: eds.clone(),
         })
         .collect();
     let mut peers = Peers {
         remotes,
         connected: online,
     };
+    let listener =
+        rpc::listener(args.rpc_listen, home, db.clone(), observer, peers.clone()).await?;
     tokio::select! {
         result = listener => result,
         result = follow(&db, &mut peers, &args, anchor, &status) => result,
