@@ -1,0 +1,79 @@
+{
+  "scope": "Frozen full local inputs; only reports, failures, events and raw monitoring are retained in Git. These paths are machine-local, not downloadable artifacts. Digests identify bytes, not authenticity.",
+  "files": {
+    "mainnet": [
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mainnet/audit.json",
+        "bytes": 23656,
+        "sha256": "c0ffb9799ff7f0c9dd1d359b231a0fdad6a0be4bae6c9e34fec3eca0d2671c6a"
+      },
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mainnet/events.jsonl",
+        "bytes": 2592,
+        "sha256": "ccbc5fdaa4774e2287d0a8cdf934efe45969d5a3d611515749d6d427e7707702"
+      },
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mainnet/execution-window.log",
+        "bytes": 20850679,
+        "sha256": "8e7e131d5b5f77842663680794cde6fdfdba02ce798af33de246665f051b5c1b"
+      },
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mainnet/heights.jsonl",
+        "bytes": 273127412,
+        "sha256": "f3cd4c32f05522a14bce2ae5f355c33463b1a02e3b2f3bcb93b97cfacb877bee"
+      },
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mainnet/node-incidents.json",
+        "bytes": 3352,
+        "sha256": "25f968a5aa7e3fc8077b27d470bbe40ec1e57cb27c6a7aefdda242276b365be0"
+      },
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mainnet/run.json",
+        "bytes": 2178,
+        "sha256": "3f872e6b8d543a0d8f2b4851f9c9af931926ad405e8487f84e6507dbbeaf678e"
+      },
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mainnet/samples.jsonl",
+        "bytes": 140556875,
+        "sha256": "f258e29c03b645927fc3e1b60c13c14bde7f18259592be8138f960ea4ad7dfee"
+      }
+    ],
+    "mocha": [
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mocha/audit.json",
+        "bytes": 5564,
+        "sha256": "1f6c64fcd03335dec6729065e6b05f13e2acf7a1b41d083f4cc7019537322fc1"
+      },
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mocha/events.jsonl",
+        "bytes": 2574,
+        "sha256": "421754f0417121699e2c976471a8c04b6f4cca487967a8285f9a877cf3a25124"
+      },
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mocha/execution-window.log",
+        "bytes": 20652924,
+        "sha256": "449e670ad612d4b905c84b23964de6c5de34fca2eb41abd9cd1467cef67284e6"
+      },
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mocha/heights.jsonl",
+        "bytes": 198804573,
+        "sha256": "7827e3423d1c639c3f77c9be195c414194159b1c194b1a6146ddd024cae1e616"
+      },
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mocha/node-incidents.json",
+        "bytes": 9766,
+        "sha256": "65e6fcde4966ccf869e2e494855fd0e6ba798215ad8ab41f6a7f1954332e02ae"
+      },
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mocha/run.json",
+        "bytes": 2174,
+        "sha256": "c6f3e8af701cacd044855654c5706fad939e5a34c51cce14ca1316e9eb980f46"
+      },
+      {
+        "path": "/private/tmp/celestia-299-audit-20261120/mocha/samples.jsonl",
+        "bytes": 141668073,
+        "sha256": "176a68b8f5668f88089620a6e24e30717eb3d57c21e71361c01044a84a447aff"
+      }
+    ]
+  }
+}

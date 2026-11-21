@@ -1,0 +1,443 @@
+{
+  "scope": "Retrospective raw Prometheus matrices; missing samples stay unknown; no alert-delivery certification.",
+  "start_utc": "2026-11-12T05:25:00Z",
+  "end_utc": "2026-11-15T05:25:00Z",
+  "queries": {
+    "up{job=\"celestia-rs\"}[72h]": [
+      {
+        "metric": {
+          "__name__": "up",
+          "instance": "127.0.0.1:26660",
+          "job": "celestia-rs",
+          "network": "mocha"
+        },
+        "count": 17280,
+        "first": [
+          1794461112.534,
+          "1"
+        ],
+        "last": [
+          1794720299.084,
+          "1"
+        ],
+        "min": 1.0,
+        "max": 1.0,
+        "gaps_over_20s": []
+      },
+      {
+        "metric": {
+          "__name__": "up",
+          "instance": "127.0.0.1:26760",
+          "job": "celestia-rs",
+          "network": "mainnet"
+        },
+        "count": 17280,
+        "first": [
+          1794461101.03,
+          "1"
+        ],
+        "last": [
+          1794720287.583,
+          "1"
+        ],
+        "min": 1.0,
+        "max": 1.0,
+        "gaps_over_20s": []
+      }
+    ],
+    "celestia_rs_rpc_up[72h]": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_rpc_up",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "1"
+        ],
+        "last": [
+          1794720286.314,
+          "1"
+        ],
+        "min": 1.0,
+        "max": 1.0,
+        "gaps_over_20s": []
+      },
+      {
+        "metric": {
+          "__name__": "celestia_rs_rpc_up",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "1"
+        ],
+        "last": [
+          1794720286.314,
+          "1"
+        ],
+        "min": 1.0,
+        "max": 1.0,
+        "gaps_over_20s": []
+      }
+    ],
+    "celestia_rs_process_up[72h]": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_process_up",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "1"
+        ],
+        "last": [
+          1794720286.314,
+          "1"
+        ],
+        "min": 1.0,
+        "max": 1.0,
+        "gaps_over_20s": []
+      },
+      {
+        "metric": {
+          "__name__": "celestia_rs_process_up",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "1"
+        ],
+        "last": [
+          1794720286.314,
+          "1"
+        ],
+        "min": 1.0,
+        "max": 1.0,
+        "gaps_over_20s": []
+      }
+    ],
+    "celestia_rs_catching_up[72h]": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_catching_up",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "0"
+        ],
+        "last": [
+          1794720286.314,
+          "0"
+        ],
+        "min": 0.0,
+        "max": 0.0,
+        "gaps_over_20s": []
+      },
+      {
+        "metric": {
+          "__name__": "celestia_rs_catching_up",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "0"
+        ],
+        "last": [
+          1794720286.314,
+          "0"
+        ],
+        "min": 0.0,
+        "max": 0.0,
+        "gaps_over_20s": []
+      }
+    ],
+    "celestia_rs_latest_block_time_seconds[72h]": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_latest_block_time_seconds",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "1794461096"
+        ],
+        "last": [
+          1794720286.314,
+          "1794720255"
+        ],
+        "min": 1794461096.0,
+        "max": 1794720255.0,
+        "gaps_over_20s": [],
+        "max_timestamp_age_seconds": 42.467000007629395
+      },
+      {
+        "metric": {
+          "__name__": "celestia_rs_latest_block_time_seconds",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "1794461095"
+        ],
+        "last": [
+          1794720286.314,
+          "1794720254"
+        ],
+        "min": 1794461095.0,
+        "max": 1794720254.0,
+        "gaps_over_20s": [],
+        "max_timestamp_age_seconds": 41.27999997138977
+      }
+    ],
+    "celestia_rs_collector_timestamp_seconds[72h]": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_collector_timestamp_seconds",
+          "instance": "127.0.0.1:9100",
+          "job": "node"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "1794461100"
+        ],
+        "last": [
+          1794720286.314,
+          "1794720260"
+        ],
+        "min": 1794461100.0,
+        "max": 1794720260.0,
+        "gaps_over_20s": [],
+        "max_timestamp_age_seconds": 33.02900004386902
+      }
+    ],
+    "celestia_rs_validator_jailed[72h]": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_validator_jailed",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "0"
+        ],
+        "last": [
+          1794720286.314,
+          "0"
+        ],
+        "min": 0.0,
+        "max": 0.0,
+        "gaps_over_20s": []
+      },
+      {
+        "metric": {
+          "__name__": "celestia_rs_validator_jailed",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "0"
+        ],
+        "last": [
+          1794720286.314,
+          "0"
+        ],
+        "min": 0.0,
+        "max": 0.0,
+        "gaps_over_20s": []
+      }
+    ],
+    "celestia_rs_validator_tombstoned[72h]": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_validator_tombstoned",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "0"
+        ],
+        "last": [
+          1794720286.314,
+          "0"
+        ],
+        "min": 0.0,
+        "max": 0.0,
+        "gaps_over_20s": []
+      },
+      {
+        "metric": {
+          "__name__": "celestia_rs_validator_tombstoned",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "0"
+        ],
+        "last": [
+          1794720286.314,
+          "0"
+        ],
+        "min": 0.0,
+        "max": 0.0,
+        "gaps_over_20s": []
+      }
+    ],
+    "celestia_rs_sign_refusals_total[72h]": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_sign_refusals_total",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "0"
+        ],
+        "last": [
+          1794720286.314,
+          "0"
+        ],
+        "min": 0.0,
+        "max": 0.0,
+        "gaps_over_20s": []
+      },
+      {
+        "metric": {
+          "__name__": "celestia_rs_sign_refusals_total",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "3"
+        ],
+        "last": [
+          1794720286.314,
+          "3"
+        ],
+        "min": 3.0,
+        "max": 3.0,
+        "gaps_over_20s": []
+      }
+    ],
+    "celestia_rs_apphash_match[72h]": [
+      {
+        "metric": {
+          "__name__": "celestia_rs_apphash_match",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mainnet"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "1"
+        ],
+        "last": [
+          1794720286.314,
+          "1"
+        ],
+        "min": -1.0,
+        "max": 1.0,
+        "gaps_over_20s": []
+      },
+      {
+        "metric": {
+          "__name__": "celestia_rs_apphash_match",
+          "instance": "127.0.0.1:9100",
+          "job": "node",
+          "network": "mocha"
+        },
+        "count": 17279,
+        "first": [
+          1794461114.764,
+          "1"
+        ],
+        "last": [
+          1794720286.314,
+          "1"
+        ],
+        "min": -1.0,
+        "max": 1.0,
+        "gaps_over_20s": []
+      }
+    ],
+    "ALERTS{alertstate=\"firing\"}[72h]": [
+      {
+        "metric": {
+          "__name__": "ALERTS",
+          "alertname": "ValidatorMissingBlocks",
+          "alertstate": "firing",
+          "network": "mainnet",
+          "severity": "warning"
+        },
+        "count": 17,
+        "first": [
+          1794465358.659,
+          "1"
+        ],
+        "last": [
+          1794465598.659,
+          "1"
+        ],
+        "min": 1.0,
+        "max": 1.0,
+        "gaps_over_20s": [
+          {
+            "start": 1794461100.0,
+            "end": 1794465358.659,
+            "seconds": 4258.658999919891
+          },
+          {
+            "start": 1794465598.659,
+            "end": 1794720300.0,
+            "seconds": 254701.3410000801
+          }
+        ]
+      }
+    ]
+  }
+}

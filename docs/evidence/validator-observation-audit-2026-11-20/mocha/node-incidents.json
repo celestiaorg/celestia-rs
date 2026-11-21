@@ -1,0 +1,13 @@
+{
+  "scope": "Selected node-log incident patterns in the fixed interval; peer disconnects excluded.",
+  "patterns": [
+    "starting node home=",
+    "celestia_rs: node stopped",
+    "panicked at",
+    "conflicting data",
+    "refusing to sign",
+    "app hash mismatch",
+    "app_hash mismatch"
+  ],
+  "matches": []
+}

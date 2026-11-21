@@ -132,6 +132,10 @@ Every item must pass on the commit the canary runs.
   [#299](https://github.com/celestiaorg/celestia-rs/issues/299) tracks the
   candidate soak and [#298](https://github.com/celestiaorg/celestia-rs/issues/298)
   tracks parity receipts and transaction-result evidence.
+  *2026-11-20:* the [completed pooled collector audit](docs/validator-observation-audit-2026-11-20.md)
+  retains a full 72-hour attempt on `46acbcb`: local health samples pass,
+  but reference/sample gaps and failed comparison attempts at 45 mainnet
+  heights prevent qualification. A separately authorized new interval is needed.
 
 - [ ] **C1.2 Execution differentials nightly.** F1.1: nightly jobs run
   `json_*`, `exec`, `pp` and `deliver` (with `DELIVER_IBC`, `DELIVER_HL`,
