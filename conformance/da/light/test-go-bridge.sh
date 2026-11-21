@@ -47,7 +47,7 @@ chain=da-oracle
 # gRPC listeners from occupying the standard operator ports in the control run.
 sed -i -E 's/^(priv_validator_grpc_laddr|grpc_laddr) = .*/\1 = ""/' "$work/consensus/config/config.toml"
 
-"$app" start "${home_arg[@]}" --p2p.laddr tcp://127.0.0.1:36656 --rpc.laddr tcp://127.0.0.1:36657 \
+"$app" start --force-no-bbr "${home_arg[@]}" --p2p.laddr tcp://127.0.0.1:36656 --rpc.laddr tcp://127.0.0.1:36657 \
     --grpc.enable --grpc.address 127.0.0.1:39090 --grpc-web.enable=false --minimum-gas-prices 0.002utia >"$work/app.log" 2>&1 &
 consensus=$!
 rpc=http://127.0.0.1:36657
