@@ -1,4 +1,6 @@
 //! Inbound go-header exchange and SHREX over negotiated libp2p streams.
+mod network;
+
 use std::io::{ErrorKind, Write as _};
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
@@ -94,6 +96,7 @@ async fn run(
     mut stopped: oneshot::Receiver<()>,
     ready: &mpsc::SyncSender<Result<(), String>>,
 ) -> Result<()> {
+    let behaviour = network::Behaviour::new(&key, network)?;
     let mut swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(
@@ -101,10 +104,10 @@ async fn run(
             noise::Config::new,
             yamux::Config::default,
         )?
-        .with_behaviour(|_| libp2p_stream::Behaviour::new())?
+        .with_behaviour(move |_| behaviour)?
         .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(120)))
         .build();
-    let mut control = swarm.behaviour().new_control();
+    let mut control = swarm.behaviour().streams.new_control();
     let mut streams = futures::stream::SelectAll::new();
     for (kind, protocol) in [
         (Kind::Header, "header-ex/v0.0.3"),
@@ -122,13 +125,42 @@ async fn run(
         );
     }
     swarm.listen_on(listen)?;
+    let topic = network::header_topic(network);
+    let topic_hash = topic.hash();
+    let mut timer = tokio::time::interval(Duration::from_millis(500));
+    timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut announced = 0;
+    let mut pending = tokio::task::JoinSet::new();
     loop {
         tokio::select! {
             _ = &mut stopped => return Ok(()),
+            _ = timer.tick(), if pending.is_empty() && swarm.behaviour().gossip.mesh_peers(&topic_hash).next().is_some() => {
+                let height = bridge.blocks.height();
+                if height > announced {
+                    let bridge = bridge.clone();
+                    pending.spawn_blocking(move || (height, bridge.committed(height).and_then(|block| block.header_wire())));
+                }
+            }
+            Some(result) = pending.join_next(), if !pending.is_empty() => {
+                match result? {
+                    (height, Ok(data)) => {
+                        if swarm.behaviour_mut().gossip.publish(topic.clone(), data).is_ok() {
+                            announced = height;
+                        }
+                    }
+                    (height, Err(error)) => tracing::debug!(height, %error, "header publication deferred"),
+                }
+            }
             event = swarm.select_next_some() => match event {
                 SwarmEvent::NewListenAddr { address, .. } => {
+                    swarm.add_external_address(address.clone());
                     tracing::info!(%address, peer=%swarm.local_peer_id(), "DA peer listening");
                     let _ = ready.try_send(Ok(()));
+                }
+                SwarmEvent::Behaviour(network::BehaviourEvent::Identify(libp2p::identify::Event::Received { peer_id, info, .. })) => {
+                    for addr in info.listen_addrs {
+                        swarm.behaviour_mut().dht.add_address(&peer_id, addr);
+                    }
                 }
                 SwarmEvent::ListenerClosed { reason, .. } => {
                     reason?;
