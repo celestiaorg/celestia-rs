@@ -13,7 +13,7 @@ esac
 work=$(mktemp -d)
 peer_args=()
 if [[ "${3:-}" == --peer || "${3:-}" == --stock-light ]]; then
-    peer_args=(--bridge-p2p-listen 127.0.0.1:32121)
+    peer_args=(--prometheus-listen-addr 127.0.0.1:32660 --bridge-p2p-listen 127.0.0.1:32121)
 fi
 pid=
 bootstrap_pid=
@@ -99,6 +99,17 @@ if (( ${#peer_args[@]} )); then
     [[ -n "$peer_id" ]] || { echo 'missing DA peer identity' >&2; exit 1; }
     peer_probe=$(dirname "$probe")/peer/read_peer.go
     (cd "$go_tree" && go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data")
+    verify_count() {
+        local protocol=$1 outcome=$2 minimum=$3
+        awk -v series="protocol=\"$protocol\",outcome=\"$outcome\"" -v minimum="$minimum" '
+            /_da_stream_requests_total\{/ && index($0, series) && $NF >= minimum {found=1}
+            END {exit !found}' "$work/metrics"
+    }
+    curl -fsS http://127.0.0.1:32660/metrics >"$work/metrics"
+    for kind in header eds row sample range namespace; do verify_count "$kind" served 1; done
+    verify_count sample served 16
+    verify_count eds not_found 1
+    echo "Verified Rust peer $peer_id served all six protocols, 16 samples and a missing EDS response"
 fi
 if [[ "${3:-}" == --stock-light ]]; then
     (cd "$go_tree" && go build -o "$work/go-da" ./cmd/celestia)
@@ -119,10 +130,14 @@ if [[ "${3:-}" == --stock-light ]]; then
     (cd "$go_tree" && go build -o "$work/read" "$probe")
     read_from_light() {
         for attempt in {1..10}; do
-            if "$work/read" http://127.0.0.1:32659 "$height" "$namespace" "$data"; then return; fi
+            if "$work/read" http://127.0.0.1:32659 "$height" "$namespace" "$data" >"$work/read.log" 2>&1; then
+                cat "$work/read.log"
+                return
+            fi
             kill -0 "$light_pid"
             sleep 3
         done
+        cat "$work/read.log" >&2
         echo 'Go light node did not recover the paid blob' >&2
         return 1
     }
@@ -141,5 +156,11 @@ if [[ "${3:-}" == --stock-light ]]; then
     data=$(python3 -c 'print("a4b2c6" * 4000)')
     pay_for_blob
     read_from_light
+    # Restart reset the registry and the explicit peer probe exited before the
+    # first shutdown. Only the stock light process can issue these SHREX reads.
+    curl -fsS http://127.0.0.1:32660/metrics >"$work/metrics"
+    verify_count namespace served 1
+    echo "Stock Go light read the restarted Rust peer; namespace requests:"
+    awk '/_da_stream_requests_total\{/ && /protocol="namespace",outcome="served"/' "$work/metrics"
     echo "The same Go light process recovered a new paid blob at $height from restarted Rust peer $peer_id"
 fi

@@ -41,12 +41,51 @@ fn identity(path: &Path) -> Result<identity::Keypair> {
     }
 }
 
+pub(crate) struct Serving {
+    bridge: Arc<Bridge>,
+    metrics: Option<Arc<crate::metrics::Metrics>>,
+}
+
+impl Serving {
+    pub(crate) fn new(
+        blocks: BlockStore,
+        states: StateStore,
+        metrics: Option<Arc<crate::metrics::Metrics>>,
+    ) -> Self {
+        Self {
+            bridge: Arc::new(Bridge {
+                blocks,
+                states,
+                worker: Arc::new(Semaphore::new(2)),
+            }),
+            metrics,
+        }
+    }
+
+    fn record(&self, kind: Kind, outcome: &str) {
+        if let Some(metrics) = &self.metrics {
+            let protocol = match kind {
+                Kind::Header => "header",
+                Kind::Namespace => "namespace",
+                Kind::Eds => "eds",
+                Kind::Row => "row",
+                Kind::Sample => "sample",
+                Kind::Range => "range",
+            };
+            metrics.add(
+                "da_stream_requests_total",
+                &format!("protocol=\"{protocol}\",outcome=\"{outcome}\""),
+                1.0,
+            );
+        }
+    }
+}
+
 pub(crate) fn start(
     addr: SocketAddr,
     home: &Path,
     network: &str,
-    blocks: BlockStore,
-    states: StateStore,
+    serving: Serving,
     bootstrap: &[Multiaddr],
     announce: Vec<Multiaddr>,
 ) -> Result<Server> {
@@ -60,11 +99,6 @@ pub(crate) fn start(
     let net = network.to_owned();
     let (stop, stopped) = oneshot::channel();
     let (ready, started) = mpsc::sync_channel(1);
-    let bridge = Arc::new(Bridge {
-        blocks,
-        states,
-        worker: Arc::new(Semaphore::new(2)),
-    });
     let thread = std::thread::Builder::new()
         .name("da-peer".into())
         .spawn(move || {
@@ -72,7 +106,9 @@ pub(crate) fn start(
                 .enable_all()
                 .build()
                 .map_err(anyhow::Error::from)
-                .and_then(|rt| rt.block_on(run(key, listen, &net, bridge, stopped, &ready, peers)));
+                .and_then(|rt| {
+                    rt.block_on(run(key, listen, &net, serving, stopped, &ready, peers))
+                });
             if let Err(e) = result {
                 let _ = ready.try_send(Err(e.to_string()));
                 tracing::error!(error=%e,"DA peer stopped");
@@ -92,11 +128,13 @@ async fn run(
     key: identity::Keypair,
     listen: Multiaddr,
     network: &str,
-    bridge: Arc<Bridge>,
+    serving: Serving,
     mut stopped: oneshot::Receiver<()>,
     ready: &mpsc::SyncSender<Result<(), String>>,
     peers: network::Peering,
 ) -> Result<()> {
+    let serving = Arc::new(serving);
+    let bridge = &serving.bridge;
     let behaviour = network::Behaviour::new(&key, network)?;
     let mut swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
@@ -161,14 +199,26 @@ async fn run(
                     bail!("DA peer listener closed");
                 }
                 SwarmEvent::Behaviour(network::BehaviourEvent::Streams((peer, inbound::Accepted {kind, mut stream}))) => {
-                let Ok(admission) = admissions.clone().try_acquire_owned() else { continue };
-                let bridge = bridge.clone();
+                let Ok(admission) = admissions.clone().try_acquire_owned() else {
+                    serving.record(kind, "busy");
+                    continue
+                };
+                let serving = serving.clone();
                 tokio::spawn(async move {
                     let _admission = admission;
-                    let Ok(Ok(_worker)) = tokio::time::timeout(TIMEOUT, bridge.worker.acquire()).await else { return };
-                    if let Err(error) = serve(&bridge, kind, &mut stream).await {
-                        tracing::debug!(%peer, %error, "DA stream ended");
-                    }
+                    let Ok(Ok(_worker)) = tokio::time::timeout(TIMEOUT, serving.bridge.worker.acquire()).await else {
+                        serving.record(kind, "busy");
+                        return
+                    };
+                    let outcome = match serve(&serving.bridge, kind, &mut stream).await {
+                        Ok(true) => "served",
+                        Ok(false) => "not_found",
+                        Err(error) => {
+                            tracing::debug!(%peer, %error, "DA stream ended");
+                            "error"
+                        }
+                    };
+                    serving.record(kind, outcome);
                 });
                 }
                 _ => {}
@@ -258,7 +308,8 @@ async fn write(stream: &mut Stream, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<()> {
+async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<bool> {
+    let found;
     match kind {
         Kind::Header => {
             let data = tokio::time::timeout(TIMEOUT, read_frame(stream)).await??;
@@ -266,6 +317,7 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
             let bridge = bridge.clone();
             let responses =
                 tokio::task::spawn_blocking(move || bridge.header_responses(request)).await??;
+            found = responses.iter().any(|r| r.status == 1);
             for response in responses {
                 write(stream, &response.encode_length_delimited_to_vec()).await?;
             }
@@ -292,6 +344,7 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
                 Err(_) => 3,
             };
             write(stream, &[2, 8, status]).await?;
+            found = status == 1;
             match data? {
                 Some(Payload::Range(block, from, end)) => {
                     let width = block.eds.original_width();
@@ -342,7 +395,7 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
         }
     }
     tokio::time::timeout(TIMEOUT, stream.close()).await??;
-    Ok(())
+    Ok(found)
 }
 
 enum Payload {

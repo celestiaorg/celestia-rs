@@ -83,6 +83,12 @@ func main() {
 	params.WithNetworkID(chain)
 	client, err := shrex.NewClient(params, host)
 	check(err)
+	missing, err := shwap.NewEdsID(h + 1_000_000)
+	check(err)
+	var unavailable bytes.Buffer
+	if _, _, err = client.Get(ctx, &missing, &unavailable, info.ID); !errors.Is(err, shrex.ErrNotFound) || unavailable.Len() != 0 {
+		panic(fmt.Sprintf("expected missing EDS, got %v and %d bytes", err, unavailable.Len()))
+	}
 	width := len(eh.DAH.RowRoots)
 	eid, err := shwap.NewEdsID(h)
 	check(err)

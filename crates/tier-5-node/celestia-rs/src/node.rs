@@ -442,21 +442,6 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         .bridge_rpc_listen
         .map(|addr| crate::bridge::Server::start(addr, home, bs.clone(), ss.clone()))
         .transpose()?;
-    #[cfg(feature = "bridge-p2p")]
-    let _bridge_peer = opts
-        .bridge_p2p_listen
-        .map(|addr| {
-            crate::bridge::peer::start(
-                addr,
-                home,
-                &genesis.chain_id,
-                bs.clone(),
-                ss.clone(),
-                &opts.bridge_bootstrap,
-                opts.bridge_announce.clone(),
-            )
-        })
-        .transpose()?;
     rpc.spawn()?;
     let local_addr = pv.address().to_vec();
     // Go: a fresh node with state sync enabled skips the handshake; the
@@ -494,6 +479,20 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         Some(m) => Some(start_metrics(m, &genesis.chain_id, &pool)?),
         None => None,
     };
+    #[cfg(feature = "bridge-p2p")]
+    let _bridge_peer = opts
+        .bridge_p2p_listen
+        .map(|addr| {
+            crate::bridge::peer::start(
+                addr,
+                home,
+                &genesis.chain_id,
+                crate::bridge::peer::Serving::new(bs.clone(), ss.clone(), metrics.clone()),
+                &opts.bridge_bootstrap,
+                opts.bridge_announce.clone(),
+            )
+        })
+        .transpose()?;
     // The consensus state machine and its reactors exist from the start
     // (Go's `NewState` + `NewReactor`); block sync executes blocks through
     // the same block executor and then hands over (`SwitchToConsensus`).
