@@ -158,6 +158,9 @@ pub struct StartOptions {
     /// Explicit listener for the experimental read-only DA bridge.
     #[cfg(feature = "bridge")]
     pub bridge_rpc_listen: Option<std::net::SocketAddr>,
+    /// Keyring account explicitly assigned to DA blob submission.
+    #[cfg(feature = "bridge")]
+    pub bridge_signer: Option<String>,
     /// Node home.
     pub home: PathBuf,
     /// Stop after committing this height (0 = run forever); unlike Go's
@@ -196,6 +199,8 @@ impl StartOptions {
             stop_height,
             #[cfg(feature = "bridge")]
             bridge_rpc_listen: None,
+            #[cfg(feature = "bridge")]
+            bridge_signer: None,
             #[cfg(feature = "bridge-p2p")]
             bridge_p2p_listen: None,
             #[cfg(feature = "bridge-p2p")]
@@ -456,6 +461,19 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     let _bridge = opts
         .bridge_rpc_listen
         .map(|addr| {
+            let wallet = opts
+                .bridge_signer
+                .as_deref()
+                .map(|name| {
+                    crate::bridge::submit::Wallet::open(
+                        home,
+                        name,
+                        &rpc.settings.rpc.laddr,
+                        app::AbciApp::from_shared(app.clone()),
+                        &genesis.chain_id,
+                    )
+                })
+                .transpose()?;
             crate::bridge::Server::start(
                 addr,
                 home,
@@ -463,6 +481,7 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                 ss.clone(),
                 #[cfg(feature = "bridge-p2p")]
                 bridge_peer.as_ref().map(|(_, control)| control.clone()),
+                wallet,
             )
         })
         .transpose()?;

@@ -69,6 +69,7 @@ pub(crate) fn start(
     let blocklist = admin::Blocklist::open(home)?;
     let bridge = Arc::new(Bridge {
         peer_control: None,
+        wallet: None,
         waiters: Arc::new(Semaphore::new(32)),
         blocks,
         states,
