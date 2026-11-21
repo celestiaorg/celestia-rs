@@ -7,13 +7,30 @@ use std::{sync::Arc, time::Duration};
 pub(super) fn handles(method: &str) -> bool {
     matches!(
         method,
-        "header.GetRangeByHeight" | "header.WaitForHeight" | "header.SyncState" | "header.SyncWait"
+        "header.GetRangeByHeight"
+            | "header.WaitForHeight"
+            | "header.SyncState"
+            | "header.SyncWait"
+            | "blobstream.GetDataRootTupleRoot"
+            | "blobstream.GetDataRootTupleInclusionProof"
     )
 }
 
 pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) -> Result<J> {
     let args = params.as_array().context("invalid params")?;
     match (method, args.as_slice()) {
+        ("blobstream.GetDataRootTupleRoot", [start, end]) => {
+            blobstream(bridge, None, start, end).await
+        }
+        ("blobstream.GetDataRootTupleInclusionProof", [height, start, end]) => {
+            blobstream(
+                bridge,
+                Some(height.as_u64().context("invalid height")?),
+                start,
+                end,
+            )
+            .await
+        }
         ("header.GetRangeByHeight", [from, to]) => {
             ensure!(!from.is_null(), "header/service: 'from' header is nil");
             let start: i64 = from["header"]["height"]
@@ -124,4 +141,50 @@ async fn wait(bridge: &Arc<Bridge>, height: i64) -> Result<()> {
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+}
+
+async fn blobstream(
+    bridge: Arc<Bridge>,
+    height: Option<u64>,
+    start: &Value,
+    end: &Value,
+) -> Result<J> {
+    let start = start.as_u64().context("invalid start height")?;
+    let end = end.as_u64().context("invalid end height")?;
+    ensure!(start > 0, "height is equal to 0");
+    ensure!(
+        end > start,
+        "end block is smaller or equal to the start block"
+    );
+    ensure!(
+        end - start <= 10_000,
+        "the query exceeds the limit of allowed blocks 10000"
+    );
+    let permit = bridge
+        .worker
+        .clone()
+        .try_acquire_owned()
+        .context("bridge busy")?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let current = u64::try_from(head(&bridge)?)?;
+        ensure!(end - 1 <= current, "end block {end} is higher than local chain height {current}. Wait for the node until it syncs up to {end}");
+        if let Some(h) = height {
+            ensure!((start..end).contains(&h), "height {h} should be in the end exclusive interval first_block {start} last_block {end}");
+        }
+        // The pinned Go store reads [start+1, end) after fetching the first header.
+        ensure!(end-start > 1, "header/store: invalid range({end},{end})");
+        let leaves = rpc::env::data_root_tuples(&bridge.blocks, start, end).map_err(anyhow::Error::msg)?;
+        if let Some(h) = height {
+            let (_, proofs) = ctypes::merkle_proof::proofs_from_byte_slices(&leaves);
+            let proof = &proofs[usize::try_from(h - start)?];
+            return Ok(J::obj([
+                ("total", J::num(proof.total)),
+                ("index", J::num(proof.index)),
+                ("leaf_hash", J::b64(&proof.leaf_hash)),
+                ("aunts", J::Arr(proof.aunts.iter().map(|a| J::b64(a)).collect())),
+            ]));
+        }
+        Ok(J::hex(&ctypes::merkle_proof::hash_from_byte_slices(&leaves)))
+    }).await?
 }

@@ -132,13 +132,18 @@ impl Streams {
         let request = serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null);
         let method = request["method"].as_str().unwrap_or_default();
         if method == "xrpc.cancel" {
-            let Some(id) = request["params"].get(0).map(Value::to_string) else {
+            let Some(id) = request["params"].get(0) else {
                 return Ok(None);
             };
-            if let Some(call) = self.requests.remove(&id) {
+            if let Some(call) = self.requests.remove(&id.to_string()) {
                 call.abort();
+                // go-jsonrpc waits for a final reply to the original call after xrpc.cancel.
+                return Ok(Some(json!({"jsonrpc":"2.0","id":id,"error":{"code":1,"message":"context canceled"}}).to_string()));
             }
-            return Ok(self.subs.remove(&id).map(|sub| closed(sub.channel)));
+            return Ok(self
+                .subs
+                .remove(&id.to_string())
+                .map(|sub| closed(sub.channel)));
         }
         let id = &request["id"];
         let key = id.to_string();

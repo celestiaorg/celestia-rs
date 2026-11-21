@@ -4,10 +4,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"github.com/celestiaorg/celestia-node/api/rpc/client"
 	"github.com/celestiaorg/go-square/v4/share"
+	"github.com/cometbft/cometbft/crypto/merkle"
 	"os"
 	"strconv"
 	"time"
@@ -83,6 +85,9 @@ func verifyHeaderAPI(ctx context.Context, c *client.Client) error {
 			return err
 		}
 	}
+	if err := verifyBlobstream(ctx, c, head.Height()-2, head.Height()+1); err != nil {
+		return err
+	}
 	anchor, err := c.Header.GetByHeight(ctx, head.Height()-2)
 	if err != nil {
 		return err
@@ -130,4 +135,44 @@ func verifyHeaderAPI(ctx context.Context, c *client.Client) error {
 		return fmt.Errorf("wait returned wrong height")
 	}
 	return next.Validate()
+}
+
+func verifyBlobstream(ctx context.Context, c *client.Client, start, end uint64) error {
+	var leaves [][]byte
+	for height := start; height < end; height++ {
+		h, err := c.Header.GetByHeight(ctx, height)
+		if err != nil {
+			return err
+		}
+		tuple := make([]byte, 64)
+		binary.BigEndian.PutUint64(tuple[24:32], height)
+		copy(tuple[32:], h.DataHash)
+		leaves = append(leaves, tuple)
+	}
+	root, err := c.Blobstream.GetDataRootTupleRoot(ctx, start, end)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(root, merkle.HashFromByteSlices(leaves)) {
+		return fmt.Errorf("wrong Blobstream data commitment at %d", start)
+	}
+	for i, leaf := range leaves {
+		proof, err := c.Blobstream.GetDataRootTupleInclusionProof(ctx, start+uint64(i), start, end)
+		if err != nil {
+			return err
+		}
+		if err := (*merkle.Proof)(proof).Verify(root, leaf); err != nil {
+			return err
+		}
+	}
+	if _, err := c.Blobstream.GetDataRootTupleInclusionProof(ctx, end, start, end); err == nil {
+		return fmt.Errorf("accepted proof at exclusive end")
+	}
+	if _, err := c.Blobstream.GetDataRootTupleRoot(ctx, start, start+1); err == nil {
+		return fmt.Errorf("accepted empty trailing header range")
+	}
+	if _, err := c.Blobstream.GetDataRootTupleRoot(ctx, end, start); err == nil {
+		return fmt.Errorf("accepted reversed range")
+	}
+	return nil
 }
