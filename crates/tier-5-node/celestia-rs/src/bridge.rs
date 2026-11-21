@@ -561,15 +561,12 @@ async fn dispatch(
                 .ok_or_else(|| (1, "bridge signer is not configured".to_owned()))?;
             if submit {
                 return wallet
-                    .submit(&req["params"], bridge.states.clone())
+                    .submit(&req.params, bridge.states.clone())
                     .await
                     .map(J::num)
                     .map_err(|e| (1, e.to_string()));
             }
-            if req
-                .get("params")
-                .is_some_and(|p| !p.is_null() && p != &empty)
-            {
+            if !req.params.is_null() && req.params != empty {
                 return Err(invalid());
             }
             return Ok(J::str(wallet.address()));
