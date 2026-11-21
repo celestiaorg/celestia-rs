@@ -52,7 +52,7 @@ export CELESTIA_CUSTOM="$chain:${hash:?no genesis block}"
 bridge=$!
 for attempt in {1..120}; do
     kill -0 "$bridge"
-    peer=$(sed -n 's@.*\(/ip4/127\.0\.0\.1/tcp/[0-9]*/p2p/[[:alnum:]]*\).*@\1@p' "$work/bridge.log" | head -1)
+    peer=$(sed -n 's@.*/ip4/[0-9.]*\(/tcp/[0-9]*/p2p/[[:alnum:]]*\).*@/ip4/127.0.0.1\1@p' "$work/bridge.log" | head -1)
     if [[ -n "$peer" ]]; then break; fi
     sleep 1
 done

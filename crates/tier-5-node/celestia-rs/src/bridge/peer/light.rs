@@ -264,12 +264,14 @@ async fn follow(
         batch.delete(b"pending".to_vec());
         batch.put(b"head".to_vec(), raw);
         db.write(batch)?;
-        println!(
+        use std::io::Write as _;
+        writeln!(
+            std::io::stdout().lock(),
             "sampled height {} ({} verified shares), hash {}",
             block.height,
             indices.len(),
             hex::encode_upper(&block.hash)
-        );
+        )?;
         last = Some(block);
     }
 }
