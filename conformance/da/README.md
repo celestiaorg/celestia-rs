@@ -36,6 +36,13 @@ The client recomputes the blob commitment, verifies the namespace rows against
 the signed header, and compares the data and share index returned by
 `blob.Get` and `blob.GetAll`.
 
+To accept paid submissions, start the bridge with an additional
+`--bridge-signer <account>`. This selects a funded account from the node's
+configured keyring. A client with a write token can spend that account's funds
+on blob submissions. The usual read token can query its address. For a private
+devnet, the submission probe sends both v0 and signer-bearing v1 blobs and
+verifies their commitment proofs at the returned height.
+
 For SHREX and go-header, build with `--features bridge-p2p` and add
 `--bridge-p2p-listen 127.0.0.1:32121` to the Rust start command. Use the
 public peer ID in the DA listener log to construct the multiaddress. From
@@ -50,3 +57,22 @@ go run "$PROBE_DIR/peer/read_peer.go" celestia-rs-local \
 The Go peer exchanges a signed header, reconstructs the EDS, verifies a
 range, verifies half rows and samples in all four quadrants, and retrieves
 the submitted bytes with a namespace inclusion proof.
+
+## Standalone Rust DA light mode
+
+Build the same executable with `--features da-light`. Get a recent header hash
+from a trusted source and a TCP multiaddress with the DA peer ID of a bridge
+on that chain. Use a fresh light home:
+
+```sh
+celestia-rs da-light --home ./light-home --network "$CHAIN_ID" \
+  --peer "$BRIDGE_MULTIADDR" --trusted-hash "$HEADER_HASH"
+```
+
+The process verifies the checkpoint, follows adjacent signed headers and
+samples up to 16 unique random cells per height. It accepts row and column
+proofs, including parity cells. Its separate light database records the
+coordinates before sampling and advances the head after every proof passes.
+Rerunning the command with the original trust inputs resumes from its last
+sampled height. A header outside the seven-day trusting period requires a
+fresh checkpoint and light home. Use `--until HEIGHT` for a bounded run.

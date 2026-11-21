@@ -391,6 +391,76 @@ pub fn row_range_proof(
     })
 }
 
+/// Authenticate one SHREX sample against a trusted DAH. The caller must check the
+/// proof's declared start/end against the requested column (row for a column proof).
+#[cfg(feature = "bridge")]
+pub fn verify_sample(
+    dah: &square::DataAvailabilityHeader,
+    row: usize,
+    col: usize,
+    column_proof: bool,
+    share: &[u8],
+    nodes: &[Vec<u8>],
+) -> Result<(), SdkError> {
+    let width = dah.row_roots.len();
+    if width < 2
+        || !width.is_power_of_two()
+        || dah.column_roots.len() != width
+        || row >= width
+        || col >= width
+        || share.len() != shares::SHARE_SIZE
+        || nodes.len() != width.ilog2() as usize
+    {
+        return Err(plain("invalid sample dimensions"));
+    }
+    let (index, root) = if column_proof {
+        (row, &dah.column_roots[col])
+    } else {
+        (col, &dah.row_roots[row])
+    };
+    let mut current = Node::leaf(&nmt_leaf(width / 2, row, col, share));
+    // Range proofs are depth-first. Left siblings precede the leaf in
+    // increasing depth, and right siblings follow it in decreasing depth.
+    let mut left = index.count_ones() as usize;
+    let mut right = left;
+    for depth in 0..width.ilog2() {
+        let is_right = index & (1 << depth) != 0;
+        let bytes = if is_right {
+            left -= 1;
+            &nodes[left]
+        } else {
+            let sibling = &nodes[right];
+            right += 1;
+            sibling
+        };
+        let ns = shares::NAMESPACE_SIZE;
+        if bytes.len() != square::DAH_ROOT_SIZE || bytes[..ns] > bytes[ns..2 * ns] {
+            return Err(plain("invalid namespaced proof node"));
+        }
+        let mut sibling = Node {
+            min: [0; shares::NAMESPACE_SIZE],
+            max: [0; shares::NAMESPACE_SIZE],
+            digest: [0; 32],
+        };
+        sibling.min.copy_from_slice(&bytes[..ns]);
+        sibling.max.copy_from_slice(&bytes[ns..2 * ns]);
+        sibling.digest.copy_from_slice(&bytes[2 * ns..]);
+        let (a, b) = if is_right {
+            (sibling, current)
+        } else {
+            (current, sibling)
+        };
+        if a.max > b.min {
+            return Err(plain("unordered namespaced proof nodes"));
+        }
+        current = Node::parent(&a, &b);
+    }
+    if current.to_bytes().as_slice() != root {
+        return Err(plain("sample does not match committed root"));
+    }
+    Ok(())
+}
+
 /// Prove every candidate row of an authenticated EDS, as required by
 /// celestia-node's NamespaceData.Verify.
 #[cfg(feature = "bridge")]
@@ -535,6 +605,16 @@ mod tests {
             .collect();
         let eds = square::extend_shares(&shares).unwrap();
         let dah = square::new_data_availability_header(&eds).unwrap();
+        for row in 0..eds.width() {
+            for col in 0..eds.width() {
+                let proof = row_range_proof(&eds, &dah, row, col, col + 1).unwrap();
+                let share = eds.share(row, col).unwrap();
+                verify_sample(&dah, row, col, false, share, &proof.nodes).unwrap();
+                let mut corrupt = share.to_vec();
+                corrupt[shares::SHARE_SIZE - 1] ^= 1;
+                assert!(verify_sample(&dah, row, col, false, &corrupt, &proof.nodes).is_err());
+            }
+        }
         let found = namespace_rows(&eds, &dah, ns(3)).unwrap();
         assert_eq!(found.len(), 2);
         assert_eq!((found[0].proof.start, found[0].proof.end), (1, 2));

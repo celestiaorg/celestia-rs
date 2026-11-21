@@ -29,8 +29,9 @@ pub(super) async fn upgrade(
         return StatusCode::UNAUTHORIZED.into_response();
     };
     let token = token.map(str::to_owned);
-    ws.max_message_size(64 * 1024)
-        .max_frame_size(64 * 1024)
+    let limit = bridge.body_limit(&permissions);
+    ws.max_message_size(limit)
+        .max_frame_size(limit)
         .on_upgrade(move |socket| async move {
             tokio::select! {
                 _=connection(socket,bridge,auth.clone(), permissions.into())=>{}
