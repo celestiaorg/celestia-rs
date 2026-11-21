@@ -31,15 +31,18 @@ impl ShareRange {
     }
 
     /// Offset the range by `value`.
+    ///
+    /// If either endpoint would overflow, returns an error and leaves the range unchanged.
     pub fn add(&mut self, value: usize) -> Result<()> {
-        self.start = self
+        let start = self
             .start
             .checked_add(value)
             .ok_or(Error::InvalidShareRange)?;
-        self.end = self
+        let end = self
             .end
             .checked_add(value)
             .ok_or(Error::InvalidShareRange)?;
+        *self = Self::new(start, end);
         Ok(())
     }
 }
@@ -70,4 +73,28 @@ pub fn get_share_range_for_namespace(shares: &[Share], namespace: Namespace) -> 
     Ok(start.map_or_else(ShareRange::empty, |start| {
         ShareRange::new(start, shares.len())
     }))
+}
+
+#[cfg(kani)]
+mod proofs {
+    use super::{Error, ShareRange};
+
+    #[kani::proof]
+    fn offset_updates_both_endpoints_or_leaves_range_unchanged() {
+        let original = ShareRange::new(kani::any(), kani::any());
+        let offset: usize = kani::any();
+        let (start, start_overflow) = original.start.overflowing_add(offset);
+        let (end, end_overflow) = original.end.overflowing_add(offset);
+
+        let mut range = original;
+        let result = range.add(offset);
+
+        if start_overflow || end_overflow {
+            assert_eq!(result, Err(Error::InvalidShareRange));
+            assert_eq!(range, original);
+        } else {
+            assert_eq!(result, Ok(()));
+            assert_eq!(range, ShareRange::new(start, end));
+        }
+    }
 }

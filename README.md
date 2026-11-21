@@ -108,6 +108,17 @@ cargo xtask repo-health --offline   # local gate
 cargo xtask refresh-fixtures        # regenerate Go fixtures (needs Go)
 ```
 
+The [static analysis workflow](.github/workflows/static-analysis.yml) runs
+Rust CodeQL scanning and Kani proofs for the `shares` crate. CodeQL findings
+appear under Security → Code scanning. To run the same Kani proofs locally on
+Linux or macOS:
+
+```sh
+cargo install --locked kani-verifier --version 0.68.0
+cargo kani setup
+cargo kani -p shares
+```
+
 `crates/` holds the workspace, tiered from primitives up to the node
 binary; `conformance/` the Go fixture generators and devnet harness;
 `docs/` the [design](docs/specs/2026-05-14-celestia-rs-design.md),
