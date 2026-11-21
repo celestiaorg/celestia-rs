@@ -129,6 +129,8 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
                     | "header.Tail"
                     | "header.GetByHeight"
                     | "header.GetByHash"
+                    | "header.GetRangeByHeight"
+                    | "header.WaitForHeight"
                     | "das.SamplingStats"
                     | "das.WaitCatchUp"
             )
@@ -203,6 +205,22 @@ async fn dispatch(
             .map_err(|_| (1, "sampler stopped".to_owned()))?;
         return Ok("null".into());
     }
+    if method == "header.WaitForHeight" {
+        let height = match args.as_slice() {
+            [h] => h.as_u64().filter(|h| *h > 0),
+            _ => None,
+        }
+        .ok_or_else(|| (-32602, "invalid height".to_owned()))?;
+        let _permit = service
+            .waiters
+            .try_acquire()
+            .map_err(|_| (-32000, "too many header waiters".to_owned()))?;
+        let mut status = service.status.clone();
+        status
+            .wait_for(|s| s.sampled >= height)
+            .await
+            .map_err(|_| (1, "sampler stopped".to_owned()))?;
+    }
     let worker = service
         .workers
         .clone()
@@ -219,12 +237,35 @@ async fn dispatch(
     .map_err(|e| (1, e.to_string()))
 }
 fn read(db: &RedbBackend, method: &str, args: &[Value]) -> Result<rpc::json::J> {
+    if let ("header.GetRangeByHeight", [from, to]) = (method, args) {
+        let (range, mut previous) = crate::bridge::header_rpc::range_bounds(from, to)?;
+        let mut headers = Vec::new();
+        for h in range {
+            let raw = db
+                .get(&at(u64::try_from(h)?))?
+                .context("header not found")?;
+            let wire = HeaderWire::decode(raw.as_slice())?;
+            let header = ctypes::Header::from_proto(&wire.header.context("missing header")?)?;
+            ensure!(
+                header.height == h && header.last_block_id.hash == previous,
+                "discontinuous header range"
+            );
+            previous = header.hash().context("missing header hash")?;
+            headers.push(decode_header(
+                &header,
+                wire.commit,
+                wire.validators,
+                &wire.dah,
+            )?);
+        }
+        return Ok(rpc::json::J::Arr(headers));
+    }
     let key = match (method, args) {
         ("header.LocalHead", []) => b"head".to_vec(),
         ("header.Tail", []) => at(height_of(
             &db.get(b"tail")?.context("missing sampled tail")?,
         )?),
-        ("header.GetByHeight", [h]) => {
+        ("header.GetByHeight" | "header.WaitForHeight", [h]) => {
             at(h.as_u64().filter(|h| *h > 0).context("invalid height")?)
         }
         ("header.GetByHash", [h]) => {
@@ -238,10 +279,20 @@ fn read(db: &RedbBackend, method: &str, args: &[Value]) -> Result<rpc::json::J> 
     };
     let raw = db.get(&key)?.context("header not found")?;
     let wire = HeaderWire::decode(raw.as_slice())?;
+    let header = ctypes::Header::from_proto(&wire.header.context("missing header")?)?;
+    decode_header(&header, wire.commit, wire.validators, &wire.dah)
+}
+
+fn decode_header(
+    header: &ctypes::Header,
+    commit: Option<ctypes::proto::types::Commit>,
+    validators: Option<ctypes::proto::types::ValidatorSet>,
+    dah: &[u8],
+) -> Result<rpc::json::J> {
     Ok(header_json(
-        &ctypes::Header::from_proto(&wire.header.context("missing header")?)?,
-        &ctypes::Commit::from_proto(&wire.commit.context("missing commit")?)?,
-        &ctypes::ValidatorSet::from_proto(&wire.validators.context("missing validators")?)?,
-        &square::DataAvailabilityHeader::from_proto_bytes(&wire.dah)?,
+        header,
+        &ctypes::Commit::from_proto(&commit.context("missing commit")?)?,
+        &ctypes::ValidatorSet::from_proto(&validators.context("missing validators")?)?,
+        &square::DataAvailabilityHeader::from_proto_bytes(dah)?,
     ))
 }
