@@ -62,6 +62,7 @@ kill -0 "$pid"
 echo "celestia-node $revision; chain celestia-rs-local; paid blob at height $height"
 sha256sum "$binary" "$work/node/config/genesis.json"
 (cd "$go_tree" && go run "$probe" http://127.0.0.1:32658 "$height" "$namespace" "$data")
+(cd "$go_tree" && go run "$(dirname "$probe")/subscriptions/check.go" ws://127.0.0.1:32658 "$height" "$namespace" "$data")
 DA_TEST_ADMIN_TOKEN=$("$binary" da-auth admin --home "$work/node")
 export DA_TEST_ADMIN_TOKEN
 (cd "$go_tree" && go run "$(dirname "$probe")/auth/check.go" http://127.0.0.1:32658)

@@ -16,7 +16,7 @@ workspace = true
 default = ["rocksdb", "jemalloc"]
 # Experimental in-process DA bridge. Runtime opt-in via --bridge-rpc-listen.
 da-light = ["bridge-p2p", "dep:libp2p-stream"]
-bridge = ["app/bridge", "dep:hmac", "dep:sha2", "dep:tempfile"]
+bridge = ["axum/ws", "app/bridge", "dep:hmac", "dep:sha2", "dep:tempfile"]
 bridge-p2p = ["bridge", "dep:libp2p", "dep:futures"]
 # RocksDB state backend (default); `--no-default-features` builds redb only.
 rocksdb = ["app/rocksdb", "api-server/rocksdb"]
