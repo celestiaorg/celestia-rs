@@ -1,6 +1,7 @@
 //! Opt-in DA RPC backed by the consensus node's committed block and state stores.
 
 pub(crate) mod auth;
+mod blobstream;
 mod envelope;
 mod header_rpc;
 mod node_rpc;

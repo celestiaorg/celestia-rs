@@ -26,6 +26,15 @@ func main() {
 	c, err := client.NewClient(ctx, os.Args[1], os.Getenv("DA_TEST_READ_TOKEN"))
 	check(err)
 	defer c.Close()
+	if len(os.Args) == 5 && os.Args[2] == "blobstream" {
+		start, err := strconv.ParseUint(os.Args[3], 10, 64)
+		check(err)
+		end, err := strconv.ParseUint(os.Args[4], 10, 64)
+		check(err)
+		check(verifyBlobstream(ctx, c, start, end))
+		fmt.Printf("Go verified Blobstream roots and every tuple proof for [%d,%d) offline\n", start, end)
+		return
+	}
 	check(verifyHeaderAPI(ctx, c))
 	height, err := strconv.ParseUint(os.Args[2], 10, 64)
 	check(err)
