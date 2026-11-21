@@ -82,6 +82,22 @@ impl DataAvailabilityHeader {
         Ok(())
     }
 
+    /// Candidate rows for a SHWAP namespace-data request, in EDS order.
+    /// A namespace between the inclusive bounds can still require an absence proof.
+    pub fn rows_with_namespace(&self, namespace: shares::Namespace) -> Result<Vec<usize>> {
+        use shares::{NAMESPACE_SIZE, Namespace};
+
+        let mut rows = Vec::new();
+        for (index, root) in self.row_roots.iter().enumerate() {
+            let min = Namespace::from_slice(&root[..NAMESPACE_SIZE])?;
+            let max = Namespace::from_slice(&root[NAMESPACE_SIZE..2 * NAMESPACE_SIZE])?;
+            if (min..=max).contains(&namespace) {
+                rows.push(index);
+            }
+        }
+        Ok(rows)
+    }
+
     /// Compute the simple Merkle root over row roots followed by column roots.
     #[must_use]
     pub fn hash(&self) -> [u8; DAH_HASH_SIZE] {
@@ -165,6 +181,40 @@ struct DataAvailabilityHeaderProto {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Cases from celestia-node v0.36.0 share/root_test.go.
+    #[test]
+    fn rows_with_namespace_matches_go() -> Result<()> {
+        use shares::{NAMESPACE_SIZE, NAMESPACE_VERSION_ZERO_ID_SIZE, Namespace};
+
+        let ns = |value| Namespace::new_v0(&[value; NAMESPACE_VERSION_ZERO_ID_SIZE]);
+        let row = |lo, hi| -> Result<_> {
+            let mut root = [0; DAH_ROOT_SIZE];
+            root[..NAMESPACE_SIZE].copy_from_slice(ns(lo)?.as_bytes());
+            root[NAMESPACE_SIZE..2 * NAMESPACE_SIZE].copy_from_slice(ns(hi)?.as_bytes());
+            Ok(root)
+        };
+        let mut header = DataAvailabilityHeader {
+            row_roots: vec![row(1, 2)?, row(2, 4)?, row(5, 5)?],
+            column_roots: vec![],
+        };
+        for (query, expected) in [
+            (0, vec![]),
+            (2, vec![0, 1]),
+            (3, vec![1]),
+            (4, vec![1]),
+            (5, vec![2]),
+            (6, vec![]),
+        ] {
+            assert_eq!(header.rows_with_namespace(ns(query)?)?, expected);
+        }
+        // Even after matching an earlier row, an invalid upper bound fails the lookup.
+        header.row_roots[2][NAMESPACE_SIZE] = 7;
+        assert!(header.rows_with_namespace(ns(2)?).is_err());
+        header.row_roots.clear();
+        assert!(header.rows_with_namespace(ns(1)?)?.is_empty());
+        Ok(())
+    }
 
     fn roots(n: usize) -> Vec<[u8; DAH_ROOT_SIZE]> {
         vec![[0; DAH_ROOT_SIZE]; n]
