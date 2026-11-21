@@ -599,6 +599,9 @@ impl Node {
             let st = self.tx_status(hash)?;
             match st["status"].as_str().unwrap_or_default() {
                 "COMMITTED" => return Ok(st),
+                // Removing an included transaction inserts an empty rejection marker
+                // before the committed receipt becomes visible through tx_status.
+                "REJECTED" if st["execution_code"].as_u64() == Some(0) && st["error"] == "" => {}
                 "REJECTED" | "EVICTED" => bail!("tx {hash} {}: {st}", st["status"]),
                 _ => {}
             }
