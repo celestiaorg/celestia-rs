@@ -113,14 +113,75 @@ async fn send(socket: &mut WebSocket, data: String) -> Result<()> {
     Ok(())
 }
 
+#[derive(Default)]
+struct Streams {
+    subs: HashMap<String, Subscription>,
+    next_channel: u64,
+}
+
+impl Streams {
+    async fn request(
+        &mut self,
+        bridge: &Arc<Bridge>,
+        auth: &Auth,
+        perms: &[String],
+        bytes: &[u8],
+    ) -> Result<Option<String>> {
+        let Ok(request) = serde_json::from_slice::<Value>(bytes) else {
+            return Ok(Some(dispatch(bridge.clone(), auth, perms, bytes).await));
+        };
+        let method = request["method"].as_str().unwrap_or_default();
+        if method == "xrpc.cancel" {
+            return Ok(request["params"]
+                .get(0)
+                .and_then(|id| self.subs.remove(&id.to_string()))
+                .map(|sub| closed(sub.channel)));
+        }
+        if !matches!(
+            method,
+            "header.Subscribe" | "blob.Subscribe" | "blob.SubscribeFromStartHeight"
+        ) {
+            return Ok(Some(dispatch(bridge.clone(), auth, perms, bytes).await));
+        }
+        let id = &request["id"];
+        let mut reply = if request["jsonrpc"] != "2.0"
+            || !(id.is_string() || id.is_number())
+            || self.subs.contains_key(&id.to_string())
+        {
+            json!({"error":{"code":-32600,"message":"invalid request"}})
+        } else if !perms.iter().any(|p| p == "read") {
+            json!({"error":{"code":1,"message":"subscription requires read permission"}})
+        } else if self.subs.len() >= 16 {
+            json!({"error":{"code":1,"message":"too many subscriptions"}})
+        } else {
+            let empty = json!([]);
+            let params = request
+                .get("params")
+                .filter(|v| !v.is_null())
+                .unwrap_or(&empty);
+            let channel = self.next_channel;
+            match Subscription::new(bridge, method, params, channel) {
+                Ok(sub) => {
+                    self.next_channel = channel.checked_add(1).context("channel ID exhausted")?;
+                    self.subs.insert(id.to_string(), sub);
+                    json!({"result":channel})
+                }
+                Err(error) => json!({"error":{"code":1,"message":error.to_string()}}),
+            }
+        };
+        reply["jsonrpc"] = json!("2.0");
+        reply["id"] = id.clone();
+        Ok(Some(reply.to_string()))
+    }
+}
+
 async fn connection(
     mut socket: WebSocket,
     bridge: Arc<Bridge>,
     auth: &Auth,
     perms: &[String],
 ) -> Result<()> {
-    let mut subs = HashMap::<String, Subscription>::new();
-    let mut channel = 0u64;
+    let mut streams = Streams::default();
     let mut tick = tokio::time::interval(Duration::from_millis(200));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
@@ -128,41 +189,13 @@ async fn connection(
             frame=socket.recv()=>{
                 let Some(frame)=frame else {return Ok(())};
                 let bytes=match frame? {Message::Text(t)=>t.into_bytes(),Message::Binary(b)=>b,Message::Close(_)=>return Ok(()),_=>continue};
-                let request:Value=match serde_json::from_slice(&bytes){Ok(v)=>v,Err(_)=>{
-                    send(&mut socket,dispatch(bridge.clone(),auth,perms,&bytes).await).await?;continue;
-                }};
-                let method=request["method"].as_str().unwrap_or("");
-                if method=="xrpc.cancel" {
-                    if let Some(id)=request["params"].get(0) {
-                        if let Some(done)=subs.remove(&id.to_string()){send(&mut socket,closed(done.channel)).await?;}
-                    }
-                    continue;
+                if let Some(reply) = streams.request(&bridge, auth, perms, &bytes).await? {
+                    send(&mut socket, reply).await?;
                 }
-                if !matches!(method,"header.Subscribe"|"blob.Subscribe"|"blob.SubscribeFromStartHeight"){
-                    let result=dispatch(bridge.clone(),auth,perms,&bytes).await;
-                    send(&mut socket,result).await?;continue;
-                }
-                let id=&request["id"];
-                let response=if request["jsonrpc"]!="2.0" || !(id.is_string()||id.is_number()) || subs.contains_key(&id.to_string()) {
-                    json!({"error":{"code":-32600,"message":"invalid request"}})
-                }else if !perms.iter().any(|p|p=="read"){
-                    json!({"error":{"code":1,"message":"subscription requires read permission"}})
-                }else if subs.len()>=16{
-                    json!({"error":{"code":1,"message":"too many subscriptions"}})
-                }else{
-                    let empty=json!([]);
-                    let params=request.get("params").filter(|v|!v.is_null()).unwrap_or(&empty);
-                    match Subscription::new(&bridge,method,params,channel){
-                        Ok(sub)=>{subs.insert(id.to_string(),sub);channel=channel.checked_add(1).context("channel ID exhausted")?;json!({"result":channel-1})}
-                        Err(e)=>json!({"error":{"code":1,"message":e.to_string()}}),
-                    }
-                };
-                let mut response=response;response["jsonrpc"]=json!("2.0");response["id"]=id.clone();
-                send(&mut socket,response.to_string()).await?;
             }
-            _=tick.tick(),if !subs.is_empty()=>{
+            _=tick.tick(),if !streams.subs.is_empty()=>{
                 let mut ended=Vec::new();
-                for (id,sub) in &mut subs {
+                for (id,sub) in &mut streams.subs {
                     if sub.next<bridge.blocks.base(){ended.push(id.clone());continue}
                     match sub.event(&bridge).await {
                         Ok(Some(value))=>{
@@ -173,7 +206,7 @@ async fn connection(
                         Err(e)=>tracing::debug!(height=sub.next,error=%e,"subscription read deferred"),
                     }
                 }
-                for id in ended {if let Some(sub)=subs.remove(&id){send(&mut socket,closed(sub.channel)).await?;}}
+                for id in ended {if let Some(sub)=streams.subs.remove(&id){send(&mut socket,closed(sub.channel)).await?;}}
             }
         }
     }
