@@ -7,6 +7,7 @@ import (
 	"github.com/celestiaorg/celestia-node/api/rpc/client"
 	"github.com/celestiaorg/celestia-node/api/rpc/perms"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -45,6 +46,14 @@ func main() {
 	check(e)
 	if !ready {
 		panic("RPC not ready")
+	}
+	if role == "Bridge" {
+		_, statsErr := reader.DAS.SamplingStats(ctx)
+		for _, err := range []error{statsErr, reader.DAS.WaitCatchUp(ctx)} {
+			if err == nil || !strings.Contains(err.Error(), "module/das: stubbed: dasing is disabled") {
+				panic(fmt.Sprintf("unexpected bridge DAS response: %v", err))
+			}
+		}
 	}
 	if _, e := reader.Node.Info(ctx); e == nil {
 		panic("read token accessed node info")

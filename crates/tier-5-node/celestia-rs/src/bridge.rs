@@ -545,6 +545,16 @@ async fn dispatch(
                 .map(|value| J::Raw(value.to_string()))
                 .map_err(|e| (1, e.to_string()));
         }
+        if matches!(method, "das.SamplingStats" | "das.WaitCatchUp") {
+            require(method, "read")?;
+            if req
+                .get("params")
+                .is_some_and(|v| !v.is_null() && v != &empty)
+            {
+                return Err((-32602, "invalid parameters".to_owned()));
+            }
+            return Err((1, "module/das: stubbed: dasing is disabled".to_owned()));
+        }
         if header_rpc::handles(method) {
             require(method, "read")?;
             let params = req.get("params").filter(|v| !v.is_null()).unwrap_or(&empty);
