@@ -21,8 +21,8 @@ func check(err error) {
 	}
 }
 
-func verify(dir string, height int) {
-	raw, err := os.ReadFile(filepath.Join(dir, fmt.Sprintf("v11-%d.json", height)))
+func verify(dir, file string, paid bool) {
+	raw, err := os.ReadFile(filepath.Join(dir, file))
 	check(err)
 	var fixture struct {
 		Header     header.ExtendedHeader
@@ -38,13 +38,13 @@ func verify(dir string, height int) {
 			panic("missing namespace fixture")
 		}
 		check(rows.Verify(fixture.Header.DAH, ns))
-		if height == 9 {
+		if !paid {
 			rowsWanted = 0
 		}
 		if len(rows) != rowsWanted {
-			panic(fmt.Sprintf("%d: wrong row count %d", height, len(rows)))
+			panic(fmt.Sprintf("%d: wrong row count %d", fixture.Header.Height(), len(rows)))
 		}
-		if height == 35 {
+		if paid {
 			switch i {
 			case 1:
 				if rows.Length() != 0 || len(rows[0].Proof.LeafHash()) == 0 {
@@ -59,6 +59,12 @@ func verify(dir string, height int) {
 			}
 		}
 	}
-	fmt.Printf("Go verified all three namespace responses at height %d\n", height)
+	fmt.Printf("Go verified all three namespace responses at height %d\n", fixture.Header.Height())
 }
-func main() { verify(os.Args[1], 9); verify(os.Args[1], 35) }
+func main() {
+	dir := os.Args[1]
+	verify(dir, "v11-9.json", false)
+	verify(dir, "v11-35.json", true)
+	verify(dir, "mocha-v11-empty.json", false)
+	verify(dir, "mocha-v11-paid.json", true)
+}
