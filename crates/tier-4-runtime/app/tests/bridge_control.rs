@@ -87,3 +87,26 @@ fn go_historical_bridge_controls() {
     assert!(app::proposal::verified_block_eds(5, &two, &root).is_err());
     app::proposal::verified_block_eds(6, &two, &root).unwrap();
 }
+
+#[test]
+#[ignore = "uses the pinned celestia-node core/testdata checkout"]
+fn go_mainnet_historical_blocks() {
+    let dir = std::path::PathBuf::from(std::env::var_os("DA_GO_TESTDATA").unwrap());
+    for height in [
+        1035, 2800000, 4000000, 6681000, 6683000, 6685000, 6700000, 8016382, 8016386, 8016389,
+        8016405,
+    ] {
+        let path = dir.join(format!("test_block_{height}.json"));
+        let fixture: Value = serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
+        assert_eq!(fixture["block_height"], height);
+        let txs = fixture["txs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| STANDARD.decode(v.as_str().unwrap()).unwrap())
+            .collect::<Vec<_>>();
+        let root = hex::decode(fixture["main_net_dah"].as_str().unwrap()).unwrap();
+        app::proposal::verified_block_eds(fixture["app_version"].as_u64().unwrap(), &txs, &root)
+            .unwrap_or_else(|error| panic!("height {height}: {error}"));
+    }
+}
