@@ -155,6 +155,9 @@ pub struct StartOptions {
     /// Preserve verified DA data older than the normal retention window.
     #[cfg(feature = "bridge")]
     pub bridge_archival: bool,
+    /// Keyring account explicitly assigned to DA blob submission.
+    #[cfg(feature = "bridge")]
+    pub bridge_signer: Option<String>,
     /// Node home.
     pub home: PathBuf,
     /// Stop after committing this height (0 = run forever); unlike Go's
@@ -195,6 +198,8 @@ impl StartOptions {
             bridge_rpc_listen: None,
             #[cfg(feature = "bridge")]
             bridge_archival: false,
+            #[cfg(feature = "bridge")]
+            bridge_signer: None,
             #[cfg(feature = "bridge-p2p")]
             bridge_p2p_listen: None,
             config,
@@ -453,7 +458,23 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     let _bridge = opts
         .bridge_rpc_listen
         .zip(bridge_index.as_ref())
-        .map(|(addr, index)| crate::bridge::Server::start(addr, home, index.store.clone()))
+        .map(|(addr, index)| {
+            let wallet = opts
+                .bridge_signer
+                .as_deref()
+                .map(|name| {
+                    crate::bridge::submit::Wallet::open(
+                        home,
+                        name,
+                        &rpc.settings.rpc.laddr,
+                        app::AbciApp::from_shared(app.clone()),
+                        &genesis.chain_id,
+                        ss.clone(),
+                    )
+                })
+                .transpose()?;
+            crate::bridge::Server::start(addr, home, index.store.clone(), wallet)
+        })
         .transpose()?;
     #[cfg(feature = "bridge-p2p")]
     let _bridge_peer = opts

@@ -63,6 +63,7 @@ pub(crate) fn start(
     let (ready, started) = mpsc::sync_channel(1);
     let bridge = Arc::new(Bridge {
         index,
+        wallet: None,
         waiters: Arc::new(Semaphore::new(32)),
         worker: Arc::new(Semaphore::new(2)),
     });
