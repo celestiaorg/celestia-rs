@@ -49,23 +49,27 @@ fi
 DA_TEST_READ_TOKEN=$("$binary" da-auth read --home "$work/node")
 export DA_TEST_READ_TOKEN
 # Keep the fresh validator keys and the startup log inside the temporary home.
-RUST_LOG=celestia_rs::bridge::peer=info "$binary" start --network local --home "$work/node" \
-    --bridge-rpc-listen 127.0.0.1:32658 "${peer_args[@]}" >"$work/node.log" 2>&1 &
-pid=$!
-for attempt in {1..120}; do
-    kill -0 "$pid"
-    if curl -fsS --max-time 2 http://127.0.0.1:32658 \
-        -H "Authorization: Bearer $DA_TEST_READ_TOKEN" \
-        -d '{"jsonrpc":"2.0","id":1,"method":"header.LocalHead","params":[]}' 2>/dev/null |
-        jq -e '.result.header.chain_id == "celestia-rs-local"' >/dev/null; then
-        break
-    fi
-    if [[ "$attempt" == 120 ]]; then
-        echo 'local bridge did not commit a block' >&2
-        exit 1
-    fi
-    sleep 1
-done
+rust_token=$DA_TEST_READ_TOKEN
+start_rust() {
+    RUST_LOG=celestia_rs::bridge::peer=info "$binary" start --network local --home "$work/node" \
+        --bridge-rpc-listen 127.0.0.1:32658 "${peer_args[@]}" >"$work/node.log" 2>&1 &
+    pid=$!
+    for attempt in {1..120}; do
+        kill -0 "$pid"
+        if curl -fsS --max-time 2 http://127.0.0.1:32658 \
+            -H "Authorization: Bearer $rust_token" \
+            -d '{"jsonrpc":"2.0","id":1,"method":"header.LocalHead","params":[]}' 2>/dev/null |
+            jq -e '.result.header.chain_id == "celestia-rs-local"' >/dev/null; then
+            break
+        fi
+        if [[ "$attempt" == 120 ]]; then
+            echo 'local bridge did not commit a block' >&2
+            exit 1
+        fi
+        sleep 1
+    done
+}
+start_rust
 
 if [[ -n "$bootstrap_pid" ]]; then
     wait "$bootstrap_pid"
@@ -75,10 +79,13 @@ fi
 namespace=726f6c6c7570
 # Span four ODS rows to exercise the per-row commitment and inclusion proofs.
 data=$(python3 -c 'print("c0ffee" * 4000)')
-"$binary" tx blob pay-for-blob "$namespace" "$data" \
-    --home "$work/node" --chain-id celestia-rs-local --from validator \
-    --keyring-backend test --fees 50000utia --node tcp://127.0.0.1:26657 --wait >"$work/tx.json"
-height=$(jq -er 'select(.code == 0) | .height | tonumber | select(. > 0)' "$work/tx.json")
+pay_for_blob() {
+    "$binary" tx blob pay-for-blob "$namespace" "$data" \
+        --home "$work/node" --chain-id celestia-rs-local --from validator \
+        --keyring-backend test --fees 50000utia --node tcp://127.0.0.1:26657 --wait >"$work/tx.json"
+    height=$(jq -er 'select(.code == 0) | .height | tonumber | select(. > 0)' "$work/tx.json")
+}
+pay_for_blob
 kill -0 "$pid"
 echo "celestia-node $revision; chain celestia-rs-local; paid blob at height $height"
 sha256sum "$binary" "$work/node/config/genesis.json"
@@ -109,11 +116,30 @@ if [[ "${3:-}" == --stock-light ]]; then
     done
     DA_TEST_READ_TOKEN=$("$work/go-da" light auth read --node.store "$work/light" | tail -1)
     export DA_TEST_READ_TOKEN
-    for attempt in {1..5}; do
-        if (cd "$go_tree" && go run "$probe" http://127.0.0.1:32659 "$height" "$namespace" "$data"); then exit 0; fi
-        kill -0 "$light_pid"
-        sleep 3
-    done
-    echo 'Go light node did not recover the paid blob' >&2
-    exit 1
+    (cd "$go_tree" && go build -o "$work/read" "$probe")
+    read_from_light() {
+        for attempt in {1..10}; do
+            if "$work/read" http://127.0.0.1:32659 "$height" "$namespace" "$data"; then return; fi
+            kill -0 "$light_pid"
+            sleep 3
+        done
+        echo 'Go light node did not recover the paid blob' >&2
+        return 1
+    }
+    read_from_light
+    kill -TERM "$pid"
+    wait "$pid" || true
+    pid=
+    kill -0 "$light_pid"
+    if curl -s --max-time 1 -o /dev/null http://127.0.0.1:32658; then
+        echo "Rust bridge RPC is still reachable after shutdown" >&2
+        exit 1
+    fi
+    start_rust
+    recovered_id=$(sed -n 's/.*DA peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/node.log" | head -1)
+    [[ "$recovered_id" == "$peer_id" ]]
+    data=$(python3 -c 'print("a4b2c6" * 4000)')
+    pay_for_blob
+    read_from_light
+    echo "The same Go light process recovered a new paid blob at $height from restarted Rust peer $peer_id"
 fi

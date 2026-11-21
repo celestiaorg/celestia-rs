@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -19,8 +20,10 @@ import (
 	"github.com/celestiaorg/go-square/v4/share"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	ma "github.com/multiformats/go-multiaddr"
+	multistream "github.com/multiformats/go-multistream"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -53,6 +56,16 @@ func main() {
 	check(err)
 	defer host.Close()
 	check(host.Connect(ctx, *info))
+	for _, proto := range []protocol.ID{"/other-private-chain/header-ex/v0.0.3", "/other-private-chain/shrex/v0.1.0/sample_v0"} {
+		stream, err := host.NewStream(ctx, info.ID, proto)
+		if err == nil {
+			stream.Reset()
+			panic("negotiated a different DA network")
+		}
+		if !errors.Is(err, multistream.ErrNotSupported[protocol.ID]{}) {
+			panic(fmt.Sprintf("unexpected network rejection: %v", err))
+		}
+	}
 	gater, err := conngater.NewBasicConnectionGater(nil)
 	check(err)
 	ex, err := exchange.NewExchange[*header.ExtendedHeader](host, peer.IDSlice{info.ID}, gater,
