@@ -21,6 +21,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	ma "github.com/multiformats/go-multiaddr"
+	"golang.org/x/sync/errgroup"
 )
 
 func check(err error) {
@@ -90,15 +91,26 @@ func main() {
 		_, _, err = client.Get(ctx, &rid, &half, info.ID)
 		check(err)
 		check(half.Verify(eh.DAH, row))
-		for _, col := range []int{0, width - 1} {
-			sid, err := shwap.NewSampleID(h, shwap.SampleCoords{Row: row, Col: col}, width)
-			check(err)
-			var sample shwap.Sample
-			_, _, err = client.Get(ctx, &sid, &sample, info.ID)
-			check(err)
-			check(sample.Verify(eh.DAH, row, col))
-		}
 	}
+	// The released light DASer opens one stream per coordinate concurrently.
+	group, sampling := errgroup.WithContext(ctx)
+	for i := range min(width*width, 16) {
+		// Spread coordinates across the full square, including parity cells.
+		flat := i * (width*width - 1) / (min(width*width, 16) - 1)
+		row, col := flat/width, flat%width
+		group.Go(func() error {
+			id, err := shwap.NewSampleID(h, shwap.SampleCoords{Row: row, Col: col}, width)
+			if err != nil {
+				return err
+			}
+			var sample shwap.Sample
+			if _, _, err = client.Get(sampling, &id, &sample, info.ID); err != nil {
+				return err
+			}
+			return sample.Verify(eh.DAH, row, col)
+		})
+	}
+	check(group.Wait())
 	id, err := shwap.NewNamespaceDataID(h, ns)
 	check(err)
 	var rows shwap.NamespaceData
