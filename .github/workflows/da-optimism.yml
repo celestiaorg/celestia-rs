@@ -1,0 +1,39 @@
+name: OP Stack DA adapter interoperability
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/da-optimism.yml'
+      - 'conformance/da/optimism/**'
+      - 'crates/tier-5-node/celestia-rs/src/bridge.rs'
+      - 'crates/tier-5-node/celestia-rs/src/bridge/**'
+permissions:
+  contents: read
+jobs:
+  adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: celestiaorg/optimism
+          ref: 0ab0649290a217c42718bc86e6eee58ab4c1940a
+          path: reference-op
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: reference-op/go.mod
+          cache-dependency-path: reference-op/go.sum
+      - name: Build the Rust bridge
+        run: cargo build --locked -p celestia-rs --no-default-features --features bridge
+      - name: Build the pinned batcher and derivation probe
+        working-directory: reference-op
+        run: |
+          install ../conformance/da/optimism/adapter_test.go op-batcher/batcher/rust_da_bridge_test.go
+          go test -mod=readonly -c -o ../op-probe ./op-batcher/batcher
+      - name: Submit a frame and recover it through the derivation reader
+        run: conformance/da/optimism/test-adapter.sh target/debug/celestia-rs ./op-probe
