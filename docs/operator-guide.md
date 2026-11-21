@@ -346,11 +346,15 @@ followed by `sudo -n launchctl bootout …` / `sudo -n launchctl bootstrap …`
 adds no privilege; it does let anything running as you restart the node.
 Verified on the Mocha validator 2026-10-16.
 
-#### Following main automatically (optional)
+#### Following releases automatically (optional)
 
-`packaging/macos/celestia-rs-auto-update.sh` deploys the latest commit on
-`main` once every CI check on it is green. It builds the commit in
-`~/.celestia-rs/src` and swaps the binary in for the Mocha node first. It
+`packaging/macos/celestia-rs-auto-update.sh` deploys the newest published
+GitHub release, including release candidates, once every CI check on its
+commit is green. Releases are ordered by publication time; drafts and
+unreleased commits on `main` are excluded. It fetches the exact release tag,
+resolves its commit and builds that source with locked dependencies in
+`~/.celestia-rs/src`. The binary must report both the release version and
+commit before it is swapped in for the Mocha node first. It
 restarts the node and waits until the node is caught up and advancing,
 matches the network's app hash, and (if bonded) signs at least 15 of the
 20 commits after it is back in consensus (the heights it missed while
@@ -368,7 +372,14 @@ on a validator), and a validator then runs code no one reviewed on that
 machine before it signed with it: weigh that before enabling it on a
 mainnet validator.
 
-For an owner-authorized exact-candidate observation, put a Unix expiry
+Normal operation follows the release/fix loop: retain monitoring and Go
+comparison evidence with each deployed version, fix discovered problems,
+publish a new release and let the next hourly pass roll it out. Routine
+updates do not wait for a multi-day qualification window. Evidence from
+different versions remains attributed to those versions; it does not become
+an uninterrupted observation of one candidate.
+
+For a separately owner-authorized exact-candidate observation, put a Unix expiry
 time in `~/.celestia-rs/auto-update/qualification-hold-until`. Default
 hourly deployment passes exit before fetching or replacing binaries
 until that time; `watchdog` and read-only `check` passes still run.

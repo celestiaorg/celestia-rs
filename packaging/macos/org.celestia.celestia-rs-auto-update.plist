@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   launchd job that runs packaging/macos/celestia-rs-auto-update.sh every
-  hour (docs/operator-guide.md §8, "Following main automatically"). It
-  deploys the latest green commit on main to this Mac's nodes, canary
+  hour (docs/operator-guide.md §8, "Following releases automatically"). It
+  builds the newest published release (including candidates) for this Mac's nodes, canary
   first, with rollback. Needs packaging/macos/celestia-rs.sudoers. Install:
 
     install -m 755 packaging/macos/celestia-rs-auto-update.sh packaging/check-apphash.sh ~/.celestia-rs/bin/

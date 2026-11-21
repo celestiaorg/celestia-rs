@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Deploys the latest green commit on celestia-rs `main` to this Mac's
-# nodes, one at a time, canary first (docs/operator-guide.md §8).
+# Deploys the newest published celestia-rs release (including release
+# candidates) to this Mac's nodes, one at a time, canary first
+# (docs/operator-guide.md §8).
 #
 #   celestia-rs-auto-update.sh            # one pass; run hourly by launchd
 #   DRY_RUN=1 celestia-rs-auto-update.sh  # build, but deploy nothing
@@ -9,8 +10,10 @@
 #                                         # a jailed validator; run every minute
 #
 # One pass:
-#   1. Fetch origin/main into $SRC. Stop if every node already runs it, if
-#      the commit failed a deploy before, or if its CI is not green yet.
+#   1. Resolve the newest published release and fetch its exact tag into
+#      $SRC. Drafts and unreleased main commits are never deployed. Stop if
+#      every node already runs it, the commit failed a deploy before, or
+#      its CI is not green yet.
 #   2. Build it (`cargo build --release --locked`) and check that the
 #      binary reports that commit.
 #   3. For each node in NODES order (Mocha first): keep the running binary
@@ -100,6 +103,7 @@ if [[ ${1:-} != watchdog ]]; then
 fi
 
 binary_commit() { "$1" version --long 2>/dev/null | awk '/^commit:/ {print $2}'; }
+binary_version() { "$1" version 2>/dev/null; }
 
 rpc() { curl -fsS -m 10 "$1$2"; }
 height() { rpc "$1" /status | jq -r '.result.sync_info.latest_block_height'; }
@@ -261,17 +265,33 @@ fi
 
 # --- 1. what is there to deploy ---------------------------------------
 
+# /releases/latest excludes prereleases. This validator follows release
+# candidates too, ordered by publication time rather than tag creation time.
+releases='[]'
+page=1
+while :; do
+  batch=$(curl -fsS --connect-timeout 10 --max-time 30 \
+    "https://api.github.com/repos/$REPO/releases?per_page=100&page=$page") || die "cannot query releases"
+  jq -e 'type == "array"' <<<"$batch" >/dev/null || die "invalid releases response"
+  releases=$(printf '%s\n%s\n' "$releases" "$batch" | jq -s 'add')
+  (($(jq 'length' <<<"$batch") == 100)) || break
+  page=$((page + 1))
+done
+TAG=$(jq -er '[.[] | select(.draft == false and .published_at != null)]
+  | sort_by(.published_at) | last | .tag_name // empty' <<<"$releases") ||
+  die "no published release available"
+[[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || die "invalid release tag: $TAG"
 [[ -d $SRC/.git ]] || git clone --quiet "https://github.com/$REPO.git" "$SRC"
-git -C "$SRC" fetch --quiet origin main
-SHA=$(git -C "$SRC" rev-parse FETCH_HEAD)
+git -C "$SRC" fetch --quiet origin "refs/tags/$TAG"
+SHA=$(git -C "$SRC" rev-parse 'FETCH_HEAD^{commit}')
 
 stale=()
 for n in "${NODES[@]}"; do
   IFS='|' read -r name _ bin _ _ <<<"$n"
-  [[ $(binary_commit "$bin") == "$SHA" ]] || stale+=("$name")
+  [[ $(binary_commit "$bin") == "$SHA" && $(binary_version "$bin") == "${TAG#v}" ]] || stale+=("$name")
 done
 if ((${#stale[@]} == 0)); then
-  log "up to date: every node runs ${SHA:0:7}"
+  log "up to date: every node runs $TAG (${SHA:0:7})"
   exit 0
 fi
 if grep -qx "$SHA" "$STATE/bad-commits"; then
@@ -294,7 +314,7 @@ if [[ -n $failed ]]; then
   log "skip ${SHA:0:7}: CI failed ($failed)"
   exit 0
 fi
-log "deploy ${SHA:0:7} ($(git -C "$SRC" log -1 --format=%s "$SHA")) to: ${stale[*]}"
+log "deploy $TAG (${SHA:0:7}) to: ${stale[*]}"
 
 # --- 2. build -----------------------------------------------------------
 
@@ -304,9 +324,10 @@ log "building"
   die "build of ${SHA:0:7} failed"
 NEW=$SRC/target/release/celestia-rs
 [[ $(binary_commit "$NEW") == "$SHA" ]] || die "built binary does not report ${SHA:0:7}"
+[[ $(binary_version "$NEW") == "${TAG#v}" ]] || die "built binary does not report release $TAG"
 
 if [[ $DRY_RUN == 1 ]]; then
-  log "DRY_RUN: built ${SHA:0:7}; would deploy to ${stale[*]}"
+  log "DRY_RUN: built $TAG (${SHA:0:7}); would deploy to ${stale[*]}"
   exit 0
 fi
 
@@ -315,7 +336,7 @@ fi
 canary=""
 for n in "${NODES[@]}"; do
   IFS='|' read -r name label bin local_rpc ref <<<"$n"
-  [[ $(binary_commit "$bin") == "$SHA" ]] && continue
+  [[ $(binary_commit "$bin") == "$SHA" && $(binary_version "$bin") == "${TAG#v}" ]] && continue
 
   # Soak the canary before touching the next node.
   if [[ -n $canary ]]; then
@@ -354,4 +375,4 @@ for n in "${NODES[@]}"; do
   fi
   exit 1
 done
-log "done: every node runs ${SHA:0:7}"
+log "done: every node runs $TAG (${SHA:0:7})"

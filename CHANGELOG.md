@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v0.1.0-rc.7 (2026-11-20)
+
+### Changed
+
+- macOS auto-update follows the newest published release, including release
+  candidates, instead of deploying unreleased commits from main. It verifies
+  the tagged commit and release version before the existing Mocha-first
+  rollout, health checks and rollback.
+
 ## v0.1.0-rc.6 (2026-11-20)
 
 ### Changed

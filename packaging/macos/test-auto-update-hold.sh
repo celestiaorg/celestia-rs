@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The qualification hold must pause deployments without consulting Git.
+# The qualification hold must pause deployments without querying releases or Git.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 t=$(mktemp -d)
@@ -11,6 +11,7 @@ echo "git unexpectedly invoked" >&2
 exit 42
 EOF
 chmod +x "$t/bin/git"
+cp "$t/bin/git" "$t/bin/curl"
 script=$here/celestia-rs-auto-update.sh
 
 echo "$(( $(date +%s) + 300 ))" >"$t/auto-update/qualification-hold-until"
