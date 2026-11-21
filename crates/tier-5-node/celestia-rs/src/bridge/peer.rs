@@ -62,6 +62,7 @@ pub(crate) fn start(
     let (stop, stopped) = oneshot::channel();
     let (ready, started) = mpsc::sync_channel(1);
     let bridge = Arc::new(Bridge {
+        app: None,
         wallet: None,
         blocks,
         states,
