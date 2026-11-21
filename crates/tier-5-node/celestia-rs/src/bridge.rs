@@ -122,16 +122,15 @@ fn bytes(value: &Value) -> Result<Vec<u8>, (i32, &'static str)> {
         .map_err(|_| invalid)
 }
 
+fn positive_height(value: Option<&Value>) -> Option<i64> {
+    value.and_then(Value::as_i64).filter(|h| *h > 0)
+}
+
 impl Query {
     fn parse(method: &str, params: &Value) -> Result<Self, (i32, &'static str)> {
         let bad = (-32602, "invalid params");
         let args = params.as_array().ok_or(bad)?;
-        let height = || {
-            args.first()
-                .and_then(Value::as_i64)
-                .filter(|h| *h > 0)
-                .ok_or(bad)
-        };
+        let height = || positive_height(args.first()).ok_or(bad);
         let namespace = |v: &Value| shares::Namespace::from_slice(&bytes(v)?).map_err(|_| bad);
         let index = |v: &Value| v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or(bad);
         match method {
