@@ -93,8 +93,8 @@ fn go_historical_bridge_controls() {
 fn go_mainnet_historical_blocks() {
     let dir = std::path::PathBuf::from(std::env::var_os("DA_GO_TESTDATA").unwrap());
     for height in [
-        1035, 2800000, 4000000, 6681000, 6683000, 6685000, 6700000, 8016382, 8016386, 8016389,
-        8016405,
+        1_035, 2_800_000, 4_000_000, 6_681_000, 6_683_000, 6_685_000, 6_700_000, 8_016_382,
+        8_016_386, 8_016_389, 8_016_405,
     ] {
         let path = dir.join(format!("test_block_{height}.json"));
         let fixture: Value = serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
