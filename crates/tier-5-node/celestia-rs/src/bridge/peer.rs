@@ -288,71 +288,9 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
             let height = i64::try_from(u64::from_be_bytes(id[..8].try_into()?))?;
             ensure!(height > 0, "invalid block height");
             let bridge = bridge.clone();
-            let data = tokio::task::spawn_blocking(move || -> Result<_> {
-                let head = bridge
-                    .states
-                    .load()?
-                    .context("missing state")?
-                    .last_block_height;
-                if height > head || height < bridge.blocks.base() {
-                    return Ok(None);
-                }
-                let block = bridge.committed(height)?;
-                Ok(Some(match kind {
-                    Kind::Namespace => {
-                        let ns = shares::Namespace::from_slice(&id[8..])?;
-                        let rows = app::inclusion_proof::namespace_rows(&block.eds, &block.dah, ns)
-                            .map_err(|e| anyhow::anyhow!("{}", e.log))?;
-                        Payload::Rows(rows)
-                    }
-                    Kind::Range => {
-                        let from = usize::try_from(u32::from_be_bytes(id[8..12].try_into()?))?;
-                        let end = usize::try_from(u32::from_be_bytes(id[12..16].try_into()?))?;
-                        let width = block.eds.original_width();
-                        ensure!(from < end && end <= width * width, "invalid ODS range");
-                        let first = block.eds.share(from / width, from % width)?;
-                        let last = block.eds.share((end - 1) / width, (end - 1) % width)?;
-                        // Q0 namespaces are sorted in row-major order.
-                        ensure!(
-                            first[..shares::NAMESPACE_SIZE] == last[..shares::NAMESPACE_SIZE],
-                            "range spans namespaces"
-                        );
-                        Payload::Range(Arc::new(block), from, end)
-                    }
-                    Kind::Row => {
-                        let row = usize::from(u16::from_be_bytes(id[8..10].try_into()?));
-                        let half = block.eds.row(row)?[..block.eds.original_width()]
-                            .iter()
-                            .map(|data| WireShare { data: data.clone() })
-                            .collect();
-                        Payload::Frame(HalfRow { shares: half }.encode_length_delimited_to_vec())
-                    }
-                    Kind::Sample => {
-                        let row = usize::from(u16::from_be_bytes(id[8..10].try_into()?));
-                        let col = usize::from(u16::from_be_bytes(id[10..12].try_into()?));
-                        let proof = app::inclusion_proof::row_range_proof(
-                            &block.eds,
-                            &block.dah,
-                            row,
-                            col,
-                            col + 1,
-                        )
-                        .map_err(|e| anyhow::anyhow!("{}", e.log))?;
-                        let share = WireShare {
-                            data: block.eds.share(row, col)?.to_vec(),
-                        };
-                        Payload::Frame(
-                            Sample {
-                                share: Some(share),
-                                proof: Some(proof.into()),
-                            }
-                            .encode_length_delimited_to_vec(),
-                        )
-                    }
-                    _ => Payload::Square(block.eds),
-                }))
-            })
-            .await?;
+            let data =
+                tokio::task::spawn_blocking(move || bridge.shrex_response(kind, height, &id))
+                    .await?;
             let status = match &data {
                 Ok(Some(_)) => 1,
                 Ok(None) => 2,
@@ -420,6 +358,71 @@ enum Payload {
 }
 
 impl Bridge {
+    fn shrex_response(&self, kind: Kind, height: i64, id: &[u8]) -> Result<Option<Payload>> {
+        let head = self
+            .states
+            .load()?
+            .context("missing state")?
+            .last_block_height;
+        if height > head || height < self.blocks.base() {
+            return Ok(None);
+        }
+        let block = self.committed(height)?;
+        Ok(Some(match kind {
+            Kind::Namespace => {
+                let ns = shares::Namespace::from_slice(&id[8..])?;
+                let rows = app::inclusion_proof::namespace_rows(&block.eds, &block.dah, ns)
+                    .map_err(|e| anyhow::anyhow!("{}", e.log))?;
+                Payload::Rows(rows)
+            }
+            Kind::Range => {
+                let from = usize::try_from(u32::from_be_bytes(id[8..12].try_into()?))?;
+                let end = usize::try_from(u32::from_be_bytes(id[12..16].try_into()?))?;
+                let width = block.eds.original_width();
+                ensure!(from < end && end <= width * width, "invalid ODS range");
+                let first = block.eds.share(from / width, from % width)?;
+                let last = block.eds.share((end - 1) / width, (end - 1) % width)?;
+                // Q0 namespaces are sorted in row-major order.
+                ensure!(
+                    first[..shares::NAMESPACE_SIZE] == last[..shares::NAMESPACE_SIZE],
+                    "range spans namespaces"
+                );
+                Payload::Range(Arc::new(block), from, end)
+            }
+            Kind::Row => {
+                let row = usize::from(u16::from_be_bytes(id[8..10].try_into()?));
+                let half = block.eds.row(row)?[..block.eds.original_width()]
+                    .iter()
+                    .map(|data| WireShare { data: data.clone() })
+                    .collect();
+                Payload::Frame(HalfRow { shares: half }.encode_length_delimited_to_vec())
+            }
+            Kind::Sample => {
+                let row = usize::from(u16::from_be_bytes(id[8..10].try_into()?));
+                let col = usize::from(u16::from_be_bytes(id[10..12].try_into()?));
+                let proof = app::inclusion_proof::row_range_proof(
+                    &block.eds,
+                    &block.dah,
+                    row,
+                    col,
+                    col + 1,
+                )
+                .map_err(|e| anyhow::anyhow!("{}", e.log))?;
+                let share = WireShare {
+                    data: block.eds.share(row, col)?.to_vec(),
+                };
+                Payload::Frame(
+                    Sample {
+                        share: Some(share),
+                        proof: Some(proof.into()),
+                    }
+                    .encode_length_delimited_to_vec(),
+                )
+            }
+            _ => Payload::Square(block.eds),
+        }))
+    }
+
     fn header_responses(&self, request: Request) -> Result<Vec<HeaderResponse>> {
         let head = self
             .states
