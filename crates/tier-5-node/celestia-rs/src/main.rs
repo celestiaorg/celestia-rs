@@ -182,10 +182,14 @@ struct StartArgs {
     #[cfg(feature = "bridge-p2p")]
     #[arg(long)]
     bridge_p2p_listen: Option<std::net::SocketAddr>,
-    /// Serve experimental read-only DA JSON-RPC on this loopback address.
+    /// Serve experimental DA JSON-RPC on this loopback address.
     #[cfg(feature = "bridge")]
     #[arg(long)]
     bridge_rpc_listen: Option<std::net::SocketAddr>,
+    /// Allow write-authorized DA clients to submit blobs with this keyring account.
+    #[cfg(feature = "bridge")]
+    #[arg(long, requires = "bridge_rpc_listen")]
+    bridge_signer: Option<String>,
     /// Built-in network (mainnet, mocha, arabica, local): initializes the
     /// home on first start and checks the genesis.
     #[arg(long, env = "CELESTIA_RS_NETWORK")]
@@ -1294,6 +1298,7 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
     #[cfg(feature = "bridge")]
     {
         opts.bridge_rpc_listen = a.bridge_rpc_listen;
+        opts.bridge_signer.clone_from(&a.bridge_signer);
     }
     #[cfg(feature = "bridge-p2p")]
     {

@@ -42,6 +42,9 @@ jobs:
         run: |
           go run ../conformance/da/inventory/reference.go > "$RUNNER_TEMP/da-methods.tsv"
           diff -u ../conformance/da/inventory/release.tsv "$RUNNER_TEMP/da-methods.tsv"
+      - name: Verify namespace control proofs with the release verifier
+        working-directory: reference-node
+        run: go run ../conformance/da/namespace/verify.go ../conformance/da/fixtures
       - name: Build the operator binary with bridge RPC and libp2p
         run: cargo build --locked --no-default-features --features bridge-p2p -p celestia-rs
         env:
