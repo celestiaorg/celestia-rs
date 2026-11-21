@@ -1,5 +1,7 @@
 //! Opt-in DA RPC backed by the consensus node's committed block and state stores.
 
+mod share_rpc;
+
 use std::net::{SocketAddr, TcpListener};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -84,7 +86,25 @@ enum Query {
     Namespace(i64, shares::Namespace),
     Header(i64),
     Head,
+    BlobProof(i64, shares::Namespace, Vec<u8>, ProofRequest),
+    Tail,
+    Hash(Vec<u8>),
+    ShareRead(i64, share_rpc::Read),
     Share(i64, usize, usize),
+}
+
+enum ProofRequest {
+    Get,
+    Commitment,
+    Included(Value),
+}
+
+fn bytes(value: &Value) -> Result<Vec<u8>, (i32, &'static str)> {
+    use base64::Engine as _;
+    let invalid = (-32602, "invalid params");
+    base64::engine::general_purpose::STANDARD
+        .decode(value.as_str().ok_or(invalid)?)
+        .map_err(|_| invalid)
 }
 
 impl Query {
@@ -97,15 +117,37 @@ impl Query {
                 .filter(|h| *h > 0)
                 .ok_or(bad)
         };
-        let bytes = |v: &Value| {
-            use base64::Engine as _;
-            base64::engine::general_purpose::STANDARD
-                .decode(v.as_str().ok_or(bad)?)
-                .map_err(|_| bad)
-        };
         let namespace = |v: &Value| shares::Namespace::from_slice(&bytes(v)?).map_err(|_| bad);
+        let index = |v: &Value| v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or(bad);
         match method {
-            "header.LocalHead" if args.is_empty() => Ok(Self::Head),
+            "header.LocalHead" | "header.NetworkHead" if args.is_empty() => Ok(Self::Head),
+            "header.Tail" if args.is_empty() => Ok(Self::Tail),
+            "header.GetByHash" if args.len() == 1 => Ok(Self::Hash(
+                hex::decode(args[0].as_str().ok_or(bad)?).map_err(|_| bad)?,
+            )),
+            "share.SharesAvailable" if args.len() == 1 => {
+                Ok(Self::ShareRead(height()?, share_rpc::Read::Available))
+            }
+            "share.GetEDS" if args.len() == 1 => {
+                Ok(Self::ShareRead(height()?, share_rpc::Read::Eds))
+            }
+            "share.GetRow" if args.len() == 2 => Ok(Self::ShareRead(
+                height()?,
+                share_rpc::Read::Row(index(&args[1])?),
+            )),
+            "share.GetRange" if args.len() == 3 => Ok(Self::ShareRead(
+                height()?,
+                share_rpc::Read::Range(index(&args[1])?, index(&args[2])?),
+            )),
+            "share.GetSamples" if args.len() == 2 => {
+                let coords = args[1]
+                    .as_array()
+                    .ok_or(bad)?
+                    .iter()
+                    .map(|v| Ok((index(&v["row"])?, index(&v["col"])?)))
+                    .collect::<Result<_, _>>()?;
+                Ok(Self::ShareRead(height()?, share_rpc::Read::Samples(coords)))
+            }
             "header.GetByHeight" if args.len() == 1 => Ok(Self::Header(height()?)),
             "blob.GetAll" if args.len() == 2 => {
                 let namespaces = args[1]
@@ -116,6 +158,22 @@ impl Query {
                     .collect::<Result<_, _>>()?;
                 Ok(Self::Blobs(height()?, namespaces))
             }
+            "blob.GetProof" | "blob.GetCommitmentProof" if args.len() == 3 => Ok(Self::BlobProof(
+                height()?,
+                namespace(&args[1])?,
+                bytes(&args[2])?,
+                if method == "blob.GetProof" {
+                    ProofRequest::Get
+                } else {
+                    ProofRequest::Commitment
+                },
+            )),
+            "blob.Included" if args.len() == 4 && args[2].is_array() => Ok(Self::BlobProof(
+                height()?,
+                namespace(&args[1])?,
+                bytes(&args[3])?,
+                ProofRequest::Included(args[2].clone()),
+            )),
             "blob.Get" if args.len() == 3 => Ok(Self::Blob(
                 height()?,
                 namespace(&args[1])?,
@@ -125,12 +183,22 @@ impl Query {
                 Ok(Self::Namespace(height()?, namespace(&args[1])?))
             }
             "share.GetShare" if args.len() == 3 => {
-                let index = |v: &Value| v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or(bad);
                 Ok(Self::Share(height()?, index(&args[1])?, index(&args[2])?))
             }
             "header.LocalHead"
+            | "header.NetworkHead"
+            | "header.Tail"
+            | "header.GetByHash"
+            | "share.SharesAvailable"
+            | "share.GetEDS"
+            | "share.GetRow"
+            | "share.GetRange"
+            | "share.GetSamples"
             | "header.GetByHeight"
             | "blob.Get"
+            | "blob.GetProof"
+            | "blob.GetCommitmentProof"
+            | "blob.Included"
             | "blob.GetAll"
             | "share.GetNamespaceData"
             | "share.GetShare" => Err(bad),
@@ -196,10 +264,20 @@ impl Bridge {
             .last_block_height;
         let height = match query {
             Query::Head => head,
-            Query::Header(h)
+            Query::Tail => self.blocks.base(),
+            Query::Hash(ref hash) => {
+                self.blocks
+                    .load_block_meta_by_hash(hash)?
+                    .context("header not found")?
+                    .header
+                    .height
+            }
+            Query::ShareRead(h, _)
+            | Query::Header(h)
             | Query::Share(h, ..)
             | Query::Namespace(h, _)
             | Query::Blobs(h, _)
+            | Query::BlobProof(h, ..)
             | Query::Blob(h, ..) => h,
         };
         ensure!(
@@ -213,6 +291,12 @@ impl Bridge {
             eds,
             dah,
         } = self.committed(height)?;
+        if let Query::BlobProof(_, ns, hash, kind) = query {
+            return prove_blob(&eds, &dah, ns, &hash, kind);
+        }
+        if let Query::ShareRead(_, method) = query {
+            return method.response(&eds, &dah);
+        }
         if let Query::Share(_, row, col) = query {
             return Ok(J::b64(eds.share(row, col)?));
         }
@@ -266,6 +350,25 @@ fn read_blobs(
     dah: &square::DataAvailabilityHeader,
     ns: shares::Namespace,
 ) -> Result<Vec<([u8; 32], J)>> {
+    Ok(blob_records(eds, dah, ns)?
+        .into_iter()
+        .map(|r| (r.commitment, r.value))
+        .collect())
+}
+
+struct BlobRecord {
+    commitment: [u8; 32],
+    value: J,
+    start: usize,
+    end: usize,
+    roots: Vec<Vec<u8>>,
+}
+
+fn blob_records(
+    eds: &square::ExtendedDataSquare,
+    dah: &square::DataAvailabilityHeader,
+    ns: shares::Namespace,
+) -> Result<Vec<BlobRecord>> {
     let mut shares = Vec::new();
     let mut starts = Vec::new();
     for row in dah.rows_with_namespace(ns)? {
@@ -307,11 +410,11 @@ fn read_blobs(
                 .pop()
                 .context("invalid blob sequence")?
         };
-        let commitment = square::create_commitment(
+        let roots = square::commitment::commitment_subtree_roots(
             &blob,
-            merkle::root_from_byte_slices,
             square::DEFAULT_SUBTREE_ROOT_THRESHOLD,
         )?;
+        let commitment = merkle::root_from_byte_slices(&roots);
         let mut value = J::obj([
             ("namespace", J::b64(ns.as_bytes())),
             ("data", J::b64(&blob.data)),
@@ -322,26 +425,20 @@ fn read_blobs(
         if let Some(signer) = blob.signer {
             value.push("signer", J::b64(&signer));
         }
-        result.push((commitment, value));
+        let ods_start = index / eds.width() * eds.original_width() + index % eds.width();
+        result.push(BlobRecord {
+            commitment,
+            value,
+            start: ods_start,
+            end: ods_start + end - start,
+            roots,
+        });
     }
     Ok(result)
 }
 
 fn namespace_row_json(row: app::inclusion_proof::NamespaceRow) -> J {
-    let p = row.proof;
-    let mut proof = J::obj([
-        ("end", J::num(p.end)),
-        ("is_max_namespace_ignored", J::Bool(true)),
-    ]);
-    if p.start != 0 {
-        proof.push("start", J::num(p.start));
-    }
-    if !p.nodes.is_empty() {
-        proof.push("nodes", J::Arr(p.nodes.iter().map(|b| J::b64(b)).collect()));
-    }
-    if !p.leaf_hash.is_empty() {
-        proof.push("leaf_hash", J::b64(&p.leaf_hash));
-    }
+    let proof = proof_json(&row.proof, true);
     let shares = if row.shares.is_empty() {
         J::Null
     } else {
@@ -399,4 +496,87 @@ async fn handle(
         [(CONTENT_TYPE, "application/json")],
         J::obj([("jsonrpc", J::str("2.0")), ("id", id), payload]).encode(),
     )
+}
+
+fn proof_json(p: &celestia_proto::celestia::core::v1::proof::NmtProof, shwap: bool) -> J {
+    let mut proof = J::obj([("end", J::num(p.end))]);
+    if shwap {
+        proof.push("is_max_namespace_ignored", J::Bool(true));
+    }
+    if p.start != 0 {
+        proof.push("start", J::num(p.start));
+    }
+    if !p.nodes.is_empty() {
+        proof.push("nodes", J::Arr(p.nodes.iter().map(|n| J::b64(n)).collect()));
+    }
+    if !p.leaf_hash.is_empty() {
+        proof.push("leaf_hash", J::b64(&p.leaf_hash));
+    }
+    proof
+}
+
+fn prove_blob(
+    eds: &square::ExtendedDataSquare,
+    dah: &square::DataAvailabilityHeader,
+    ns: shares::Namespace,
+    hash: &[u8],
+    kind: ProofRequest,
+) -> Result<J> {
+    let Some(record) = blob_records(eds, dah, ns)?
+        .into_iter()
+        .find(|r| r.commitment == hash)
+    else {
+        if matches!(kind, ProofRequest::Included(_)) {
+            return Ok(J::Bool(false));
+        }
+        anyhow::bail!("blob: not found")
+    };
+    if matches!(kind, ProofRequest::Commitment) {
+        return share_rpc::range(eds, dah, record.start, record.end, Some(record.roots));
+    }
+    let width = eds.original_width();
+    let covered = record.start / width..=(record.end - 1) / width;
+    let rows = app::inclusion_proof::namespace_rows(eds, dah, ns)
+        .map_err(|e| anyhow::anyhow!("{}", e.log))?;
+    let mut expected = Vec::new();
+    for (i, row) in dah.rows_with_namespace(ns)?.into_iter().zip(rows) {
+        if covered.contains(&i) {
+            expected.push(row.proof);
+        }
+    }
+    if let ProofRequest::Included(input) = kind {
+        let supplied = input.as_array().context("blob: proof cannot be nil")?;
+        ensure!(expected.len() == supplied.len(), "blob: invalid proof");
+        for (p, v) in expected.iter().zip(supplied) {
+            let equivalent = serde_json::from_value::<InputProof>(v.clone())?;
+            ensure!(equivalent.matches(p), "blob: invalid proof");
+        }
+        Ok(J::Bool(true))
+    } else {
+        Ok(J::Arr(
+            expected.iter().map(|p| proof_json(p, true)).collect(),
+        ))
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(default)]
+#[derive(Default)]
+struct InputProof {
+    start: i32,
+    end: i32,
+    nodes: Option<Vec<String>>,
+    leaf_hash: Option<String>,
+}
+impl InputProof {
+    fn matches(&self, p: &celestia_proto::celestia::core::v1::proof::NmtProof) -> bool {
+        use base64::Engine as _;
+        let enc = base64::engine::general_purpose::STANDARD;
+        let nodes = self.nodes.as_deref().unwrap_or_default();
+        self.start == p.start
+            && self.end == p.end
+            && self.leaf_hash.as_deref().unwrap_or_default() == enc.encode(&p.leaf_hash)
+            && nodes.len() == p.nodes.len()
+            && nodes.iter().zip(&p.nodes).all(|(a, b)| a == &enc.encode(b))
+    }
 }
