@@ -2,6 +2,7 @@
 
 pub(crate) mod auth;
 mod header_rpc;
+mod node_rpc;
 mod share_rpc;
 mod ws;
 
@@ -532,14 +533,15 @@ async fn dispatch(
         id = J::Raw(request_id.to_string());
         let method = req["method"].as_str().ok_or_else(invalid)?;
         let empty = Value::Array(Vec::new());
-        if matches!(
-            method,
-            "node.AuthNew" | "node.AuthNewWithExpiry" | "node.AuthVerify" | "node.AuthRevoke"
-        ) {
-            require(method, "admin")?;
-            let args = req["params"].as_array().ok_or_else(invalid)?;
-            return auth
-                .admin(method, args)
+        if let Some(permission) = node_rpc::permission(method) {
+            require(method, permission)?;
+            let args = req
+                .get("params")
+                .filter(|v| !v.is_null())
+                .unwrap_or(&empty)
+                .as_array()
+                .ok_or_else(invalid)?;
+            return node_rpc::call(auth, "Bridge", method, args)
                 .map(|value| J::Raw(value.to_string()))
                 .map_err(|e| (1, e.to_string()));
         }

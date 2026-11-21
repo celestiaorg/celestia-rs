@@ -117,6 +117,11 @@ for attempt in {1..60}; do
 done
 probe=$(realpath "$(dirname "$0")/read.go")
 (cd "$node_src" && go run "$probe" "$endpoint" "$height" "$hash")
+auth_probe=$(realpath "$(dirname "$0")/../auth/check.go")
+DA_TEST_ADMIN_TOKEN=$("$rust" da-auth admin --home "$work/rust-light")
+export DA_TEST_ADMIN_TOKEN
+(cd "$node_src" && go run "$auth_probe" "$endpoint" Light)
+unset DA_TEST_ADMIN_TOKEN
 # The same Rust process must reconnect and authenticate a new header once its provider returns.
 start_bridge
 for attempt in {1..90}; do

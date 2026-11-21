@@ -22,6 +22,15 @@ func main() {
 	admin, e := client.NewClient(ctx, endpoint, os.Getenv("DA_TEST_ADMIN_TOKEN"))
 	check(e)
 	defer admin.Close()
+	role := "Bridge"
+	if len(os.Args) > 2 {
+		role = os.Args[2]
+	}
+	info, e := admin.Node.Info(ctx)
+	check(e)
+	if info.Type.String() != role || info.APIVersion == "" {
+		panic(fmt.Sprintf("unexpected node info: %+v", info))
+	}
 	token, e := admin.Node.AuthNewWithExpiry(ctx, perms.ReadPerms, time.Minute)
 	check(e)
 	got, e := admin.Node.AuthVerify(ctx, token)
@@ -32,12 +41,40 @@ func main() {
 	reader, e := client.NewClient(ctx, endpoint, token)
 	check(e)
 	defer reader.Close()
+	ready, e := reader.Node.Ready(ctx)
+	check(e)
+	if !ready {
+		panic("RPC not ready")
+	}
+	if _, e := reader.Node.Info(ctx); e == nil {
+		panic("read token accessed node info")
+	}
 	_, e = reader.Header.LocalHead(ctx)
 	check(e)
 	if _, e = reader.Node.AuthNew(ctx, perms.AllPerms); e == nil {
 		panic("read token minted an admin token")
 	}
+	var pending chan error
+	if role == "Light" {
+		pending = make(chan error, 1)
+		go func() { pending <- reader.DAS.WaitCatchUp(ctx) }()
+		select {
+		case err := <-pending:
+			panic(fmt.Sprintf("offline wait ended before revocation: %v", err))
+		case <-time.After(300 * time.Millisecond):
+		}
+	}
 	check(admin.Node.AuthRevoke(ctx, token))
+	if pending != nil {
+		select {
+		case err := <-pending:
+			if err == nil {
+				panic("revoked waiter reported success")
+			}
+		case <-time.After(3 * time.Second):
+			panic("revocation did not cancel catch-up")
+		}
+	}
 	if _, e = reader.Header.LocalHead(ctx); e == nil {
 		panic("revoked token retained read access")
 	}

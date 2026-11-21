@@ -1,6 +1,6 @@
 //! Read fully sampled headers from the private light store.
 use super::{HeaderWire, Verified};
-use crate::bridge::{auth::Auth, credentials, header_json};
+use crate::bridge::{auth::Auth, credentials, header_json, node_rpc};
 use anyhow::{Context, Result, ensure};
 use axum::{
     Router,
@@ -107,7 +107,8 @@ pub(super) async fn listener(
 }
 
 async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: Bytes) -> Response {
-    let Ok((_, perms)) = credentials(&service.auth, &headers) else {
+    let changed = service.auth.subscribe();
+    let Ok((token, perms)) = credentials(&service.auth, &headers) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
     let mut id = Value::Null;
@@ -118,19 +119,23 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
         ensure_request(&req).ok_or_else(invalid)?;
         id = req["id"].clone();
         let method = req["method"].as_str().ok_or_else(invalid)?;
-        if !matches!(
-            method,
-            "header.LocalHead"
-                | "header.Tail"
-                | "header.GetByHeight"
-                | "header.GetByHash"
-                | "das.SamplingStats"
-                | "das.WaitCatchUp"
-        ) {
+        let node_permission = node_rpc::permission(method);
+        if node_permission.is_none()
+            && !matches!(
+                method,
+                "header.LocalHead"
+                    | "header.Tail"
+                    | "header.GetByHeight"
+                    | "header.GetByHash"
+                    | "das.SamplingStats"
+                    | "das.WaitCatchUp"
+            )
+        {
             return Err((-32601, "method not found".into()));
         }
-        if !perms.iter().any(|p| p == "read") {
-            return Err((1, "missing read permission".into()));
+        let permission = node_permission.unwrap_or("read");
+        if !perms.iter().any(|p| p == permission) {
+            return Err((1, format!("missing {permission} permission")));
         }
         let empty = Vec::new();
         let args = if req["params"].is_null() {
@@ -141,7 +146,10 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
         Ok((method.to_owned(), args.clone()))
     })();
     let result = match response {
-        Ok((method, args)) => dispatch(&service, &method, args).await,
+        Ok((method, args)) => tokio::select! {
+            result = dispatch(&service, &method, args) => result,
+            () = service.auth.revoked(changed, token) => Err((1,"token revoked".into())),
+        },
         Err(e) => Err(e),
     };
     let payload = match result {
@@ -161,6 +169,11 @@ async fn dispatch(
     method: &str,
     args: Vec<Value>,
 ) -> Result<String, (i64, String)> {
+    if node_rpc::permission(method).is_some() {
+        return node_rpc::call(&service.auth, "Light", method, &args)
+            .map(|v| v.to_string())
+            .map_err(|e| (1, e.to_string()));
+    }
     if method.starts_with("das.") {
         if !args.is_empty() {
             return Err((-32602, "invalid parameters".into()));
