@@ -10,6 +10,20 @@ hand.
 The other workspace crates are `publish = false` and stay at 0.0.1; only
 the binary is versioned.
 
+## Release and fix loop
+
+The Mac auto-updater follows the newest published release, including release
+candidates, using its exact tagged source. It runs hourly, deploys to Mocha
+first, checks health and app-hash parity, and rolls back an unhealthy deploy
+before advancing to mainnet. Unreleased commits on `main` do not deploy.
+
+Keep monitoring and comparisons against Go active as releases advance. When
+an issue is found, retain its version, height and reproduction evidence,
+fix it with a regression check, and cut the next release through the process
+below. Normal updates continue without a multi-day deployment hold. A release
+label alone does not establish stability or Go conformance; retained evidence
+must keep its actual version, coverage and any gaps.
+
 ## Qualifying a release candidate
 
 General mainnet recommendation covers the node roles in
