@@ -15,15 +15,25 @@ jobs:
   rollback:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: redb
+            build_flags: '--no-default-features'
+          - backend: rocksdb
+            build_flags: ''
+    name: Rollback (${{ matrix.backend }})
     env:
+      BUILD_FLAGS: ${{ matrix.build_flags }}
       CARGO_PROFILE_DEV_DEBUG: '0'
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: dtolnay/rust-toolchain@stable
       - name: Build one executable with both feature profiles
         run: |
-          cargo build --locked --no-default-features -p celestia-rs
+          cargo build --locked $BUILD_FLAGS -p celestia-rs
           cp target/debug/celestia-rs "$RUNNER_TEMP/consensus"
-          cargo build --locked --no-default-features --features bridge-p2p -p celestia-rs
+          cargo build --locked $BUILD_FLAGS --features bridge-p2p -p celestia-rs
       - name: Roll back the operator binary on the same private chain
         run: conformance/da/test-bridge-rollback.sh "$RUNNER_TEMP/consensus" target/debug/celestia-rs
