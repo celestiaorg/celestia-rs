@@ -67,6 +67,7 @@ pub(crate) fn start(
     let (control, requests) = admin::Control::channel();
     let bridge = Arc::new(Bridge {
         peer_control: None,
+        wallet: None,
         waiters: Arc::new(Semaphore::new(32)),
         blocks,
         states,
