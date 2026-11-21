@@ -52,16 +52,19 @@ export DA_TEST_READ_TOKEN
 # Keep the fresh validator keys and the startup log inside the temporary home.
 rust_token=$DA_TEST_READ_TOKEN
 start_rust() {
+    local first= head
     RUST_LOG=celestia_rs::bridge::peer=info "$binary" start --network local --home "$work/node" \
         --bridge-rpc-listen 127.0.0.1:32658 --bridge-signer validator "${peer_args[@]}" >"$work/node.log" 2>&1 &
     pid=$!
     for attempt in {1..120}; do
         kill -0 "$pid"
-        if curl -fsS --max-time 2 http://127.0.0.1:32658 \
+        if head=$(curl -fsS --max-time 2 http://127.0.0.1:32658 \
             -H "Authorization: Bearer $rust_token" \
             -d '{"jsonrpc":"2.0","id":1,"method":"header.LocalHead","params":[]}' 2>/dev/null |
-            jq -e '.result.header.chain_id == "celestia-rs-local"' >/dev/null; then
-            break
+            jq -er '.result.header | select(.chain_id == "celestia-rs-local") | .height | tonumber'); then
+            # A restarted node can serve its previous head before it finalizes a new block.
+            if [[ -n "$first" ]] && (( head > first )); then break; fi
+            first=${first:-$head}
         fi
         if [[ "$attempt" == 120 ]]; then
             echo 'local bridge did not commit a block' >&2
