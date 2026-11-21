@@ -16,8 +16,13 @@ if [[ "${3:-}" == --peer || "${3:-}" == --stock-light ]]; then
     peer_args=(--bridge-p2p-listen 127.0.0.1:32121)
 fi
 pid=
+bootstrap_pid=
 light_pid=
 cleanup() {
+    if [[ -n "$bootstrap_pid" ]]; then
+        kill "$bootstrap_pid" 2>/dev/null || true
+        wait "$bootstrap_pid" || true
+    fi
     if [[ -n "$light_pid" ]]; then
         kill "$light_pid" 2>/dev/null || true
         wait "$light_pid" || true
@@ -30,11 +35,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if (( ${#peer_args[@]} )); then
+    (cd "$go_tree" && go build -o "$work/bootstrap-probe" "$(dirname "$probe")/bootstrap/check.go")
+    "$work/bootstrap-probe" "$work/bootstrap.addr" celestia-rs-local &
+    bootstrap_pid=$!
+    for attempt in {1..30}; do
+        if [[ -s "$work/bootstrap.addr" ]]; then break; fi
+        kill -0 "$bootstrap_pid"
+        sleep 1
+    done
+    peer_args+=(--bridge-bootstrap "$(cat "$work/bootstrap.addr")")
+fi
 DA_TEST_READ_TOKEN=$("$binary" da-auth read --home "$work/node")
 export DA_TEST_READ_TOKEN
 # Keep the fresh validator keys and the startup log inside the temporary home.
 RUST_LOG=celestia_rs::bridge::peer=info "$binary" start --network local --home "$work/node" \
-    --bridge-rpc-listen 127.0.0.1:32658 "${peer_args[@]}" >"$work/node.log" 2>&1 &
+    --bridge-rpc-listen 127.0.0.1:32658 --bridge-signer validator "${peer_args[@]}" >"$work/node.log" 2>&1 &
 pid=$!
 for attempt in {1..120}; do
     kill -0 "$pid"
@@ -51,6 +67,11 @@ for attempt in {1..120}; do
     sleep 1
 done
 
+if [[ -n "$bootstrap_pid" ]]; then
+    wait "$bootstrap_pid"
+    bootstrap_pid=
+fi
+
 namespace=726f6c6c7570
 # Span four ODS rows to exercise the per-row commitment and inclusion proofs.
 data=$(python3 -c 'print("c0ffee" * 4000)')
@@ -63,6 +84,10 @@ echo "celestia-node $revision; chain celestia-rs-local; paid blob at height $hei
 sha256sum "$binary" "$work/node/config/genesis.json"
 (cd "$go_tree" && go run "$probe" http://127.0.0.1:32658 "$height" "$namespace" "$data")
 (cd "$go_tree" && go run "$(dirname "$probe")/subscriptions/check.go" ws://127.0.0.1:32658 "$height" "$namespace" "$data")
+DA_TEST_WRITE_TOKEN=$("$binary" da-auth write --home "$work/node")
+export DA_TEST_WRITE_TOKEN
+(cd "$go_tree" && go run "$(dirname "$probe")/submit/check.go" http://127.0.0.1:32658)
+unset DA_TEST_WRITE_TOKEN
 DA_TEST_ADMIN_TOKEN=$("$binary" da-auth admin --home "$work/node")
 export DA_TEST_ADMIN_TOKEN
 (cd "$go_tree" && go run "$(dirname "$probe")/auth/check.go" http://127.0.0.1:32658)

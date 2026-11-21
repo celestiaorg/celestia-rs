@@ -127,6 +127,19 @@ timeout 120 "$rust" "${args[@]}" --until "$((height+2))" | tee "$work/resume.log
 grep -Fq "sampled height $((height+2)) " "$work/resume.log"
 if grep -Fq "sampled height $height " "$work/resume.log"; then exit 1; fi
 
+# A new store may bootstrap at a trusted Go peer's signed head without a fixed hash.
+auto_home="$work/trusted-head"
+timeout 90 "$rust" da-light --home "$auto_home" --network "$chain" --peer "$peer" --until 1 >"$work/trusted.log"
+first=$(sed -n 's/^sampled height \([0-9]*\).*hash \([[:xdigit:]]*\)$/\1 \2/p' "$work/trusted.log")
+read -r trusted_height trusted_hash <<<"$first"
+[[ -n "$trusted_height" && $(block "$trusted_height" | jq -er '.result.block_id.hash') == "$trusted_hash" ]]
+# Persisted trust can be reopened offline; a new explicit anchor must agree.
+timeout 15 "$rust" da-light --home "$auto_home" --network "$chain" --peer "$offline" --until "$trusted_height"
+wrong_hash=$(printf '%064d' 0)
+if timeout 15 "$rust" da-light --home "$auto_home" --network "$chain" --peer "$offline" --trusted-hash "$wrong_hash" --until "$trusted_height" >"$work/wrong-anchor.log" 2>&1; then exit 1; fi
+grep -Fq 'different checkpoint' "$work/wrong-anchor.log"
+echo "Rust initialized at trusted Go peer height $trusted_height, retained its checkpoint offline, and rejected a different anchor"
+
 # Disconnect the sole reachable provider before reopening the sampled store.
 kill "$bridge"
 wait "$bridge" || true

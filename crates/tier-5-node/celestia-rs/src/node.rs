@@ -149,9 +149,18 @@ pub struct StartOptions {
     /// Experimental libp2p bridge listener.
     #[cfg(feature = "bridge-p2p")]
     pub bridge_p2p_listen: Option<std::net::SocketAddr>,
+    /// Operator bootstrap overrides for the opt-in DA network.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_bootstrap: Vec<libp2p::Multiaddr>,
+    /// DA addresses reachable behind an operator's NAT.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_announce: Vec<libp2p::Multiaddr>,
     /// Explicit listener for the experimental read-only DA bridge.
     #[cfg(feature = "bridge")]
     pub bridge_rpc_listen: Option<std::net::SocketAddr>,
+    /// Keyring account explicitly assigned to DA blob submission.
+    #[cfg(feature = "bridge")]
+    pub bridge_signer: Option<String>,
     /// Node home.
     pub home: PathBuf,
     /// Stop after committing this height (0 = run forever); unlike Go's
@@ -190,8 +199,14 @@ impl StartOptions {
             stop_height,
             #[cfg(feature = "bridge")]
             bridge_rpc_listen: None,
+            #[cfg(feature = "bridge")]
+            bridge_signer: None,
             #[cfg(feature = "bridge-p2p")]
             bridge_p2p_listen: None,
+            #[cfg(feature = "bridge-p2p")]
+            bridge_bootstrap: Vec::new(),
+            #[cfg(feature = "bridge-p2p")]
+            bridge_announce: Vec::new(),
             config,
             mempool: mempool::MempoolConfig::celestia_app(),
             p2p: None,
@@ -430,13 +445,36 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     #[cfg(feature = "bridge")]
     let _bridge = opts
         .bridge_rpc_listen
-        .map(|addr| crate::bridge::Server::start(addr, home, bs.clone(), ss.clone()))
+        .map(|addr| {
+            let wallet = opts
+                .bridge_signer
+                .as_deref()
+                .map(|name| {
+                    crate::bridge::submit::Wallet::open(
+                        home,
+                        name,
+                        &rpc.settings.rpc.laddr,
+                        app::AbciApp::from_shared(app.clone()),
+                        &genesis.chain_id,
+                    )
+                })
+                .transpose()?;
+            crate::bridge::Server::start(addr, home, bs.clone(), ss.clone(), wallet)
+        })
         .transpose()?;
     #[cfg(feature = "bridge-p2p")]
     let _bridge_peer = opts
         .bridge_p2p_listen
         .map(|addr| {
-            crate::bridge::peer::start(addr, home, &genesis.chain_id, bs.clone(), ss.clone())
+            crate::bridge::peer::start(
+                addr,
+                home,
+                &genesis.chain_id,
+                bs.clone(),
+                ss.clone(),
+                &opts.bridge_bootstrap,
+                opts.bridge_announce.clone(),
+            )
         })
         .transpose()?;
     rpc.spawn()?;

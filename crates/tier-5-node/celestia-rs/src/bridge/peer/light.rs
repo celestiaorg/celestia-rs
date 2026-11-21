@@ -8,8 +8,7 @@ use anyhow::{Context, Result, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use kvdb::{KvBackend, RedbBackend, RedbOptions, WriteBatch};
 use libp2p::{
-    Multiaddr, PeerId, StreamProtocol, Swarm, SwarmBuilder, multiaddr::Protocol, noise,
-    swarm::SwarmEvent, tcp, yamux,
+    Multiaddr, PeerId, StreamProtocol, Swarm, SwarmBuilder, noise, swarm::SwarmEvent, tcp, yamux,
 };
 use prost::Message;
 use rand::seq::index;
@@ -23,14 +22,14 @@ const DEADLINE: Duration = Duration::from_secs(20);
 #[derive(clap::Args, Debug)]
 pub struct LightArgs {
     /// Consensus chain ID and DA protocol namespace.
-    #[arg(long)]
+    #[arg(long, default_value = "celestia")]
     network: String,
-    /// Bridge multiaddress including its peer ID. Repeat for failover.
-    #[arg(long, required = true)]
-    peer: Vec<Multiaddr>,
-    /// Hex-encoded 32-byte header hash obtained through a trusted channel.
+    /// Trusted bridge multiaddress. Defaults to the selected release network bootstrappers.
     #[arg(long)]
-    trusted_hash: String,
+    peer: Vec<Multiaddr>,
+    /// Pin a trusted 32-byte header hash. A fresh unpinned store starts at the trusted peers’ head.
+    #[arg(long)]
+    trusted_hash: Option<String>,
     /// Serve authenticated sampled headers on this loopback HTTP socket.
     #[arg(long)]
     rpc_listen: Option<std::net::SocketAddr>,
@@ -46,6 +45,12 @@ struct Remote {
     headers: StreamProtocol,
     samples: StreamProtocol,
     eds: StreamProtocol,
+}
+
+struct VerifiedSample {
+    share: Vec<u8>,
+    proof: celestia_proto::celestia::core::v1::proof::NmtProof,
+    axis: i32,
 }
 
 impl Remote {
@@ -78,7 +83,7 @@ impl Remote {
         height: u64,
         dah: &square::DataAvailabilityHeader,
         at: usize,
-    ) -> Result<()> {
+    ) -> Result<VerifiedSample> {
         let width = dah.row_roots.len();
         let (row, col) = (at / width, at % width);
         tokio::time::timeout(DEADLINE, async {
@@ -110,15 +115,19 @@ impl Remote {
                 start == idx && end == idx + 1 && leaf_hash.is_empty() && ignore_max,
                 "wrong sample proof range"
             );
-            app::inclusion_proof::verify_sample(
-                dah,
-                row,
-                col,
-                sample.axis == 1,
-                &sample.share.context("missing share")?.data,
-                &nodes,
-            )
-            .map_err(|e| anyhow::anyhow!("{}", e.log))
+            let share = sample.share.context("missing share")?.data;
+            app::inclusion_proof::verify_sample(dah, row, col, sample.axis == 1, &share, &nodes)
+                .map_err(|e| anyhow::anyhow!("{}", e.log))?;
+            Ok(VerifiedSample {
+                share,
+                proof: celestia_proto::celestia::core::v1::proof::NmtProof {
+                    start: start.try_into()?,
+                    end: end.try_into()?,
+                    nodes,
+                    leaf_hash,
+                },
+                axis: sample.axis,
+            })
         })
         .await?
     }
@@ -230,6 +239,35 @@ struct Peers {
 }
 
 impl Peers {
+    // go-header v0.8.10 returns early on agreement, otherwise the highest
+    // valid response from the configured trusted peers once all requests finish.
+    async fn trusted_head(&mut self, chain: &str) -> Option<Vec<u8>> {
+        let count = self.remotes.len();
+        let quorum = (2 * count).div_ceil(3);
+        let mut responses = self
+            .remotes
+            .iter_mut()
+            .map(|peer| async move {
+                let bytes = peer.header(Origin::Height(0)).await.ok()??;
+                Verified::decode(&bytes, chain, None).ok()
+            })
+            .collect::<futures::stream::FuturesUnordered<_>>();
+        let mut votes = BTreeMap::new();
+        let mut best = None::<Verified>;
+        while let Some(candidate) = responses.next().await {
+            let Some(header) = candidate else { continue };
+            let n = votes.entry(header.hash.clone()).or_insert(0usize);
+            *n += 1;
+            if *n >= quorum {
+                return Some(header.hash);
+            }
+            if best.as_ref().is_none_or(|prev| header.height > prev.height) {
+                best = Some(header);
+            }
+        }
+        best.map(|header| header.hash)
+    }
+
     async fn verified_header(
         &mut self,
         origin: Origin,
@@ -281,7 +319,7 @@ impl Peers {
         let online = self.connected.borrow().clone();
         for remote in self.remotes.iter_mut().filter(|r| online.contains(&r.peer)) {
             match remote.sample(block.height, &block.dah, index).await {
-                Ok(()) => return true,
+                Ok(_) => return true,
                 Err(error) => {
                     tracing::warn!(peer=%remote.peer, height=block.height, index, %error, "DA sample unavailable");
                 }
@@ -344,13 +382,39 @@ fn load_checkpoint(db: &RedbBackend, args: &LightArgs, anchor: &[u8]) -> Result<
     Ok(last)
 }
 
+async fn resolve_anchor(
+    db: &RedbBackend,
+    peers: &mut Peers,
+    args: &LightArgs,
+    anchor: Option<Vec<u8>>,
+) -> Result<Vec<u8>> {
+    Ok(match (anchor, db.get(b"trust")?) {
+        (Some(hash), _) => hash,
+        (None, Some(stored)) => {
+            let (network, hash): (String, Vec<u8>) = serde_json::from_slice(&stored)?;
+            ensure!(
+                network == args.network && hash.len() == 32,
+                "light store belongs to a different network or has an invalid checkpoint"
+            );
+            hash
+        }
+        (None, None) => loop {
+            if let Some(hash) = peers.trusted_head(&args.network).await {
+                break hash;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        },
+    })
+}
+
 async fn follow(
     db: &RedbBackend,
     peers: &mut Peers,
     args: &LightArgs,
-    anchor: Vec<u8>,
+    anchor: Option<Vec<u8>>,
     status: &tokio::sync::watch::Sender<stats::Sampling>,
 ) -> Result<()> {
+    let anchor = resolve_anchor(db, peers, args, anchor).await?;
     let mut last = load_checkpoint(db, args, &anchor)?;
     if let Some(head) = &last {
         status.send_modify(|s| s.complete(head.height));
@@ -439,15 +503,16 @@ async fn follow(
 
 /// Run DA-only sync in the operator binary with an isolated light store.
 pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
-    let anchor = hex::decode(&args.trusted_hash)?;
-    ensure!(anchor.len() == 32, "trusted hash must be 32 bytes");
-    let mut addresses = BTreeMap::<PeerId, Vec<Multiaddr>>::new();
-    for addr in &args.peer {
-        let Some(Protocol::P2p(peer)) = addr.iter().last() else {
-            anyhow::bail!("bridge address must end in /p2p/PEER_ID")
-        };
-        addresses.entry(peer).or_default().push(addr.clone());
-    }
+    let anchor = args.trusted_hash.as_deref().map(hex::decode).transpose()?;
+    ensure!(
+        anchor.as_ref().is_none_or(|h| h.len() == 32),
+        "trusted hash must be 32 bytes"
+    );
+    let addresses = super::network::Peering::new(&args.network, &args.peer, vec![])?.bootstrap;
+    ensure!(
+        !addresses.is_empty(),
+        "provide a trusted peer for this network"
+    );
     let dir = home.join("da-light");
     std::fs::create_dir_all(&dir)?;
     let db = std::sync::Arc::new(RedbBackend::open(
@@ -457,16 +522,22 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     // Bind synchronously with startup so a busy port is reported to the operator.
     let (status, observer) = tokio::sync::watch::channel(stats::Sampling::default());
     let key = identity(&dir.join("peer.key"))?;
-    let swarm = SwarmBuilder::with_existing_identity(key)
+    let mut swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(
             tcp::Config::default(),
             noise::Config::new,
             yamux::Config::default,
         )?
+        .with_dns()?
         .with_behaviour(|_| libp2p_stream::Behaviour::new())?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(120)))
         .build();
+    for (peer, addrs) in &addresses {
+        for addr in addrs {
+            swarm.add_peer_address(*peer, addr.clone());
+        }
+    }
     let headers = StreamProtocol::try_from_owned(format!("/{}/header-ex/v0.0.3", args.network))?;
     let samples =
         StreamProtocol::try_from_owned(format!("/{}/shrex/v0.1.0/sample_v0", args.network))?;

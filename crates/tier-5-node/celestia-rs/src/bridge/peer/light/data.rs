@@ -1,8 +1,9 @@
 //! Serve light RPC data reads using the ODS authenticated by a sampled header.
 use super::{DEADLINE, HeaderWire, Peers, Remote, Status, frame};
-use crate::bridge::Query;
+use crate::bridge::{Query, share_rpc};
+use ::rpc::json::J;
 use anyhow::{Context, Result, ensure};
-use futures::{AsyncReadExt, AsyncWriteExt};
+use futures::{AsyncReadExt, AsyncWriteExt, StreamExt, TryStreamExt, stream};
 use kvdb::{KvBackend, RedbBackend};
 use prost::Message;
 use std::sync::Arc;
@@ -14,15 +15,20 @@ pub(super) fn handles(method: &str) -> bool {
 
 pub(super) struct Client {
     peers: Peers,
+    empty: square::ExtendedDataSquare,
+    empty_hash: [u8; 32],
     worker: Arc<Semaphore>,
 }
 
 impl Client {
-    pub(super) fn new(peers: Peers) -> Self {
-        Self {
+    pub(super) fn new(peers: Peers) -> Result<Self> {
+        let empty = square::extend_shares(square::empty_square().as_shares())?;
+        Ok(Self {
+            empty_hash: square::new_data_availability_header(&empty)?.hash(),
+            empty,
             peers,
             worker: Arc::new(Semaphore::new(1)),
-        }
+        })
     }
 
     pub(super) async fn read(&self, db: &RedbBackend, query: Query) -> Result<String> {
@@ -35,22 +41,54 @@ impl Client {
             | Query::Share(h, ..) => u64::try_from(*h)?,
             _ => anyhow::bail!("expected a blob or share query"),
         };
+        let raw = db
+            .get(&super::rpc::at(height))?
+            .context("header has not been sampled or has expired")?;
+        let wire = HeaderWire::decode(raw.as_slice())?;
+        if matches!(&query, Query::ShareRead(_, share_rpc::Read::Available)) {
+            let header = ctypes::Header::from_proto(&wire.header.context("missing header")?)?;
+            sampled_availability(
+                header.data_hash == self.empty_hash,
+                light::verifier::now().unix_nanos() - header.time.unix_nanos(),
+            )?;
+            return Ok("null".into());
+        }
         let worker = Arc::new(
             self.worker
                 .clone()
                 .try_acquire_owned()
                 .context("light data RPC busy")?,
         );
-        let raw = db
-            .get(&super::rpc::at(height))?
-            .context("header has not been sampled or has expired")?;
-        let wire = HeaderWire::decode(raw.as_slice())?;
         let dah = square::DataAvailabilityHeader::from_proto_bytes(&wire.dah)?;
+        if dah.hash() == self.empty_hash {
+            return query
+                .answer_square(&self.empty, &dah)
+                .map(|value| value.encode());
+        }
         let width = dah.row_roots.len() / 2;
         ensure!(
             (1..=512).contains(&width) && width.is_power_of_two(),
             "invalid ODS width"
         );
+        if let Query::Share(_, row, col) = query {
+            let sample = self.verified_cell(height, &dah, row, col).await?;
+            return Ok(J::b64(&sample.share).encode());
+        }
+        if let Query::ShareRead(_, share_rpc::Read::Samples(coords)) = query {
+            let roots = &dah;
+            let samples = stream::iter(coords)
+                .map(|(row, col)| async move {
+                    let sample = self.verified_cell(height, roots, row, col).await?;
+                    Ok::<_, anyhow::Error>(J::obj([
+                        ("share", J::b64(&sample.share)),
+                        ("proof", crate::bridge::proof_json(&sample.proof, true)),
+                        ("proof_type", J::num(sample.axis)),
+                    ]))
+                })
+                .buffered(4)
+                .try_collect();
+            return Ok(J::Arr(tokio::time::timeout(DEADLINE, samples).await??).encode());
+        }
         let online = self.peers.connected.borrow().clone();
         for peer in self
             .peers
@@ -79,6 +117,39 @@ impl Client {
         }
         anyhow::bail!("no connected DA peer supplied the verified square at height {height}")
     }
+
+    async fn verified_cell(
+        &self,
+        height: u64,
+        dah: &square::DataAvailabilityHeader,
+        row: usize,
+        col: usize,
+    ) -> Result<super::VerifiedSample> {
+        let width = dah.row_roots.len();
+        ensure!(row < width && col < width, "sample coordinate outside EDS");
+        let online = self.peers.connected.borrow().clone();
+        for peer in self
+            .peers
+            .remotes
+            .iter()
+            .filter(|r| online.contains(&r.peer))
+        {
+            if let Ok(sample) = peer.clone().sample(height, dah, row * width + col).await {
+                return Ok(sample);
+            }
+        }
+        anyhow::bail!("no connected DA peer supplied a verified sample at {height} ({row}, {col})")
+    }
+}
+
+// The light store only indexes a header after all selected sample proofs pass.
+fn sampled_availability(empty: bool, age_ns: i128) -> Result<()> {
+    const WINDOW_NS: i128 = 7 * 24 * 60 * 60 * 1_000_000_000;
+    ensure!(
+        empty || age_ns <= WINDOW_NS,
+        "timestamp outside sampling window"
+    );
+    Ok(())
 }
 
 impl Remote {
@@ -133,6 +204,14 @@ fn reconstruct(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completed_samples_expire_after_seven_days_except_for_empty_squares() {
+        let week = 7 * 24 * 60 * 60 * 1_000_000_000_i128;
+        assert!(sampled_availability(false, week).is_ok());
+        assert!(sampled_availability(false, week + 1).is_err());
+        assert!(sampled_availability(true, week + 1).is_ok());
+    }
 
     #[test]
     fn padding_is_accepted_only_when_it_recreates_the_sampled_roots() -> Result<()> {
