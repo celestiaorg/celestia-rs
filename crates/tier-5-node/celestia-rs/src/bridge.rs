@@ -1,6 +1,7 @@
 //! Opt-in DA RPC backed by the consensus node's committed block and state stores.
 
 pub(crate) mod auth;
+mod ws;
 
 use std::net::{SocketAddr, TcpListener};
 use std::sync::Arc;
@@ -50,7 +51,7 @@ impl Server {
             worker: Arc::new(Semaphore::new(1)),
         });
         let router = Router::new()
-            .route("/", post(handle))
+            .route("/", post(handle).get(ws::upgrade))
             .layer(axum::Extension(Arc::new(auth::Auth::open(home)?)))
             .layer(DefaultBodyLimit::max(64 * 1024))
             .with_state(state);
@@ -366,17 +367,39 @@ async fn handle(
 ) -> axum::response::Response {
     use axum::response::IntoResponse as _;
     let changed = auth.subscribe();
+    let Ok((token, permissions)) = credentials(&auth, &headers) else {
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    };
+    tokio::select! {
+        value=dispatch(bridge,&auth,&permissions,&body) => ([(CONTENT_TYPE, "application/json")], value).into_response(),
+        ()=auth.revoked(changed,token)=>axum::http::StatusCode::UNAUTHORIZED.into_response(),
+    }
+}
+
+fn credentials<'a>(
+    auth: &auth::Auth,
+    headers: &'a axum::http::HeaderMap,
+) -> Result<(Option<&'a str>, Vec<String>)> {
     let token = match headers.get(axum::http::header::AUTHORIZATION) {
         None => None,
         Some(raw) => match raw.to_str().ok().and_then(|s| s.strip_prefix("Bearer ")) {
             Some(token) => Some(token),
-            None => return axum::http::StatusCode::UNAUTHORIZED.into_response(),
+            None => anyhow::bail!("invalid authorization header"),
         },
     };
-    let permissions = match token.map(|t| auth.verify(t)).transpose() {
-        Ok(p) => p.unwrap_or_else(|| vec!["public".to_owned()]),
-        Err(_) => return axum::http::StatusCode::UNAUTHORIZED.into_response(),
-    };
+    let permissions = token
+        .map(|t| auth.verify(t))
+        .transpose()?
+        .unwrap_or_else(|| vec!["public".to_owned()]);
+    Ok((token, permissions))
+}
+
+async fn dispatch(
+    bridge: Arc<Bridge>,
+    auth: &auth::Auth,
+    permissions: &[String],
+    body: &[u8],
+) -> String {
     let require = |method: &str, perm: &str| {
         if permissions.iter().any(|p| p == perm) {
             Ok(())
@@ -393,7 +416,7 @@ async fn handle(
     let mut id = J::Null;
     let result = async {
         let req: Value =
-            serde_json::from_slice(&body).map_err(|_| (-32700, "parse error".to_owned()))?;
+            serde_json::from_slice(body).map_err(|_| (-32700, "parse error".to_owned()))?;
         let invalid = || (-32600, "invalid request".to_owned());
         if req["jsonrpc"] != "2.0" {
             return Err(invalid());
@@ -434,11 +457,8 @@ async fn handle(
         .await
         .map_err(|e| (-32000, e.to_string()))?
         .map_err(|e| (-32000, e.to_string()))
-    };
-    let result = tokio::select! {
-        value=result => value,
-        ()=auth.revoked(changed,token)=>return axum::http::StatusCode::UNAUTHORIZED.into_response(),
-    };
+    }
+    .await;
     let payload = match result {
         Ok(value) => ("result", value),
         Err((code, msg)) => (
@@ -446,9 +466,5 @@ async fn handle(
             J::obj([("code", J::num(code)), ("message", J::str(msg))]),
         ),
     };
-    (
-        [(CONTENT_TYPE, "application/json")],
-        J::obj([("jsonrpc", J::str("2.0")), ("id", id), payload]).encode(),
-    )
-        .into_response()
+    J::obj([("jsonrpc", J::str("2.0")), ("id", id), payload]).encode()
 }
