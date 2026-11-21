@@ -84,25 +84,11 @@ impl Wallet {
         let options =
             serde_json::from_value::<Option<Options>>(options.clone())?.unwrap_or_default();
         let (message, blobs, blob_gas) = match (method, args) {
-            ("state.Transfer", [to, amount]) => {
-                let to = to.as_str().context("expected recipient address")?;
-                ensure!(
-                    client::acc_address_from_bech32(to).is_some(),
-                    "invalid recipient address"
-                );
-                let amount: math::Int = amount
-                    .as_str()
-                    .context("expected integer amount")?
-                    .parse()
-                    .map_err(|_| anyhow::anyhow!("invalid amount"))?;
-                ensure!(amount.is_positive(), "invalid amount");
-                let msg = client::bank_message(
-                    self.address(),
-                    to,
-                    txs::parse_coins(&format!("{amount}utia"))?,
-                );
-                (msg, None, None)
-            }
+            (m, args) if super::state_rpc::writes(m) => (
+                super::state_rpc::message(m, args, self.address())?,
+                None,
+                None,
+            ),
             ("blob.Submit" | "state.SubmitPayForBlob", [values]) => {
                 let blobs = values
                     .as_array()

@@ -2,6 +2,7 @@
 
 pub(crate) mod auth;
 mod share_rpc;
+mod state_rpc;
 pub(crate) mod submit;
 mod ws;
 
@@ -95,6 +96,7 @@ struct Bridge {
 }
 
 enum Query {
+    Staking(String, Vec<Value>),
     Balance(Option<String>),
     Blobs(i64, Vec<shares::Namespace>),
     Blob(i64, shares::Namespace, Vec<u8>),
@@ -133,6 +135,9 @@ impl Query {
         let height = || positive_height(args.first()).ok_or(bad);
         let namespace = |v: &Value| shares::Namespace::from_slice(&bytes(v)?).map_err(|_| bad);
         let index = |v: &Value| v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or(bad);
+        if state_rpc::reads(method) {
+            return Ok(Self::Staking(method.to_owned(), args.clone()));
+        }
         match method {
             "header.LocalHead" | "header.NetworkHead" if args.is_empty() => Ok(Self::Head),
             "header.Tail" if args.is_empty() => Ok(Self::Tail),
@@ -326,6 +331,16 @@ impl Bridge {
             .context("no committed state")?
             .last_block_height;
         let height = match query {
+            Query::Staking(method, args) => {
+                let wallet = self
+                    .wallet
+                    .as_ref()
+                    .context("bridge signer is not configured")?;
+                let app = self.app.as_ref().context("no bridge application")?;
+                return Ok(J::Raw(
+                    state_rpc::read(app, &method, &args, wallet.address())?.to_string(),
+                ));
+            }
             Query::Balance(address) => return self.balance(head, address),
             Query::Head => head,
             Query::Tail => self.blocks.base(),
@@ -595,10 +610,12 @@ async fn dispatch(
                 .map(|value| J::Raw(value.to_string()))
                 .map_err(|e| (1, e.to_string()));
         }
-        if matches!(
-            method,
-            "blob.Submit" | "state.SubmitPayForBlob" | "state.Transfer" | "state.AccountAddress"
-        ) {
+        if state_rpc::writes(method)
+            || matches!(
+                method,
+                "blob.Submit" | "state.SubmitPayForBlob" | "state.AccountAddress"
+            )
+        {
             let submit = method != "state.AccountAddress";
             require(method, if submit { "write" } else { "read" })?;
             return wallet_rpc(&bridge, method, &req["params"]).await;
