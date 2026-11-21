@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/celestiaorg/celestia-node/api/rpc/client"
+	"github.com/celestiaorg/celestia-node/share"
+	"github.com/celestiaorg/celestia-node/share/shwap"
 )
 
 func check(err error) {
@@ -94,6 +96,24 @@ func main() {
 		header, err := c.Header.GetByHeight(ctx, h)
 		check(err)
 		check(header.Validate())
+		if h == height+1 {
+			if !header.DAH.Equals(share.EmptyEDSRoots()) {
+				panic("expected an empty block")
+			}
+			eds, err := c.Share.GetEDS(ctx, h)
+			check(err)
+			for i, cell := range share.EmptyEDS().Flattened() {
+				if !bytes.Equal(cell, eds.Flattened()[i]) {
+					panic("wrong empty EDS share")
+				}
+			}
+			samples, err := c.Share.GetSamples(ctx, h, []shwap.SampleCoords{{Row: 1, Col: 1}})
+			check(err)
+			if len(samples) != 1 {
+				panic("missing empty EDS sample")
+			}
+			check(samples[0].Verify(header.DAH, 1, 1))
+		}
 		indexed, err := c.Header.GetByHash(ctx, header.Hash())
 		check(err)
 		if !bytes.Equal(indexed.Hash(), header.Hash()) {

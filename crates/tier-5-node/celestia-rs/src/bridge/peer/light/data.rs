@@ -15,6 +15,7 @@ pub(super) fn handles(method: &str) -> bool {
 
 pub(super) struct Client {
     peers: Peers,
+    empty: square::ExtendedDataSquare,
     empty_hash: [u8; 32],
     worker: Arc<Semaphore>,
 }
@@ -24,6 +25,7 @@ impl Client {
         let empty = square::extend_shares(square::empty_square().as_shares())?;
         Ok(Self {
             empty_hash: square::new_data_availability_header(&empty)?.hash(),
+            empty,
             peers,
             worker: Arc::new(Semaphore::new(1)),
         })
@@ -58,6 +60,11 @@ impl Client {
                 .context("light data RPC busy")?,
         );
         let dah = square::DataAvailabilityHeader::from_proto_bytes(&wire.dah)?;
+        if dah.hash() == self.empty_hash {
+            return query
+                .answer_square(&self.empty, &dah)
+                .map(|value| value.encode());
+        }
         let width = dah.row_roots.len() / 2;
         ensure!(
             (1..=512).contains(&width) && width.is_power_of_two(),
