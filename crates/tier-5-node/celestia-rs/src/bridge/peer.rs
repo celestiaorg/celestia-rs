@@ -1,4 +1,7 @@
 //! Inbound go-header exchange and SHREX over negotiated libp2p streams.
+#[cfg(feature = "da-light")]
+pub(crate) mod light;
+
 use std::io::{ErrorKind, Write as _};
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
@@ -312,6 +315,7 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
                         Payload::Frame(
                             Sample {
                                 share: Some(share),
+                                axis: 0,
                                 proof: Some(proof.into()),
                             }
                             .encode_length_delimited_to_vec(),
@@ -476,6 +480,8 @@ struct Sample {
     share: Option<WireShare>,
     #[prost(message, optional, tag = "2")]
     proof: Option<Proof>,
+    #[prost(int32, tag = "3")]
+    axis: i32,
 }
 
 impl From<celestia_proto::celestia::core::v1::proof::NmtProof> for Proof {
