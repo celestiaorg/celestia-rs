@@ -3,7 +3,8 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'crates/tier-5-node/celestia-rs/src/bridge/peer/light.rs'
+      - 'crates/tier-5-node/celestia-rs/src/bridge/**'
+      - 'crates/tier-5-node/celestia-rs/src/bridge.rs'
       - 'conformance/da/light/**'
       - '.github/workflows/da-light-interop.yml'
 permissions:

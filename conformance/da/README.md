@@ -76,3 +76,9 @@ with `celestia-rs da-auth read --home "$LIGHT_HOME"`. The light store indexes
 a header after verifying its selected shares, and retains headers for the Go
 storage window of seven days plus one hour, measured from the sampled head.
 A home created by an earlier light build starts its history at its saved head.
+
+### Private non-validating bridge qualification
+
+Run `conformance/da/light/test-go-bridge.sh RUST_BINARY GO_APP_TREE GO_NODE_TREE` on an isolated host using a Rust build with `--no-default-features --features da-light`. The fixture checks the Go revisions before startup. A fresh Rust consensus peer receives the Go genesis, syncs from the sole validator, and serves paid data over authenticated RPC and SHREX with zero voting power.
+
+On Linux the fixture also prints a JSON receipt for concurrent verified reads of the same paid data through both bridges. It records consensus height before and after the workload, completed read suites per bridge, maximum sampled lag, process CPU time during the workload, process lifetime peak RSS, and final allocated home sizes. Go runs a validator and a separate bridge process. Rust runs a non-validating consensus peer and its bridge in one process. These short private runs exercise progress under reads. Hardware, build profiles and process roles affect the resource figures.

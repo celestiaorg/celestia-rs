@@ -180,3 +180,10 @@ follower_id=$(sed -n 's/.*DA peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$wor
 peer_probe=$(realpath "$(dirname "$0")/../peer/read_peer.go")
 (cd "$node_src" && go run "$peer_probe" "$chain" "/ip4/127.0.0.1/tcp/37221/p2p/$follower_id" "$height" 0103 "$data_hex")
 echo "Go validator and non-validating Rust bridge matched block and app hashes at $height and $((height+1))"
+if [[ -r /proc/self/stat ]]; then
+    (cd "$node_src" && go build -o "$work/read-bridge" "$data_probe")
+    GO_READ_TOKEN=$("$da" bridge auth read --node.store "$work/bridge" | tail -1)
+    export GO_READ_TOKEN
+    python3 "$(dirname "$0")/measure_observer.py" "$work/read-bridge" "$height" "$data_hex" \
+        "$work" "$consensus" "$bridge" "$follower"
+fi
