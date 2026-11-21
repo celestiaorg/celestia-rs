@@ -991,7 +991,6 @@ dependencies = [
  "keyring",
  "kvdb",
  "libp2p",
- "libp2p-stream",
  "light",
  "math",
  "mempool",
@@ -3372,20 +3371,6 @@ dependencies = [
  "socket2 0.6.5",
  "thiserror 2.0.21",
  "tokio",
- "tracing",
-]
-
-[[package]]
-name = "libp2p-stream"
-version = "0.5.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f601608210b097bfd4433de5fd262fdfddc89b70ebdb00fb7f2f10c2f5ffb677"
-dependencies = [
- "futures",
- "libp2p-core",
- "libp2p-identity",
- "libp2p-swarm",
- "rand 0.10.3",
  "tracing",
 ]
 
