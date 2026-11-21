@@ -15,6 +15,11 @@ use crate::{client, keys::ACC_PREFIX, txs};
 
 pub(super) const BODY_LIMIT: usize = 2 * app::proposal::MAX_TX_SIZE;
 
+pub(super) struct Receipt {
+    pub(super) height: u64,
+    pub(super) hash: String,
+}
+
 pub(crate) struct Wallet {
     app: app::AbciApp,
     home: PathBuf,
@@ -61,8 +66,9 @@ impl Wallet {
     pub(super) async fn submit(
         self: &Arc<Self>,
         params: &Value,
+        core_blobs: bool,
         states: nodestore::StateStore,
-    ) -> Result<u64> {
+    ) -> Result<Receipt> {
         // Keep the sequence reserved until inclusion even when the HTTP caller disconnects.
         let permit = self
             .sequence
@@ -78,7 +84,7 @@ impl Wallet {
             .filter(|v| !v.is_empty())
             .context("expected a nonempty blob array")?
             .iter()
-            .map(parse_blob)
+            .map(|value| parse_blob(value, core_blobs))
             .collect::<Result<Vec<_>>>()?;
         let options =
             serde_json::from_value::<Option<Options>>(params[1].clone())?.unwrap_or_default();
@@ -95,7 +101,7 @@ impl Wallet {
         blobs: Vec<shares::Blob>,
         options: &Options,
         states: &nodestore::StateStore,
-    ) -> Result<u64> {
+    ) -> Result<Receipt> {
         let address = self.address();
         let requested = if options.signer_address.is_empty() {
             options.key_name.is_empty() || options.key_name == self.flags.from
@@ -131,7 +137,11 @@ impl Wallet {
             Ok((vec![Any::pack(&msg)], Some(blobs)))
         })?;
         let hash = res["txhash"].as_str().context("missing transaction hash")?;
-        committed_height(&txs::Node::new(&flags.node), states, hash)
+        let height = committed_height(&txs::Node::new(&flags.node), states, hash)?;
+        Ok(Receipt {
+            height,
+            hash: hash.to_owned(),
+        })
     }
 }
 
@@ -218,11 +228,22 @@ impl Options {
     }
 }
 
-fn parse_blob(value: &Value) -> Result<shares::Blob> {
+fn parse_blob(value: &Value, core_blob: bool) -> Result<shares::Blob> {
     let bytes = |v: &Value| -> Result<Vec<u8>> {
         Ok(STANDARD.decode(v.as_str().context("expected base64 encoded bytes")?)?)
     };
-    let namespace = shares::Namespace::from_slice(&bytes(&value["namespace"])?)?;
+    let namespace = if core_blob {
+        let version = value
+            .get("namespace_version")
+            .map_or(Some(0), Value::as_u64)
+            .context("invalid namespace version")?;
+        let id = bytes(&value["namespace_id"])?
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid namespace ID length"))?;
+        shares::Namespace::new(u8::try_from(version)?, id)?
+    } else {
+        shares::Namespace::from_slice(&bytes(&value["namespace"])?)?
+    };
     ensure!(!namespace.is_reserved(), "reserved namespace");
     let version = value
         .get("share_version")

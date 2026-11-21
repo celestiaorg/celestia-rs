@@ -596,19 +596,31 @@ async fn dispatch(
                 .map(|value| J::Raw(value.to_string()))
                 .map_err(|e| (1, e.to_string()));
         }
-        if matches!(method, "blob.Submit" | "state.AccountAddress") {
-            let submit = method == "blob.Submit";
+        if matches!(
+            method,
+            "blob.Submit" | "state.SubmitPayForBlob" | "state.AccountAddress"
+        ) {
+            let submit = method != "state.AccountAddress";
             require(method, if submit { "write" } else { "read" })?;
             let wallet = bridge
                 .wallet
                 .as_ref()
                 .ok_or_else(|| (1, "bridge signer is not configured".to_owned()))?;
             if submit {
-                return wallet
-                    .submit(&req["params"], bridge.states.clone())
+                let core_blobs = method == "state.SubmitPayForBlob";
+                let receipt = wallet
+                    .submit(&req["params"], core_blobs, bridge.states.clone())
                     .await
-                    .map(J::num)
-                    .map_err(|e| (1, e.to_string()));
+                    .map_err(|e| (1, e.to_string()))?;
+                if core_blobs {
+                    return Ok(J::obj([
+                        ("height", J::num(receipt.height)),
+                        ("txhash", J::str(receipt.hash)),
+                        ("logs", J::Null),
+                        ("events", J::Null),
+                    ]));
+                }
+                return Ok(J::num(receipt.height));
             }
             if req
                 .get("params")

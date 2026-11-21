@@ -65,6 +65,23 @@ func main() {
 	if err == nil || !strings.Contains(err.Error(), "requested account") {
 		panic(fmt.Sprintf("unexpected signer selection: %v", err))
 	}
+	coreBatch := []*share.Blob{multirow.Blob, signed.Blob}
+	if _, err := read.State.SubmitPayForBlob(ctx, coreBatch, nil); err == nil {
+		panic("read-only state.SubmitPayForBlob succeeded")
+	}
+	receipt, err := write.State.SubmitPayForBlob(ctx, coreBatch, nil)
+	check(err)
+	if receipt.Height <= 0 || len(receipt.TxHash) != 64 || receipt.Code != 0 {
+		panic(fmt.Sprintf("invalid PFB receipt: %v", receipt))
+	}
+	for _, want := range batch {
+		got, err := read.Blob.Get(ctx, uint64(receipt.Height), ns, want.Commitment)
+		check(err)
+		if !bytes.Equal(got.Data(), want.Data()) || !bytes.Equal(got.Signer(), want.Signer()) {
+			panic("state PFB payload differs")
+		}
+	}
+	fmt.Printf("Go resolved both blobs from state transaction %s at height %d\n", receipt.TxHash, receipt.Height)
 	for _, opts := range []*state.TxConfig{nil, state.NewTxConfig(state.WithGasPrice(0.01), state.WithSignerAddress(account.String()))} {
 		h, err := write.Blob.Submit(ctx, batch, opts)
 		check(err)
