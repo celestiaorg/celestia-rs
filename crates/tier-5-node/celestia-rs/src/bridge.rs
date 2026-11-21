@@ -99,6 +99,14 @@ enum ProofRequest {
     Included(Value),
 }
 
+fn bytes(value: &Value) -> Result<Vec<u8>, (i32, &'static str)> {
+    use base64::Engine as _;
+    let invalid = (-32602, "invalid params");
+    base64::engine::general_purpose::STANDARD
+        .decode(value.as_str().ok_or(invalid)?)
+        .map_err(|_| invalid)
+}
+
 impl Query {
     fn parse(method: &str, params: &Value) -> Result<Self, (i32, &'static str)> {
         let bad = (-32602, "invalid params");
@@ -108,12 +116,6 @@ impl Query {
                 .and_then(Value::as_i64)
                 .filter(|h| *h > 0)
                 .ok_or(bad)
-        };
-        let bytes = |v: &Value| {
-            use base64::Engine as _;
-            base64::engine::general_purpose::STANDARD
-                .decode(v.as_str().ok_or(bad)?)
-                .map_err(|_| bad)
         };
         let namespace = |v: &Value| shares::Namespace::from_slice(&bytes(v)?).map_err(|_| bad);
         let index = |v: &Value| v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or(bad);
@@ -270,8 +272,8 @@ impl Bridge {
                     .header
                     .height
             }
-            Query::ShareRead(h, _) => h,
-            Query::Header(h)
+            Query::ShareRead(h, _)
+            | Query::Header(h)
             | Query::Share(h, ..)
             | Query::Namespace(h, _)
             | Query::Blobs(h, _)
