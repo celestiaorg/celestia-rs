@@ -86,6 +86,9 @@ enum Cmd {
     /// Run a node: Rust consensus, P2P, mempool and RPC on top of the
     /// in-process state machine.
     Start(Box<StartArgs>),
+    /// Follow a trusted DA checkpoint and sample shares over the DA network.
+    #[cfg(feature = "da-light")]
+    DaLight(celestia_rs::LightArgs),
     /// Create a token for the DA JSON-RPC listener using this node home.
     #[cfg(feature = "bridge")]
     DaAuth {
@@ -972,6 +975,8 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
             ));
             Ok(())
         }
+        #[cfg(feature = "da-light")]
+        Cmd::DaLight(args) => celestia_rs::run_light(&home, args).await,
         #[cfg(feature = "bridge")]
         Cmd::DaAuth { level, ttl_seconds } => {
             util::out(celestia_rs::operator_token(&home, &level, ttl_seconds)?);
