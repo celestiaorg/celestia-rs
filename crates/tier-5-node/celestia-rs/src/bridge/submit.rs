@@ -138,29 +138,23 @@ impl Wallet {
 // The pool may have removed the proposal before its commit receipt and DA height are published.
 fn committed_height(node: &txs::Node, states: &nodestore::StateStore, hash: &str) -> Result<u64> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    let receipt = node.wait_tx(hash, std::time::Duration::from_secs(120))?;
+    ensure!(
+        receipt["execution_code"].as_u64() == Some(0),
+        "tx {hash} failed: {}",
+        receipt["error"]
+    );
+    let height: i64 = receipt["height"]
+        .as_str()
+        .context("missing commit height")?
+        .parse()?;
+    ensure!(height > 0, "missing commit height");
     loop {
-        let receipt = node.tx_status(hash)?;
-        let code = receipt["execution_code"].as_u64().unwrap_or_default();
-        match receipt["status"].as_str() {
-            Some("COMMITTED") => {
-                ensure!(code == 0, "tx {hash} failed: {}", receipt["error"]);
-                let height: i64 = receipt["height"]
-                    .as_str()
-                    .context("missing commit height")?
-                    .parse()?;
-                ensure!(height > 0, "missing commit height");
-                if states
-                    .load()?
-                    .is_some_and(|s| s.last_block_height >= height)
-                {
-                    return Ok(u64::try_from(height)?);
-                }
-            }
-            Some("REJECTED") if code != 0 => {
-                anyhow::bail!("tx {hash} rejected: {}", receipt["error"])
-            }
-            Some("EVICTED") => anyhow::bail!("tx {hash} evicted"),
-            _ => {}
+        if states
+            .load()?
+            .is_some_and(|s| s.last_block_height >= height)
+        {
+            return Ok(u64::try_from(height)?);
         }
         ensure!(
             std::time::Instant::now() < deadline,
