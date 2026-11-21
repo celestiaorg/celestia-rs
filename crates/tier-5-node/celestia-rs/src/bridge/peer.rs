@@ -2,6 +2,8 @@
 mod admin;
 pub(crate) use admin::Control;
 mod inbound;
+#[cfg(feature = "da-light")]
+pub(crate) mod light;
 mod network;
 
 use std::io::{ErrorKind, Write as _};
@@ -428,6 +430,7 @@ impl Bridge {
                 Payload::Frame(
                     Sample {
                         share: Some(share),
+                        axis: 0,
                         proof: Some(proof.into()),
                     }
                     .encode_length_delimited_to_vec(),
@@ -525,6 +528,8 @@ struct Sample {
     share: Option<WireShare>,
     #[prost(message, optional, tag = "2")]
     proof: Option<Proof>,
+    #[prost(int32, tag = "3")]
+    axis: i32,
 }
 
 impl From<celestia_proto::celestia::core::v1::proof::NmtProof> for Proof {
