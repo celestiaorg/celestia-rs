@@ -453,7 +453,7 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     let _bridge = opts
         .bridge_rpc_listen
         .zip(bridge_index.as_ref())
-        .map(|(addr, index)| crate::bridge::Server::start(addr, index.store.clone()))
+        .map(|(addr, index)| crate::bridge::Server::start(addr, home, index.store.clone()))
         .transpose()?;
     #[cfg(feature = "bridge-p2p")]
     let _bridge_peer = opts

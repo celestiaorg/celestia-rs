@@ -1,5 +1,6 @@
 //! Opt-in DA RPC backed by the consensus node's committed block and state stores.
 
+pub(crate) mod auth;
 pub(crate) mod index;
 mod share_rpc;
 
@@ -25,7 +26,11 @@ pub(crate) struct Server {
 }
 
 impl Server {
-    pub(crate) fn start(addr: SocketAddr, index: Arc<index::Store>) -> Result<Self> {
+    pub(crate) fn start(
+        addr: SocketAddr,
+        home: &std::path::Path,
+        index: Arc<index::Store>,
+    ) -> Result<Self> {
         ensure!(
             addr.ip().is_loopback(),
             "bridge RPC requires a loopback listener"
@@ -46,6 +51,7 @@ impl Server {
         });
         let router = Router::new()
             .route("/", post(handle))
+            .layer(axum::Extension(Arc::new(auth::Auth::open(home)?)))
             .layer(DefaultBodyLimit::max(64 * 1024))
             .with_state(state);
         let thread = std::thread::Builder::new().name("da-bridge".into()).spawn(move || {
@@ -426,8 +432,36 @@ fn namespace_row_json(row: app::inclusion_proof::NamespaceRow) -> J {
 
 async fn handle(
     State(bridge): State<Arc<Bridge>>,
+    axum::Extension(auth): axum::Extension<Arc<auth::Auth>>,
+    headers: axum::http::HeaderMap,
     body: Bytes,
-) -> ([(axum::http::HeaderName, &'static str); 1], String) {
+) -> axum::response::Response {
+    use axum::response::IntoResponse as _;
+    let changed = auth.subscribe();
+    let token = match headers.get(axum::http::header::AUTHORIZATION) {
+        None => None,
+        Some(raw) => match raw.to_str().ok().and_then(|s| s.strip_prefix("Bearer ")) {
+            Some(token) => Some(token),
+            None => return axum::http::StatusCode::UNAUTHORIZED.into_response(),
+        },
+    };
+    let permissions = match token.map(|t| auth.verify(t)).transpose() {
+        Ok(p) => p.unwrap_or_else(|| vec!["public".to_owned()]),
+        Err(_) => return axum::http::StatusCode::UNAUTHORIZED.into_response(),
+    };
+    let require = |method: &str, perm: &str| {
+        if permissions.iter().any(|p| p == perm) {
+            Ok(())
+        } else {
+            Err((
+                1,
+                format!(
+                    "missing permission to invoke '{}' (need '{perm}')",
+                    method.rsplit('.').next().unwrap_or(method)
+                ),
+            ))
+        }
+    };
     let mut id = J::Null;
     let result = async {
         let req: Value =
@@ -443,11 +477,23 @@ async fn handle(
         id = J::Raw(request_id.to_string());
         let method = req["method"].as_str().ok_or_else(invalid)?;
         let empty = Value::Array(Vec::new());
+        if matches!(
+            method,
+            "node.AuthNew" | "node.AuthNewWithExpiry" | "node.AuthVerify" | "node.AuthRevoke"
+        ) {
+            require(method, "admin")?;
+            let args = req["params"].as_array().ok_or_else(invalid)?;
+            return auth
+                .admin(method, args)
+                .map(|value| J::Raw(value.to_string()))
+                .map_err(|e| (1, e.to_string()));
+        }
         let query = Query::parse(
             method,
             req.get("params").filter(|v| !v.is_null()).unwrap_or(&empty),
         )
         .map_err(|(code, msg)| (code, msg.to_owned()))?;
+        require(method, "read")?;
         let permit = bridge
             .worker
             .clone()
@@ -460,8 +506,11 @@ async fn handle(
         .await
         .map_err(|e| (-32000, e.to_string()))?
         .map_err(|e| (-32000, e.to_string()))
-    }
-    .await;
+    };
+    let result = tokio::select! {
+        value=result => value,
+        ()=auth.revoked(changed,token)=>return axum::http::StatusCode::UNAUTHORIZED.into_response(),
+    };
     let payload = match result {
         Ok(value) => ("result", value),
         Err((code, msg)) => (
@@ -473,6 +522,7 @@ async fn handle(
         [(CONTENT_TYPE, "application/json")],
         J::obj([("jsonrpc", J::str("2.0")), ("id", id), payload]).encode(),
     )
+        .into_response()
 }
 
 fn proof_json(p: &celestia_proto::celestia::core::v1::proof::NmtProof, shwap: bool) -> J {
