@@ -126,6 +126,22 @@ fn bytes(value: &Value) -> Result<Vec<u8>, (i32, &'static str)> {
         .map_err(|_| invalid)
 }
 
+fn index(value: &Value) -> Result<usize, (i32, &'static str)> {
+    value
+        .as_u64()
+        .and_then(|i| usize::try_from(i).ok())
+        .ok_or((-32602, "invalid params"))
+}
+
+fn sample_coordinates(value: &Value) -> Result<Vec<(usize, usize)>, (i32, &'static str)> {
+    value
+        .as_array()
+        .ok_or((-32602, "invalid params"))?
+        .iter()
+        .map(|v| Ok((index(&v["row"])?, index(&v["col"])?)))
+        .collect()
+}
+
 impl Query {
     fn parse(method: &str, params: &Value) -> Result<Self, (i32, &'static str)> {
         let bad = (-32602, "invalid params");
@@ -137,7 +153,6 @@ impl Query {
                 .ok_or(bad)
         };
         let namespace = |v: &Value| shares::Namespace::from_slice(&bytes(v)?).map_err(|_| bad);
-        let index = |v: &Value| v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or(bad);
         match method {
             "header.LocalHead" | "header.NetworkHead" if args.is_empty() => Ok(Self::Head),
             "header.Tail" if args.is_empty() => Ok(Self::Tail),
@@ -159,12 +174,7 @@ impl Query {
                 share_rpc::Read::Range(index(&args[1])?, index(&args[2])?),
             )),
             "share.GetSamples" if args.len() == 2 => {
-                let coords = args[1]
-                    .as_array()
-                    .ok_or(bad)?
-                    .iter()
-                    .map(|v| Ok((index(&v["row"])?, index(&v["col"])?)))
-                    .collect::<Result<_, _>>()?;
+                let coords = sample_coordinates(&args[1])?;
                 Ok(Self::ShareRead(height()?, share_rpc::Read::Samples(coords)))
             }
             "state.Balance" if args.is_empty() => Ok(Self::Balance(None)),
