@@ -13,6 +13,9 @@ use rpc::json::J;
 use serde_json::Value;
 use tokio::sync::{Semaphore, oneshot};
 
+#[cfg(feature = "bridge-p2p")]
+pub(crate) mod peer;
+
 pub(crate) struct Server {
     stop: Option<oneshot::Sender<()>>,
     thread: Option<JoinHandle<()>>,
@@ -134,25 +137,16 @@ impl Query {
     }
 }
 
+struct Committed {
+    header: ctypes::Header,
+    commit: ctypes::Commit,
+    validators: ctypes::ValidatorSet,
+    eds: square::ExtendedDataSquare,
+    dah: square::DataAvailabilityHeader,
+}
+
 impl Bridge {
-    fn read(&self, query: Query) -> Result<J> {
-        let head = self
-            .states
-            .load()?
-            .context("no committed state")?
-            .last_block_height;
-        let height = match query {
-            Query::Head => head,
-            Query::Header(h)
-            | Query::Share(h, ..)
-            | Query::Namespace(h, _)
-            | Query::Blobs(h, _)
-            | Query::Blob(h, ..) => h,
-        };
-        ensure!(
-            height > 0 && height <= head,
-            "height {height} is not committed"
-        );
+    fn committed(&self, height: i64) -> Result<Committed> {
         let block = self
             .blocks
             .load_block(height)?
@@ -183,6 +177,40 @@ impl Bridge {
             .collect::<Vec<_>>();
         let (eds, dah) = app::proposal::verified_block_eds(h.version.app, &txs, &h.data_hash)
             .map_err(anyhow::Error::msg)?;
+        Ok(Committed {
+            header: h,
+            commit,
+            validators,
+            eds,
+            dah,
+        })
+    }
+
+    fn read(&self, query: Query) -> Result<J> {
+        let head = self
+            .states
+            .load()?
+            .context("no committed state")?
+            .last_block_height;
+        let height = match query {
+            Query::Head => head,
+            Query::Header(h)
+            | Query::Share(h, ..)
+            | Query::Namespace(h, _)
+            | Query::Blobs(h, _)
+            | Query::Blob(h, ..) => h,
+        };
+        ensure!(
+            height > 0 && height <= head,
+            "height {height} is not committed"
+        );
+        let Committed {
+            header: h,
+            commit,
+            validators,
+            eds,
+            dah,
+        } = self.committed(height)?;
         if let Query::Share(_, row, col) = query {
             return Ok(J::b64(eds.share(row, col)?));
         }
