@@ -2,6 +2,7 @@
 use anyhow::{Context, Result, ensure};
 use celestia_proto::{
     Any,
+    celestia::fibre::v1 as fibre,
     cosmos::{
         base::v1beta1::Coin, distribution::v1beta1 as distribution, feegrant::v1beta1 as feegrant,
         staking::v1beta1 as staking,
@@ -15,7 +16,9 @@ use crate::keys::{ACC_PREFIX, VAL_PREFIX};
 pub(super) fn writes(method: &str) -> bool {
     matches!(
         method,
-        "state.Delegate"
+        "fibre.Deposit"
+            | "fibre.Withdraw"
+            | "state.Delegate"
             | "state.Undelegate"
             | "state.BeginRedelegate"
             | "state.CancelUnbondingDelegation"
@@ -51,6 +54,20 @@ fn amount(value: &Value, zero: bool) -> Result<Coin> {
 
 pub(super) fn message(method: &str, args: &[Value], signer: String) -> Result<Any> {
     Ok(match (method, args) {
+        ("fibre.Deposit" | "fibre.Withdraw", [coin]) => {
+            let amount: Coin = serde_json::from_value(coin.clone())?;
+            if method == "fibre.Deposit" {
+                Any::pack(&fibre::MsgDepositToEscrow {
+                    signer,
+                    amount: Some(amount),
+                })
+            } else {
+                Any::pack(&fibre::MsgRequestWithdrawal {
+                    signer,
+                    amount: Some(amount),
+                })
+            }
+        }
         ("state.Transfer", [recipient, n]) => crate::client::bank_message(
             signer,
             &address(recipient, ACC_PREFIX)?,
@@ -213,4 +230,30 @@ pub(super) fn read(
         }
         _ => anyhow::bail!("invalid query parameters"),
     }
+}
+
+pub(super) fn escrow(app: &app::AbciApp, method: &str, signer: String) -> Result<Value> {
+    if method == "fibre.PendingWithdrawals" {
+        let mut response = query::<fibre::QueryWithdrawalsResponse>(
+            app,
+            "/celestia.fibre.v1.Query/Withdrawals",
+            &fibre::QueryWithdrawalsRequest {
+                signer,
+                pagination: None,
+            },
+        )?;
+        return Ok(response["withdrawals"].take());
+    }
+    let mut response = query::<fibre::QueryEscrowAccountResponse>(
+        app,
+        "/celestia.fibre.v1.Query/EscrowAccount",
+        &fibre::QueryEscrowAccountRequest {
+            signer: signer.clone(),
+        },
+    )?;
+    ensure!(
+        response["found"] == true,
+        "escrow account not found for signer:{signer}"
+    );
+    Ok(response["escrow_account"].take())
 }

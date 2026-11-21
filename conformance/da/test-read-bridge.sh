@@ -76,6 +76,7 @@ operator=$("$binary" keys show destination --address --bech val "${key_args[@]}"
 validator_json="$(dirname "$probe")/../../crates/tier-5-node/celestia-rs/tests/fixtures/generate-only/validator.json"
 "$binary" tx staking create-validator "$validator_json" --from destination "${tx_args[@]}" | jq -e '.code == 0' >/dev/null
 (cd "$go_tree" && go run "$(dirname "$probe")/staking/check.go" http://127.0.0.1:32658 "$operator")
+(cd "$go_tree" && go run "$(dirname "$probe")/fibre/escrow.go" http://127.0.0.1:32658)
 unset DA_TEST_WRITE_TOKEN
 DA_TEST_ADMIN_TOKEN=$("$binary" da-auth admin --home "$work/node")
 export DA_TEST_ADMIN_TOKEN

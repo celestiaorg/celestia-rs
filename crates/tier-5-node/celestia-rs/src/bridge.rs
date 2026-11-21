@@ -96,6 +96,7 @@ struct Bridge {
 }
 
 enum Query {
+    Escrow(String, String),
     Staking(String, Vec<Value>),
     Balance(Option<String>),
     Blobs(i64, Vec<shares::Namespace>),
@@ -135,6 +136,18 @@ impl Query {
         let height = || positive_height(args.first()).ok_or(bad);
         let namespace = |v: &Value| shares::Namespace::from_slice(&bytes(v)?).map_err(|_| bad);
         let index = |v: &Value| v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or(bad);
+        if matches!(
+            method,
+            "fibre.QueryEscrowAccount" | "fibre.PendingWithdrawals"
+        ) {
+            let [signer] = args.as_slice() else {
+                return Err(bad);
+            };
+            return Ok(Self::Escrow(
+                method.into(),
+                signer.as_str().ok_or(bad)?.into(),
+            ));
+        }
         if state_rpc::reads(method) {
             return Ok(Self::Staking(method.to_owned(), args.clone()));
         }
@@ -331,6 +344,10 @@ impl Bridge {
             .context("no committed state")?
             .last_block_height;
         let height = match query {
+            Query::Escrow(method, signer) => {
+                let app = self.app.as_ref().context("no bridge application")?;
+                return Ok(J::Raw(state_rpc::escrow(app, &method, signer)?.to_string()));
+            }
             Query::Staking(method, args) => {
                 let wallet = self
                     .wallet
@@ -660,6 +677,9 @@ async fn wallet_rpc(bridge: &Bridge, method: &str, params: &Value) -> Result<J, 
             .submit(params, method, bridge.states.clone())
             .await
             .map_err(|e| (1, e.to_string()))?;
+        if matches!(method, "fibre.Deposit" | "fibre.Withdraw") {
+            return Ok(J::Null);
+        }
         if method != "blob.Submit" {
             return Ok(J::obj([
                 ("height", J::num(receipt.height)),
