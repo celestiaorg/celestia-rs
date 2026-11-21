@@ -27,6 +27,17 @@ pub fn create_commitment(
     merkle_root_fn: MerkleRootFn,
     subtree_root_threshold: usize,
 ) -> Result<[u8; COMMITMENT_HASH_SIZE]> {
+    Ok(merkle_root_fn(&commitment_subtree_roots(
+        blob,
+        subtree_root_threshold,
+    )?))
+}
+
+/// Ordered namespaced subtree roots forming the leaves of a blob commitment.
+pub fn commitment_subtree_roots(
+    blob: &shares::Blob,
+    subtree_root_threshold: usize,
+) -> Result<Vec<Vec<u8>>> {
     blob.validate_basic()?;
     let shares = shares::split_blobs(core::slice::from_ref(blob))?;
     let subtree_width = sub_tree_width(shares.len(), subtree_root_threshold)?;
@@ -61,7 +72,7 @@ pub fn create_commitment(
     })?;
     let subtree_roots: Vec<Vec<u8>> = roots.iter().map(|root| root.to_vec()).collect();
 
-    Ok(merkle_root_fn(&subtree_roots))
+    Ok(subtree_roots)
 }
 
 /// Create share commitments for several blobs.
