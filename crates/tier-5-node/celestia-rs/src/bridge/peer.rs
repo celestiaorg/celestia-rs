@@ -1,4 +1,9 @@
 //! Inbound go-header exchange and SHREX over negotiated libp2p streams.
+mod inbound;
+#[cfg(feature = "da-light")]
+pub(crate) mod light;
+mod network;
+
 use std::io::{ErrorKind, Write as _};
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
@@ -8,8 +13,8 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt as _};
 use libp2p::{
-    Multiaddr, Stream, StreamProtocol, SwarmBuilder, identity, multiaddr::Protocol, noise,
-    swarm::SwarmEvent, tcp, yamux,
+    Multiaddr, Stream, SwarmBuilder, identity, multiaddr::Protocol, noise, swarm::SwarmEvent, tcp,
+    yamux,
 };
 use nodestore::{BlockStore, StateStore};
 use prost::Message;
@@ -61,7 +66,7 @@ pub(crate) fn start(
     let bridge = Arc::new(Bridge {
         blocks,
         states,
-        worker: Arc::new(Semaphore::new(1)),
+        worker: Arc::new(Semaphore::new(2)),
     });
     let thread = std::thread::Builder::new()
         .name("da-peer".into())
@@ -94,6 +99,7 @@ async fn run(
     mut stopped: oneshot::Receiver<()>,
     ready: &mpsc::SyncSender<Result<(), String>>,
 ) -> Result<()> {
+    let behaviour = network::Behaviour::new(&key, network)?;
     let mut swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(
@@ -101,56 +107,72 @@ async fn run(
             noise::Config::new,
             yamux::Config::default,
         )?
-        .with_behaviour(|_| libp2p_stream::Behaviour::new())?
+        .with_behaviour(move |_| behaviour)?
         .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(120)))
         .build();
-    let mut control = swarm.behaviour().new_control();
-    let mut streams = futures::stream::SelectAll::new();
-    for (kind, protocol) in [
-        (Kind::Header, "header-ex/v0.0.3"),
-        (Kind::Namespace, "shrex/v0.1.0/nd_v0"),
-        (Kind::Range, "shrex/v0.1.0/rangeNamespaceData_v0"),
-        (Kind::Row, "shrex/v0.1.0/row_v0"),
-        (Kind::Sample, "shrex/v0.1.0/sample_v0"),
-        (Kind::Eds, "shrex/v0.1.0/eds_v0"),
-    ] {
-        let id = StreamProtocol::try_from_owned(format!("/{network}/{protocol}"))?;
-        streams.push(
-            control
-                .accept(id)?
-                .map(move |(peer, stream)| (kind, peer, stream)),
-        );
-    }
     swarm.listen_on(listen)?;
+    let topic = network::header_topic(network);
+    let topic_hash = topic.hash();
+    let mut timer = tokio::time::interval(Duration::from_millis(500));
+    timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut announced = 0;
+    let mut pending = tokio::task::JoinSet::new();
+    // A Go DAS worker opens a separate stream for each sample in a batch.
+    // Bound queued streams independently of concurrent square reconstruction.
+    let admissions = Arc::new(Semaphore::new(64));
     loop {
         tokio::select! {
             _ = &mut stopped => return Ok(()),
+            _ = timer.tick(), if pending.is_empty() && swarm.behaviour().gossip.mesh_peers(&topic_hash).next().is_some() => {
+                let height = bridge.blocks.height();
+                if height > announced {
+                    let bridge = bridge.clone();
+                    pending.spawn_blocking(move || (height, bridge.committed(height).and_then(|block| block.header_wire())));
+                }
+            }
+            Some(result) = pending.join_next(), if !pending.is_empty() => {
+                match result? {
+                    (height, Ok(data)) => {
+                        if swarm.behaviour_mut().gossip.publish(topic.clone(), data).is_ok() {
+                            announced = height;
+                        }
+                    }
+                    (height, Err(error)) => tracing::debug!(height, %error, "header publication deferred"),
+                }
+            }
             event = swarm.select_next_some() => match event {
                 SwarmEvent::NewListenAddr { address, .. } => {
+                    swarm.add_external_address(address.clone());
                     tracing::info!(%address, peer=%swarm.local_peer_id(), "DA peer listening");
                     let _ = ready.try_send(Ok(()));
+                }
+                SwarmEvent::Behaviour(network::BehaviourEvent::Identify(libp2p::identify::Event::Received { peer_id, info, .. })) => {
+                    for addr in info.listen_addrs {
+                        swarm.behaviour_mut().dht.add_address(&peer_id, addr);
+                    }
                 }
                 SwarmEvent::ListenerClosed { reason, .. } => {
                     reason?;
                     bail!("DA peer listener closed");
                 }
-                _ => {}
-            },
-            (kind, peer, mut stream) = streams.select_next_some() => {
-                let Ok(permit) = bridge.worker.clone().try_acquire_owned() else { continue };
+                SwarmEvent::Behaviour(network::BehaviourEvent::Streams((peer, inbound::Accepted {kind, mut stream}))) => {
+                let Ok(admission) = admissions.clone().try_acquire_owned() else { continue };
                 let bridge = bridge.clone();
                 tokio::spawn(async move {
-                    let _permit = permit;
+                    let _admission = admission;
+                    let Ok(Ok(_worker)) = tokio::time::timeout(TIMEOUT, bridge.worker.acquire()).await else { return };
                     if let Err(error) = serve(&bridge, kind, &mut stream).await {
                         tracing::debug!(%peer, %error, "DA stream ended");
                     }
                 });
-            }
+                }
+                _ => {}
+            },
         }
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum Kind {
     Header,
     Namespace,
@@ -382,6 +404,7 @@ impl Bridge {
                 Payload::Frame(
                     Sample {
                         share: Some(share),
+                        axis: 0,
                         proof: Some(proof.into()),
                     }
                     .encode_length_delimited_to_vec(),
@@ -479,6 +502,8 @@ struct Sample {
     share: Option<WireShare>,
     #[prost(message, optional, tag = "2")]
     proof: Option<Proof>,
+    #[prost(int32, tag = "3")]
+    axis: i32,
 }
 
 impl From<celestia_proto::celestia::core::v1::proof::NmtProof> for Proof {

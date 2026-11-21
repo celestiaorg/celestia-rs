@@ -86,6 +86,9 @@ enum Cmd {
     /// Run a node: Rust consensus, P2P, mempool and RPC on top of the
     /// in-process state machine.
     Start(Box<StartArgs>),
+    /// Follow a trusted DA checkpoint and sample shares over the DA network.
+    #[cfg(feature = "da-light")]
+    DaLight(celestia_rs::LightArgs),
     /// Follow a network over celestia-core RPC (HTTP/HTTPS) instead of
     /// P2P: verify every block with the light client, execute it and stop
     /// at the first app hash / results / validator set divergence.
@@ -955,6 +958,8 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
             ));
             Ok(())
         }
+        #[cfg(feature = "da-light")]
+        Cmd::DaLight(args) => celestia_rs::run_light(&home, args).await,
         Cmd::Start(args) => start(&home, *args).await,
         Cmd::Follow(args) => follow(&home, *args).await,
         Cmd::ExportBlocks { out } => node::export_blocks(&home, &out),
