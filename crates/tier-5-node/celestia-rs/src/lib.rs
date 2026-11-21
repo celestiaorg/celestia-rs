@@ -2,6 +2,8 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "bridge")]
+mod bridge;
 pub mod client;
 pub mod config;
 pub mod export;

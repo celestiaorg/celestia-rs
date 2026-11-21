@@ -14,6 +14,8 @@ workspace = true
 
 [features]
 default = ["rocksdb", "jemalloc"]
+# Experimental in-process DA bridge. Runtime opt-in via --bridge-rpc-listen.
+bridge = []
 # RocksDB state backend (default); `--no-default-features` builds redb only.
 rocksdb = ["app/rocksdb", "api-server/rocksdb"]
 # jemalloc as the global allocator (default; unprefixed on Linux, so

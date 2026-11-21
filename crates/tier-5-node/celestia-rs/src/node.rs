@@ -146,6 +146,9 @@ pub struct MetricsOptions {
 /// Options of `celestia-rs start`.
 #[derive(Debug, Clone)]
 pub struct StartOptions {
+    /// Explicit listener for the experimental read-only DA bridge.
+    #[cfg(feature = "bridge")]
+    pub bridge_rpc_listen: Option<std::net::SocketAddr>,
     /// Node home.
     pub home: PathBuf,
     /// Stop after committing this height (0 = run forever); unlike Go's
@@ -182,6 +185,8 @@ impl StartOptions {
         Self {
             home,
             stop_height,
+            #[cfg(feature = "bridge")]
+            bridge_rpc_listen: None,
             config,
             mempool: mempool::MempoolConfig::celestia_app(),
             p2p: None,
@@ -417,6 +422,11 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         app_version: state.consensus_params.version.app,
     })?;
     exec.set_event_sink(rpc.publisher.clone());
+    #[cfg(feature = "bridge")]
+    let _bridge = opts
+        .bridge_rpc_listen
+        .map(|addr| crate::bridge::Server::start(addr, bs.clone(), ss.clone()))
+        .transpose()?;
     rpc.spawn()?;
     let local_addr = pv.address().to_vec();
     // Go: a fresh node with state sync enabled skips the handshake; the

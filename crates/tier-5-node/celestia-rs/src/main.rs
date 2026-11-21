@@ -166,6 +166,10 @@ enum Cmd {
 #[derive(Args, Debug)]
 #[allow(clippy::struct_excessive_bools)]
 struct StartArgs {
+    /// Serve experimental read-only DA JSON-RPC on this loopback address.
+    #[cfg(feature = "bridge")]
+    #[arg(long)]
+    bridge_rpc_listen: Option<std::net::SocketAddr>,
     /// Built-in network (mainnet, mocha, arabica, local): initializes the
     /// home on first start and checks the genesis.
     #[arg(long, env = "CELESTIA_RS_NETWORK")]
@@ -1264,6 +1268,10 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
             ..consensus::ConsensusConfig::default()
         },
     );
+    #[cfg(feature = "bridge")]
+    {
+        opts.bridge_rpc_listen = a.bridge_rpc_listen;
+    }
     opts.mempool = config::mempool_options(&files)?;
     opts.block_sync = !a.no_block_sync;
     opts.discard_abci_responses = files.bool(File::Config, "storage.discard_abci_responses");
@@ -1819,6 +1827,22 @@ fn utia_min_gas_price(s: &str) -> anyhow::Result<Option<math::LegacyDec>> {
 #[cfg(test)]
 mod cli_tests {
     use super::*;
+
+    #[test]
+    fn bridge_listener_requires_build_and_runtime_opt_in() {
+        let explicit = Cli::try_parse_from([
+            "celestia-rs",
+            "start",
+            "--bridge-rpc-listen",
+            "127.0.0.1:32658",
+        ]);
+        assert_eq!(explicit.is_ok(), cfg!(feature = "bridge"));
+        #[cfg(feature = "bridge")]
+        {
+            let cli = Cli::try_parse_from(["celestia-rs", "start"]).unwrap();
+            assert!(matches!(cli.command, Cmd::Start(args) if args.bridge_rpc_listen.is_none()));
+        }
+    }
 
     fn skip_heights(args: &[&str]) -> Vec<i64> {
         let cli = Cli::try_parse_from(args).expect("parse CLI");
