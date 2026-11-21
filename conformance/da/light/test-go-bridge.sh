@@ -131,3 +131,4 @@ for attempt in {1..90}; do
     if [[ "$attempt" == 90 ]]; then echo 'light node did not reconnect' >&2; exit 1; fi
     sleep 1
 done
+(cd "$node_src" && go run "$probe" "$endpoint" "$height" "$hash" online)

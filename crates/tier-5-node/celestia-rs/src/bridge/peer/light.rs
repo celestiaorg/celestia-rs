@@ -1,5 +1,6 @@
 //! Authenticated, sequential DA sync and restartable sampling from a trusted checkpoint.
 mod rpc;
+mod stats;
 
 use super::{HeaderResponse, HeaderWire, Origin, Proof, Request, Sample, identity};
 use anyhow::{Context, Result, ensure};
@@ -253,6 +254,25 @@ impl Peers {
         None
     }
 
+    // Advertised tips are informational. Only the authenticated adjacent path
+    // updates storage. Compare available providers before declaring catch-up.
+    async fn check_tip(&mut self, head: &Verified, chain: &str) -> (u64, bool) {
+        let online = self.connected.borrow().clone();
+        let mut matching = false;
+        let mut different = false;
+        let mut network = head.height;
+        for remote in self.remotes.iter_mut().filter(|r| online.contains(&r.peer)) {
+            if let Ok(Some(raw)) = remote.header(Origin::Height(0)).await
+                && let Ok(tip) = Verified::decode(&raw, chain, None)
+            {
+                matching |= tip.hash == head.hash;
+                different |= tip.hash != head.hash;
+                network = network.max(tip.height);
+            }
+        }
+        (network, matching && !different)
+    }
+
     async fn sample(&mut self, block: &Verified, index: usize) -> bool {
         let online = self.connected.borrow().clone();
         for remote in self.remotes.iter_mut().filter(|r| online.contains(&r.peer)) {
@@ -293,12 +313,7 @@ async fn maintain_connections(
     }
 }
 
-async fn follow(
-    db: &RedbBackend,
-    peers: &mut Peers,
-    args: &LightArgs,
-    anchor: Vec<u8>,
-) -> Result<()> {
+fn load_checkpoint(db: &RedbBackend, args: &LightArgs, anchor: &[u8]) -> Result<Option<Verified>> {
     let trust = serde_json::to_vec(&(&args.network, &anchor))?;
     if let Some(stored) = db.get(b"trust")? {
         ensure!(
@@ -311,7 +326,7 @@ async fn follow(
         db.write(batch)?;
     }
     let stored_head = db.get(b"head")?;
-    let mut last = stored_head
+    let last = stored_head
         .as_deref()
         .map(|raw| Verified::decode(raw, &args.network, None))
         .transpose()?;
@@ -321,6 +336,20 @@ async fn follow(
         let mut upgrade = WriteBatch::new();
         rpc::store_header(db, &mut upgrade, block, &raw)?;
         db.write(upgrade)?;
+    }
+    Ok(last)
+}
+
+async fn follow(
+    db: &RedbBackend,
+    peers: &mut Peers,
+    args: &LightArgs,
+    anchor: Vec<u8>,
+    status: &tokio::sync::watch::Sender<stats::Sampling>,
+) -> Result<()> {
+    let mut last = load_checkpoint(db, args, &anchor)?;
+    if let Some(head) = &last {
+        status.send_modify(|s| s.complete(head.height));
     }
     loop {
         if last
@@ -351,9 +380,17 @@ async fn follow(
             .verified_header(origin, &args.network, last.as_ref())
             .await
         else {
+            if let Some(head) = &last {
+                let (network, done) = peers.check_tip(head, &args.network).await;
+                status.send_modify(|s| {
+                    s.network = network;
+                    s.done = done;
+                });
+            }
             tokio::time::sleep(Duration::from_secs(1)).await;
             continue;
         };
+        status.send_modify(|s| s.start(block.height));
         let indices = sample_indices(db, &block)?;
         let completed = db
             .get(b"completed-samples")?
@@ -371,6 +408,7 @@ async fn follow(
                     ),
                     "sampling header expired"
                 );
+                status.send_modify(|s| s.retries = s.retries.saturating_add(1));
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
             let mut progress = WriteBatch::new();
@@ -390,6 +428,7 @@ async fn follow(
             indices.len(),
             hex::encode_upper(&block.hash)
         )?;
+        status.send_modify(|s| s.complete(block.height));
         last = Some(block);
     }
 }
@@ -412,7 +451,8 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
         RedbOptions::default(),
     )?);
     // Bind synchronously with startup so a busy port is reported to the operator.
-    let listener = rpc::listener(args.rpc_listen, home, db.clone()).await?;
+    let (status, observer) = tokio::sync::watch::channel(stats::Sampling::default());
+    let listener = rpc::listener(args.rpc_listen, home, db.clone(), observer).await?;
     let key = identity(&dir.join("peer.key"))?;
     let swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
@@ -443,7 +483,7 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     };
     tokio::select! {
         result = listener => result,
-        result = follow(&db, &mut peers, &args, anchor) => result,
+        result = follow(&db, &mut peers, &args, anchor, &status) => result,
         result = tokio::signal::ctrl_c() => Ok(result?),
         () = maintain_connections(swarm, &addresses, connected) => anyhow::bail!("DA network stopped"),
     }

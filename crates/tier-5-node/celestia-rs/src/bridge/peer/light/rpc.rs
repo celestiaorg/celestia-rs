@@ -68,12 +68,15 @@ struct Service {
     auth: Auth,
     db: Arc<RedbBackend>,
     workers: Arc<tokio::sync::Semaphore>,
+    waiters: tokio::sync::Semaphore,
+    status: tokio::sync::watch::Receiver<super::stats::Sampling>,
 }
 
 pub(super) async fn listener(
     addr: Option<SocketAddr>,
     home: &Path,
     db: Arc<RedbBackend>,
+    status: tokio::sync::watch::Receiver<super::stats::Sampling>,
 ) -> Result<impl Future<Output = Result<()>> + use<>> {
     let server = if let Some(addr) = addr {
         ensure!(
@@ -87,6 +90,8 @@ pub(super) async fn listener(
             .with_state(Arc::new(Service {
                 auth: Auth::open(home)?,
                 db,
+                status,
+                waiters: tokio::sync::Semaphore::new(8),
                 workers: Arc::new(tokio::sync::Semaphore::new(4)),
             }));
         Some(axum::serve(socket, router))
@@ -115,7 +120,12 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
         let method = req["method"].as_str().ok_or_else(invalid)?;
         if !matches!(
             method,
-            "header.LocalHead" | "header.Tail" | "header.GetByHeight" | "header.GetByHash"
+            "header.LocalHead"
+                | "header.Tail"
+                | "header.GetByHeight"
+                | "header.GetByHash"
+                | "das.SamplingStats"
+                | "das.WaitCatchUp"
         ) {
             return Err((-32601, "method not found".into()));
         }
@@ -128,28 +138,14 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
         } else {
             req["params"].as_array().ok_or_else(invalid)?
         };
-        let worker = service
-            .workers
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| (-32000, "light RPC busy".to_owned()))?;
-        Ok((method.to_owned(), args.clone(), worker))
+        Ok((method.to_owned(), args.clone()))
     })();
     let result = match response {
-        Ok((method, args, permit)) => tokio::task::spawn_blocking(move || {
-            let _permit = permit;
-            read(&service.db, &method, &args)
-        })
-        .await
-        .map_err(|e| (1, e.to_string()))
-        .and_then(|r| r.map_err(|e| (1, e.to_string()))),
+        Ok((method, args)) => dispatch(&service, &method, args).await,
         Err(e) => Err(e),
     };
     let payload = match result {
-        Ok(header) => format!(
-            r#"{{"jsonrpc":"2.0","id":{id},"result":{}}}"#,
-            header.encode()
-        ),
+        Ok(result) => format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{result}}}"#),
         Err((code, message)) => {
             json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}}).to_string()
         }
@@ -159,6 +155,44 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
         payload,
     )
         .into_response()
+}
+async fn dispatch(
+    service: &Service,
+    method: &str,
+    args: Vec<Value>,
+) -> Result<String, (i64, String)> {
+    if method.starts_with("das.") {
+        if !args.is_empty() {
+            return Err((-32602, "invalid parameters".into()));
+        }
+        if method == "das.SamplingStats" {
+            return Ok(service.status.borrow().json().to_string());
+        }
+        let _permit = service
+            .waiters
+            .try_acquire()
+            .map_err(|_| (-32000, "too many catch-up waiters".to_owned()))?;
+        let mut status = service.status.clone();
+        status
+            .wait_for(|s| s.done)
+            .await
+            .map_err(|_| (1, "sampler stopped".to_owned()))?;
+        return Ok("null".into());
+    }
+    let worker = service
+        .workers
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| (-32000, "light RPC busy".to_owned()))?;
+    let db = service.db.clone();
+    let method = method.to_owned();
+    tokio::task::spawn_blocking(move || {
+        let _permit = worker;
+        read(&db, &method, &args).map(|h| h.encode())
+    })
+    .await
+    .map_err(|e| (1, e.to_string()))?
+    .map_err(|e| (1, e.to_string()))
 }
 fn ensure_request(req: &Value) -> Option<()> {
     (req["jsonrpc"] == "2.0"

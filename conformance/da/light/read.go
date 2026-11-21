@@ -27,6 +27,27 @@ func main() {
 	defer c.Close()
 	height, err := strconv.ParseUint(os.Args[2], 10, 64)
 	check(err)
+	if len(os.Args) == 5 && os.Args[4] == "online" {
+		check(c.DAS.WaitCatchUp(ctx))
+		stats, err := c.DAS.SamplingStats(ctx)
+		check(err)
+		if stats.SampledChainHead <= height+2 || stats.CatchupHead < stats.SampledChainHead {
+			panic("catch-up waiter returned before sampling the new blocks")
+		}
+		fmt.Printf("Go catch-up waiter observed Rust sampled height %d\n", stats.SampledChainHead)
+		return
+	}
+	stats, err := c.DAS.SamplingStats(ctx)
+	check(err)
+	if stats.SampledChainHead != height+2 || stats.CatchUpDone || stats.Concurrency != 0 {
+		panic("unexpected offline sampling state")
+	}
+	wait, stop := context.WithTimeout(ctx, 600*time.Millisecond)
+	err = c.DAS.WaitCatchUp(wait)
+	stop()
+	if err == nil || wait.Err() != context.DeadlineExceeded {
+		panic("catch-up waiter completed while the provider was offline")
+	}
 	hash, err := hex.DecodeString(os.Args[3])
 	check(err)
 	tail, err := c.Header.Tail(ctx)
