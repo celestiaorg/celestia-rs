@@ -75,6 +75,7 @@ impl Drop for Indexer {
 pub(crate) struct Store {
     db: RedbBackend,
     archival: bool,
+    target: std::sync::atomic::AtomicI64,
     chain: String,
 }
 
@@ -118,6 +119,7 @@ impl Store {
         Ok(Self {
             db,
             archival,
+            target: std::sync::atomic::AtomicI64::new(0),
             chain: chain.to_owned(),
         })
     }
@@ -127,6 +129,9 @@ impl Store {
             .get(key)?
             .map(|v| Ok(i64::from_be_bytes(v.as_slice().try_into()?)))
             .transpose()
+    }
+    pub(super) fn target(&self) -> i64 {
+        self.target.load(std::sync::atomic::Ordering::Acquire)
     }
     pub(super) fn head(&self) -> Result<i64> {
         Ok(self.number(b"head")?.unwrap_or(0))
@@ -144,6 +149,8 @@ impl Store {
     }
 
     fn check_source(&self, blocks: &BlockStore) -> Result<()> {
+        self.target
+            .store(blocks.height(), std::sync::atomic::Ordering::Release);
         let head = self.head()?;
         if head == 0 {
             return Ok(());
@@ -175,6 +182,8 @@ impl Store {
     }
 
     fn advance(&self, blocks: &BlockStore, states: &StateStore) -> Result<bool> {
+        self.target
+            .store(blocks.height(), std::sync::atomic::Ordering::Release);
         let head = self.head()?;
         let next = if head == 0 {
             blocks.base().max(1)

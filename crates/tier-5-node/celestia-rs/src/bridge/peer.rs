@@ -61,6 +61,7 @@ pub(crate) fn start(
     let (ready, started) = mpsc::sync_channel(1);
     let bridge = Arc::new(Bridge {
         index,
+        waiters: Arc::new(Semaphore::new(32)),
         worker: Arc::new(Semaphore::new(2)),
     });
     let thread = std::thread::Builder::new()

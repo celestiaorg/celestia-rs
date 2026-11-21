@@ -614,11 +614,33 @@ fn hx(b: &[u8]) -> String {
 }
 
 /// `types.EncodeDataRootTuple`.
-fn encode_data_root_tuple(height: u64, data_root: &[u8]) -> Vec<u8> {
+pub fn encode_data_root_tuple(height: u64, data_root: &[u8]) -> Vec<u8> {
     let mut out = vec![0u8; 32];
     out[24..].copy_from_slice(&height.to_be_bytes());
     out.extend_from_slice(data_root);
     out
+}
+
+/// ABI-encode each committed block height and data root in an already validated, end-exclusive range.
+pub fn data_root_tuples(blocks: &BlockStore, start: u64, end: u64) -> Result<Vec<Vec<u8>>, String> {
+    let mut out = Vec::new();
+    for h in start..end {
+        let meta = blocks
+            .load_block_meta(i64::try_from(h).unwrap_or(i64::MAX))
+            .map_err(s)?
+            .ok_or_else(|| format!("couldn't load block meta {h}"))?;
+        if meta.header.data_hash.len() != 32 {
+            return Err(format!(
+                "unexpected data hash length {} at height {h}",
+                meta.header.data_hash.len()
+            ));
+        }
+        out.push(encode_data_root_tuple(
+            u64::try_from(meta.header.height).unwrap_or(0),
+            &meta.header.data_hash,
+        ));
+    }
+    Ok(out)
 }
 
 impl Environment {
@@ -1484,35 +1506,13 @@ impl Environment {
         Ok(())
     }
 
-    fn data_root_tuples(&self, start: u64, end: u64) -> Result<Vec<Vec<u8>>, String> {
-        let mut out = Vec::new();
-        for h in start..end {
-            let meta = self
-                .block_store
-                .load_block_meta(i64::try_from(h).unwrap_or(i64::MAX))
-                .map_err(s)?
-                .ok_or_else(|| format!("couldn't load block meta {h}"))?;
-            if meta.header.data_hash.len() != 32 {
-                return Err(format!(
-                    "unexpected data hash length {} at height {h}",
-                    meta.header.data_hash.len()
-                ));
-            }
-            out.push(encode_data_root_tuple(
-                u64::try_from(meta.header.height).unwrap_or(0),
-                &meta.header.data_hash,
-            ));
-        }
-        Ok(out)
-    }
-
     fn data_commitment(&self, start: i128, end: i128) -> Result<J, String> {
         let (start, end) = (
             u64::try_from(start).unwrap_or(0),
             u64::try_from(end).unwrap_or(0),
         );
         self.validate_data_commitment_range(start, end)?;
-        let tuples = self.data_root_tuples(start, end)?;
+        let tuples = data_root_tuples(&self.block_store, start, end)?;
         Ok(J::obj([(
             "data_commitment",
             J::hex(&ctypes::merkle_proof::hash_from_byte_slices(&tuples)),
@@ -1534,7 +1534,7 @@ impl Environment {
                 "height {uh} should be in the end exclusive interval first_block {start} last_block {end}"
             ));
         }
-        let tuples = self.data_root_tuples(start, end)?;
+        let tuples = data_root_tuples(&self.block_store, start, end)?;
         let (_, proofs) = ctypes::merkle_proof::proofs_from_byte_slices(&tuples);
         let idx = usize::try_from(uh - start).unwrap_or(0);
         proofs
