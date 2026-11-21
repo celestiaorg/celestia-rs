@@ -49,3 +49,8 @@ go run "$PROBE_DIR/peer/read_peer.go" celestia-rs-local \
 The Go peer exchanges a signed header, reconstructs the EDS, verifies a
 range, verifies half rows and samples in all four quadrants, and retrieves
 the submitted bytes with a namespace inclusion proof.
+
+Run `go run /absolute/path/to/conformance/da/historical/roots.go` from the pinned
+celestia-app v11.0.0 checkout to regenerate the historical data roots used by
+`go_historical_bridge_controls`. The signed blobs span the first-share capacity
+boundary where the square builders used in app versions 5 and 6 diverge.

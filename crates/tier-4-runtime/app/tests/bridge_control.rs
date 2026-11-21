@@ -59,3 +59,31 @@ fn go_bridge_control() {
         }
     }
 }
+
+#[test]
+fn go_historical_bridge_controls() {
+    let ns = shares::Namespace::new_v0(b"history").unwrap();
+    let blob = shares::Blob::new_with_signer(ns, vec![0xa3; 459], 1, Some([0x40; 20])).unwrap();
+    let wrapper = |count| {
+        square::BlobTx::new(vec![10, 0], vec![blob.clone(); count])
+            .unwrap()
+            .encode()
+            .unwrap()
+    };
+    let txs = vec![vec![10, 0], wrapper(3)];
+    // go-square v2 underestimates signer-bearing shares when assigning PFB indexes.
+    let v2 =
+        hex::decode("8da7c821dc0b8f75758deb6edb7df05976d6152193f54e4fada7ab054dbb857c").unwrap();
+    let v3 =
+        hex::decode("ba0a952bacad281a02860c027c4d451cea4c13879b5fe3386dde3452209f4d62").unwrap();
+    for version in 1..=7 {
+        let (root, other) = if version <= 5 { (&v2, &v3) } else { (&v3, &v2) };
+        app::proposal::verified_block_eds(version, &txs, root).unwrap();
+        assert!(app::proposal::verified_block_eds(version, &txs, other).is_err());
+    }
+    let two = vec![vec![10, 0], wrapper(2)];
+    let root =
+        hex::decode("754ae104b84426cf0587bec64b6a01525f7ff5ce4a4efc9204542c18c3b81d09").unwrap();
+    assert!(app::proposal::verified_block_eds(5, &two, &root).is_err());
+    app::proposal::verified_block_eds(6, &two, &root).unwrap();
+}
