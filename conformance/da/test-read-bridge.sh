@@ -46,6 +46,8 @@ if (( ${#peer_args[@]} )); then
     done
     peer_args+=(--bridge-bootstrap "$(cat "$work/bootstrap.addr")")
 fi
+DA_TEST_READ_TOKEN=$("$binary" da-auth read --home "$work/node")
+export DA_TEST_READ_TOKEN
 # Keep the fresh validator keys and the startup log inside the temporary home.
 RUST_LOG=celestia_rs::bridge::peer=info "$binary" start --network local --home "$work/node" \
     --bridge-rpc-listen 127.0.0.1:32658 "${peer_args[@]}" >"$work/node.log" 2>&1 &
@@ -53,6 +55,7 @@ pid=$!
 for attempt in {1..120}; do
     kill -0 "$pid"
     if curl -fsS --max-time 2 http://127.0.0.1:32658 \
+        -H "Authorization: Bearer $DA_TEST_READ_TOKEN" \
         -d '{"jsonrpc":"2.0","id":1,"method":"header.LocalHead","params":[]}' 2>/dev/null |
         jq -e '.result.header.chain_id == "celestia-rs-local"' >/dev/null; then
         break
@@ -80,6 +83,10 @@ kill -0 "$pid"
 echo "celestia-node $revision; chain celestia-rs-local; paid blob at height $height"
 sha256sum "$binary" "$work/node/config/genesis.json"
 (cd "$go_tree" && go run "$probe" http://127.0.0.1:32658 "$height" "$namespace" "$data")
+DA_TEST_ADMIN_TOKEN=$("$binary" da-auth admin --home "$work/node")
+export DA_TEST_ADMIN_TOKEN
+(cd "$go_tree" && go run "$(dirname "$probe")/auth/check.go" http://127.0.0.1:32658)
+unset DA_TEST_ADMIN_TOKEN
 if (( ${#peer_args[@]} )); then
     peer_id=$(sed -n 's/.*DA peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/node.log" | head -1)
     [[ -n "$peer_id" ]] || { echo 'missing DA peer identity' >&2; exit 1; }
