@@ -602,32 +602,7 @@ async fn dispatch(
         ) {
             let submit = method != "state.AccountAddress";
             require(method, if submit { "write" } else { "read" })?;
-            let wallet = bridge
-                .wallet
-                .as_ref()
-                .ok_or_else(|| (1, "bridge signer is not configured".to_owned()))?;
-            if submit {
-                let receipt = wallet
-                    .submit(&req["params"], method, bridge.states.clone())
-                    .await
-                    .map_err(|e| (1, e.to_string()))?;
-                if method != "blob.Submit" {
-                    return Ok(J::obj([
-                        ("height", J::num(receipt.height)),
-                        ("txhash", J::str(receipt.hash)),
-                        ("logs", J::Null),
-                        ("events", J::Null),
-                    ]));
-                }
-                return Ok(J::num(receipt.height));
-            }
-            if req
-                .get("params")
-                .is_some_and(|p| !p.is_null() && p != &empty)
-            {
-                return Err(invalid());
-            }
-            return Ok(J::str(wallet.address()));
+            return wallet_rpc(&bridge, method, &req["params"]).await;
         }
         let query = Query::parse(
             method,
@@ -657,6 +632,32 @@ async fn dispatch(
         ),
     };
     J::obj([("jsonrpc", J::str("2.0")), ("id", id), payload]).encode()
+}
+
+async fn wallet_rpc(bridge: &Bridge, method: &str, params: &Value) -> Result<J, (i32, String)> {
+    let wallet = bridge
+        .wallet
+        .as_ref()
+        .ok_or_else(|| (1, "bridge signer is not configured".to_owned()))?;
+    if method != "state.AccountAddress" {
+        let receipt = wallet
+            .submit(params, method, bridge.states.clone())
+            .await
+            .map_err(|e| (1, e.to_string()))?;
+        if method != "blob.Submit" {
+            return Ok(J::obj([
+                ("height", J::num(receipt.height)),
+                ("txhash", J::str(receipt.hash)),
+                ("logs", J::Null),
+                ("events", J::Null),
+            ]));
+        }
+        return Ok(J::num(receipt.height));
+    }
+    if !params.is_null() && params.as_array().is_none_or(|p| !p.is_empty()) {
+        return Err((-32600, "invalid request".to_owned()));
+    }
+    Ok(J::str(wallet.address()))
 }
 
 fn proof_json(p: &celestia_proto::celestia::core::v1::proof::NmtProof, shwap: bool) -> J {
