@@ -29,8 +29,9 @@ pub(super) async fn upgrade(
         return StatusCode::UNAUTHORIZED.into_response();
     };
     let token = token.map(str::to_owned);
-    ws.max_message_size(64 * 1024)
-        .max_frame_size(64 * 1024)
+    let limit = bridge.body_limit(&permissions);
+    ws.max_message_size(limit)
+        .max_frame_size(limit)
         .on_upgrade(move |socket| async move {
             tokio::select! {
                 _=connection(socket,bridge,auth.clone(), permissions.into())=>{}
@@ -129,10 +130,18 @@ impl Streams {
         perms: &Arc<[String]>,
         bytes: Vec<u8>,
     ) -> Result<Option<String>> {
-        let request = serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null);
-        let method = request["method"].as_str().unwrap_or_default();
+        let request = match super::envelope::Request::parse(&bytes) {
+            Ok(request) => request,
+            Err((code, message)) => {
+                return Ok(Some(
+                    json!({"jsonrpc":"2.0","id":null,"error":{"code":code,"message":message}})
+                        .to_string(),
+                ));
+            }
+        };
+        let method = request.method.as_str().unwrap_or_default();
         if method == "xrpc.cancel" {
-            let Some(id) = request["params"].get(0) else {
+            let Some(id) = request.params.get(0) else {
                 return Ok(None);
             };
             if let Some(call) = self.requests.remove(&id.to_string()) {
@@ -145,7 +154,7 @@ impl Streams {
                 .remove(&id.to_string())
                 .map(|sub| closed(sub.channel)));
         }
-        let id = &request["id"];
+        let id = request.id.as_ref().unwrap_or(&Value::Null);
         let key = id.to_string();
         if self.requests.contains_key(&key) || self.subs.contains_key(&key) {
             return Ok(Some(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32600,"message":"duplicate request ID"}}).to_string()));
@@ -165,7 +174,7 @@ impl Streams {
             self.requests.insert(key, handle);
             return Ok(None);
         }
-        let mut reply = if request["jsonrpc"] != "2.0" || !(id.is_string() || id.is_number()) {
+        let mut reply = if !(id.is_string() || id.is_number()) {
             json!({"error":{"code":-32600,"message":"invalid request"}})
         } else if !perms.iter().any(|p| p == "read") {
             json!({"error":{"code":1,"message":"subscription requires read permission"}})
@@ -173,10 +182,11 @@ impl Streams {
             json!({"error":{"code":1,"message":"too many subscriptions"}})
         } else {
             let empty = json!([]);
-            let params = request
-                .get("params")
-                .filter(|v| !v.is_null())
-                .unwrap_or(&empty);
+            let params = if request.params.is_null() {
+                &empty
+            } else {
+                &request.params
+            };
             let channel = self.next_channel;
             match Subscription::new(bridge, method, params, channel) {
                 Ok(sub) => {
