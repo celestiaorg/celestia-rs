@@ -1,5 +1,6 @@
 //! Opt-in DA RPC backed by the consensus node's committed block and state stores.
 
+pub(crate) mod index;
 mod share_rpc;
 
 use std::net::{SocketAddr, TcpListener};
@@ -10,7 +11,7 @@ use anyhow::{Context, Result, ensure};
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::header::CONTENT_TYPE;
 use axum::{Router, body::Bytes, routing::post};
-use nodestore::{BlockStore, StateStore};
+use prost::Message;
 use rpc::json::J;
 use serde_json::Value;
 use tokio::sync::{Semaphore, oneshot};
@@ -24,7 +25,7 @@ pub(crate) struct Server {
 }
 
 impl Server {
-    pub(crate) fn start(addr: SocketAddr, blocks: BlockStore, states: StateStore) -> Result<Self> {
+    pub(crate) fn start(addr: SocketAddr, index: Arc<index::Store>) -> Result<Self> {
         ensure!(
             addr.ip().is_loopback(),
             "bridge RPC requires a loopback listener"
@@ -40,8 +41,7 @@ impl Server {
         };
         let (stop, stopped) = oneshot::channel();
         let state = Arc::new(Bridge {
-            blocks,
-            states,
+            index,
             worker: Arc::new(Semaphore::new(1)),
         });
         let router = Router::new()
@@ -75,8 +75,7 @@ impl Drop for Server {
 }
 
 struct Bridge {
-    blocks: BlockStore,
-    states: StateStore,
+    index: Arc<index::Store>,
     worker: Arc<Semaphore>,
 }
 
@@ -207,6 +206,30 @@ impl Query {
     }
 }
 
+#[derive(Clone, PartialEq, Message)]
+struct HeaderWire {
+    #[prost(message, optional, tag = "1")]
+    header: Option<ctypes::proto::types::Header>,
+    #[prost(message, optional, tag = "2")]
+    commit: Option<ctypes::proto::types::Commit>,
+    #[prost(message, optional, tag = "3")]
+    validators: Option<ctypes::proto::types::ValidatorSet>,
+    #[prost(bytes, tag = "4")]
+    dah: Vec<u8>,
+}
+
+impl Committed {
+    fn header_wire(&self) -> Result<Vec<u8>> {
+        Ok(HeaderWire {
+            header: Some(self.header.to_proto()),
+            commit: Some(self.commit.to_proto()),
+            validators: Some(self.validators.to_proto()?),
+            dah: self.dah.to_proto_bytes()?,
+        }
+        .encode_to_vec())
+    }
+}
+
 struct Committed {
     header: ctypes::Header,
     commit: ctypes::Commit,
@@ -217,61 +240,15 @@ struct Committed {
 
 impl Bridge {
     fn committed(&self, height: i64) -> Result<Committed> {
-        let block = self
-            .blocks
-            .load_block(height)?
-            .context("block unavailable")?;
-        let commit = match self.blocks.load_block_commit(height)? {
-            Some(commit) => commit,
-            None => self
-                .blocks
-                .load_seen_commit(height)?
-                .context("commit unavailable")?,
-        };
-        let h = block.header;
-        ensure!(
-            h.height == height && h.hash().as_ref() == Some(&commit.block_id.hash),
-            "block and commit disagree"
-        );
-        let validators = self.states.load_validators(height)?;
-        ensure!(
-            h.validators_hash == validators.hash(),
-            "validator set does not match block"
-        );
-        ctypes::verify_commit_light(&h.chain_id, &validators, &commit.block_id, height, &commit)?;
-        let txs = block
-            .data
-            .txs
-            .into_iter()
-            .map(|tx| tx.0)
-            .collect::<Vec<_>>();
-        let (eds, dah) = app::proposal::verified_block_eds(h.version.app, &txs, &h.data_hash)
-            .map_err(anyhow::Error::msg)?;
-        Ok(Committed {
-            header: h,
-            commit,
-            validators,
-            eds,
-            dah,
-        })
+        self.index.block(height)
     }
 
     fn read(&self, query: Query) -> Result<J> {
-        let head = self
-            .states
-            .load()?
-            .context("no committed state")?
-            .last_block_height;
+        let head = self.index.head()?;
         let height = match query {
             Query::Head => head,
-            Query::Tail => self.blocks.base(),
-            Query::Hash(ref hash) => {
-                self.blocks
-                    .load_block_meta_by_hash(hash)?
-                    .context("header not found")?
-                    .header
-                    .height
-            }
+            Query::Tail => self.index.tail()?,
+            Query::Hash(ref hash) => self.index.by_hash(hash)?.context("header not found")?,
             Query::ShareRead(h, _)
             | Query::Header(h)
             | Query::Share(h, ..)

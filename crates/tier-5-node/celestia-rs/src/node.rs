@@ -152,6 +152,9 @@ pub struct StartOptions {
     /// Explicit listener for the experimental read-only DA bridge.
     #[cfg(feature = "bridge")]
     pub bridge_rpc_listen: Option<std::net::SocketAddr>,
+    /// Preserve verified DA data older than the normal retention window.
+    #[cfg(feature = "bridge")]
+    pub bridge_archival: bool,
     /// Node home.
     pub home: PathBuf,
     /// Stop after committing this height (0 = run forever); unlike Go's
@@ -190,6 +193,8 @@ impl StartOptions {
             stop_height,
             #[cfg(feature = "bridge")]
             bridge_rpc_listen: None,
+            #[cfg(feature = "bridge")]
+            bridge_archival: false,
             #[cfg(feature = "bridge-p2p")]
             bridge_p2p_listen: None,
             config,
@@ -428,15 +433,34 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     })?;
     exec.set_event_sink(rpc.publisher.clone());
     #[cfg(feature = "bridge")]
+    let bridge_index = {
+        let enabled = opts.bridge_rpc_listen.is_some();
+        #[cfg(feature = "bridge-p2p")]
+        let enabled = enabled || opts.bridge_p2p_listen.is_some();
+        enabled
+            .then(|| {
+                crate::bridge::index::Indexer::start(
+                    home,
+                    &genesis.chain_id,
+                    bs.clone(),
+                    ss.clone(),
+                    opts.bridge_archival,
+                )
+            })
+            .transpose()?
+    };
+    #[cfg(feature = "bridge")]
     let _bridge = opts
         .bridge_rpc_listen
-        .map(|addr| crate::bridge::Server::start(addr, bs.clone(), ss.clone()))
+        .zip(bridge_index.as_ref())
+        .map(|(addr, index)| crate::bridge::Server::start(addr, index.store.clone()))
         .transpose()?;
     #[cfg(feature = "bridge-p2p")]
     let _bridge_peer = opts
         .bridge_p2p_listen
-        .map(|addr| {
-            crate::bridge::peer::start(addr, home, &genesis.chain_id, bs.clone(), ss.clone())
+        .zip(bridge_index.as_ref())
+        .map(|(addr, index)| {
+            crate::bridge::peer::start(addr, home, &genesis.chain_id, index.store.clone())
         })
         .transpose()?;
     rpc.spawn()?;

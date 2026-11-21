@@ -14,11 +14,10 @@ use libp2p::{
     Multiaddr, Stream, SwarmBuilder, identity, multiaddr::Protocol, noise, swarm::SwarmEvent, tcp,
     yamux,
 };
-use nodestore::{BlockStore, StateStore};
 use prost::Message;
 use tokio::sync::{Semaphore, oneshot};
 
-use super::{Bridge, Committed, Server};
+use super::{Bridge, Committed, HeaderWire, Server, index};
 
 fn identity(path: &Path) -> Result<identity::Keypair> {
     match std::fs::read(path) {
@@ -45,8 +44,7 @@ pub(crate) fn start(
     addr: SocketAddr,
     home: &Path,
     network: &str,
-    blocks: BlockStore,
-    states: StateStore,
+    index: Arc<index::Store>,
 ) -> Result<Server> {
     ensure!(
         addr.ip().is_loopback(),
@@ -62,8 +60,7 @@ pub(crate) fn start(
     let (stop, stopped) = oneshot::channel();
     let (ready, started) = mpsc::sync_channel(1);
     let bridge = Arc::new(Bridge {
-        blocks,
-        states,
+        index,
         worker: Arc::new(Semaphore::new(2)),
     });
     let thread = std::thread::Builder::new()
@@ -122,10 +119,10 @@ async fn run(
         tokio::select! {
             _ = &mut stopped => return Ok(()),
             _ = timer.tick(), if pending.is_empty() && swarm.behaviour().gossip.mesh_peers(&topic_hash).next().is_some() => {
-                let height = bridge.blocks.height();
+                let height = bridge.index.head()?;
                 if height > announced {
                     let bridge = bridge.clone();
-                    pending.spawn_blocking(move || (height, bridge.committed(height).and_then(|block| block.header_wire())));
+                    pending.spawn_blocking(move || (height, bridge.index.header_wire(height)));
                 }
             }
             Some(result) = pending.join_next(), if !pending.is_empty() => {
@@ -201,30 +198,6 @@ struct HeaderResponse {
     body: Vec<u8>,
     #[prost(int32, tag = "2")]
     status: i32,
-}
-
-#[derive(Clone, PartialEq, Message)]
-struct HeaderWire {
-    #[prost(message, optional, tag = "1")]
-    header: Option<ctypes::proto::types::Header>,
-    #[prost(message, optional, tag = "2")]
-    commit: Option<ctypes::proto::types::Commit>,
-    #[prost(message, optional, tag = "3")]
-    validators: Option<ctypes::proto::types::ValidatorSet>,
-    #[prost(bytes, tag = "4")]
-    dah: Vec<u8>,
-}
-
-impl Committed {
-    fn header_wire(&self) -> Result<Vec<u8>> {
-        Ok(HeaderWire {
-            header: Some(self.header.to_proto()),
-            commit: Some(self.commit.to_proto()),
-            validators: Some(self.validators.to_proto()?),
-            dah: self.dah.to_proto_bytes()?,
-        }
-        .encode_to_vec())
-    }
 }
 
 const TIMEOUT: Duration = Duration::from_secs(15);
@@ -347,12 +320,8 @@ enum Payload {
 
 impl Bridge {
     fn shrex_response(&self, kind: Kind, height: i64, id: &[u8]) -> Result<Option<Payload>> {
-        let head = self
-            .states
-            .load()?
-            .context("missing state")?
-            .last_block_height;
-        if height > head || height < self.blocks.base() {
+        let head = self.index.head()?;
+        if height > head || height < self.index.tail()? {
             return Ok(None);
         }
         let block = self.committed(height)?;
@@ -412,25 +381,16 @@ impl Bridge {
     }
 
     fn header_responses(&self, request: Request) -> Result<Vec<HeaderResponse>> {
-        let head = self
-            .states
-            .load()?
-            .context("missing state")?
-            .last_block_height;
+        let head = self.index.head()?;
         let (from, count) = match request.data.context("missing origin")? {
-            Origin::Hash(h) => (
-                self.blocks
-                    .load_block_meta_by_hash(&h)?
-                    .map_or(0, |m| m.header.height),
-                1,
-            ),
+            Origin::Hash(h) => (self.index.by_hash(&h)?.unwrap_or(0), 1),
             Origin::Height(0) if request.amount > 0 => (head, 1),
             Origin::Height(h) => {
                 ensure!((1..=64).contains(&request.amount), "invalid range size");
                 (i64::try_from(h)?, i64::try_from(request.amount)?)
             }
         };
-        if from <= 0 || from < self.blocks.base() || from > head {
+        if from <= 0 || from < self.index.tail()? || from > head {
             return Ok(vec![HeaderResponse {
                 status: 2,
                 body: vec![],
@@ -440,7 +400,7 @@ impl Bridge {
             .map(|height| {
                 Ok(HeaderResponse {
                     status: 1,
-                    body: self.committed(height)?.header_wire()?,
+                    body: self.index.header_wire(height)?,
                 })
             })
             .collect()
