@@ -127,6 +127,8 @@ impl Query {
             }
             "header.LocalHead"
             | "header.GetByHeight"
+            | "blob.Get"
+            | "blob.GetAll"
             | "share.GetNamespaceData"
             | "share.GetShare" => Err(bad),
             _ => Err((-32601, "method not found")),
