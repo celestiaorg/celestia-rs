@@ -376,7 +376,11 @@ pub fn row_range_proof(
         .collect();
     let mut nodes = Vec::new();
     let root = range_proof(&leaves, start, end, &mut nodes)?;
-    if dah.row_roots.get(row).map(|r| r.as_slice()) != Some(root.to_bytes().as_slice()) {
+    if dah
+        .row_roots
+        .get(row)
+        .is_none_or(|expected| expected.as_slice() != root.to_bytes())
+    {
         return Err(plain("sample row does not match data availability header"));
     }
     Ok(pb::NmtProof {
