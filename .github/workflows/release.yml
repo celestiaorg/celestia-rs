@@ -124,7 +124,7 @@ jobs:
         if: matrix.cross
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross qemu-user
           {
             echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc"
             echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc"
@@ -137,17 +137,26 @@ jobs:
             echo "JEMALLOC_SYS_WITH_LG_PAGE=16"
           } >> "$GITHUB_ENV"
       - name: Build
+        env:
+          CELESTIA_RS_BUILD_PROFILE: dist
         run: cargo build --profile dist --locked -p celestia-rs --target ${{ matrix.target }}
       - name: Smoke test
-        if: ${{ !matrix.cross }}
+        shell: bash
         env:
           VERSION: ${{ needs.plan.outputs.version }}
+          CROSS: ${{ matrix.cross }}
         run: |
-          set -eu
+          set -euo pipefail
+          set --
+          if [[ "$CROSS" == true ]]; then
+            set -- qemu-aarch64 -L /usr/aarch64-linux-gnu
+          fi
           bin=target/${{ matrix.target }}/dist/celestia-rs
-          $bin version --long
-          # The binary must report the version it's released as.
-          [ "$($bin version)" = "$VERSION" ] || { echo "::error::celestia-rs version reports $($bin version), not $VERSION"; exit 1; }
+          details=$("$@" "$bin" version --long)
+          echo "$details"
+          grep -Fx "commit: $GITHUB_SHA" <<<"$details"
+          grep -Fx 'build_profile: dist' <<<"$details"
+          [[ "$("$@" "$bin" version)" == "$VERSION" ]]
       - name: Package
         shell: bash
         env:

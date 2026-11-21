@@ -45,7 +45,8 @@ fn main() {
 
     // `PROFILE` is only `debug` or `release`; the custom profile (e.g.
     // `dist`) is the name of the target directory component.
-    let profile = std::env::var("OUT_DIR")
+    println!("cargo:rerun-if-env-changed=CELESTIA_RS_BUILD_PROFILE");
+    let inferred_profile = std::env::var("OUT_DIR")
         .ok()
         .and_then(|o| {
             let p = PathBuf::from(o);
@@ -53,6 +54,7 @@ fn main() {
             Some(p.ancestors().nth(3)?.file_name()?.to_str()?.to_owned())
         })
         .unwrap_or_else(|| std::env::var("PROFILE").unwrap_or_default());
+    let profile = std::env::var("CELESTIA_RS_BUILD_PROFILE").unwrap_or(inferred_profile);
     println!("cargo:rustc-env=CELESTIA_RS_BUILD_PROFILE={profile}");
 
     // The toolchain, like Go's `go version` line (`GetNodeInfo`).
