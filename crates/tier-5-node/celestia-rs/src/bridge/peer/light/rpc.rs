@@ -1,6 +1,6 @@
 //! Read fully sampled headers from the private light store.
 use super::{HeaderWire, Verified};
-use crate::bridge::{auth::Auth, credentials, header_json, node_rpc};
+use crate::bridge::{auth::Auth, blobstream, credentials, header_json, node_rpc};
 use anyhow::{Context, Result, ensure};
 use axum::{
     Router,
@@ -122,6 +122,7 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
         let method = req.method.as_str().ok_or_else(invalid)?;
         let node_permission = node_rpc::permission(method);
         if node_permission.is_none()
+            && !blobstream::handles(method)
             && !super::data::handles(method)
             && !matches!(
                 method,
@@ -237,6 +238,29 @@ async fn dispatch(
     .map_err(|e| (1, e.to_string()))
 }
 fn read(db: &RedbBackend, method: &str, args: &[Value]) -> Result<rpc::json::J> {
+    if blobstream::handles(method) {
+        let request = blobstream::Request::parse(method, args)?;
+        let head = db.get(b"head")?.context("missing sampled head")?;
+        let height = HeaderWire::decode(head.as_slice())?
+            .header
+            .context("missing header")?
+            .height;
+        return request.answer(u64::try_from(height)?, |start, end| {
+            (start..end)
+                .map(|h| {
+                    let bytes = db.get(&at(h))?.context("header not found")?;
+                    let header = HeaderWire::decode(bytes.as_slice())?
+                        .header
+                        .context("missing header")?;
+                    ensure!(
+                        u64::try_from(header.height)? == h && header.data_hash.len() == 32,
+                        "invalid sampled data root tuple"
+                    );
+                    Ok(rpc::env::encode_data_root_tuple(h, &header.data_hash))
+                })
+                .collect()
+        });
+    }
     if let ("header.GetRangeByHeight", [from, to]) = (method, args) {
         let (range, mut previous) = crate::bridge::header_rpc::range_bounds(from, to)?;
         let mut headers = Vec::new();

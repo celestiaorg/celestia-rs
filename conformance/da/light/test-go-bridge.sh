@@ -160,6 +160,8 @@ for attempt in {1..60}; do
 done
 probe=$(realpath "$(dirname "$0")/read.go")
 (cd "$node_src" && go run "$probe" "$endpoint" "$height" "$hash")
+tuple_probe=$(realpath "$(dirname "$0")/../subscriptions/check.go")
+(cd "$node_src" && go run "$tuple_probe" "$endpoint" blobstream "$height" "$((height+3))")
 auth_probe=$(realpath "$(dirname "$0")/../auth/check.go")
 DA_TEST_ADMIN_TOKEN=$("$rust" da-auth admin --home "$work/rust-light")
 export DA_TEST_ADMIN_TOKEN
