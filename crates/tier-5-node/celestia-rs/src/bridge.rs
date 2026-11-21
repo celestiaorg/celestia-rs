@@ -32,6 +32,7 @@ impl Server {
         home: &std::path::Path,
         blocks: BlockStore,
         states: StateStore,
+        #[cfg(feature = "bridge-p2p")] peer_control: Option<peer::Control>,
     ) -> Result<Self> {
         ensure!(
             addr.ip().is_loopback(),
@@ -48,6 +49,8 @@ impl Server {
         };
         let (stop, stopped) = oneshot::channel();
         let state = Arc::new(Bridge {
+            #[cfg(feature = "bridge-p2p")]
+            peer_control,
             waiters: Arc::new(Semaphore::new(32)),
             blocks,
             states,
@@ -85,6 +88,8 @@ impl Drop for Server {
 }
 
 struct Bridge {
+    #[cfg(feature = "bridge-p2p")]
+    peer_control: Option<peer::Control>,
     waiters: Arc<Semaphore>,
     blocks: BlockStore,
     states: StateStore,
@@ -535,6 +540,25 @@ async fn dispatch(
             let args = req["params"].as_array().ok_or_else(invalid)?;
             return auth
                 .admin(method, args)
+                .map(|value| J::Raw(value.to_string()))
+                .map_err(|e| (1, e.to_string()));
+        }
+        #[cfg(feature = "bridge-p2p")]
+        if peer::Control::handles(method) {
+            require(method, "admin")?;
+            let control = bridge
+                .peer_control
+                .as_ref()
+                .ok_or_else(|| (1, "DA peer is disabled".to_owned()))?;
+            let args = req
+                .get("params")
+                .filter(|v| !v.is_null())
+                .unwrap_or(&empty)
+                .as_array()
+                .ok_or_else(invalid)?;
+            return control
+                .call(method, args)
+                .await
                 .map(|value| J::Raw(value.to_string()))
                 .map_err(|e| (1, e.to_string()));
         }

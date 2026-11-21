@@ -437,13 +437,8 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         app_version: state.consensus_params.version.app,
     })?;
     exec.set_event_sink(rpc.publisher.clone());
-    #[cfg(feature = "bridge")]
-    let _bridge = opts
-        .bridge_rpc_listen
-        .map(|addr| crate::bridge::Server::start(addr, home, bs.clone(), ss.clone()))
-        .transpose()?;
     #[cfg(feature = "bridge-p2p")]
-    let _bridge_peer = opts
+    let bridge_peer = opts
         .bridge_p2p_listen
         .map(|addr| {
             crate::bridge::peer::start(
@@ -454,6 +449,20 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                 ss.clone(),
                 &opts.bridge_bootstrap,
                 opts.bridge_announce.clone(),
+            )
+        })
+        .transpose()?;
+    #[cfg(feature = "bridge")]
+    let _bridge = opts
+        .bridge_rpc_listen
+        .map(|addr| {
+            crate::bridge::Server::start(
+                addr,
+                home,
+                bs.clone(),
+                ss.clone(),
+                #[cfg(feature = "bridge-p2p")]
+                bridge_peer.as_ref().map(|(_, control)| control.clone()),
             )
         })
         .transpose()?;
