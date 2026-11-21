@@ -1,7 +1,7 @@
 # celestia-rs Milestones
 
-Authoritative source for "what is next." Only **remaining** work is listed
-here; completed milestones (M0–M4, D1, R1, S1–S3, V9, M9–M12, B1) and their
+This roadmap tracks remaining work and the evidence for each open milestone.
+Completed milestones (M0–M4, D1, R1, S1–S3, V9, M9–M12, B1) and their
 progress notes are archived in
 [`docs/milestones-completed.md`](docs/milestones-completed.md). Direction
 and scope decisions: [`docs/adr/0001-project-direction-2026-10.md`](docs/adr/0001-project-direction-2026-10.md).
@@ -21,6 +21,12 @@ and historical app version 9 at celestia-app **v9.0.8** (ADR 0004).
 ADR 0010 supersedes the v10.5.0 target for new qualification; retained
 v10.5.0 evidence remains historical.
 
+**Qualification status (2026-11-20):** The 72-hour collector attempt on
+`46acbcb` recorded healthy local samples. Reference gaps and failed
+comparisons at 45 mainnet heights leave C1.1 open. C1.5 still needs
+alert-delivery evidence. F1 and Q1 remain open on the qualifying release
+candidate. [Collector audit](docs/validator-observation-audit-2026-11-20.md).
+
 ## Remaining milestones
 
 In order. M14 is a **small-stake canary**: it was to start when M13
@@ -33,7 +39,7 @@ until F1's exit criteria are met).
 | #   | Status      | Milestone | Acceptance test |
 |-----|-------------|-----------|-----------------|
 | M13 | in progress | Mocha validator soak (passed), then a mainnet full node on the Mac (running as M14's node) | 24 h signing on Mocha with no app-hash mismatch, no double-sign refusal, missed blocks < 1%; then a P2P mainnet full node on the Mac at the tip with matching app hashes, through mainnet's v9 → v10 upgrade |
-| C1  | pending     | **Canary gate** for M14 | Every item of C1.1–C1.5 below met on the release commit |
+| C1  | in progress | **Canary qualification** | Every item of C1.1–C1.5 below met on the release commit |
 | M14 | in progress | Mainnet validator (small-stake canary; bonded before C1 passed) | Signs mainnet blocks with stake near the active-set minimum; no double-signs; no evidence; every app hash matching Go |
 | F1  | in progress | **Consensus-split assurance** (gate for more than canary stake): differential fuzzing and replay against Go until a split is not credibly left | Every exit criterion of F1.1–F1.12 below met, on one commit, with no consensus finding open |
 | Q1  | pending | **General mainnet recommendation** for the scoped node roles (ADR 0008) | F1 closed on an exact RC; non-archival RPC/REST/gRPC interoperability, mixed Go/Rust fault/recovery tests and supported-platform checks pass on that RC, with retained artifacts and no unresolved release blocker |
@@ -140,9 +146,9 @@ Every item must pass on the commit the canary runs.
 - [ ] **C1.2 Execution differentials nightly.** F1.1: nightly jobs run
   `json_*`, `exec`, `pp` and `deliver` (with `DELIVER_IBC`, `DELIVER_HL`,
   `DELIVER_WIRE`, and `DELIVER_UPGRADE` on `v9-upgrade`) against Go
-  v10.5.0 and v9.0.8, rotating scenarios with a new seed per night; a
-  mismatch fails the job. Exit: running, and clean for **3 consecutive
-  nights** before M14 starts.
+  the current Go target (v10.6.0) and historical v9.0.8, rotating
+  scenarios with a new seed per night. A mismatch fails the job. Exit requires **3 consecutive clean nights**
+  on the qualifying release candidate.
   *Running since 2026-10-19:* `.github/workflows/fuzz-exec.yml` (01:17 UTC)
   drives `crates/fuzz-diff/nightly.sh` over 12 jobs: pinned `deliver`
   regressions (`deliver-regressions.txt`), `json_*` at both versions,
@@ -233,7 +239,8 @@ Every item must pass on the commit the canary runs.
   halt response is `docs/operator-guide.md` §12.1. Operator key: the owner
   accepted (2026-10-20) a hot `file` keyring on the Mac, its passphrase on
   disk for the watchdog's unjail, for canary stake only
-  (OPEN_QUESTIONS #9). Open: confirm the consensus key was never copied.
+  (OPEN_QUESTIONS #9). The November 5 attestation below records the
+  consensus key's custody.
   *2026-11-05:* [live investigation](docs/live-validator-evidence-2026-11-05.md)
   confirms separate homes, ports and public consensus identities, active
   watchdog/monitoring timers and alert evaluation. Email delivery remains
