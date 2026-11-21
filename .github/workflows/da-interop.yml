@@ -37,6 +37,9 @@ jobs:
         with:
           go-version-file: reference-node/go.mod
           cache-dependency-path: reference-node/go.sum
+      - name: Verify namespace control proofs with the release verifier
+        working-directory: reference-node
+        run: go run ../conformance/da/namespace/verify.go ../conformance/da/fixtures
       - name: Build the operator binary with bridge RPC and libp2p
         run: cargo build --locked --no-default-features --features bridge-p2p -p celestia-rs
         env:

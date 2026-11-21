@@ -3,6 +3,7 @@
 pub(crate) mod auth;
 mod header_rpc;
 mod share_rpc;
+pub(crate) mod submit;
 mod ws;
 
 use std::net::{SocketAddr, TcpListener};
@@ -10,9 +11,9 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 use anyhow::{Context, Result, ensure};
-use axum::extract::{DefaultBodyLimit, State};
+use axum::extract::State;
 use axum::http::header::CONTENT_TYPE;
-use axum::{Router, body::Bytes, routing::post};
+use axum::{Router, routing::post};
 use nodestore::{BlockStore, StateStore};
 use rpc::json::J;
 use serde_json::Value;
@@ -33,6 +34,7 @@ impl Server {
         blocks: BlockStore,
         states: StateStore,
         #[cfg(feature = "bridge-p2p")] peer_control: Option<peer::Control>,
+        wallet: Option<Arc<submit::Wallet>>,
     ) -> Result<Self> {
         ensure!(
             addr.ip().is_loopback(),
@@ -51,6 +53,7 @@ impl Server {
         let state = Arc::new(Bridge {
             #[cfg(feature = "bridge-p2p")]
             peer_control,
+            wallet,
             waiters: Arc::new(Semaphore::new(32)),
             blocks,
             states,
@@ -59,7 +62,6 @@ impl Server {
         let router = Router::new()
             .route("/", post(handle).get(ws::upgrade))
             .layer(axum::Extension(Arc::new(auth::Auth::open(home)?)))
-            .layer(DefaultBodyLimit::max(64 * 1024))
             .with_state(state);
         let thread = std::thread::Builder::new().name("da-bridge".into()).spawn(move || {
             runtime.block_on(async move {
@@ -90,6 +92,7 @@ impl Drop for Server {
 struct Bridge {
     #[cfg(feature = "bridge-p2p")]
     peer_control: Option<peer::Control>,
+    wallet: Option<Arc<submit::Wallet>>,
     waiters: Arc<Semaphore>,
     blocks: BlockStore,
     states: StateStore,
@@ -232,6 +235,14 @@ struct Committed {
 }
 
 impl Bridge {
+    fn body_limit(&self, permissions: &[String]) -> usize {
+        if self.wallet.is_some() && permissions.iter().any(|p| p == "write") {
+            submit::BODY_LIMIT
+        } else {
+            64 * 1024
+        }
+    }
+
     fn committed(&self, height: i64) -> Result<Committed> {
         let block = self
             .blocks
@@ -467,12 +478,16 @@ async fn handle(
     State(bridge): State<Arc<Bridge>>,
     axum::Extension(auth): axum::Extension<Arc<auth::Auth>>,
     headers: axum::http::HeaderMap,
-    body: Bytes,
+    body: axum::body::Body,
 ) -> axum::response::Response {
     use axum::response::IntoResponse as _;
     let changed = auth.subscribe();
     let Ok((token, permissions)) = credentials(&auth, &headers) else {
         return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    };
+    let limit = bridge.body_limit(&permissions);
+    let Ok(body) = axum::body::to_bytes(body, limit).await else {
+        return axum::http::StatusCode::PAYLOAD_TOO_LARGE.into_response();
     };
     tokio::select! {
         value=dispatch(bridge,&auth,&permissions,&body) => ([(CONTENT_TYPE, "application/json")], value).into_response(),
@@ -561,6 +576,28 @@ async fn dispatch(
                 .await
                 .map(|value| J::Raw(value.to_string()))
                 .map_err(|e| (1, e.to_string()));
+        }
+        if matches!(method, "blob.Submit" | "state.AccountAddress") {
+            let submit = method == "blob.Submit";
+            require(method, if submit { "write" } else { "read" })?;
+            let wallet = bridge
+                .wallet
+                .as_ref()
+                .ok_or_else(|| (1, "bridge signer is not configured".to_owned()))?;
+            if submit {
+                return wallet
+                    .submit(&req["params"], bridge.states.clone())
+                    .await
+                    .map(J::num)
+                    .map_err(|e| (1, e.to_string()));
+            }
+            if req
+                .get("params")
+                .is_some_and(|p| !p.is_null() && p != &empty)
+            {
+                return Err(invalid());
+            }
+            return Ok(J::str(wallet.address()));
         }
         if header_rpc::handles(method) {
             require(method, "read")?;
