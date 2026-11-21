@@ -1,0 +1,174 @@
+{
+  "artifacts": [
+    {
+      "path": "events.jsonl",
+      "rows": 3,
+      "sha256": "421754f0417121699e2c976471a8c04b6f4cca487967a8285f9a877cf3a25124"
+    },
+    {
+      "path": "samples.jsonl",
+      "rows": 50405,
+      "sha256": "176a68b8f5668f88089620a6e24e30717eb3d57c21e71361c01044a84a447aff"
+    },
+    {
+      "path": "heights.jsonl",
+      "rows": 90686,
+      "sha256": "7827e3423d1c639c3f77c9be195c414194159b1c194b1a6146ddd024cae1e616"
+    }
+  ],
+  "binary_sha256": "fdaf29302ce215334663a851ad4b16295da99b03d57bb4779249ebfb04a7c192",
+  "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+  "chain_id": "mocha-5",
+  "collector_interruptions": [],
+  "height_audits": {
+    "apphash": {
+      "artifacts": [
+        {
+          "path": "heights.jsonl",
+          "sha256": "7827e3423d1c639c3f77c9be195c414194159b1c194b1a6146ddd024cae1e616"
+        }
+      ],
+      "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+      "chain_id": "mocha-5",
+      "complete": true,
+      "counts": {
+        "duplicates": 0,
+        "failed_or_invalid": 0,
+        "identity_rejected": 0,
+        "outside_range": 103,
+        "receipts": 90686
+      },
+      "covered_heights": 90583,
+      "covered_ranges": [
+        [
+          2543075,
+          2633657
+        ]
+      ],
+      "kind": "apphash",
+      "limitations": [
+        "Receipt timestamps are check times, not block times or proof of continuous uptime.",
+        "Coverage does not prove snapshot provenance, executable identity, signing or monitoring health.",
+        "Transaction results cover only code, data, gas_wanted and gas_used.",
+        "Input digests identify supplied files; receipts are not authenticated by this audit."
+      ],
+      "missing_ranges": [],
+      "receipt_time_range_utc": [
+        "2026-11-12T05:25:06.483753+00:00",
+        "2026-11-15T05:25:05.664315+00:00"
+      ],
+      "rejected_ranges": [],
+      "requested_range": [
+        2543075,
+        2633657
+      ],
+      "result_commitment_checked_heights": 0,
+      "result_commitment_required": false,
+      "schema_version": 1,
+      "scope": "offline retained receipt height coverage"
+    },
+    "tx-results": {
+      "artifacts": [
+        {
+          "path": "heights.jsonl",
+          "sha256": "7827e3423d1c639c3f77c9be195c414194159b1c194b1a6146ddd024cae1e616"
+        }
+      ],
+      "candidate_commit": "46acbcb516c3dab26cb5706c908dfe0207f27349",
+      "chain_id": "mocha-5",
+      "complete": true,
+      "counts": {
+        "duplicates": 0,
+        "failed_or_invalid": 0,
+        "identity_rejected": 0,
+        "outside_range": 103,
+        "receipts": 90686
+      },
+      "covered_heights": 90583,
+      "covered_ranges": [
+        [
+          2543075,
+          2633657
+        ]
+      ],
+      "kind": "tx-results",
+      "limitations": [
+        "Receipt timestamps are check times, not block times or proof of continuous uptime.",
+        "Coverage does not prove snapshot provenance, executable identity, signing or monitoring health.",
+        "Transaction results cover only code, data, gas_wanted and gas_used.",
+        "Input digests identify supplied files; receipts are not authenticated by this audit."
+      ],
+      "missing_ranges": [],
+      "receipt_time_range_utc": [
+        "2026-11-12T05:25:06.483753+00:00",
+        "2026-11-15T05:25:05.664315+00:00"
+      ],
+      "rejected_ranges": [],
+      "requested_range": [
+        2543075,
+        2633657
+      ],
+      "result_commitment_checked_heights": 90583,
+      "result_commitment_required": false,
+      "schema_version": 1,
+      "scope": "offline retained receipt height coverage"
+    }
+  },
+  "limitations": [
+    "Samples are discrete observations; time between them remains unobserved.",
+    "Requested heights must come from independent execution logs, including interval edges.",
+    "Height comparisons may be retrospective; check times do not establish execution at tip.",
+    "Reference commit participation is an RPC assertion, not cryptographic verification.",
+    "Input digests identify supplied files; they do not authenticate receipts or logs.",
+    "Separate monitoring, guard/panic logs, duration and remaining qualification criteria require review."
+  ],
+  "missing_participation_ranges": [],
+  "participation_counts": {
+    "missed": 147,
+    "nil": 0,
+    "not_in_set": 0,
+    "signed": 90436
+  },
+  "participation_errors": [],
+  "qualification_established": false,
+  "requested_height_range": [
+    2543075,
+    2633657
+  ],
+  "requested_seconds": 259200.0,
+  "requested_time_range_utc": [
+    "2026-11-12T05:25:00+00:00",
+    "2026-11-15T05:25:00+00:00"
+  ],
+  "sample_failures": [
+    {
+      "error": "HTTP Error 502: Bad Gateway",
+      "time_utc": "2026-11-13T06:57:26.912965+00:00"
+    },
+    {
+      "error": "HTTP Error 503: Service Unavailable",
+      "time_utc": "2026-11-13T06:57:31.943395+00:00"
+    },
+    {
+      "error": "HTTP Error 503: Service Unavailable",
+      "time_utc": "2026-11-13T06:57:36.962309+00:00"
+    }
+  ],
+  "sample_gaps": [
+    {
+      "end_utc": "2026-11-13T06:57:42.150934+00:00",
+      "seconds": 20.386702,
+      "start_utc": "2026-11-13T06:57:21.764232+00:00"
+    }
+  ],
+  "sample_requirements_met": false,
+  "schema_version": 1,
+  "scope": "offline retained observation samples and explicit height coverage",
+  "thresholds": {
+    "max_absolute_reference_lag": 3,
+    "max_block_age_seconds": 60,
+    "max_sample_gap_seconds": 20
+  },
+  "valid_sample_count": 50343,
+  "validator_address": "64910794C3B7404929AB3CF18063A6B8CD3032D7"
+}

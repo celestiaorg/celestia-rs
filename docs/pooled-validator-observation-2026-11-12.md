@@ -72,3 +72,8 @@ coverage, process/binary continuity, transaction commitments, participation
 and independent monitoring. Any unavailable records remain explicit gaps.
 No three-day, historical replay or production qualification is established
 by this installation, and #299/#302 remain open.
+
+The [November 20 completed-run audit](validator-observation-audit-2026-11-20.md)
+retains both normal collector deadlines and the full requested 72-hour result.
+Reference failures, sample gaps and failed mainnet comparison attempts prevent
+qualification; the original deployment hold expired without an extension here.
