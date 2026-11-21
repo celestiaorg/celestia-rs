@@ -14,7 +14,7 @@ pub(super) fn handles(method: &str) -> bool {
 }
 
 pub(super) struct Client {
-    peers: Peers,
+    pub(super) peers: Peers,
     empty: square::ExtendedDataSquare,
     empty_hash: [u8; 32],
     worker: Arc<Semaphore>,

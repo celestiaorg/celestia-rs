@@ -36,6 +36,12 @@ func main() {
 		if stats.SampledChainHead <= height+2 || stats.CatchupHead < stats.SampledChainHead {
 			panic("catch-up waiter returned before sampling the new blocks")
 		}
+		h, err := c.Header.NetworkHead(ctx)
+		check(err)
+		check(h.Validate())
+		if h.Height() < stats.SampledChainHead {
+			panic("network head behind sampled chain")
+		}
 		fmt.Printf("Go catch-up waiter observed Rust sampled height %d\n", stats.SampledChainHead)
 		return
 	}
@@ -126,6 +132,11 @@ func main() {
 	}
 	head, err := c.Header.LocalHead(ctx)
 	check(err)
+	netHead, err := c.Header.NetworkHead(ctx)
+	check(err)
+	if !bytes.Equal(netHead.Hash(), head.Hash()) {
+		panic("offline network head differs from sampled head")
+	}
 	if head.Height() < height+2 {
 		panic("lost sampled head after restart")
 	}

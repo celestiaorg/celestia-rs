@@ -162,6 +162,7 @@ async fn frame(stream: &mut libp2p::Stream, limit: usize) -> Result<Vec<u8>> {
 }
 
 struct Verified {
+    validators: ctypes::ValidatorSet,
     signed: ctypes::SignedHeader,
     dah: square::DataAvailabilityHeader,
     hash: Vec<u8>,
@@ -211,6 +212,7 @@ impl Verified {
             light::verifier::verify_adjacent(&last.signed, &signed, &set, TRUST_NS, now, DRIFT_NS)?;
         }
         Ok(Self {
+            validators: set,
             signed,
             dah,
             hash,
@@ -318,22 +320,55 @@ impl Peers {
         None
     }
 
-    // Advertised tips are informational. Only the authenticated adjacent path
-    // updates storage. Compare available providers before declaring catch-up.
-    async fn check_tip(&mut self, head: &Verified, chain: &str) -> (u64, bool) {
+    // A discovered peer can advertise a tip. Its signatures must link to the
+    // sampled validator set before its height can affect RPC or sampling status.
+    async fn network_tip(&self, head: &Verified, chain: &str) -> (Option<Verified>, bool) {
+        let mut pending = self
+            .online()
+            .into_iter()
+            .map(|mut remote| async move {
+                let raw = remote.header(Origin::Height(0)).await.ok()??;
+                let tip = Verified::decode(&raw, chain, None).ok()?;
+                if tip.hash != head.hash {
+                    if tip.height <= head.height {
+                        return None;
+                    }
+                    if tip.height == head.height + 1
+                        && tip.signed.header.as_ref()?.last_block_id.hash != head.hash
+                    {
+                        return None;
+                    }
+                    light::verify(
+                        &head.signed,
+                        &head.validators,
+                        &tip.signed,
+                        &tip.validators,
+                        TRUST_NS,
+                        light::verifier::now(),
+                        DRIFT_NS,
+                        light::DEFAULT_TRUST_LEVEL,
+                    )
+                    .ok()?;
+                }
+                Some(tip)
+            })
+            .collect::<futures::stream::FuturesUnordered<_>>();
+        let mut best = None::<Verified>;
         let mut matching = false;
-        let mut different = false;
-        let mut network = head.height;
-        for mut remote in self.online() {
-            if let Ok(Some(raw)) = remote.header(Origin::Height(0)).await
-                && let Ok(tip) = Verified::decode(&raw, chain, None)
-            {
-                matching |= tip.hash == head.hash;
-                different |= tip.hash != head.hash;
-                network = network.max(tip.height);
+        let gather = async {
+            while let Some(result) = pending.next().await {
+                if let Some(tip) = result {
+                    matching |= tip.hash == head.hash;
+                    if tip.height > head.height
+                        && best.as_ref().is_none_or(|prev| tip.height > prev.height)
+                    {
+                        best = Some(tip);
+                    }
+                }
             }
-        }
-        (network, matching && !different)
+        };
+        let _ = tokio::time::timeout(Duration::from_secs(2), gather).await;
+        (best, matching)
     }
 
     async fn sample(&mut self, block: &Verified, index: usize) -> bool {
@@ -443,7 +478,9 @@ async fn follow(
             .await
         else {
             if let Some(head) = &last {
-                let (network, done) = peers.check_tip(head, &args.network).await;
+                let (tip, matching) = peers.network_tip(head, &args.network).await;
+                let done = tip.is_none() && matching;
+                let network = tip.map_or(head.height, |tip| tip.height);
                 status.send_modify(|s| {
                     s.network = network;
                     s.done = done;

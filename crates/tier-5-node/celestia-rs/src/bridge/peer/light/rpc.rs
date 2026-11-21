@@ -127,6 +127,7 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
             && !matches!(
                 method,
                 "header.LocalHead"
+                    | "header.NetworkHead"
                     | "header.Tail"
                     | "header.GetByHeight"
                     | "header.GetByHash"
@@ -174,6 +175,19 @@ async fn dispatch(
     method: &str,
     args: Vec<Value>,
 ) -> Result<String, (i32, String)> {
+    if method == "header.NetworkHead" {
+        if !args.is_empty() {
+            return Err((-32602, "invalid parameters".into()));
+        }
+        let _permit = service
+            .workers
+            .try_acquire()
+            .map_err(|_| (-32000, "light RPC busy".into()))?;
+        return network_head(service)
+            .await
+            .map(|head| head.encode())
+            .map_err(|e| (1, e.to_string()));
+    }
     if super::data::handles(method) {
         let query = crate::bridge::Query::parse(method, &Value::Array(args))
             .map_err(|(code, text)| (code, text.to_owned()))?;
@@ -236,6 +250,39 @@ async fn dispatch(
     .await
     .map_err(|e| (1, e.to_string()))?
     .map_err(|e| (1, e.to_string()))
+}
+async fn network_head(service: &Service) -> Result<rpc::json::J> {
+    let raw = service.db.get(b"head")?.context("missing sampled head")?;
+    let wire = HeaderWire::decode(raw.as_slice())?;
+    let chain = wire.header.context("missing sampled header")?.chain_id;
+    let local = Verified::decode(&raw, &chain, None)?;
+    let now = light::verifier::now();
+    let age = now.unix_nanos()
+        - local
+            .signed
+            .header
+            .as_ref()
+            .context("missing header")?
+            .time
+            .unix_nanos();
+    // The DA releases configure the syncer's recency threshold to three four-second blocks.
+    let head = if age > 12_000_000_000 {
+        service
+            .data
+            .peers
+            .network_tip(&local, &chain)
+            .await
+            .0
+            .unwrap_or(local)
+    } else {
+        local
+    };
+    Ok(header_json(
+        head.signed.header.as_ref().context("missing header")?,
+        head.signed.commit.as_ref().context("missing commit")?,
+        &head.validators,
+        &head.dah,
+    ))
 }
 fn read(db: &RedbBackend, method: &str, args: &[Value]) -> Result<rpc::json::J> {
     if blobstream::handles(method) {
