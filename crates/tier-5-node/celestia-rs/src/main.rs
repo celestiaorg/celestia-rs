@@ -86,6 +86,15 @@ enum Cmd {
     /// Run a node: Rust consensus, P2P, mempool and RPC on top of the
     /// in-process state machine.
     Start(Box<StartArgs>),
+    /// Create a token for the DA JSON-RPC listener using this node home.
+    #[cfg(feature = "bridge")]
+    DaAuth {
+        #[arg(value_parser=["public","read","write","admin"])]
+        level: String,
+        /// Lifetime in seconds, or zero for an unexpiring token.
+        #[arg(long, default_value_t = 0)]
+        ttl_seconds: u64,
+    },
     /// Follow a network over celestia-core RPC (HTTP/HTTPS) instead of
     /// P2P: verify every block with the light client, execute it and stop
     /// at the first app hash / results / validator set divergence.
@@ -961,6 +970,11 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
                 "Downloaded and verified the genesis file for {}",
                 net.chain_id
             ));
+            Ok(())
+        }
+        #[cfg(feature = "bridge")]
+        Cmd::DaAuth { level, ttl_seconds } => {
+            util::out(celestia_rs::operator_token(&home, &level, ttl_seconds)?);
             Ok(())
         }
         Cmd::Start(args) => start(&home, *args).await,
