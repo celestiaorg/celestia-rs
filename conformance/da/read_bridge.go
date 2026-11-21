@@ -76,7 +76,7 @@ func verifyBlob(ctx context.Context, c *client.Client, args []string) error {
 	}
 	header, err := c.Header.GetByHeight(ctx, height)
 	if err != nil {
-		return err
+		return fmt.Errorf("Header.GetByHeight: %w", err)
 	}
 	if err := header.Validate(); err != nil {
 		return err
@@ -86,39 +86,39 @@ func verifyBlob(ctx context.Context, c *client.Client, args []string) error {
 	}
 	rows, err := c.Share.GetNamespaceData(ctx, height, ns)
 	if err != nil {
-		return err
+		return fmt.Errorf("Share.GetNamespaceData: %w", err)
 	}
 	if err := rows.Verify(header.DAH, ns); err != nil {
 		return err
 	}
 	got, err := c.Blob.Get(ctx, height, ns, expected.Commitment)
 	if err != nil {
-		return err
+		return fmt.Errorf("Blob.Get: %w", err)
 	}
 	if !bytes.Equal(got.Data(), data) || !bytes.Equal(got.Commitment, expected.Commitment) {
 		return fmt.Errorf("blob.Get returned different blob")
 	}
 	proof, err := c.Blob.GetProof(ctx, height, ns, expected.Commitment)
 	if err != nil {
-		return err
+		return fmt.Errorf("Blob.GetProof: %w", err)
 	}
 	included, err := c.Blob.Included(ctx, height, ns, proof, expected.Commitment)
 	if err != nil {
-		return err
+		return fmt.Errorf("Blob.Included: %w", err)
 	}
 	if !included {
 		return fmt.Errorf("blob inclusion mismatch")
 	}
 	commitmentProof, err := c.Blob.GetCommitmentProof(ctx, height, ns, expected.Commitment)
 	if err != nil {
-		return err
+		return fmt.Errorf("Blob.GetCommitmentProof: %w", err)
 	}
 	if err := commitmentProof.Verify(header.DataHash, expected.Commitment); err != nil {
 		return err
 	}
 	all, err := c.Blob.GetAll(ctx, height, []share.Namespace{ns})
 	if err != nil {
-		return err
+		return fmt.Errorf("Blob.GetAll: %w", err)
 	}
 	for _, b := range all {
 		if bytes.Equal(b.Data(), data) && bytes.Equal(b.Commitment, expected.Commitment) && b.Index() == got.Index() {
@@ -132,19 +132,19 @@ func verifyBlob(ctx context.Context, c *client.Client, args []string) error {
 func verifyShareAPI(ctx context.Context, c *client.Client, h *header.ExtendedHeader) error {
 	byHash, err := c.Header.GetByHash(ctx, h.Hash())
 	if err != nil {
-		return err
+		return fmt.Errorf("Header.GetByHash: %w", err)
 	}
 	if !byHash.Equals(h) {
 		return fmt.Errorf("header hash mismatch")
 	}
 	if err := c.Share.SharesAvailable(ctx, h.Height()); err != nil {
-		return err
+		return fmt.Errorf("Share.SharesAvailable: %w", err)
 	}
 	width := len(h.DAH.RowRoots)
 	indices := []shwap.SampleCoords{{Row: 0, Col: 1}, {Row: width - 1, Col: width - 1}}
 	samples, err := c.Share.GetSamples(ctx, h.Height(), indices)
 	if err != nil {
-		return err
+		return fmt.Errorf("Share.GetSamples: %w", err)
 	}
 	if len(samples) != len(indices) {
 		return fmt.Errorf("wrong sample count")
@@ -156,14 +156,14 @@ func verifyShareAPI(ctx context.Context, c *client.Client, h *header.ExtendedHea
 	}
 	row, err := c.Share.GetRow(ctx, h.Height(), width-1)
 	if err != nil {
-		return err
+		return fmt.Errorf("Share.GetRow: %w", err)
 	}
 	if err := row.Verify(h.DAH, width-1); err != nil {
 		return err
 	}
 	square, err := c.Share.GetEDS(ctx, h.Height())
 	if err != nil {
-		return err
+		return fmt.Errorf("Share.GetEDS: %w", err)
 	}
 	square, err = rsmt2d.ImportExtendedDataSquare(square.Flattened(), nodeShare.DefaultRSMT2DCodec(), wrapper.NewConstructor(uint64(width/2)))
 	if err != nil {
@@ -183,7 +183,7 @@ func verifyShareAPI(ctx context.Context, c *client.Client, h *header.ExtendedHea
 	}
 	rng, err := c.Share.GetRange(ctx, h.Height(), 0, 1)
 	if err != nil {
-		return err
+		return fmt.Errorf("Share.GetRange: %w", err)
 	}
 	return rng.Verify(h.DataHash)
 }
