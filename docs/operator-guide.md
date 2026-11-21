@@ -116,12 +116,44 @@ celestia-rs start --network local --home ~/.celestia-rs/local
 celestia-rs start --network mocha --home ~/.celestia-rs/mocha
 ```
 
-The experimental DA bridge requires a binary built with
-`cargo build --release -p celestia-rs --features bridge`. To enable its
-read-only HTTP JSON-RPC listener on a private devnet, add
-`--bridge-rpc-listen 127.0.0.1:32658` to `start`. The default build omits
-the bridge. A bridge-enabled build also leaves the listener off until
-given this flag. See the [Go conformance probe](../conformance/da/README.md).
+### Experimental DA bridge on a private network
+
+The default build runs consensus only. Build the same executable with
+`cargo build --locked --release -p celestia-rs --features bridge-p2p` to
+include the DA peer and authenticated JSON-RPC service. Each listener
+requires its own startup flag. A private canary can exercise both on loopback.
+
+```sh
+target/release/celestia-rs start --network local --home "$DA_HOME" \
+  --bridge-rpc-listen 127.0.0.1:32658 --bridge-p2p-listen 127.0.0.1:32121
+```
+
+Set `DA_HOME` to a fresh directory before starting the canary. The Rust
+node creates its own DA identity. In a second shell, mint a read token
+for the same home and compare the DA commit hash with the consensus
+block ID at the same height.
+
+```sh
+token=$(target/release/celestia-rs da-auth read --home "$DA_HOME")
+curl -fsS http://127.0.0.1:32658 -H "Authorization: Bearer $token" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"header.GetByHeight","params":[3]}' \
+  | jq -er '.result.commit.block_id.hash'
+curl -fsS 'http://127.0.0.1:26657/block?height=3' | jq -er '.result.block_id.hash'
+unset token
+```
+
+For a mixed-network trial, track advancing consensus and DA heights and
+verify a new paid blob through a separate Go light process. Keep the
+consensus-only executable built from the same revision and with the same
+database backend. To disable DA, stop the process, remove the bridge flags
+from the service and restart on the same Rust home. The consensus-only
+binary can also resume that home. Confirm that both DA sockets close, the
+previous block ID is still available and new consensus blocks commit.
+Preserve the validator signing state across every binary change.
+
+The private acceptance run exercises this sequence on both supported
+database backends. [Go conformance probe](../conformance/da/README.md) ·
+[Rollout and rollback test](../conformance/da/test-bridge-rollback.sh)
 
 `--network` knows these chains (from celestia-app v10.4.0):
 
