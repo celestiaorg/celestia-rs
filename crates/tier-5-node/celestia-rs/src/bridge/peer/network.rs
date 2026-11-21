@@ -11,7 +11,7 @@ mod composed {
     use super::{NetworkBehaviour, gossipsub, identify, kad};
     #[derive(NetworkBehaviour)]
     pub(crate) struct Behaviour {
-        pub(crate) streams: libp2p_stream::Behaviour,
+        pub(crate) streams: super::super::inbound::Inbound,
         pub(crate) identify: identify::Behaviour,
         pub(crate) dht: kad::Behaviour<kad::store::MemoryStore>,
         pub(crate) gossip: gossipsub::Behaviour,
@@ -58,7 +58,7 @@ impl Behaviour {
         .map_err(anyhow::Error::msg)?;
         gossip.subscribe(&header_topic(network))?;
         Ok(Self {
-            streams: libp2p_stream::Behaviour::new(),
+            streams: super::inbound::Inbound::new(network)?,
             identify: identify::Behaviour::new(identify::Config::new(
                 "ipfs/0.1.0".to_owned(),
                 key.public(),
