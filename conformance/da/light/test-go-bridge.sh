@@ -82,7 +82,9 @@ for attempt in {1..120}; do
     sleep 1
 done
 hash=$(jq -er 'select(.block.data.txs | length > 0) | .block_id.hash' <<<"$data")
-args=(da-light --home "$work/rust-light" --network "$chain" --peer "$peer" --trusted-hash "$hash")
+# Include an unreachable test identity to exercise discovery of the available bridge.
+offline=/ip4/127.0.0.1/tcp/1/p2p/12D3KooWLiGKA7tFRoMSfcztssRgUzthfpJP1cAm16Fhztkn46rk
+args=(da-light --home "$work/rust-light" --network "$chain" --peer "$offline" --peer "$peer" --trusted-hash "$hash")
 # Give the bridge access to the block, then run each bound in a separate Rust process.
 sleep 5
 timeout 120 "$rust" "${args[@]}" --until "$height" | tee "$work/first.log"

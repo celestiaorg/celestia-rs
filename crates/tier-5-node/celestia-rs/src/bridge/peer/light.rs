@@ -4,12 +4,12 @@ use anyhow::{Context, Result, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use kvdb::{KvBackend, RedbBackend, RedbOptions, WriteBatch};
 use libp2p::{
-    Multiaddr, PeerId, StreamProtocol, SwarmBuilder, multiaddr::Protocol, noise, swarm::SwarmEvent,
-    tcp, yamux,
+    Multiaddr, PeerId, StreamProtocol, Swarm, SwarmBuilder, multiaddr::Protocol, noise,
+    swarm::SwarmEvent, tcp, yamux,
 };
 use prost::Message;
 use rand::seq::index;
-use std::{path::Path, time::Duration};
+use std::{collections::BTreeMap, io::Write as _, path::Path, time::Duration};
 
 const TRUST_NS: i64 = 7 * 24 * 60 * 60 * 1_000_000_000;
 const DRIFT_NS: i64 = 10_000_000_000;
@@ -21,9 +21,9 @@ pub struct LightArgs {
     /// Consensus chain ID and DA protocol namespace.
     #[arg(long)]
     network: String,
-    /// Bridge multiaddress including its peer ID.
-    #[arg(long)]
-    peer: Multiaddr,
+    /// Bridge multiaddress including its peer ID. Repeat for failover.
+    #[arg(long, required = true)]
+    peer: Vec<Multiaddr>,
     /// Hex-encoded 32-byte header hash obtained through a trusted channel.
     #[arg(long)]
     trusted_hash: String,
@@ -214,9 +214,83 @@ fn sample_indices(db: &RedbBackend, block: &Verified) -> Result<Vec<usize>> {
     Ok(indices)
 }
 
+struct Peers {
+    remotes: Vec<Remote>,
+    connected: tokio::sync::watch::Receiver<Vec<PeerId>>,
+}
+
+impl Peers {
+    async fn verified_header(
+        &mut self,
+        origin: Origin,
+        chain: &str,
+        last: Option<&Verified>,
+    ) -> Option<(Vec<u8>, Verified)> {
+        let online = self.connected.borrow().clone();
+        for remote in self.remotes.iter_mut().filter(|r| online.contains(&r.peer)) {
+            let result = async {
+                let Some(raw) = remote.header(origin.clone()).await? else {
+                    return Ok(None);
+                };
+                let verified = Verified::decode(&raw, chain, last)?;
+                if let Origin::Hash(anchor) = &origin {
+                    ensure!(&verified.hash == anchor, "untrusted checkpoint hash");
+                }
+                Ok::<_, anyhow::Error>(Some((raw, verified)))
+            }
+            .await;
+            match result {
+                Ok(Some(header)) => return Some(header),
+                Ok(None) => {}
+                Err(error) => tracing::warn!(peer=%remote.peer, %error, "DA header unavailable"),
+            }
+        }
+        None
+    }
+
+    async fn sample(&mut self, block: &Verified, index: usize) -> bool {
+        let online = self.connected.borrow().clone();
+        for remote in self.remotes.iter_mut().filter(|r| online.contains(&r.peer)) {
+            match remote.sample(block.height, &block.dah, index).await {
+                Ok(()) => return true,
+                Err(error) => {
+                    tracing::warn!(peer=%remote.peer, height=block.height, index, %error, "DA sample unavailable");
+                }
+            }
+        }
+        false
+    }
+}
+
+async fn maintain_connections(
+    mut swarm: Swarm<libp2p_stream::Behaviour>,
+    addresses: &BTreeMap<PeerId, Vec<Multiaddr>>,
+    connected: tokio::sync::watch::Sender<Vec<PeerId>>,
+) {
+    let mut retry = tokio::time::interval(Duration::from_secs(3));
+    retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            _ = retry.tick() => {
+                for (peer, addr) in addresses {
+                    if !swarm.is_connected(peer) {
+                        let options = libp2p::swarm::dial_opts::DialOpts::peer_id(*peer).addresses(addr.clone()).build();
+                        let _ = swarm.dial(options);
+                    }
+                }
+            }
+            event = swarm.select_next_some() => {
+                if matches!(event, SwarmEvent::ConnectionEstablished { .. } | SwarmEvent::ConnectionClosed { .. }) {
+                    connected.send_replace(swarm.connected_peers().copied().collect());
+                }
+            }
+        }
+    }
+}
+
 async fn follow(
     db: &RedbBackend,
-    remote: &mut Remote,
+    peers: &mut Peers,
     args: &LightArgs,
     anchor: Vec<u8>,
 ) -> Result<()> {
@@ -247,24 +321,54 @@ async fn follow(
         } else {
             Origin::Hash(anchor.clone())
         };
-        let Some(raw) = remote.header(origin).await? else {
-            ensure!(last.is_some(), "trusted checkpoint unavailable from bridge");
+        if let Some(last) = &last {
+            ensure!(
+                !light::verifier::header_expired(
+                    last.signed
+                        .header
+                        .as_ref()
+                        .context("missing trusted header")?,
+                    TRUST_NS,
+                    light::verifier::now()
+                ),
+                "trusted header expired"
+            );
+        }
+        let Some((raw, block)) = peers
+            .verified_header(origin, &args.network, last.as_ref())
+            .await
+        else {
             tokio::time::sleep(Duration::from_secs(1)).await;
             continue;
         };
-        let block = Verified::decode(&raw, &args.network, last.as_ref())?;
-        if last.is_none() {
-            ensure!(block.hash == anchor, "untrusted checkpoint hash");
-        }
         let indices = sample_indices(db, &block)?;
-        for &at in &indices {
-            remote.sample(block.height, &block.dah, at).await?;
+        let completed = db
+            .get(b"completed-samples")?
+            .map(|raw| serde_json::from_slice::<usize>(&raw))
+            .transpose()?
+            .unwrap_or(0);
+        ensure!(completed <= indices.len(), "invalid persisted sample count");
+        for (n, &at) in indices.iter().enumerate().skip(completed) {
+            while !peers.sample(&block, at).await {
+                ensure!(
+                    !light::verifier::header_expired(
+                        block.signed.header.as_ref().context("missing header")?,
+                        TRUST_NS,
+                        light::verifier::now()
+                    ),
+                    "sampling header expired"
+                );
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            let mut progress = WriteBatch::new();
+            progress.put(b"completed-samples".to_vec(), serde_json::to_vec(&(n + 1))?);
+            db.write(progress)?;
         }
         let mut batch = WriteBatch::new();
         batch.delete(b"pending".to_vec());
+        batch.delete(b"completed-samples".to_vec());
         batch.put(b"head".to_vec(), raw);
         db.write(batch)?;
-        use std::io::Write as _;
         writeln!(
             std::io::stdout().lock(),
             "sampled height {} ({} verified shares), hash {}",
@@ -280,14 +384,18 @@ async fn follow(
 pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     let anchor = hex::decode(&args.trusted_hash)?;
     ensure!(anchor.len() == 32, "trusted hash must be 32 bytes");
-    let Some(Protocol::P2p(peer)) = args.peer.iter().last() else {
-        anyhow::bail!("bridge address must end in /p2p/PEER_ID")
-    };
+    let mut addresses = BTreeMap::<PeerId, Vec<Multiaddr>>::new();
+    for addr in &args.peer {
+        let Some(Protocol::P2p(peer)) = addr.iter().last() else {
+            anyhow::bail!("bridge address must end in /p2p/PEER_ID")
+        };
+        addresses.entry(peer).or_default().push(addr.clone());
+    }
     let dir = home.join("da-light");
     std::fs::create_dir_all(&dir)?;
     let db = RedbBackend::open(dir.join("light.redb"), RedbOptions::default())?;
     let key = identity(&dir.join("peer.key"))?;
-    let mut swarm = SwarmBuilder::with_existing_identity(key)
+    let swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(
             tcp::Config::default(),
@@ -297,33 +405,26 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
         .with_behaviour(|_| libp2p_stream::Behaviour::new())?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(120)))
         .build();
-    let mut remote = Remote {
-        control: swarm.behaviour().new_control(),
-        peer,
-        headers: StreamProtocol::try_from_owned(format!("/{}/header-ex/v0.0.3", args.network))?,
-        samples: StreamProtocol::try_from_owned(format!(
-            "/{}/shrex/v0.1.0/sample_v0",
-            args.network
-        ))?,
+    let headers = StreamProtocol::try_from_owned(format!("/{}/header-ex/v0.0.3", args.network))?;
+    let samples =
+        StreamProtocol::try_from_owned(format!("/{}/shrex/v0.1.0/sample_v0", args.network))?;
+    let (connected, online) = tokio::sync::watch::channel(Vec::new());
+    let remotes = addresses
+        .keys()
+        .map(|peer| Remote {
+            control: swarm.behaviour().new_control(),
+            peer: *peer,
+            headers: headers.clone(),
+            samples: samples.clone(),
+        })
+        .collect();
+    let mut peers = Peers {
+        remotes,
+        connected: online,
     };
-    swarm.dial(args.peer.clone())?;
-    tokio::time::timeout(DEADLINE, async {
-        loop {
-            match swarm.select_next_some().await {
-                SwarmEvent::ConnectionEstablished { peer_id, .. } if peer_id == peer => {
-                    return Ok(());
-                }
-                SwarmEvent::OutgoingConnectionError { error, .. } => {
-                    return Err(anyhow::Error::from(error));
-                }
-                _ => {}
-            }
-        }
-    })
-    .await??;
     tokio::select! {
-        result=follow(&db,&mut remote,&args,anchor) => result,
-        result=tokio::signal::ctrl_c() => Ok(result?),
-        result=async {loop {if let SwarmEvent::ConnectionClosed{num_established:0,..}=swarm.select_next_some().await {return Err(anyhow::anyhow!("bridge disconnected"))}}} => result,
+        result = follow(&db, &mut peers, &args, anchor) => result,
+        result = tokio::signal::ctrl_c() => Ok(result?),
+        () = maintain_connections(swarm, &addresses, connected) => anyhow::bail!("DA network stopped"),
     }
 }
