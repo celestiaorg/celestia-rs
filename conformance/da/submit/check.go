@@ -70,6 +70,19 @@ func main() {
 			panic("invalid transfer receipt")
 		}
 		total = total.Add(amount)
+		// The transfer first appears in the following header's AppHash.
+		for {
+			h, err := read.Header.LocalHead(ctx)
+			check(err)
+			if h.Height() > uint64(sent.Height) {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				panic(ctx.Err())
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
 		for {
 			current, err := read.State.BalanceForAddress(ctx, state.Address{Address: recipient})
 			check(err)
