@@ -1,6 +1,9 @@
 //! Opt-in DA RPC backed by the consensus node's committed block and state stores.
 
+pub(crate) mod auth;
+mod header_rpc;
 mod share_rpc;
+mod ws;
 
 use std::net::{SocketAddr, TcpListener};
 use std::sync::Arc;
@@ -24,7 +27,12 @@ pub(crate) struct Server {
 }
 
 impl Server {
-    pub(crate) fn start(addr: SocketAddr, blocks: BlockStore, states: StateStore) -> Result<Self> {
+    pub(crate) fn start(
+        addr: SocketAddr,
+        home: &std::path::Path,
+        blocks: BlockStore,
+        states: StateStore,
+    ) -> Result<Self> {
         ensure!(
             addr.ip().is_loopback(),
             "bridge RPC requires a loopback listener"
@@ -40,12 +48,14 @@ impl Server {
         };
         let (stop, stopped) = oneshot::channel();
         let state = Arc::new(Bridge {
+            waiters: Arc::new(Semaphore::new(32)),
             blocks,
             states,
             worker: Arc::new(Semaphore::new(1)),
         });
         let router = Router::new()
-            .route("/", post(handle))
+            .route("/", post(handle).get(ws::upgrade))
+            .layer(axum::Extension(Arc::new(auth::Auth::open(home)?)))
             .layer(DefaultBodyLimit::max(64 * 1024))
             .with_state(state);
         let thread = std::thread::Builder::new().name("da-bridge".into()).spawn(move || {
@@ -75,6 +85,7 @@ impl Drop for Server {
 }
 
 struct Bridge {
+    waiters: Arc<Semaphore>,
     blocks: BlockStore,
     states: StateStore,
     worker: Arc<Semaphore>,
@@ -284,35 +295,26 @@ impl Bridge {
             height > 0 && height <= head,
             "height {height} is not committed"
         );
-        let Committed {
-            header: h,
-            commit,
-            validators,
-            eds,
-            dah,
-        } = self.committed(height)?;
+        let block = self.committed(height)?;
+        let Committed { eds, dah, .. } = &block;
         if let Query::BlobProof(_, ns, hash, kind) = query {
-            return prove_blob(&eds, &dah, ns, &hash, kind);
+            return prove_blob(eds, dah, ns, &hash, kind);
         }
         if let Query::ShareRead(_, method) = query {
-            return method.response(&eds, &dah);
+            return method.response(eds, dah);
         }
         if let Query::Share(_, row, col) = query {
             return Ok(J::b64(eds.share(row, col)?));
         }
         if let Query::Namespace(_, ns) = query {
-            let rows = app::inclusion_proof::namespace_rows(&eds, &dah, ns)
+            let rows = app::inclusion_proof::namespace_rows(eds, dah, ns)
                 .map_err(|e| anyhow::anyhow!("{}", e.log))?;
             return Ok(J::Arr(rows.into_iter().map(namespace_row_json).collect()));
         }
         if let Query::Blobs(_, namespaces) = query {
             let mut blobs = Vec::new();
             for ns in namespaces {
-                blobs.extend(
-                    read_blobs(&eds, &dah, ns)?
-                        .into_iter()
-                        .map(|(_, blob)| blob),
-                );
+                blobs.extend(read_blobs(eds, dah, ns)?.into_iter().map(|(_, blob)| blob));
             }
             return Ok(if blobs.is_empty() {
                 J::Null
@@ -321,26 +323,35 @@ impl Bridge {
             });
         }
         if let Query::Blob(_, ns, commitment) = query {
-            return read_blobs(&eds, &dah, ns)?
+            return read_blobs(eds, dah, ns)?
                 .into_iter()
                 .find(|(hash, _)| hash.as_slice() == commitment)
                 .map(|(_, blob)| blob)
                 .context("blob: not found");
         }
+        Ok(block.header_json())
+    }
+}
+
+impl Committed {
+    fn header_json(&self) -> J {
         let roots =
             |rs: &[[u8; square::DAH_ROOT_SIZE]]| J::Arr(rs.iter().map(|r| J::b64(r)).collect());
-        Ok(J::obj([
-            ("header", rpc::encode::header(&h)),
-            ("commit", rpc::encode::commit(&commit)),
-            ("validator_set", rpc::encode::validator_set(&validators)),
+        J::obj([
+            ("header", rpc::encode::header(&self.header)),
+            ("commit", rpc::encode::commit(&self.commit)),
+            (
+                "validator_set",
+                rpc::encode::validator_set(&self.validators),
+            ),
             (
                 "dah",
                 J::obj([
-                    ("row_roots", roots(&dah.row_roots)),
-                    ("column_roots", roots(&dah.column_roots)),
+                    ("row_roots", roots(&self.dah.row_roots)),
+                    ("column_roots", roots(&self.dah.column_roots)),
                 ]),
             ),
-        ]))
+        ])
     }
 }
 
@@ -449,12 +460,62 @@ fn namespace_row_json(row: app::inclusion_proof::NamespaceRow) -> J {
 
 async fn handle(
     State(bridge): State<Arc<Bridge>>,
+    axum::Extension(auth): axum::Extension<Arc<auth::Auth>>,
+    headers: axum::http::HeaderMap,
     body: Bytes,
-) -> ([(axum::http::HeaderName, &'static str); 1], String) {
+) -> axum::response::Response {
+    use axum::response::IntoResponse as _;
+    let changed = auth.subscribe();
+    let Ok((token, permissions)) = credentials(&auth, &headers) else {
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    };
+    tokio::select! {
+        value=dispatch(bridge,&auth,&permissions,&body) => ([(CONTENT_TYPE, "application/json")], value).into_response(),
+        ()=auth.revoked(changed,token)=>axum::http::StatusCode::UNAUTHORIZED.into_response(),
+    }
+}
+
+fn credentials<'a>(
+    auth: &auth::Auth,
+    headers: &'a axum::http::HeaderMap,
+) -> Result<(Option<&'a str>, Vec<String>)> {
+    let token = match headers.get(axum::http::header::AUTHORIZATION) {
+        None => None,
+        Some(raw) => match raw.to_str().ok().and_then(|s| s.strip_prefix("Bearer ")) {
+            Some(token) => Some(token),
+            None => anyhow::bail!("invalid authorization header"),
+        },
+    };
+    let permissions = token
+        .map(|t| auth.verify(t))
+        .transpose()?
+        .unwrap_or_else(|| vec!["public".to_owned()]);
+    Ok((token, permissions))
+}
+
+async fn dispatch(
+    bridge: Arc<Bridge>,
+    auth: &auth::Auth,
+    permissions: &[String],
+    body: &[u8],
+) -> String {
+    let require = |method: &str, perm: &str| {
+        if permissions.iter().any(|p| p == perm) {
+            Ok(())
+        } else {
+            Err((
+                1,
+                format!(
+                    "missing permission to invoke '{}' (need '{perm}')",
+                    method.rsplit('.').next().unwrap_or(method)
+                ),
+            ))
+        }
+    };
     let mut id = J::Null;
     let result = async {
         let req: Value =
-            serde_json::from_slice(&body).map_err(|_| (-32700, "parse error".to_owned()))?;
+            serde_json::from_slice(body).map_err(|_| (-32700, "parse error".to_owned()))?;
         let invalid = || (-32600, "invalid request".to_owned());
         if req["jsonrpc"] != "2.0" {
             return Err(invalid());
@@ -466,11 +527,30 @@ async fn handle(
         id = J::Raw(request_id.to_string());
         let method = req["method"].as_str().ok_or_else(invalid)?;
         let empty = Value::Array(Vec::new());
+        if matches!(
+            method,
+            "node.AuthNew" | "node.AuthNewWithExpiry" | "node.AuthVerify" | "node.AuthRevoke"
+        ) {
+            require(method, "admin")?;
+            let args = req["params"].as_array().ok_or_else(invalid)?;
+            return auth
+                .admin(method, args)
+                .map(|value| J::Raw(value.to_string()))
+                .map_err(|e| (1, e.to_string()));
+        }
+        if header_rpc::handles(method) {
+            require(method, "read")?;
+            let params = req.get("params").filter(|v| !v.is_null()).unwrap_or(&empty);
+            return header_rpc::handle(bridge, method, params)
+                .await
+                .map_err(|e| (1, e.to_string()));
+        }
         let query = Query::parse(
             method,
             req.get("params").filter(|v| !v.is_null()).unwrap_or(&empty),
         )
         .map_err(|(code, msg)| (code, msg.to_owned()))?;
+        require(method, "read")?;
         let permit = bridge
             .worker
             .clone()
@@ -492,10 +572,7 @@ async fn handle(
             J::obj([("code", J::num(code)), ("message", J::str(msg))]),
         ),
     };
-    (
-        [(CONTENT_TYPE, "application/json")],
-        J::obj([("jsonrpc", J::str("2.0")), ("id", id), payload]).encode(),
-    )
+    J::obj([("jsonrpc", J::str("2.0")), ("id", id), payload]).encode()
 }
 
 fn proof_json(p: &celestia_proto::celestia::core::v1::proof::NmtProof, shwap: bool) -> J {

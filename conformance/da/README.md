@@ -12,6 +12,7 @@ Set `PROBE` to the absolute path of `read_bridge.go` in this directory.
 After the first commit:
 
 ```sh
+export DA_TEST_READ_TOKEN=$(celestia-rs da-auth read --home /tmp/da-local)
 go run "$PROBE" http://127.0.0.1:32658
 ```
 
