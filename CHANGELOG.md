@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- At app version 12, Fibre escrow deposits and withdrawal requests use the
+  canonical signer address for account lookups, stored records and events.
+- Release archives report the `dist` build profile in `version --long`.
+
 ## v0.1.0-rc.7 (2026-11-20)
 
 ### Changed
