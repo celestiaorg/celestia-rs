@@ -5,13 +5,20 @@ use prost::Message;
 
 use super::HeaderWire;
 
-#[derive(NetworkBehaviour)]
-pub(super) struct Behaviour {
-    pub(super) streams: libp2p_stream::Behaviour,
-    pub(super) identify: identify::Behaviour,
-    pub(super) dht: kad::Behaviour<kad::store::MemoryStore>,
-    pub(super) gossip: gossipsub::Behaviour,
+// libp2p's generated handler maps events from uninhabited handler variants.
+#[allow(unreachable_code)]
+mod composed {
+    use super::{NetworkBehaviour, gossipsub, identify, kad};
+    #[derive(NetworkBehaviour)]
+    pub(crate) struct Behaviour {
+        pub(crate) streams: libp2p_stream::Behaviour,
+        pub(crate) identify: identify::Behaviour,
+        pub(crate) dht: kad::Behaviour<kad::store::MemoryStore>,
+        pub(crate) gossip: gossipsub::Behaviour,
+    }
 }
+
+pub(super) use composed::{Behaviour, BehaviourEvent};
 
 pub(super) fn header_topic(network: &str) -> gossipsub::IdentTopic {
     gossipsub::IdentTopic::new(format!("/{network}/header-sub/v0.0.1"))
