@@ -47,6 +47,12 @@ struct Remote {
     eds: StreamProtocol,
 }
 
+struct VerifiedSample {
+    share: Vec<u8>,
+    proof: celestia_proto::celestia::core::v1::proof::NmtProof,
+    axis: i32,
+}
+
 impl Remote {
     async fn header(&mut self, origin: Origin) -> Result<Option<Vec<u8>>> {
         tokio::time::timeout(DEADLINE, async {
@@ -77,7 +83,7 @@ impl Remote {
         height: u64,
         dah: &square::DataAvailabilityHeader,
         at: usize,
-    ) -> Result<()> {
+    ) -> Result<VerifiedSample> {
         let width = dah.row_roots.len();
         let (row, col) = (at / width, at % width);
         tokio::time::timeout(DEADLINE, async {
@@ -109,15 +115,19 @@ impl Remote {
                 start == idx && end == idx + 1 && leaf_hash.is_empty() && ignore_max,
                 "wrong sample proof range"
             );
-            app::inclusion_proof::verify_sample(
-                dah,
-                row,
-                col,
-                sample.axis == 1,
-                &sample.share.context("missing share")?.data,
-                &nodes,
-            )
-            .map_err(|e| anyhow::anyhow!("{}", e.log))
+            let share = sample.share.context("missing share")?.data;
+            app::inclusion_proof::verify_sample(dah, row, col, sample.axis == 1, &share, &nodes)
+                .map_err(|e| anyhow::anyhow!("{}", e.log))?;
+            Ok(VerifiedSample {
+                share,
+                proof: celestia_proto::celestia::core::v1::proof::NmtProof {
+                    start: start.try_into()?,
+                    end: end.try_into()?,
+                    nodes,
+                    leaf_hash,
+                },
+                axis: sample.axis,
+            })
         })
         .await?
     }
@@ -309,7 +319,7 @@ impl Peers {
         let online = self.connected.borrow().clone();
         for remote in self.remotes.iter_mut().filter(|r| online.contains(&r.peer)) {
             match remote.sample(block.height, &block.dah, index).await {
-                Ok(()) => return true,
+                Ok(_) => return true,
                 Err(error) => {
                     tracing::warn!(peer=%remote.peer, height=block.height, index, %error, "DA sample unavailable");
                 }

@@ -1,8 +1,9 @@
 //! Serve light RPC data reads using the ODS authenticated by a sampled header.
 use super::{DEADLINE, HeaderWire, Peers, Remote, Status, frame};
 use crate::bridge::{Query, share_rpc};
+use ::rpc::json::J;
 use anyhow::{Context, Result, ensure};
-use futures::{AsyncReadExt, AsyncWriteExt};
+use futures::{AsyncReadExt, AsyncWriteExt, StreamExt, TryStreamExt, stream};
 use kvdb::{KvBackend, RedbBackend};
 use prost::Message;
 use std::sync::Arc;
@@ -62,6 +63,25 @@ impl Client {
             (1..=512).contains(&width) && width.is_power_of_two(),
             "invalid ODS width"
         );
+        if let Query::Share(_, row, col) = query {
+            let sample = self.verified_cell(height, &dah, row, col).await?;
+            return Ok(J::b64(&sample.share).encode());
+        }
+        if let Query::ShareRead(_, share_rpc::Read::Samples(coords)) = query {
+            let roots = &dah;
+            let samples = stream::iter(coords)
+                .map(|(row, col)| async move {
+                    let sample = self.verified_cell(height, roots, row, col).await?;
+                    Ok::<_, anyhow::Error>(J::obj([
+                        ("share", J::b64(&sample.share)),
+                        ("proof", crate::bridge::proof_json(&sample.proof, true)),
+                        ("proof_type", J::num(sample.axis)),
+                    ]))
+                })
+                .buffered(4)
+                .try_collect();
+            return Ok(J::Arr(tokio::time::timeout(DEADLINE, samples).await??).encode());
+        }
         let online = self.peers.connected.borrow().clone();
         for peer in self
             .peers
@@ -89,6 +109,29 @@ impl Client {
             }
         }
         anyhow::bail!("no connected DA peer supplied the verified square at height {height}")
+    }
+
+    async fn verified_cell(
+        &self,
+        height: u64,
+        dah: &square::DataAvailabilityHeader,
+        row: usize,
+        col: usize,
+    ) -> Result<super::VerifiedSample> {
+        let width = dah.row_roots.len();
+        ensure!(row < width && col < width, "sample coordinate outside EDS");
+        let online = self.peers.connected.borrow().clone();
+        for peer in self
+            .peers
+            .remotes
+            .iter()
+            .filter(|r| online.contains(&r.peer))
+        {
+            if let Ok(sample) = peer.clone().sample(height, dah, row * width + col).await {
+                return Ok(sample);
+            }
+        }
+        anyhow::bail!("no connected DA peer supplied a verified sample at {height} ({row}, {col})")
     }
 }
 
