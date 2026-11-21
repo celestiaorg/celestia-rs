@@ -16,9 +16,10 @@ consensus=
 bridge=
 light=
 follower=
+link=
 cleanup() {
     local status=$?
-    for pid in "$follower" "$light" "$bridge" "$consensus"; do
+    for pid in "$link" "$follower" "$light" "$bridge" "$consensus"; do
         if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; wait "$pid" || true; fi
     done
     if (( status != 0 )); then
@@ -47,6 +48,7 @@ chain=da-oracle
 } >"$work/init.log" 2>&1
 # The pinned bridge uses the app gRPC socket below. Keep unrelated Go consensus
 # gRPC listeners from occupying the standard operator ports in the control run.
+sed -i -E 's/^pex = .*/pex = false/; s/^external_address = .*/external_address = "127.0.0.1:38656"/' "$work/consensus/config/config.toml"
 sed -i -E 's/^(priv_validator_grpc_laddr|grpc_laddr) = .*/\1 = ""/' "$work/consensus/config/config.toml"
 
 "$app" start --force-no-bbr "${home_arg[@]}" --p2p.laddr tcp://127.0.0.1:36656 --rpc.laddr tcp://127.0.0.1:36657 \
@@ -97,8 +99,20 @@ follower_home="$work/follower"
 cp "$work/consensus/config/genesis.json" "$follower_home/config/genesis.json"
 "$rust" config set config rpc.laddr tcp://127.0.0.1:37657 --home "$follower_home"
 validator_id=$("$app" comet show-node-id "${home_arg[@]}")
+start_link() {
+    rm -f "$work/link.ready"
+    python3 "$(dirname "$0")/consensus_link.py" "$work/link.ready" >"$work/link.log" 2>&1 &
+    link=$!
+    for attempt in {1..50}; do
+        kill -0 "$link"
+        if [[ -e "$work/link.ready" ]]; then return; fi
+        sleep 0.1
+    done
+    return 1
+}
+start_link
 RUST_LOG=celestia_rs::bridge::peer=info "$rust" start --home "$follower_home" \
-    --p2p.laddr 127.0.0.1:37656 --p2p.persistent_peers "$validator_id@127.0.0.1:36656" \
+    --p2p.laddr 127.0.0.1:37656 --p2p.persistent_peers "$validator_id@127.0.0.1:38656" \
     --bridge-rpc-listen 127.0.0.1:37658 --bridge-p2p-listen 127.0.0.1:37221 \
     >"$work/follower.log" 2>&1 &
 follower=$!
@@ -187,3 +201,29 @@ if [[ -r /proc/self/stat ]]; then
     python3 "$(dirname "$0")/measure_observer.py" "$work/read-bridge" "$height" "$data_hex" \
         "$work" "$consensus" "$bridge" "$follower"
 fi
+
+# Break only the observer's consensus link while both Rust roles and the Go validator run.
+kill "$link"
+wait "$link" || true
+link=
+consensus_height() { curl -fsS --max-time 3 "$1/status" | jq -er '.result.sync_info.latest_block_height | tonumber'; }
+disconnected_from=$(consensus_height "$rpc")
+for attempt in {1..90}; do
+    validator_head=$(consensus_height "$rpc")
+    observer_head=$(consensus_height "$follower_rpc")
+    if (( validator_head >= disconnected_from + 3 && validator_head - observer_head >= 2 )); then break; fi
+    if [[ "$attempt" == 90 ]]; then echo 'observer did not fall behind during the partition' >&2; exit 1; fi
+    sleep 1
+done
+start_link
+for attempt in {1..120}; do
+    kill -0 "$follower"
+    if [[ $(consensus_height "$follower_rpc") -ge "$validator_head" ]]; then break; fi
+    if [[ "$attempt" == 120 ]]; then echo 'observer failed to recover from the partition' >&2; exit 1; fi
+    sleep 1
+done
+expected=$(block "$validator_head" | jq -er '.result.block_id.hash')
+observed=$(curl -fsS "$follower_rpc/block?height=$validator_head" | jq -er '.result.block_id.hash')
+[[ "$observed" == "$expected" ]]
+(cd "$node_src" && go run "$peer_probe" "$chain" "/ip4/127.0.0.1/tcp/37221/p2p/$follower_id" "$height" 0103 "$data_hex")
+echo "Rust observer rejoined the Go validator at height $validator_head after falling behind at $observer_head"

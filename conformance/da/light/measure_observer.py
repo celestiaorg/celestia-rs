@@ -47,6 +47,12 @@ def main():
     ticks = {role: cpu_seconds(pid) for role, (pid, _) in processes.items()}
     initial_height = rpc_height(source, None)
     start = time.monotonic()
+    seconds = int(os.environ.get("DA_QUALIFICATION_SECONDS", "10"))
+    if seconds < 10:
+        raise ValueError("DA_QUALIFICATION_SECONDS must be at least 10")
+    last_observed = initial_height
+    last_progress = start
+    longest_interval = 0.0
     rounds = 0
     max_lag = dict.fromkeys(endpoints, 0)
 
@@ -58,10 +64,14 @@ def main():
             raise RuntimeError(f"paid read failed on {url} with status {result.returncode}")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        while time.monotonic() - start < 10 or rounds < 3:
+        while time.monotonic() - start < seconds or rounds < 3:
             list(pool.map(read, endpoints.values()))
             rounds += 1
             reference = rpc_height(source, None)
+            now = time.monotonic()
+            longest_interval = max(longest_interval, now - last_progress)
+            if reference > last_observed:
+                last_progress, last_observed = now, reference
             for role, endpoint in endpoints.items():
                 max_lag[role] = max(max_lag[role], reference - rpc_height(*endpoint))
     elapsed = time.monotonic() - start
@@ -76,7 +86,8 @@ def main():
         if role in max_lag:
             report[role]["max_observed_lag_blocks"] = max_lag[role]
     print(json.dumps(dict(seconds=round(elapsed, 2), verified_reads_per_bridge=rounds,
-                          first_height=initial_height, last_height=final_height, processes=report)))
+                          first_height=initial_height, last_height=final_height,
+                          longest_sampled_commit_interval=round(longest_interval, 2), processes=report)))
     if final_height <= initial_height:
         raise RuntimeError("validator did not advance under paired read load")
 
