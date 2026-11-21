@@ -4,6 +4,8 @@
 
 #[cfg(feature = "bridge")]
 mod bridge;
+#[cfg(feature = "bridge")]
+pub use bridge::auth::operator_token;
 pub mod client;
 pub mod config;
 pub mod export;
