@@ -67,6 +67,7 @@ pub(super) fn store_header(
 struct Service {
     data: super::data::Client,
     core: Option<super::core::Core>,
+    address: Option<String>,
     auth: Arc<Auth>,
     db: Arc<RedbBackend>,
     workers: Arc<tokio::sync::Semaphore>,
@@ -93,6 +94,21 @@ pub(super) async fn listener(
             .with_state(Arc::new(Service {
                 auth: Arc::new(Auth::open(home)?),
                 data: super::data::Client::new(peers)?,
+                address: args
+                    .key_name
+                    .as_deref()
+                    .map(|name| {
+                        let flags = crate::client::TxFlags {
+                            from: name.to_owned(),
+                            keyring_backend: args.key_backend.clone(),
+                            ..Default::default()
+                        };
+                        Ok::<_, anyhow::Error>(
+                            crate::client::resolve_from(home, &flags)?
+                                .bech32(crate::keys::ACC_PREFIX),
+                        )
+                    })
+                    .transpose()?,
                 core: args
                     .core_ip
                     .as_deref()
@@ -158,12 +174,12 @@ async fn call(service: &Service, perms: &[String], body: &[u8]) -> String {
         let method = req.method.as_str().ok_or_else(invalid)?;
         let node_permission = node_rpc::permission(method);
         if node_permission.is_none()
+            && !account_read(method)
             && !blobstream::handles(method)
             && !super::data::handles(method)
             && !matches!(
                 method,
-                "state.BalanceForAddress"
-                    | "header.LocalHead"
+                "header.LocalHead"
                     | "header.NetworkHead"
                     | "header.SyncState"
                     | "header.SyncWait"
@@ -206,8 +222,8 @@ async fn dispatch(
     method: &str,
     args: Vec<Value>,
 ) -> Result<String, (i32, String)> {
-    if method == "state.BalanceForAddress" {
-        return balance(service, &args).await;
+    if account_read(method) {
+        return account(service, method, &args).await;
     }
     if matches!(method, "header.SyncState" | "header.SyncWait") {
         if !args.is_empty() {
@@ -304,10 +320,14 @@ async fn dispatch(
     .map_err(|e| (1, e.to_string()))?
     .map_err(|e| (1, e.to_string()))
 }
-async fn balance(service: &Service, args: &[Value]) -> Result<String, (i32, String)> {
-    let [Value::String(address)] = args else {
-        return Err((-32602, "expected address".into()));
-    };
+fn account_read(method: &str) -> bool {
+    matches!(
+        method,
+        "state.AccountAddress" | "state.Balance" | "state.BalanceForAddress"
+    )
+}
+
+async fn account(service: &Service, method: &str, args: &[Value]) -> Result<String, (i32, String)> {
     let core = service.core.clone().ok_or_else(|| {
         (
             1,
@@ -315,6 +335,21 @@ async fn balance(service: &Service, args: &[Value]) -> Result<String, (i32, Stri
                 .to_owned(),
         )
     })?;
+    let address = match (method, args) {
+        ("state.BalanceForAddress", [Value::String(address)]) => address,
+        ("state.Balance" | "state.AccountAddress", []) => {
+            service.address.as_ref().ok_or_else(|| {
+                (
+                    1,
+                    "no light account selected (use --keyring.keyname)".to_owned(),
+                )
+            })?
+        }
+        _ => return Err((-32602, "invalid account parameters".into())),
+    };
+    if method == "state.AccountAddress" {
+        return Ok(json!(address).to_string());
+    }
     let _permit = service
         .workers
         .try_acquire()
