@@ -1,5 +1,6 @@
 //! Inbound go-header exchange and SHREX over negotiated libp2p streams.
 mod admin;
+mod connections;
 pub(crate) use admin::Control;
 mod flood;
 mod inbound;
@@ -17,6 +18,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt as _};
+use libp2p::Transport as _;
 use libp2p::{
     Multiaddr, Stream, SwarmBuilder, identity, multiaddr::Protocol, noise, swarm::SwarmEvent, tcp,
     yamux,
@@ -202,13 +204,18 @@ async fn run(
         network,
         bridge.clone(),
     )?;
+    let connections = connections::Connections::default();
+    let observed = connections.clone();
+    let security = noise::Config::new(&key)?;
     let mut swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
-        .with_tcp(
-            tcp::Config::default().nodelay(true),
-            noise::Config::new,
-            yamux::Config::default,
-        )?
+        .with_other_transport(move |_| {
+            tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
+                .upgrade(libp2p::core::upgrade::Version::V1Lazy)
+                .authenticate(security)
+                .multiplex(yamux::Config::default())
+                .map(move |(peer, mux), point| (peer, observed.observe(peer, &point, mux)))
+        })?
         .with_dns()?
         .with_behaviour(move |_| behaviour)?
         .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(120)))
@@ -223,7 +230,7 @@ async fn run(
     let topic_hash = topic.hash();
     let mut timer = tokio::time::interval(Duration::from_millis(500));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut operations = admin::Operations::new(ping);
+    let mut operations = admin::Operations::new(ping, connections);
     let mut announced = 0;
     let mut pending = tokio::task::JoinSet::new();
     // A Go DAS worker opens a separate stream for each sample in a batch.

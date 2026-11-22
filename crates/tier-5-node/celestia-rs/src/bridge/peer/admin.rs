@@ -31,6 +31,7 @@ impl Control {
             method,
             "p2p.Info"
                 | "p2p.Ping"
+                | "p2p.ConnectionState"
                 | "p2p.Connect"
                 | "p2p.ClosePeer"
                 | "p2p.Protect"
@@ -66,14 +67,19 @@ type Reply = oneshot::Sender<Result<Value>>;
 
 pub(super) struct Operations {
     ping: super::ping::Ping,
+    connections: super::connections::Connections,
     dialing: HashMap<ConnectionId, Reply>,
     closing: HashMap<PeerId, Vec<Reply>>,
 }
 
 impl Operations {
-    pub(super) fn new(ping: super::ping::Ping) -> Self {
+    pub(super) fn new(
+        ping: super::ping::Ping,
+        connections: super::connections::Connections,
+    ) -> Self {
         Self {
             ping,
+            connections,
             dialing: HashMap::new(),
             closing: HashMap::new(),
         }
@@ -117,6 +123,14 @@ impl Operations {
                     let _ = reply.send(Err(error));
                 }
             }
+            return;
+        }
+        if method == "p2p.ConnectionState" {
+            let result = match args.as_slice() {
+                [id] => parse_peer(id).and_then(|id| self.connections.state(id)),
+                _ => Err(anyhow::anyhow!("invalid ConnectionState parameters")),
+            };
+            let _ = reply.send(result);
             return;
         }
         if matches!(method.as_str(), "p2p.BlockPeer" | "p2p.UnblockPeer") {

@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	rpcclient "github.com/celestiaorg/celestia-node/api/rpc/client"
+	libhost "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
+	"io"
 	"os"
 	"slices"
 	"strconv"
@@ -71,7 +73,7 @@ func main() {
 			}
 		}
 		stop()
-		checkAdmin(ctx, endpoint, chain, *info, host.ID())
+		checkAdmin(ctx, endpoint, chain, *info, host)
 	}
 	for _, proto := range []protocol.ID{"/other-private-chain/header-ex/v0.0.3", "/other-private-chain/shrex/v0.1.0/sample_v0"} {
 		stream, err := host.NewStream(ctx, info.ID, proto)
@@ -164,7 +166,8 @@ func main() {
 	panic("expected blob missing")
 }
 
-func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInfo, clientID peer.ID) {
+func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInfo, clientHost libhost.Host) {
+	clientID := clientHost.ID()
 	admin, err := rpcclient.NewClient(ctx, endpoint, os.Getenv("DA_TEST_ADMIN_TOKEN"))
 	check(err)
 	defer admin.Close()
@@ -209,6 +212,28 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	reader, err := rpcclient.NewClient(ctx, endpoint, os.Getenv("DA_TEST_READ_TOKEN"))
 	check(err)
 	defer reader.Close()
+	if _, err := reader.P2P.ConnectionState(ctx, clientID); err == nil {
+		panic("read token inspected peer connections")
+	}
+	var held []network.Stream
+	for i := 0; i < 3; i++ {
+		st, err := clientHost.NewStream(ctx, server.ID, protocol.ID("/ipfs/ping/1.0.0"))
+		check(err)
+		_, err = st.Write(make([]byte, 32))
+		check(err)
+		_, err = io.ReadFull(st, make([]byte, 32))
+		check(err)
+		held = append(held, st)
+	}
+	active, err := admin.P2P.ConnectionState(ctx, clientID)
+	check(err)
+	if len(active) != 1 || active[0].NumStreams < 3 || active[0].Direction != network.DirInbound ||
+		active[0].Opened.IsZero() || active[0].Limited || active[0].Info != clientHost.Network().ConnsToPeer(server.ID)[0].ConnState() {
+		panic(fmt.Sprintf("invalid inbound connection state: %+v", active))
+	}
+	for _, s := range held {
+		check(s.Close())
+	}
 	if _, err := reader.P2P.Ping(ctx, clientID); err == nil {
 		panic("read token permitted peer ping")
 	}
@@ -226,6 +251,11 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	check(admin.P2P.Connect(ctx, address))
 	connected, err := admin.P2P.Connectedness(ctx, address.ID)
 	check(err)
+	active, err = admin.P2P.ConnectionState(ctx, address.ID)
+	check(err)
+	if len(active) != 1 || active[0].Direction != network.DirOutbound {
+		panic("Rust dial direction mismatch")
+	}
 	if connected != network.Connected {
 		panic("admin dial did not connect")
 	}
@@ -296,6 +326,10 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	check(admin.P2P.ClosePeer(ctx, address.ID))
 	connected, err = admin.P2P.Connectedness(ctx, address.ID)
 	check(err)
+	if _, err = admin.P2P.ConnectionState(ctx, address.ID); err == nil {
+		panic("closed connection still present")
+	}
+	fmt.Println("Go verified connection directions, negotiated transport, open stream count and close cleanup")
 	if connected != network.NotConnected {
 		panic("admin close did not disconnect")
 	}
