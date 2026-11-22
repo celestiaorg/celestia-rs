@@ -1331,7 +1331,7 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
     }
     #[cfg(feature = "bridge-p2p")]
     {
-        opts.bridge_listeners = a.bridge_p2p_listen;
+        opts.bridge_listeners.clone_from(&a.bridge_p2p_listen);
         opts.bridge_bootstrap.clone_from(&a.bridge_bootstrap);
         opts.bridge_announce.clone_from(&a.bridge_announce);
     }
