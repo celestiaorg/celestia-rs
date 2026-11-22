@@ -172,6 +172,7 @@ if (( ${#peer_args[@]} )); then
         rtc=$(rtc_addr)
         [[ -n "$rtc" ]]
         DA_TEST_ADMIN_URL=http://127.0.0.1:32658 "$work/websocket-reader" celestia-rs-local "$rtc/p2p/$peer_id" "$height" "$namespace" "$data"
+        DA_TEST_WEBRTC_V2=1 DA_TEST_ADMIN_URL=http://127.0.0.1:32658 "$work/websocket-reader" celestia-rs-local "$rtc/p2p/$peer_id" "$height" "$namespace" "$data"
     fi
     verify_count() {
         local protocol=$1 outcome=$2 minimum=$3
