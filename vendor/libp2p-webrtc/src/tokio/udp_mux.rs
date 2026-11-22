@@ -360,6 +360,7 @@ impl UDPMuxNewAddr {
                                     if !self.new_addrs.contains(&addr) {
                                         match credentials_from_stun(read.filled()) {
                                             Ok(credentials) => {
+                                                tracing::debug!(%addr, "DA WebRTC ICE binding request received");
                                                 tracing::trace!(
                                                     address=%&addr,
                                                     "Notifying about new address from ufrag",

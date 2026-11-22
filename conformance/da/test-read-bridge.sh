@@ -23,6 +23,11 @@ pid=
 bootstrap_pid=
 light_pid=
 cleanup() {
+    local code=$?
+    if ((code)) && [[ -f "$work/node.log" ]]; then
+        # Limit failure output to transport diagnostics. The node log also contains wallet activity.
+        grep -E 'DA inbound connection failed|DA WebRTC|panicked at|CryptoProvider|ICE failed|DTLS handshake' "$work/node.log" | tail -25 || true
+    fi
     if [[ -n "${subscriber:-}" ]]; then kill "$subscriber" 2>/dev/null || true; wait "$subscriber" || true; fi
     if [[ -n "$bootstrap_pid" ]]; then
         kill "$bootstrap_pid" 2>/dev/null || true
@@ -70,7 +75,7 @@ start_rust() {
     local first= head
     local -a tls_env=()
     if [[ -n ${tls_dir:-} ]]; then tls_env=(CELESTIA_TLS_PATH="$tls_dir" SSL_CERT_FILE="$tls_dir/ca.pem"); fi
-    env "${tls_env[@]}" RUST_LOG=celestia_rs::bridge::peer=info "$binary" start --network local --home "$work/node" \
+    env "${tls_env[@]}" RUST_LOG=celestia_rs::bridge::peer=debug,libp2p_webrtc::tokio::udp_mux=debug "$binary" start --network local --home "$work/node" \
         --bridge-rpc-listen 127.0.0.1:32658 --bridge-signer validator --bridge-signer da-secondary "${peer_args[@]}" >"$work/node.log" 2>&1 &
     pid=$!
     for attempt in {1..120}; do
