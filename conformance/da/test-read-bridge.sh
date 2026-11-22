@@ -155,13 +155,14 @@ if (( ${#peer_args[@]} )); then
     peer_id=$(sed -n 's/.*DA peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/node.log" | head -1)
     [[ -n "$peer_id" ]] || { echo 'missing DA peer identity' >&2; exit 1; }
     peer_probe=$(dirname "$probe")/peer/read_peer.go
-    (cd "$go_tree" && DA_TEST_ADMIN_URL=http://127.0.0.1:32658 go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data")
-    (cd "$go_tree" && DA_TEST_ADMIN_URL=http://127.0.0.1:32658 go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/udp/32121/quic-v1/p2p/$peer_id" "$height" "$namespace" "$data")
     (cd "$go_tree" && go build -o "$work/websocket-reader" "$peer_probe")
-    for transport in /ip4/127.0.0.1/tcp/32122/ws /dns4/localhost/tcp/32123/tls/ws; do
-        DA_TEST_ADMIN_URL=http://127.0.0.1:32658 SSL_CERT_FILE="$tls_dir/ca.pem" CELESTIA_TLS_PATH="$tls_dir" \
-            "$work/websocket-reader" celestia-rs-local "$transport/p2p/$peer_id" "$height" "$namespace" "$data"
+    for transport in /ip4/127.0.0.1/tcp/32121 /ip4/127.0.0.1/tcp/32122/ws /dns4/localhost/tcp/32123/tls/ws; do
+        for security in /tls/1.0.0 /noise; do
+            DA_TEST_STREAM_SECURITY="$security" DA_TEST_ADMIN_URL=http://127.0.0.1:32658 SSL_CERT_FILE="$tls_dir/ca.pem" CELESTIA_TLS_PATH="$tls_dir" \
+                "$work/websocket-reader" celestia-rs-local "$transport/p2p/$peer_id" "$height" "$namespace" "$data"
+        done
     done
+    DA_TEST_ADMIN_URL=http://127.0.0.1:32658 "$work/websocket-reader" celestia-rs-local "/ip4/127.0.0.1/udp/32121/quic-v1/p2p/$peer_id" "$height" "$namespace" "$data"
     if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then
         rtc_addr() {
             sed -n 's@.*address=\(/ip4/127.0.0.1/udp/32124/webrtc-direct/certhash/[[:alnum:]_-]*\).*@\1@p' "$work/node.log" | head -1

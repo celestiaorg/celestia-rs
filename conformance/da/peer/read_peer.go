@@ -30,6 +30,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	libtls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
 	multistream "github.com/multiformats/go-multistream"
@@ -39,6 +41,19 @@ import (
 func check(err error) {
 	if err != nil {
 		panic(err)
+	}
+}
+
+func streamSecurity() []libp2p.Option {
+	switch os.Getenv("DA_TEST_STREAM_SECURITY") {
+	case "":
+		return nil
+	case libtls.ID:
+		return []libp2p.Option{libp2p.Security(libtls.ID, libtls.New)}
+	case noise.ID:
+		return []libp2p.Option{libp2p.Security(noise.ID, noise.New)}
+	default:
+		panic("unknown stream security protocol")
 	}
 }
 
@@ -54,7 +69,7 @@ func main() {
 	check(err)
 	info, err := peer.AddrInfoFromP2pAddr(addr)
 	check(err)
-	host, err := libp2p.New(libp2p.NoListenAddrs)
+	host, err := libp2p.New(append(streamSecurity(), libp2p.NoListenAddrs)...)
 	check(err)
 	defer host.Close()
 	check(host.Connect(ctx, *info))
@@ -335,7 +350,7 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	if _, err := reader.P2P.Peers(ctx); err == nil {
 		panic("read token accessed peer management")
 	}
-	var extraOptions []libp2p.Option
+	extraOptions := streamSecurity()
 	if active[0].Info.Transport == "websocket" {
 		dialAddress += "/ws"
 		_, tlsAddress := server.Addrs[0].ValueForProtocol(ma.P_TLS)

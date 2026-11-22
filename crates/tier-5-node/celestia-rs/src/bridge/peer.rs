@@ -4,6 +4,7 @@ mod bandwidth;
 mod connections;
 mod negotiation;
 mod resources;
+mod security;
 #[cfg(feature = "da-webrtc")]
 mod webrtc;
 mod websocket;
@@ -25,7 +26,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt as _};
 use libp2p::Transport as _;
-use libp2p::{Multiaddr, Stream, SwarmBuilder, identity, noise, swarm::SwarmEvent, tcp, yamux};
+use libp2p::{Multiaddr, Stream, SwarmBuilder, identity, swarm::SwarmEvent, tcp};
 use prost::Message;
 use tokio::sync::{Semaphore, oneshot};
 
@@ -201,25 +202,17 @@ fn observed_swarm(
     behaviour: network::Behaviour,
     connections: &connections::Connections,
 ) -> Result<libp2p::Swarm<network::Behaviour>> {
-    use libp2p::core::{muxing::StreamMuxerBox, upgrade::Version};
+    use libp2p::core::muxing::StreamMuxerBox;
 
     let key = identity.key;
+    let security = security::Config::new(&key)?;
+    let tcp_security = security.clone();
     let tcp_observed = connections.clone();
-    let tcp = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
-        .upgrade(Version::V1Lazy)
-        .authenticate(noise::Config::new(&key)?)
-        .multiplex(yamux::Config::default())
-        .map(move |(peer, mux), point| {
-            (
-                peer,
-                StreamMuxerBox::new(tcp_observed.observe(
-                    peer,
-                    &point,
-                    mux,
-                    connections::Transport::Tcp,
-                )),
-            )
-        });
+    let tcp = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true)).and_then(
+        move |socket, point| {
+            tcp_security.connect(socket, point, tcp_observed, connections::Transport::Tcp)
+        },
+    );
     let quic_observed = connections.clone();
     let quic = libp2p::quic::tokio::Transport::new(libp2p::quic::Config::new(&key)).map(
         move |(peer, mux), point| {
@@ -271,16 +264,14 @@ fn observed_swarm(
         ws.set_tls_config(tls);
     }
     let ws_observed = connections.clone();
-    let ws = ws
-        .upgrade(Version::V1Lazy)
-        .authenticate(noise::Config::new(&key)?)
-        .multiplex(yamux::Config::default())
-        .map(move |(peer, mux), point| {
-            (
-                peer,
-                ws_observed.observe(peer, &point, mux, connections::Transport::WebSocket),
-            )
-        });
+    let ws = ws.and_then(move |socket, point| {
+        security.connect(
+            socket,
+            point,
+            ws_observed,
+            connections::Transport::WebSocket,
+        )
+    });
     let swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_other_transport(move |_| ws)?

@@ -18,8 +18,8 @@ use std::{
 
 #[derive(Clone, Copy)]
 pub(super) enum Transport {
-    Tcp,
-    WebSocket,
+    Tcp(&'static str),
+    WebSocket(&'static str),
     #[cfg(feature = "da-webrtc")]
     WebRtc,
     Quic,
@@ -28,8 +28,8 @@ pub(super) enum Transport {
 impl Transport {
     fn info(self) -> Value {
         let (transport, security, muxer) = match self {
-            Self::Tcp => ("tcp", "/noise", "/yamux/1.0.0"),
-            Self::WebSocket => ("websocket", "/noise", "/yamux/1.0.0"),
+            Self::Tcp(sec) => ("tcp", sec, "/yamux/1.0.0"),
+            Self::WebSocket(sec) => ("websocket", sec, "/yamux/1.0.0"),
             #[cfg(feature = "da-webrtc")]
             Self::WebRtc => ("webrtc-direct", "", ""),
             Self::Quic => ("quic-v1", "", ""),
@@ -111,7 +111,7 @@ impl Connections {
             snapshot.connection(
                 conn.peer,
                 !conn.inbound,
-                matches!(conn.transport, Transport::Tcp | Transport::WebSocket),
+                matches!(conn.transport, Transport::Tcp(_) | Transport::WebSocket(_)),
             );
             for stream in conn.live_streams() {
                 snapshot.stream(conn.peer, &stream);

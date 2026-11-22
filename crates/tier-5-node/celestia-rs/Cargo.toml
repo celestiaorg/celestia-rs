@@ -19,7 +19,7 @@ da-fibre = ["da-light", "dep:celestia-fibre", "dep:celestia-grpc", "dep:fibre-ty
 da-webrtc = ["bridge-p2p", "dep:libp2p-webrtc", "dep:webrtc-rand"]
 da-light = ["bridge-p2p", "dep:tonic", "dep:rustls"]
 bridge = ["axum/ws", "app/bridge", "dep:hmac", "dep:sha2", "dep:tempfile"]
-bridge-p2p = ["bridge", "dep:rustls-pki-types", "dep:libp2p", "dep:libp2p-autonat", "dep:libp2p-stream", "dep:futures"]
+bridge-p2p = ["bridge", "dep:rustls-pki-types", "dep:libp2p", "dep:libp2p-autonat", "dep:libp2p-stream", "dep:multistream-select", "dep:futures"]
 # RocksDB state backend (default); `--no-default-features` builds redb only.
 rocksdb = ["app/rocksdb", "api-server/rocksdb"]
 # jemalloc as the global allocator (default; unprefixed on Linux, so
@@ -44,12 +44,13 @@ rustls = { version = "0.23", default-features = false, features = ["ring"], opti
 hmac = { version = "0.12", optional = true }
 sha2 = { version = "0.10", optional = true }
 tempfile = { version = "3", optional = true }
+multistream-select = { version = "0.14", optional = true }
 futures = { version = "0.3", optional = true }
 libp2p-autonat = { version = "=0.16.0", default-features = false, features = ["v1"], optional = true }
 libp2p-webrtc = { version = "=0.10.0-alpha", default-features = false, features = ["tokio", "pem"], optional = true }
 webrtc-rand = { package = "rand", version = "0.10", optional = true }
 libp2p-stream = { version = "=0.5.0-alpha", optional = true }
-libp2p = { version = "=0.57.0", default-features = false, features = ["ed25519", "tokio", "tcp", "quic", "websocket", "noise", "yamux", "dns", "identify", "kad", "gossipsub", "macros"], optional = true }
+libp2p = { version = "=0.57.0", default-features = false, features = ["ed25519", "tokio", "tcp", "quic", "websocket", "tls", "noise", "yamux", "dns", "identify", "kad", "gossipsub", "macros"], optional = true }
 abci-server = { path = "../../tier-4-runtime/abci-server" }
 anyhow.workspace = true
 axum = { version = "=0.7.9", default-features = false, features = ["http1", "http2", "tokio"] }
