@@ -161,12 +161,11 @@ async fn call(service: &Service, perms: &[String], body: &[u8]) -> String {
         let node_permission = node_rpc::permission(method);
         if node_permission.is_none()
             && !blobstream::handles(method)
-            && !(cfg!(feature = "da-fibre") && method == "fibre.Download")
+            && !core_method(method)
             && !super::data::handles(method)
             && !matches!(
                 method,
-                "state.BalanceForAddress"
-                    | "header.LocalHead"
+                "header.LocalHead"
                     | "header.NetworkHead"
                     | "header.SyncState"
                     | "header.SyncWait"
@@ -209,9 +208,7 @@ async fn dispatch(
     method: &str,
     args: Vec<Value>,
 ) -> Result<String, (i32, String)> {
-    if method == "state.BalanceForAddress"
-        || (cfg!(feature = "da-fibre") && method == "fibre.Download")
-    {
+    if core_method(method) {
         return core_read(service, method, &args).await;
     }
     if matches!(method, "header.SyncState" | "header.SyncWait") {
@@ -309,6 +306,11 @@ async fn dispatch(
     .map_err(|e| (1, e.to_string()))?
     .map_err(|e| (1, e.to_string()))
 }
+fn core_method(method: &str) -> bool {
+    method == "state.BalanceForAddress"
+        || (cfg!(feature = "da-fibre") && method == "fibre.Download")
+}
+
 async fn core_read(
     service: &Service,
     method: &str,
