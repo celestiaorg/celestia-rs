@@ -66,6 +66,17 @@ func main() {
 	if info.Type.String() != role || info.APIVersion == "" {
 		panic(fmt.Sprintf("unexpected node info: %+v", info))
 	}
+	permanent, e := admin.Node.AuthNew(ctx, perms.ReadPerms)
+	check(e)
+	allowed, e := admin.Node.AuthVerify(ctx, permanent)
+	check(e)
+	if fmt.Sprint(allowed) != fmt.Sprint(perms.ReadPerms) {
+		panic("unexpected permissions on non-expiring token")
+	}
+	check(admin.Node.AuthRevoke(ctx, permanent))
+	if _, e := admin.Node.AuthVerify(ctx, permanent); e == nil {
+		panic("revoked non-expiring token verified")
+	}
 	token, e := admin.Node.AuthNewWithExpiry(ctx, perms.ReadPerms, time.Minute)
 	check(e)
 	got, e := admin.Node.AuthVerify(ctx, token)
