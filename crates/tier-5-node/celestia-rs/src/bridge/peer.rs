@@ -13,6 +13,7 @@ mod flood;
 mod inbound;
 #[cfg(feature = "da-light")]
 pub(crate) mod light;
+mod nat_pmp;
 mod network;
 mod ping;
 mod protected;
@@ -326,6 +327,7 @@ async fn run(
     let topic_hash = topic.hash();
     let mut timer = tokio::time::interval(Duration::from_millis(500));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut pmp = nat_pmp::Mapper::default();
     let mut operations = admin::Operations::new(ping, connections);
     let mut announced = 0;
     let mut pending = tokio::task::JoinSet::new();
@@ -334,6 +336,7 @@ async fn run(
     let admissions = Arc::new(Semaphore::new(64));
     loop {
         tokio::select! {
+            addresses = pmp.changed() => pmp.apply(addresses, &peers, &mut swarm),
             Some(request) = requests.recv() => operations.handle(request, &mut swarm, network, &blocklist),
             _ = &mut stopped => return Ok(()),
             _ = reconnect.tick(), if !peers.bootstrap.is_empty() => peers.connect(&mut swarm),
@@ -360,6 +363,7 @@ async fn run(
                 SwarmEvent::OutgoingConnectionError {connection_id, error, ..} => operations.dial_result(connection_id, Err(error.into())),
                 SwarmEvent::ConnectionClosed {peer_id, num_established: 0, ..} => operations.closed(peer_id),
                 SwarmEvent::NewListenAddr { listener_id, address } => {
+                    pmp.refresh(&swarm);
                     peers.listen_address(&mut swarm, &address);
                     tracing::info!(%address, peer=%swarm.local_peer_id(), "DA peer listening");
                     if starting.remove(&listener_id) && starting.is_empty() { let _ = ready.try_send(Ok(())); }
@@ -370,7 +374,8 @@ async fn run(
                         swarm.behaviour_mut().dht.add_address(&peer_id, addr);
                     }
                 }
-                SwarmEvent::ExpiredListenAddr { address, .. } => peers.expire_address(&mut swarm, &address),
+                SwarmEvent::ExpiredListenAddr { address, .. } => {pmp.refresh(&swarm);peers.expire_address(&mut swarm, &address);}
+                SwarmEvent::Behaviour(network::BehaviourEvent::PortMapping(libp2p::upnp::Event::GatewayNotFound)) => pmp.fallback(&swarm),
                 SwarmEvent::ExternalAddrConfirmed { address } if !peers.advertised(&address) => swarm.remove_external_address(&address),
                 SwarmEvent::ExternalAddrExpired { address } if peers.announce.contains(&address) => swarm.add_external_address(address),
                 SwarmEvent::ListenerClosed { reason, .. } => {

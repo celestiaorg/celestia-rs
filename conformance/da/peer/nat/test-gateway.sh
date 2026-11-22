@@ -48,12 +48,17 @@ for table in nat filter mangle; do "${gw[@]}" iptables-legacy -t "$table" -N MIN
 "${gw[@]}" iptables-legacy -t nat -A PREROUTING -i wan0 -j MINIUPNPD
 "${gw[@]}" iptables-legacy -t nat -A POSTROUTING -o wan0 -j MINIUPNPD-POSTROUTING
 "${gw[@]}" iptables-legacy -A FORWARD -i wan0 -j MINIUPNPD
+case ${4:-igd} in
+    igd) upnp=yes; natpmp=no ;;
+    nat-pmp) upnp=no; natpmp=yes ;;
+    *) exit 2 ;;
+esac
 cat >"$work/igd.conf" <<CONF
 ext_ifname=wan0
 ext_ip=11.0.0.2
 listening_ip=lan0
-enable_upnp=yes
-enable_natpmp=no
+enable_upnp=$upnp
+enable_natpmp=$natpmp
 secure_mode=yes
 allow 32121-32121 192.168.55.2/32 32121-32121
 deny 0-65535 0.0.0.0/0 0-65535
@@ -77,6 +82,11 @@ for role in bridge light; do
     done
     DA_TEST_ADMIN_TOKEN=$("$rust" da-auth admin --home "$work/$role") "$oracle" mapped >"$work/mapped"
     while read -r addr; do "${wan[@]}" "$oracle" ping-mapped "$addr"; done <"$work/mapped"
-    echo "Go reached the Rust $role through the IGD on TCP and QUIC"
+    if [[ $natpmp == yes ]]; then
+        # The initial lease lasts 60 seconds. Verify forwarding after its expiry.
+        sleep 65
+        while read -r addr; do "${wan[@]}" "$oracle" ping-mapped "$addr"; done <"$work/mapped"
+    fi
+    echo "Go reached the Rust $role through ${4:-igd} on TCP and QUIC"
     kill "$node"; wait "$node" || true; node=
 done
