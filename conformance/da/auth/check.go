@@ -2,10 +2,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/celestiaorg/celestia-node/api/rpc/client"
 	"github.com/celestiaorg/celestia-node/api/rpc/perms"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -14,6 +16,38 @@ import (
 func check(e error) {
 	if e != nil {
 		panic(e)
+	}
+}
+
+// A successful call must change the live subscriber. Only inspect new log
+// records, and never include node logs (which may contain keys) in test output.
+func checkLevel(ctx context.Context, admin, reader *client.Client) {
+	if err := reader.Node.LogLevelSet(ctx, "*", "debug"); err == nil {
+		panic("read token changed DA logging")
+	}
+	if err := admin.Node.LogLevelSet(ctx, "rpc", "invalid"); err == nil || !strings.Contains(err.Error(), "unrecognized level") {
+		panic("invalid log level accepted or returned wrong error")
+	}
+	check(admin.Node.LogLevelSet(ctx, "unused-component", "warning"))
+	log, err := os.Open(os.Getenv("DA_TEST_LOG"))
+	check(err)
+	defer log.Close()
+	for _, step := range []struct {
+		name, level string
+		enabled     bool
+	}{
+		{"*", "error", false}, {"rpc", "DEBUG", true}, {"*", "info", false},
+	} {
+		check(admin.Node.LogLevelSet(ctx, step.name, step.level))
+		_, err := log.Seek(0, io.SeekEnd)
+		check(err)
+		_, err = reader.Node.Ready(ctx)
+		check(err)
+		records, err := io.ReadAll(log)
+		check(err)
+		if bytes.Contains(records, []byte("node.Ready")) != step.enabled {
+			panic("runtime DA log filter did not change for node.Ready")
+		}
 	}
 }
 func main() {
@@ -42,6 +76,7 @@ func main() {
 	reader, e := client.NewClient(ctx, endpoint, token)
 	check(e)
 	defer reader.Close()
+	checkLevel(ctx, admin, reader)
 	ready, e := reader.Node.Ready(ctx)
 	check(e)
 	if !ready {

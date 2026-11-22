@@ -917,6 +917,20 @@ fn main() -> anyhow::Result<()> {
             .map(|f| f.string(File::Config, "log_format"))
             .unwrap_or_default()
     });
+    #[cfg(feature = "bridge")]
+    let da_rpc = match &cli.command {
+        Cmd::Start(args) => args.bridge_rpc_listen.is_some(),
+        #[cfg(feature = "da-light")]
+        Cmd::DaLight(_) => true,
+        _ => false,
+    };
+    #[cfg(feature = "bridge")]
+    if da_rpc {
+        ops::da_logging::init(&level, &format)?;
+    } else {
+        ops::init_logging(&level, &format);
+    }
+    #[cfg(not(feature = "bridge"))]
     ops::init_logging(&level, &format);
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

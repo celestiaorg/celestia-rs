@@ -132,7 +132,7 @@ created=$("$binary" tx staking create-validator "$validator_json" --from destina
 unset DA_TEST_WRITE_TOKEN
 DA_TEST_ADMIN_TOKEN=$("$binary" da-auth admin --home "$work/node")
 export DA_TEST_ADMIN_TOKEN
-(cd "$go_tree" && go run "$(dirname "$probe")/auth/check.go" http://127.0.0.1:32658)
+(cd "$go_tree" && DA_TEST_LOG="$work/node.log" go run "$(dirname "$probe")/auth/check.go" http://127.0.0.1:32658)
 if (( ${#peer_args[@]} )); then
     peer_id=$(sed -n 's/.*DA peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/node.log" | head -1)
     [[ -n "$peer_id" ]] || { echo 'missing DA peer identity' >&2; exit 1; }
