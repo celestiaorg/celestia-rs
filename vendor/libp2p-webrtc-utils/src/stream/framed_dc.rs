@@ -23,7 +23,7 @@ use futures::{AsyncRead, AsyncWrite};
 
 use crate::{
     proto::Message,
-    stream::{MAX_DATA_LEN, MAX_MSG_LEN, VARINT_LEN},
+    stream::{MAX_MSG_LEN, VARINT_LEN},
 };
 
 pub(crate) type FramedDc<T> = Framed<T, prost_codec::Codec<Message>>;
@@ -32,12 +32,56 @@ where
     T: AsyncRead + AsyncWrite,
 {
     let mut framed = Framed::new(inner, codec());
-    // If not set, `Framed` buffers up to 131kB of data before sending, which leads to "outbound
-    // packet larger than maximum message size" error in webrtc-rs.
-    framed.set_send_high_water_mark(MAX_DATA_LEN);
+    // Flush each encoded message before accepting another. A small control or
+    // SHREX frame followed by a full data frame can otherwise exceed the SCTP
+    // message limit even when each individual frame fits.
+    framed.set_send_high_water_mark(1);
     framed
 }
 
 pub(crate) fn codec() -> prost_codec::Codec<Message, Message> {
     prost_codec::Codec::new(MAX_MSG_LEN - VARINT_LEN)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::{SinkExt, executor::block_on, io::AllowStdIo};
+    use std::io::{self, Read, Write};
+
+    struct DataChannel;
+
+    impl Read for DataChannel {
+        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    impl Write for DataChannel {
+        fn write(&mut self, packet: &[u8]) -> io::Result<usize> {
+            assert!(packet.len() <= MAX_MSG_LEN);
+            Ok(packet.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn bounds_each_sctp_message_when_a_square_is_written_in_shares() {
+        block_on(async {
+            let mut channel = new(AllowStdIo::new(DataChannel));
+            for len in std::iter::once(3).chain(std::iter::repeat_n(512, 64)) {
+                channel
+                    .feed(Message {
+                        flag: None,
+                        message: Some(vec![0; len]),
+                    })
+                    .await
+                    .unwrap();
+            }
+            channel.flush().await.unwrap();
+        });
+    }
 }
