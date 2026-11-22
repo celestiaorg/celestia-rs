@@ -1241,7 +1241,6 @@ dependencies = [
  "rpc",
  "rustix",
  "rustls",
- "rustls-native-certs",
  "rustls-pki-types",
  "sdk",
  "serde",
@@ -4130,8 +4129,6 @@ dependencies = [
 [[package]]
 name = "libp2p-websocket"
 version = "0.46.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02f11d7547a049e7a4d641ba73b400714ecaa85974d9700ac2014cdac63bfd47"
 dependencies = [
  "either",
  "futures",
@@ -4140,12 +4137,12 @@ dependencies = [
  "libp2p-identity",
  "parking_lot 0.12.5",
  "pin-project-lite",
+ "rustls-native-certs",
  "rw-stream-sink",
  "soketto",
  "thiserror 2.0.21",
  "tracing",
  "url",
- "webpki-roots",
 ]
 
 [[package]]
@@ -8013,15 +8010,6 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "webpki-roots"
-version = "1.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7265c9301c16a8711c992c2d8da90ee77ef54b1ed51482d6dfeb00dc756b1297"
-dependencies = [
- "rustls-pki-types",
 ]
 
 [[package]]
