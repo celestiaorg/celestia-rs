@@ -13,7 +13,8 @@ esac
 work=$(mktemp -d)
 peer_args=()
 if [[ "${3:-}" == --peer || "${3:-}" == --stock-light || "${3:-}" == --validator-load ]]; then
-    peer_args=(--prometheus-listen-addr 127.0.0.1:32660 --bridge-p2p-listen 127.0.0.1:32121 --bridge-p2p-listen /ip4/127.0.0.1/udp/32121/quic-v1)
+    peer_args=(--prometheus-listen-addr 127.0.0.1:32660 --bridge-p2p-listen 127.0.0.1:32121 --bridge-p2p-listen /ip4/127.0.0.1/udp/32121/quic-v1
+        --bridge-p2p-listen /ip4/127.0.0.1/tcp/32122/ws --bridge-p2p-listen /ip4/127.0.0.1/tcp/32123/tls/ws)
 fi
 pid=
 bootstrap_pid=
@@ -37,6 +38,14 @@ cleanup() {
 trap cleanup EXIT
 
 if (( ${#peer_args[@]} )); then
+    tls_dir="$work/ws-tls"
+    mkdir -p "$tls_dir"
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 -subj /CN=private-da-ca \
+        -keyout "$tls_dir/ca.key" -out "$tls_dir/ca.pem" >/dev/null 2>&1
+    openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj /CN=localhost \
+        -keyout "$tls_dir/key.pem" -out "$tls_dir/csr.pem" >/dev/null 2>&1
+    openssl x509 -req -in "$tls_dir/csr.pem" -CA "$tls_dir/ca.pem" -CAkey "$tls_dir/ca.key" -CAcreateserial -days 1 \
+        -extfile <(echo 'subjectAltName=DNS:localhost,IP:127.0.0.1') -out "$tls_dir/cert.pem" >/dev/null 2>&1
     (cd "$go_tree" && go build -o "$work/bootstrap-probe" "$(dirname "$probe")/bootstrap/check.go")
     "$work/bootstrap-probe" "$work/bootstrap.addr" celestia-rs-local &
     bootstrap_pid=$!
@@ -56,7 +65,9 @@ DA_TEST_SECOND_SIGNER=$("$binary" keys show da-secondary --address --keyring-bac
 export DA_TEST_SECOND_SIGNER
 start_rust() {
     local first= head
-    RUST_LOG=celestia_rs::bridge::peer=info "$binary" start --network local --home "$work/node" \
+    local -a tls_env=()
+    if [[ -n ${tls_dir:-} ]]; then tls_env=(CELESTIA_TLS_PATH="$tls_dir" SSL_CERT_FILE="$tls_dir/ca.pem"); fi
+    env "${tls_env[@]}" RUST_LOG=celestia_rs::bridge::peer=info "$binary" start --network local --home "$work/node" \
         --bridge-rpc-listen 127.0.0.1:32658 --bridge-signer validator --bridge-signer da-secondary "${peer_args[@]}" >"$work/node.log" 2>&1 &
     pid=$!
     for attempt in {1..120}; do
@@ -143,6 +154,11 @@ if (( ${#peer_args[@]} )); then
     peer_probe=$(dirname "$probe")/peer/read_peer.go
     (cd "$go_tree" && DA_TEST_ADMIN_URL=http://127.0.0.1:32658 go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data")
     (cd "$go_tree" && DA_TEST_ADMIN_URL=http://127.0.0.1:32658 go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/udp/32121/quic-v1/p2p/$peer_id" "$height" "$namespace" "$data")
+    (cd "$go_tree" && go build -o "$work/websocket-reader" "$peer_probe")
+    for transport in /ip4/127.0.0.1/tcp/32122/ws /dns4/localhost/tcp/32123/tls/ws; do
+        DA_TEST_ADMIN_URL=http://127.0.0.1:32658 SSL_CERT_FILE="$tls_dir/ca.pem" CELESTIA_TLS_PATH="$tls_dir" \
+            "$work/websocket-reader" celestia-rs-local "$transport/p2p/$peer_id" "$height" "$namespace" "$data"
+    done
     verify_count() {
         local protocol=$1 outcome=$2 minimum=$3
         awk -v series="protocol=\"$protocol\",outcome=\"$outcome\"" -v minimum="$minimum" '

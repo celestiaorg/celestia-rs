@@ -36,7 +36,7 @@ pub struct LightArgs {
     /// Pin a trusted 32-byte header hash. A fresh unpinned store starts at the trusted peers’ head.
     #[arg(long)]
     trusted_hash: Option<String>,
-    /// Listen for incoming DA connections. Repeat for TCP and QUIC v1 multiaddresses.
+    /// Listen for incoming DA connections. Repeat for TCP, WebSocket or QUIC v1 multiaddresses.
     #[arg(long)]
     p2p_listen: Vec<Multiaddr>,
     /// Consensus gRPC hostname or IP for proof-verified state reads.

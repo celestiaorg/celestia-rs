@@ -79,7 +79,7 @@ with a second flag to listen on QUIC v1 as well. Mainnet and Mocha 5 use the boo
 releases. Private networks have an empty default bootstrap list. Repeat
 `--bridge-bootstrap <multiaddress>/p2p/<peer-id>` to supply an explicit list.
 For a node behind NAT, repeat `--bridge-announce <multiaddress>` with its
-reachable TCP or QUIC v1 addresses. The DA RPC listener is configured independently.
+reachable TCP, WebSocket or QUIC v1 addresses. The DA RPC listener is configured independently.
 
 The opt-in P2P bridge publishes signed non-empty EDS announcements on the release's FloodSub topic `<chain>/eds-sub/v0.2.0`. This stream runs independently of header GossipSub. The peer fixture subscribes with the released Go SHREX library before paying for its blob, checks the publisher identity, then fetches the signed header to verify the announced height and data hash. The Rust publisher signs locally verified commitments once their headers are readable. A separate pair of Go hosts verifies relay through Rust, including the original author signature. The relay validates signatures, network topic and notification shape, deduplicates messages, and preserves the original publisher.
 
@@ -137,7 +137,7 @@ The private fixture replays its paid blob, cancels the subscription and
 checks the next two live headers through the released Go client.
 
 The light peer serves retained sampled headers through the chain's
-go-header exchange. To accept incoming connections, repeat `--p2p-listen` with TCP or QUIC v1 multiaddresses.
+go-header exchange. To accept incoming connections, repeat `--p2p-listen` with TCP, WebSocket or QUIC v1 multiaddresses.
 The private fixture disconnects the Go bridge, connects a fresh Go
 exchange client directly to the Rust light peer and verifies the paid
 checkpoint by height and hash, its next two signed headers and the head.

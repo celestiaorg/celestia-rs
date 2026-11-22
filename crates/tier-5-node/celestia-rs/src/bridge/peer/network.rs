@@ -142,6 +142,15 @@ impl Peering {
             let mut endpoint = addr.clone();
             let valid = match endpoint.pop() {
                 Some(Protocol::Tcp(port)) => port != 0,
+                Some(Protocol::Ws(_) | Protocol::Wss(_)) => {
+                    let suffix = endpoint.pop();
+                    let port = if suffix == Some(Protocol::Tls) {
+                        endpoint.pop()
+                    } else {
+                        suffix
+                    };
+                    matches!(port, Some(Protocol::Tcp(port)) if port != 0)
+                }
                 Some(Protocol::QuicV1) => {
                     matches!(endpoint.pop(), Some(Protocol::Udp(port)) if port != 0)
                 }
@@ -149,7 +158,7 @@ impl Peering {
             };
             anyhow::ensure!(
                 valid,
-                "announced DA address needs a TCP or QUIC v1 endpoint"
+                "announced DA address needs a TCP, WebSocket or QUIC v1 endpoint"
             );
         }
         Ok(Self {

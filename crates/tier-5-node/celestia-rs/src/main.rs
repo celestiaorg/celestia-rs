@@ -178,7 +178,7 @@ enum Cmd {
 #[derive(Args, Debug)]
 #[allow(clippy::struct_excessive_bools)]
 struct StartArgs {
-    /// DA listener. Repeat for TCP sockets or libp2p TCP and QUIC v1 multiaddresses.
+    /// DA listener. Repeat for TCP sockets or libp2p TCP, WebSocket and QUIC v1 multiaddresses.
     #[cfg(feature = "bridge-p2p")]
     #[arg(long, value_parser = node::parse_bridge_listener)]
     bridge_p2p_listen: Vec<libp2p::Multiaddr>,

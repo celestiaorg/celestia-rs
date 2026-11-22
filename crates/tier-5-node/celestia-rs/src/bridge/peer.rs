@@ -4,6 +4,7 @@ mod bandwidth;
 mod connections;
 mod negotiation;
 mod resources;
+mod websocket;
 pub(crate) use admin::Control;
 mod flood;
 mod inbound;
@@ -177,34 +178,63 @@ fn observed_swarm(
     behaviour: network::Behaviour,
     connections: &connections::Connections,
 ) -> Result<libp2p::Swarm<network::Behaviour>> {
-    let observed = connections.clone();
+    use libp2p::core::{muxing::StreamMuxerBox, upgrade::Version};
+
+    let tcp_observed = connections.clone();
+    let tcp = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
+        .upgrade(Version::V1Lazy)
+        .authenticate(noise::Config::new(&key)?)
+        .multiplex(yamux::Config::default())
+        .map(move |(peer, mux), point| {
+            (
+                peer,
+                StreamMuxerBox::new(tcp_observed.observe(
+                    peer,
+                    &point,
+                    mux,
+                    connections::Transport::Tcp,
+                )),
+            )
+        });
     let quic_observed = connections.clone();
-    let security = noise::Config::new(&key)?;
+    let quic = libp2p::quic::tokio::Transport::new(libp2p::quic::Config::new(&key)).map(
+        move |(peer, mux), point| {
+            (
+                peer,
+                StreamMuxerBox::new(quic_observed.observe(
+                    peer,
+                    &point,
+                    mux,
+                    connections::Transport::Quic,
+                )),
+            )
+        },
+    );
+    let native = libp2p::dns::tokio::Transport::system(
+        tcp.or_transport(quic).map(|either, _| either.into_inner()),
+    )?;
+
+    // WebSocket must see the hostname before DNS resolution so TLS can verify it.
+    let tcp = libp2p::dns::tokio::Transport::system(tcp::tokio::Transport::new(
+        tcp::Config::default().nodelay(true),
+    ))?;
+    let mut ws = libp2p::websocket::Config::new(tcp);
+    ws.set_tls_config(websocket::tls()?);
+    let ws_observed = connections.clone();
+    let ws = ws
+        .upgrade(Version::V1Lazy)
+        .authenticate(noise::Config::new(&key)?)
+        .multiplex(yamux::Config::default())
+        .map(move |(peer, mux), point| {
+            (
+                peer,
+                ws_observed.observe(peer, &point, mux, connections::Transport::WebSocket),
+            )
+        });
     let swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
-        .with_other_transport(move |_| {
-            tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
-                .upgrade(libp2p::core::upgrade::Version::V1Lazy)
-                .authenticate(security)
-                .multiplex(yamux::Config::default())
-                .map(move |(peer, mux), point| {
-                    (
-                        peer,
-                        observed.observe(peer, &point, mux, connections::Transport::Tcp),
-                    )
-                })
-        })?
-        .with_other_transport(move |key| {
-            libp2p::quic::tokio::Transport::new(libp2p::quic::Config::new(key)).map(
-                move |(peer, mux), point| {
-                    (
-                        peer,
-                        quic_observed.observe(peer, &point, mux, connections::Transport::Quic),
-                    )
-                },
-            )
-        })?
-        .with_dns()?
+        .with_other_transport(move |_| ws)?
+        .with_other_transport(move |_| native)?
         .with_behaviour(move |_| behaviour)?
         .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(120)))
         .build();

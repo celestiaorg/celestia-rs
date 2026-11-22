@@ -19,6 +19,7 @@ use std::{
 #[derive(Clone, Copy)]
 pub(super) enum Transport {
     Tcp,
+    WebSocket,
     Quic,
 }
 
@@ -26,6 +27,7 @@ impl Transport {
     fn info(self) -> Value {
         let (transport, security, muxer) = match self {
             Self::Tcp => ("tcp", "/noise", "/yamux/1.0.0"),
+            Self::WebSocket => ("websocket", "/noise", "/yamux/1.0.0"),
             Self::Quic => ("quic-v1", "", ""),
         };
         json!({"Transport":transport,"Security":security,"StreamMultiplexer":muxer,"UsedEarlyMuxerNegotiation":false})
@@ -105,7 +107,7 @@ impl Connections {
             snapshot.connection(
                 conn.peer,
                 !conn.inbound,
-                matches!(conn.transport, Transport::Tcp),
+                !matches!(conn.transport, Transport::Quic),
             );
             for stream in conn.live_streams() {
                 snapshot.stream(conn.peer, &stream);

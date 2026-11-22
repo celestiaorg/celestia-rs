@@ -128,7 +128,7 @@ target/release/celestia-rs start --network local --home "$DA_HOME" \
   --bridge-rpc-listen 127.0.0.1:32658 --bridge-p2p-listen 127.0.0.1:32121
 ```
 
-To accept QUIC v1 peers on that host, also pass `--bridge-p2p-listen /ip4/127.0.0.1/udp/32121/quic-v1`. Expose the selected UDP port to the peers that should reach it.
+To accept QUIC v1 peers on that host, also pass `--bridge-p2p-listen /ip4/127.0.0.1/udp/32121/quic-v1`. Expose the selected UDP port to the peers that should reach it. For WebSocket peers, supply a separate TCP listener ending in `/ws` or `/tls/ws`. For TLS, set `CELESTIA_TLS_PATH` to a directory containing the PEM certificate chain in `cert.pem` and its private key in `key.pem`.
 
 Set `DA_HOME` to a fresh directory before starting the canary. The Rust
 node creates its own DA identity. In a second shell, mint a read token

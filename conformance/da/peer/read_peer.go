@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"time"
@@ -28,6 +30,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
 	multistream "github.com/multiformats/go-multistream"
 	"golang.org/x/sync/errgroup"
@@ -329,7 +332,21 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	if _, err := reader.P2P.Peers(ctx); err == nil {
 		panic("read token accessed peer management")
 	}
-	extra, err := libp2p.New(libp2p.ListenAddrStrings(dialAddress))
+	var extraOptions []libp2p.Option
+	if active[0].Info.Transport == "websocket" {
+		dialAddress += "/ws"
+		_, tlsAddress := server.Addrs[0].ValueForProtocol(ma.P_TLS)
+		_, wssAddress := server.Addrs[0].ValueForProtocol(ma.P_WSS)
+		if tlsAddress == nil || wssAddress == nil {
+			dir := os.Getenv("CELESTIA_TLS_PATH")
+			pair, err := tls.LoadX509KeyPair(filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem"))
+			check(err)
+			extraOptions = append(extraOptions, libp2p.Transport(websocket.New, websocket.WithTLSConfig(&tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12})))
+			dialAddress = "/ip4/127.0.0.1/tcp/0/tls/ws"
+		}
+	}
+	extraOptions = append(extraOptions, libp2p.ListenAddrStrings(dialAddress))
+	extra, err := libp2p.New(extraOptions...)
 	check(err)
 	defer extra.Close()
 	address := peer.AddrInfo{ID: extra.ID(), Addrs: extra.Addrs()}
