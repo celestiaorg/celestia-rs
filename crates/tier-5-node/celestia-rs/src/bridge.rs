@@ -1,6 +1,7 @@
 //! Opt-in DA RPC backed by the consensus node's committed block and state stores.
 
 pub(crate) mod auth;
+mod envelope;
 mod header_rpc;
 pub(crate) mod index;
 mod share_rpc;
@@ -322,24 +323,29 @@ impl Bridge {
 
 impl Committed {
     fn header_json(&self) -> J {
-        let roots =
-            |rs: &[[u8; square::DAH_ROOT_SIZE]]| J::Arr(rs.iter().map(|r| J::b64(r)).collect());
-        J::obj([
-            ("header", rpc::encode::header(&self.header)),
-            ("commit", rpc::encode::commit(&self.commit)),
-            (
-                "validator_set",
-                rpc::encode::validator_set(&self.validators),
-            ),
-            (
-                "dah",
-                J::obj([
-                    ("row_roots", roots(&self.dah.row_roots)),
-                    ("column_roots", roots(&self.dah.column_roots)),
-                ]),
-            ),
-        ])
+        header_json(&self.header, &self.commit, &self.validators, &self.dah)
     }
+}
+
+fn header_json(
+    header: &ctypes::Header,
+    commit: &ctypes::Commit,
+    validators: &ctypes::ValidatorSet,
+    dah: &square::DataAvailabilityHeader,
+) -> J {
+    let roots = |rs: &[[u8; square::DAH_ROOT_SIZE]]| J::Arr(rs.iter().map(|r| J::b64(r)).collect());
+    J::obj([
+        ("header", rpc::encode::header(header)),
+        ("commit", rpc::encode::commit(commit)),
+        ("validator_set", rpc::encode::validator_set(validators)),
+        (
+            "dah",
+            J::obj([
+                ("row_roots", roots(&dah.row_roots)),
+                ("column_roots", roots(&dah.column_roots)),
+            ]),
+        ),
+    ])
 }
 
 /// Walk Q0 in block order, retaining the EDS index used by the Go blob API.
@@ -505,25 +511,18 @@ async fn dispatch(
     };
     let mut id = J::Null;
     let result = async {
-        let req: Value =
-            serde_json::from_slice(body).map_err(|_| (-32700, "parse error".to_owned()))?;
+        let req = envelope::Request::parse(body)?;
         let invalid = || (-32600, "invalid request".to_owned());
-        if req["jsonrpc"] != "2.0" {
-            return Err(invalid());
-        }
-        let request_id = req.get("id").ok_or_else(invalid)?;
-        if !(request_id.is_string() || request_id.is_number() || request_id.is_null()) {
-            return Err(invalid());
-        }
+        let request_id = req.id.as_ref().ok_or_else(invalid)?;
         id = J::Raw(request_id.to_string());
-        let method = req["method"].as_str().ok_or_else(invalid)?;
+        let method = req.method.as_str().ok_or_else(invalid)?;
         let empty = Value::Array(Vec::new());
         if matches!(
             method,
             "node.AuthNew" | "node.AuthNewWithExpiry" | "node.AuthVerify" | "node.AuthRevoke"
         ) {
             require(method, "admin")?;
-            let args = req["params"].as_array().ok_or_else(invalid)?;
+            let args = req.params.as_array().ok_or_else(invalid)?;
             return auth
                 .admin(method, args)
                 .map(|value| J::Raw(value.to_string()))
@@ -553,14 +552,22 @@ async fn dispatch(
         }
         if header_rpc::handles(method) {
             require(method, "read")?;
-            let params = req.get("params").filter(|v| !v.is_null()).unwrap_or(&empty);
+            let params = if req.params.is_null() {
+                &empty
+            } else {
+                &req.params
+            };
             return header_rpc::handle(bridge, method, params)
                 .await
                 .map_err(|e| (1, e.to_string()));
         }
         let query = Query::parse(
             method,
-            req.get("params").filter(|v| !v.is_null()).unwrap_or(&empty),
+            if req.params.is_null() {
+                &empty
+            } else {
+                &req.params
+            },
         )
         .map_err(|(code, msg)| (code, msg.to_owned()))?;
         require(method, "read")?;

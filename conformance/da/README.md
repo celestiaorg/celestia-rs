@@ -73,6 +73,13 @@ index in pruning mode permits removal of expired data. A pruned index needs a
 fresh resync to become archival.
 An index first opened on a pruned consensus store starts at its retained base.
 
+With the DA peer enabled, `--bridge-p2p-listen` selects the TCP interface and
+port. Mainnet and Mocha 5 use the bootstrap addresses from the pinned Go DA
+releases. Private networks have an empty default bootstrap list. Repeat
+`--bridge-bootstrap <multiaddress>/p2p/<peer-id>` to supply an explicit list.
+For a node behind NAT, repeat `--bridge-announce <multiaddress>` with its
+reachable TCP addresses. The DA RPC listener is configured independently.
+
 ## Standalone Rust DA light mode
 
 Build the same executable with `--features da-light`. Get a recent header hash
@@ -91,3 +98,10 @@ coordinates before sampling and advances the head after every proof passes.
 Rerunning the command with the original trust inputs resumes from its last
 sampled height. A header outside the seven-day trusting period requires a
 fresh checkpoint and light home. Use `--until HEIGHT` for a bounded run.
+
+Add `--rpc-listen 127.0.0.1:26658` to `da-light` to read the sampled head,
+tail, or headers by height and hash over HTTP JSON-RPC. Create a read token
+with `celestia-rs da-auth read --home "$LIGHT_HOME"`. The light store indexes
+a header after verifying its selected shares, and retains headers for the Go
+storage window of seven days plus one hour, measured from the sampled head.
+A home created by an earlier light build starts its history at its saved head.

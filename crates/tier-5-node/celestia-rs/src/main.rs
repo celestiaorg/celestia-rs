@@ -182,6 +182,14 @@ struct StartArgs {
     #[cfg(feature = "bridge-p2p")]
     #[arg(long)]
     bridge_p2p_listen: Option<std::net::SocketAddr>,
+    /// Bootstrap DA peers. Repeat to replace the network's published bootstrap list.
+    #[cfg(feature = "bridge-p2p")]
+    #[arg(long, requires = "bridge_p2p_listen")]
+    bridge_bootstrap: Vec<libp2p::Multiaddr>,
+    /// Reachable DA addresses to advertise (for example, a NAT-mapped TCP port).
+    #[cfg(feature = "bridge-p2p")]
+    #[arg(long, requires = "bridge_p2p_listen")]
+    bridge_announce: Vec<libp2p::Multiaddr>,
     /// Serve experimental DA JSON-RPC on this loopback address.
     #[cfg(feature = "bridge")]
     #[arg(long)]
@@ -1308,6 +1316,8 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
     #[cfg(feature = "bridge-p2p")]
     {
         opts.bridge_p2p_listen = a.bridge_p2p_listen;
+        opts.bridge_bootstrap.clone_from(&a.bridge_bootstrap);
+        opts.bridge_announce.clone_from(&a.bridge_announce);
     }
     opts.mempool = config::mempool_options(&files)?;
     opts.block_sync = !a.no_block_sync;
