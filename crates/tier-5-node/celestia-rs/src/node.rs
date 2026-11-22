@@ -149,6 +149,12 @@ pub struct StartOptions {
     /// Experimental libp2p bridge listener.
     #[cfg(feature = "bridge-p2p")]
     pub bridge_p2p_listen: Option<std::net::SocketAddr>,
+    /// Operator bootstrap overrides for the opt-in DA network.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_bootstrap: Vec<libp2p::Multiaddr>,
+    /// DA addresses reachable behind an operator's NAT.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_announce: Vec<libp2p::Multiaddr>,
     /// Explicit listener for the experimental read-only DA bridge.
     #[cfg(feature = "bridge")]
     pub bridge_rpc_listen: Option<std::net::SocketAddr>,
@@ -197,6 +203,10 @@ impl StartOptions {
             bridge_signer: None,
             #[cfg(feature = "bridge-p2p")]
             bridge_p2p_listen: None,
+            #[cfg(feature = "bridge-p2p")]
+            bridge_bootstrap: Vec::new(),
+            #[cfg(feature = "bridge-p2p")]
+            bridge_announce: Vec::new(),
             config,
             mempool: mempool::MempoolConfig::celestia_app(),
             p2p: None,
@@ -432,6 +442,21 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         app_version: state.consensus_params.version.app,
     })?;
     exec.set_event_sink(rpc.publisher.clone());
+    #[cfg(feature = "bridge-p2p")]
+    let bridge_peer = opts
+        .bridge_p2p_listen
+        .map(|addr| {
+            crate::bridge::peer::start(
+                addr,
+                home,
+                &genesis.chain_id,
+                bs.clone(),
+                ss.clone(),
+                &opts.bridge_bootstrap,
+                opts.bridge_announce.clone(),
+            )
+        })
+        .transpose()?;
     #[cfg(feature = "bridge")]
     let _bridge = opts
         .bridge_rpc_listen
@@ -455,15 +480,10 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                 bs.clone(),
                 ss.clone(),
                 app::AbciApp::from_shared(app.clone()),
+                #[cfg(feature = "bridge-p2p")]
+                bridge_peer.as_ref().map(|(_, control)| control.clone()),
                 wallet,
             )
-        })
-        .transpose()?;
-    #[cfg(feature = "bridge-p2p")]
-    let _bridge_peer = opts
-        .bridge_p2p_listen
-        .map(|addr| {
-            crate::bridge::peer::start(addr, home, &genesis.chain_id, bs.clone(), ss.clone())
         })
         .transpose()?;
     rpc.spawn()?;

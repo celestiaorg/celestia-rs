@@ -16,8 +16,13 @@ if [[ "${3:-}" == --peer || "${3:-}" == --stock-light ]]; then
     peer_args=(--bridge-p2p-listen 127.0.0.1:32121)
 fi
 pid=
+bootstrap_pid=
 light_pid=
 cleanup() {
+    if [[ -n "$bootstrap_pid" ]]; then
+        kill "$bootstrap_pid" 2>/dev/null || true
+        wait "$bootstrap_pid" || true
+    fi
     if [[ -n "$light_pid" ]]; then
         kill "$light_pid" 2>/dev/null || true
         wait "$light_pid" || true
@@ -30,6 +35,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if (( ${#peer_args[@]} )); then
+    (cd "$go_tree" && go build -o "$work/bootstrap-probe" "$(dirname "$probe")/bootstrap/check.go")
+    "$work/bootstrap-probe" "$work/bootstrap.addr" celestia-rs-local &
+    bootstrap_pid=$!
+    for attempt in {1..30}; do
+        if [[ -s "$work/bootstrap.addr" ]]; then break; fi
+        kill -0 "$bootstrap_pid"
+        sleep 1
+    done
+    peer_args+=(--bridge-bootstrap "$(cat "$work/bootstrap.addr")")
+fi
 DA_TEST_READ_TOKEN=$("$binary" da-auth read --home "$work/node")
 export DA_TEST_READ_TOKEN
 # Keep the fresh validator keys and the startup log inside the temporary home.
@@ -51,6 +67,11 @@ for attempt in {1..120}; do
     sleep 1
 done
 
+if [[ -n "$bootstrap_pid" ]]; then
+    wait "$bootstrap_pid"
+    bootstrap_pid=
+fi
+
 namespace=726f6c6c7570
 # Span four ODS rows to exercise the per-row commitment and inclusion proofs.
 data=$(python3 -c 'print("c0ffee" * 4000)')
@@ -70,13 +91,13 @@ unset DA_TEST_WRITE_TOKEN
 DA_TEST_ADMIN_TOKEN=$("$binary" da-auth admin --home "$work/node")
 export DA_TEST_ADMIN_TOKEN
 (cd "$go_tree" && go run "$(dirname "$probe")/auth/check.go" http://127.0.0.1:32658)
-unset DA_TEST_ADMIN_TOKEN
 if (( ${#peer_args[@]} )); then
     peer_id=$(sed -n 's/.*DA peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/node.log" | head -1)
     [[ -n "$peer_id" ]] || { echo 'missing DA peer identity' >&2; exit 1; }
     peer_probe=$(dirname "$probe")/peer/read_peer.go
-    (cd "$go_tree" && go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data")
+    (cd "$go_tree" && DA_TEST_ADMIN_URL=http://127.0.0.1:32658 go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data")
 fi
+unset DA_TEST_ADMIN_TOKEN
 if [[ "${3:-}" == --stock-light ]]; then
     (cd "$go_tree" && go build -o "$work/go-da" ./cmd/celestia)
     genesis=$(curl -fsS 'http://127.0.0.1:26657/block?height=1' | jq -er '.result.block_id.hash')
