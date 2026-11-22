@@ -31,6 +31,17 @@ func verify() error {
 		return err
 	}
 	defer c.Close()
+	// The consensus status can expose the final height just before the DA
+	// store publishes its header. Keep the same deadline and verify each height.
+	started := time.Now()
+	published, err := c.Header.WaitForHeight(ctx, end)
+	if err != nil {
+		return fmt.Errorf("wait for DA publication at %d: %w", end, err)
+	}
+	if published.Height() != end {
+		return fmt.Errorf("wait for %d returned %d", end, published.Height())
+	}
+	fmt.Printf("DA publication confirmed through %d after %v\n", end, time.Since(started))
 	var previous *header.ExtendedHeader
 	for n := start; n <= end; n++ {
 		h, err := c.Header.GetByHeight(ctx, n)
