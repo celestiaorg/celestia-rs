@@ -34,14 +34,20 @@ elif [[ ${2:-} == --rust-node ]]; then
     client=$(realpath "$(dirname "$0")/node_download.go")
     (cd "$node" && go build -o "$DA_FIBRE_GO_CLIENT" "$client")
 fi
+control_source=$(realpath "$(dirname "$0")/paid_control_test.go")
+export DA_FIBRE_NODE_REVISION="$revision"
+if [[ -n ${DA_FIBRE_CONTROL:-} ]]; then
+    DA_FIBRE_CONTROL=$(realpath -m "$DA_FIBRE_CONTROL")
+    export DA_FIBRE_CONTROL
+fi
 cd "$node/nodebuilder/tests/tastora"
 # Both node tags' suite supplies the older memory-store factory signature.
 # Adapt only that test callback to v11's context argument through a Go overlay.
-python3 - "$PWD/fibre/fibre_e2e_test.go" "$work" <<'PY'
+python3 - "$PWD/fibre/fibre_e2e_test.go" "$work" "$control_source" <<'PY'
 import json
 import sys
 from pathlib import Path
-source, work = map(Path, sys.argv[1:])
+source, work, control = map(Path, sys.argv[1:])
 fixture = source.read_text()
 signature = "serverCfg.StoreFn = func(sc appfibre.StoreConfig)"
 if fixture.count(signature) != 1:
@@ -62,8 +68,16 @@ fixture = fixture.replace(needle, needle + """
     t.Log("Rust Fibre client returned identical 32768 Go-uploaded bytes")
     }
 """)
+for before, after in [
+    ("suite.Suite", "suite.Suite\n controlStore *appfibre.Store"),
+    ("return appfibre.NewMemoryStore(sc), nil", "s.controlStore = appfibre.NewMemoryStore(sc)\n return s.controlStore, nil"),
+    ("require.NotEmpty(t, resp.TxHash)", "require.NotEmpty(t, resp.TxHash)\n s.recordPaidControl(t, data, promise, resp)"),
+]:
+    if fixture.count(before) != 1:
+        raise SystemExit("unexpected pinned Fibre receipt fixture")
+    fixture = fixture.replace(before, after)
 overlay.write_text(fixture.replace(signature, "serverCfg.StoreFn = func(_ context.Context, sc appfibre.StoreConfig)"))
-(work / "overlay.json").write_text(json.dumps({"Replace": {str(source): str(overlay)}}))
+(work / "overlay.json").write_text(json.dumps({"Replace": {str(source): str(overlay), str(source.with_name("paid_control_test.go")): str(control)}}))
 PY
 if ! go test -p 2 -tags fibre_e2e -overlay "$work/overlay.json" -timeout 12m -count=1 -v -run '^TestFibreE2ESuite$' ./fibre >"$work/control.log" 2>&1; then
     # Keep ephemeral node keys and transaction payloads in the temporary directory.

@@ -202,6 +202,9 @@ and pass `--keyring.keyname NAME` with the configured core endpoint.
 `--keyring.backend` selects its backend. The light node uses the same sampled
 bank proofs for the selected account and for address-specific reads.
 
+The private Go provider workflow publishes a JSON control for each release pin.
+Set `DA_FIBRE_CONTROL` to an output file when running `fibre/test-go-provider.sh` to capture one locally. Each control includes the original payload, versioned blob ID, one provider row and its Merkle siblings, the RLC vector, the signed payment promise, and the validator set at the payment height. It also includes the signed transaction whose SHA-256 matches the receipt at the committed height. Binary values use base64 except the blob ID and transaction hash, which use hex.
+
 To exercise light Fibre settlement, run `conformance/da/fibre/test-bridge-download.sh /path/to/celestia-rs /path/to/pinned-celestia-node --light` with a `da-fibre` build. The fixture funds a fresh light key, registers a Go storage provider on a local Rust consensus chain, and checks the synchronous receipt, asynchronous settlement, returned bytes and escrow debits through the released Go client.
 
 The private light test also creates a second Go validator and funds a separate light wallet. Its released clients exercise delegation, unbonding and cancellation, redelegation, reward withdrawal, fee grants, escrow deposits and pending withdrawals. The light node uses native Cosmos gRPC module queries against the selected core for these reads. Account balances continue to use proofs checked against a locally sampled header.
