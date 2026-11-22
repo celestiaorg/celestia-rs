@@ -58,6 +58,21 @@ The Go peer exchanges a signed header, reconstructs the EDS, verifies a
 range, verifies half rows and samples in all four quadrants, and retrieves
 the submitted bytes with a namespace inclusion proof.
 
+Run `go run /absolute/path/to/conformance/da/historical/roots.go` from the pinned
+celestia-app v11.0.0 checkout to regenerate the historical data roots used by
+`go_historical_bridge_controls`. The signed blobs span the first-share capacity
+boundary where the square builders used in app versions 5 and 6 diverge.
+
+An enabled bridge listener opens a verified DA index in `data/da-bridge`. The
+index follows committed consensus heights in order, verifies the block's own
+commit, validator set and data root, and atomically saves its extended header,
+original square and cursor. `header.LocalHead` reports the indexed height.
+Use `--bridge-archival` on a fresh DA index to retain every indexed square.
+The default retention window is seven days plus one hour. Restarting an archival
+index in pruning mode permits removal of expired data. A pruned index needs a
+fresh resync to become archival.
+An index first opened on a pruned consensus store starts at its retained base.
+
 With the DA peer enabled, `--bridge-p2p-listen` selects the TCP interface and
 port. Mainnet and Mocha 5 use the bootstrap addresses from the pinned Go DA
 releases. Private networks have an empty default bootstrap list. Repeat
@@ -65,11 +80,30 @@ releases. Private networks have an empty default bootstrap list. Repeat
 For a node behind NAT, repeat `--bridge-announce <multiaddress>` with its
 reachable TCP addresses. The DA RPC listener is configured independently.
 
+The opt-in P2P bridge publishes signed non-empty EDS announcements on the release's FloodSub topic `<chain>/eds-sub/v0.2.0`. This stream runs independently of header GossipSub. The peer fixture subscribes with the released Go SHREX library before paying for its blob, checks the publisher identity, then fetches the signed header to verify the announced height and data hash. The Rust publisher signs locally verified commitments once their headers are readable. A separate pair of Go hosts verifies relay through Rust, including the original author signature. The relay validates signatures, network topic and notification shape, deduplicates messages, and preserves the original publisher.
+
+### Released RPC surface
+
+The Mainnet and Mocha-5 matrix regenerates `inventory/release.tsv` from each pinned Go checkout. Each row records the client method, required permission, call or subscription, ordered OpenRPC parameter names and Go function signature. Run `go run /path/to/conformance/da/inventory/reference.go -openrpc` in that checkout to export the full upstream document with JSON schemas and examples. The inventory describes the Go API. Passing mixed-node probes establish Rust behavior for the individual roles.
+
 ## Standalone Rust DA light mode
 
-Build the same executable with `--features da-light`. Get a recent header hash
-from a trusted source and a TCP multiaddress with the DA peer ID of a bridge
-on that chain. Use a fresh light home:
+Build the same executable with `--features da-light`. A fresh
+`da-light --network celestia` or `da-light --network mocha-5` requests signed
+heads concurrently from the release's trusted bootstrap peers. The node uses
+the go-header v0.8.10 agreement threshold and falls back to the highest valid
+trusted response if the peers do not reach agreement. Both modes persist the
+initial trust anchor across restarts.
+
+The light node also queries the network-scoped Kademlia DHT for providers
+advertising the Go `/full/v0.1.0` topic. It dials up to 16 discovered peers
+for header exchange and SHREX. Only configured trusted peers participate in
+initial checkpoint selection. Every fetched header and sample is verified
+against the stored trust chain before it advances the light head.
+
+To use an external checkpoint and an explicit peer on a private chain, run
+the following command with a fresh light home. Repeat `--peer` for additional
+trusted peers.
 
 ```sh
 celestia-rs da-light --home ./light-home --network "$CHAIN_ID" \
@@ -81,8 +115,11 @@ samples up to 16 unique random cells per height. It accepts row and column
 proofs, including parity cells. Its separate light database records the
 coordinates before sampling and advances the head after every proof passes.
 Rerunning the command with the original trust inputs resumes from its last
-sampled height. A header outside the seven-day trusting period requires a
-fresh checkpoint and light home. Use `--until HEIGHT` for a bounded run.
+sampled height. If that head has expired, the node waits for a fresh signed
+head from its configured trusted peers. It authenticates parents by hash,
+resumes sampling at the earliest reachable height inside the seven-day
+window, and publishes the new head after its shares verify. A gap beyond
+that window moves the retained tail forward. Use `--until HEIGHT` for a bounded run.
 
 Add `--rpc-listen 127.0.0.1:26658` to `da-light` to read the sampled head,
 tail, or headers by height and hash over HTTP JSON-RPC. Create a read token
@@ -90,3 +127,108 @@ with `celestia-rs da-auth read --home "$LIGHT_HOME"`. The light store indexes
 a header after verifying its selected shares, and retains headers for the Go
 storage window of seven days plus one hour, measured from the sampled head.
 A home created by an earlier light build starts its history at its saved head.
+
+The same light RPC listener supports authenticated Go WebSocket clients.
+Header subscriptions advance as the node verifies and samples each height.
+Historical blob subscriptions start at a retained sampled header and verify
+the square from a DA provider before delivering the namespace's blobs.
+The private fixture replays its paid blob, cancels the subscription and
+checks the next two live headers through the released Go client.
+
+The light peer serves retained sampled headers through the chain's
+go-header exchange. To accept a new incoming TCP connection, supply a
+listen multiaddress such as `--p2p-listen /ip4/127.0.0.1/tcp/39621`.
+The private fixture disconnects the Go bridge, connects a fresh Go
+exchange client directly to the Rust light peer and verifies the paid
+checkpoint by height and hash, its next two signed headers and the head.
+
+For proof-verified light balance reads, supply the Go core gRPC endpoint with
+`--core.ip HOST` and optionally `--core.port PORT` (default 9090).
+Use `--core.tls` to verify the server with the system trust store. A protected
+TLS endpoint can receive its X-Token from `--core.xtoken.path DIRECTORY`.
+A read token permits `state.BalanceForAddress` to query the utia balance
+at the height preceding the sampled head. The node checks the bank proof and
+multistore proof against that head's app hash before returning the amount.
+The private fixture checks a funded account, a proven absent account and
+rejection of a changed core response over an authenticated TLS connection.
+
+Build the same executable with `--features da-fibre` to expose
+`fibre.Download` on the authenticated light RPC listener. Configure a
+Fibre-capable core with the light role's `--core.ip` flags. The client uses
+the configured core for validator and provider discovery, verifies the
+provider's rows, and reconstructs the blob for the requested commitment.
+The provider must retain the blob. The request accepts the Go JSON encoding
+of a blob ID and returns the recovered bytes in the Go result's `data` field.
+
+To exercise the complete read path privately, pass the pinned celestia-node
+checkout, `--rust-node`, and the absolute path of the feature-enabled executable
+to `conformance/da/fibre/test-go-provider.sh`. Its Go node service uploads
+random bytes to a registered local FSP. A released Go RPC client reads them
+from the Rust light listener and checks missing and malformed commitments.
+
+In bridge mode the same Fibre client discovers providers through the node's
+own application gRPC listener. Build with `--features da-fibre`, enable app
+gRPC and supply `--bridge-rpc-listen` at startup. The bridge admits one Fibre
+download at a time. Run `conformance/da/fibre/test-bridge-download.sh` with
+the binary and pinned Go checkout to start a private Rust chain, register a
+Go FSP, deposit escrow, upload through the Go service and read the same bytes
+through the Rust bridge.
+
+Run `conformance/da/fibre/test-go-provider.sh /path/to/pinned/celestia-node`
+to exercise the reference Fibre provider on loopback. The release suite
+starts a private Go validator, registers the FSP on chain and uses the
+node-side Fibre service to deposit escrow, submit and retrieve blobs, and
+withdraw. The harness adapts the release test's in-memory store factory
+to the v11 context argument using a Go test overlay.
+
+With a configured `--bridge-signer` and a write token, the bridge also accepts
+`fibre.Upload` and `fibre.Submit`. Both encode the supplied bytes, distribute
+rows to the providers and return the signed payment promise and provider
+signatures. Upload starts settlement in the background. Submit waits for a
+successful commitment and includes its height and transaction hash. The wallet
+holds the account sequence until settlement completes. The fixture uses the
+Go service to recover each Rust upload and checks the exact escrow debit.
+
+With a selected light key, a core endpoint and a write token, the light wallet
+signs transactions locally. The core supplies account sequence and fee
+estimates, broadcasts the signed bytes and reports inclusion. The node checks
+the transaction hash and execution code before returning a receipt. The
+private Go fixture funds a separate light key, uses both estimated and
+explicit fees, and reads the committed balance and paid blobs through the
+same light listener after sampling catches up.
+To expose a selected light account through `state.AccountAddress` and
+`state.Balance`, create the account in the light home with `celestia-rs keys`
+and pass `--keyring.keyname NAME` with the configured core endpoint.
+`--keyring.backend` selects its backend. The light node uses the same sampled
+bank proofs for the selected account and for address-specific reads.
+
+The private Go provider workflow publishes a JSON control for each release pin.
+Set `DA_FIBRE_CONTROL` to an output file when running `fibre/test-go-provider.sh` to capture one locally. Each control includes the original payload, versioned blob ID, one provider row and its Merkle siblings, the RLC vector, the signed payment promise, and the validator set at the payment height. It also includes the signed transaction whose SHA-256 matches the receipt at the committed height. Binary values use base64 except the blob ID and transaction hash, which use hex.
+
+To exercise light Fibre settlement, run `conformance/da/fibre/test-bridge-download.sh /path/to/celestia-rs /path/to/pinned-celestia-node --light` with a `da-fibre` build. The fixture funds a fresh light key, registers a Go storage provider on a local Rust consensus chain, and checks the synchronous receipt, asynchronous settlement, returned bytes and escrow debits through the released Go client.
+
+The private light test also creates a second Go validator and funds a separate light wallet. Its released clients exercise delegation, unbonding and cancellation, redelegation, reward withdrawal, fee grants, escrow deposits and pending withdrawals. The light node uses native Cosmos gRPC module queries against the selected core for these reads. Account balances continue to use proofs checked against a locally sampled header.
+
+## Validator load qualification
+
+On Linux, run `conformance/da/test-read-bridge.sh BINARY GO_NODE --validator-load`
+to compare a private Rust validator's idle and serving intervals on the same
+home. Set `DA_VALIDATOR_SECONDS` to choose the duration of each interval
+(default 30 seconds). During the serving interval two independent clients
+continuously recover the same paid blob and verify its proofs over RPC and
+SHREX. A pinned Go client verifies every validator signature and adjacent
+header across each interval. The command prints height ranges, proof suite
+counts, CPU seconds and the longest observed interval between commits. The
+DA interoperability workflow accepts `validator_seconds` for both release pins.
+
+### Private non-validating bridge qualification
+
+Run `conformance/da/light/test-go-bridge.sh RUST_BINARY GO_APP_TREE GO_NODE_TREE` on an isolated host using a Rust build with `--no-default-features --features da-light`. The fixture checks the Go revisions before startup. A fresh Rust consensus peer receives the Go genesis, syncs from the sole validator, and serves paid data over authenticated RPC and SHREX with zero voting power.
+
+On Linux the fixture also prints a JSON receipt for concurrent verified reads of the same paid data through both bridges. It records consensus height before and after the workload, completed read suites per bridge, maximum sampled lag, process CPU time during the workload, process lifetime peak RSS, and final allocated home sizes. Go runs a validator and a separate bridge process. Rust runs a non-validating consensus peer and its bridge in one process. These short private runs exercise progress under reads. Hardware, build profiles and process roles affect the resource figures.
+
+Set `DA_QUALIFICATION_SECONDS` to extend the paired read workload beyond the ten-second smoke test. Its receipt includes the longest observed interval between changes in the validator's committed height. The fixture then closes the observer's sole consensus connection while both nodes run, waits for the validator to advance at least three blocks, restores the connection, checks the recovered block hash, and repeats the paid SHREX read from the same Rust peer.
+
+Pass `--provider-loss` to the bridge Fibre fixture to stop the minority provider before the first download. The fixture derives each validator's shard assignment at the payment height and checks that the surviving provider holds an incomplete set of original rows. Both the released Go client and the Rust bridge must reconstruct the paid blob, then settle another upload while the minority provider is offline.
+
+Run `conformance/da/light/test-go-bridge.sh /path/to/celestia-rs /path/to/pinned-celestia-app /path/to/pinned-celestia-node --sampling-recovery-only` to check a light node's durable sampling schedule. A private peer first withholds the requested cell and then returns a genuine proof for another coordinate. After restart the node must request the original cell again and authenticate every sampled share before advancing its checkpoint.

@@ -194,10 +194,14 @@ struct StartArgs {
     #[cfg(feature = "bridge")]
     #[arg(long)]
     bridge_rpc_listen: Option<std::net::SocketAddr>,
-    /// Allow write-authorized DA clients to submit blobs with this keyring account.
+    /// Retain all indexed DA headers and original data squares when a bridge listener is enabled.
+    #[cfg(feature = "bridge")]
+    #[arg(long)]
+    bridge_archival: bool,
+    /// Authorize a DA signing account. Repeat for additional accounts; the first is the default.
     #[cfg(feature = "bridge")]
     #[arg(long, requires = "bridge_rpc_listen")]
-    bridge_signer: Option<String>,
+    bridge_signer: Vec<String>,
     /// Built-in network (mainnet, mocha, arabica, local): initializes the
     /// home on first start and checks the genesis.
     #[arg(long, env = "CELESTIA_RS_NETWORK")]
@@ -913,6 +917,20 @@ fn main() -> anyhow::Result<()> {
             .map(|f| f.string(File::Config, "log_format"))
             .unwrap_or_default()
     });
+    #[cfg(feature = "bridge")]
+    let da_rpc = match &cli.command {
+        Cmd::Start(args) => args.bridge_rpc_listen.is_some(),
+        #[cfg(feature = "da-light")]
+        Cmd::DaLight(_) => true,
+        _ => false,
+    };
+    #[cfg(feature = "bridge")]
+    if da_rpc {
+        ops::da_logging::init(&level, &format)?;
+    } else {
+        ops::init_logging(&level, &format);
+    }
+    #[cfg(not(feature = "bridge"))]
     ops::init_logging(&level, &format);
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -980,7 +998,7 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
             Ok(())
         }
         #[cfg(feature = "da-light")]
-        Cmd::DaLight(args) => celestia_rs::run_light(&home, args).await,
+        Cmd::DaLight(args) => Box::pin(celestia_rs::run_light(&home, args)).await,
         #[cfg(feature = "bridge")]
         Cmd::DaAuth { level, ttl_seconds } => {
             util::out(celestia_rs::operator_token(&home, &level, ttl_seconds)?);
@@ -1306,7 +1324,10 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
     #[cfg(feature = "bridge")]
     {
         opts.bridge_rpc_listen = a.bridge_rpc_listen;
-        opts.bridge_signer.clone_from(&a.bridge_signer);
+        opts.bridge_archival = a.bridge_archival;
+        let mut signers = a.bridge_signer.iter().cloned();
+        opts.bridge_signer = signers.next();
+        opts.bridge_additional_signers = signers.collect();
     }
     #[cfg(feature = "bridge-p2p")]
     {

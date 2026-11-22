@@ -26,7 +26,16 @@ func main() {
 	c, err := client.NewClient(ctx, os.Args[1], os.Getenv("DA_TEST_READ_TOKEN"))
 	check(err)
 	defer c.Close()
-	check(verifyHeaderAPI(ctx, c))
+	if len(os.Args) == 5 && os.Args[2] == "blobstream" {
+		start, err := strconv.ParseUint(os.Args[3], 10, 64)
+		check(err)
+		end, err := strconv.ParseUint(os.Args[4], 10, 64)
+		check(err)
+		check(verifyBlobstream(ctx, c, start, end))
+		fmt.Printf("Go verified Blobstream roots and every tuple proof for [%d,%d) offline\n", start, end)
+		return
+	}
+	check(verifyHeaderAPI(ctx, c, len(os.Args) == 6 && os.Args[5] == "light"))
 	height, err := strconv.ParseUint(os.Args[2], 10, 64)
 	check(err)
 	n, err := hex.DecodeString(os.Args[3])
@@ -48,6 +57,19 @@ func main() {
 		panic(ctx.Err())
 	}
 	stop()
+	liveCtx, cancelLive := context.WithCancel(ctx)
+	defer cancelLive()
+	nextBlobs, err := c.Blob.Subscribe(liveCtx, ns)
+	check(err)
+	select {
+	case event := <-nextBlobs:
+		if event == nil || event.Header == nil || event.Height <= height || uint64(event.Header.Height) != event.Height {
+			panic("invalid live blob event")
+		}
+	case <-ctx.Done():
+		panic(ctx.Err())
+	}
+	cancelLive()
 	live, err := c.Header.Subscribe(ctx)
 	check(err)
 	for range 2 {
@@ -64,12 +86,12 @@ func main() {
 	fmt.Printf("Go replayed the paid blob at %d, canceled that channel and verified two live headers\n", height)
 }
 
-func verifyHeaderAPI(ctx context.Context, c *client.Client) error {
+func verifyHeaderAPI(ctx context.Context, c *client.Client, light bool) error {
 	state, err := c.Header.SyncState(ctx)
 	if err != nil {
 		return err
 	}
-	if !state.Finished() || state.Height == 0 {
+	if (!light && !state.Finished()) || state.Height == 0 {
 		return fmt.Errorf("unexpected bridge sync state: %v", state)
 	}
 	if err := c.Header.SyncWait(ctx); err != nil {

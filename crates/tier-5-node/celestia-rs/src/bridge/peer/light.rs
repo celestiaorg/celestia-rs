@@ -1,14 +1,21 @@
 //! Authenticated, sequential DA sync and restartable sampling from a trusted checkpoint.
+mod core;
+mod data;
+mod discovery;
+mod exchange;
+mod namespace;
+mod range;
+mod recovery;
+mod row;
 mod rpc;
+mod stats;
+mod wallet;
 
 use super::{HeaderResponse, HeaderWire, Origin, Proof, Request, Sample, identity};
 use anyhow::{Context, Result, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use kvdb::{KvBackend, RedbBackend, RedbOptions, WriteBatch};
-use libp2p::{
-    Multiaddr, PeerId, StreamProtocol, Swarm, SwarmBuilder, multiaddr::Protocol, noise,
-    swarm::SwarmEvent, tcp, yamux,
-};
+use libp2p::{Multiaddr, PeerId, StreamProtocol};
 use prost::Message;
 use rand::seq::index;
 use std::{collections::BTreeMap, io::Write as _, path::Path, time::Duration};
@@ -21,14 +28,35 @@ const DEADLINE: Duration = Duration::from_secs(20);
 #[derive(clap::Args, Debug)]
 pub struct LightArgs {
     /// Consensus chain ID and DA protocol namespace.
-    #[arg(long)]
+    #[arg(long, default_value = "celestia")]
     network: String,
-    /// Bridge multiaddress including its peer ID. Repeat for failover.
-    #[arg(long, required = true)]
-    peer: Vec<Multiaddr>,
-    /// Hex-encoded 32-byte header hash obtained through a trusted channel.
+    /// Trusted bridge multiaddress. Defaults to the selected release network bootstrappers.
     #[arg(long)]
-    trusted_hash: String,
+    peer: Vec<Multiaddr>,
+    /// Pin a trusted 32-byte header hash. A fresh unpinned store starts at the trusted peers’ head.
+    #[arg(long)]
+    trusted_hash: Option<String>,
+    /// Listen for incoming DA peer connections at this TCP multiaddress.
+    #[arg(long)]
+    p2p_listen: Option<Multiaddr>,
+    /// Consensus gRPC hostname or IP for proof-verified state reads.
+    #[arg(long = "core.ip")]
+    core_ip: Option<String>,
+    /// Authorize a DA signing account. Repeat for additional accounts; the first is the default.
+    #[arg(long = "keyring.keyname", requires = "core_ip")]
+    key_name: Vec<String>,
+    /// Keyring backend used to open the selected account.
+    #[arg(long = "keyring.backend", requires = "key_name")]
+    key_backend: Option<String>,
+    /// Consensus gRPC port (default 9090).
+    #[arg(long = "core.port", requires = "core_ip")]
+    core_port: Option<u16>,
+    /// Authenticate the core endpoint with TLS and the platform trust store.
+    #[arg(long = "core.tls", requires = "core_ip")]
+    core_tls: bool,
+    /// Directory containing the Go core authentication token JSON for TLS.
+    #[arg(long = "core.xtoken.path")]
+    core_token_path: Option<std::path::PathBuf>,
     /// Serve authenticated sampled headers on this loopback HTTP socket.
     #[arg(long)]
     rpc_listen: Option<std::net::SocketAddr>,
@@ -37,19 +65,36 @@ pub struct LightArgs {
     until: Option<u64>,
 }
 
+#[derive(Clone)]
 struct Remote {
-    control: libp2p_stream::Control,
     peer: PeerId,
+    streams: Streams,
+}
+
+#[derive(Clone)]
+struct Streams {
+    control: libp2p_stream::Control,
     headers: StreamProtocol,
     samples: StreamProtocol,
+    namespaces: StreamProtocol,
+    rows: StreamProtocol,
+    ranges: StreamProtocol,
+    eds: StreamProtocol,
+}
+
+struct VerifiedSample {
+    share: Vec<u8>,
+    proof: celestia_proto::celestia::core::v1::proof::NmtProof,
+    axis: i32,
 }
 
 impl Remote {
     async fn header(&mut self, origin: Origin) -> Result<Option<Vec<u8>>> {
         tokio::time::timeout(DEADLINE, async {
             let mut stream = self
+                .streams
                 .control
-                .open_stream(self.peer, self.headers.clone())
+                .open_stream(self.peer, self.streams.headers.clone())
                 .await?;
             let req = Request {
                 data: Some(origin),
@@ -74,13 +119,14 @@ impl Remote {
         height: u64,
         dah: &square::DataAvailabilityHeader,
         at: usize,
-    ) -> Result<()> {
+    ) -> Result<VerifiedSample> {
         let width = dah.row_roots.len();
         let (row, col) = (at / width, at % width);
         tokio::time::timeout(DEADLINE, async {
             let mut stream = self
+                .streams
                 .control
-                .open_stream(self.peer, self.samples.clone())
+                .open_stream(self.peer, self.streams.samples.clone())
                 .await?;
             let mut id = height.to_be_bytes().to_vec();
             id.extend_from_slice(&u16::try_from(row)?.to_be_bytes());
@@ -106,15 +152,19 @@ impl Remote {
                 start == idx && end == idx + 1 && leaf_hash.is_empty() && ignore_max,
                 "wrong sample proof range"
             );
-            app::inclusion_proof::verify_sample(
-                dah,
-                row,
-                col,
-                sample.axis == 1,
-                &sample.share.context("missing share")?.data,
-                &nodes,
-            )
-            .map_err(|e| anyhow::anyhow!("{}", e.log))
+            let share = sample.share.context("missing share")?.data;
+            app::inclusion_proof::verify_sample(dah, row, col, sample.axis == 1, &share, &nodes)
+                .map_err(|e| anyhow::anyhow!("{}", e.log))?;
+            Ok(VerifiedSample {
+                share,
+                proof: celestia_proto::celestia::core::v1::proof::NmtProof {
+                    start: start.try_into()?,
+                    end: end.try_into()?,
+                    nodes,
+                    leaf_hash,
+                },
+                axis: sample.axis,
+            })
         })
         .await?
     }
@@ -143,6 +193,7 @@ async fn frame(stream: &mut libp2p::Stream, limit: usize) -> Result<Vec<u8>> {
 }
 
 struct Verified {
+    validators: ctypes::ValidatorSet,
     signed: ctypes::SignedHeader,
     dah: square::DataAvailabilityHeader,
     hash: Vec<u8>,
@@ -151,6 +202,40 @@ struct Verified {
 
 impl Verified {
     fn decode(bytes: &[u8], chain: &str, last: Option<&Self>) -> Result<Self> {
+        let block = Self::decode_signed(bytes, chain)?;
+        let now = light::verifier::now();
+        ensure!(!block.expired(now)?, "header outside trust period");
+        if let Some(last) = last {
+            ensure!(
+                block.header()?.last_block_id.hash == last.hash,
+                "header chain discontinuity"
+            );
+            light::verifier::verify_adjacent(
+                &last.signed,
+                &block.signed,
+                &block.validators,
+                TRUST_NS,
+                now,
+                DRIFT_NS,
+            )?;
+        }
+        Ok(block)
+    }
+
+    fn header(&self) -> Result<&ctypes::Header> {
+        self.signed.header.as_ref().context("missing signed header")
+    }
+
+    fn expired(&self, now: ctypes::Time) -> Result<bool> {
+        Ok(light::verifier::header_expired(
+            self.header()?,
+            TRUST_NS,
+            now,
+        ))
+    }
+
+    // Structural, DAH and commit checks shared by live and hash-pinned historical reads.
+    fn decode_signed(bytes: &[u8], chain: &str) -> Result<Self> {
         let wire = HeaderWire::decode(bytes)?;
         let h = ctypes::Header::from_proto(&wire.header.context("missing header")?)?;
         let commit = ctypes::Commit::from_proto(&wire.commit.context("missing commit")?)?;
@@ -166,8 +251,7 @@ impl Verified {
         let height = u64::try_from(h.height)?;
         let now = light::verifier::now();
         ensure!(
-            !light::verifier::header_expired(&h, TRUST_NS, now)
-                && h.time.unix_nanos() <= now.unix_nanos() + i128::from(DRIFT_NS),
+            h.time.unix_nanos() <= now.unix_nanos() + i128::from(DRIFT_NS),
             "header outside trust period"
         );
         ensure!(
@@ -177,21 +261,13 @@ impl Verified {
             "extended header commitment mismatch"
         );
         ctypes::verify_commit_light(chain, &set, &commit.block_id, h.height, &commit)?;
-        if let Some(last) = last {
-            ensure!(
-                h.last_block_id.hash == last.hash,
-                "header chain discontinuity"
-            );
-        }
         let signed = ctypes::SignedHeader {
             header: Some(h),
             commit: Some(commit),
         };
         signed.validate_basic(chain)?;
-        if let Some(last) = last {
-            light::verifier::verify_adjacent(&last.signed, &signed, &set, TRUST_NS, now, DRIFT_NS)?;
-        }
         Ok(Self {
+            validators: set,
             signed,
             dah,
             hash,
@@ -219,20 +295,66 @@ fn sample_indices(db: &RedbBackend, block: &Verified) -> Result<Vec<usize>> {
     Ok(indices)
 }
 
+#[derive(Clone)]
 struct Peers {
-    remotes: Vec<Remote>,
+    trusted: Vec<PeerId>,
+    streams: Streams,
     connected: tokio::sync::watch::Receiver<Vec<PeerId>>,
 }
 
 impl Peers {
+    fn remote(&self, peer: PeerId) -> Remote {
+        Remote {
+            peer,
+            streams: self.streams.clone(),
+        }
+    }
+
+    fn online(&self) -> Vec<Remote> {
+        self.connected
+            .borrow()
+            .iter()
+            .map(|&peer| self.remote(peer))
+            .collect()
+    }
+
+    // go-header v0.8.10 returns early on agreement, otherwise the highest
+    // valid response from the configured trusted peers once all requests finish.
+    async fn trusted_head(&mut self, chain: &str) -> Option<Vec<u8>> {
+        let count = self.trusted.len();
+        let quorum = (2 * count).div_ceil(3);
+        let mut responses = self
+            .trusted
+            .iter()
+            .map(|&id| self.remote(id))
+            .map(|mut peer| async move {
+                let bytes = peer.header(Origin::Height(0)).await.ok()??;
+                Verified::decode(&bytes, chain, None).ok()
+            })
+            .collect::<futures::stream::FuturesUnordered<_>>();
+        let mut votes = BTreeMap::new();
+        let mut best = None::<Verified>;
+        while let Some(candidate) = responses.next().await {
+            let Some(header) = candidate else { continue };
+            let n = votes.entry(header.hash.clone()).or_insert(0usize);
+            *n += 1;
+            if *n >= quorum {
+                return Some(header.hash);
+            }
+            if best.as_ref().is_none_or(|prev| header.height > prev.height) {
+                best = Some(header);
+            }
+        }
+        best.map(|header| header.hash)
+    }
+
     async fn verified_header(
         &mut self,
         origin: Origin,
         chain: &str,
         last: Option<&Verified>,
     ) -> Option<(Vec<u8>, Verified)> {
-        let online = self.connected.borrow().clone();
-        for remote in self.remotes.iter_mut().filter(|r| online.contains(&r.peer)) {
+        for mut remote in self.online() {
             let result = async {
                 let Some(raw) = remote.header(origin.clone()).await? else {
                     return Ok(None);
@@ -253,11 +375,61 @@ impl Peers {
         None
     }
 
+    // A discovered peer can advertise a tip. Its signatures must link to the
+    // sampled validator set before its height can affect RPC or sampling status.
+    async fn network_tip(&self, head: &Verified, chain: &str) -> (Option<Verified>, bool) {
+        let mut pending = self
+            .online()
+            .into_iter()
+            .map(|mut remote| async move {
+                let raw = remote.header(Origin::Height(0)).await.ok()??;
+                let tip = Verified::decode(&raw, chain, None).ok()?;
+                if tip.hash != head.hash {
+                    if tip.height <= head.height {
+                        return None;
+                    }
+                    if tip.height == head.height + 1
+                        && tip.signed.header.as_ref()?.last_block_id.hash != head.hash
+                    {
+                        return None;
+                    }
+                    light::verify(
+                        &head.signed,
+                        &head.validators,
+                        &tip.signed,
+                        &tip.validators,
+                        TRUST_NS,
+                        light::verifier::now(),
+                        DRIFT_NS,
+                        light::DEFAULT_TRUST_LEVEL,
+                    )
+                    .ok()?;
+                }
+                Some(tip)
+            })
+            .collect::<futures::stream::FuturesUnordered<_>>();
+        let mut best = None::<Verified>;
+        let mut matching = false;
+        let gather = async {
+            while let Some(result) = pending.next().await {
+                if let Some(tip) = result {
+                    matching |= tip.hash == head.hash;
+                    if tip.height > head.height
+                        && best.as_ref().is_none_or(|prev| tip.height > prev.height)
+                    {
+                        best = Some(tip);
+                    }
+                }
+            }
+        };
+        let _ = tokio::time::timeout(Duration::from_secs(2), gather).await;
+        (best, matching)
+    }
+
     async fn sample(&mut self, block: &Verified, index: usize) -> bool {
-        let online = self.connected.borrow().clone();
-        for remote in self.remotes.iter_mut().filter(|r| online.contains(&r.peer)) {
+        for mut remote in self.online() {
             match remote.sample(block.height, &block.dah, index).await {
-                Ok(()) => return true,
+                Ok(_) => return true,
                 Err(error) => {
                     tracing::warn!(peer=%remote.peer, height=block.height, index, %error, "DA sample unavailable");
                 }
@@ -267,38 +439,7 @@ impl Peers {
     }
 }
 
-async fn maintain_connections(
-    mut swarm: Swarm<libp2p_stream::Behaviour>,
-    addresses: &BTreeMap<PeerId, Vec<Multiaddr>>,
-    connected: tokio::sync::watch::Sender<Vec<PeerId>>,
-) {
-    let mut retry = tokio::time::interval(Duration::from_secs(3));
-    retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    loop {
-        tokio::select! {
-            _ = retry.tick() => {
-                for (peer, addr) in addresses {
-                    if !swarm.is_connected(peer) {
-                        let options = libp2p::swarm::dial_opts::DialOpts::peer_id(*peer).addresses(addr.clone()).build();
-                        let _ = swarm.dial(options);
-                    }
-                }
-            }
-            event = swarm.select_next_some() => {
-                if matches!(event, SwarmEvent::ConnectionEstablished { .. } | SwarmEvent::ConnectionClosed { .. }) {
-                    connected.send_replace(swarm.connected_peers().copied().collect());
-                }
-            }
-        }
-    }
-}
-
-async fn follow(
-    db: &RedbBackend,
-    peers: &mut Peers,
-    args: &LightArgs,
-    anchor: Vec<u8>,
-) -> Result<()> {
+fn load_checkpoint(db: &RedbBackend, args: &LightArgs, anchor: &[u8]) -> Result<Option<Verified>> {
     let trust = serde_json::to_vec(&(&args.network, &anchor))?;
     if let Some(stored) = db.get(b"trust")? {
         ensure!(
@@ -311,9 +452,9 @@ async fn follow(
         db.write(batch)?;
     }
     let stored_head = db.get(b"head")?;
-    let mut last = stored_head
+    let last = stored_head
         .as_deref()
-        .map(|raw| Verified::decode(raw, &args.network, None))
+        .map(|raw| Verified::decode_signed(raw, &args.network))
         .transpose()?;
     if let (Some(raw), Some(block)) = (stored_head, &last)
         && db.get(b"tail")?.is_none()
@@ -322,38 +463,84 @@ async fn follow(
         rpc::store_header(db, &mut upgrade, block, &raw)?;
         db.write(upgrade)?;
     }
-    loop {
+    Ok(last)
+}
+
+async fn resolve_anchor(
+    db: &RedbBackend,
+    peers: &mut Peers,
+    args: &LightArgs,
+    anchor: Option<Vec<u8>>,
+) -> Result<Vec<u8>> {
+    Ok(match (anchor, db.get(b"trust")?) {
+        (Some(hash), _) => hash,
+        (None, Some(stored)) => {
+            let (network, hash): (String, Vec<u8>) = serde_json::from_slice(&stored)?;
+            ensure!(
+                network == args.network && hash.len() == 32,
+                "light store belongs to a different network or has an invalid checkpoint"
+            );
+            hash
+        }
+        (None, None) => loop {
+            if let Some(hash) = peers.trusted_head(&args.network).await {
+                break hash;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        },
+    })
+}
+
+async fn follow(
+    db: &RedbBackend,
+    peers: &mut Peers,
+    args: &LightArgs,
+    anchor: Option<Vec<u8>>,
+    status: &tokio::sync::watch::Sender<stats::Sampling>,
+) -> Result<()> {
+    let anchor = resolve_anchor(db, peers, args, anchor).await?;
+    let mut last = load_checkpoint(db, args, &anchor)?;
+    if let Some(head) = &last {
+        status.send_modify(|s| s.complete(head.height));
+    }
+    'sync: loop {
         if last
             .as_ref()
             .is_some_and(|h| args.until.is_some_and(|end| h.height >= end))
         {
             return Ok(());
         }
-        let origin = if let Some(h) = &last {
-            Origin::Height(h.height + 1)
+        let expired = last
+            .as_ref()
+            .map(|h| h.expired(light::verifier::now()))
+            .transpose()?
+            .unwrap_or(false);
+        let next = if let Some(previous) = last.as_ref().filter(|_| expired) {
+            status.send_modify(|s| s.done = false);
+            recovery::next(db, peers, &args.network, previous).await?
         } else {
-            Origin::Hash(anchor.clone())
-        };
-        if let Some(last) = &last {
-            ensure!(
-                !light::verifier::header_expired(
-                    last.signed
-                        .header
-                        .as_ref()
-                        .context("missing trusted header")?,
-                    TRUST_NS,
-                    light::verifier::now()
-                ),
-                "trusted header expired"
+            let origin = last.as_ref().map_or_else(
+                || Origin::Hash(anchor.clone()),
+                |h| Origin::Height(h.height + 1),
             );
-        }
-        let Some((raw, block)) = peers
-            .verified_header(origin, &args.network, last.as_ref())
-            .await
-        else {
+            peers
+                .verified_header(origin, &args.network, last.as_ref())
+                .await
+        };
+        let Some((raw, block)) = next else {
+            if let Some(head) = last.as_ref().filter(|_| !expired) {
+                let (tip, matching) = peers.network_tip(head, &args.network).await;
+                let done = tip.is_none() && matching;
+                let network = tip.map_or(head.height, |tip| tip.height);
+                status.send_modify(|s| {
+                    s.network = network;
+                    s.done = done;
+                });
+            }
             tokio::time::sleep(Duration::from_secs(1)).await;
             continue;
         };
+        status.send_modify(|s| s.begin_header(last.as_ref(), &block));
         let indices = sample_indices(db, &block)?;
         let completed = db
             .get(b"completed-samples")?
@@ -363,14 +550,11 @@ async fn follow(
         ensure!(completed <= indices.len(), "invalid persisted sample count");
         for (n, &at) in indices.iter().enumerate().skip(completed) {
             while !peers.sample(&block, at).await {
-                ensure!(
-                    !light::verifier::header_expired(
-                        block.signed.header.as_ref().context("missing header")?,
-                        TRUST_NS,
-                        light::verifier::now()
-                    ),
-                    "sampling header expired"
-                );
+                if block.expired(light::verifier::now())? {
+                    ensure!(last.is_some(), "initial sampling checkpoint expired");
+                    continue 'sync;
+                }
+                status.send_modify(|s| s.retries = s.retries.saturating_add(1));
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
             let mut progress = WriteBatch::new();
@@ -380,7 +564,16 @@ async fn follow(
         let mut batch = WriteBatch::new();
         batch.delete(b"pending".to_vec());
         batch.delete(b"completed-samples".to_vec());
-        rpc::store_header(db, &mut batch, &block, &raw)?;
+        if expired
+            && let Some(old) = &last
+            && block.height > old.height + 1
+        {
+            recovery::discard_gap(db, &mut batch, old, &block, &raw).await?;
+        } else {
+            rpc::store_header(db, &mut batch, &block, &raw)?;
+        }
+        batch.delete(b"recovery-cursor".to_vec());
+        batch.delete(b"recovery-sample".to_vec());
         batch.put(b"head".to_vec(), raw);
         db.write(batch)?;
         writeln!(
@@ -390,21 +583,23 @@ async fn follow(
             indices.len(),
             hex::encode_upper(&block.hash)
         )?;
+        status.send_modify(|s| s.complete(block.height));
         last = Some(block);
     }
 }
 
 /// Run DA-only sync in the operator binary with an isolated light store.
 pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
-    let anchor = hex::decode(&args.trusted_hash)?;
-    ensure!(anchor.len() == 32, "trusted hash must be 32 bytes");
-    let mut addresses = BTreeMap::<PeerId, Vec<Multiaddr>>::new();
-    for addr in &args.peer {
-        let Some(Protocol::P2p(peer)) = addr.iter().last() else {
-            anyhow::bail!("bridge address must end in /p2p/PEER_ID")
-        };
-        addresses.entry(peer).or_default().push(addr.clone());
-    }
+    let anchor = args.trusted_hash.as_deref().map(hex::decode).transpose()?;
+    ensure!(
+        anchor.as_ref().is_none_or(|h| h.len() == 32),
+        "trusted hash must be 32 bytes"
+    );
+    let addresses = super::network::Peering::new(&args.network, &args.peer, vec![])?.bootstrap;
+    ensure!(
+        !addresses.is_empty(),
+        "provide a trusted peer for this network"
+    );
     let dir = home.join("da-light");
     std::fs::create_dir_all(&dir)?;
     let db = std::sync::Arc::new(RedbBackend::open(
@@ -412,39 +607,70 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
         RedbOptions::default(),
     )?);
     // Bind synchronously with startup so a busy port is reported to the operator.
-    let listener = rpc::listener(args.rpc_listen, home, db.clone()).await?;
+    let (status, observer) = tokio::sync::watch::channel(stats::Sampling::default());
     let key = identity(&dir.join("peer.key"))?;
-    let swarm = SwarmBuilder::with_existing_identity(key)
-        .with_tokio()
-        .with_tcp(
-            tcp::Config::default(),
-            noise::Config::new,
-            yamux::Config::default,
-        )?
-        .with_behaviour(|_| libp2p_stream::Behaviour::new())?
-        .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(120)))
-        .build();
+    let mut behaviour =
+        super::network::Behaviour::new(&key, &args.network, libp2p::kad::Mode::Client)?;
+    let blocklist = super::admin::Blocklist::open(&dir)?;
+    blocklist.restore(&mut behaviour)?;
+    for peer in addresses.keys() {
+        behaviour.protected.protect(*peer, "protected-bootstrap");
+    }
+    let ping = super::ping::Ping::start(behaviour.negotiated.new_control())?;
+    let connections = super::connections::Connections::default();
+    let mut swarm = super::observed_swarm(key, behaviour, &connections)?;
+    let operations = super::admin::Operations::new(ping, connections);
+    let (peer_control, requests) = super::admin::Control::channel();
+    if let Some(addr) = &args.p2p_listen {
+        swarm.listen_on(addr.clone())?;
+    }
+    for (peer, addrs) in &addresses {
+        for addr in addrs {
+            swarm.add_peer_address(*peer, addr.clone());
+        }
+    }
     let headers = StreamProtocol::try_from_owned(format!("/{}/header-ex/v0.0.3", args.network))?;
+    exchange::start(
+        swarm.behaviour().negotiated.new_control(),
+        headers.clone(),
+        db.clone(),
+    )?;
     let samples =
         StreamProtocol::try_from_owned(format!("/{}/shrex/v0.1.0/sample_v0", args.network))?;
+    let eds = StreamProtocol::try_from_owned(format!("/{}/shrex/v0.1.0/eds_v0", args.network))?;
     let (connected, online) = tokio::sync::watch::channel(Vec::new());
-    let remotes = addresses
-        .keys()
-        .map(|peer| Remote {
-            control: swarm.behaviour().new_control(),
-            peer: *peer,
-            headers: headers.clone(),
-            samples: samples.clone(),
-        })
-        .collect();
     let mut peers = Peers {
-        remotes,
+        trusted: addresses.keys().copied().collect(),
+        streams: Streams {
+            control: swarm.behaviour().negotiated.new_control(),
+            headers,
+            samples,
+            ranges: StreamProtocol::try_from_owned(format!(
+                "/{}/shrex/v0.1.0/rangeNamespaceData_v0",
+                args.network
+            ))?,
+            rows: StreamProtocol::try_from_owned(format!("/{}/shrex/v0.1.0/row_v0", args.network))?,
+            namespaces: StreamProtocol::try_from_owned(format!(
+                "/{}/shrex/v0.1.0/nd_v0",
+                args.network
+            ))?,
+            eds,
+        },
         connected: online,
     };
+    let listener = rpc::listener(
+        &args,
+        home,
+        db.clone(),
+        observer,
+        peers.clone(),
+        peer_control,
+    )
+    .await?;
     tokio::select! {
         result = listener => result,
-        result = follow(&db, &mut peers, &args, anchor) => result,
+        result = follow(&db, &mut peers, &args, anchor, &status) => result,
         result = tokio::signal::ctrl_c() => Ok(result?),
-        () = maintain_connections(swarm, &addresses, connected) => anyhow::bail!("DA network stopped"),
+        () = discovery::maintain_connections(swarm, &addresses, connected, &args.network, requests, operations, blocklist) => anyhow::bail!("DA network stopped"),
     }
 }

@@ -33,7 +33,9 @@ const DENOM_ADDRESS: u8 = 0x03;
 const SEND_ENABLED: u8 = 0x04;
 const PARAMS: &[u8] = &[0x05];
 
-fn balance_key(addr: &[u8], denom: &str) -> Vec<u8> {
+/// Store key for the balance of an address in a denomination.
+#[must_use]
+pub fn balance_key(addr: &[u8], denom: &str) -> Vec<u8> {
     sdk::codec::key(&[
         &[BALANCES],
         &sdk::codec::length_prefixed(addr),

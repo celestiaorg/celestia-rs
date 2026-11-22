@@ -1,10 +1,17 @@
 //! Inbound go-header exchange and SHREX over negotiated libp2p streams.
 mod admin;
+mod bandwidth;
+mod connections;
+mod negotiation;
+mod resources;
 pub(crate) use admin::Control;
+mod flood;
 mod inbound;
 #[cfg(feature = "da-light")]
 pub(crate) mod light;
 mod network;
+mod ping;
+mod protected;
 
 use std::io::{ErrorKind, Write as _};
 use std::net::{IpAddr, SocketAddr};
@@ -14,15 +21,15 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt as _};
+use libp2p::Transport as _;
 use libp2p::{
     Multiaddr, Stream, SwarmBuilder, identity, multiaddr::Protocol, noise, swarm::SwarmEvent, tcp,
     yamux,
 };
-use nodestore::{BlockStore, StateStore};
 use prost::Message;
 use tokio::sync::{Semaphore, oneshot};
 
-use super::{Bridge, Committed, Server};
+use super::{Bridge, Committed, HeaderWire, Server, index};
 
 fn identity(path: &Path) -> Result<identity::Keypair> {
     match std::fs::read(path) {
@@ -45,12 +52,86 @@ fn identity(path: &Path) -> Result<identity::Keypair> {
     }
 }
 
+pub(crate) struct Serving {
+    bridge: Arc<Bridge>,
+    metrics: Option<Arc<crate::metrics::Metrics>>,
+}
+
+impl Serving {
+    pub(crate) fn new(
+        index: Arc<index::Store>,
+        metrics: Option<Arc<crate::metrics::Metrics>>,
+    ) -> Self {
+        Self {
+            bridge: Arc::new(Bridge {
+                #[cfg(feature = "da-fibre")]
+                fibre: None,
+                app: None,
+                peer_control: None,
+                wallet: None,
+                waiters: Arc::new(Semaphore::new(32)),
+                index,
+                worker: Arc::new(Semaphore::new(2)),
+            }),
+            metrics,
+        }
+    }
+
+    fn accept(
+        self: &Arc<Self>,
+        admissions: &Arc<Semaphore>,
+        peer: libp2p::PeerId,
+        inbound::Accepted { kind, mut stream }: inbound::Accepted,
+    ) {
+        let Ok(admission) = admissions.clone().try_acquire_owned() else {
+            self.record(kind, "busy");
+            return;
+        };
+        let serving = self.clone();
+        tokio::spawn(async move {
+            let _admission = admission;
+            let Ok(Ok(_worker)) =
+                tokio::time::timeout(TIMEOUT, serving.bridge.worker.acquire()).await
+            else {
+                serving.record(kind, "busy");
+                return;
+            };
+            let outcome = match serve(&serving.bridge, kind, &mut stream).await {
+                Ok(true) => "served",
+                Ok(false) => "not_found",
+                Err(error) => {
+                    tracing::debug!(%peer, %error, "DA stream ended");
+                    "error"
+                }
+            };
+            serving.record(kind, outcome);
+        });
+    }
+
+    fn record(&self, kind: Kind, outcome: &str) {
+        if let Some(metrics) = &self.metrics {
+            let protocol = match kind {
+                Kind::Header => "header",
+                Kind::Namespace => "namespace",
+                Kind::Eds => "eds",
+                Kind::Row => "row",
+                Kind::Sample => "sample",
+                Kind::Range => "range",
+            };
+            metrics.add(
+                "da_stream_requests_total",
+                &format!("protocol=\"{protocol}\",outcome=\"{outcome}\""),
+                1.0,
+            );
+        }
+    }
+}
+
 pub(crate) fn start(
     addr: SocketAddr,
     home: &Path,
     network: &str,
-    blocks: BlockStore,
-    states: StateStore,
+    serving: Serving,
     bootstrap: &[Multiaddr],
     announce: Vec<Multiaddr>,
 ) -> Result<(Server, Control)> {
@@ -65,14 +146,7 @@ pub(crate) fn start(
     let (stop, stopped) = oneshot::channel();
     let (ready, started) = mpsc::sync_channel(1);
     let (control, requests) = admin::Control::channel();
-    let bridge = Arc::new(Bridge {
-        peer_control: None,
-        wallet: None,
-        waiters: Arc::new(Semaphore::new(32)),
-        blocks,
-        states,
-        worker: Arc::new(Semaphore::new(2)),
-    });
+    let blocklist = admin::Blocklist::open(home)?;
     let thread = std::thread::Builder::new()
         .name("da-peer".into())
         .spawn(move || {
@@ -85,10 +159,10 @@ pub(crate) fn start(
                         key,
                         listen,
                         &net,
-                        bridge,
+                        serving,
                         stopped,
                         &ready,
-                        (peers, requests),
+                        (peers, requests, blocklist),
                     ))
                 });
             if let Err(e) = result {
@@ -106,30 +180,58 @@ pub(crate) fn start(
     Ok((server, control))
 }
 
-async fn run(
+fn observed_swarm(
     key: identity::Keypair,
-    listen: Multiaddr,
-    network: &str,
-    bridge: Arc<Bridge>,
-    mut stopped: oneshot::Receiver<()>,
-    ready: &mpsc::SyncSender<Result<(), String>>,
-    (peers, mut requests): (
-        network::Peering,
-        tokio::sync::mpsc::Receiver<admin::Request>,
-    ),
-) -> Result<()> {
-    let behaviour = network::Behaviour::new(&key, network)?;
-    let mut swarm = SwarmBuilder::with_existing_identity(key)
+    behaviour: network::Behaviour,
+    connections: &connections::Connections,
+) -> Result<libp2p::Swarm<network::Behaviour>> {
+    let observed = connections.clone();
+    let security = noise::Config::new(&key)?;
+    let swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
-        .with_tcp(
-            tcp::Config::default().nodelay(true),
-            noise::Config::new,
-            yamux::Config::default,
-        )?
+        .with_other_transport(move |_| {
+            tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
+                .upgrade(libp2p::core::upgrade::Version::V1Lazy)
+                .authenticate(security)
+                .multiplex(yamux::Config::default())
+                .map(move |(peer, mux), point| (peer, observed.observe(peer, &point, mux)))
+        })?
         .with_dns()?
         .with_behaviour(move |_| behaviour)?
         .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(120)))
         .build();
+    Ok(swarm)
+}
+
+async fn run(
+    key: identity::Keypair,
+    listen: Multiaddr,
+    network: &str,
+    serving: Serving,
+    mut stopped: oneshot::Receiver<()>,
+    ready: &mpsc::SyncSender<Result<(), String>>,
+    (peers, mut requests, blocklist): (
+        network::Peering,
+        tokio::sync::mpsc::Receiver<admin::Request>,
+        admin::Blocklist,
+    ),
+) -> Result<()> {
+    let mut behaviour = network::Behaviour::new(&key, network, libp2p::kad::Mode::Server)?;
+    blocklist.restore(&mut behaviour)?;
+    for peer in peers.bootstrap.keys() {
+        behaviour.protected.protect(*peer, "protected-bootstrap");
+    }
+    let serving = Arc::new(serving);
+    let bridge = &serving.bridge;
+    let ping = ping::Ping::start(behaviour.negotiated.new_control())?;
+    flood::start(
+        behaviour.negotiated.new_control(),
+        key.clone(),
+        network,
+        bridge.clone(),
+    )?;
+    let connections = connections::Connections::default();
+    let mut swarm = observed_swarm(key, behaviour, &connections)?;
     swarm.listen_on(listen)?;
     for address in &peers.announce {
         swarm.add_external_address(address.clone());
@@ -140,7 +242,7 @@ async fn run(
     let topic_hash = topic.hash();
     let mut timer = tokio::time::interval(Duration::from_millis(500));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut operations = admin::Operations::default();
+    let mut operations = admin::Operations::new(ping, connections);
     let mut announced = 0;
     let mut pending = tokio::task::JoinSet::new();
     // A Go DAS worker opens a separate stream for each sample in a batch.
@@ -148,14 +250,14 @@ async fn run(
     let admissions = Arc::new(Semaphore::new(64));
     loop {
         tokio::select! {
-            Some(request) = requests.recv() => operations.handle(request, &mut swarm, network),
+            Some(request) = requests.recv() => operations.handle(request, &mut swarm, network, &blocklist),
             _ = &mut stopped => return Ok(()),
             _ = reconnect.tick(), if !peers.bootstrap.is_empty() => peers.connect(&mut swarm),
             _ = timer.tick(), if pending.is_empty() && swarm.behaviour().gossip.mesh_peers(&topic_hash).next().is_some() => {
-                let height = bridge.blocks.height();
+                let height = bridge.index.head()?;
                 if height > announced {
                     let bridge = bridge.clone();
-                    pending.spawn_blocking(move || (height, bridge.committed(height).and_then(|block| block.header_wire())));
+                    pending.spawn_blocking(move || (height, bridge.index.header_wire(height)));
                 }
             }
             Some(result) = pending.join_next(), if !pending.is_empty() => {
@@ -177,6 +279,7 @@ async fn run(
                     tracing::info!(%address, peer=%swarm.local_peer_id(), "DA peer listening");
                     let _ = ready.try_send(Ok(()));
                 }
+                SwarmEvent::Behaviour(network::BehaviourEvent::Autonat(event)) => tracing::debug!(?event, "DA AutoNAT probe"),
                 SwarmEvent::Behaviour(network::BehaviourEvent::Identify(libp2p::identify::Event::Received { peer_id, info, .. })) => {
                     for addr in info.listen_addrs {
                         swarm.behaviour_mut().dht.add_address(&peer_id, addr);
@@ -186,16 +289,8 @@ async fn run(
                     reason?;
                     bail!("DA peer listener closed");
                 }
-                SwarmEvent::Behaviour(network::BehaviourEvent::Streams((peer, inbound::Accepted {kind, mut stream}))) => {
-                let Ok(admission) = admissions.clone().try_acquire_owned() else { continue };
-                let bridge = bridge.clone();
-                tokio::spawn(async move {
-                    let _admission = admission;
-                    let Ok(Ok(_worker)) = tokio::time::timeout(TIMEOUT, bridge.worker.acquire()).await else { return };
-                    if let Err(error) = serve(&bridge, kind, &mut stream).await {
-                        tracing::debug!(%peer, %error, "DA stream ended");
-                    }
-                });
+                SwarmEvent::Behaviour(network::BehaviourEvent::Streams((peer, request))) => {
+                    serving.accept(&admissions, peer, request);
                 }
                 _ => {}
             },
@@ -236,30 +331,6 @@ struct HeaderResponse {
     status: i32,
 }
 
-#[derive(Clone, PartialEq, Message)]
-struct HeaderWire {
-    #[prost(message, optional, tag = "1")]
-    header: Option<ctypes::proto::types::Header>,
-    #[prost(message, optional, tag = "2")]
-    commit: Option<ctypes::proto::types::Commit>,
-    #[prost(message, optional, tag = "3")]
-    validators: Option<ctypes::proto::types::ValidatorSet>,
-    #[prost(bytes, tag = "4")]
-    dah: Vec<u8>,
-}
-
-impl Committed {
-    fn header_wire(&self) -> Result<Vec<u8>> {
-        Ok(HeaderWire {
-            header: Some(self.header.to_proto()),
-            commit: Some(self.commit.to_proto()),
-            validators: Some(self.validators.to_proto()?),
-            dah: self.dah.to_proto_bytes()?,
-        }
-        .encode_to_vec())
-    }
-}
-
 const TIMEOUT: Duration = Duration::from_secs(15);
 
 async fn read_frame(stream: &mut Stream) -> Result<Vec<u8>> {
@@ -284,7 +355,8 @@ async fn write(stream: &mut Stream, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<()> {
+async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<bool> {
+    let found;
     match kind {
         Kind::Header => {
             let data = tokio::time::timeout(TIMEOUT, read_frame(stream)).await??;
@@ -292,6 +364,7 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
             let bridge = bridge.clone();
             let responses =
                 tokio::task::spawn_blocking(move || bridge.header_responses(request)).await??;
+            found = responses.iter().any(|r| r.status == 1);
             for response in responses {
                 write(stream, &response.encode_length_delimited_to_vec()).await?;
             }
@@ -318,6 +391,7 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
                 Err(_) => 3,
             };
             write(stream, &[2, 8, status]).await?;
+            found = status == 1;
             match data? {
                 Some(Payload::Range(block, from, end)) => {
                     let width = block.eds.original_width();
@@ -368,7 +442,7 @@ async fn serve(bridge: &Arc<Bridge>, kind: Kind, stream: &mut Stream) -> Result<
         }
     }
     tokio::time::timeout(TIMEOUT, stream.close()).await??;
-    Ok(())
+    Ok(found)
 }
 
 enum Payload {
@@ -380,12 +454,8 @@ enum Payload {
 
 impl Bridge {
     fn shrex_response(&self, kind: Kind, height: i64, id: &[u8]) -> Result<Option<Payload>> {
-        let head = self
-            .states
-            .load()?
-            .context("missing state")?
-            .last_block_height;
-        if height > head || height < self.blocks.base() {
+        let head = self.index.head()?;
+        if height > head || height < self.index.tail()? {
             return Ok(None);
         }
         let block = self.committed(height)?;
@@ -416,7 +486,13 @@ impl Bridge {
                     .iter()
                     .map(|data| WireShare { data: data.clone() })
                     .collect();
-                Payload::Frame(HalfRow { shares: half }.encode_length_delimited_to_vec())
+                Payload::Frame(
+                    HalfRow {
+                        shares: half,
+                        side: 0,
+                    }
+                    .encode_length_delimited_to_vec(),
+                )
             }
             Kind::Sample => {
                 let row = usize::from(u16::from_be_bytes(id[8..10].try_into()?));
@@ -446,25 +522,16 @@ impl Bridge {
     }
 
     fn header_responses(&self, request: Request) -> Result<Vec<HeaderResponse>> {
-        let head = self
-            .states
-            .load()?
-            .context("missing state")?
-            .last_block_height;
+        let head = self.index.head()?;
         let (from, count) = match request.data.context("missing origin")? {
-            Origin::Hash(h) => (
-                self.blocks
-                    .load_block_meta_by_hash(&h)?
-                    .map_or(0, |m| m.header.height),
-                1,
-            ),
+            Origin::Hash(h) => (self.index.by_hash(&h)?.unwrap_or(0), 1),
             Origin::Height(0) if request.amount > 0 => (head, 1),
             Origin::Height(h) => {
                 ensure!((1..=64).contains(&request.amount), "invalid range size");
                 (i64::try_from(h)?, i64::try_from(request.amount)?)
             }
         };
-        if from <= 0 || from < self.blocks.base() || from > head {
+        if from <= 0 || from < self.index.tail()? || from > head {
             return Ok(vec![HeaderResponse {
                 status: 2,
                 body: vec![],
@@ -474,7 +541,7 @@ impl Bridge {
             .map(|height| {
                 Ok(HeaderResponse {
                     status: 1,
-                    body: self.committed(height)?.header_wire()?,
+                    body: self.index.header_wire(height)?,
                 })
             })
             .collect()
@@ -519,9 +586,11 @@ fn row_wire(row: app::inclusion_proof::NamespaceRow) -> Vec<u8> {
     .encode_length_delimited_to_vec()
 }
 
-// SHWAP Row with half_side LEFT (the protobuf default).
+// SHWAP Row with an original or parity half.
 #[derive(Clone, PartialEq, Message)]
 struct HalfRow {
+    #[prost(int32, tag = "2")]
+    side: i32,
     #[prost(message, repeated, tag = "1")]
     shares: Vec<WireShare>,
 }

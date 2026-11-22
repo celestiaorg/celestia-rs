@@ -11,7 +11,14 @@ mod composed {
     use super::{NetworkBehaviour, gossipsub, identify, kad};
     #[derive(NetworkBehaviour)]
     pub(crate) struct Behaviour {
-        pub(crate) streams: super::super::inbound::Inbound,
+        // Reject blocked connections before stateful behaviours observe establishment.
+        pub(crate) gate:
+            libp2p::allow_block_list::Behaviour<libp2p::allow_block_list::BlockedPeers>,
+        pub(crate) autonat: libp2p_autonat::Behaviour,
+        pub(crate) protected: super::super::protected::Protected,
+        pub(crate) streams:
+            libp2p::swarm::behaviour::toggle::Toggle<super::super::inbound::Inbound>,
+        pub(crate) negotiated: libp2p_stream::Behaviour,
         pub(crate) identify: identify::Behaviour,
         pub(crate) dht: kad::Behaviour<kad::store::MemoryStore>,
         pub(crate) gossip: gossipsub::Behaviour,
@@ -24,8 +31,15 @@ pub(super) fn header_topic(network: &str) -> gossipsub::IdentTopic {
     gossipsub::IdentTopic::new(format!("/{network}/header-sub/v0.0.1"))
 }
 
+// Go RoutingDiscovery uses the SHA2-256 multihash of the topic as the provider key.
+pub(super) fn provider_key() -> kad::RecordKey {
+    let mut key = vec![0x12, 32];
+    key.extend_from_slice(&hash::sha256(b"/full/v0.1.0"));
+    kad::RecordKey::new(&key)
+}
+
 impl Behaviour {
-    pub(super) fn new(key: &identity::Keypair, network: &str) -> Result<Self> {
+    pub(super) fn new(key: &identity::Keypair, network: &str, mode: kad::Mode) -> Result<Self> {
         let id = key.public().to_peer_id();
         let protocol = StreamProtocol::try_from_owned(format!("/celestia/{network}/kad/1.0.0"))?;
         let mut dht = kad::Behaviour::with_config(
@@ -33,11 +47,13 @@ impl Behaviour {
             kad::store::MemoryStore::new(id),
             kad::Config::new(protocol),
         );
-        dht.set_mode(Some(kad::Mode::Server));
-        // Go RoutingDiscovery uses the SHA2-256 multihash of the topic as the provider key.
-        let mut provider_key = vec![0x12, 32];
-        provider_key.extend_from_slice(&hash::sha256(b"/full/v0.1.0"));
-        dht.start_providing(kad::RecordKey::new(&provider_key))?;
+        dht.set_mode(Some(mode));
+        let streams = if mode == kad::Mode::Server {
+            dht.start_providing(provider_key())?;
+            Some(super::inbound::Inbound::new(network)?)
+        } else {
+            None
+        };
         let mut cfg = gossipsub::ConfigBuilder::default();
         // This bridge publishes its own verified commits. Hold received gossip for validation.
         cfg.validate_messages().message_id_fn(|message| {
@@ -58,7 +74,11 @@ impl Behaviour {
         .map_err(anyhow::Error::msg)?;
         gossip.subscribe(&header_topic(network))?;
         Ok(Self {
-            streams: super::inbound::Inbound::new(network)?,
+            autonat: libp2p_autonat::Behaviour::new(id, libp2p_autonat::Config::default()),
+            protected: super::protected::Protected::default(),
+            gate: libp2p::allow_block_list::Behaviour::default(),
+            streams: streams.into(),
+            negotiated: libp2p_stream::Behaviour::new(),
             identify: identify::Behaviour::new(identify::Config::new(
                 "ipfs/0.1.0".to_owned(),
                 key.public(),

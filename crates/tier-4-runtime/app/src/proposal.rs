@@ -276,7 +276,11 @@ pub fn verified_block_eds(
         return Err("app version cannot be 0".to_owned());
     }
     let max_size = usize::try_from(SQUARE_SIZE_UPPER_BOUND).map_err(|e| e.to_string())?;
-    let eds = block_eds_with_max(app_version, txs, max_size)?;
+    let eds = if app_version <= 7 {
+        historical_eds(app_version, txs, max_size)?
+    } else {
+        block_eds_with_max(app_version, txs, max_size)?
+    };
     let dah = square::new_data_availability_header(&eds).map_err(|e| e.to_string())?;
     let data_hash = dah.hash();
     if data_hash != committed_data_hash {
@@ -287,6 +291,53 @@ pub fn verified_block_eds(
         ));
     }
     Ok((eds, dah))
+}
+
+// The v11 Go bridge uses go-square v2 for app versions 1–5 and v3 for 6–7.
+// Both recognize BlobTx envelopes before canonical encoding checks were introduced.
+// A normal SDK transaction is never interpreted as a pay-for-fibre in these versions.
+fn historical_eds(
+    version: u64,
+    txs: &[Vec<u8>],
+    max_size: usize,
+) -> Result<square::ExtendedDataSquare, String> {
+    let mut classified = Vec::with_capacity(txs.len());
+    for raw in txs {
+        let tx = match txdecode::unmarshal_blob_tx_v9(raw) {
+            Some(Ok(tx)) => ClassifiedTx::Blob(to_square_blob_tx(&tx)?),
+            Some(Err(e)) => return Err(format!("unmarshalling historical blob tx: {e:?}")),
+            None => ClassifiedTx::Normal(raw.clone()),
+        };
+        classified.push(tx);
+    }
+    let square = if version <= 5 {
+        let mut builder =
+            square::Builder::new(128, SUBTREE_ROOT_THRESHOLD, &[]).map_err(|e| e.to_string())?;
+        let mut seen_blob = false;
+        for tx in classified {
+            let fits = match tx {
+                ClassifiedTx::Normal(bytes) if !seen_blob => builder.append_tx(bytes),
+                ClassifiedTx::Blob(b) => {
+                    seen_blob = true;
+                    builder.append_blob_tx(square::BlobTx {
+                        tx: b.tx,
+                        blobs: b.blobs,
+                    })
+                }
+                _ => return Err("invalid historical transaction order".to_owned()),
+            };
+            if !fits {
+                return Err("transaction does not fit the historical data square".to_owned());
+            }
+        }
+        builder.export()
+    } else {
+        // The v3 layout accounts for signer bytes and uses 512-wide index estimates.
+        // The rc4 builder implements that layout for normal and blob transactions.
+        v4::construct_rc4(&classified, max_size, SUBTREE_ROOT_THRESHOLD)
+    }
+    .map_err(|e| e.to_string())?;
+    square::extend_shares(square.as_shares()).map_err(|e| e.to_string())
 }
 
 fn block_eds_with_max(

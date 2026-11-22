@@ -20,8 +20,10 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 && len(os.Args) != 5 {
-		panic("usage: read_bridge URL [height namespace-id-hex blob-hex]")
+	nextHeight := len(os.Args) == 3 && os.Args[2] == "--next-height"
+	checkTail := len(os.Args) == 3 && os.Args[2] == "--genesis-tail"
+	if len(os.Args) != 2 && len(os.Args) != 5 && !nextHeight && !checkTail {
+		panic("usage: read_bridge URL [--next-height | --genesis-tail | height namespace-id-hex blob-hex]")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -36,6 +38,41 @@ func main() {
 	}
 	if err = h.Validate(); err != nil {
 		panic(err)
+	}
+	if checkTail {
+		tail, err := c.Header.Tail(ctx)
+		if err != nil {
+			panic(err)
+		}
+		if err := tail.Validate(); err != nil {
+			panic(err)
+		}
+		if tail.Height() != 1 || tail.ChainID() != h.ChainID() {
+			panic("fresh bridge did not retain its genesis header")
+		}
+		byHash, err := c.Header.GetByHash(ctx, tail.Hash())
+		if err != nil {
+			panic(err)
+		}
+		if !tail.Equals(byHash) {
+			panic("tail hash lookup returned a different header")
+		}
+		fmt.Printf("Go verified the signed bridge tail at height %d by hash\n", tail.Height())
+		return
+	}
+	if nextHeight {
+		next, err := c.Header.GetByHeight(ctx, h.Height()+1)
+		if err != nil {
+			panic(err)
+		}
+		if next.Height() != h.Height()+1 || h.Verify(next) != nil {
+			panic("next height did not return the adjacent signed header")
+		}
+		if _, err := c.Header.GetByHeight(ctx, next.Height()+1000); err == nil {
+			panic("far future height accepted")
+		}
+		fmt.Printf("Go verified immediate next-height publication at %d\n", next.Height())
+		return
 	}
 	h2, err := c.Header.GetByHeight(ctx, h.Height())
 	if err != nil || !h.Equals(h2) {

@@ -158,9 +158,15 @@ pub struct StartOptions {
     /// Explicit listener for the experimental read-only DA bridge.
     #[cfg(feature = "bridge")]
     pub bridge_rpc_listen: Option<std::net::SocketAddr>,
+    /// Preserve verified DA data older than the normal retention window.
+    #[cfg(feature = "bridge")]
+    pub bridge_archival: bool,
     /// Keyring account explicitly assigned to DA blob submission.
     #[cfg(feature = "bridge")]
     pub bridge_signer: Option<String>,
+    /// Additional local keyring accounts explicitly authorized for DA writes.
+    #[cfg(feature = "bridge")]
+    pub bridge_additional_signers: Vec<String>,
     /// Node home.
     pub home: PathBuf,
     /// Stop after committing this height (0 = run forever); unlike Go's
@@ -200,7 +206,11 @@ impl StartOptions {
             #[cfg(feature = "bridge")]
             bridge_rpc_listen: None,
             #[cfg(feature = "bridge")]
+            bridge_archival: false,
+            #[cfg(feature = "bridge")]
             bridge_signer: None,
+            #[cfg(feature = "bridge")]
+            bridge_additional_signers: Vec::new(),
             #[cfg(feature = "bridge-p2p")]
             bridge_p2p_listen: None,
             #[cfg(feature = "bridge-p2p")]
@@ -442,49 +452,23 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         app_version: state.consensus_params.version.app,
     })?;
     exec.set_event_sink(rpc.publisher.clone());
-    #[cfg(feature = "bridge-p2p")]
-    let bridge_peer = opts
-        .bridge_p2p_listen
-        .map(|addr| {
-            crate::bridge::peer::start(
-                addr,
-                home,
-                &genesis.chain_id,
-                bs.clone(),
-                ss.clone(),
-                &opts.bridge_bootstrap,
-                opts.bridge_announce.clone(),
-            )
-        })
-        .transpose()?;
     #[cfg(feature = "bridge")]
-    let _bridge = opts
-        .bridge_rpc_listen
-        .map(|addr| {
-            let wallet = opts
-                .bridge_signer
-                .as_deref()
-                .map(|name| {
-                    crate::bridge::submit::Wallet::open(
-                        home,
-                        name,
-                        &rpc.settings.rpc.laddr,
-                        app::AbciApp::from_shared(app.clone()),
-                        &genesis.chain_id,
-                    )
-                })
-                .transpose()?;
-            crate::bridge::Server::start(
-                addr,
-                home,
-                bs.clone(),
-                ss.clone(),
-                #[cfg(feature = "bridge-p2p")]
-                bridge_peer.as_ref().map(|(_, control)| control.clone()),
-                wallet,
-            )
-        })
-        .transpose()?;
+    let bridge_index = {
+        let enabled = opts.bridge_rpc_listen.is_some();
+        #[cfg(feature = "bridge-p2p")]
+        let enabled = enabled || opts.bridge_p2p_listen.is_some();
+        enabled
+            .then(|| {
+                crate::bridge::index::Indexer::start(
+                    home,
+                    &genesis.chain_id,
+                    bs.clone(),
+                    ss.clone(),
+                    opts.bridge_archival,
+                )
+            })
+            .transpose()?
+    };
     rpc.spawn()?;
     let local_addr = pv.address().to_vec();
     // Go: a fresh node with state sync enabled skips the handshake; the
@@ -522,6 +506,54 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         Some(m) => Some(start_metrics(m, &genesis.chain_id, &pool)?),
         None => None,
     };
+    #[cfg(feature = "bridge-p2p")]
+    let bridge_peer = opts
+        .bridge_p2p_listen
+        .zip(bridge_index.as_ref())
+        .map(|(addr, index)| {
+            crate::bridge::peer::start(
+                addr,
+                home,
+                &genesis.chain_id,
+                crate::bridge::peer::Serving::new(index.store.clone(), metrics.clone()),
+                &opts.bridge_bootstrap,
+                opts.bridge_announce.clone(),
+            )
+        })
+        .transpose()?;
+    #[cfg(feature = "bridge")]
+    let _bridge = opts
+        .bridge_rpc_listen
+        .zip(bridge_index.as_ref())
+        .map(|(addr, index)| {
+            let names = opts
+                .bridge_signer
+                .iter()
+                .chain(&opts.bridge_additional_signers);
+            let wallet = crate::bridge::submit::Accounts::open(names, |name| {
+                let wallet = crate::bridge::submit::Wallet::open(
+                    home,
+                    name,
+                    &rpc.settings.rpc.laddr,
+                    app::AbciApp::from_shared(app.clone()),
+                    &genesis.chain_id,
+                    ss.clone(),
+                )?;
+                Ok((wallet.address(), wallet))
+            })?;
+            crate::bridge::Server::start(
+                addr,
+                home,
+                index.store.clone(),
+                app::AbciApp::from_shared(app.clone()),
+                #[cfg(feature = "da-fibre")]
+                (&rpc.settings.app_grpc, &genesis.chain_id),
+                #[cfg(feature = "bridge-p2p")]
+                bridge_peer.as_ref().map(|(_, control)| control.clone()),
+                wallet,
+            )
+        })
+        .transpose()?;
     // The consensus state machine and its reactors exist from the start
     // (Go's `NewState` + `NewReactor`); block sync executes blocks through
     // the same block executor and then hands over (`SwitchToConsensus`).

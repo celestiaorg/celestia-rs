@@ -1,6 +1,11 @@
 name: DA client interoperability
 on:
   workflow_dispatch:
+    inputs:
+      validator_seconds:
+        description: Seconds per idle and loaded private validator interval (at least 10)
+        required: false
+        type: string
   pull_request:
     paths:
       - 'conformance/da/**'
@@ -37,6 +42,11 @@ jobs:
         with:
           go-version-file: reference-node/go.mod
           cache-dependency-path: reference-node/go.sum
+      - name: Compare the released OpenRPC and client method inventory
+        working-directory: reference-node
+        run: |
+          go run ../conformance/da/inventory/reference.go > "$RUNNER_TEMP/da-methods.tsv"
+          diff -u ../conformance/da/inventory/release.tsv "$RUNNER_TEMP/da-methods.tsv"
       - name: Verify namespace control proofs with the release verifier
         working-directory: reference-node
         run: go run ../conformance/da/namespace/verify.go ../conformance/da/fixtures
@@ -46,8 +56,19 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: '0'
       - name: Replay pinned Go bridge controls
         if: matrix.network == 'Mainnet'
-        run: cargo test --locked -p app --no-default-features --features bridge --test bridge_control
+        run: cargo test --locked -p app --no-default-features --features bridge --test bridge_control -- --include-ignored
+        env:
+          CARGO_PROFILE_DEV_DEBUG: '0'
+          DA_GO_TESTDATA: ${{ github.workspace }}/reference-node/core/testdata
+      - name: Reopen a DA index after consensus block pruning
+        if: matrix.network == 'Mainnet'
+        run: cargo test --locked -p celestia-rs --no-default-features --features bridge-p2p --test da_index_restart -- --ignored --nocapture
         env:
           CARGO_PROFILE_DEV_DEBUG: '0'
       - name: Verify a paid blob with the release client
         run: conformance/da/test-read-bridge.sh target/debug/celestia-rs reference-node --stock-light
+      - name: Verify validator commits under concurrent RPC and SHREX load
+        if: github.event_name == 'workflow_dispatch' && inputs.validator_seconds != ''
+        env:
+          DA_VALIDATOR_SECONDS: ${{ inputs.validator_seconds }}
+        run: conformance/da/test-read-bridge.sh target/debug/celestia-rs reference-node --validator-load

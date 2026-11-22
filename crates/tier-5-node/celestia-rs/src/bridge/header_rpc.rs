@@ -1,57 +1,53 @@
 //! Header ranges and synchronization against the local committed stores.
 use super::{Bridge, J, Query};
 use anyhow::{Context, Result, ensure};
+use prost::Message as _;
 use serde_json::Value;
 use std::{sync::Arc, time::Duration};
 
 pub(super) fn handles(method: &str) -> bool {
-    matches!(
-        method,
-        "header.GetRangeByHeight"
-            | "header.WaitForHeight"
-            | "header.SyncState"
-            | "header.SyncWait"
-            | "blobstream.GetDataRootTupleRoot"
-            | "blobstream.GetDataRootTupleInclusionProof"
-    )
+    super::blobstream::handles(method)
+        || matches!(
+            method,
+            "header.GetRangeByHeight"
+                | "header.WaitForHeight"
+                | "header.SyncState"
+                | "header.SyncWait"
+        )
 }
 
 pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) -> Result<J> {
     let args = params.as_array().context("invalid params")?;
+    if super::blobstream::handles(method) {
+        let request = super::blobstream::Request::parse(method, args)?;
+        let permit = bridge
+            .worker
+            .clone()
+            .try_acquire_owned()
+            .context("bridge busy")?;
+        return tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            request.answer(u64::try_from(head(&bridge)?)?, |start, end| {
+                (start..end)
+                    .map(|h| {
+                        let bytes = bridge.index.header_wire(i64::try_from(h)?)?;
+                        let header = super::HeaderWire::decode(bytes.as_slice())?
+                            .header
+                            .context("missing indexed header")?;
+                        ensure!(
+                            u64::try_from(header.height)? == h && header.data_hash.len() == 32,
+                            "invalid indexed data root tuple"
+                        );
+                        Ok(rpc::env::encode_data_root_tuple(h, &header.data_hash))
+                    })
+                    .collect()
+            })
+        })
+        .await?;
+    }
     match (method, args.as_slice()) {
-        ("blobstream.GetDataRootTupleRoot", [start, end]) => {
-            blobstream(bridge, None, start, end).await
-        }
-        ("blobstream.GetDataRootTupleInclusionProof", [height, start, end]) => {
-            blobstream(
-                bridge,
-                Some(height.as_u64().context("invalid height")?),
-                start,
-                end,
-            )
-            .await
-        }
         ("header.GetRangeByHeight", [from, to]) => {
-            ensure!(!from.is_null(), "header/service: 'from' header is nil");
-            let start: i64 = from["header"]["height"]
-                .as_str()
-                .context("invalid start height")?
-                .parse()?;
-            let hash = hex::decode(
-                from["commit"]["block_id"]["hash"]
-                    .as_str()
-                    .context("invalid start hash")?,
-            )?;
-            let end = to.as_i64().context("invalid end height")?;
-            ensure!(
-                start > 0 && end > start,
-                "header/p2p: `from` must be less than `to`"
-            );
-            ensure!(end - start != 1, "empty header range");
-            ensure!(
-                end - start <= 65,
-                "header/p2p: header limit per 1 request exceeded"
-            );
+            let (range, hash) = range_bounds(from, to)?;
             let permit = bridge
                 .worker
                 .clone()
@@ -60,9 +56,9 @@ pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) ->
             tokio::task::spawn_blocking(move || {
                 let _permit = permit;
                 let mut previous = hash;
-                ensure!(end - 1 <= head(&bridge)?, "range is not committed");
+                ensure!(range.end - 1 <= head(&bridge)?, "range is not committed");
                 let mut result = Vec::new();
-                for height in start + 1..end {
+                for height in range {
                     let block = bridge.committed(height)?;
                     ensure!(
                         block.header.last_block_id.hash == previous,
@@ -77,11 +73,11 @@ pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) ->
         }
         ("header.SyncState", []) => {
             tokio::task::spawn_blocking(move || {
-                // The DA listener reads the local consensus store directly. There is no separate
+                // The DA index follows local commits. There is no separate
                 // header-ex sync job, so its ID, range and timestamps have their Go zero values.
                 let zero = "0001-01-01T00:00:00Z";
                 Ok(J::obj([
-                    ("height", J::num(head(&bridge)?)),
+                    ("height", J::num(bridge.index.head()?)),
                     ("id", J::num(0)),
                     ("from_height", J::num(0)),
                     ("to_height", J::num(0)),
@@ -94,7 +90,7 @@ pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) ->
             .await?
         }
         ("header.SyncWait", []) => {
-            let height = bridge.blocks.height();
+            let height = bridge.index.target();
             wait(&bridge, height).await?;
             Ok(J::Null)
         }
@@ -119,72 +115,44 @@ pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) ->
     }
 }
 
-fn head(bridge: &Bridge) -> Result<i64> {
-    Ok(bridge
-        .states
-        .load()?
-        .context("no committed state")?
-        .last_block_height)
+/// The released store excludes both the supplied header and the end height.
+pub(super) fn range_bounds(from: &Value, to: &Value) -> Result<(std::ops::Range<i64>, Vec<u8>)> {
+    ensure!(!from.is_null(), "header/service: 'from' header is nil");
+    let start: i64 = from["header"]["height"]
+        .as_str()
+        .context("invalid start height")?
+        .parse()?;
+    let hash = hex::decode(
+        from["commit"]["block_id"]["hash"]
+            .as_str()
+            .context("invalid start hash")?,
+    )?;
+    let end = to.as_i64().context("invalid end height")?;
+    ensure!(
+        start > 0 && end > start,
+        "header/p2p: `from` must be less than `to`"
+    );
+    ensure!(end - start != 1, "empty header range");
+    ensure!(
+        end - start <= 65,
+        "header/p2p: header limit per 1 request exceeded"
+    );
+    Ok((start + 1..end, hash))
 }
 
-async fn wait(bridge: &Arc<Bridge>, height: i64) -> Result<()> {
+pub(super) fn head(bridge: &Bridge) -> Result<i64> {
+    bridge.index.head()
+}
+
+pub(super) async fn wait(bridge: &Arc<Bridge>, height: i64) -> Result<()> {
     let _waiter = bridge
         .waiters
         .try_acquire()
         .context("too many header waiters")?;
     loop {
-        if bridge.blocks.height() >= height {
-            let bridge = bridge.clone();
-            if tokio::task::spawn_blocking(move || head(&bridge)).await?? >= height {
-                return Ok(());
-            }
+        if bridge.index.head()? >= height {
+            return Ok(());
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-}
-
-async fn blobstream(
-    bridge: Arc<Bridge>,
-    height: Option<u64>,
-    start: &Value,
-    end: &Value,
-) -> Result<J> {
-    let start = start.as_u64().context("invalid start height")?;
-    let end = end.as_u64().context("invalid end height")?;
-    ensure!(start > 0, "height is equal to 0");
-    ensure!(
-        end > start,
-        "end block is smaller or equal to the start block"
-    );
-    ensure!(
-        end - start <= 10_000,
-        "the query exceeds the limit of allowed blocks 10000"
-    );
-    let permit = bridge
-        .worker
-        .clone()
-        .try_acquire_owned()
-        .context("bridge busy")?;
-    tokio::task::spawn_blocking(move || {
-        let _permit = permit;
-        let current = u64::try_from(head(&bridge)?)?;
-        ensure!(end - 1 <= current, "end block {end} is higher than local chain height {current}. Wait for the node until it syncs up to {end}");
-        if let Some(h) = height {
-            ensure!((start..end).contains(&h), "height {h} should be in the end exclusive interval first_block {start} last_block {end}");
-        }
-        // The pinned Go store reads [start+1, end) after fetching the first header.
-        ensure!(end-start > 1, "header/store: invalid range({end},{end})");
-        let leaves = rpc::env::data_root_tuples(&bridge.blocks, start, end).map_err(anyhow::Error::msg)?;
-        if let Some(h) = height {
-            let (_, proofs) = ctypes::merkle_proof::proofs_from_byte_slices(&leaves);
-            let proof = &proofs[usize::try_from(h - start)?];
-            return Ok(J::obj([
-                ("total", J::num(proof.total)),
-                ("index", J::num(proof.index)),
-                ("leaf_hash", J::b64(&proof.leaf_hash)),
-                ("aunts", J::Arr(proof.aunts.iter().map(|a| J::b64(a)).collect())),
-            ]));
-        }
-        Ok(J::hex(&ctypes::merkle_proof::hash_from_byte_slices(&leaves)))
-    }).await?
 }

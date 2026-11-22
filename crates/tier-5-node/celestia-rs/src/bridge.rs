@@ -1,9 +1,15 @@
 //! Opt-in DA RPC backed by the consensus node's committed block and state stores.
 
 pub(crate) mod auth;
+mod blobstream;
 mod envelope;
+#[cfg(feature = "da-fibre")]
+mod fibre;
 mod header_rpc;
+pub(crate) mod index;
+mod node_rpc;
 mod share_rpc;
+mod state_rpc;
 pub(crate) mod submit;
 mod ws;
 
@@ -15,7 +21,7 @@ use anyhow::{Context, Result, ensure};
 use axum::extract::State;
 use axum::http::header::CONTENT_TYPE;
 use axum::{Router, routing::post};
-use nodestore::{BlockStore, StateStore};
+use prost::Message;
 use rpc::json::J;
 use serde_json::Value;
 use tokio::sync::{Semaphore, oneshot};
@@ -32,10 +38,11 @@ impl Server {
     pub(crate) fn start(
         addr: SocketAddr,
         home: &std::path::Path,
-        blocks: BlockStore,
-        states: StateStore,
+        index: Arc<index::Store>,
+        app: app::AbciApp,
+        #[cfg(feature = "da-fibre")] core: (&str, &str),
         #[cfg(feature = "bridge-p2p")] peer_control: Option<peer::Control>,
-        wallet: Option<Arc<submit::Wallet>>,
+        wallet: Option<submit::Accounts<submit::Wallet>>,
     ) -> Result<Self> {
         ensure!(
             addr.ip().is_loopback(),
@@ -52,12 +59,17 @@ impl Server {
         };
         let (stop, stopped) = oneshot::channel();
         let state = Arc::new(Bridge {
+            #[cfg(feature = "da-fibre")]
+            fibre: {
+                let _enter = runtime.enter();
+                fibre::Client::local(core.0, core.1)?
+            },
+            app: Some(app),
+            index,
             #[cfg(feature = "bridge-p2p")]
             peer_control,
             wallet,
             waiters: Arc::new(Semaphore::new(32)),
-            blocks,
-            states,
             worker: Arc::new(Semaphore::new(1)),
         });
         let router = Router::new()
@@ -91,16 +103,21 @@ impl Drop for Server {
 }
 
 struct Bridge {
+    #[cfg(feature = "da-fibre")]
+    fibre: Option<fibre::Client>,
+    app: Option<app::AbciApp>,
+    index: Arc<index::Store>,
     #[cfg(feature = "bridge-p2p")]
     peer_control: Option<peer::Control>,
-    wallet: Option<Arc<submit::Wallet>>,
+    wallet: Option<submit::Accounts<submit::Wallet>>,
     waiters: Arc<Semaphore>,
-    blocks: BlockStore,
-    states: StateStore,
     worker: Arc<Semaphore>,
 }
 
 enum Query {
+    Escrow(String, String),
+    Staking(String, Vec<Value>),
+    Balance(Option<String>),
     Blobs(i64, Vec<shares::Namespace>),
     Blob(i64, shares::Namespace, Vec<u8>),
     Namespace(i64, shares::Namespace),
@@ -127,18 +144,49 @@ fn bytes(value: &Value) -> Result<Vec<u8>, (i32, &'static str)> {
         .map_err(|_| invalid)
 }
 
+fn positive_height(value: Option<&Value>) -> Option<i64> {
+    value.and_then(Value::as_i64).filter(|h| *h > 0)
+}
+
+fn index(value: &Value) -> Result<usize, (i32, &'static str)> {
+    value
+        .as_u64()
+        .and_then(|i| usize::try_from(i).ok())
+        .ok_or((-32602, "invalid params"))
+}
+
+fn sample_coordinates(value: &Value) -> Result<Vec<(usize, usize)>, (i32, &'static str)> {
+    value
+        .as_array()
+        .ok_or((-32602, "invalid params"))?
+        .iter()
+        .map(|v| Ok((index(&v["row"])?, index(&v["col"])?)))
+        .collect()
+}
+
 impl Query {
+    fn escrow(method: &str, args: &[Value]) -> Result<Self, (i32, &'static str)> {
+        let [signer] = args else {
+            return Err((-32602, "invalid params"));
+        };
+        let signer = signer.as_str().ok_or((-32602, "invalid params"))?;
+        Ok(Self::Escrow(method.into(), signer.into()))
+    }
+
     fn parse(method: &str, params: &Value) -> Result<Self, (i32, &'static str)> {
         let bad = (-32602, "invalid params");
         let args = params.as_array().ok_or(bad)?;
-        let height = || {
-            args.first()
-                .and_then(Value::as_i64)
-                .filter(|h| *h > 0)
-                .ok_or(bad)
-        };
+        let height = || positive_height(args.first()).ok_or(bad);
         let namespace = |v: &Value| shares::Namespace::from_slice(&bytes(v)?).map_err(|_| bad);
-        let index = |v: &Value| v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or(bad);
+        if matches!(
+            method,
+            "fibre.QueryEscrowAccount" | "fibre.PendingWithdrawals"
+        ) {
+            return Self::escrow(method, args);
+        }
+        if state_rpc::reads(method) {
+            return Ok(Self::Staking(method.to_owned(), args.clone()));
+        }
         match method {
             "header.LocalHead" | "header.NetworkHead" if args.is_empty() => Ok(Self::Head),
             "header.Tail" if args.is_empty() => Ok(Self::Tail),
@@ -160,13 +208,12 @@ impl Query {
                 share_rpc::Read::Range(index(&args[1])?, index(&args[2])?),
             )),
             "share.GetSamples" if args.len() == 2 => {
-                let coords = args[1]
-                    .as_array()
-                    .ok_or(bad)?
-                    .iter()
-                    .map(|v| Ok((index(&v["row"])?, index(&v["col"])?)))
-                    .collect::<Result<_, _>>()?;
+                let coords = sample_coordinates(&args[1])?;
                 Ok(Self::ShareRead(height()?, share_rpc::Read::Samples(coords)))
+            }
+            "state.Balance" if args.is_empty() => Ok(Self::Balance(None)),
+            "state.BalanceForAddress" if args.len() == 1 => {
+                Ok(Self::Balance(Some(args[0].as_str().ok_or(bad)?.to_owned())))
             }
             "header.GetByHeight" if args.len() == 1 => Ok(Self::Header(height()?)),
             "blob.GetAll" if args.len() == 2 => {
@@ -208,6 +255,8 @@ impl Query {
             "header.LocalHead"
             | "header.NetworkHead"
             | "header.Tail"
+            | "state.Balance"
+            | "state.BalanceForAddress"
             | "header.GetByHash"
             | "share.SharesAvailable"
             | "share.GetEDS"
@@ -224,6 +273,30 @@ impl Query {
             | "share.GetShare" => Err(bad),
             _ => Err((-32601, "method not found")),
         }
+    }
+}
+
+#[derive(Clone, PartialEq, Message)]
+struct HeaderWire {
+    #[prost(message, optional, tag = "1")]
+    header: Option<ctypes::proto::types::Header>,
+    #[prost(message, optional, tag = "2")]
+    commit: Option<ctypes::proto::types::Commit>,
+    #[prost(message, optional, tag = "3")]
+    validators: Option<ctypes::proto::types::ValidatorSet>,
+    #[prost(bytes, tag = "4")]
+    dah: Vec<u8>,
+}
+
+impl Committed {
+    fn header_wire(&self) -> Result<Vec<u8>> {
+        Ok(HeaderWire {
+            header: Some(self.header.to_proto()),
+            commit: Some(self.commit.to_proto()),
+            validators: Some(self.validators.to_proto()?),
+            dah: self.dah.to_proto_bytes()?,
+        }
+        .encode_to_vec())
     }
 }
 
@@ -245,90 +318,142 @@ impl Bridge {
     }
 
     fn committed(&self, height: i64) -> Result<Committed> {
-        let block = self
-            .blocks
-            .load_block(height)?
-            .context("block unavailable")?;
-        let commit = match self.blocks.load_block_commit(height)? {
-            Some(commit) => commit,
+        self.index.block(height)
+    }
+
+    fn balance(&self, head: i64, address: Option<String>) -> Result<J> {
+        let address = match address {
+            Some(value) => value,
             None => self
-                .blocks
-                .load_seen_commit(height)?
-                .context("commit unavailable")?,
+                .wallet
+                .as_ref()
+                .context("bridge signer is not configured")?
+                .default_wallet()
+                .address(),
         };
-        let h = block.header;
+        let (prefix, bytes) =
+            encoding::bech32::decode_and_convert(&address).map_err(anyhow::Error::msg)?;
         ensure!(
-            h.height == height && h.hash().as_ref() == Some(&commit.block_id.hash),
-            "block and commit disagree"
+            matches!(
+                prefix.as_str(),
+                crate::keys::ACC_PREFIX | crate::keys::VAL_PREFIX
+            ) && (1..=255).contains(&bytes.len()),
+            "invalid account or validator address"
         );
-        let validators = self.states.load_validators(height)?;
-        ensure!(
-            h.validators_hash == validators.hash(),
-            "validator set does not match block"
-        );
-        ctypes::verify_commit_light(&h.chain_id, &validators, &commit.block_id, height, &commit)?;
-        let txs = block
-            .data
-            .txs
-            .into_iter()
-            .map(|tx| tx.0)
-            .collect::<Vec<_>>();
-        let (eds, dah) = app::proposal::verified_block_eds(h.version.app, &txs, &h.data_hash)
+        let header = HeaderWire::decode(self.index.header_wire(head)?.as_slice())?
+            .header
+            .context("no committed header")?;
+        let amount = self
+            .app
+            .as_ref()
+            .context("no bridge application")?
+            .verified_balance(&bytes, head - 1, &header.app_hash)
             .map_err(anyhow::Error::msg)?;
-        Ok(Committed {
-            header: h,
-            commit,
-            validators,
-            eds,
-            dah,
+        Ok(J::obj([
+            ("denom", J::str("utia")),
+            ("amount", J::str(amount)),
+        ]))
+    }
+
+    async fn read_query(self: Arc<Self>, query: Query) -> Result<J> {
+        // A committed OP batch reference may reach the reader before the DA
+        // index publishes its height. Go waits for the next header in this case.
+        if let Some(height) = query.explicit_height()
+            && self.index.head()?.checked_add(1) == Some(height)
+        {
+            header_rpc::wait(&self, height).await?;
+        }
+        let permit = self
+            .worker
+            .clone()
+            .try_acquire_owned()
+            .context("bridge busy")?;
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            self.read(query)
         })
+        .await?
     }
 
     fn read(&self, query: Query) -> Result<J> {
-        let head = self
-            .states
-            .load()?
-            .context("no committed state")?
-            .last_block_height;
+        let head = self.index.head()?;
         let height = match query {
-            Query::Head => head,
-            Query::Tail => self.blocks.base(),
-            Query::Hash(ref hash) => {
-                self.blocks
-                    .load_block_meta_by_hash(hash)?
-                    .context("header not found")?
-                    .header
-                    .height
+            Query::Escrow(method, signer) => {
+                let app = self.app.as_ref().context("no bridge application")?;
+                return Ok(J::Raw(
+                    state_rpc::read(app, &method, &[], &signer)?.to_string(),
+                ));
             }
-            Query::ShareRead(h, _)
-            | Query::Header(h)
-            | Query::Share(h, ..)
-            | Query::Namespace(h, _)
-            | Query::Blobs(h, _)
-            | Query::BlobProof(h, ..)
-            | Query::Blob(h, ..) => h,
+            Query::Staking(method, args) => {
+                let wallet = self
+                    .wallet
+                    .as_ref()
+                    .context("bridge signer is not configured")?;
+                let app = self.app.as_ref().context("no bridge application")?;
+                return Ok(J::Raw(
+                    state_rpc::read(app, &method, &args, &wallet.default_wallet().address())?
+                        .to_string(),
+                ));
+            }
+            Query::Balance(address) => return self.balance(head, address),
+            Query::Head => head,
+            Query::Tail => self.index.tail()?,
+            Query::Hash(ref hash) => self.index.by_hash(hash)?.context("header not found")?,
+            _ => query.explicit_height().context("missing query height")?,
         };
         ensure!(
             height > 0 && height <= head,
             "height {height} is not committed"
         );
         let block = self.committed(height)?;
-        let Committed { eds, dah, .. } = &block;
-        if let Query::BlobProof(_, ns, hash, kind) = query {
+        match query {
+            Query::Header(_) | Query::Head | Query::Tail | Query::Hash(_) => {
+                Ok(block.header_json())
+            }
+            _ => query.answer_square(&block.eds, &block.dah),
+        }
+    }
+}
+
+impl Query {
+    fn explicit_height(&self) -> Option<i64> {
+        match self {
+            Self::ShareRead(h, _)
+            | Self::Header(h)
+            | Self::Share(h, ..)
+            | Self::Namespace(h, _)
+            | Self::Blobs(h, _)
+            | Self::BlobProof(h, ..)
+            | Self::Blob(h, ..) => Some(*h),
+            Self::Escrow(..)
+            | Self::Staking(..)
+            | Self::Balance(_)
+            | Self::Head
+            | Self::Tail
+            | Self::Hash(_) => None,
+        }
+    }
+
+    fn answer_square(
+        self,
+        eds: &square::ExtendedDataSquare,
+        dah: &square::DataAvailabilityHeader,
+    ) -> Result<J> {
+        if let Query::BlobProof(_, ns, hash, kind) = self {
             return prove_blob(eds, dah, ns, &hash, kind);
         }
-        if let Query::ShareRead(_, method) = query {
+        if let Query::ShareRead(_, method) = self {
             return method.response(eds, dah);
         }
-        if let Query::Share(_, row, col) = query {
+        if let Query::Share(_, row, col) = self {
             return Ok(J::b64(eds.share(row, col)?));
         }
-        if let Query::Namespace(_, ns) = query {
+        if let Query::Namespace(_, ns) = self {
             let rows = app::inclusion_proof::namespace_rows(eds, dah, ns)
                 .map_err(|e| anyhow::anyhow!("{}", e.log))?;
             return Ok(J::Arr(rows.into_iter().map(namespace_row_json).collect()));
         }
-        if let Query::Blobs(_, namespaces) = query {
+        if let Query::Blobs(_, namespaces) = self {
             let mut blobs = Vec::new();
             for ns in namespaces {
                 blobs.extend(read_blobs(eds, dah, ns)?.into_iter().map(|(_, blob)| blob));
@@ -339,14 +464,14 @@ impl Bridge {
                 J::Arr(blobs)
             });
         }
-        if let Query::Blob(_, ns, commitment) = query {
+        if let Query::Blob(_, ns, commitment) = self {
             return read_blobs(eds, dah, ns)?
                 .into_iter()
                 .find(|(hash, _)| hash.as_slice() == commitment)
                 .map(|(_, blob)| blob)
                 .context("blob: not found");
         }
-        Ok(block.header_json())
+        anyhow::bail!("expected a blob or share query")
     }
 }
 
@@ -556,16 +681,29 @@ async fn dispatch(
         } else {
             &req.params
         };
-        if matches!(
-            method,
-            "node.AuthNew" | "node.AuthNewWithExpiry" | "node.AuthVerify" | "node.AuthRevoke"
-        ) {
-            require_permission(permissions, method, "admin")?;
-            let args = req.params.as_array().ok_or_else(invalid)?;
-            return auth
-                .admin(method, args)
+        #[cfg(feature = "da-fibre")]
+        if method == "fibre.Download" {
+            require_permission(permissions, method, "read")?;
+            return fibre::rpc(bridge.fibre.as_ref(), params).await;
+        }
+        #[cfg(feature = "da-fibre")]
+        if matches!(method, "fibre.Upload" | "fibre.Submit") {
+            require_permission(permissions, method, "write")?;
+            return fibre_write(&bridge, method, params).await;
+        }
+        if let Some(permission) = node_rpc::permission(method) {
+            require_permission(permissions, method, permission)?;
+            let args = params.as_array().ok_or_else(invalid)?;
+            return node_rpc::call(auth, "Bridge", method, args)
                 .map(|value| J::Raw(value.to_string()))
                 .map_err(|e| (1, e.to_string()));
+        }
+        if matches!(method, "das.SamplingStats" | "das.WaitCatchUp") {
+            require_permission(permissions, method, "read")?;
+            if params != &empty {
+                return Err((-32602, "invalid parameters".to_owned()));
+            }
+            return Err((1, "module/das: stubbed: dasing is disabled".to_owned()));
         }
         #[cfg(feature = "bridge-p2p")]
         if peer::Control::handles(method) {
@@ -581,24 +719,15 @@ async fn dispatch(
                 .map(|value| J::Raw(value.to_string()))
                 .map_err(|e| (1, e.to_string()));
         }
-        if matches!(method, "blob.Submit" | "state.AccountAddress") {
-            let submit = method == "blob.Submit";
+        if state_rpc::writes(method)
+            || matches!(
+                method,
+                "blob.Submit" | "state.SubmitPayForBlob" | "state.AccountAddress"
+            )
+        {
+            let submit = method != "state.AccountAddress";
             require_permission(permissions, method, if submit { "write" } else { "read" })?;
-            let wallet = bridge
-                .wallet
-                .as_ref()
-                .ok_or_else(|| (1, "bridge signer is not configured".to_owned()))?;
-            if submit {
-                return wallet
-                    .submit(&req.params, bridge.states.clone())
-                    .await
-                    .map(J::num)
-                    .map_err(|e| (1, e.to_string()));
-            }
-            if params != &empty {
-                return Err(invalid());
-            }
-            return Ok(J::str(wallet.address()));
+            return wallet_rpc(&bridge, method, &req.params).await;
         }
         if header_rpc::handles(method) {
             require_permission(permissions, method, "read")?;
@@ -608,18 +737,10 @@ async fn dispatch(
         }
         let query = Query::parse(method, params).map_err(|(code, msg)| (code, msg.to_owned()))?;
         require_permission(permissions, method, "read")?;
-        let permit = bridge
-            .worker
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| (-32000, "bridge busy".to_owned()))?;
-        tokio::task::spawn_blocking(move || {
-            let _permit = permit;
-            bridge.read(query)
-        })
-        .await
-        .map_err(|e| (-32000, e.to_string()))?
-        .map_err(|e| (-32000, e.to_string()))
+        bridge
+            .read_query(query)
+            .await
+            .map_err(|e| (-32000, e.to_string()))
     }
     .await;
     let payload = match result {
@@ -630,6 +751,64 @@ async fn dispatch(
         ),
     };
     J::obj([("jsonrpc", J::str("2.0")), ("id", id), payload]).encode()
+}
+
+#[cfg(feature = "da-fibre")]
+async fn fibre_write(bridge: &Bridge, method: &str, params: &Value) -> Result<J, (i32, String)> {
+    let client = bridge
+        .fibre
+        .as_ref()
+        .ok_or_else(|| (1, "Fibre core unavailable".into()))?;
+    let wallet = bridge
+        .wallet
+        .as_ref()
+        .ok_or_else(|| (1, "bridge signer is not configured".into()))?;
+    wallet
+        .select(
+            params
+                .as_array()
+                .ok_or_else(|| (-32602, "invalid transaction parameters".to_owned()))?,
+        )
+        .map_err(|e| (1, e.to_string()))?
+        .submit_fibre(client, params, method == "fibre.Submit")
+        .await
+        .map(|v| J::Raw(v.to_string()))
+        .map_err(|e| (1, e.to_string()))
+}
+
+async fn wallet_rpc(bridge: &Bridge, method: &str, params: &Value) -> Result<J, (i32, String)> {
+    let wallet = bridge
+        .wallet
+        .as_ref()
+        .ok_or_else(|| (1, "bridge signer is not configured".to_owned()))?;
+    if method != "state.AccountAddress" {
+        let receipt = wallet
+            .select(
+                params
+                    .as_array()
+                    .ok_or_else(|| (-32602, "invalid transaction parameters".to_owned()))?,
+            )
+            .map_err(|e| (1, e.to_string()))?
+            .submit(params, method)
+            .await
+            .map_err(|e| (1, e.to_string()))?;
+        if matches!(method, "fibre.Deposit" | "fibre.Withdraw") {
+            return Ok(J::Null);
+        }
+        if method != "blob.Submit" {
+            return Ok(J::obj([
+                ("height", J::num(receipt.height)),
+                ("txhash", J::str(receipt.hash)),
+                ("logs", J::Null),
+                ("events", J::Null),
+            ]));
+        }
+        return Ok(J::num(receipt.height));
+    }
+    if !params.is_null() && params.as_array().is_none_or(|p| !p.is_empty()) {
+        return Err((-32600, "invalid request".to_owned()));
+    }
+    Ok(J::str(wallet.default_wallet().address()))
 }
 
 fn proof_json(p: &celestia_proto::celestia::core::v1::proof::NmtProof, shwap: bool) -> J {

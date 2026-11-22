@@ -155,6 +155,55 @@ The private acceptance run exercises this sequence on both supported
 database backends. [Go conformance probe](../conformance/da/README.md) ·
 [Rollout and rollback test](../conformance/da/test-bridge-rollback.sh)
 
+#### DA storage and role selection
+
+The bridge index in `data/da-bridge/index.redb` stores verified headers and original squares. `header.LocalHead` reports its durable cursor. Compare that height with the consensus RPC height to measure indexing lag. The default retention window is 169 hours of block time. Set `--bridge-archival` when starting a fresh index to retain every indexed square. Monitor disk use under the node home as the index grows.
+
+For a standalone light node, build the operator executable with `--features da-light`. Start `da-light` in its own home. Supply the chain ID (`mocha-5` or `celestia`), a trusted DA peer multiaddress, and a recent block hash independently obtained from the same chain. The following command uses a loopback RPC listener. Set the four environment variables to your light home and trust inputs.
+
+```sh
+target/release/celestia-rs da-light --home "$LIGHT_HOME" --network "$CHAIN_ID" \
+  --peer "$TRUSTED_PEER" --trusted-hash "$BLOCK_HASH" --rpc-listen 127.0.0.1:32658
+```
+
+The light store in `da-light/light.redb` records sampled headers and pending sample coordinates. Restart with the same home and trust inputs to resume. Mint a read token with `da-auth read --home "$LIGHT_HOME"`. Use `das.SamplingStats` to observe the last sampled height and retries. An optional `--p2p-listen` multiaddress accepts inbound DA connections.
+
+After more than seven days offline, the last sampled header can fall outside the trusting period. The node uses its configured trusted peers to select a fresh signed head, including when the original home was initialized with an explicit block hash. Keep those peer identities current. While a fresh head is unavailable, the node waits and keeps its previous sampled head. Once it authenticates the new chain and completes sampling, check `header.Tail` and `header.LocalHead` for the new retained interval. Heights skipped outside the sampling window have no local availability receipt.
+
+To enable wallet reads and signing on a light node, configure its consensus gRPC endpoint with `--core.ip` and `--core.port`, then select a funded account with `--keyring.keyname` and `--keyring.backend`. Use `--core.tls` for TLS and `--core.xtoken.path` for a core that requires an authentication token. A bridge selects its local account with `--bridge-signer`. Give signing clients a write token. Fibre downloads and payment promises additionally require a build with `--features da-fibre` and registered storage providers on the chain. All three feature selections produce the same executable name.
+
+Repeat `--bridge-signer` or the light node's `--keyring.keyname` to authorize additional DA accounts. The first account supplies `state.AccountAddress` and signs requests with default transaction options. Go clients can select another authorized account using `WithKeyName` or `WithSignerAddress`. A supplied address takes precedence over the key name. A write token can spend funds from every account listed for that service. Keep unrelated operator accounts outside the list.
+
+#### Mocha 5 non-validating bridge canary
+
+Use a fresh non-validator home on a separate host. Record the release
+commit, executable SHA-256, Cargo features, storage backend and genesis
+digest alongside the Go reference versions. Start with
+`--network mocha`, a loopback DA RPC listener, and a DA TCP listener
+reachable by the designated Go light peer. Keep the signer option unset.
+Record the DA peer ID from the startup log and supply its address and
+the same trusted Mocha block hash to the Go light client. Configure that
+client to use the canary as its sole DA provider and confirm the serving
+peer ID for each proof check.
+
+After consensus catches up, compare a recent paid height and its successor
+with an independent Mocha Go node. Check the block ID, app hash, data root
+and namespace inclusion proof, and reconstruct the original blob bytes.
+Repeat with concurrent RPC and peer reads. Record elapsed time, successful
+reads, commit gaps, CPU time, peak RSS and head lag for each process.
+Measure allocated bytes under the Rust and Go homes at the start and end
+of the same interval. Record their earliest retrievable heights and any
+pruning configuration with the disk-growth figures.
+
+Restart the Rust process with its original home and repeat the verified
+reads. Record the last verified height before restart and the first new
+verified height afterward. Exercise the rollback procedure above if a
+hash or proof differs or the bridge stops following the Go reference.
+Keep separate receipts for Mocha and Mainnet. A Mainnet non-validator
+rollout follows review of the Mocha receipt. Validator co-location also
+requires its own private load receipt with signed commits throughout the
+serving interval. [DA rollout tracker](https://github.com/celestiaorg/celestia-rs/issues/458)
+
 `--network` knows these chains (from celestia-app v10.4.0):
 
 | network | chain ID | genesis SHA-256 | seeds / peers |
