@@ -79,10 +79,10 @@ impl Behaviour {
             gate: libp2p::allow_block_list::Behaviour::default(),
             streams: streams.into(),
             negotiated: libp2p_stream::Behaviour::new(),
-            identify: identify::Behaviour::new(identify::Config::new(
-                "ipfs/0.1.0".to_owned(),
-                key.public(),
-            )),
+            identify: identify::Behaviour::new(
+                identify::Config::new("ipfs/0.1.0".to_owned(), key.public())
+                    .with_hide_listen_addrs(true),
+            ),
             dht,
             gossip,
         })
@@ -113,13 +113,35 @@ fn release_peers(chain: &str) -> &'static [&'static str] {
 pub(super) struct Peering {
     pub(super) bootstrap: std::collections::BTreeMap<libp2p::PeerId, Vec<libp2p::Multiaddr>>,
     pub(super) announce: Vec<libp2p::Multiaddr>,
+    no_announce: Vec<libp2p::Multiaddr>,
 }
 
 impl Peering {
+    pub(super) fn listen_address(
+        &self,
+        swarm: &mut libp2p::Swarm<Behaviour>,
+        address: &libp2p::Multiaddr,
+    ) {
+        if !self.no_announce.contains(address) {
+            swarm.add_external_address(address.clone());
+        }
+    }
+
+    pub(super) fn expire_address(
+        &self,
+        swarm: &mut libp2p::Swarm<Behaviour>,
+        address: &libp2p::Multiaddr,
+    ) {
+        if !self.announce.contains(address) && !swarm.listeners().any(|addr| addr == address) {
+            swarm.remove_external_address(address);
+        }
+    }
+
     pub(super) fn new(
         chain: &str,
         override_peers: &[libp2p::Multiaddr],
         announce: Vec<libp2p::Multiaddr>,
+        mut no_announce: Vec<libp2p::Multiaddr>,
     ) -> Result<Self> {
         let seeds = if override_peers.is_empty() {
             release_peers(chain)
@@ -166,9 +188,23 @@ impl Peering {
                 "announced DA address needs a TCP, WebSocket or QUIC v1 endpoint"
             );
         }
+        if no_announce.is_empty() {
+            // Exact exclusions from nodebuilder/p2p.DefaultConfig on both release pins.
+            for host in ["/ip4/0.0.0.0", "/ip4/127.0.0.1", "/ip6/::"] {
+                for endpoint in [
+                    "/udp/2121/quic-v1/webtransport",
+                    "/udp/2121/quic-v1",
+                    "/udp/2121/webrtc-direct",
+                    "/tcp/2121",
+                ] {
+                    no_announce.push(format!("{host}{endpoint}").parse()?);
+                }
+            }
+        }
         Ok(Self {
             bootstrap,
             announce,
+            no_announce,
         })
     }
 

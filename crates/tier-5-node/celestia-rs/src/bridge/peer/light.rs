@@ -39,6 +39,12 @@ pub struct LightArgs {
     /// Listen for incoming DA connections. Repeat for TCP, WebSocket or QUIC v1 multiaddresses.
     #[arg(long)]
     p2p_listen: Vec<Multiaddr>,
+    /// Additional reachable DA addresses to advertise.
+    #[arg(long)]
+    announce: Vec<Multiaddr>,
+    /// Listener addresses to omit from DA advertisements. Repeat for each exact multiaddress.
+    #[arg(long)]
+    no_announce: Vec<Multiaddr>,
     /// Consensus gRPC hostname or IP for proof-verified state reads.
     #[arg(long = "core.ip")]
     core_ip: Option<String>,
@@ -595,7 +601,13 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
         anchor.as_ref().is_none_or(|h| h.len() == 32),
         "trusted hash must be 32 bytes"
     );
-    let addresses = super::network::Peering::new(&args.network, &args.peer, vec![])?.bootstrap;
+    let peering = super::network::Peering::new(
+        &args.network,
+        &args.peer,
+        args.announce.clone(),
+        args.no_announce.clone(),
+    )?;
+    let addresses = &peering.bootstrap;
     ensure!(
         !addresses.is_empty(),
         "provide a trusted peer for this network"
@@ -624,7 +636,10 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     for addr in &args.p2p_listen {
         swarm.listen_on(addr.clone())?;
     }
-    for (peer, addrs) in &addresses {
+    for addr in &peering.announce {
+        swarm.add_external_address(addr.clone());
+    }
+    for (peer, addrs) in addresses {
         for addr in addrs {
             swarm.add_peer_address(*peer, addr.clone());
         }
@@ -671,6 +686,6 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
         result = listener => result,
         result = follow(&db, &mut peers, &args, anchor, &status) => result,
         result = tokio::signal::ctrl_c() => Ok(result?),
-        () = discovery::maintain_connections(swarm, &addresses, connected, &args.network, requests, operations, blocklist) => anyhow::bail!("DA network stopped"),
+        () = discovery::maintain_connections(swarm, &peering, connected, &args.network, requests, operations, blocklist) => anyhow::bail!("DA network stopped"),
     }
 }

@@ -172,6 +172,9 @@ pub struct StartOptions {
     /// DA addresses reachable behind an operator's NAT.
     #[cfg(feature = "bridge-p2p")]
     pub bridge_announce: Vec<libp2p::Multiaddr>,
+    /// Exact listener addresses to omit from DA advertisements.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_no_announce: Vec<libp2p::Multiaddr>,
     /// Explicit listener for the experimental read-only DA bridge.
     #[cfg(feature = "bridge")]
     pub bridge_rpc_listen: Option<std::net::SocketAddr>,
@@ -236,6 +239,8 @@ impl StartOptions {
             bridge_bootstrap: Vec::new(),
             #[cfg(feature = "bridge-p2p")]
             bridge_announce: Vec::new(),
+            #[cfg(feature = "bridge-p2p")]
+            bridge_no_announce: Vec::new(),
             config,
             mempool: mempool::MempoolConfig::celestia_app(),
             p2p: None,
@@ -544,6 +549,7 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                 crate::bridge::peer::Serving::new(index.store.clone(), metrics.clone()),
                 &opts.bridge_bootstrap,
                 opts.bridge_announce.clone(),
+                opts.bridge_no_announce.clone(),
             )
         })
         .transpose()?;

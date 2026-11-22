@@ -15,6 +15,8 @@ peer_args=()
 if [[ "${3:-}" == --peer || "${3:-}" == --stock-light || "${3:-}" == --validator-load ]]; then
     peer_args=(--prometheus-listen-addr 127.0.0.1:32660 --bridge-p2p-listen 127.0.0.1:32121 --bridge-p2p-listen /ip4/127.0.0.1/udp/32121/quic-v1
         --bridge-p2p-listen /ip4/127.0.0.1/tcp/32122/ws --bridge-p2p-listen /ip4/127.0.0.1/tcp/32123/tls/ws)
+    export DA_TEST_ADVERTISED=/dns4/localhost/tcp/32121 DA_TEST_HIDDEN=/ip4/127.0.0.1/tcp/32125 DA_TEST_LISTENER=/ip4/127.0.0.1/tcp/32121
+    peer_args+=(--bridge-p2p-listen "$DA_TEST_HIDDEN" --bridge-announce "$DA_TEST_ADVERTISED" --bridge-no-announce "$DA_TEST_HIDDEN")
     if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then
         peer_args+=(--bridge-p2p-listen /ip4/127.0.0.1/udp/32124/webrtc-direct)
     fi

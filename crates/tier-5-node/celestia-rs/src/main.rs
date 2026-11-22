@@ -190,6 +190,10 @@ struct StartArgs {
     #[cfg(feature = "bridge-p2p")]
     #[arg(long, requires = "bridge_p2p_listen")]
     bridge_announce: Vec<libp2p::Multiaddr>,
+    /// Listener addresses to omit from DA advertisements. Repeat for each exact multiaddress.
+    #[cfg(feature = "bridge-p2p")]
+    #[arg(long, requires = "bridge_p2p_listen")]
+    bridge_no_announce: Vec<libp2p::Multiaddr>,
     /// Serve experimental DA JSON-RPC on this loopback address.
     #[cfg(feature = "bridge")]
     #[arg(long)]
@@ -1334,6 +1338,7 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
         opts.bridge_listeners.clone_from(&a.bridge_p2p_listen);
         opts.bridge_bootstrap.clone_from(&a.bridge_bootstrap);
         opts.bridge_announce.clone_from(&a.bridge_announce);
+        opts.bridge_no_announce.clone_from(&a.bridge_no_announce);
     }
     opts.mempool = config::mempool_options(&files)?;
     opts.block_sync = !a.no_block_sync;

@@ -1,21 +1,18 @@
 //! Discover DA providers without adding them to the trusted checkpoint set.
 use futures::StreamExt;
 use libp2p::swarm::{SwarmEvent, dial_opts::DialOpts};
-use libp2p::{Multiaddr, PeerId, Swarm, identify, kad};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    time::Duration,
-};
+use libp2p::{PeerId, Swarm, identify, kad};
+use std::{collections::BTreeSet, time::Duration};
 use tokio::sync::watch;
 
 use super::super::{
     admin,
-    network::{Behaviour, BehaviourEvent},
+    network::{Behaviour, BehaviourEvent, Peering},
 };
 
 pub(super) async fn maintain_connections(
     mut swarm: Swarm<Behaviour>,
-    trusted: &BTreeMap<PeerId, Vec<Multiaddr>>,
+    peers: &Peering,
     connected: watch::Sender<Vec<PeerId>>,
     network: &str,
     mut requests: tokio::sync::mpsc::Receiver<admin::Request>,
@@ -23,6 +20,7 @@ pub(super) async fn maintain_connections(
     blocklist: admin::Blocklist,
 ) {
     const MAX_PROVIDERS: usize = 16;
+    let trusted = &peers.bootstrap;
     let mut retry = tokio::time::interval(Duration::from_secs(3));
     retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut discovery = tokio::time::interval(Duration::from_secs(10));
@@ -73,7 +71,8 @@ pub(super) async fn maintain_connections(
                         let Some(peer_id) = peer_id else { continue };
                         if !swarm.is_connected(&peer_id) { providers.remove(&peer_id); }
                     }
-                    SwarmEvent::NewListenAddr { address, .. } => { swarm.add_external_address(address.clone()); tracing::info!(%address, peer=%swarm.local_peer_id(), "DA light peer listening"); }
+                    SwarmEvent::NewListenAddr { address, .. } => { peers.listen_address(&mut swarm, &address); tracing::info!(%address, peer=%swarm.local_peer_id(), "DA light peer listening"); }
+                    SwarmEvent::ExpiredListenAddr { address, .. } => peers.expire_address(&mut swarm, &address),
                     SwarmEvent::ConnectionEstablished { connection_id, .. } => operations.dial_result(connection_id, Ok(())),
                     _ => continue,
                 }

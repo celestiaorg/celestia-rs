@@ -156,8 +156,9 @@ pub(crate) fn start(
     serving: Serving,
     bootstrap: &[Multiaddr],
     announce: Vec<Multiaddr>,
+    no_announce: Vec<Multiaddr>,
 ) -> Result<(Server, Control)> {
-    let peers = network::Peering::new(network, bootstrap, announce)?;
+    let peers = network::Peering::new(network, bootstrap, announce, no_announce)?;
     let key = PeerIdentity::load(&home.join("config/da_peer.key"), &listen)?;
     let net = network.to_owned();
     let (stop, stopped) = oneshot::channel();
@@ -357,7 +358,7 @@ async fn run(
                 SwarmEvent::OutgoingConnectionError {connection_id, error, ..} => operations.dial_result(connection_id, Err(error.into())),
                 SwarmEvent::ConnectionClosed {peer_id, num_established: 0, ..} => operations.closed(peer_id),
                 SwarmEvent::NewListenAddr { listener_id, address } => {
-                    if peers.announce.is_empty() { swarm.add_external_address(address.clone()); }
+                    peers.listen_address(&mut swarm, &address);
                     tracing::info!(%address, peer=%swarm.local_peer_id(), "DA peer listening");
                     if starting.remove(&listener_id) && starting.is_empty() { let _ = ready.try_send(Ok(())); }
                 }
@@ -367,6 +368,7 @@ async fn run(
                         swarm.behaviour_mut().dht.add_address(&peer_id, addr);
                     }
                 }
+                SwarmEvent::ExpiredListenAddr { address, .. } => peers.expire_address(&mut swarm, &address),
                 SwarmEvent::ListenerClosed { reason, .. } => {
                     reason?;
                     bail!("DA peer listener closed");

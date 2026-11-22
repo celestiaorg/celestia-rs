@@ -29,10 +29,13 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
+	identify "github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	idpb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	libtls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
+	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
 	multistream "github.com/multiformats/go-multistream"
 	"golang.org/x/sync/errgroup"
@@ -209,6 +212,38 @@ func main() {
 	panic("expected blob missing")
 }
 
+// Compare the actual Identify reply as well as the released admin API.
+func checkAdvertisements(ctx context.Context, host libhost.Host, info peer.AddrInfo) {
+	explicit := os.Getenv("DA_TEST_ADVERTISED")
+	if explicit == "" {
+		return
+	}
+	verify := func(addrs []ma.Multiaddr) {
+		seen := make(map[string]bool)
+		for _, addr := range addrs {
+			seen[addr.String()] = true
+		}
+		if !seen[explicit] || !seen[os.Getenv("DA_TEST_LISTENER")] || seen[os.Getenv("DA_TEST_HIDDEN")] {
+			panic(fmt.Sprintf("unexpected advertised addresses %v", addrs))
+		}
+	}
+	verify(info.Addrs)
+	stream, err := host.NewStream(ctx, info.ID, identify.ID)
+	check(err)
+	defer stream.Close()
+	deadline, _ := ctx.Deadline()
+	check(stream.SetDeadline(deadline))
+	var msg idpb.Identify
+	check(pbio.NewDelimitedReader(stream, 64<<10).ReadMsg(&msg))
+	var addrs []ma.Multiaddr
+	for _, raw := range msg.ListenAddrs {
+		addr, err := ma.NewMultiaddrBytes(raw)
+		check(err)
+		addrs = append(addrs, addr)
+	}
+	verify(addrs)
+}
+
 func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInfo, clientHost libhost.Host) {
 	clientID := clientHost.ID()
 	admin, err := rpcclient.NewClient(ctx, endpoint, os.Getenv("DA_TEST_ADMIN_TOKEN"))
@@ -225,6 +260,7 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	if info.ID != server.ID || len(info.Addrs) == 0 {
 		panic("wrong DA listen identity")
 	}
+	checkAdvertisements(ctx, clientHost, info)
 	name, err := admin.P2P.Network(ctx)
 	check(err)
 	if name.String() != chain {
