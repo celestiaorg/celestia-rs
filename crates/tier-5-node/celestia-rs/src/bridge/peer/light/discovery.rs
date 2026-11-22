@@ -1,54 +1,26 @@
 //! Discover DA providers without adding them to the trusted checkpoint set.
-use anyhow::Result;
 use futures::StreamExt;
-use libp2p::swarm::{NetworkBehaviour, SwarmEvent, dial_opts::DialOpts};
-use libp2p::{Multiaddr, PeerId, StreamProtocol, Swarm, identify, identity, kad};
+use libp2p::swarm::{SwarmEvent, dial_opts::DialOpts};
+use libp2p::{Multiaddr, PeerId, Swarm, identify, kad};
 use std::{
     collections::{BTreeMap, BTreeSet},
     time::Duration,
 };
 use tokio::sync::watch;
 
-// libp2p derives an event conversion for the stream handler's uninhabited event.
-#[allow(unreachable_code)]
-mod composed {
-    use super::{NetworkBehaviour, identify, kad};
-
-    #[derive(NetworkBehaviour)]
-    pub(crate) struct Behaviour {
-        pub(crate) streams: libp2p_stream::Behaviour,
-        pub(crate) identify: identify::Behaviour,
-        pub(crate) dht: kad::Behaviour<kad::store::MemoryStore>,
-    }
-}
-pub(super) use composed::Behaviour;
-use composed::BehaviourEvent;
-
-impl Behaviour {
-    pub(super) fn new(key: &identity::Keypair, network: &str) -> Result<Self> {
-        let id = key.public().to_peer_id();
-        let protocol = StreamProtocol::try_from_owned(format!("/celestia/{network}/kad/1.0.0"))?;
-        let mut dht = kad::Behaviour::with_config(
-            id,
-            kad::store::MemoryStore::new(id),
-            kad::Config::new(protocol),
-        );
-        dht.set_mode(Some(kad::Mode::Client));
-        Ok(Self {
-            streams: libp2p_stream::Behaviour::new(),
-            identify: identify::Behaviour::new(identify::Config::new(
-                "ipfs/0.1.0".into(),
-                key.public(),
-            )),
-            dht,
-        })
-    }
-}
+use super::super::{
+    admin,
+    network::{Behaviour, BehaviourEvent},
+};
 
 pub(super) async fn maintain_connections(
     mut swarm: Swarm<Behaviour>,
     trusted: &BTreeMap<PeerId, Vec<Multiaddr>>,
     connected: watch::Sender<Vec<PeerId>>,
+    network: &str,
+    mut requests: tokio::sync::mpsc::Receiver<admin::Request>,
+    mut operations: admin::Operations,
+    blocklist: admin::Blocklist,
 ) {
     const MAX_PROVIDERS: usize = 16;
     let mut retry = tokio::time::interval(Duration::from_secs(3));
@@ -64,6 +36,7 @@ pub(super) async fn maintain_connections(
     }
     loop {
         tokio::select! {
+            Some(request) = requests.recv() => operations.handle(request, &mut swarm, network, &blocklist),
             _ = retry.tick() => {
                 for (peer, addresses) in trusted {
                     if !swarm.is_connected(peer) {
@@ -91,12 +64,17 @@ pub(super) async fn maintain_connections(
                         }
                         if step.last { query = None; }
                     }
-                    SwarmEvent::ConnectionClosed { peer_id, num_established: 0, .. } |
-                    SwarmEvent::OutgoingConnectionError { peer_id: Some(peer_id), .. } => {
+                    SwarmEvent::ConnectionClosed { peer_id, num_established: 0, .. } => {
+                        operations.closed(peer_id);
+                        providers.remove(&peer_id);
+                    }
+                    SwarmEvent::OutgoingConnectionError { connection_id, error, peer_id, .. } => {
+                        operations.dial_result(connection_id, Err(error.into()));
+                        let Some(peer_id) = peer_id else { continue };
                         if !swarm.is_connected(&peer_id) { providers.remove(&peer_id); }
                     }
-                    SwarmEvent::NewListenAddr { address, .. } => tracing::info!(%address, peer=%swarm.local_peer_id(), "DA light peer listening"),
-                    SwarmEvent::ConnectionEstablished { .. } => {}
+                    SwarmEvent::NewListenAddr { address, .. } => { swarm.add_external_address(address.clone()); tracing::info!(%address, peer=%swarm.local_peer_id(), "DA light peer listening"); }
+                    SwarmEvent::ConnectionEstablished { connection_id, .. } => operations.dial_result(connection_id, Ok(())),
                     _ => continue,
                 }
                 let online: Vec<_> = trusted.keys().chain(providers.iter()).filter(|id| swarm.is_connected(id)).copied().collect();

@@ -206,6 +206,8 @@ auth_probe=$(realpath "$(dirname "$0")/../auth/check.go")
 DA_TEST_ADMIN_TOKEN=$("$rust" da-auth admin --home "$work/rust-light")
 export DA_TEST_ADMIN_TOKEN
 (cd "$node_src" && go run "$auth_probe" "$endpoint" Light)
+admin_probe=$(realpath "$(dirname "$0")/../peer/read_peer.go")
+(cd "$node_src" && DA_TEST_ADMIN_URL="$endpoint" go run "$admin_probe" "$chain" "/ip4/127.0.0.1/tcp/39621/p2p/$light_peer" --light-admin)
 unset DA_TEST_ADMIN_TOKEN
 curl -fsS "$endpoint" -H "Authorization: Bearer $DA_TEST_READ_TOKEN" \
     -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"share.GetEDS\",\"params\":[$height]}" |

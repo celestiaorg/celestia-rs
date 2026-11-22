@@ -11,7 +11,7 @@ use super::{HeaderResponse, HeaderWire, Origin, Proof, Request, Sample, identity
 use anyhow::{Context, Result, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use kvdb::{KvBackend, RedbBackend, RedbOptions, WriteBatch};
-use libp2p::{Multiaddr, PeerId, StreamProtocol, SwarmBuilder, noise, tcp, yamux};
+use libp2p::{Multiaddr, PeerId, StreamProtocol};
 use prost::Message;
 use rand::seq::index;
 use std::{collections::BTreeMap, io::Write as _, path::Path, time::Duration};
@@ -577,18 +577,18 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     // Bind synchronously with startup so a busy port is reported to the operator.
     let (status, observer) = tokio::sync::watch::channel(stats::Sampling::default());
     let key = identity(&dir.join("peer.key"))?;
-    let behaviour = discovery::Behaviour::new(&key, &args.network)?;
-    let mut swarm = SwarmBuilder::with_existing_identity(key)
-        .with_tokio()
-        .with_tcp(
-            tcp::Config::default(),
-            noise::Config::new,
-            yamux::Config::default,
-        )?
-        .with_dns()?
-        .with_behaviour(|_| behaviour)?
-        .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(120)))
-        .build();
+    let mut behaviour =
+        super::network::Behaviour::new(&key, &args.network, libp2p::kad::Mode::Client)?;
+    let blocklist = super::admin::Blocklist::open(&dir)?;
+    blocklist.restore(&mut behaviour)?;
+    for peer in addresses.keys() {
+        behaviour.protected.protect(*peer, "protected-bootstrap");
+    }
+    let ping = super::ping::Ping::start(behaviour.negotiated.new_control())?;
+    let connections = super::connections::Connections::default();
+    let mut swarm = super::observed_swarm(key, behaviour, &connections)?;
+    let operations = super::admin::Operations::new(ping, connections);
+    let (peer_control, requests) = super::admin::Control::channel();
     if let Some(addr) = &args.p2p_listen {
         swarm.listen_on(addr.clone())?;
     }
@@ -599,7 +599,7 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     }
     let headers = StreamProtocol::try_from_owned(format!("/{}/header-ex/v0.0.3", args.network))?;
     exchange::start(
-        swarm.behaviour().streams.new_control(),
+        swarm.behaviour().negotiated.new_control(),
         headers.clone(),
         db.clone(),
     )?;
@@ -610,18 +610,26 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     let mut peers = Peers {
         trusted: addresses.keys().copied().collect(),
         streams: Streams {
-            control: swarm.behaviour().streams.new_control(),
+            control: swarm.behaviour().negotiated.new_control(),
             headers,
             samples,
             eds,
         },
         connected: online,
     };
-    let listener = rpc::listener(&args, home, db.clone(), observer, peers.clone()).await?;
+    let listener = rpc::listener(
+        &args,
+        home,
+        db.clone(),
+        observer,
+        peers.clone(),
+        peer_control,
+    )
+    .await?;
     tokio::select! {
         result = listener => result,
         result = follow(&db, &mut peers, &args, anchor, &status) => result,
         result = tokio::signal::ctrl_c() => Ok(result?),
-        () = discovery::maintain_connections(swarm, &addresses, connected) => anyhow::bail!("DA network stopped"),
+        () = discovery::maintain_connections(swarm, &addresses, connected, &args.network, requests, operations, blocklist) => anyhow::bail!("DA network stopped"),
     }
 }
