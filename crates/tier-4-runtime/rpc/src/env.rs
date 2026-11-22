@@ -1294,29 +1294,36 @@ impl Environment {
         ]))
     }
 
+    fn committed_tx_status(&self, hash: &[u8]) -> Result<Option<J>, String> {
+        let Some(info) = self.block_store.load_tx_info(hash).map_err(s)? else {
+            return Ok(None);
+        };
+        let mut o = J::obj([
+            ("height", J::i64s(info.height)),
+            ("index", J::num(info.index)),
+            ("execution_code", J::num(info.code)),
+            ("error", J::str(&info.error)),
+            ("status", J::str("COMMITTED")),
+        ]);
+        if !info.codespace.is_empty() {
+            o.push("codespace", J::str(&info.codespace));
+        }
+        if info.gas_wanted != 0 {
+            o.push("gas_wanted", J::i64s(info.gas_wanted));
+        }
+        if info.gas_used != 0 {
+            o.push("gas_used", J::i64s(info.gas_used));
+        }
+        if !info.signers.is_empty() {
+            o.push("signers", J::Arr(info.signers.iter().map(J::str).collect()));
+        }
+        Ok(Some(o))
+    }
+
     /// `TxStatus`; also returns whether the tx is committed.
     pub fn tx_status(&self, hash: &[u8]) -> Result<(J, bool), String> {
-        if let Some(info) = self.block_store.load_tx_info(hash).map_err(s)? {
-            let mut o = J::obj([
-                ("height", J::i64s(info.height)),
-                ("index", J::num(info.index)),
-                ("execution_code", J::num(info.code)),
-                ("error", J::str(&info.error)),
-                ("status", J::str("COMMITTED")),
-            ]);
-            if !info.codespace.is_empty() {
-                o.push("codespace", J::str(&info.codespace));
-            }
-            if info.gas_wanted != 0 {
-                o.push("gas_wanted", J::i64s(info.gas_wanted));
-            }
-            if info.gas_used != 0 {
-                o.push("gas_used", J::i64s(info.gas_used));
-            }
-            if !info.signers.is_empty() {
-                o.push("signers", J::Arr(info.signers.iter().map(J::str).collect()));
-            }
-            return Ok((o, true));
+        if let Some(status) = self.committed_tx_status(hash)? {
+            return Ok((status, true));
         }
         let key: mempool::TxKey = hash.try_into().map_err(|_| {
             format!(
@@ -1341,6 +1348,14 @@ impl Environment {
         }
         let (rejected, code, log) = self.mempool.was_recently_rejected(&key);
         if rejected {
+            // Commit writes the receipt before removing the transaction from the pool.
+            // A removal observed after our first lookup can already have a receipt.
+            if code == 0
+                && log.is_empty()
+                && let Some(status) = self.committed_tx_status(hash)?
+            {
+                return Ok((status, true));
+            }
             return Ok((simple("REJECTED", code, &log), false));
         }
         Ok((simple("UNKNOWN", 0, ""), false))
