@@ -179,3 +179,5 @@ and pass `--keyring.keyname NAME` with the configured core endpoint.
 bank proofs for the selected account and for address-specific reads.
 
 To exercise light Fibre settlement, run `conformance/da/fibre/test-bridge-download.sh /path/to/celestia-rs /path/to/pinned-celestia-node --light` with a `da-fibre` build. The fixture funds a fresh light key, registers a Go storage provider on a local Rust consensus chain, and checks the synchronous receipt, asynchronous settlement, returned bytes and escrow debits through the released Go client.
+
+The private light test also creates a second Go validator and funds a separate light wallet. Its released clients exercise delegation, unbonding and cancellation, redelegation, reward withdrawal, fee grants, escrow deposits and pending withdrawals. The light node uses native Cosmos gRPC module queries against the selected core for these reads. Account balances continue to use proofs checked against a locally sampled header.

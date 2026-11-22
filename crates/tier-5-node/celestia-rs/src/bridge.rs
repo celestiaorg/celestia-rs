@@ -379,7 +379,9 @@ impl Bridge {
         let height = match query {
             Query::Escrow(method, signer) => {
                 let app = self.app.as_ref().context("no bridge application")?;
-                return Ok(J::Raw(state_rpc::escrow(app, &method, signer)?.to_string()));
+                return Ok(J::Raw(
+                    state_rpc::read(app, &method, &[], &signer)?.to_string(),
+                ));
             }
             Query::Staking(method, args) => {
                 let wallet = self
@@ -388,7 +390,7 @@ impl Bridge {
                     .context("bridge signer is not configured")?;
                 let app = self.app.as_ref().context("no bridge application")?;
                 return Ok(J::Raw(
-                    state_rpc::read(app, &method, &args, wallet.address())?.to_string(),
+                    state_rpc::read(app, &method, &args, &wallet.address())?.to_string(),
                 ));
             }
             Query::Balance(address) => return self.balance(head, address),
