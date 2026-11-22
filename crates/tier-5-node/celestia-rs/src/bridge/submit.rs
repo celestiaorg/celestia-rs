@@ -81,31 +81,12 @@ impl Wallet {
         let params = params
             .as_array()
             .context("expected transaction parameters")?;
-        let (options, args) = params
-            .split_last()
-            .context("expected transaction options")?;
-        let options =
-            serde_json::from_value::<Option<Options>>(options.clone())?.unwrap_or_default();
-        let (message, blobs, blob_gas) = match (method, args) {
-            (m, args) if super::state_rpc::writes(m) => (
-                super::state_rpc::message(m, args, self.address())?,
-                None,
-                None,
-            ),
-            ("blob.Submit" | "state.SubmitPayForBlob", [values]) => {
-                let blobs = values
-                    .as_array()
-                    .filter(|v| !v.is_empty())
-                    .context("expected a nonempty blob array")?
-                    .iter()
-                    .map(|v| parse_blob(v, method == "state.SubmitPayForBlob"))
-                    .collect::<Result<Vec<_>>>()?;
-                let msg = txs::msg_pay_for_blobs(&self.address(), &blobs)?;
-                let gas = txs::pfb_gas(&msg);
-                (Any::pack(&msg), Some(blobs), Some(gas))
-            }
-            _ => anyhow::bail!("invalid transaction parameters"),
-        };
+        let Transaction {
+            message,
+            blobs,
+            blob_gas,
+            options,
+        } = transaction(params, method, &self.address())?;
         let wallet = self.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
@@ -156,21 +137,7 @@ impl Wallet {
         })
     }
     fn check_options(&self, options: &Options) -> Result<()> {
-        let address = self.address();
-        let requested = if options.signer_address.is_empty() {
-            options.key_name.is_empty() || options.key_name == self.flags.from
-        } else {
-            options.signer_address == address
-        };
-        ensure!(
-            requested,
-            "requested account is not configured for bridge signing"
-        );
-        ensure!(
-            options.fee_granter_address.is_empty()
-                || client::acc_address_from_bech32(&options.fee_granter_address).is_some(),
-            "invalid fee granter address"
-        );
+        options.validate(&self.flags.from, &self.address())?;
         Ok(())
     }
     fn message_fee(&self, message: &Any, opts: &Options) -> Result<(f64, u64)> {
@@ -227,6 +194,46 @@ impl Wallet {
     }
 }
 
+pub(super) struct Transaction {
+    pub(super) message: Any,
+    pub(super) blobs: Option<Vec<shares::Blob>>,
+    pub(super) blob_gas: Option<u64>,
+    pub(super) options: Options,
+}
+
+pub(super) fn transaction(params: &[Value], method: &str, signer: &str) -> Result<Transaction> {
+    let (options, args) = params
+        .split_last()
+        .context("expected transaction options")?;
+    let options = serde_json::from_value::<Option<Options>>(options.clone())?.unwrap_or_default();
+    let (message, blobs, blob_gas) = match (method, args) {
+        (m, args) if super::state_rpc::writes(m) => (
+            super::state_rpc::message(m, args, signer.to_owned())?,
+            None,
+            None,
+        ),
+        ("blob.Submit" | "state.SubmitPayForBlob", [values]) => {
+            let blobs = values
+                .as_array()
+                .filter(|v| !v.is_empty())
+                .context("expected a nonempty blob array")?
+                .iter()
+                .map(|v| parse_blob(v, method == "state.SubmitPayForBlob"))
+                .collect::<Result<Vec<_>>>()?;
+            let msg = txs::msg_pay_for_blobs(signer, &blobs)?;
+            let gas = txs::pfb_gas(&msg);
+            (Any::pack(&msg), Some(blobs), Some(gas))
+        }
+        _ => anyhow::bail!("invalid transaction parameters"),
+    };
+    Ok(Transaction {
+        message,
+        blobs,
+        blob_gas,
+        options,
+    })
+}
+
 // The pool may have removed the proposal before its commit receipt and DA height are published.
 fn committed_height(node: &txs::Node, states: &nodestore::StateStore, hash: &str) -> Result<u64> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
@@ -258,18 +265,35 @@ fn committed_height(node: &txs::Node, states: &nodestore::StateStore, hash: &str
 
 #[derive(Default, Deserialize)]
 #[serde(default)]
-struct Options {
-    gas_price: f64,
-    is_gas_price_set: bool,
+pub(super) struct Options {
+    pub(super) gas_price: f64,
+    pub(super) is_gas_price_set: bool,
     max_gas_price: f64,
     tx_priority: i32,
-    gas: u64,
+    pub(super) gas: u64,
     key_name: String,
     signer_address: String,
-    fee_granter_address: String,
+    pub(super) fee_granter_address: String,
 }
 
 impl Options {
+    pub(super) fn validate(&self, key_name: &str, address: &str) -> Result<()> {
+        let requested = if self.signer_address.is_empty() {
+            self.key_name.is_empty() || self.key_name == key_name
+        } else {
+            self.signer_address == address
+        };
+        ensure!(
+            requested,
+            "requested account is not configured for bridge signing"
+        );
+        ensure!(
+            self.fee_granter_address.is_empty()
+                || client::acc_address_from_bech32(&self.fee_granter_address).is_some(),
+            "invalid fee granter address"
+        );
+        Ok(())
+    }
     fn price(&self, app: &app::AbciApp) -> Result<f64> {
         if self.is_gas_price_set && self.gas_price.to_bits() != (-1.0_f64).to_bits() {
             ensure!(self.gas_price >= 0.0, "invalid gas price");
@@ -292,14 +316,14 @@ impl Options {
         Ok(price)
     }
 
-    fn priority(&self) -> i32 {
+    pub(super) fn priority(&self) -> i32 {
         match self.tx_priority {
             1..=3 => self.tx_priority,
             _ => 0,
         }
     }
 
-    fn check_price(&self, price: f64) -> Result<()> {
+    pub(super) fn check_price(&self, price: f64) -> Result<()> {
         let max_price = if self.max_gas_price == 0.0 {
             100.0 * txs::DEFAULT_MIN_GAS_PRICE
         } else {

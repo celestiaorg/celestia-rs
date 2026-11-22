@@ -4,8 +4,7 @@ use crate::bridge::{auth::Auth, blobstream, credentials, header_json, node_rpc};
 use anyhow::{Context, Result, ensure};
 use axum::{
     Router,
-    body::Bytes,
-    extract::{DefaultBodyLimit, State},
+    extract::{Request, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::post,
@@ -67,12 +66,22 @@ pub(super) fn store_header(
 struct Service {
     data: super::data::Client,
     core: Option<super::core::Core>,
-    address: Option<String>,
+    wallet: Option<Arc<super::wallet::Wallet>>,
     auth: Arc<Auth>,
     db: Arc<RedbBackend>,
     workers: Arc<tokio::sync::Semaphore>,
     waiters: tokio::sync::Semaphore,
     status: tokio::sync::watch::Receiver<super::stats::Sampling>,
+}
+
+impl Service {
+    fn limit(&self, permissions: &[String]) -> usize {
+        if self.wallet.is_some() && permissions.iter().any(|p| p == "write") {
+            crate::bridge::submit::BODY_LIMIT
+        } else {
+            64 * 1024
+        }
+    }
 }
 
 pub(super) async fn listener(
@@ -90,22 +99,18 @@ pub(super) async fn listener(
         let socket = tokio::net::TcpListener::bind(addr).await?;
         let router = Router::new()
             .route("/", post(handle).get(upgrade))
-            .layer(DefaultBodyLimit::max(64 * 1024))
             .with_state(Arc::new(Service {
                 auth: Arc::new(Auth::open(home)?),
                 data: super::data::Client::new(peers)?,
-                address: args
+                wallet: args
                     .key_name
                     .as_deref()
                     .map(|name| {
-                        let flags = crate::client::TxFlags {
-                            from: name.to_owned(),
-                            keyring_backend: args.key_backend.clone(),
-                            ..Default::default()
-                        };
-                        Ok::<_, anyhow::Error>(
-                            crate::client::resolve_from(home, &flags)?
-                                .bech32(crate::keys::ACC_PREFIX),
+                        super::wallet::Wallet::open(
+                            home,
+                            name,
+                            args.key_backend.clone(),
+                            args.network.clone(),
                         )
                     })
                     .transpose()?,
@@ -140,10 +145,14 @@ pub(super) async fn listener(
     })
 }
 
-async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: Bytes) -> Response {
+async fn handle(State(service): State<Arc<Service>>, request: Request) -> Response {
     let changed = service.auth.subscribe();
-    let Ok((token, perms)) = credentials(&service.auth, &headers) else {
+    let (parts, incoming) = request.into_parts();
+    let Ok((token, perms)) = credentials(&service.auth, &parts.headers) else {
         return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let Ok(body) = axum::body::to_bytes(incoming, service.limit(&perms)).await else {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
     };
     let payload = tokio::select! {
         result = call(&service,&perms,&body) => result,
@@ -178,6 +187,7 @@ async fn call(service: &Service, perms: &[String], body: &[u8]) -> String {
         if node_permission.is_none()
             && !blobstream::handles(method)
             && !core_method(method)
+            && !super::wallet::handles(method)
             && !super::data::handles(method)
             && !matches!(
                 method,
@@ -196,7 +206,11 @@ async fn call(service: &Service, perms: &[String], body: &[u8]) -> String {
         {
             return Err((-32601, "method not found".into()));
         }
-        let permission = node_permission.unwrap_or("read");
+        let permission = node_permission.unwrap_or(if super::wallet::handles(method) {
+            "write"
+        } else {
+            "read"
+        });
         if !perms.iter().any(|p| p == permission) {
             return Err((1, format!("missing {permission} permission")));
         }
@@ -224,7 +238,7 @@ async fn dispatch(
     method: &str,
     args: Vec<Value>,
 ) -> Result<String, (i32, String)> {
-    if core_method(method) {
+    if core_method(method) || super::wallet::handles(method) {
         return core_read(service, method, &args).await;
     }
     if matches!(method, "header.SyncState" | "header.SyncWait") {
@@ -342,10 +356,21 @@ async fn core_read(
         };
         (1, reason.to_owned())
     })?;
+    if super::wallet::handles(method) {
+        let wallet = service
+            .wallet
+            .as_ref()
+            .ok_or_else(|| (1, "light signer is not configured".to_owned()))?;
+        return wallet
+            .submit(core, method, args)
+            .await
+            .map(|value| value.to_string())
+            .map_err(|e| (1, e.to_string()));
+    }
     let address = match (method, args) {
         ("state.BalanceForAddress" | "fibre.Download", [Value::String(address)]) => address,
         ("state.Balance" | "state.AccountAddress", []) => {
-            service.address.as_ref().ok_or_else(|| {
+            service.wallet.as_ref().map(|w| &w.address).ok_or_else(|| {
                 (
                     1,
                     "no light account selected (use --keyring.keyname)".to_owned(),
@@ -489,8 +514,8 @@ fn decode_header(
 }
 
 impl crate::bridge::ws::Endpoint for Service {
-    fn body_limit(&self, _: &[String]) -> usize {
-        64 * 1024
+    fn body_limit(&self, permissions: &[String]) -> usize {
+        self.limit(permissions)
     }
 
     fn bounds(&self) -> Result<(i64, i64)> {

@@ -106,26 +106,47 @@ pub(super) async fn balance(core: Core, db: &RedbBackend, address: &str) -> Resu
     ensure!(header.height > 1, "no prior committed state");
     let key = app::utia_balance_key(&bytes);
     let height = header.height - 1;
-    let mut grpc = Grpc::new(core.channel);
-    grpc.ready().await.context("core endpoint unavailable")?;
-    let mut req = tonic::Request::new(AbciQueryRequest {
-        data: key.clone(),
-        path: "store/bank/key".into(),
-        height,
-        prove: true,
-    });
-    if let Some(token) = core.token {
-        req.metadata_mut().insert("x-token", token);
-    }
-    let result = grpc
+    let result = core
         .unary(
-            req,
-            PathAndQuery::from_static("/cosmos.base.tendermint.v1beta1.Service/ABCIQuery"),
-            ProstCodec::default(),
+            "/cosmos.base.tendermint.v1beta1.Service/ABCIQuery",
+            AbciQueryRequest {
+                data: key.clone(),
+                path: "store/bank/key".into(),
+                height,
+                prove: true,
+            },
         )
-        .await?
-        .into_inner();
+        .await?;
     let amount = app::verify_bank_balance_response(&key, height, &header.app_hash, result)
         .map_err(anyhow::Error::msg)?;
     Ok(json!({"denom":"utia","amount":amount}))
+}
+
+impl Core {
+    pub(super) async fn unary<Req, Resp>(
+        &self,
+        path: &'static str,
+        message: Req,
+    ) -> Result<Resp, Box<tonic::Status>>
+    where
+        Req: prost::Message + Send + Sync + 'static,
+        Resp: prost::Message + Default + Send + Sync + 'static,
+    {
+        let mut grpc = Grpc::new(self.channel.clone());
+        grpc.ready()
+            .await
+            .map_err(|e| tonic::Status::unavailable(e.to_string()))?;
+        let mut request = tonic::Request::new(message);
+        if let Some(token) = &self.token {
+            request.metadata_mut().insert("x-token", token.clone());
+        }
+        Ok(grpc
+            .unary(
+                request,
+                PathAndQuery::from_static(path),
+                ProstCodec::default(),
+            )
+            .await?
+            .into_inner())
+    }
 }

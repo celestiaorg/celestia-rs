@@ -212,3 +212,23 @@ timeout 120 "$rust" da-light --home "$work/discovered" --network "$chain" --peer
     --trusted-hash "$hash" --until "$height" >"$work/discovered.log"
 grep -Fq "sampled height $height (16 verified shares), hash $hash" "$work/discovered.log"
 echo "Rust verified the paid checkpoint from a Go provider learned only through a routing peer"
+
+# Reopen the funded light account against the actual Go core transaction services.
+kill -INT "$light"
+wait "$light"
+light=
+"$rust" "${args[@]}" --core.ip 127.0.0.1 --core.port 39090 --keyring.keyname light --keyring.backend test \
+    --rpc-listen 127.0.0.1:39658 >"$work/light-wallet.log" 2>&1 &
+light=$!
+for attempt in {1..60}; do
+    kill -0 "$light"
+    if curl -fsS --max-time 2 "$endpoint" -H "Authorization: Bearer $DA_TEST_READ_TOKEN" \
+        -d '{"jsonrpc":"2.0","id":1,"method":"state.AccountAddress","params":[]}' 2>/dev/null |
+        jq -e --arg wallet "$light_wallet" '.result == $wallet' >/dev/null; then break; fi
+    if [[ "$attempt" == 60 ]]; then echo 'light wallet unavailable' >&2; exit 1; fi
+    sleep 1
+done
+DA_TEST_WRITE_TOKEN=$("$rust" da-auth write --home "$work/rust-light")
+export DA_TEST_WRITE_TOKEN
+submit_probe=$(realpath "$(dirname "$0")/../submit/check.go")
+(cd "$node_src" && go run "$submit_probe" "$endpoint")

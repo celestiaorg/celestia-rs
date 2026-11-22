@@ -164,3 +164,11 @@ signatures. Upload starts settlement in the background. Submit waits for a
 successful commitment and includes its height and transaction hash. The wallet
 holds the account sequence until settlement completes. The fixture uses the
 Go service to recover each Rust upload and checks the exact escrow debit.
+
+With a selected light key, a core endpoint and a write token, the light wallet
+signs transactions locally. The core supplies account sequence and fee
+estimates, broadcasts the signed bytes and reports inclusion. The node checks
+the transaction hash and execution code before returning a receipt. The
+private Go fixture funds a separate light key, uses both estimated and
+explicit fees, and reads the committed balance and paid blobs through the
+same light listener after sampling catches up.

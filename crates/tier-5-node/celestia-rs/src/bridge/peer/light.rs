@@ -5,6 +5,7 @@ mod discovery;
 mod exchange;
 mod rpc;
 mod stats;
+mod wallet;
 
 use super::{HeaderResponse, HeaderWire, Origin, Proof, Request, Sample, identity};
 use anyhow::{Context, Result, ensure};

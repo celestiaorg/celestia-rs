@@ -121,6 +121,8 @@ func main() {
 	if receipt.Height <= 0 || len(receipt.TxHash) != 64 || receipt.Code != 0 {
 		panic(fmt.Sprintf("invalid PFB receipt: %v", receipt))
 	}
+	_, err = read.Header.WaitForHeight(ctx, uint64(receipt.Height))
+	check(err)
 	for _, want := range batch {
 		got, err := read.Blob.Get(ctx, uint64(receipt.Height), ns, want.Commitment)
 		check(err)
