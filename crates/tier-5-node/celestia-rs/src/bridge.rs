@@ -34,6 +34,7 @@ impl Server {
         addr: SocketAddr,
         home: &std::path::Path,
         index: Arc<index::Store>,
+        #[cfg(feature = "bridge-p2p")] peer_control: Option<peer::Control>,
         wallet: Option<Arc<submit::Wallet>>,
     ) -> Result<Self> {
         ensure!(
@@ -52,6 +53,8 @@ impl Server {
         let (stop, stopped) = oneshot::channel();
         let state = Arc::new(Bridge {
             index,
+            #[cfg(feature = "bridge-p2p")]
+            peer_control,
             wallet,
             waiters: Arc::new(Semaphore::new(32)),
             worker: Arc::new(Semaphore::new(1)),
@@ -88,6 +91,8 @@ impl Drop for Server {
 
 struct Bridge {
     index: Arc<index::Store>,
+    #[cfg(feature = "bridge-p2p")]
+    peer_control: Option<peer::Control>,
     wallet: Option<Arc<submit::Wallet>>,
     waiters: Arc<Semaphore>,
     worker: Arc<Semaphore>,
@@ -535,6 +540,20 @@ async fn dispatch(
             let args = req.params.as_array().ok_or_else(invalid)?;
             return auth
                 .admin(method, args)
+                .map(|value| J::Raw(value.to_string()))
+                .map_err(|e| (1, e.to_string()));
+        }
+        #[cfg(feature = "bridge-p2p")]
+        if peer::Control::handles(method) {
+            require_permission(permissions, method, "admin")?;
+            let control = bridge
+                .peer_control
+                .as_ref()
+                .ok_or_else(|| (1, "DA peer is disabled".to_owned()))?;
+            let args = params.as_array().ok_or_else(invalid)?;
+            return control
+                .call(method, args)
+                .await
                 .map(|value| J::Raw(value.to_string()))
                 .map_err(|e| (1, e.to_string()));
         }

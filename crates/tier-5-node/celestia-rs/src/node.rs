@@ -464,6 +464,21 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
             })
             .transpose()?
     };
+    #[cfg(feature = "bridge-p2p")]
+    let bridge_peer = opts
+        .bridge_p2p_listen
+        .zip(bridge_index.as_ref())
+        .map(|(addr, index)| {
+            crate::bridge::peer::start(
+                addr,
+                home,
+                &genesis.chain_id,
+                index.store.clone(),
+                &opts.bridge_bootstrap,
+                opts.bridge_announce.clone(),
+            )
+        })
+        .transpose()?;
     #[cfg(feature = "bridge")]
     let _bridge = opts
         .bridge_rpc_listen
@@ -483,21 +498,13 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                     )
                 })
                 .transpose()?;
-            crate::bridge::Server::start(addr, home, index.store.clone(), wallet)
-        })
-        .transpose()?;
-    #[cfg(feature = "bridge-p2p")]
-    let _bridge_peer = opts
-        .bridge_p2p_listen
-        .zip(bridge_index.as_ref())
-        .map(|(addr, index)| {
-            crate::bridge::peer::start(
+            crate::bridge::Server::start(
                 addr,
                 home,
-                &genesis.chain_id,
                 index.store.clone(),
-                &opts.bridge_bootstrap,
-                opts.bridge_announce.clone(),
+                #[cfg(feature = "bridge-p2p")]
+                bridge_peer.as_ref().map(|(_, control)| control.clone()),
+                wallet,
             )
         })
         .transpose()?;
