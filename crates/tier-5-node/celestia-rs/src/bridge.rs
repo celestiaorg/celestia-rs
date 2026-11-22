@@ -36,6 +36,7 @@ impl Server {
         home: &std::path::Path,
         blocks: BlockStore,
         states: StateStore,
+        #[cfg(feature = "bridge-p2p")] peer_control: Option<peer::Control>,
         wallet: Option<Arc<submit::Wallet>>,
     ) -> Result<Self> {
         ensure!(
@@ -53,6 +54,8 @@ impl Server {
         };
         let (stop, stopped) = oneshot::channel();
         let state = Arc::new(Bridge {
+            #[cfg(feature = "bridge-p2p")]
+            peer_control,
             wallet,
             waiters: Arc::new(Semaphore::new(32)),
             blocks,
@@ -90,6 +93,8 @@ impl Drop for Server {
 }
 
 struct Bridge {
+    #[cfg(feature = "bridge-p2p")]
+    peer_control: Option<peer::Control>,
     wallet: Option<Arc<submit::Wallet>>,
     waiters: Arc<Semaphore>,
     blocks: BlockStore,
@@ -580,6 +585,20 @@ async fn dispatch(
                 return Err((-32602, "invalid parameters".to_owned()));
             }
             return Err((1, "module/das: stubbed: dasing is disabled".to_owned()));
+        }
+        #[cfg(feature = "bridge-p2p")]
+        if peer::Control::handles(method) {
+            require_permission(permissions, method, "admin")?;
+            let control = bridge
+                .peer_control
+                .as_ref()
+                .ok_or_else(|| (1, "DA peer is disabled".to_owned()))?;
+            let args = params.as_array().ok_or_else(invalid)?;
+            return control
+                .call(method, args)
+                .await
+                .map(|value| J::Raw(value.to_string()))
+                .map_err(|e| (1, e.to_string()));
         }
         if matches!(method, "blob.Submit" | "state.AccountAddress") {
             let submit = method == "blob.Submit";
