@@ -16,9 +16,10 @@ consensus=
 bridge=
 light=
 router=
+core_proxy=
 cleanup() {
     local status=$?
-    for pid in "$router" "$light" "$bridge" "$consensus"; do
+    for pid in "$core_proxy" "$router" "$light" "$bridge" "$consensus"; do
         if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; wait "$pid" || true; fi
     done
     if (( status != 0 )); then
@@ -122,7 +123,26 @@ bridge=
 DA_TEST_READ_TOKEN=$("$rust" da-auth read --home "$work/rust-light")
 export DA_TEST_READ_TOKEN
 endpoint=http://127.0.0.1:39658
-RUST_LOG=celestia_rs::bridge::peer=info "$rust" "${args[@]}" --p2p-listen /ip4/127.0.0.1/tcp/39621 --rpc-listen 127.0.0.1:39658 >"$work/light.log" 2>&1 &
+balance_src=$(realpath "$(dirname "$0")/core_balance.go")
+(cd "$node_src" && go build -o "$work/balance-probe" "$balance_src")
+# Use a private test CA for the consensus gRPC proxy.
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=private-core-ca \
+    -keyout "$work/ca.key" -out "$work/ca.pem" 2>/dev/null
+openssl req -new -newkey rsa:2048 -nodes -subj /CN=localhost \
+    -keyout "$work/core.key" -out "$work/core.csr" 2>/dev/null
+printf '%s\n' 'subjectAltName=IP:127.0.0.1' 'extendedKeyUsage=serverAuth' >"$work/extensions"
+openssl x509 -req -in "$work/core.csr" -CA "$work/ca.pem" -CAkey "$work/ca.key" \
+    -CAcreateserial -days 1 -extfile "$work/extensions" -out "$work/core.pem" 2>/dev/null
+CORE_TEST_TOKEN=$(openssl rand -hex 24)
+printf '{"x-token":"%s"}\n' "$CORE_TEST_TOKEN" >"$work/xtoken.json"
+CORE_TEST_TOKEN=$CORE_TEST_TOKEN "$work/balance-probe" proxy 127.0.0.1:39090 "$work/proxy-port" "$work/core.pem" "$work/core.key" &
+core_proxy=$!
+for attempt in {1..30}; do
+    if [[ -s "$work/proxy-port" ]]; then break; fi
+    kill -0 "$core_proxy"
+    sleep 1
+done
+SSL_CERT_FILE="$work/ca.pem" RUST_LOG=celestia_rs::bridge::peer=info "$rust" "${args[@]}" --core.ip 127.0.0.1 --core.port "$(cat "$work/proxy-port")" --core.tls --core.xtoken.path "$work" --p2p-listen /ip4/127.0.0.1/tcp/39621 --rpc-listen 127.0.0.1:39658 >"$work/light.log" 2>&1 &
 light=$!
 for attempt in {1..60}; do
     kill -0 "$light"
@@ -132,6 +152,8 @@ for attempt in {1..60}; do
     if [[ "$attempt" == 60 ]]; then echo 'light RPC unavailable' >&2; exit 1; fi
     sleep 1
 done
+expected=$("$app" query bank balances "$address" "${home_arg[@]}" --height "$((height+1))" --node tcp://127.0.0.1:36657 --output json | jq -er '.balances[] | select(.denom == "utia") | .amount')
+"$work/balance-probe" "$endpoint" "$address" "$expected"
 probe=$(realpath "$(dirname "$0")/read.go")
 (cd "$node_src" && go run "$probe" "$endpoint" "$height" "$hash")
 light_peer=$(sed -n 's/.*DA light peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/light.log" | head -1)

@@ -13,7 +13,7 @@ use axum::{
 use kvdb::{KvBackend, RedbBackend, WriteBatch};
 use prost::Message;
 use serde_json::{Value, json};
-use std::{future::Future, net::SocketAddr, path::Path, sync::Arc};
+use std::{future::Future, path::Path, sync::Arc};
 
 pub(super) fn at(height: u64) -> Vec<u8> {
     [b"height/".as_slice(), &height.to_be_bytes()].concat()
@@ -66,6 +66,7 @@ pub(super) fn store_header(
 
 struct Service {
     data: super::data::Client,
+    core: Option<super::core::Core>,
     auth: Arc<Auth>,
     db: Arc<RedbBackend>,
     workers: Arc<tokio::sync::Semaphore>,
@@ -74,13 +75,13 @@ struct Service {
 }
 
 pub(super) async fn listener(
-    addr: Option<SocketAddr>,
+    args: &super::LightArgs,
     home: &Path,
     db: Arc<RedbBackend>,
     status: tokio::sync::watch::Receiver<super::stats::Sampling>,
     peers: super::Peers,
 ) -> Result<impl Future<Output = Result<()>> + use<>> {
-    let server = if let Some(addr) = addr {
+    let server = if let Some(addr) = args.rpc_listen {
         ensure!(
             addr.ip().is_loopback(),
             "light RPC requires a loopback listener"
@@ -92,6 +93,18 @@ pub(super) async fn listener(
             .with_state(Arc::new(Service {
                 auth: Arc::new(Auth::open(home)?),
                 data: super::data::Client::new(peers)?,
+                core: args
+                    .core_ip
+                    .as_deref()
+                    .map(|host| {
+                        super::core::channel(
+                            host,
+                            args.core_port.unwrap_or(9090),
+                            args.core_tls,
+                            args.core_token_path.as_deref(),
+                        )
+                    })
+                    .transpose()?,
                 db,
                 status,
                 waiters: tokio::sync::Semaphore::new(8),
@@ -149,7 +162,8 @@ async fn call(service: &Service, perms: &[String], body: &[u8]) -> String {
             && !super::data::handles(method)
             && !matches!(
                 method,
-                "header.LocalHead"
+                "state.BalanceForAddress"
+                    | "header.LocalHead"
                     | "header.NetworkHead"
                     | "header.SyncState"
                     | "header.SyncWait"
@@ -192,6 +206,9 @@ async fn dispatch(
     method: &str,
     args: Vec<Value>,
 ) -> Result<String, (i32, String)> {
+    if method == "state.BalanceForAddress" {
+        return balance(service, &args).await;
+    }
     if matches!(method, "header.SyncState" | "header.SyncWait") {
         if !args.is_empty() {
             return Err((-32602, "invalid parameters".into()));
@@ -287,6 +304,27 @@ async fn dispatch(
     .map_err(|e| (1, e.to_string()))?
     .map_err(|e| (1, e.to_string()))
 }
+async fn balance(service: &Service, args: &[Value]) -> Result<String, (i32, String)> {
+    let [Value::String(address)] = args else {
+        return Err((-32602, "expected address".into()));
+    };
+    let core = service.core.clone().ok_or_else(|| {
+        (
+            1,
+            "node is running without state access. run with --core.ip <CORE NODE IP> to resolve"
+                .to_owned(),
+        )
+    })?;
+    let _permit = service
+        .workers
+        .try_acquire()
+        .map_err(|_| (-32000, "light RPC busy".into()))?;
+    super::core::balance(core, &service.db, address)
+        .await
+        .map(|v| v.to_string())
+        .map_err(|e| (1, e.to_string()))
+}
+
 async fn network_head(service: &Service) -> Result<rpc::json::J> {
     let raw = service.db.get(b"head")?.context("missing sampled head")?;
     let wire = HeaderWire::decode(raw.as_slice())?;

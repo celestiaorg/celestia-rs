@@ -1,4 +1,5 @@
 //! Authenticated, sequential DA sync and restartable sampling from a trusted checkpoint.
+mod core;
 mod data;
 mod discovery;
 mod exchange;
@@ -33,6 +34,18 @@ pub struct LightArgs {
     /// Listen for incoming DA peer connections at this TCP multiaddress.
     #[arg(long)]
     p2p_listen: Option<Multiaddr>,
+    /// Consensus gRPC hostname or IP for proof-verified state reads.
+    #[arg(long = "core.ip")]
+    core_ip: Option<String>,
+    /// Consensus gRPC port (default 9090).
+    #[arg(long = "core.port", requires = "core_ip")]
+    core_port: Option<u16>,
+    /// Authenticate the core endpoint with TLS and the platform trust store.
+    #[arg(long = "core.tls", requires = "core_ip")]
+    core_tls: bool,
+    /// Directory containing the Go core authentication token JSON for TLS.
+    #[arg(long = "core.xtoken.path")]
+    core_token_path: Option<std::path::PathBuf>,
     /// Serve authenticated sampled headers on this loopback HTTP socket.
     #[arg(long)]
     rpc_listen: Option<std::net::SocketAddr>,
@@ -597,8 +610,7 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
         },
         connected: online,
     };
-    let listener =
-        rpc::listener(args.rpc_listen, home, db.clone(), observer, peers.clone()).await?;
+    let listener = rpc::listener(&args, home, db.clone(), observer, peers.clone()).await?;
     tokio::select! {
         result = listener => result,
         result = follow(&db, &mut peers, &args, anchor, &status) => result,

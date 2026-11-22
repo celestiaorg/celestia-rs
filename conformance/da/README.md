@@ -117,3 +117,13 @@ listen multiaddress such as `--p2p-listen /ip4/127.0.0.1/tcp/39621`.
 The private fixture disconnects the Go bridge, connects a fresh Go
 exchange client directly to the Rust light peer and verifies the paid
 checkpoint by height and hash, its next two signed headers and the head.
+
+For proof-verified light balance reads, supply the Go core gRPC endpoint with
+`--core.ip HOST` and optionally `--core.port PORT` (default 9090).
+Use `--core.tls` to verify the server with the system trust store. A protected
+TLS endpoint can receive its X-Token from `--core.xtoken.path DIRECTORY`.
+A read token permits `state.BalanceForAddress` to query the utia balance
+at the height preceding the sampled head. The node checks the bank proof and
+multistore proof against that head's app hash before returning the amount.
+The private fixture checks a funded account, a proven absent account and
+rejection of a changed core response over an authenticated TLS connection.

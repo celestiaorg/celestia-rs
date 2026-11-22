@@ -15,7 +15,7 @@ workspace = true
 [features]
 default = ["rocksdb", "jemalloc"]
 # Experimental in-process DA bridge. Runtime opt-in via --bridge-rpc-listen.
-da-light = ["bridge-p2p", "dep:libp2p-stream"]
+da-light = ["bridge-p2p", "dep:libp2p-stream", "dep:tonic"]
 bridge = ["axum/ws", "app/bridge", "dep:hmac", "dep:sha2", "dep:tempfile"]
 bridge-p2p = ["bridge", "dep:libp2p", "dep:futures"]
 # RocksDB state backend (default); `--no-default-features` builds redb only.
@@ -30,6 +30,7 @@ jemalloc = ["dep:tikv-jemallocator"]
 memstats = ["jemalloc", "dep:tikv-jemalloc-ctl", "tikv-jemallocator/profiling", "tikv-jemallocator/stats"]
 
 [dependencies]
+tonic = { version = "=0.12.3", default-features = false, features = ["transport", "prost", "tls-native-roots"], optional = true }
 hmac = { version = "0.12", optional = true }
 sha2 = { version = "0.10", optional = true }
 tempfile = { version = "3", optional = true }
