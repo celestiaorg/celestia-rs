@@ -144,7 +144,7 @@ pub(super) fn head(bridge: &Bridge) -> Result<i64> {
     bridge.index.head()
 }
 
-async fn wait(bridge: &Arc<Bridge>, height: i64) -> Result<()> {
+pub(super) async fn wait(bridge: &Arc<Bridge>, height: i64) -> Result<()> {
     let _waiter = bridge
         .waiters
         .try_acquire()

@@ -286,6 +286,11 @@ async fn dispatch(
     if super::data::handles(method) {
         let query = crate::bridge::Query::parse(method, &Value::Array(args))
             .map_err(|(code, text)| (code, text.to_owned()))?;
+        let height = query
+            .explicit_height()
+            .and_then(|h| u64::try_from(h).ok())
+            .ok_or_else(|| (-32602, "invalid height".to_owned()))?;
+        wait_for_publication(service, height, false).await?;
         return service
             .data
             .read(&service.db, query)
@@ -315,21 +320,13 @@ async fn dispatch(
             .map_err(|_| (1, "sampler stopped".to_owned()))?;
         return Ok("null".into());
     }
-    if method == "header.WaitForHeight" {
+    if matches!(method, "header.GetByHeight" | "header.WaitForHeight") {
         let height = match args.as_slice() {
             [h] => h.as_u64().filter(|h| *h > 0),
             _ => None,
         }
         .ok_or_else(|| (-32602, "invalid height".to_owned()))?;
-        let _permit = service
-            .waiters
-            .try_acquire()
-            .map_err(|_| (-32000, "too many header waiters".to_owned()))?;
-        let mut status = service.status.clone();
-        status
-            .wait_for(|s| s.sampled >= height)
-            .await
-            .map_err(|_| (1, "sampler stopped".to_owned()))?;
+        wait_for_publication(service, height, method == "header.WaitForHeight").await?;
     }
     let worker = service
         .workers
@@ -346,6 +343,27 @@ async fn dispatch(
     .map_err(|e| (1, e.to_string()))?
     .map_err(|e| (1, e.to_string()))
 }
+async fn wait_for_publication(
+    service: &Service,
+    height: u64,
+    wait_for_future: bool,
+) -> Result<(), (i32, String)> {
+    let mut status = service.status.clone();
+    let sampled = status.borrow().sampled;
+    if height <= sampled || (!wait_for_future && sampled.checked_add(1) != Some(height)) {
+        return Ok(());
+    }
+    let _permit = service
+        .waiters
+        .try_acquire()
+        .map_err(|_| (-32000, "too many header waiters".to_owned()))?;
+    status
+        .wait_for(|s| s.sampled >= height)
+        .await
+        .map_err(|_| (1, "sampler stopped".to_owned()))?;
+    Ok(())
+}
+
 fn module_read(method: &str) -> bool {
     crate::bridge::state_rpc::reads(method)
         || matches!(
