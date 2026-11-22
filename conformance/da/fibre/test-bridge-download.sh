@@ -53,7 +53,22 @@ if [[ ${3:-} == --light ]]; then
         --rpc-listen 127.0.0.1:39659 >"$work/light.log" 2>&1 &
     light=$!
 fi
-if ! "$work/go-provider" "$work/node" 127.0.0.1:9090 "$endpoint" >"$work/provider.log" 2>&1; then
+provider_args=()
+if [[ ${3:-} == --provider-loss ]]; then
+    "$binary" init provider --chain-id celestia-rs-local --home "$work/provider" >/dev/null 2>&1
+    keys=(--home "$work/node" --keyring-backend test)
+    "$binary" keys add provider --no-backup "${keys[@]}" >/dev/null 2>&1
+    account=$("$binary" keys show provider -a "${keys[@]}")
+    tx_args=("${keys[@]}" --chain-id celestia-rs-local --node tcp://127.0.0.1:26657 --gas 500000 --fees 50000utia --wait)
+    "$binary" tx bank send validator "$account" 420001000000utia "${tx_args[@]}" | jq -e '.code == 0' >/dev/null
+    template=$(dirname "$source_file")/../../../crates/tier-5-node/celestia-rs/tests/fixtures/generate-only/validator.json
+    jq --slurpfile key "$work/provider/config/priv_validator_key.json" \
+        '.pubkey.key = $key[0].pub_key.value | .amount = "420000000000utia"' "$template" >"$work/validator.json"
+    "$binary" tx staking create-validator "$work/validator.json" --from provider "${tx_args[@]}" |
+        jq -e '.code == 0' >/dev/null
+    provider_args+=("$work/provider")
+fi
+if ! "$work/go-provider" "$work/node" 127.0.0.1:9090 "$endpoint" "${provider_args[@]}" >"$work/provider.log" 2>&1; then
     grep -E '^panic:|^Go ' "$work/provider.log" >&2 || true
     exit 1
 fi
