@@ -1138,6 +1138,7 @@ dependencies = [
  "keyring",
  "kvdb",
  "libp2p",
+ "libp2p-autonat",
  "libp2p-stream",
  "light",
  "math",
@@ -3606,6 +3607,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "libp2p-autonat"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "651fcbe0470d52db88ace805e94fd074aa18537312d43cbb531f761fa6916b43"
+dependencies = [
+ "asynchronous-codec",
+ "futures",
+ "futures-timer",
+ "libp2p-core",
+ "libp2p-identity",
+ "libp2p-request-response",
+ "libp2p-swarm",
+ "prost 0.14.6",
+ "prost-codec",
+ "rand 0.10.3",
+ "tracing",
+ "web-time",
+]
+
+[[package]]
 name = "libp2p-connection-limits"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3832,6 +3853,22 @@ dependencies = [
  "socket2 0.6.5",
  "thiserror 2.0.21",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "libp2p-request-response"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca1d1f3a4d7b7080eb959098f276f57ecbc3102f7d3d46f109ccdaa00d2842d9"
+dependencies = [
+ "futures",
+ "futures-bounded",
+ "libp2p-core",
+ "libp2p-identity",
+ "libp2p-swarm",
+ "rand 0.10.3",
+ "smallvec",
  "tracing",
 ]
 

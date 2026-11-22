@@ -11,9 +11,11 @@ mod composed {
     use super::{NetworkBehaviour, gossipsub, identify, kad};
     #[derive(NetworkBehaviour)]
     pub(crate) struct Behaviour {
-        pub(crate) protected: super::super::protected::Protected,
+        // Reject blocked connections before stateful behaviours observe establishment.
         pub(crate) gate:
             libp2p::allow_block_list::Behaviour<libp2p::allow_block_list::BlockedPeers>,
+        pub(crate) autonat: libp2p_autonat::Behaviour,
+        pub(crate) protected: super::super::protected::Protected,
         pub(crate) streams:
             libp2p::swarm::behaviour::toggle::Toggle<super::super::inbound::Inbound>,
         pub(crate) negotiated: libp2p_stream::Behaviour,
@@ -72,6 +74,7 @@ impl Behaviour {
         .map_err(anyhow::Error::msg)?;
         gossip.subscribe(&header_topic(network))?;
         Ok(Self {
+            autonat: libp2p_autonat::Behaviour::new(id, libp2p_autonat::Config::default()),
             protected: super::protected::Protected::default(),
             gate: libp2p::allow_block_list::Behaviour::default(),
             streams: streams.into(),

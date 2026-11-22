@@ -223,6 +223,14 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	reader, err := rpcclient.NewClient(ctx, endpoint, os.Getenv("DA_TEST_READ_TOKEN"))
 	check(err)
 	defer reader.Close()
+	reachability, err := admin.P2P.NATStatus(ctx)
+	check(err)
+	if reachability != network.ReachabilityUnknown {
+		panic(fmt.Sprintf("expected unprobed loopback reachability, got %s", reachability))
+	}
+	if _, err := reader.P2P.NATStatus(ctx); err == nil {
+		panic("read token obtained NAT status")
+	}
 	if _, err := reader.P2P.ConnectionState(ctx, clientID); err == nil {
 		panic("read token inspected peer connections")
 	}
