@@ -4,6 +4,8 @@ package main
 import (
 	"bytes"
 	"context"
+	sdkmath "cosmossdk.io/math"
+	"crypto/rand"
 	"fmt"
 	"os"
 	"strings"
@@ -50,6 +52,51 @@ func main() {
 	if absent.Denom != "utia" || !absent.Amount.IsZero() {
 		panic("absent balance must be zero utia")
 	}
+	recipient := make(state.AccAddress, 20)
+	_, err = rand.Read(recipient)
+	check(err)
+	amount := sdkmath.NewInt(23)
+	if _, err := read.State.Transfer(ctx, recipient, amount, nil); err == nil {
+		panic("read token transferred funds")
+	}
+	if _, err := write.State.Transfer(ctx, recipient, sdkmath.ZeroInt(), nil); err == nil {
+		panic("zero transfer succeeded")
+	}
+	total := sdkmath.ZeroInt()
+	for _, options := range []*state.TxConfig{nil, state.NewTxConfig(state.WithGas(200000), state.WithGasPrice(0.01))} {
+		sent, err := write.State.Transfer(ctx, recipient, amount, options)
+		check(err)
+		if sent.Height <= 0 || len(sent.TxHash) != 64 || sent.Code != 0 {
+			panic("invalid transfer receipt")
+		}
+		total = total.Add(amount)
+		// The transfer first appears in the following header's AppHash.
+		for {
+			h, err := read.Header.LocalHead(ctx)
+			check(err)
+			if h.Height() > uint64(sent.Height) {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				panic(ctx.Err())
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+		for {
+			current, err := read.State.BalanceForAddress(ctx, state.Address{Address: recipient})
+			check(err)
+			if current.Amount.Equal(total) {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				panic(ctx.Err())
+			case <-time.After(200 * time.Millisecond):
+			}
+		}
+	}
+	fmt.Printf("Go verified both committed transfer receipts and the recipient's %sutia balance\n", total)
 	ns, err := share.NewV0Namespace([]byte("writer"))
 	check(err)
 	multirow, err := blob.NewBlobV0(ns, bytes.Repeat([]byte("bridge DA"), 1400))
@@ -65,6 +112,23 @@ func main() {
 	if err == nil || !strings.Contains(err.Error(), "requested account") {
 		panic(fmt.Sprintf("unexpected signer selection: %v", err))
 	}
+	coreBatch := []*share.Blob{multirow.Blob, signed.Blob}
+	if _, err := read.State.SubmitPayForBlob(ctx, coreBatch, nil); err == nil {
+		panic("read-only state.SubmitPayForBlob succeeded")
+	}
+	receipt, err := write.State.SubmitPayForBlob(ctx, coreBatch, nil)
+	check(err)
+	if receipt.Height <= 0 || len(receipt.TxHash) != 64 || receipt.Code != 0 {
+		panic(fmt.Sprintf("invalid PFB receipt: %v", receipt))
+	}
+	for _, want := range batch {
+		got, err := read.Blob.Get(ctx, uint64(receipt.Height), ns, want.Commitment)
+		check(err)
+		if !bytes.Equal(got.Data(), want.Data()) || !bytes.Equal(got.Signer(), want.Signer()) {
+			panic("state PFB payload differs")
+		}
+	}
+	fmt.Printf("Go resolved both blobs from state transaction %s at height %d\n", receipt.TxHash, receipt.Height)
 	for _, opts := range []*state.TxConfig{nil, state.NewTxConfig(state.WithGasPrice(0.01), state.WithSignerAddress(account.String()))} {
 		h, err := write.Blob.Submit(ctx, batch, opts)
 		check(err)

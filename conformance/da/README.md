@@ -149,3 +149,10 @@ download at a time. Run `conformance/da/fibre/test-bridge-download.sh` with
 the binary and pinned Go checkout to start a private Rust chain, register a
 Go FSP, deposit escrow, upload through the Go service and read the same bytes
 through the Rust bridge.
+
+Run `conformance/da/fibre/test-go-provider.sh /path/to/pinned/celestia-node`
+to exercise the reference Fibre provider on loopback. The release suite
+starts a private Go validator, registers the FSP on chain and uses the
+node-side Fibre service to deposit escrow, submit and retrieve blobs, and
+withdraw. The harness adapts the release test's in-memory store factory
+to the v11 context argument using a Go test overlay.

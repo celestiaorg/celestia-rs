@@ -87,6 +87,18 @@ sha256sum "$binary" "$work/node/config/genesis.json"
 DA_TEST_WRITE_TOKEN=$("$binary" da-auth write --home "$work/node")
 export DA_TEST_WRITE_TOKEN
 (cd "$go_tree" && go run "$(dirname "$probe")/submit/check.go" http://127.0.0.1:32658)
+# Create a second operator so redelegation can be validated on chain.
+key_args=(--home "$work/node" --keyring-backend test)
+tx_args=("${key_args[@]}" --chain-id celestia-rs-local --fees 50000utia --gas 500000 --node tcp://127.0.0.1:26657 --wait)
+"$binary" keys add destination --no-backup "${key_args[@]}" >/dev/null 2>&1
+destination=$("$binary" keys show destination --address "${key_args[@]}")
+operator=$("$binary" keys show destination --address --bech val "${key_args[@]}")
+"$binary" tx bank send validator "$destination" 3000000utia "${tx_args[@]}" | jq -e '.code == 0' >/dev/null
+validator_json="$(dirname "$probe")/../../crates/tier-5-node/celestia-rs/tests/fixtures/generate-only/validator.json"
+created=$("$binary" tx staking create-validator "$validator_json" --from destination "${tx_args[@]}" | jq -er 'select(.code == 0) | .height')
+(cd "$go_tree" && go run "$(dirname "$probe")/staking/check.go" http://127.0.0.1:32658 "$operator")
+(cd "$go_tree" && go run "$(dirname "$probe")/fibre/escrow.go" http://127.0.0.1:32658)
+(cd "$go_tree" && go run "$(dirname "$probe")/staking/validator_set.go" http://127.0.0.1:32658 "$created" "$(jq -er '.pubkey.key' "$validator_json")")
 unset DA_TEST_WRITE_TOKEN
 DA_TEST_ADMIN_TOKEN=$("$binary" da-auth admin --home "$work/node")
 export DA_TEST_ADMIN_TOKEN
