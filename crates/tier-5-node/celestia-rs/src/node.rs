@@ -442,6 +442,43 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         app_version: state.consensus_params.version.app,
     })?;
     exec.set_event_sink(rpc.publisher.clone());
+    rpc.spawn()?;
+    let local_addr = pv.address().to_vec();
+    // Go: a fresh node with state sync enabled skips the handshake; the
+    // state comes from the snapshot.
+    let state_sync_mode = opts.state_sync.is_some() && state.last_block_height == 0;
+    if opts.state_sync.is_some() && !state_sync_mode {
+        tracing::info!("found local state with non-zero height, skipping state sync");
+    }
+    let mut state = if state_sync_mode {
+        state
+    } else {
+        let mut hs = Handshaker::new(
+            ss.clone(),
+            state,
+            bs.clone(),
+            &genesis,
+            consensus::ticker::system_now(),
+        );
+        let state = hs
+            .handshake(&mut exec)
+            .map_err(|e| anyhow!("handshake: {e}"))?;
+        tracing::info!(
+            height = state.last_block_height,
+            app_hash = %hex::encode_upper(&state.app_hash),
+            replayed = hs.n_blocks(),
+            "handshake complete"
+        );
+        state
+    };
+    if opts.stop_height > 0 && state.last_block_height >= opts.stop_height {
+        tracing::info!(height = state.last_block_height, "stop height reached");
+        return Ok(());
+    }
+    let metrics = match &opts.metrics {
+        Some(m) => Some(start_metrics(m, &genesis.chain_id, &pool)?),
+        None => None,
+    };
     #[cfg(feature = "bridge-p2p")]
     let bridge_peer = opts
         .bridge_p2p_listen
@@ -481,57 +518,6 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                 #[cfg(feature = "bridge-p2p")]
                 bridge_peer.as_ref().map(|(_, control)| control.clone()),
                 wallet,
-            )
-        })
-        .transpose()?;
-    rpc.spawn()?;
-    let local_addr = pv.address().to_vec();
-    // Go: a fresh node with state sync enabled skips the handshake; the
-    // state comes from the snapshot.
-    let state_sync_mode = opts.state_sync.is_some() && state.last_block_height == 0;
-    if opts.state_sync.is_some() && !state_sync_mode {
-        tracing::info!("found local state with non-zero height, skipping state sync");
-    }
-    let mut state = if state_sync_mode {
-        state
-    } else {
-        let mut hs = Handshaker::new(
-            ss.clone(),
-            state,
-            bs.clone(),
-            &genesis,
-            consensus::ticker::system_now(),
-        );
-        let state = hs
-            .handshake(&mut exec)
-            .map_err(|e| anyhow!("handshake: {e}"))?;
-        tracing::info!(
-            height = state.last_block_height,
-            app_hash = %hex::encode_upper(&state.app_hash),
-            replayed = hs.n_blocks(),
-            "handshake complete"
-        );
-        state
-    };
-    if opts.stop_height > 0 && state.last_block_height >= opts.stop_height {
-        tracing::info!(height = state.last_block_height, "stop height reached");
-        return Ok(());
-    }
-    let metrics = match &opts.metrics {
-        Some(m) => Some(start_metrics(m, &genesis.chain_id, &pool)?),
-        None => None,
-    };
-    #[cfg(feature = "bridge-p2p")]
-    let _bridge_peer = opts
-        .bridge_p2p_listen
-        .map(|addr| {
-            crate::bridge::peer::start(
-                addr,
-                home,
-                &genesis.chain_id,
-                crate::bridge::peer::Serving::new(bs.clone(), ss.clone(), metrics.clone()),
-                &opts.bridge_bootstrap,
-                opts.bridge_announce.clone(),
             )
         })
         .transpose()?;
