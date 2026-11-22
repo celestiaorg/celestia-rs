@@ -13,7 +13,7 @@ esac
 work=$(mktemp -d)
 peer_args=()
 if [[ "${3:-}" == --peer || "${3:-}" == --stock-light || "${3:-}" == --validator-load ]]; then
-    peer_args=(--prometheus-listen-addr 127.0.0.1:32660 --bridge-p2p-listen 127.0.0.1:32121)
+    peer_args=(--prometheus-listen-addr 127.0.0.1:32660 --bridge-p2p-listen 127.0.0.1:32121 --bridge-p2p-listen /ip4/127.0.0.1/udp/32121/quic-v1)
 fi
 pid=
 bootstrap_pid=
@@ -142,6 +142,7 @@ if (( ${#peer_args[@]} )); then
     [[ -n "$peer_id" ]] || { echo 'missing DA peer identity' >&2; exit 1; }
     peer_probe=$(dirname "$probe")/peer/read_peer.go
     (cd "$go_tree" && DA_TEST_ADMIN_URL=http://127.0.0.1:32658 go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data")
+    (cd "$go_tree" && DA_TEST_ADMIN_URL=http://127.0.0.1:32658 go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/udp/32121/quic-v1/p2p/$peer_id" "$height" "$namespace" "$data")
     verify_count() {
         local protocol=$1 outcome=$2 minimum=$3
         awk -v series="protocol=\"$protocol\",outcome=\"$outcome\"" -v minimum="$minimum" '

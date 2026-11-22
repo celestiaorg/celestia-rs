@@ -1,4 +1,4 @@
-//! Live resource scopes for DA TCP connections and Yamux substreams.
+//! Live resource scopes for DA connections and their multiplexed streams.
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -30,11 +30,13 @@ pub(super) struct Scope {
     streams: [usize; 2],
     conns: [usize; 2],
     memory: usize,
+    fds: usize,
 }
 
 impl Scope {
-    pub fn connection(&mut self, outbound: bool) {
+    pub fn connection(&mut self, outbound: bool, dedicated_fd: bool) {
         self.conns[usize::from(outbound)] += 1;
+        self.fds += usize::from(dedicated_fd);
     }
     fn stream(&mut self, stream: &Stream, memory: usize) {
         self.streams[usize::from(stream.outbound)] += 1;
@@ -43,7 +45,7 @@ impl Scope {
     fn json(&self) -> Value {
         json!({"NumStreamsInbound":self.streams[0],"NumStreamsOutbound":self.streams[1],
             "NumConnsInbound":self.conns[0],"NumConnsOutbound":self.conns[1],
-            "NumFD":self.conns.iter().sum::<usize>(), "Memory":self.memory})
+            "NumFD":self.fds, "Memory":self.memory})
     }
 }
 
@@ -57,9 +59,12 @@ pub(super) struct Snapshot {
 }
 
 impl Snapshot {
-    pub fn connection(&mut self, peer: libp2p::PeerId, outbound: bool) {
-        self.system.connection(outbound);
-        self.peers.entry(peer).or_default().connection(outbound);
+    pub fn connection(&mut self, peer: libp2p::PeerId, outbound: bool, dedicated_fd: bool) {
+        self.system.connection(outbound, dedicated_fd);
+        self.peers
+            .entry(peer)
+            .or_default()
+            .connection(outbound, dedicated_fd);
     }
     pub fn stream(&mut self, peer: libp2p::PeerId, stream: &Stream) {
         let memory = stream.memory.load(Ordering::Relaxed);

@@ -178,10 +178,10 @@ enum Cmd {
 #[derive(Args, Debug)]
 #[allow(clippy::struct_excessive_bools)]
 struct StartArgs {
-    /// Listen for DA header and share exchange streams over libp2p TCP.
+    /// DA listener. Repeat for TCP sockets or libp2p TCP and QUIC v1 multiaddresses.
     #[cfg(feature = "bridge-p2p")]
-    #[arg(long)]
-    bridge_p2p_listen: Option<std::net::SocketAddr>,
+    #[arg(long, value_parser = node::parse_bridge_listener)]
+    bridge_p2p_listen: Vec<libp2p::Multiaddr>,
     /// Bootstrap DA peers. Repeat to replace the network's published bootstrap list.
     #[cfg(feature = "bridge-p2p")]
     #[arg(long, requires = "bridge_p2p_listen")]
@@ -1331,7 +1331,7 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
     }
     #[cfg(feature = "bridge-p2p")]
     {
-        opts.bridge_p2p_listen = a.bridge_p2p_listen;
+        opts.bridge_listeners = a.bridge_p2p_listen;
         opts.bridge_bootstrap.clone_from(&a.bridge_bootstrap);
         opts.bridge_announce.clone_from(&a.bridge_announce);
     }

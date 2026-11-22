@@ -138,9 +138,18 @@ impl Peering {
             bootstrap.entry(id).or_default().push(addr);
         }
         for addr in &announce {
+            use libp2p::multiaddr::Protocol;
+            let mut endpoint = addr.clone();
+            let valid = match endpoint.pop() {
+                Some(Protocol::Tcp(port)) => port != 0,
+                Some(Protocol::QuicV1) => {
+                    matches!(endpoint.pop(), Some(Protocol::Udp(port)) if port != 0)
+                }
+                _ => false,
+            };
             anyhow::ensure!(
-                matches!(addr.iter().last(),Some(libp2p::multiaddr::Protocol::Tcp(port)) if port != 0),
-                "announced DA address must end in a TCP port"
+                valid,
+                "announced DA address needs a TCP or QUIC v1 endpoint"
             );
         }
         Ok(Self {

@@ -36,9 +36,9 @@ pub struct LightArgs {
     /// Pin a trusted 32-byte header hash. A fresh unpinned store starts at the trusted peers’ head.
     #[arg(long)]
     trusted_hash: Option<String>,
-    /// Listen for incoming DA peer connections at this TCP multiaddress.
+    /// Listen for incoming DA connections. Repeat for TCP and QUIC v1 multiaddresses.
     #[arg(long)]
-    p2p_listen: Option<Multiaddr>,
+    p2p_listen: Vec<Multiaddr>,
     /// Consensus gRPC hostname or IP for proof-verified state reads.
     #[arg(long = "core.ip")]
     core_ip: Option<String>,
@@ -621,7 +621,7 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     let mut swarm = super::observed_swarm(key, behaviour, &connections)?;
     let operations = super::admin::Operations::new(ping, connections);
     let (peer_control, requests) = super::admin::Control::channel();
-    if let Some(addr) = &args.p2p_listen {
+    for addr in &args.p2p_listen {
         swarm.listen_on(addr.clone())?;
     }
     for (peer, addrs) in &addresses {

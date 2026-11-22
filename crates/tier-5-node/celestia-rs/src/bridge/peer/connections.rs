@@ -1,4 +1,4 @@
-//! Observe the lifetime of each negotiated Yamux connection and its substreams.
+//! Observe the lifetime of each transport connection and its substreams.
 use anyhow::{Result, ensure};
 use futures::{AsyncRead, AsyncWrite};
 use libp2p::{
@@ -16,7 +16,24 @@ use std::{
     task::{Context, Poll},
 };
 
+#[derive(Clone, Copy)]
+pub(super) enum Transport {
+    Tcp,
+    Quic,
+}
+
+impl Transport {
+    fn info(self) -> Value {
+        let (transport, security, muxer) = match self {
+            Self::Tcp => ("tcp", "/noise", "/yamux/1.0.0"),
+            Self::Quic => ("quic-v1", "", ""),
+        };
+        json!({"Transport":transport,"Security":security,"StreamMultiplexer":muxer,"UsedEarlyMuxerNegotiation":false})
+    }
+}
+
 struct Connection {
+    transport: Transport,
     peer: PeerId,
     inbound: bool,
     opened: String,
@@ -58,9 +75,11 @@ impl Connections {
         peer: PeerId,
         point: &ConnectedPoint,
         inner: M,
+        transport: Transport,
     ) -> ObservedMuxer<M> {
         let now = light::verifier::now();
         let conn = Arc::new(Connection {
+            transport,
             peer,
             inbound: point.is_listener(),
             opened: crate::util::rfc3339_nano(now.seconds, now.nanos.unsigned_abs()),
@@ -83,7 +102,11 @@ impl Connections {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         for conn in active.iter().filter_map(Weak::upgrade) {
-            snapshot.connection(conn.peer, !conn.inbound);
+            snapshot.connection(
+                conn.peer,
+                !conn.inbound,
+                matches!(conn.transport, Transport::Tcp),
+            );
             for stream in conn.live_streams() {
                 snapshot.stream(conn.peer, &stream);
             }
@@ -96,11 +119,18 @@ impl Connections {
             .active
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let states:Vec<_>=active.iter().filter_map(Weak::upgrade).filter(|c|c.peer==peer).map(|c|json!({
-            "Info":{"StreamMultiplexer":"/yamux/1.0.0","Security":"/noise","Transport":"tcp","UsedEarlyMuxerNegotiation":false},
-            "Direction":if c.inbound {1} else {2}, "Opened":c.opened,"Limited":false,
-            "NumStreams":c.live_streams().len()
-        })).collect();
+        let states: Vec<_> = active
+            .iter()
+            .filter_map(Weak::upgrade)
+            .filter(|c| c.peer == peer)
+            .map(|c| {
+                json!({
+                    "Info":c.transport.info(),
+                    "Direction":if c.inbound {1} else {2}, "Opened":c.opened,"Limited":false,
+                    "NumStreams":c.live_streams().len()
+                })
+            })
+            .collect();
         ensure!(!states.is_empty(), "no connections to peer {peer}");
         Ok(Value::Array(states))
     }

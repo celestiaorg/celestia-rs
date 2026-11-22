@@ -128,6 +128,8 @@ target/release/celestia-rs start --network local --home "$DA_HOME" \
   --bridge-rpc-listen 127.0.0.1:32658 --bridge-p2p-listen 127.0.0.1:32121
 ```
 
+To accept QUIC v1 peers on that host, also pass `--bridge-p2p-listen /ip4/127.0.0.1/udp/32121/quic-v1`. Expose the selected UDP port to the peers that should reach it.
+
 Set `DA_HOME` to a fresh directory before starting the canary. The Rust
 node creates its own DA identity. In a second shell, mint a read token
 for the same home and compare the DA commit hash with the consensus
@@ -166,7 +168,7 @@ target/release/celestia-rs da-light --home "$LIGHT_HOME" --network "$CHAIN_ID" \
   --peer "$TRUSTED_PEER" --trusted-hash "$BLOCK_HASH" --rpc-listen 127.0.0.1:32658
 ```
 
-The light store in `da-light/light.redb` records sampled headers and pending sample coordinates. Restart with the same home and trust inputs to resume. Mint a read token with `da-auth read --home "$LIGHT_HOME"`. Use `das.SamplingStats` to observe the last sampled height and retries. An optional `--p2p-listen` multiaddress accepts inbound DA connections.
+The light store in `da-light/light.redb` records sampled headers and pending sample coordinates. Restart with the same home and trust inputs to resume. Mint a read token with `da-auth read --home "$LIGHT_HOME"`. Use `das.SamplingStats` to observe the last sampled height and retries. Repeat `--p2p-listen` with TCP or QUIC v1 multiaddresses to accept inbound DA connections.
 
 After more than seven days offline, the last sampled header can fall outside the trusting period. The node uses its configured trusted peers to select a fresh signed head, including when the original home was initialized with an explicit block hash. Keep those peer identities current. While a fresh head is unavailable, the node waits and keeps its previous sampled head. Once it authenticates the new chain and completes sampling, check `header.Tail` and `header.LocalHead` for the new retained interval. Heights skipped outside the sampling window have no local availability receipt.
 

@@ -283,7 +283,7 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 		check(err)
 		if pings.TotalIn >= pingBefore.TotalIn+96 && pings.TotalOut >= pingBefore.TotalOut+96 &&
 			pings.RateIn > 0 && pings.RateOut > 0 &&
-			measured.TotalIn >= pings.TotalIn && measured.TotalOut >= pings.TotalOut &&
+			measured.TotalIn >= pings.TotalIn-pingBefore.TotalIn && measured.TotalOut >= pings.TotalOut-pingBefore.TotalOut &&
 			measured.TotalIn >= before.TotalIn+96 && measured.TotalOut >= before.TotalOut+96 &&
 			measured.RateIn > 0 && measured.RateOut > 0 &&
 			all.TotalIn >= measured.TotalIn && all.TotalOut >= measured.TotalOut {
@@ -309,7 +309,13 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	check(err)
 	peerScope := resources.Peers[clientID]
 	pingScope := resources.Protocols[pingProtocol]
-	if peerScope.NumStreamsInbound < len(held) || peerScope.NumConnsInbound != 1 || peerScope.NumFD != 1 ||
+	wantFD := 1
+	dialAddress := "/ip4/127.0.0.1/tcp/0"
+	if active[0].Info.Transport == "quic-v1" {
+		wantFD = 0
+		dialAddress = "/ip4/127.0.0.1/udp/0/quic-v1"
+	}
+	if peerScope.NumStreamsInbound < len(held) || peerScope.NumConnsInbound != 1 || peerScope.NumFD != wantFD ||
 		resources.System.NumFD < peerScope.NumFD || resources.System.NumStreamsInbound < peerScope.NumStreamsInbound ||
 		pingScope.NumStreamsInbound < len(held) || resources.Services["libp2p.ping"].NumStreamsInbound != pingScope.NumStreamsInbound {
 		panic(fmt.Sprintf("wrong live resource scopes: %+v", resources))
@@ -323,7 +329,7 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	if _, err := reader.P2P.Peers(ctx); err == nil {
 		panic("read token accessed peer management")
 	}
-	extra, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
+	extra, err := libp2p.New(libp2p.ListenAddrStrings(dialAddress))
 	check(err)
 	defer extra.Close()
 	address := peer.AddrInfo{ID: extra.ID(), Addrs: extra.Addrs()}
@@ -336,7 +342,8 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	check(err)
 	active, err = admin.P2P.ConnectionState(ctx, address.ID)
 	check(err)
-	if len(active) != 1 || active[0].Direction != network.DirOutbound {
+	outbound := extra.Network().ConnsToPeer(server.ID)
+	if len(active) != 1 || len(outbound) != 1 || active[0].Direction != network.DirOutbound || active[0].Info != outbound[0].ConnState() {
 		panic("Rust dial direction mismatch")
 	}
 	if connected != network.Connected {

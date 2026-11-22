@@ -147,6 +147,13 @@ timeout 120 "$rust" "${args[@]}" --until "$((height+2))" | tee "$work/resume.log
 grep -Fq "sampled height $((height+2)) " "$work/resume.log"
 if grep -Fq "sampled height $height " "$work/resume.log"; then exit 1; fi
 
+# Independently anchor and sample through the Go bridge's UDP listener.
+quic_peer="/ip4/127.0.0.1/udp/39221/quic-v1/p2p/${peer##*/}"
+timeout 120 "$rust" da-light --home "$work/quic-light" --network "$chain" --peer "$quic_peer" \
+    --trusted-hash "$hash" --until "$height" >"$work/quic-samples.log"
+grep -Fq "sampled height $height (16 verified shares), hash $hash" "$work/quic-samples.log"
+echo "Rust verified the signed paid header and 16 samples from the Go QUIC peer"
+
 # A new store may bootstrap at a trusted Go peer's signed head without a fixed hash.
 auto_home="$work/trusted-head"
 timeout 90 "$rust" da-light --home "$auto_home" --network "$chain" --peer "$peer" --until 1 >"$work/trusted.log"
@@ -187,7 +194,7 @@ for attempt in {1..30}; do
     kill -0 "$core_proxy"
     sleep 1
 done
-SSL_CERT_FILE="$work/ca.pem" RUST_LOG=celestia_rs::bridge::peer=info "$rust" "${args[@]}" --core.ip 127.0.0.1 --core.port "$(cat "$work/proxy-port")" --core.tls --core.xtoken.path "$work" --keyring.keyname light --keyring.keyname da-secondary --keyring.backend test --p2p-listen /ip4/127.0.0.1/tcp/39621 --rpc-listen 127.0.0.1:39658 >"$work/light.log" 2>&1 &
+SSL_CERT_FILE="$work/ca.pem" RUST_LOG=celestia_rs::bridge::peer=info "$rust" "${args[@]}" --core.ip 127.0.0.1 --core.port "$(cat "$work/proxy-port")" --core.tls --core.xtoken.path "$work" --keyring.keyname light --keyring.keyname da-secondary --keyring.backend test --p2p-listen /ip4/127.0.0.1/tcp/39621 --p2p-listen /ip4/127.0.0.1/udp/39621/quic-v1 --rpc-listen 127.0.0.1:39658 >"$work/light.log" 2>&1 &
 light=$!
 for attempt in {1..60}; do
     kill -0 "$light"
@@ -205,6 +212,7 @@ light_peer=$(sed -n 's/.*DA light peer listening.*peer=\([[:alnum:]]*\).*/\1/p' 
 : "${light_peer:?missing light peer identity}"
 exchange_probe=$(realpath "$(dirname "$0")/read_exchange.go")
 (cd "$node_src" && go run "$exchange_probe" "$chain" "/ip4/127.0.0.1/tcp/39621/p2p/$light_peer" "$height" "$hash")
+(cd "$node_src" && go run "$exchange_probe" "$chain" "/ip4/127.0.0.1/udp/39621/quic-v1/p2p/$light_peer" "$height" "$hash")
 tuple_probe=$(realpath "$(dirname "$0")/../subscriptions/check.go")
 (cd "$node_src" && go run "$tuple_probe" "$endpoint" blobstream "$height" "$((height+3))")
 auth_probe=$(realpath "$(dirname "$0")/../auth/check.go")
@@ -212,7 +220,7 @@ DA_TEST_ADMIN_TOKEN=$("$rust" da-auth admin --home "$work/rust-light")
 export DA_TEST_ADMIN_TOKEN
 (cd "$node_src" && DA_TEST_LOG="$work/light.log" go run "$auth_probe" "$endpoint" Light)
 admin_probe=$(realpath "$(dirname "$0")/../peer/read_peer.go")
-(cd "$node_src" && DA_TEST_ADMIN_URL="$endpoint" go run "$admin_probe" "$chain" "/ip4/127.0.0.1/tcp/39621/p2p/$light_peer" --light-admin)
+(cd "$node_src" && DA_TEST_ADMIN_URL="$endpoint" go run "$admin_probe" "$chain" "/ip4/127.0.0.1/udp/39621/quic-v1/p2p/$light_peer" --light-admin)
 unset DA_TEST_ADMIN_TOKEN
 curl -fsS "$endpoint" -H "Authorization: Bearer $DA_TEST_READ_TOKEN" \
     -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"share.GetEDS\",\"params\":[$height]}" |

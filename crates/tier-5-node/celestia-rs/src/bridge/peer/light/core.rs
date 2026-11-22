@@ -63,6 +63,10 @@ pub(super) fn channel(
     let url = format!("{scheme}://{host}:{port}");
     let mut endpoint = Endpoint::from_shared(url.clone())?;
     if tls {
+        // Tonic 0.12 uses the process provider. QUIC also compiles AWS-LC into this binary.
+        if rustls::crypto::CryptoProvider::get_default().is_none() {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+        }
         endpoint =
             endpoint.tls_config(tonic::transport::ClientTlsConfig::new().with_native_roots())?;
     }

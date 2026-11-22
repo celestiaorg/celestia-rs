@@ -13,8 +13,8 @@ mod network;
 mod ping;
 mod protected;
 
+use std::collections::HashSet;
 use std::io::{ErrorKind, Write as _};
-use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
@@ -22,10 +22,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt as _};
 use libp2p::Transport as _;
-use libp2p::{
-    Multiaddr, Stream, SwarmBuilder, identity, multiaddr::Protocol, noise, swarm::SwarmEvent, tcp,
-    yamux,
-};
+use libp2p::{Multiaddr, Stream, SwarmBuilder, identity, noise, swarm::SwarmEvent, tcp, yamux};
 use prost::Message;
 use tokio::sync::{Semaphore, oneshot};
 
@@ -128,7 +125,7 @@ impl Serving {
 }
 
 pub(crate) fn start(
-    addr: SocketAddr,
+    listen: Vec<Multiaddr>,
     home: &Path,
     network: &str,
     serving: Serving,
@@ -137,11 +134,6 @@ pub(crate) fn start(
 ) -> Result<(Server, Control)> {
     let peers = network::Peering::new(network, bootstrap, announce)?;
     let key = identity(&home.join("config/da_peer.key"))?;
-    let listen = Multiaddr::from(match addr.ip() {
-        IpAddr::V4(ip) => Protocol::Ip4(ip),
-        IpAddr::V6(ip) => Protocol::Ip6(ip),
-    })
-    .with(Protocol::Tcp(addr.port()));
     let net = network.to_owned();
     let (stop, stopped) = oneshot::channel();
     let (ready, started) = mpsc::sync_channel(1);
@@ -186,6 +178,7 @@ fn observed_swarm(
     connections: &connections::Connections,
 ) -> Result<libp2p::Swarm<network::Behaviour>> {
     let observed = connections.clone();
+    let quic_observed = connections.clone();
     let security = noise::Config::new(&key)?;
     let swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
@@ -194,7 +187,22 @@ fn observed_swarm(
                 .upgrade(libp2p::core::upgrade::Version::V1Lazy)
                 .authenticate(security)
                 .multiplex(yamux::Config::default())
-                .map(move |(peer, mux), point| (peer, observed.observe(peer, &point, mux)))
+                .map(move |(peer, mux), point| {
+                    (
+                        peer,
+                        observed.observe(peer, &point, mux, connections::Transport::Tcp),
+                    )
+                })
+        })?
+        .with_other_transport(move |key| {
+            libp2p::quic::tokio::Transport::new(libp2p::quic::Config::new(key)).map(
+                move |(peer, mux), point| {
+                    (
+                        peer,
+                        quic_observed.observe(peer, &point, mux, connections::Transport::Quic),
+                    )
+                },
+            )
         })?
         .with_dns()?
         .with_behaviour(move |_| behaviour)?
@@ -205,7 +213,7 @@ fn observed_swarm(
 
 async fn run(
     key: identity::Keypair,
-    listen: Multiaddr,
+    listen: Vec<Multiaddr>,
     network: &str,
     serving: Serving,
     mut stopped: oneshot::Receiver<()>,
@@ -232,7 +240,10 @@ async fn run(
     )?;
     let connections = connections::Connections::default();
     let mut swarm = observed_swarm(key, behaviour, &connections)?;
-    swarm.listen_on(listen)?;
+    let mut starting: HashSet<_> = listen
+        .into_iter()
+        .map(|addr| swarm.listen_on(addr))
+        .collect::<Result<_, _>>()?;
     for address in &peers.announce {
         swarm.add_external_address(address.clone());
     }
@@ -274,10 +285,10 @@ async fn run(
                 SwarmEvent::ConnectionEstablished {connection_id, ..} => operations.dial_result(connection_id, Ok(())),
                 SwarmEvent::OutgoingConnectionError {connection_id, error, ..} => operations.dial_result(connection_id, Err(error.into())),
                 SwarmEvent::ConnectionClosed {peer_id, num_established: 0, ..} => operations.closed(peer_id),
-                SwarmEvent::NewListenAddr { address, .. } => {
+                SwarmEvent::NewListenAddr { listener_id, address } => {
                     if peers.announce.is_empty() { swarm.add_external_address(address.clone()); }
                     tracing::info!(%address, peer=%swarm.local_peer_id(), "DA peer listening");
-                    let _ = ready.try_send(Ok(()));
+                    if starting.remove(&listener_id) && starting.is_empty() { let _ = ready.try_send(Ok(())); }
                 }
                 SwarmEvent::Behaviour(network::BehaviourEvent::Autonat(event)) => tracing::debug!(?event, "DA AutoNAT probe"),
                 SwarmEvent::Behaviour(network::BehaviourEvent::Identify(libp2p::identify::Event::Received { peer_id, info, .. })) => {
