@@ -113,6 +113,7 @@ echo "celestia-node $revision; chain celestia-rs-local; paid blob at height $hei
 sha256sum "$binary" "$work/node/config/genesis.json"
 (cd "$go_tree" && go run "$probe" http://127.0.0.1:32658 "$height" "$namespace" "$data")
 (cd "$go_tree" && go run "$probe" http://127.0.0.1:32658 --next-height)
+(cd "$go_tree" && go run "$probe" http://127.0.0.1:32658 --genesis-tail)
 (cd "$go_tree" && go run "$(dirname "$probe")/subscriptions/check.go" ws://127.0.0.1:32658 "$height" "$namespace" "$data")
 DA_TEST_WRITE_TOKEN=$("$binary" da-auth write --home "$work/node")
 export DA_TEST_WRITE_TOKEN
