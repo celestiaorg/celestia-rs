@@ -47,6 +47,14 @@ jobs:
       - run: cargo build --locked -p celestia-rs --no-default-features --features da-light,da-webrtc
         env:
           CARGO_PROFILE_DEV_DEBUG: '0'
+      - name: Build the release network probe
+        run: (cd go-node && go build -o "$RUNNER_TEMP/nat-probe" ../conformance/da/peer/nat/dialback.go)
+      - name: Verify DA listeners through an isolated Internet Gateway Device
+        run: |
+          pkg="$RUNNER_TEMP/da-igd"
+          mkdir -p "$pkg"
+          (cd "$pkg" && apt-get download miniupnpd-iptables libip4tc2 libip6tc2 && for deb in *.deb; do dpkg-deb -x "$deb" root; done)
+          sudo unshare --net conformance/da/peer/nat/test-gateway.sh target/debug/celestia-rs "$RUNNER_TEMP/nat-probe" "$pkg/root"
       - run: DA_TEST_RUST="$GITHUB_WORKSPACE/target/debug/celestia-rs" go test -v "$GITHUB_WORKSPACE/conformance/da/light/trust_test.go"
         working-directory: go-node
       - run: conformance/da/light/test-go-bridge.sh target/debug/celestia-rs go-app go-node
@@ -55,11 +63,4 @@ jobs:
           DA_QUALIFICATION_SECONDS: ${{ inputs.observer_seconds || '10' }}
       - name: Check real Go AutoNAT dial-backs with private routing
         run: |
-          (cd go-node && go build -o "$RUNNER_TEMP/nat-probe" ../conformance/da/peer/nat/dialback.go)
           sudo unshare --net conformance/da/peer/nat/test-routed.sh target/debug/celestia-rs "$RUNNER_TEMP/nat-probe"
-      - name: Verify DA listeners through an isolated Internet Gateway Device
-        run: |
-          pkg="$RUNNER_TEMP/da-igd"
-          mkdir -p "$pkg"
-          (cd "$pkg" && apt-get download miniupnpd-iptables libip4tc2 libip6tc2 && for deb in *.deb; do dpkg-deb -x "$deb" root; done)
-          sudo unshare --net conformance/da/peer/nat/test-gateway.sh target/debug/celestia-rs "$RUNNER_TEMP/nat-probe" "$pkg/root"
