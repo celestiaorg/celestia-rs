@@ -91,13 +91,13 @@ unset DA_TEST_WRITE_TOKEN
 DA_TEST_ADMIN_TOKEN=$("$binary" da-auth admin --home "$work/node")
 export DA_TEST_ADMIN_TOKEN
 (cd "$go_tree" && go run "$(dirname "$probe")/auth/check.go" http://127.0.0.1:32658)
-unset DA_TEST_ADMIN_TOKEN
 if (( ${#peer_args[@]} )); then
     peer_id=$(sed -n 's/.*DA peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/node.log" | head -1)
     [[ -n "$peer_id" ]] || { echo 'missing DA peer identity' >&2; exit 1; }
     peer_probe=$(dirname "$probe")/peer/read_peer.go
-    (cd "$go_tree" && go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data")
+    (cd "$go_tree" && DA_TEST_ADMIN_URL=http://127.0.0.1:32658 go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data")
 fi
+unset DA_TEST_ADMIN_TOKEN
 if [[ "${3:-}" == --validator-load ]]; then
     (cd "$go_tree" && go build -o "$work/rpc-read" "$probe" &&
         go build -o "$work/peer-read" "$peer_probe" &&
