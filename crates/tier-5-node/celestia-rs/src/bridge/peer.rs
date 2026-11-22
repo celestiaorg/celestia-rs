@@ -38,10 +38,12 @@ struct PeerIdentity {
 }
 
 impl PeerIdentity {
-    fn load(path: &Path, _listeners: &[Multiaddr]) -> Result<Self> {
+    fn load(path: &Path, listeners: &[Multiaddr]) -> Result<Self> {
+        #[cfg(not(feature = "da-webrtc"))]
+        let _ = listeners;
         let key = identity(path)?;
         #[cfg(feature = "da-webrtc")]
-        let certificate = webrtc::for_listeners(path, _listeners)?;
+        let certificate = webrtc::for_listeners(path, listeners)?;
         Ok(Self {
             key,
             #[cfg(feature = "da-webrtc")]
