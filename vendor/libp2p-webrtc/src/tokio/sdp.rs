@@ -41,13 +41,18 @@ pub(crate) fn answer(
 /// Creates the SDP offer used by the server.
 ///
 /// Certificate verification is disabled which is why we hardcode a dummy fingerprint here.
-pub(crate) fn offer(addr: SocketAddr, client_ufrag: &str) -> RTCSessionDescription {
+pub(crate) fn offer(
+    addr: SocketAddr,
+    client_ufrag: &str,
+    client_pwd: &str,
+) -> RTCSessionDescription {
     let offer = render_description(
         CLIENT_SESSION_DESCRIPTION,
         addr,
         Fingerprint::FF,
         client_ufrag,
-    );
+    )
+    .replace("a=ice-pwd:ICE_PASSWORD", &format!("a=ice-pwd:{client_pwd}"));
 
     tracing::trace!(offer=%offer, "Created SDP offer");
 
@@ -136,7 +141,7 @@ m=application {target_port} UDP/DTLS/SCTP webrtc-datachannel
 a=mid:0
 a=ice-options:ice2
 a=ice-ufrag:{ufrag}
-a=ice-pwd:{pwd}
+a=ice-pwd:ICE_PASSWORD
 a=fingerprint:{fingerprint_algorithm} {fingerprint_value}
 a=setup:actpass
 a=sctp-port:5000

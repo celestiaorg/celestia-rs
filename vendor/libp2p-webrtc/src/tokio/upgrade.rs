@@ -85,15 +85,15 @@ pub(crate) async fn inbound(
     config: RTCConfiguration,
     udp_mux: Arc<dyn UDPMux + Send + Sync>,
     server_fingerprint: Fingerprint,
-    remote_ufrag: String,
+    credentials: super::udp_mux::Credentials,
     id_keys: identity::Keypair,
 ) -> Result<(PeerId, Connection), Error> {
-    tracing::debug!(address=%addr, ufrag=%remote_ufrag, "new inbound connection from address");
+    tracing::debug!(address=%addr, "new inbound connection from address");
 
-    let peer_connection = new_inbound_connection(addr, config, udp_mux, &remote_ufrag).await?;
+    let peer_connection = new_inbound_connection(addr, config, udp_mux, &credentials.local).await?;
     let noise_channel_open_rx = create_noise_data_channel(&peer_connection).await?;
 
-    let offer = sdp::offer(addr, &remote_ufrag);
+    let offer = sdp::offer(addr, &credentials.remote, credentials.remote_password());
     tracing::debug!(?offer, "calculated SDP offer for inbound connection");
     peer_connection.set_remote_description(offer).await?;
 

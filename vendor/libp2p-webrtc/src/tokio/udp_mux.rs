@@ -53,7 +53,7 @@ const RECEIVE_MTU: usize = 8192;
 #[derive(Debug)]
 pub(crate) struct NewAddr {
     pub(crate) addr: SocketAddr,
-    pub(crate) ufrag: String,
+    pub(crate) credentials: Credentials,
 }
 
 /// An event emitted by [`UDPMuxNewAddr`] when it's polled.
@@ -163,9 +163,9 @@ impl UDPMuxNewAddr {
         buffer: &[u8],
         addr: &SocketAddr,
     ) -> Option<Result<UDPMuxConn, ConnQueryError>> {
-        match ufrag_from_stun_message(buffer, true) {
-            Ok(ufrag) => {
-                if let Some(conn) = self.conns.get(&ufrag) {
+        match credentials_from_stun(buffer) {
+            Ok(credentials) => {
+                if let Some(conn) = self.conns.get(&credentials.local) {
                     let associated_addrs = conn.get_addresses();
                     // This basically ensures only one address is registered per ufrag.
                     if associated_addrs.is_empty() || associated_addrs.contains(addr) {
@@ -358,16 +358,15 @@ impl UDPMuxNewAddr {
                             match conn {
                                 None => {
                                     if !self.new_addrs.contains(&addr) {
-                                        match ufrag_from_stun_message(read.filled(), false) {
-                                            Ok(ufrag) => {
+                                        match credentials_from_stun(read.filled()) {
+                                            Ok(credentials) => {
                                                 tracing::trace!(
                                                     address=%&addr,
-                                                    %ufrag,
                                                     "Notifying about new address from ufrag",
                                                 );
                                                 self.new_addrs.insert(addr);
                                                 return Poll::Ready(UDPMuxEvent::NewAddr(
-                                                    NewAddr { addr, ufrag },
+                                                    NewAddr { addr, credentials },
                                                 ));
                                             }
                                             Err(e) => {
@@ -533,43 +532,62 @@ impl UDPMuxWriter for UdpMuxWriterHandle {
     }
 }
 
-/// Gets the ufrag from the given STUN message or returns an error, if failed to decode or the
-/// username attribute is not present.
-fn ufrag_from_stun_message(buffer: &[u8], local_ufrag: bool) -> Result<String, Error> {
-    let (result, message) = {
-        let mut m = STUNMessage::new();
+/// A WebRTC Direct v1 or v2 STUN username, as sent by the Go transport.
+pub(crate) struct Credentials {
+    pub(crate) local: String,
+    pub(crate) remote: String,
+}
 
-        (m.unmarshal_binary(buffer), m)
-    };
-
-    if let Err(err) = result {
-        Err(Error::Other(format!("failed to handle decode ICE: {err}")))
-    } else {
-        let (attr, found) = message.attributes.get(ATTR_USERNAME);
-        if !found {
-            return Err(Error::Other("no username attribute in STUN message".into()));
-        }
-
-        match String::from_utf8(attr.value) {
-            // Per the RFC this shouldn't happen
-            // https://datatracker.ietf.org/doc/html/rfc5389#section-15.3
-            Err(err) => Err(Error::Other(format!(
-                "failed to decode USERNAME from STUN message as UTF-8: {err}"
-            ))),
-            Ok(s) => {
-                // s is a combination of the local_ufrag and the remote ufrag separated by `:`.
-                let res = if local_ufrag {
-                    s.split(':').next()
-                } else {
-                    s.split(':').next_back()
-                };
-                match res {
-                    Some(s) => Ok(s.to_owned()),
-                    None => Err(Error::Other("can't get ufrag from username".into())),
-                }
-            }
-        }
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("WebRTC Direct ICE credentials")
     }
+}
+
+impl Credentials {
+    pub(crate) fn remote_password(&self) -> &str {
+        self.local
+            .strip_prefix("libp2p+webrtc+v2/")
+            .unwrap_or(&self.remote)
+    }
+}
+
+fn credentials_from_stun(buffer: &[u8]) -> Result<Credentials, Error> {
+    let mut message = STUNMessage::new();
+    message
+        .unmarshal_binary(buffer)
+        .map_err(|err| Error::Other(format!("failed to decode ICE message: {err}")))?;
+    let (attr, found) = message.attributes.get(ATTR_USERNAME);
+    if !found {
+        return Err(Error::Other("missing ICE username".into()));
+    }
+    let username = std::str::from_utf8(&attr.value)
+        .map_err(|_| Error::Other("invalid ICE username".into()))?;
+    let (local, remote) = username
+        .split_once(':')
+        .ok_or_else(|| Error::Other("missing ICE username separator".into()))?;
+    let valid = |part: &str| {
+        (4..=256).contains(&part.len())
+            && part
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/'))
+    };
+    if !valid(local) || !valid(remote) {
+        return Err(Error::Other("invalid ICE username fragment".into()));
+    }
+    if let Some(password) = local.strip_prefix("libp2p+webrtc+v2/") {
+        if password.len() < 22 {
+            return Err(Error::Other(
+                "invalid WebRTC Direct v2 ICE password length".into(),
+            ));
+        }
+    } else if !local.starts_with("libp2p+webrtc+v1/") {
+        return Err(Error::Other("unknown WebRTC Direct version".into()));
+    }
+    Ok(Credentials {
+        local: local.to_owned(),
+        remote: remote.to_owned(),
+    })
 }
 
 #[derive(Error, Debug)]

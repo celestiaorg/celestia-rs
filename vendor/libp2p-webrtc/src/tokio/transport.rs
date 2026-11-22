@@ -332,7 +332,7 @@ impl Stream for ListenStream {
                         self.config.inner.clone(),
                         self.udp_mux.udp_mux_handle(),
                         self.config.fingerprint.into_inner(),
-                        new_addr.ufrag,
+                        new_addr.credentials,
                         self.config.id_keys.clone(),
                     )
                     .boxed();

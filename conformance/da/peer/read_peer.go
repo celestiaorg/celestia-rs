@@ -30,6 +30,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	webrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
 	multistream "github.com/multiformats/go-multistream"
@@ -54,7 +55,11 @@ func main() {
 	check(err)
 	info, err := peer.AddrInfoFromP2pAddr(addr)
 	check(err)
-	host, err := libp2p.New(libp2p.NoListenAddrs)
+	opts := []libp2p.Option{libp2p.NoListenAddrs}
+	if os.Getenv("DA_TEST_WEBRTC_V2") == "1" {
+		opts = append(opts, libp2p.Transport(webrtc.New, webrtc.WithDialerVersion(2)))
+	}
+	host, err := libp2p.New(opts...)
 	check(err)
 	defer host.Close()
 	check(host.Connect(ctx, *info))
