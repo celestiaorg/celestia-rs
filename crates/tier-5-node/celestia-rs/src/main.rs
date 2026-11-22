@@ -1371,7 +1371,7 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
                 .transpose()?
                 .unwrap_or_default()
         } else {
-            a.bridge_p2p_listen
+            a.bridge_p2p_listen.clone()
         };
         opts.bridge_bootstrap.clone_from(&a.bridge_bootstrap);
         opts.bridge_announce.clone_from(&a.bridge_announce);
