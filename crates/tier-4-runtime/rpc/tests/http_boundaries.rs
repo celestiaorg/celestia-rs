@@ -539,9 +539,13 @@ fn tls_connector(alpn: &[&[u8]]) -> TlsConnector {
     for certificate in CertificateDer::pem_reader_iter(reader) {
         roots.add(certificate.unwrap()).unwrap();
     }
-    let mut config = rustls::ClientConfig::builder()
-        .with_root_certificates(roots)
-        .with_no_client_auth();
+    let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .unwrap()
+    .with_root_certificates(roots)
+    .with_no_client_auth();
     config.alpn_protocols = alpn.iter().map(|value| value.to_vec()).collect();
     TlsConnector::from(Arc::new(config))
 }

@@ -355,6 +355,7 @@ async fn run(
             }
             event = swarm.select_next_some() => match event {
                 SwarmEvent::ConnectionEstablished {connection_id, ..} => operations.dial_result(connection_id, Ok(())),
+                SwarmEvent::IncomingConnectionError { local_addr, error, .. } => tracing::debug!(%local_addr, %error, "DA inbound connection failed"),
                 SwarmEvent::OutgoingConnectionError {connection_id, error, ..} => operations.dial_result(connection_id, Err(error.into())),
                 SwarmEvent::ConnectionClosed {peer_id, num_established: 0, ..} => operations.closed(peer_id),
                 SwarmEvent::NewListenAddr { listener_id, address } => {
