@@ -115,8 +115,11 @@ samples up to 16 unique random cells per height. It accepts row and column
 proofs, including parity cells. Its separate light database records the
 coordinates before sampling and advances the head after every proof passes.
 Rerunning the command with the original trust inputs resumes from its last
-sampled height. A header outside the seven-day trusting period requires a
-fresh checkpoint and light home. Use `--until HEIGHT` for a bounded run.
+sampled height. If that head has expired, the node waits for a fresh signed
+head from its configured trusted peers. It authenticates parents by hash,
+resumes sampling at the earliest reachable height inside the seven-day
+window, and publishes the new head after its shares verify. A gap beyond
+that window moves the retained tail forward. Use `--until HEIGHT` for a bounded run.
 
 Add `--rpc-listen 127.0.0.1:26658` to `da-light` to read the sampled head,
 tail, or headers by height and hash over HTTP JSON-RPC. Create a read token

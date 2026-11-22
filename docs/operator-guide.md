@@ -168,6 +168,8 @@ target/release/celestia-rs da-light --home "$LIGHT_HOME" --network "$CHAIN_ID" \
 
 The light store in `da-light/light.redb` records sampled headers and pending sample coordinates. Restart with the same home and trust inputs to resume. Mint a read token with `da-auth read --home "$LIGHT_HOME"`. Use `das.SamplingStats` to observe the last sampled height and retries. An optional `--p2p-listen` multiaddress accepts inbound DA connections.
 
+After more than seven days offline, the last sampled header can fall outside the trusting period. The node uses its configured trusted peers to select a fresh signed head, including when the original home was initialized with an explicit block hash. Keep those peer identities current. While a fresh head is unavailable, the node waits and keeps its previous sampled head. Once it authenticates the new chain and completes sampling, check `header.Tail` and `header.LocalHead` for the new retained interval. Heights skipped outside the sampling window have no local availability receipt.
+
 To enable wallet reads and signing on a light node, configure its consensus gRPC endpoint with `--core.ip` and `--core.port`, then select a funded account with `--keyring.keyname` and `--keyring.backend`. Use `--core.tls` for TLS and `--core.xtoken.path` for a core that requires an authentication token. A bridge selects its local account with `--bridge-signer`. Give signing clients a write token. Fibre downloads and payment promises additionally require a build with `--features da-fibre` and registered storage providers on the chain. All three feature selections produce the same executable name.
 
 #### Mocha 5 non-validating bridge canary
