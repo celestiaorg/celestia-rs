@@ -354,6 +354,26 @@ impl Bridge {
         ]))
     }
 
+    async fn read_query(self: Arc<Self>, query: Query) -> Result<J> {
+        // A committed OP batch reference may reach the reader before the DA
+        // index publishes its height. Go waits for the next header in this case.
+        if let Some(height) = query.explicit_height()
+            && self.index.head()?.checked_add(1) == Some(height)
+        {
+            header_rpc::wait(&self, height).await?;
+        }
+        let permit = self
+            .worker
+            .clone()
+            .try_acquire_owned()
+            .context("bridge busy")?;
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            self.read(query)
+        })
+        .await?
+    }
+
     fn read(&self, query: Query) -> Result<J> {
         let head = self.index.head()?;
         let height = match query {
@@ -377,13 +397,7 @@ impl Bridge {
             Query::Head => head,
             Query::Tail => self.index.tail()?,
             Query::Hash(ref hash) => self.index.by_hash(hash)?.context("header not found")?,
-            Query::ShareRead(h, _)
-            | Query::Header(h)
-            | Query::Share(h, ..)
-            | Query::Namespace(h, _)
-            | Query::Blobs(h, _)
-            | Query::BlobProof(h, ..)
-            | Query::Blob(h, ..) => h,
+            _ => query.explicit_height().context("missing query height")?,
         };
         ensure!(
             height > 0 && height <= head,
@@ -400,6 +414,24 @@ impl Bridge {
 }
 
 impl Query {
+    fn explicit_height(&self) -> Option<i64> {
+        match self {
+            Self::ShareRead(h, _)
+            | Self::Header(h)
+            | Self::Share(h, ..)
+            | Self::Namespace(h, _)
+            | Self::Blobs(h, _)
+            | Self::BlobProof(h, ..)
+            | Self::Blob(h, ..) => Some(*h),
+            Self::Escrow(..)
+            | Self::Staking(..)
+            | Self::Balance(_)
+            | Self::Head
+            | Self::Tail
+            | Self::Hash(_) => None,
+        }
+    }
+
     fn answer_square(
         self,
         eds: &square::ExtendedDataSquare,
@@ -703,18 +735,10 @@ async fn dispatch(
         }
         let query = Query::parse(method, params).map_err(|(code, msg)| (code, msg.to_owned()))?;
         require_permission(permissions, method, "read")?;
-        let permit = bridge
-            .worker
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| (-32000, "bridge busy".to_owned()))?;
-        tokio::task::spawn_blocking(move || {
-            let _permit = permit;
-            bridge.read(query)
-        })
-        .await
-        .map_err(|e| (-32000, e.to_string()))?
-        .map_err(|e| (-32000, e.to_string()))
+        bridge
+            .read_query(query)
+            .await
+            .map_err(|e| (-32000, e.to_string()))
     }
     .await;
     let payload = match result {

@@ -134,19 +134,6 @@ func main() {
 	for _, opts := range []*state.TxConfig{nil, state.NewTxConfig(state.WithGasPrice(0.01), state.WithSignerAddress(account.String()))} {
 		h, err := write.Blob.Submit(ctx, batch, opts)
 		check(err)
-		// The consensus receipt can arrive before the DA header store publishes the height.
-		for {
-			head, err := read.Header.LocalHead(ctx)
-			check(err)
-			if head.Height() >= h {
-				break
-			}
-			select {
-			case <-ctx.Done():
-				panic(ctx.Err())
-			case <-time.After(100 * time.Millisecond):
-			}
-		}
 		header, err := read.Header.GetByHeight(ctx, h)
 		check(err)
 		check(header.Validate())

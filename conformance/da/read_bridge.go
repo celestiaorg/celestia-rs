@@ -20,8 +20,9 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 && len(os.Args) != 5 {
-		panic("usage: read_bridge URL [height namespace-id-hex blob-hex]")
+	nextHeight := len(os.Args) == 3 && os.Args[2] == "--next-height"
+	if len(os.Args) != 2 && len(os.Args) != 5 && !nextHeight {
+		panic("usage: read_bridge URL [--next-height | height namespace-id-hex blob-hex]")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -36,6 +37,20 @@ func main() {
 	}
 	if err = h.Validate(); err != nil {
 		panic(err)
+	}
+	if nextHeight {
+		next, err := c.Header.GetByHeight(ctx, h.Height()+1)
+		if err != nil {
+			panic(err)
+		}
+		if next.Height() != h.Height()+1 || h.Verify(next) != nil {
+			panic("next height did not return the adjacent signed header")
+		}
+		if _, err := c.Header.GetByHeight(ctx, next.Height()+1000); err == nil {
+			panic("far future height accepted")
+		}
+		fmt.Printf("Go verified immediate next-height publication at %d\n", next.Height())
+		return
 	}
 	h2, err := c.Header.GetByHeight(ctx, h.Height())
 	if err != nil || !h.Equals(h2) {
