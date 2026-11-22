@@ -32,15 +32,11 @@ impl Client {
     }
 
     pub(super) async fn read(&self, db: &RedbBackend, query: Query) -> Result<String> {
-        let height = match &query {
-            Query::Blobs(h, _)
-            | Query::Blob(h, ..)
-            | Query::Namespace(h, _)
-            | Query::BlobProof(h, ..)
-            | Query::ShareRead(h, _)
-            | Query::Share(h, ..) => u64::try_from(*h)?,
-            _ => anyhow::bail!("expected a blob or share query"),
-        };
+        let height = u64::try_from(
+            query
+                .explicit_height()
+                .context("expected a data query at a height")?,
+        )?;
         let raw = db
             .get(&super::rpc::at(height))?
             .context("header has not been sampled or has expired")?;
@@ -70,6 +66,32 @@ impl Client {
             (1..=512).contains(&width) && width.is_power_of_two(),
             "invalid ODS width"
         );
+        if let Query::Namespace(_, namespace) = query {
+            ensure!(
+                !namespace.is_parity_shares() && !namespace.is_tail_padding(),
+                "invalid data namespace"
+            );
+            let candidates = dah.rows_with_namespace(namespace)?;
+            if candidates.is_empty() {
+                return Ok("[]".into());
+            }
+            for mut remote in self.peers.online() {
+                if let Ok(Ok(rows)) = tokio::time::timeout(
+                    DEADLINE,
+                    remote.namespace(height, namespace, &dah, &candidates),
+                )
+                .await
+                {
+                    return Ok(J::Arr(
+                        rows.into_iter()
+                            .map(crate::bridge::namespace_row_json)
+                            .collect(),
+                    )
+                    .encode());
+                }
+            }
+            // An older or partial provider can still serve the authenticated ODS.
+        }
         if let Query::Share(_, row, col) = query {
             let sample = self.verified_cell(height, &dah, row, col).await?;
             return Ok(J::b64(&sample.share).encode());

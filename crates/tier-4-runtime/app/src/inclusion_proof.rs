@@ -255,6 +255,23 @@ struct Node {
 }
 
 impl Node {
+    #[cfg(feature = "bridge")]
+    fn from_bytes(bytes: &[u8]) -> Result<Self, SdkError> {
+        let ns = shares::NAMESPACE_SIZE;
+        if bytes.len() != square::DAH_ROOT_SIZE || bytes[..ns] > bytes[ns..2 * ns] {
+            return Err(plain("invalid namespaced proof node"));
+        }
+        let mut node = Self {
+            min: [0; shares::NAMESPACE_SIZE],
+            max: [0; shares::NAMESPACE_SIZE],
+            digest: [0; 32],
+        };
+        node.min.copy_from_slice(&bytes[..ns]);
+        node.max.copy_from_slice(&bytes[ns..2 * ns]);
+        node.digest.copy_from_slice(&bytes[2 * ns..]);
+        Ok(node)
+    }
+
     fn leaf(data: &[u8]) -> Self {
         let mut ns = [0u8; shares::NAMESPACE_SIZE];
         ns.copy_from_slice(&data[..shares::NAMESPACE_SIZE]);
@@ -433,18 +450,7 @@ pub fn verify_sample(
             right += 1;
             sibling
         };
-        let ns = shares::NAMESPACE_SIZE;
-        if bytes.len() != square::DAH_ROOT_SIZE || bytes[..ns] > bytes[ns..2 * ns] {
-            return Err(plain("invalid namespaced proof node"));
-        }
-        let mut sibling = Node {
-            min: [0; shares::NAMESPACE_SIZE],
-            max: [0; shares::NAMESPACE_SIZE],
-            digest: [0; 32],
-        };
-        sibling.min.copy_from_slice(&bytes[..ns]);
-        sibling.max.copy_from_slice(&bytes[ns..2 * ns]);
-        sibling.digest.copy_from_slice(&bytes[2 * ns..]);
+        let sibling = Node::from_bytes(bytes)?;
         let (a, b) = if is_right {
             (sibling, current)
         } else {
@@ -457,6 +463,92 @@ pub fn verify_sample(
     }
     if current.to_bytes().as_slice() != root {
         return Err(plain("sample does not match committed root"));
+    }
+    Ok(())
+}
+
+/// Authenticate all matching shares in a single candidate row or prove their absence.
+#[cfg(feature = "bridge")]
+pub fn verify_namespace_row(
+    row: &NamespaceRow,
+    ns: Namespace,
+    width: usize,
+    root: &[u8],
+) -> Result<(), SdkError> {
+    use std::ops::Range;
+    struct Witness<'a> {
+        ns: Namespace,
+        span: Range<usize>,
+        siblings: std::slice::Iter<'a, Vec<u8>>,
+        leaves: std::vec::IntoIter<Node>,
+    }
+    impl Witness<'_> {
+        fn subtree(&mut self, start: usize, size: usize) -> Result<Node, SdkError> {
+            if start + size <= self.span.start || start >= self.span.end {
+                let bytes = self
+                    .siblings
+                    .next()
+                    .ok_or_else(|| plain("missing namespace proof node"))?;
+                let node = Node::from_bytes(bytes)?;
+                if (start < self.span.start && &node.max >= self.ns.as_bytes())
+                    || (start >= self.span.end && &node.min <= self.ns.as_bytes())
+                {
+                    return Err(plain("incomplete namespace range"));
+                }
+                return Ok(node);
+            }
+            if size == 1 {
+                return self
+                    .leaves
+                    .next()
+                    .ok_or_else(|| plain("missing namespace leaf"));
+            }
+            let half = size / 2;
+            let left = self.subtree(start, half)?;
+            let right = self.subtree(start + half, half)?;
+            if left.max > right.min {
+                return Err(plain("unordered namespace proof"));
+            }
+            Ok(Node::parent(&left, &right))
+        }
+    }
+
+    let p = &row.proof;
+    let start = usize::try_from(p.start).map_err(|_| plain("invalid proof start"))?;
+    let end = usize::try_from(p.end).map_err(|_| plain("invalid proof end"))?;
+    if !width.is_power_of_two() || start >= end || end > width / 2 {
+        return Err(plain("invalid namespace proof range"));
+    }
+    let mut leaves = Vec::new();
+    if p.leaf_hash.is_empty() {
+        if row.shares.len() != end - start {
+            return Err(plain("wrong namespace share count"));
+        }
+        for share in &row.shares {
+            if share.len() != shares::SHARE_SIZE || !share.starts_with(ns.as_bytes()) {
+                return Err(plain("invalid namespace share"));
+            }
+            leaves.push(Node::leaf(&nmt_leaf(width / 2, 0, 0, share)));
+        }
+    } else {
+        let leaf = Node::from_bytes(&p.leaf_hash)?;
+        if !row.shares.is_empty()
+            || end - start != 1
+            || leaf.min != leaf.max
+            || &leaf.min <= ns.as_bytes()
+        {
+            return Err(plain("invalid namespace absence leaf"));
+        }
+        leaves.push(leaf);
+    }
+    let mut witness = Witness {
+        ns,
+        span: start..end,
+        siblings: p.nodes.iter(),
+        leaves: leaves.into_iter(),
+    };
+    if witness.subtree(0, width)?.to_bytes() != root || witness.siblings.next().is_some() {
+        return Err(plain("namespace proof does not match committed row"));
     }
     Ok(())
 }
@@ -617,12 +709,26 @@ mod tests {
         }
         let found = namespace_rows(&eds, &dah, ns(3)).unwrap();
         assert_eq!(found.len(), 2);
+        for (i, row) in found.iter().enumerate() {
+            verify_namespace_row(row, ns(3), eds.width(), &dah.row_roots[i]).unwrap();
+            assert!(verify_namespace_row(row, ns(3), eds.width(), &dah.row_roots[1 - i]).is_err());
+        }
         assert_eq!((found[0].proof.start, found[0].proof.end), (1, 2));
         assert_eq!((found[1].proof.start, found[1].proof.end), (0, 1));
         assert_eq!(found[0].shares, [eds.share(0, 1).unwrap()]);
         assert_eq!(found[1].shares, [eds.share(1, 0).unwrap()]);
+        // A valid Merkle path to just one of two matching shares is incomplete.
+        let same = square::extend_shares(&vec![shares[1].clone(); 4]).unwrap();
+        let roots = square::new_data_availability_header(&same).unwrap();
+        let partial = NamespaceRow {
+            shares: vec![same.share(0, 0).unwrap().to_vec()],
+            proof: row_range_proof(&same, &roots, 0, 0, 1).unwrap(),
+        };
+        assert!(verify_namespace_row(&partial, ns(3), same.width(), &roots.row_roots[0]).is_err());
         let gap = namespace_rows(&eds, &dah, ns(2)).unwrap();
         assert_eq!(gap.len(), 1);
+        verify_namespace_row(&gap[0], ns(2), eds.width(), &dah.row_roots[0]).unwrap();
+        assert!(verify_namespace_row(&gap[0], ns(3), eds.width(), &dah.row_roots[0]).is_err());
         assert!(gap[0].shares.is_empty());
         assert_eq!(gap[0].proof.leaf_hash.len(), square::DAH_ROOT_SIZE);
         assert_eq!(gap[0].proof.start, 1);

@@ -102,7 +102,9 @@ done
 hash=$(jq -er 'select(.block.data.txs | length > 0) | .block_id.hash' <<<"$data")
 sample_fixture=$(realpath "$(dirname "$0")/sample_provider.go")
 (cd "$node_src" && go build -o "$work/sample-provider" "$sample_fixture")
-"$(dirname "$0")/sample-restart.sh" "$rust" "$work/sample-provider" "$work/unavailable" "$chain" "$peer" "$hash" "$height"
+namespace_src=$(realpath "$(dirname "$0")/namespace_only.go")
+(cd "$node_src" && go build -o "$work/namespace-probe" "$namespace_src")
+"$(dirname "$0")/sample-restart.sh" "$rust" "$work/sample-provider" "$work/unavailable" "$chain" "$peer" "$hash" "$height" "$work/namespace-probe" "$data_hex"
 
 if [[ ${4:-} == --sampling-recovery-only ]]; then exit 0; fi
 # A new Rust consensus peer joins with its own identity and zero voting power.

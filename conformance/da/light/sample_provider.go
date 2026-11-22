@@ -41,6 +41,7 @@ func run(ctx context.Context, chain, provider, dir string) error {
 	}
 	header := protocol.ID("/" + chain + "/header-ex/v0.0.3")
 	sample := protocol.ID("/" + chain + "/shrex/v0.1.0/sample_v0")
+	namespace := protocol.ID("/" + chain + "/shrex/v0.1.0/nd_v0")
 	handle := func(in network.Stream) error {
 		deadline := time.Now().Add(15 * time.Second)
 		if err := in.SetDeadline(deadline); err != nil {
@@ -49,6 +50,15 @@ func run(ctx context.Context, chain, provider, dir string) error {
 		request, err := io.ReadAll(io.LimitReader(in, 1024))
 		if err != nil {
 			return err
+		}
+		if in.Protocol() == namespace {
+			if len(request) != 37 {
+				return fmt.Errorf("unexpected namespace identifier length %d", len(request))
+			}
+			if _, err := os.Stat(filepath.Join(dir, "wrong-namespace")); err == nil {
+				// Ask the real Go bridge for a different namespace at the same height.
+				request[len(request)-1] ^= 1
+			}
 		}
 		if in.Protocol() == sample {
 			if len(request) != 12 {
@@ -101,7 +111,7 @@ func run(ctx context.Context, chain, provider, dir string) error {
 		_, err = io.Copy(in, io.LimitReader(out, 4<<20))
 		return err
 	}
-	for _, id := range []protocol.ID{header, sample} {
+	for _, id := range []protocol.ID{header, sample, namespace} {
 		host.SetStreamHandler(id, func(in network.Stream) {
 			if err := handle(in); err != nil {
 				in.Reset()
