@@ -2,6 +2,7 @@
 mod admin;
 mod bandwidth;
 mod connections;
+mod negotiation;
 pub(crate) use admin::Control;
 mod flood;
 mod inbound;

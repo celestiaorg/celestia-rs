@@ -76,7 +76,7 @@ pub(super) struct ObservedMuxer<M> {
 pub(super) struct ObservedStream<S> {
     inner: S,
     _live: Arc<()>,
-    traffic: super::bandwidth::Traffic,
+    traffic: super::bandwidth::StreamTraffic,
 }
 
 impl<M: StreamMuxer + Unpin> StreamMuxer for ObservedMuxer<M>
@@ -94,7 +94,7 @@ where
             .map_ok(|inner| ObservedStream {
                 inner,
                 _live: self.conn.streams.clone(),
-                traffic: self.conn.traffic.clone(),
+                traffic: self.conn.traffic.stream(false),
             })
     }
     fn poll_outbound(
@@ -106,7 +106,7 @@ where
             .map_ok(|inner| ObservedStream {
                 inner,
                 _live: self.conn.streams.clone(),
-                traffic: self.conn.traffic.clone(),
+                traffic: self.conn.traffic.stream(true),
             })
     }
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -127,7 +127,7 @@ impl<S: AsyncRead + Unpin> AsyncRead for ObservedStream<S> {
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
         Pin::new(&mut self.inner).poll_read(cx, buf).map_ok(|n| {
-            self.traffic.record(false, n);
+            self.traffic.record(false, &buf[..n]);
             n
         })
     }
@@ -139,7 +139,8 @@ impl<S: AsyncRead + Unpin> AsyncRead for ObservedStream<S> {
         Pin::new(&mut self.inner)
             .poll_read_vectored(cx, bufs)
             .map_ok(|n| {
-                self.traffic.record(false, n);
+                self.traffic
+                    .record_vectored(false, bufs.iter().map(|buf| &buf[..]), n);
                 n
             })
     }
@@ -151,7 +152,7 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for ObservedStream<S> {
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         Pin::new(&mut self.inner).poll_write(cx, buf).map_ok(|n| {
-            self.traffic.record(true, n);
+            self.traffic.record(true, &buf[..n]);
             n
         })
     }
@@ -163,7 +164,8 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for ObservedStream<S> {
         Pin::new(&mut self.inner)
             .poll_write_vectored(cx, bufs)
             .map_ok(|n| {
-                self.traffic.record(true, n);
+                self.traffic
+                    .record_vectored(true, bufs.iter().map(|buf| &buf[..]), n);
                 n
             })
     }

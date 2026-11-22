@@ -166,6 +166,20 @@ func main() {
 	_, _, err = client.Get(ctx, &id, &rows, info.ID)
 	check(err)
 	check(rows.Verify(eh.DAH, ns))
+	if endpoint := os.Getenv("DA_TEST_ADMIN_URL"); endpoint != "" {
+		admin, err := rpcclient.NewClient(ctx, endpoint, os.Getenv("DA_TEST_ADMIN_TOKEN"))
+		check(err)
+		defer admin.Close()
+		for _, suffix := range []string{"header-ex/v0.0.3", "shrex/v0.1.0/eds_v0", "shrex/v0.1.0/rangeNamespaceData_v0", "shrex/v0.1.0/row_v0", "shrex/v0.1.0/sample_v0", "shrex/v0.1.0/nd_v0"} {
+			id := protocol.ID("/" + chain + "/" + suffix)
+			measured, err := admin.P2P.BandwidthForProtocol(ctx, id)
+			check(err)
+			if measured.TotalIn <= 0 || measured.TotalOut <= 0 {
+				panic(fmt.Sprintf("missing application bytes for %s: %+v", id, measured))
+			}
+		}
+		fmt.Println("Go measured both directions of the negotiated header and five SHREX protocols")
+	}
 	blobs, err := share.ParseBlobs(rows.Flatten())
 	check(err)
 	for _, b := range blobs {
@@ -237,6 +251,17 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	if _, err := reader.P2P.BandwidthStats(ctx); err == nil {
 		panic("read token obtained bandwidth statistics")
 	}
+	const pingProtocol = protocol.ID("/ipfs/ping/1.0.0")
+	if _, err := reader.P2P.BandwidthForProtocol(ctx, pingProtocol); err == nil {
+		panic("read token obtained protocol bandwidth")
+	}
+	pingBefore, err := admin.P2P.BandwidthForProtocol(ctx, pingProtocol)
+	check(err)
+	absent, err := admin.P2P.BandwidthForProtocol(ctx, protocol.ID("/never-negotiated"))
+	check(err)
+	if absent.TotalIn != 0 || absent.TotalOut != 0 {
+		panic("unnegotiated protocol reported traffic")
+	}
 	before, err := admin.P2P.BandwidthForPeer(ctx, clientID)
 	check(err)
 	var held []network.Stream
@@ -254,7 +279,12 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 		check(err)
 		all, err := admin.P2P.BandwidthStats(ctx)
 		check(err)
-		if measured.TotalIn >= before.TotalIn+96 && measured.TotalOut >= before.TotalOut+96 &&
+		pings, err := admin.P2P.BandwidthForProtocol(ctx, pingProtocol)
+		check(err)
+		if pings.TotalIn >= pingBefore.TotalIn+96 && pings.TotalOut >= pingBefore.TotalOut+96 &&
+			pings.RateIn > 0 && pings.RateOut > 0 &&
+			measured.TotalIn >= pings.TotalIn && measured.TotalOut >= pings.TotalOut &&
+			measured.TotalIn >= before.TotalIn+96 && measured.TotalOut >= before.TotalOut+96 &&
 			measured.RateIn > 0 && measured.RateOut > 0 &&
 			all.TotalIn >= measured.TotalIn && all.TotalOut >= measured.TotalOut {
 			break
@@ -265,7 +295,7 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	fmt.Println("Go verified measured per-peer and total stream bandwidth in both directions")
+	fmt.Println("Go verified measured negotiated ping, per-peer and total stream bandwidth in both directions")
 	active, err := admin.P2P.ConnectionState(ctx, clientID)
 	check(err)
 	if len(active) != 1 || active[0].NumStreams < 3 || active[0].Direction != network.DirInbound ||

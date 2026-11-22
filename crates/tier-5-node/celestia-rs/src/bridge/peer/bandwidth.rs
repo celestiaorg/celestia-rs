@@ -53,6 +53,8 @@ impl Meter {
 #[derive(Default)]
 struct Counters {
     all: Meter,
+    protocols: HashMap<Arc<str>, Meter>,
+    negotiating: Meter,
     peers: HashMap<PeerId, Meter>,
 }
 
@@ -79,6 +81,22 @@ impl Bandwidth {
         }
     }
 
+    pub(super) fn protocol(&self, name: &str) -> Value {
+        let mut counters = self
+            .counters
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let now = self.start.elapsed().as_secs();
+        if name.is_empty() {
+            return counters.negotiating.snapshot(now);
+        }
+        counters
+            .protocols
+            .get_mut(name)
+            .unwrap_or(&mut Meter::default())
+            .snapshot(now)
+    }
+
     pub(super) fn snapshot(&self, peer: Option<PeerId>) -> Value {
         let mut counters = self
             .counters
@@ -102,22 +120,91 @@ pub(super) struct Traffic {
     peer: PeerId,
 }
 impl Traffic {
-    pub(super) fn record(&self, sent: bool, bytes: usize) {
-        if bytes == 0 {
+    pub(super) fn stream(&self, outbound: bool) -> StreamTraffic {
+        StreamTraffic {
+            traffic: self.clone(),
+            negotiation: super::negotiation::Negotiation::new(outbound),
+        }
+    }
+}
+
+pub(super) struct StreamTraffic {
+    traffic: Traffic,
+    negotiation: super::negotiation::Negotiation,
+}
+
+impl StreamTraffic {
+    pub(super) fn record(&mut self, sent: bool, data: &[u8]) {
+        if data.is_empty() {
             return;
         }
-        let mut counters = self
-            .bandwidth
+        let before = self.negotiation.unconfirmed();
+        let payload = self.negotiation.observe(sent, data);
+        let after = self.negotiation.unconfirmed();
+        let bandwidth = &self.traffic.bandwidth;
+        let mut counters = bandwidth
             .counters
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let now = self.bandwidth.start.elapsed().as_secs();
+        let now = bandwidth.start.elapsed().as_secs();
         let index = usize::from(sent);
-        counters.all.record(now, index, bytes as u64);
+        counters.all.record(now, index, data.len() as u64);
         counters
             .peers
-            .entry(self.peer)
+            .entry(self.traffic.peer)
             .or_default()
-            .record(now, index, bytes as u64);
+            .record(now, index, data.len() as u64);
+        for dir in 0..2 {
+            let received = if dir == index { data.len() } else { 0 };
+            let unassigned = before[dir]
+                .saturating_add(received)
+                .saturating_sub(payload[dir])
+                .saturating_sub(after[dir]);
+            if unassigned != 0 {
+                counters.negotiating.record(now, dir, unassigned as u64);
+            }
+            if payload[dir] > 0
+                && let Some(protocol) = &self.negotiation.protocol
+            {
+                counters
+                    .protocols
+                    .entry(protocol.clone())
+                    .or_default()
+                    .record(now, dir, payload[dir] as u64);
+            }
+        }
+    }
+    pub(super) fn record_vectored<'a>(
+        &mut self,
+        sent: bool,
+        data: impl Iterator<Item = &'a [u8]>,
+        mut transferred: usize,
+    ) {
+        for buf in data {
+            if transferred == 0 {
+                break;
+            }
+            let n = buf.len().min(transferred);
+            self.record(sent, &buf[..n]);
+            transferred -= n;
+        }
+    }
+}
+
+impl Drop for StreamTraffic {
+    fn drop(&mut self) {
+        let pending = self.negotiation.unconfirmed();
+        if pending == [0; 2] {
+            return;
+        }
+        let bandwidth = &self.traffic.bandwidth;
+        let mut counters = bandwidth
+            .counters
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let now = bandwidth.start.elapsed().as_secs();
+        for (dir, bytes) in pending.into_iter().enumerate() {
+            counters.negotiating.record(now, dir, bytes as u64);
+        }
     }
 }
