@@ -20,8 +20,30 @@ struct Connection {
     peer: PeerId,
     inbound: bool,
     opened: String,
-    streams: Arc<()>,
+    streams: Mutex<Vec<Weak<super::resources::Stream>>>,
     traffic: super::bandwidth::Traffic,
+}
+
+impl Connection {
+    fn live_streams(&self) -> Vec<Arc<super::resources::Stream>> {
+        self.streams
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .filter_map(Weak::upgrade)
+            .collect()
+    }
+
+    fn open_stream(&self, outbound: bool) -> super::bandwidth::StreamTraffic {
+        let live = Arc::new(super::resources::Stream::new(outbound));
+        let mut streams = self
+            .streams
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        streams.retain(|s| s.strong_count() > 0);
+        streams.push(Arc::downgrade(&live));
+        self.traffic.stream(live)
+    }
 }
 
 #[derive(Clone, Default)]
@@ -42,7 +64,7 @@ impl Connections {
             peer,
             inbound: point.is_listener(),
             opened: crate::util::rfc3339_nano(now.seconds, now.nanos.unsigned_abs()),
-            streams: Arc::new(()),
+            streams: Mutex::default(),
             traffic: self.bandwidth.for_connection(peer),
         });
         let mut active = self
@@ -54,6 +76,21 @@ impl Connections {
         ObservedMuxer { inner, conn }
     }
 
+    pub(super) fn resources(&self) -> Value {
+        let mut snapshot = super::resources::Snapshot::default();
+        let active = self
+            .active
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for conn in active.iter().filter_map(Weak::upgrade) {
+            snapshot.connection(conn.peer, !conn.inbound);
+            for stream in conn.live_streams() {
+                snapshot.stream(conn.peer, &stream);
+            }
+        }
+        snapshot.json()
+    }
+
     pub(super) fn state(&self, peer: PeerId) -> Result<Value> {
         let active = self
             .active
@@ -62,7 +99,7 @@ impl Connections {
         let states:Vec<_>=active.iter().filter_map(Weak::upgrade).filter(|c|c.peer==peer).map(|c|json!({
             "Info":{"StreamMultiplexer":"/yamux/1.0.0","Security":"/noise","Transport":"tcp","UsedEarlyMuxerNegotiation":false},
             "Direction":if c.inbound {1} else {2}, "Opened":c.opened,"Limited":false,
-            "NumStreams":Arc::strong_count(&c.streams)-1
+            "NumStreams":c.live_streams().len()
         })).collect();
         ensure!(!states.is_empty(), "no connections to peer {peer}");
         Ok(Value::Array(states))
@@ -75,7 +112,6 @@ pub(super) struct ObservedMuxer<M> {
 }
 pub(super) struct ObservedStream<S> {
     inner: S,
-    _live: Arc<()>,
     traffic: super::bandwidth::StreamTraffic,
 }
 
@@ -93,8 +129,7 @@ where
             .poll_inbound(cx)
             .map_ok(|inner| ObservedStream {
                 inner,
-                _live: self.conn.streams.clone(),
-                traffic: self.conn.traffic.stream(false),
+                traffic: self.conn.open_stream(false),
             })
     }
     fn poll_outbound(
@@ -105,8 +140,7 @@ where
             .poll_outbound(cx)
             .map_ok(|inner| ObservedStream {
                 inner,
-                _live: self.conn.streams.clone(),
-                traffic: self.conn.traffic.stream(true),
+                traffic: self.conn.open_stream(true),
             })
     }
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {

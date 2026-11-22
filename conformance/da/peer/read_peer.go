@@ -302,6 +302,18 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 		active[0].Opened.IsZero() || active[0].Limited || active[0].Info != clientHost.Network().ConnsToPeer(server.ID)[0].ConnState() {
 		panic(fmt.Sprintf("invalid inbound connection state: %+v", active))
 	}
+	if _, err := reader.P2P.ResourceState(ctx); err == nil {
+		panic("read token inspected live resource scopes")
+	}
+	resources, err := admin.P2P.ResourceState(ctx)
+	check(err)
+	peerScope := resources.Peers[clientID]
+	pingScope := resources.Protocols[pingProtocol]
+	if peerScope.NumStreamsInbound < len(held) || peerScope.NumConnsInbound != 1 || peerScope.NumFD != 1 ||
+		resources.System.NumFD < peerScope.NumFD || resources.System.NumStreamsInbound < peerScope.NumStreamsInbound ||
+		pingScope.NumStreamsInbound < len(held) || resources.Services["libp2p.ping"].NumStreamsInbound != pingScope.NumStreamsInbound {
+		panic(fmt.Sprintf("wrong live resource scopes: %+v", resources))
+	}
 	for _, s := range held {
 		check(s.Close())
 	}
@@ -397,6 +409,12 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	check(admin.P2P.ClosePeer(ctx, address.ID))
 	connected, err = admin.P2P.Connectedness(ctx, address.ID)
 	check(err)
+	resources, err = admin.P2P.ResourceState(ctx)
+	check(err)
+	if _, live := resources.Peers[address.ID]; live {
+		panic("closed peer still holds DA resources")
+	}
+	fmt.Println("Go verified live resource scopes, admin permission and closed-peer cleanup")
 	if _, err = admin.P2P.ConnectionState(ctx, address.ID); err == nil {
 		panic("closed connection still present")
 	}

@@ -120,15 +120,20 @@ pub(super) struct Traffic {
     peer: PeerId,
 }
 impl Traffic {
-    pub(super) fn stream(&self, outbound: bool) -> StreamTraffic {
+    pub(super) fn stream(&self, live: Arc<super::resources::Stream>) -> StreamTraffic {
+        let negotiation = super::negotiation::Negotiation::new(live.outbound);
+        live.memory
+            .store(negotiation.reserved(), std::sync::atomic::Ordering::Relaxed);
         StreamTraffic {
             traffic: self.clone(),
-            negotiation: super::negotiation::Negotiation::new(outbound),
+            negotiation,
+            live,
         }
     }
 }
 
 pub(super) struct StreamTraffic {
+    live: Arc<super::resources::Stream>,
     traffic: Traffic,
     negotiation: super::negotiation::Negotiation,
 }
@@ -141,6 +146,15 @@ impl StreamTraffic {
         let before = self.negotiation.unconfirmed();
         let payload = self.negotiation.observe(sent, data);
         let after = self.negotiation.unconfirmed();
+        if self.live.protocol.get().is_none() {
+            self.live.memory.store(
+                self.negotiation.reserved(),
+                std::sync::atomic::Ordering::Relaxed,
+            );
+            if let Some(protocol) = &self.negotiation.protocol {
+                let _ = self.live.protocol.set(protocol.clone());
+            }
+        }
         let bandwidth = &self.traffic.bandwidth;
         let mut counters = bandwidth
             .counters

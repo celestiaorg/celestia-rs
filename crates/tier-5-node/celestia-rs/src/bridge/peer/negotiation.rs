@@ -59,6 +59,14 @@ impl Negotiation {
         }
     }
 
+    pub(super) fn reserved(&self) -> usize {
+        self.pending.as_ref().map_or(0, |h| {
+            size_of::<Handshake>()
+                + h.frames.iter().map(|f| f.body.capacity()).sum::<usize>()
+                + h.offer.as_ref().map_or(0, Vec::capacity)
+        })
+    }
+
     pub(super) fn unconfirmed(&self) -> [usize; 2] {
         let mut bytes = [0; 2];
         bytes[usize::from(self.initiator_sends)] = self.pending.as_ref().map_or(0, |h| h.early);

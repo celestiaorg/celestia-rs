@@ -32,6 +32,7 @@ impl Control {
             "p2p.Info"
                 | "p2p.Ping"
                 | "p2p.ConnectionState"
+                | "p2p.ResourceState"
                 | "p2p.BandwidthStats"
                 | "p2p.BandwidthForPeer"
                 | "p2p.BandwidthForProtocol"
@@ -132,6 +133,7 @@ impl Operations {
         if matches!(
             method.as_str(),
             "p2p.ConnectionState"
+                | "p2p.ResourceState"
                 | "p2p.BandwidthStats"
                 | "p2p.BandwidthForPeer"
                 | "p2p.BandwidthForProtocol"
@@ -140,6 +142,7 @@ impl Operations {
                 ("p2p.ConnectionState", [id]) => {
                     parse_peer(id).and_then(|id| self.connections.state(id))
                 }
+                ("p2p.ResourceState", []) => Ok(self.connections.resources()),
                 ("p2p.BandwidthStats", []) => Ok(self.connections.bandwidth.snapshot(None)),
                 ("p2p.BandwidthForProtocol", [Value::String(protocol)]) => {
                     Ok(self.connections.bandwidth.protocol(protocol))
