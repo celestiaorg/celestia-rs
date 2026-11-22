@@ -68,3 +68,80 @@ impl Behaviour {
         })
     }
 }
+
+// celestia-node v0.36.0 and v0.36.0-mocha, nodebuilder/p2p/bootstrap.go.
+fn release_peers(chain: &str) -> &'static [&'static str] {
+    match chain {
+        "celestia" => &[
+            "/dnsaddr/da-bootstrapper-1.celestia-bootstrap.net/p2p/12D3KooWSqZaLcn5Guypo2mrHr297YPJnV8KMEMXNjs3qAS8msw8",
+            "/dnsaddr/da-bootstrapper-2.celestia-bootstrap.net/p2p/12D3KooWQpuTFELgsUypqp9N4a1rKBccmrmQVY8Em9yhqppTJcXf",
+            "/dnsaddr/boot.celestia.pops.one/p2p/12D3KooWBBzzGy5hAHUQVh2vBvL25CKwJ7wbmooPcz4amQhzJHJq",
+            "/dnsaddr/celestia.qubelabs.io/p2p/12D3KooWAzucnC7yawvLbmVxv53ihhjbHFSVZCsPuuSzTg6A7wgx",
+            "/dnsaddr/celestia-mainnet-boot.01node.com/p2p/12D3KooWJ77n9mC9xpKHeoEc49UkP4M5EixcPoKf5Xb1tsHo99P7",
+        ],
+        "mocha-5" => &[
+            "/dns4/da-bootstrapper-1.celestia-mocha.com/tcp/2121/p2p/12D3KooWPHgLgPTtPjuKtZjXbZRiUSVMvFpqek8T1we93auG3uoK",
+            "/dns4/da-bootstrapper-2.celestia-mocha.com/tcp/2121/p2p/12D3KooWRmUch5JsfLgkDrhEGu8rSCeTP2nJvGPygkqRUWfqiAJ4",
+            "/dnsaddr/mocha-boot.pops.one/p2p/12D3KooWAj2P9akCYyzKUwmicvi1g6jxVE9Ld3tdmLqTque5NuZP",
+            "/dnsaddr/celestia-mocha.qubelabs.io/p2p/12D3KooWQVmHy7JpfxpKZfLjvn12GjvMgKrWdsHkFbV2kKqQFBCG",
+            "/dns4/celestia-mocha-boot.01node.com/tcp/2121/p2p/12D3KooWMCHtyp3Ld7tGJQavrbwmzbbevBxNqLxY28dYjHAwiwGV",
+        ],
+        _ => &[],
+    }
+}
+
+pub(super) struct Peering {
+    pub(super) bootstrap: std::collections::BTreeMap<libp2p::PeerId, Vec<libp2p::Multiaddr>>,
+    pub(super) announce: Vec<libp2p::Multiaddr>,
+}
+
+impl Peering {
+    pub(super) fn new(
+        chain: &str,
+        override_peers: &[libp2p::Multiaddr],
+        announce: Vec<libp2p::Multiaddr>,
+    ) -> Result<Self> {
+        let seeds = if override_peers.is_empty() {
+            release_peers(chain)
+                .iter()
+                .map(|s| s.parse())
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            override_peers.to_vec()
+        };
+        let mut bootstrap = std::collections::BTreeMap::<_, Vec<_>>::new();
+        for mut addr in seeds {
+            let Some(libp2p::multiaddr::Protocol::P2p(id)) = addr.pop() else {
+                anyhow::bail!("bootstrap address must end in /p2p/PEER_ID");
+            };
+            anyhow::ensure!(!addr.is_empty(), "bootstrap address needs a transport");
+            bootstrap.entry(id).or_default().push(addr);
+        }
+        for addr in &announce {
+            anyhow::ensure!(
+                matches!(addr.iter().last(),Some(libp2p::multiaddr::Protocol::Tcp(port)) if port != 0),
+                "announced DA address must end in a TCP port"
+            );
+        }
+        Ok(Self {
+            bootstrap,
+            announce,
+        })
+    }
+
+    pub(super) fn connect(&self, swarm: &mut libp2p::Swarm<Behaviour>) {
+        for (peer, addrs) in &self.bootstrap {
+            if !swarm.is_connected(peer) {
+                for addr in addrs {
+                    swarm.behaviour_mut().dht.add_address(peer, addr.clone());
+                }
+                let opts = libp2p::swarm::dial_opts::DialOpts::peer_id(*peer)
+                    .addresses(addrs.clone())
+                    .build();
+                if let Err(error) = swarm.dial(opts) {
+                    tracing::debug!(%peer, %error, "DA bootstrap dial deferred");
+                }
+            }
+        }
+    }
+}
