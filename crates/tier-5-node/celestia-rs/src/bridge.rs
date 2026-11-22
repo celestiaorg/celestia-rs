@@ -679,24 +679,7 @@ async fn dispatch(
         #[cfg(feature = "da-fibre")]
         if matches!(method, "fibre.Upload" | "fibre.Submit") {
             require_permission(permissions, method, "write")?;
-            let client = bridge
-                .fibre
-                .as_ref()
-                .ok_or_else(|| (1, "Fibre core unavailable".into()))?;
-            let wallet = bridge
-                .wallet
-                .as_ref()
-                .ok_or_else(|| (1, "bridge signer is not configured".into()))?;
-            return wallet
-                .submit_fibre(
-                    client,
-                    params,
-                    method == "fibre.Submit",
-                    bridge.states.clone(),
-                )
-                .await
-                .map(|v| J::Raw(v.to_string()))
-                .map_err(|e| (1, e.to_string()));
+            return fibre_write(&bridge, method, params).await;
         }
         if let Some(permission) = node_rpc::permission(method) {
             require_permission(permissions, method, permission)?;
@@ -766,6 +749,28 @@ async fn dispatch(
         ),
     };
     J::obj([("jsonrpc", J::str("2.0")), ("id", id), payload]).encode()
+}
+
+#[cfg(feature = "da-fibre")]
+async fn fibre_write(bridge: &Bridge, method: &str, params: &Value) -> Result<J, (i32, String)> {
+    let client = bridge
+        .fibre
+        .as_ref()
+        .ok_or_else(|| (1, "Fibre core unavailable".into()))?;
+    let wallet = bridge
+        .wallet
+        .as_ref()
+        .ok_or_else(|| (1, "bridge signer is not configured".into()))?;
+    wallet
+        .submit_fibre(
+            client,
+            params,
+            method == "fibre.Submit",
+            bridge.states.clone(),
+        )
+        .await
+        .map(|v| J::Raw(v.to_string()))
+        .map_err(|e| (1, e.to_string()))
 }
 
 async fn wallet_rpc(bridge: &Bridge, method: &str, params: &Value) -> Result<J, (i32, String)> {
