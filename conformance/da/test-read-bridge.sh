@@ -12,7 +12,7 @@ case "$revision" in
 esac
 work=$(mktemp -d)
 peer_args=()
-if [[ "${3:-}" == --peer || "${3:-}" == --stock-light ]]; then
+if [[ "${3:-}" == --peer || "${3:-}" == --stock-light || "${3:-}" == --validator-load ]]; then
     peer_args=(--prometheus-listen-addr 127.0.0.1:32660 --bridge-p2p-listen 127.0.0.1:32121)
 fi
 pid=
@@ -150,6 +150,13 @@ if (( ${#peer_args[@]} )); then
     echo "Verified Rust peer $peer_id served all six protocols, 16 samples and a missing EDS response"
 fi
 unset DA_TEST_ADMIN_TOKEN
+if [[ "${3:-}" == --validator-load ]]; then
+    (cd "$go_tree" && go build -o "$work/rpc-read" "$probe" &&
+        go build -o "$work/peer-read" "$peer_probe" &&
+        go build -o "$work/commits" "$(dirname "$probe")/validator/commits.go")
+    python3 "$(dirname "$probe")/validator/measure.py" "$pid" "$work" \
+        "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data"
+fi
 if [[ "${3:-}" == --stock-light ]]; then
     (cd "$go_tree" && go build -o "$work/go-da" ./cmd/celestia)
     genesis=$(curl -fsS 'http://127.0.0.1:26657/block?height=1' | jq -er '.result.block_id.hash')

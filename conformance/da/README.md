@@ -198,3 +198,15 @@ bank proofs for the selected account and for address-specific reads.
 To exercise light Fibre settlement, run `conformance/da/fibre/test-bridge-download.sh /path/to/celestia-rs /path/to/pinned-celestia-node --light` with a `da-fibre` build. The fixture funds a fresh light key, registers a Go storage provider on a local Rust consensus chain, and checks the synchronous receipt, asynchronous settlement, returned bytes and escrow debits through the released Go client.
 
 The private light test also creates a second Go validator and funds a separate light wallet. Its released clients exercise delegation, unbonding and cancellation, redelegation, reward withdrawal, fee grants, escrow deposits and pending withdrawals. The light node uses native Cosmos gRPC module queries against the selected core for these reads. Account balances continue to use proofs checked against a locally sampled header.
+
+## Validator load qualification
+
+On Linux, run `conformance/da/test-read-bridge.sh BINARY GO_NODE --validator-load`
+to compare a private Rust validator's idle and serving intervals on the same
+home. Set `DA_VALIDATOR_SECONDS` to choose the duration of each interval
+(default 30 seconds). During the serving interval two independent clients
+continuously recover the same paid blob and verify its proofs over RPC and
+SHREX. A pinned Go client verifies every validator signature and adjacent
+header across each interval. The command prints height ranges, proof suite
+counts, CPU seconds and the longest observed interval between commits. The
+DA interoperability workflow accepts `validator_seconds` for both release pins.
