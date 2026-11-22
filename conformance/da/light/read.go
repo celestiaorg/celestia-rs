@@ -103,7 +103,10 @@ func main() {
 	if _, err := c.Header.GetRangeByHeight(ctx, &wrong, height+3); err == nil {
 		panic("wrong predecessor accepted")
 	}
-	if err := c.Share.SharesAvailable(ctx, height+3); err == nil {
+	shareCtx, stopShare := context.WithTimeout(ctx, 350*time.Millisecond)
+	err = c.Share.SharesAvailable(shareCtx, height+3)
+	stopShare()
+	if err == nil || shareCtx.Err() != context.DeadlineExceeded {
 		panic("unsampled height reported available offline")
 	}
 	for h := height; h <= height+2; h++ {
