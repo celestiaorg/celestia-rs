@@ -905,7 +905,15 @@ fn main() -> anyhow::Result<()> {
             .map(|f| f.string(File::Config, "log_format"))
             .unwrap_or_default()
     });
-    ops::init_logging(&level, &format);
+    let init_log = ops::init_logging;
+    #[cfg(feature = "bridge")]
+    let init_log = match &cli.command {
+        Cmd::Start(args) if args.bridge_rpc_listen.is_some() => ops::init_da_logging,
+        #[cfg(feature = "da-light")]
+        Cmd::DaLight(_) => ops::init_da_logging,
+        _ => init_log,
+    };
+    init_log(&level, &format);
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;

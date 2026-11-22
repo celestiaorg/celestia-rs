@@ -200,15 +200,13 @@ fn use_ansi(stdout_is_terminal: bool, no_color: Option<String>) -> bool {
     stdout_is_terminal && no_color.is_none_or(|v| v.is_empty())
 }
 
+#[cfg(feature = "bridge")]
+pub(crate) mod da_logging;
+
 /// Initializes logging: `RUST_LOG` wins over `level`; `format` is `plain`
 /// (default) or `json`.
 pub fn init_logging(level: &str, format: &str) {
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_filter(level)));
-    let ansi = use_ansi(
-        std::io::IsTerminal::is_terminal(&std::io::stdout()),
-        std::env::var("NO_COLOR").ok(),
-    );
+    let (filter, ansi) = logging_options(level);
     let builder = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_ansi(ansi);
@@ -217,6 +215,23 @@ pub fn init_logging(level: &str, format: &str) {
     } else {
         builder.try_init()
     };
+}
+
+fn logging_options(level: &str) -> (tracing_subscriber::EnvFilter, bool) {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_filter(level)));
+    let ansi = use_ansi(
+        std::io::IsTerminal::is_terminal(&std::io::stdout()),
+        std::env::var("NO_COLOR").ok(),
+    );
+    (filter, ansi)
+}
+
+/// Install runtime DA log control when the operator starts a DA RPC service.
+#[cfg(feature = "bridge")]
+pub fn init_da_logging(level: &str, format: &str) {
+    let (filter, ansi) = logging_options(level);
+    da_logging::init(filter, ansi, format);
 }
 
 /// The soft `RLIMIT_NOFILE` of this process, if it can be determined.

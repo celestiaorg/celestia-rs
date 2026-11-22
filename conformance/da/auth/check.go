@@ -42,6 +42,14 @@ func main() {
 	reader, e := client.NewClient(ctx, endpoint, token)
 	check(e)
 	defer reader.Close()
+	if e := reader.Node.LogLevelSet(ctx, "module/p2p", "debug"); e == nil {
+		panic("read token changed log levels")
+	}
+	check(admin.Node.LogLevelSet(ctx, "module/p2p", "DEBUG"))
+	if e := admin.Node.LogLevelSet(ctx, "module/p2p", "invalid"); e == nil {
+		panic("accepted invalid log level")
+	}
+	check(admin.Node.LogLevelSet(ctx, "module/p2p", "info"))
 	ready, e := reader.Node.Ready(ctx)
 	check(e)
 	if !ready {
