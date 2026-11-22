@@ -26,8 +26,8 @@ cleanup() {
     done
     if (( status != 0 )); then
         # Initialization logs contain generated key material. Only report daemon errors.
-        for log in "$work/app.log" "$work/bridge.log" "$work/follower.log"; do
-            if [[ -f "$log" ]]; then grep -Ei '(^Error:|panic:|disk space|address already in use)' "$log" | tail -10 || true; fi
+        for log in "$work/app.log" "$work/bridge.log" "$work/follower.log" "$work/light.log" "$work/light-wallet.log"; do
+            if [[ -f "$log" ]]; then grep -Ei '(^Error:|panicked at|panic:|disk space|address already in use)' "$log" | tail -10 || true; fi
         done
         df -h "$work"
     fi
@@ -100,6 +100,11 @@ for attempt in {1..120}; do
     sleep 1
 done
 hash=$(jq -er 'select(.block.data.txs | length > 0) | .block_id.hash' <<<"$data")
+sample_fixture=$(realpath "$(dirname "$0")/sample_provider.go")
+(cd "$node_src" && go build -o "$work/sample-provider" "$sample_fixture")
+"$(dirname "$0")/sample-restart.sh" "$rust" "$work/sample-provider" "$work/unavailable" "$chain" "$peer" "$hash" "$height"
+
+if [[ ${4:-} == --sampling-recovery-only ]]; then exit 0; fi
 # A new Rust consensus peer joins with its own identity and zero voting power.
 # Copy only the public genesis from the validator.
 follower_home="$work/follower"

@@ -4,6 +4,7 @@ use crate::bridge::fibre::Client;
 use anyhow::{Context, Result};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use celestia_proto::{Any, celestia::fibre::v1::MsgPayForFibre};
+use fibre_prost::Message as _;
 use fibre_types::nmt::Namespace;
 use prost::Message;
 use serde_json::{Value, json};

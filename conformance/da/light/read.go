@@ -74,6 +74,15 @@ func main() {
 	if err == nil || future.Err() != context.DeadlineExceeded {
 		panic("future height available offline")
 	}
+	next, stopNext := context.WithTimeout(ctx, 350*time.Millisecond)
+	_, err = c.Header.GetByHeight(next, waited.Height()+1)
+	stopNext()
+	if err == nil || next.Err() != context.DeadlineExceeded {
+		panic("next sampled height did not wait for publication")
+	}
+	if _, err = c.Header.GetByHeight(ctx, waited.Height()+2); err == nil {
+		panic("distant future height unexpectedly available")
+	}
 	headers, err := c.Header.GetRangeByHeight(ctx, tail, height+3)
 	check(err)
 	if len(headers) != 2 || !bytes.Equal(headers[1].Hash(), waited.Hash()) {
@@ -94,7 +103,10 @@ func main() {
 	if _, err := c.Header.GetRangeByHeight(ctx, &wrong, height+3); err == nil {
 		panic("wrong predecessor accepted")
 	}
-	if err := c.Share.SharesAvailable(ctx, height+3); err == nil {
+	shareCtx, stopShare := context.WithTimeout(ctx, 350*time.Millisecond)
+	err = c.Share.SharesAvailable(shareCtx, height+3)
+	stopShare()
+	if err == nil || shareCtx.Err() != context.DeadlineExceeded {
 		panic("unsampled height reported available offline")
 	}
 	for h := height; h <= height+2; h++ {
