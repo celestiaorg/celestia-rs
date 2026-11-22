@@ -82,12 +82,9 @@ pub(super) fn range(
     let last = (end - 1) / width;
     let ns =
         shares::Namespace::from_slice(&eds.share(first, start % width)?[..shares::NAMESPACE_SIZE])?;
-    let roots: Vec<_> = dah.row_roots.iter().chain(&dah.column_roots).collect();
-    let (_, paths) = merkle::proofs_from_byte_slices(&roots);
     let mut data = Vec::with_capacity(end - start);
     let mut proofs = Vec::new();
-    let mut row_paths = Vec::new();
-    for (row, path) in paths.iter().enumerate().take(last + 1).skip(first) {
+    for row in first..=last {
         let from = start.saturating_sub(row * width);
         let stop = (end - row * width).min(width);
         for col in from..stop {
@@ -103,36 +100,8 @@ pub(super) fn range(
         let proof = app::inclusion_proof::row_range_proof(eds, dah, row, from, stop)
             .map_err(|e| anyhow::anyhow!("{}", e.log))?;
         proofs.push(super::proof_json(&proof, subtree_roots.is_some()));
-        row_paths.push(J::obj([
-            ("total", J::u64s(path.total)),
-            ("index", J::u64s(path.index)),
-            ("leaf_hash", J::b64(&path.leaf_hash)),
-            (
-                "aunts",
-                J::Arr(path.aunts.iter().map(|n| J::b64(n)).collect()),
-            ),
-        ]));
     }
-    let row_proof = J::obj([
-        (
-            "row_roots",
-            J::Arr(
-                dah.row_roots[first..=last]
-                    .iter()
-                    .map(|r| {
-                        if subtree_roots.is_some() {
-                            J::b64(r)
-                        } else {
-                            J::hex(r)
-                        }
-                    })
-                    .collect(),
-            ),
-        ),
-        ("proofs", J::Arr(row_paths)),
-        ("start_row", J::num(first)),
-        ("end_row", J::num(last)),
-    ]);
+    let row_proof = row_proof_json(dah, first, last, subtree_roots.is_some());
     if let Some(roots) = subtree_roots {
         return Ok(J::obj([
             (
@@ -145,6 +114,10 @@ pub(super) fn range(
             ("row_proof", row_proof),
         ]));
     }
+    Ok(range_result(ns, data, proofs, row_proof))
+}
+
+pub(super) fn range_result(ns: shares::Namespace, data: Vec<J>, proofs: Vec<J>, row_proof: J) -> J {
     let proof = J::obj([
         ("data", J::Arr(data.clone())),
         ("share_proofs", J::Arr(proofs)),
@@ -152,5 +125,43 @@ pub(super) fn range(
         ("namespace_version", J::num(ns.version())),
         ("row_proof", row_proof),
     ]);
-    Ok(J::obj([("Shares", J::Arr(data)), ("Proof", proof)]))
+    J::obj([("Shares", J::Arr(data)), ("Proof", proof)])
+}
+
+pub(super) fn row_proof_json(
+    dah: &DataAvailabilityHeader,
+    first: usize,
+    last: usize,
+    base64_roots: bool,
+) -> J {
+    let roots: Vec<_> = dah.row_roots.iter().chain(&dah.column_roots).collect();
+    let (_, paths) = merkle::proofs_from_byte_slices(&roots);
+    let row_paths = paths[first..=last]
+        .iter()
+        .map(|path| {
+            J::obj([
+                ("total", J::u64s(path.total)),
+                ("index", J::u64s(path.index)),
+                ("leaf_hash", J::b64(&path.leaf_hash)),
+                (
+                    "aunts",
+                    J::Arr(path.aunts.iter().map(|n| J::b64(n)).collect()),
+                ),
+            ])
+        })
+        .collect();
+    J::obj([
+        (
+            "row_roots",
+            J::Arr(
+                dah.row_roots[first..=last]
+                    .iter()
+                    .map(|r| if base64_roots { J::b64(r) } else { J::hex(r) })
+                    .collect(),
+            ),
+        ),
+        ("proofs", J::Arr(row_paths)),
+        ("start_row", J::num(first)),
+        ("end_row", J::num(last)),
+    ])
 }

@@ -3,7 +3,10 @@ mod core;
 mod data;
 mod discovery;
 mod exchange;
+mod namespace;
+mod range;
 mod recovery;
+mod row;
 mod rpc;
 mod stats;
 mod wallet;
@@ -73,6 +76,9 @@ struct Streams {
     control: libp2p_stream::Control,
     headers: StreamProtocol,
     samples: StreamProtocol,
+    namespaces: StreamProtocol,
+    rows: StreamProtocol,
+    ranges: StreamProtocol,
     eds: StreamProtocol,
 }
 
@@ -639,6 +645,15 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
             control: swarm.behaviour().negotiated.new_control(),
             headers,
             samples,
+            ranges: StreamProtocol::try_from_owned(format!(
+                "/{}/shrex/v0.1.0/rangeNamespaceData_v0",
+                args.network
+            ))?,
+            rows: StreamProtocol::try_from_owned(format!("/{}/shrex/v0.1.0/row_v0", args.network))?,
+            namespaces: StreamProtocol::try_from_owned(format!(
+                "/{}/shrex/v0.1.0/nd_v0",
+                args.network
+            ))?,
             eds,
         },
         connected: online,

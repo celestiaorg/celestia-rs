@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/celestiaorg/celestia-node/share/shwap"
 	shrexpb "github.com/celestiaorg/celestia-node/share/shwap/p2p/shrex/pb"
 	"github.com/celestiaorg/go-libp2p-messenger/serde"
 	"github.com/libp2p/go-libp2p"
@@ -41,6 +43,9 @@ func run(ctx context.Context, chain, provider, dir string) error {
 	}
 	header := protocol.ID("/" + chain + "/header-ex/v0.0.3")
 	sample := protocol.ID("/" + chain + "/shrex/v0.1.0/sample_v0")
+	rangeProtocol := protocol.ID("/" + chain + "/shrex/v0.1.0/rangeNamespaceData_v0")
+	rowProtocol := protocol.ID("/" + chain + "/shrex/v0.1.0/row_v0")
+	namespace := protocol.ID("/" + chain + "/shrex/v0.1.0/nd_v0")
 	handle := func(in network.Stream) error {
 		deadline := time.Now().Add(15 * time.Second)
 		if err := in.SetDeadline(deadline); err != nil {
@@ -49,6 +54,32 @@ func run(ctx context.Context, chain, provider, dir string) error {
 		request, err := io.ReadAll(io.LimitReader(in, 1024))
 		if err != nil {
 			return err
+		}
+		if in.Protocol() == rangeProtocol {
+			if len(request) != 16 {
+				return fmt.Errorf("unexpected range identifier length %d", len(request))
+			}
+			if _, err := os.Stat(filepath.Join(dir, "wrong-range")); err == nil {
+				binary.BigEndian.PutUint32(request[8:12], binary.BigEndian.Uint32(request[8:12])+1)
+				binary.BigEndian.PutUint32(request[12:16], binary.BigEndian.Uint32(request[12:16])+1)
+			}
+		}
+		if in.Protocol() == rowProtocol {
+			if len(request) != 10 {
+				return fmt.Errorf("unexpected row identifier length %d", len(request))
+			}
+			if _, err := os.Stat(filepath.Join(dir, "wrong-row")); err == nil {
+				request[9] ^= 1
+			}
+		}
+		if in.Protocol() == namespace {
+			if len(request) != 37 {
+				return fmt.Errorf("unexpected namespace identifier length %d", len(request))
+			}
+			if _, err := os.Stat(filepath.Join(dir, "wrong-namespace")); err == nil {
+				// Ask the real Go bridge for a different namespace at the same height.
+				request[len(request)-1] ^= 1
+			}
 		}
 		if in.Protocol() == sample {
 			if len(request) != 12 {
@@ -98,10 +129,31 @@ func run(ctx context.Context, chain, provider, dir string) error {
 		if err = out.CloseWrite(); err != nil {
 			return err
 		}
+		if in.Protocol() == rowProtocol {
+			var status shrexpb.Response
+			if _, err = serde.Read(out, &status); err != nil {
+				return err
+			}
+			if _, err = serde.Write(in, &status); err != nil || status.Status != shrexpb.Status_OK {
+				return err
+			}
+			// Exercise the released RIGHT encoding even when the upstream bridge serves LEFT.
+			var row shwap.Row
+			if _, err = row.ReadFrom(out); err != nil {
+				return err
+			}
+			shares, err := row.Shares()
+			if err != nil {
+				return err
+			}
+			right := shwap.NewRow(shares[len(shares)/2:], shwap.Right)
+			_, err = right.WriteTo(in)
+			return err
+		}
 		_, err = io.Copy(in, io.LimitReader(out, 4<<20))
 		return err
 	}
-	for _, id := range []protocol.ID{header, sample} {
+	for _, id := range []protocol.ID{header, sample, namespace, rowProtocol, rangeProtocol} {
 		host.SetStreamHandler(id, func(in network.Stream) {
 			if err := handle(in); err != nil {
 				in.Reset()

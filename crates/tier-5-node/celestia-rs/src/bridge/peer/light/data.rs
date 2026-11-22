@@ -32,15 +32,11 @@ impl Client {
     }
 
     pub(super) async fn read(&self, db: &RedbBackend, query: Query) -> Result<String> {
-        let height = match &query {
-            Query::Blobs(h, _)
-            | Query::Blob(h, ..)
-            | Query::Namespace(h, _)
-            | Query::BlobProof(h, ..)
-            | Query::ShareRead(h, _)
-            | Query::Share(h, ..) => u64::try_from(*h)?,
-            _ => anyhow::bail!("expected a blob or share query"),
-        };
+        let height = u64::try_from(
+            query
+                .explicit_height()
+                .context("expected a data query at a height")?,
+        )?;
         let raw = db
             .get(&super::rpc::at(height))?
             .context("header has not been sampled or has expired")?;
@@ -70,6 +66,22 @@ impl Client {
             (1..=512).contains(&width) && width.is_power_of_two(),
             "invalid ODS width"
         );
+        // A partial provider can still serve the authenticated ODS if SHREX rows are unavailable.
+        if let Query::Namespace(_, namespace) = query
+            && let Some(data) = self.namespace_data(height, namespace, &dah).await?
+        {
+            return Ok(data);
+        }
+        if let Query::ShareRead(_, share_rpc::Read::Range(start, end)) = query
+            && let Some(data) = self.range_data(height, start, end, &dah, &worker).await?
+        {
+            return Ok(data);
+        }
+        if let Query::ShareRead(_, share_rpc::Read::Row(index)) = query
+            && let Some(data) = self.row_data(height, index, &dah, &worker).await?
+        {
+            return Ok(data);
+        }
         if let Query::Share(_, row, col) = query {
             let sample = self.verified_cell(height, &dah, row, col).await?;
             return Ok(J::b64(&sample.share).encode());
@@ -109,6 +121,40 @@ impl Client {
             }
         }
         anyhow::bail!("no connected DA peer supplied the verified square at height {height}")
+    }
+
+    async fn namespace_data(
+        &self,
+        height: u64,
+        namespace: shares::Namespace,
+        dah: &square::DataAvailabilityHeader,
+    ) -> Result<Option<String>> {
+        ensure!(
+            !namespace.is_parity_shares() && !namespace.is_tail_padding(),
+            "invalid data namespace"
+        );
+        let candidates = dah.rows_with_namespace(namespace)?;
+        if candidates.is_empty() {
+            return Ok(Some("[]".into()));
+        }
+        for mut remote in self.peers.online() {
+            if let Ok(Ok(rows)) = tokio::time::timeout(
+                DEADLINE,
+                remote.namespace(height, namespace, dah, &candidates),
+            )
+            .await
+            {
+                return Ok(Some(
+                    J::Arr(
+                        rows.into_iter()
+                            .map(crate::bridge::namespace_row_json)
+                            .collect(),
+                    )
+                    .encode(),
+                ));
+            }
+        }
+        Ok(None)
     }
 
     async fn verified_cell(
