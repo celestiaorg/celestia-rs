@@ -58,8 +58,12 @@ def main():
 
     def read(endpoint):
         url, token = endpoint
-        result = subprocess.run([probe, url, height, "0103", paid_blob], stdout=subprocess.DEVNULL,
-                                env={**os.environ, "DA_TEST_READ_TOKEN": token}, timeout=40)
+        try:
+            result = subprocess.run([probe, url, height, "0103", paid_blob], stdout=subprocess.DEVNULL,
+                                    env={**os.environ, "DA_TEST_READ_TOKEN": token}, timeout=40)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"paid read on {url} exceeded 40 s after {rounds} paired rounds, "
+                               f"last observed Go validator height {last_observed}") from None
         if result.returncode:
             raise RuntimeError(f"paid read failed on {url} with status {result.returncode}")
 
