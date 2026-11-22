@@ -336,11 +336,21 @@ async fn dispatch(
     .map_err(|e| (1, e.to_string()))?
     .map_err(|e| (1, e.to_string()))
 }
+fn module_read(method: &str) -> bool {
+    crate::bridge::state_rpc::reads(method)
+        || matches!(
+            method,
+            "fibre.QueryEscrowAccount" | "fibre.PendingWithdrawals"
+        )
+}
+
 fn core_method(method: &str) -> bool {
-    matches!(
-        method,
-        "state.BalanceForAddress" | "state.Balance" | "state.AccountAddress"
-    ) || (cfg!(feature = "da-fibre") && method == "fibre.Download")
+    module_read(method)
+        || matches!(
+            method,
+            "state.BalanceForAddress" | "state.Balance" | "state.AccountAddress"
+        )
+        || (cfg!(feature = "da-fibre") && method == "fibre.Download")
 }
 
 async fn core_read(
@@ -365,6 +375,28 @@ async fn core_read(
             .submit(core, method, args)
             .await
             .map(|value| value.to_string())
+            .map_err(|e| (1, e.to_string()));
+    }
+    if module_read(method) {
+        let (signer, args) = if crate::bridge::state_rpc::reads(method) {
+            let wallet = service
+                .wallet
+                .as_ref()
+                .ok_or_else(|| (1, "light signer is not configured".to_owned()))?;
+            (wallet.address.as_str(), args)
+        } else {
+            let [Value::String(signer)] = args else {
+                return Err((-32602, "expected signer address".into()));
+            };
+            (signer.as_str(), [].as_slice())
+        };
+        let _permit = service
+            .workers
+            .try_acquire()
+            .map_err(|_| (-32000, "light RPC busy".to_owned()))?;
+        return super::core::module_query(&core, method, args, signer)
+            .await
+            .map(|v| v.to_string())
             .map_err(|e| (1, e.to_string()));
     }
     let address = match (method, args) {

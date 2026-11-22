@@ -43,6 +43,9 @@ light_wallet=$("$rust" keys show light -a --keyring-backend test --home "$work/r
     "$app" init oracle --chain-id "$chain" "${home_arg[@]}"
     "$app" keys add validator "${key_arg[@]}"
     address=$("$app" keys show validator -a "${key_arg[@]}")
+    "$app" keys add second "${key_arg[@]}"
+    second=$("$app" keys show second -a "${key_arg[@]}")
+    "$app" genesis add-genesis-account "$second" 100000000utia "${home_arg[@]}"
     "$app" genesis add-genesis-account "$address" 1000000000000000utia "${home_arg[@]}"
     "$app" genesis add-genesis-account "$light_wallet" 12345000utia "${home_arg[@]}"
     "$app" genesis gentx validator 5000000000utia --chain-id "$chain" --fees 500utia \
@@ -232,3 +235,19 @@ DA_TEST_WRITE_TOKEN=$("$rust" da-auth write --home "$work/rust-light")
 export DA_TEST_WRITE_TOKEN
 submit_probe=$(realpath "$(dirname "$0")/../submit/check.go")
 (cd "$node_src" && go run "$submit_probe" "$endpoint")
+
+validator_json=$(realpath "$(dirname "$0")/../../../crates/tier-5-node/celestia-rs/tests/fixtures/generate-only/validator.json")
+tx=$("$app" tx staking create-validator "$validator_json" --from second "${key_arg[@]}" --chain-id "$chain" \
+    --node tcp://127.0.0.1:36657 --fees 50000utia --gas 500000 --output json --yes)
+jq -e '.code == 0' <<<"$tx" >/dev/null
+src=$("$app" keys show validator --bech val -a "${key_arg[@]}")
+dst=$("$app" keys show second --bech val -a "${key_arg[@]}")
+for attempt in {1..45}; do
+    if "$app" query staking validator "$dst" "${home_arg[@]}" --node tcp://127.0.0.1:36657 --output json >/dev/null 2>&1; then break; fi
+    if [[ "$attempt" == 45 ]]; then echo 'second validator was not registered' >&2; exit 1; fi
+    sleep 1
+done
+staking_probe=$(realpath "$(dirname "$0")/../staking/check.go")
+escrow_probe=$(realpath "$(dirname "$0")/../fibre/escrow.go")
+(cd "$node_src" && go run "$staking_probe" "$endpoint" "$dst" "$src")
+(cd "$node_src" && go run "$escrow_probe" "$endpoint")

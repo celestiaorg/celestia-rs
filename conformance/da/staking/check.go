@@ -45,6 +45,12 @@ func main() {
 	if _, err := r.State.Delegate(ctx, src, amount(1000), nil); err == nil {
 		panic("read token delegated funds")
 	}
+	if len(os.Args) == 4 {
+		src, err = sdk.ValAddressFromBech32(os.Args[3])
+		check(err)
+		// A light key starts without a self-delegation, unlike the bridge fixture.
+		receipt(w.State.Delegate(ctx, src, amount(1000), nil))
+	}
 	before, err := r.State.QueryDelegation(ctx, src)
 	check(err)
 	receipt(w.State.Delegate(ctx, src, amount(1000), nil))

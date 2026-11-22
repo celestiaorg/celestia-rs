@@ -143,117 +143,132 @@ pub(super) fn reads(method: &str) -> bool {
     )
 }
 
+pub(super) struct Query {
+    pub(super) path: &'static str,
+    pub(super) data: Vec<u8>,
+    decode: fn(&[u8]) -> Result<Value>,
+}
+
 fn query<Resp: Message + Name + Default + serde::Serialize>(
-    app: &app::AbciApp,
-    path: &str,
+    path: &'static str,
     request: &impl Message,
-) -> Result<Value> {
-    let (bytes, _) = app
-        .grpc_query(path, &request.encode_to_vec(), 0)
-        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-    let mut v = serde_json::to_value(Resp::decode(bytes.as_slice())?)?;
-    api_server::jsonpb::go_style(&mut v, &Resp::full_name());
-    Ok(v)
+) -> Query {
+    Query {
+        path,
+        data: request.encode_to_vec(),
+        decode: |bytes| {
+            let mut json = serde_json::to_value(Resp::decode(bytes)?)?;
+            api_server::jsonpb::go_style(&mut json, &Resp::full_name());
+            Ok(json)
+        },
+    }
+}
+
+pub(super) fn prepare(method: &str, args: &[Value], signer: &str) -> Result<Query> {
+    Ok(match (method, args) {
+        ("state.QueryDelegation", [val]) => query::<staking::QueryDelegationResponse>(
+            "/cosmos.staking.v1beta1.Query/Delegation",
+            &staking::QueryDelegationRequest {
+                delegator_addr: signer.into(),
+                validator_addr: address(val, VAL_PREFIX)?,
+            },
+        ),
+        ("state.QueryDelegationRewards", [val]) => {
+            query::<distribution::QueryDelegationRewardsResponse>(
+                "/cosmos.distribution.v1beta1.Query/DelegationRewards",
+                &distribution::QueryDelegationRewardsRequest {
+                    delegator_address: signer.into(),
+                    validator_address: address(val, VAL_PREFIX)?,
+                },
+            )
+        }
+        ("state.QueryUnbonding", [val]) => query::<staking::QueryUnbondingDelegationResponse>(
+            "/cosmos.staking.v1beta1.Query/UnbondingDelegation",
+            &staking::QueryUnbondingDelegationRequest {
+                delegator_addr: signer.into(),
+                validator_addr: address(val, VAL_PREFIX)?,
+            },
+        ),
+        ("state.QueryRedelegations", [src, dst]) => query::<staking::QueryRedelegationsResponse>(
+            "/cosmos.staking.v1beta1.Query/Redelegations",
+            &staking::QueryRedelegationsRequest {
+                delegator_addr: signer.into(),
+                src_validator_addr: address(src, VAL_PREFIX)?,
+                dst_validator_addr: address(dst, VAL_PREFIX)?,
+                pagination: None,
+            },
+        ),
+        ("fibre.PendingWithdrawals", []) => query::<fibre::QueryWithdrawalsResponse>(
+            "/celestia.fibre.v1.Query/Withdrawals",
+            &fibre::QueryWithdrawalsRequest {
+                signer: signer.into(),
+                pagination: None,
+            },
+        ),
+        ("fibre.QueryEscrowAccount", []) => query::<fibre::QueryEscrowAccountResponse>(
+            "/celestia.fibre.v1.Query/EscrowAccount",
+            &fibre::QueryEscrowAccountRequest {
+                signer: signer.into(),
+            },
+        ),
+        _ => anyhow::bail!("invalid query parameters"),
+    })
+}
+
+impl Query {
+    pub(super) fn result(&self, method: &str, signer: &str, bytes: &[u8]) -> Result<Value> {
+        let mut v = (self.decode)(bytes)?;
+        match method {
+            "state.QueryUnbonding" => {
+                if let Some(entries) = v["unbond"]["entries"].as_array_mut() {
+                    for entry in entries {
+                        for field in [
+                            "creation_height",
+                            "unbonding_id",
+                            "unbonding_on_hold_ref_count",
+                        ] {
+                            let data = entry.as_object_mut().context("invalid unbonding entry")?;
+                            if let Some(n) = data.remove(field).and_then(|v| {
+                                v.as_str()
+                                    .and_then(|s| s.parse::<serde_json::Number>().ok())
+                            }) && n.as_i64() != Some(0)
+                            {
+                                data.insert(field.into(), Value::Number(n));
+                            }
+                        }
+                    }
+                }
+            }
+            "state.QueryRedelegations" => {
+                if v["pagination"].is_null() {
+                    v.as_object_mut()
+                        .context("invalid pagination")?
+                        .remove("pagination");
+                }
+            }
+            "fibre.PendingWithdrawals" => return Ok(v["withdrawals"].take()),
+            "fibre.QueryEscrowAccount" => {
+                ensure!(
+                    v["found"] == true,
+                    "escrow account not found for signer:{signer}"
+                );
+                return Ok(v["escrow_account"].take());
+            }
+            _ => {}
+        }
+        Ok(v)
+    }
 }
 
 pub(super) fn read(
     app: &app::AbciApp,
     method: &str,
     args: &[Value],
-    signer: String,
+    signer: &str,
 ) -> Result<Value> {
-    match (method, args) {
-        ("state.QueryDelegation", [val]) => query::<staking::QueryDelegationResponse>(
-            app,
-            "/cosmos.staking.v1beta1.Query/Delegation",
-            &staking::QueryDelegationRequest {
-                delegator_addr: signer,
-                validator_addr: address(val, VAL_PREFIX)?,
-            },
-        ),
-        ("state.QueryDelegationRewards", [val]) => {
-            query::<distribution::QueryDelegationRewardsResponse>(
-                app,
-                "/cosmos.distribution.v1beta1.Query/DelegationRewards",
-                &distribution::QueryDelegationRewardsRequest {
-                    delegator_address: signer,
-                    validator_address: address(val, VAL_PREFIX)?,
-                },
-            )
-        }
-        ("state.QueryUnbonding", [val]) => {
-            let mut v = query::<staking::QueryUnbondingDelegationResponse>(
-                app,
-                "/cosmos.staking.v1beta1.Query/UnbondingDelegation",
-                &staking::QueryUnbondingDelegationRequest {
-                    delegator_addr: signer,
-                    validator_addr: address(val, VAL_PREFIX)?,
-                },
-            )?;
-            if let Some(entries) = v["unbond"]["entries"].as_array_mut() {
-                for entry in entries {
-                    for field in [
-                        "creation_height",
-                        "unbonding_id",
-                        "unbonding_on_hold_ref_count",
-                    ] {
-                        let data = entry.as_object_mut().context("invalid unbonding entry")?;
-                        if let Some(n) = data.remove(field).and_then(|v| {
-                            v.as_str()
-                                .and_then(|s| s.parse::<serde_json::Number>().ok())
-                        }) && n.as_i64() != Some(0)
-                        {
-                            data.insert(field.into(), Value::Number(n));
-                        }
-                    }
-                }
-            }
-            Ok(v)
-        }
-        ("state.QueryRedelegations", [src, dst]) => {
-            let mut v = query::<staking::QueryRedelegationsResponse>(
-                app,
-                "/cosmos.staking.v1beta1.Query/Redelegations",
-                &staking::QueryRedelegationsRequest {
-                    delegator_addr: signer,
-                    src_validator_addr: address(src, VAL_PREFIX)?,
-                    dst_validator_addr: address(dst, VAL_PREFIX)?,
-                    pagination: None,
-                },
-            )?;
-            if v["pagination"].is_null() {
-                v.as_object_mut()
-                    .context("invalid pagination")?
-                    .remove("pagination");
-            }
-            Ok(v)
-        }
-        _ => anyhow::bail!("invalid query parameters"),
-    }
-}
-
-pub(super) fn escrow(app: &app::AbciApp, method: &str, signer: String) -> Result<Value> {
-    if method == "fibre.PendingWithdrawals" {
-        let mut response = query::<fibre::QueryWithdrawalsResponse>(
-            app,
-            "/celestia.fibre.v1.Query/Withdrawals",
-            &fibre::QueryWithdrawalsRequest {
-                signer,
-                pagination: None,
-            },
-        )?;
-        return Ok(response["withdrawals"].take());
-    }
-    let mut response = query::<fibre::QueryEscrowAccountResponse>(
-        app,
-        "/celestia.fibre.v1.Query/EscrowAccount",
-        &fibre::QueryEscrowAccountRequest {
-            signer: signer.clone(),
-        },
-    )?;
-    ensure!(
-        response["found"] == true,
-        "escrow account not found for signer:{signer}"
-    );
-    Ok(response["escrow_account"].take())
+    let query = prepare(method, args, signer)?;
+    let (bytes, _) = app
+        .grpc_query(query.path, &query.data, 0)
+        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    query.result(method, signer, &bytes)
 }

@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use tonic::{
     client::Grpc,
-    codec::ProstCodec,
+    codec::{Codec, ProstCodec},
     transport::{Channel, Endpoint},
 };
 
@@ -132,6 +132,15 @@ impl Core {
         Req: prost::Message + Send + Sync + 'static,
         Resp: prost::Message + Default + Send + Sync + 'static,
     {
+        self.call(path, message, ProstCodec::default()).await
+    }
+
+    async fn call<C: Codec<Encode: Sync, Decode: Sync>>(
+        &self,
+        path: &'static str,
+        message: C::Encode,
+        codec: C,
+    ) -> Result<C::Decode, Box<tonic::Status>> {
         let mut grpc = Grpc::new(self.channel.clone());
         grpc.ready()
             .await
@@ -141,12 +150,21 @@ impl Core {
             request.metadata_mut().insert("x-token", token.clone());
         }
         Ok(grpc
-            .unary(
-                request,
-                PathAndQuery::from_static(path),
-                ProstCodec::default(),
-            )
+            .unary(request, PathAndQuery::from_static(path), codec)
             .await?
             .into_inner())
     }
+}
+
+pub(super) async fn module_query(
+    core: &Core,
+    method: &str,
+    args: &[Value],
+    signer: &str,
+) -> Result<Value> {
+    let query = crate::bridge::state_rpc::prepare(method, args, signer)?;
+    let bytes = core
+        .call(query.path, query.data.clone(), api_server::RawCodec)
+        .await?;
+    query.result(method, signer, &bytes)
 }

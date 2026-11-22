@@ -177,3 +177,5 @@ To expose a selected light account through `state.AccountAddress` and
 and pass `--keyring.keyname NAME` with the configured core endpoint.
 `--keyring.backend` selects its backend. The light node uses the same sampled
 bank proofs for the selected account and for address-specific reads.
+
+The private light test also creates a second Go validator and funds a separate light wallet. Its released clients exercise delegation, unbonding and cancellation, redelegation, reward withdrawal, fee grants, escrow deposits and pending withdrawals. The light node uses native Cosmos gRPC module queries against the selected core for these reads. Account balances continue to use proofs checked against a locally sampled header.
