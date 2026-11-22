@@ -51,8 +51,11 @@ pub const MAX_MSG_LEN: usize = 16 * 1024;
 const VARINT_LEN: usize = 2;
 /// Overhead of the protobuf encoding, in bytes.
 const PROTO_OVERHEAD: usize = 5;
-/// Maximum length of data, in bytes.
-const MAX_DATA_LEN: usize = MAX_MSG_LEN - VARINT_LEN - PROTO_OVERHEAD;
+/// The released Go peer reads the next length prefix with a 4 KiB bufio.Reader.
+/// Its detached SCTP reader must fit the entire packet in that first read.
+/// Keep the full 16 KiB receive limit for other libp2p peers.
+const MAX_SEND_MSG_LEN: usize = 4096;
+const MAX_DATA_LEN: usize = MAX_SEND_MSG_LEN - VARINT_LEN - PROTO_OVERHEAD;
 
 pub use drop_listener::DropListener;
 /// A stream backed by a WebRTC data channel.
@@ -338,6 +341,6 @@ mod tests {
 
         // Ensure the varint prefixed and protobuf encoded largest message is no longer than the
         // maximum limit specified in the libp2p WebRTC specification.
-        assert_eq!(dst.len(), MAX_MSG_LEN);
+        assert_eq!(dst.len(), MAX_SEND_MSG_LEN);
     }
 }

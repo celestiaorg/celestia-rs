@@ -59,7 +59,7 @@ mod tests {
 
     impl Write for DataChannel {
         fn write(&mut self, packet: &[u8]) -> io::Result<usize> {
-            assert!(packet.len() <= MAX_MSG_LEN);
+            assert!(packet.len() <= crate::stream::MAX_SEND_MSG_LEN);
             Ok(packet.len())
         }
 
@@ -72,7 +72,10 @@ mod tests {
     fn bounds_each_sctp_message_when_a_square_is_written_in_shares() {
         block_on(async {
             let mut channel = new(AllowStdIo::new(DataChannel));
-            for len in std::iter::once(3).chain(std::iter::repeat_n(512, 64)) {
+            for len in std::iter::once(3)
+                .chain(std::iter::repeat_n(512, 64))
+                .chain([crate::stream::MAX_DATA_LEN])
+            {
                 channel
                     .feed(Message {
                         flag: None,
