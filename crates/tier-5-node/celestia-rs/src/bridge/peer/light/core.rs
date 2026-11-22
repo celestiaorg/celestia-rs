@@ -77,7 +77,7 @@ pub(super) fn channel(
     };
     #[cfg(feature = "da-fibre")]
     let fibre = {
-        let endpoint = celestia_fibre::Endpoint::new(url).timeout(Duration::from_secs(10));
+        let endpoint = celestia_grpc::Endpoint::new(url).timeout(Duration::from_secs(10));
         let endpoint = match &token {
             Some(value) => endpoint.metadata("x-token", value.to_str()?),
             None => endpoint,
