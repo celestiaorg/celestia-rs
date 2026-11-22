@@ -155,6 +155,36 @@ The private acceptance run exercises this sequence on both supported
 database backends. [Go conformance probe](../conformance/da/README.md) ·
 [Rollout and rollback test](../conformance/da/test-bridge-rollback.sh)
 
+#### Mocha 5 non-validating bridge canary
+
+Use a fresh non-validator home on a separate host. Record the release
+commit, executable SHA-256, Cargo features, storage backend and genesis
+digest alongside the Go reference versions. Start with
+`--network mocha`, a loopback DA RPC listener, and a DA TCP listener
+reachable by the designated Go light peer. Keep the signer option unset.
+Record the DA peer ID from the startup log and supply its address and
+the same trusted Mocha block hash to the Go light client. Configure that
+client to use the canary as its sole DA provider and confirm the serving
+peer ID for each proof check.
+
+After consensus catches up, compare a recent paid height and its successor
+with an independent Mocha Go node. Check the block ID, app hash, data root
+and namespace inclusion proof, and reconstruct the original blob bytes.
+Repeat with concurrent RPC and peer reads. Record elapsed time, successful
+reads, commit gaps, CPU time, peak RSS and head lag for each process.
+Measure allocated bytes under the Rust and Go homes at the start and end
+of the same interval. Record their earliest retrievable heights and any
+pruning configuration with the disk-growth figures.
+
+Restart the Rust process with its original home and repeat the verified
+reads. Record the last verified height before restart and the first new
+verified height afterward. Exercise the rollback procedure above if a
+hash or proof differs or the bridge stops following the Go reference.
+Keep separate receipts for Mocha and Mainnet. A Mainnet non-validator
+rollout follows review of the Mocha receipt. Validator co-location also
+requires its own private load receipt with signed commits throughout the
+serving interval. [DA rollout tracker](https://github.com/celestiaorg/celestia-rs/issues/458)
+
 `--network` knows these chains (from celestia-app v10.4.0):
 
 | network | chain ID | genesis SHA-256 | seeds / peers |
