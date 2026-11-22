@@ -155,6 +155,21 @@ The private acceptance run exercises this sequence on both supported
 database backends. [Go conformance probe](../conformance/da/README.md) ·
 [Rollout and rollback test](../conformance/da/test-bridge-rollback.sh)
 
+#### DA storage and role selection
+
+The bridge index in `data/da-bridge/index.redb` stores verified headers and original squares. `header.LocalHead` reports its durable cursor. Compare that height with the consensus RPC height to measure indexing lag. The default retention window is 169 hours of block time. Set `--bridge-archival` when starting a fresh index to retain every indexed square. Monitor disk use under the node home as the index grows.
+
+For a standalone light node, build the operator executable with `--features da-light`. Start `da-light` in its own home. Supply the chain ID (`mocha-5` or `celestia`), a trusted DA peer multiaddress, and a recent block hash independently obtained from the same chain. The following command uses a loopback RPC listener. Set the four environment variables to your light home and trust inputs.
+
+```sh
+target/release/celestia-rs da-light --home "$LIGHT_HOME" --network "$CHAIN_ID" \
+  --peer "$TRUSTED_PEER" --trusted-hash "$BLOCK_HASH" --rpc-listen 127.0.0.1:32658
+```
+
+The light store in `da-light/light.redb` records sampled headers and pending sample coordinates. Restart with the same home and trust inputs to resume. Mint a read token with `da-auth read --home "$LIGHT_HOME"`. Use `das.SamplingStats` to observe the last sampled height and retries. An optional `--p2p-listen` multiaddress accepts inbound DA connections.
+
+To enable wallet reads and signing on a light node, configure its consensus gRPC endpoint with `--core.ip` and `--core.port`, then select a funded account with `--keyring.keyname` and `--keyring.backend`. Use `--core.tls` for TLS and `--core.xtoken.path` for a core that requires an authentication token. A bridge selects its local account with `--bridge-signer`. Give signing clients a write token. Fibre downloads and payment promises additionally require a build with `--features da-fibre` and registered storage providers on the chain. All three feature selections produce the same executable name.
+
 #### Mocha 5 non-validating bridge canary
 
 Use a fresh non-validator home on a separate host. Record the release
