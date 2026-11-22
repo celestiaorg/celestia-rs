@@ -1684,14 +1684,12 @@ pub(crate) mod broadcast_tests {
     }
 
     struct TestMempool {
-        commit_on_removal: Option<(BlockStore, ctypes::Block)>,
         response: Mutex<Result<abci::ResponseCheckTx, MempoolError>>,
     }
 
     impl TestMempool {
         fn new(response: Result<abci::ResponseCheckTx, MempoolError>) -> Self {
             Self {
-                commit_on_removal: None,
                 response: Mutex::new(response),
             }
         }
@@ -1747,12 +1745,6 @@ pub(crate) mod broadcast_tests {
         }
 
         fn was_recently_rejected(&self, _: &TxKey) -> (bool, u32, String) {
-            if let Some((store, block)) = &self.commit_on_removal {
-                store
-                    .save_tx_info(block, &[abci::ExecTxResult::default()])
-                    .expect("save receipt");
-                return (true, 0, String::new());
-            }
             (false, 0, String::new())
         }
     }
@@ -1780,23 +1772,6 @@ pub(crate) mod broadcast_tests {
             Arc::new(crate::EventBus::new()),
             config,
         ))
-    }
-
-    #[test]
-    fn tx_status_observes_a_receipt_persisted_during_mempool_lookup() {
-        let mut env = environment(Ok(abci::ResponseCheckTx::default()), 1_000);
-        let env = Arc::get_mut(&mut env).expect("sole environment owner");
-        let tx = ctypes::Tx(b"paid deposit".to_vec());
-        let hash = tx.hash();
-        let mut block = ctypes::Block::default();
-        block.header.height = 7;
-        block.data.txs.push(tx);
-        let mut pool = TestMempool::new(Ok(abci::ResponseCheckTx::default()));
-        pool.commit_on_removal = Some((env.block_store.clone(), block));
-        env.mempool = Arc::new(pool);
-        let (status, committed) = env.tx_status(&hash).expect("status during commit");
-        assert!(committed);
-        assert_eq!(status, env.tx_status(&hash).expect("persisted receipt").0);
     }
 
     #[test]

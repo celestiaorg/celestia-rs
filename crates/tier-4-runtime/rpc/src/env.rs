@@ -1597,3 +1597,6 @@ pub struct StatusParts {
     /// Own voting power.
     pub voting_power: i64,
 }
+
+#[cfg(test)]
+mod receipt_tests;
