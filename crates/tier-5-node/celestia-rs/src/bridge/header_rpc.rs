@@ -1,6 +1,7 @@
 //! Header ranges and synchronization against the local committed stores.
 use super::{Bridge, J, Query};
 use anyhow::{Context, Result, ensure};
+use prost::Message as _;
 use serde_json::Value;
 use std::{sync::Arc, time::Duration};
 
@@ -27,7 +28,19 @@ pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) ->
         return tokio::task::spawn_blocking(move || {
             let _permit = permit;
             request.answer(u64::try_from(head(&bridge)?)?, |start, end| {
-                rpc::env::data_root_tuples(&bridge.blocks, start, end).map_err(anyhow::Error::msg)
+                (start..end)
+                    .map(|h| {
+                        let bytes = bridge.index.header_wire(i64::try_from(h)?)?;
+                        let header = super::HeaderWire::decode(bytes.as_slice())?
+                            .header
+                            .context("missing indexed header")?;
+                        ensure!(
+                            u64::try_from(header.height)? == h && header.data_hash.len() == 32,
+                            "invalid indexed data root tuple"
+                        );
+                        Ok(rpc::env::encode_data_root_tuple(h, &header.data_hash))
+                    })
+                    .collect()
             })
         })
         .await?;
@@ -60,11 +73,11 @@ pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) ->
         }
         ("header.SyncState", []) => {
             tokio::task::spawn_blocking(move || {
-                // The DA listener reads the local consensus store directly. There is no separate
+                // The DA index follows local commits. There is no separate
                 // header-ex sync job, so its ID, range and timestamps have their Go zero values.
                 let zero = "0001-01-01T00:00:00Z";
                 Ok(J::obj([
-                    ("height", J::num(head(&bridge)?)),
+                    ("height", J::num(bridge.index.head()?)),
                     ("id", J::num(0)),
                     ("from_height", J::num(0)),
                     ("to_height", J::num(0)),
@@ -77,7 +90,7 @@ pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) ->
             .await?
         }
         ("header.SyncWait", []) => {
-            let height = bridge.blocks.height();
+            let height = bridge.index.target();
             wait(&bridge, height).await?;
             Ok(J::Null)
         }
@@ -128,11 +141,7 @@ pub(super) fn range_bounds(from: &Value, to: &Value) -> Result<(std::ops::Range<
 }
 
 pub(super) fn head(bridge: &Bridge) -> Result<i64> {
-    Ok(bridge
-        .states
-        .load()?
-        .context("no committed state")?
-        .last_block_height)
+    bridge.index.head()
 }
 
 async fn wait(bridge: &Arc<Bridge>, height: i64) -> Result<()> {
@@ -141,11 +150,8 @@ async fn wait(bridge: &Arc<Bridge>, height: i64) -> Result<()> {
         .try_acquire()
         .context("too many header waiters")?;
     loop {
-        if bridge.blocks.height() >= height {
-            let bridge = bridge.clone();
-            if tokio::task::spawn_blocking(move || head(&bridge)).await?? >= height {
-                return Ok(());
-            }
+        if bridge.index.head()? >= height {
+            return Ok(());
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }

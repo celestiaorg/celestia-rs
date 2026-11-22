@@ -194,6 +194,10 @@ struct StartArgs {
     #[cfg(feature = "bridge")]
     #[arg(long)]
     bridge_rpc_listen: Option<std::net::SocketAddr>,
+    /// Retain all indexed DA headers and original data squares when a bridge listener is enabled.
+    #[cfg(feature = "bridge")]
+    #[arg(long)]
+    bridge_archival: bool,
     /// Allow write-authorized DA clients to submit blobs with this keyring account.
     #[cfg(feature = "bridge")]
     #[arg(long, requires = "bridge_rpc_listen")]
@@ -1306,6 +1310,7 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
     #[cfg(feature = "bridge")]
     {
         opts.bridge_rpc_listen = a.bridge_rpc_listen;
+        opts.bridge_archival = a.bridge_archival;
         opts.bridge_signer.clone_from(&a.bridge_signer);
     }
     #[cfg(feature = "bridge-p2p")]

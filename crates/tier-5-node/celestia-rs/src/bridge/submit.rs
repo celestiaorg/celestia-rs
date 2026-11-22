@@ -25,6 +25,7 @@ pub(super) struct Receipt {
 
 pub(crate) struct Wallet {
     app: app::AbciApp,
+    states: nodestore::StateStore,
     home: PathBuf,
     flags: client::TxFlags,
     signer: client::Signer,
@@ -38,6 +39,7 @@ impl Wallet {
         listen: &str,
         app: app::AbciApp,
         chain_id: &str,
+        states: nodestore::StateStore,
     ) -> Result<Arc<Self>> {
         let mut endpoint = crate::rpc_service::socket_addr(listen)?;
         if endpoint.ip().is_unspecified() {
@@ -55,6 +57,7 @@ impl Wallet {
         let signer = client::resolve_from(home, &flags).context("load bridge signing account")?;
         Ok(Arc::new(Self {
             app,
+            states,
             home: home.to_owned(),
             flags,
             signer,
@@ -66,12 +69,7 @@ impl Wallet {
         self.signer.bech32(ACC_PREFIX)
     }
 
-    pub(super) async fn submit(
-        self: &Arc<Self>,
-        params: &Value,
-        method: &str,
-        states: nodestore::StateStore,
-    ) -> Result<Receipt> {
+    pub(super) async fn submit(self: &Arc<Self>, params: &Value, method: &str) -> Result<Receipt> {
         // Keep the sequence reserved until inclusion even when the HTTP caller disconnects.
         let permit = self
             .sequence
@@ -90,7 +88,7 @@ impl Wallet {
         let wallet = self.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            wallet.broadcast(message, blobs, blob_gas, &options, &states)
+            wallet.broadcast(message, blobs, blob_gas, &options, &wallet.states)
         })
         .await?
     }

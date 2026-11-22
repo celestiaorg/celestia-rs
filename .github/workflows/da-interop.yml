@@ -46,7 +46,13 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: '0'
       - name: Replay pinned Go bridge controls
         if: matrix.network == 'Mainnet'
-        run: cargo test --locked -p app --no-default-features --features bridge --test bridge_control
+        run: cargo test --locked -p app --no-default-features --features bridge --test bridge_control -- --include-ignored
+        env:
+          CARGO_PROFILE_DEV_DEBUG: '0'
+          DA_GO_TESTDATA: ${{ github.workspace }}/reference-node/core/testdata
+      - name: Reopen a DA index after consensus block pruning
+        if: matrix.network == 'Mainnet'
+        run: cargo test --locked -p celestia-rs --no-default-features --features bridge-p2p --test da_index_restart -- --ignored --nocapture
         env:
           CARGO_PROFILE_DEV_DEBUG: '0'
       - name: Verify a paid blob with the release client

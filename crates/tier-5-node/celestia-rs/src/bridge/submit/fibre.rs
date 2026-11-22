@@ -15,7 +15,6 @@ impl Wallet {
         client: &Client,
         params: &Value,
         wait: bool,
-        states: nodestore::StateStore,
     ) -> Result<Value> {
         let args = Upload::parse(
             params
@@ -33,7 +32,7 @@ impl Wallet {
         let wallet = self.clone();
         let settle = tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            wallet.broadcast(message, None, None, &options, &states)
+            wallet.broadcast(message, None, None, &options, &wallet.states)
         });
         if wait {
             let receipt = settle.await??;

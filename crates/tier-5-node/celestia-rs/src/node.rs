@@ -158,6 +158,9 @@ pub struct StartOptions {
     /// Explicit listener for the experimental read-only DA bridge.
     #[cfg(feature = "bridge")]
     pub bridge_rpc_listen: Option<std::net::SocketAddr>,
+    /// Preserve verified DA data older than the normal retention window.
+    #[cfg(feature = "bridge")]
+    pub bridge_archival: bool,
     /// Keyring account explicitly assigned to DA blob submission.
     #[cfg(feature = "bridge")]
     pub bridge_signer: Option<String>,
@@ -199,6 +202,8 @@ impl StartOptions {
             stop_height,
             #[cfg(feature = "bridge")]
             bridge_rpc_listen: None,
+            #[cfg(feature = "bridge")]
+            bridge_archival: false,
             #[cfg(feature = "bridge")]
             bridge_signer: None,
             #[cfg(feature = "bridge-p2p")]
@@ -442,6 +447,23 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         app_version: state.consensus_params.version.app,
     })?;
     exec.set_event_sink(rpc.publisher.clone());
+    #[cfg(feature = "bridge")]
+    let bridge_index = {
+        let enabled = opts.bridge_rpc_listen.is_some();
+        #[cfg(feature = "bridge-p2p")]
+        let enabled = enabled || opts.bridge_p2p_listen.is_some();
+        enabled
+            .then(|| {
+                crate::bridge::index::Indexer::start(
+                    home,
+                    &genesis.chain_id,
+                    bs.clone(),
+                    ss.clone(),
+                    opts.bridge_archival,
+                )
+            })
+            .transpose()?
+    };
     rpc.spawn()?;
     let local_addr = pv.address().to_vec();
     // Go: a fresh node with state sync enabled skips the handshake; the
@@ -482,12 +504,13 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     #[cfg(feature = "bridge-p2p")]
     let bridge_peer = opts
         .bridge_p2p_listen
-        .map(|addr| {
+        .zip(bridge_index.as_ref())
+        .map(|(addr, index)| {
             crate::bridge::peer::start(
                 addr,
                 home,
                 &genesis.chain_id,
-                crate::bridge::peer::Serving::new(bs.clone(), ss.clone(), metrics.clone()),
+                crate::bridge::peer::Serving::new(index.store.clone(), metrics.clone()),
                 &opts.bridge_bootstrap,
                 opts.bridge_announce.clone(),
             )
@@ -496,7 +519,8 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     #[cfg(feature = "bridge")]
     let _bridge = opts
         .bridge_rpc_listen
-        .map(|addr| {
+        .zip(bridge_index.as_ref())
+        .map(|(addr, index)| {
             let wallet = opts
                 .bridge_signer
                 .as_deref()
@@ -507,13 +531,14 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                         &rpc.settings.rpc.laddr,
                         app::AbciApp::from_shared(app.clone()),
                         &genesis.chain_id,
+                        ss.clone(),
                     )
                 })
                 .transpose()?;
             crate::bridge::Server::start(
                 addr,
                 home,
-                (bs.clone(), ss.clone()),
+                index.store.clone(),
                 app::AbciApp::from_shared(app.clone()),
                 #[cfg(feature = "da-fibre")]
                 (&rpc.settings.app_grpc, &genesis.chain_id),

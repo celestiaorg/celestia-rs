@@ -107,7 +107,7 @@ impl Endpoint for Bridge {
         self.body_limit(permissions)
     }
     fn bounds(&self) -> Result<(i64, i64)> {
-        Ok((self.blocks.base(), self.blocks.height()))
+        Ok((self.index.tail()?, self.index.head()?))
     }
     async fn call(
         self: Arc<Self>,
@@ -124,7 +124,7 @@ impl Endpoint for Bridge {
         ns: Option<shares::Namespace>,
     ) -> Result<Option<String>> {
         let bridge = self;
-        if height > bridge.blocks.height() {
+        if height > bridge.index.head()? {
             return Ok(None);
         }
         let Ok(permit) = bridge.worker.clone().try_acquire_owned() else {
