@@ -37,7 +37,7 @@ pub struct Stream {
     inner: libp2p_webrtc_utils::Stream<Compat<PollDataChannel>>,
 }
 
-pub(crate) type DropListener = libp2p_webrtc_utils::DropListener<Compat<PollDataChannel>>;
+pub(crate) type DropListener = libp2p_webrtc_utils::DropListener;
 
 impl Stream {
     /// Returns a new `Substream` and a listener, which will notify the receiver when/if the

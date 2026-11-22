@@ -39,6 +39,9 @@ version = "0.7"
 [dependencies.bytes]
 version = "1.12"
 
+[dependencies.futures-timer]
+version = "3"
+
 [dependencies.futures]
 version = "0.3"
 

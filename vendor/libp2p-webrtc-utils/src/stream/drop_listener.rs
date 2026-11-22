@@ -23,104 +23,129 @@ use std::{
     io,
     pin::Pin,
     task::{Context, Poll},
-};
-
-use futures::{
-    AsyncRead, AsyncWrite, FutureExt, SinkExt,
-    channel::{oneshot, oneshot::Canceled},
+    time::Duration,
 };
 
 use crate::{
     proto::{Flag, Message},
     stream::framed_dc::FramedDc,
 };
+use futures::{
+    AsyncRead, AsyncWrite, FutureExt, SinkExt, StreamExt, channel::oneshot, future::BoxFuture,
+};
 
+/// Finish the SCTP channel after the application releases its stream.
 #[must_use]
-pub struct DropListener<T> {
-    state: State<T>,
+pub struct DropListener(BoxFuture<'static, io::Result<()>>);
+
+#[derive(Default)]
+pub(super) struct GracefullyClosed {
+    pub(super) peer_fin_acked: bool,
+    pub(super) local_fin_acked: bool,
 }
 
-impl<T> DropListener<T> {
-    pub fn new(stream: FramedDc<T>, receiver: oneshot::Receiver<GracefullyClosed>) -> Self {
-        Self {
-            state: State::Idle { stream, receiver },
-        }
-    }
-}
-
-enum State<T> {
-    /// The [`DropListener`] is idle and waiting to be activated.
-    Idle {
-        stream: FramedDc<T>,
+impl DropListener {
+    pub(super) fn new<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
+        mut stream: FramedDc<T>,
         receiver: oneshot::Receiver<GracefullyClosed>,
-    },
-    /// The stream got dropped and we are sending a reset flag.
-    SendingReset {
-        stream: FramedDc<T>,
-    },
-    Flushing {
-        stream: FramedDc<T>,
-    },
-    /// Bad state transition.
-    Poisoned,
-}
-
-impl<T> Future for DropListener<T>
-where
-    T: AsyncRead + AsyncWrite + Unpin,
-{
-    type Output = io::Result<()>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let state = &mut self.get_mut().state;
-
-        loop {
-            match std::mem::replace(state, State::Poisoned) {
-                State::Idle {
-                    stream,
-                    mut receiver,
-                } => match receiver.poll_unpin(cx) {
-                    Poll::Ready(Ok(GracefullyClosed {})) => {
-                        return Poll::Ready(Ok(()));
+    ) -> Self {
+        Self(
+            async move {
+                let Ok(mut closed) = receiver.await else {
+                    stream.send(control(Flag::Reset)).await?;
+                    return Ok(());
+                };
+                // A responder can finish its work before a peer half-closes. Keep
+                // processing the peer's FIN after dropping the application stream.
+                // Browser libp2p waits for this ACK before completing closeWrite.
+                {
+                    let finish = async {
+                        while !(closed.peer_fin_acked && closed.local_fin_acked) {
+                            let Some(message) = stream.next().await.transpose()? else {
+                                break;
+                            };
+                            match message.flag.and_then(|value| Flag::try_from(value).ok()) {
+                                Some(Flag::Fin) => {
+                                    stream.send(control(Flag::FinAck)).await?;
+                                    closed.peer_fin_acked = true;
+                                }
+                                Some(Flag::FinAck) => closed.local_fin_acked = true,
+                                Some(Flag::Reset) => break,
+                                _ => {}
+                            }
+                        }
+                        Ok::<(), io::Error>(())
+                    };
+                    futures::pin_mut!(finish);
+                    let deadline = futures_timer::Delay::new(Duration::from_secs(10));
+                    if let futures::future::Either::Left((result, _)) =
+                        futures::future::select(finish, deadline).await
+                    {
+                        result?;
                     }
-                    Poll::Ready(Err(Canceled)) => {
-                        tracing::info!("Stream dropped without graceful close, sending Reset");
-                        *state = State::SendingReset { stream };
-                        continue;
-                    }
-                    Poll::Pending => {
-                        *state = State::Idle { stream, receiver };
-                        return Poll::Pending;
-                    }
-                },
-                State::SendingReset { mut stream } => match stream.poll_ready_unpin(cx)? {
-                    Poll::Ready(()) => {
-                        stream.start_send_unpin(Message {
-                            flag: Some(Flag::Reset as i32),
-                            message: None,
-                        })?;
-                        *state = State::Flushing { stream };
-                        continue;
-                    }
-                    Poll::Pending => {
-                        *state = State::SendingReset { stream };
-                        return Poll::Pending;
-                    }
-                },
-                State::Flushing { mut stream } => match stream.poll_flush_unpin(cx)? {
-                    Poll::Ready(()) => return Poll::Ready(Ok(())),
-                    Poll::Pending => {
-                        *state = State::Flushing { stream };
-                        return Poll::Pending;
-                    }
-                },
-                State::Poisoned => {
-                    unreachable!()
                 }
+                stream.close().await?;
+                Ok(())
             }
-        }
+            .boxed(),
+        )
     }
 }
 
-/// Indicates that our stream got gracefully closed.
-pub struct GracefullyClosed {}
+fn control(flag: Flag) -> Message {
+    Message {
+        flag: Some(flag as i32),
+        message: None,
+    }
+}
+
+impl Future for DropListener {
+    type Output = io::Result<()>;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.0.as_mut().poll(cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::{AsyncWriteExt, executor::block_on, io::AllowStdIo};
+    use std::{
+        io::{Cursor, Read, Write},
+        sync::{Arc, Mutex},
+    };
+
+    #[derive(Clone, Default)]
+    struct Channel {
+        input: Arc<Mutex<Cursor<Vec<u8>>>>,
+        output: Arc<Mutex<Vec<u8>>>,
+    }
+    impl Read for Channel {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            self.input.lock().unwrap().read(buf)
+        }
+    }
+    impl Write for Channel {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            Write::write(&mut *self.output.lock().unwrap(), buf)
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn finishes_a_browser_half_close_after_the_handler_drops_its_stream() {
+        block_on(async {
+            let channel = Channel::default();
+            let (mut stream, cleanup) = crate::Stream::new(AllowStdIo::new(channel.clone()));
+            stream.close().await.unwrap();
+            drop(stream);
+            let fin = [2, 8, Flag::Fin as u8];
+            let ack = [2, 8, Flag::FinAck as u8];
+            *channel.input.lock().unwrap() = Cursor::new([fin, ack].concat());
+            cleanup.await.unwrap();
+            assert_eq!(*channel.output.lock().unwrap(), [fin, ack].concat());
+        });
+    }
+}

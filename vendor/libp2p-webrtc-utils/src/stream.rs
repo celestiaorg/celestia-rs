@@ -67,17 +67,19 @@ pub struct Stream<T> {
     state: State,
     read_buffer: Bytes,
     fin_ack: Option<Closing>,
+    closed: GracefullyClosed,
+    sent_fin: bool,
     /// Dropping this will close the oneshot and notify the receiver by emitting `Canceled`.
     drop_notifier: Option<oneshot::Sender<GracefullyClosed>>,
 }
 
 impl<T> Stream<T>
 where
-    T: AsyncRead + AsyncWrite + Unpin + Clone,
+    T: AsyncRead + AsyncWrite + Unpin + Clone + Send + 'static,
 {
     /// Returns a new [`Stream`] and a [`DropListener`],
     /// which will notify the receiver when/if the stream is dropped.
-    pub fn new(data_channel: T) -> (Self, DropListener<T>) {
+    pub fn new(data_channel: T) -> (Self, DropListener) {
         let (sender, receiver) = oneshot::channel();
 
         let stream = Self {
@@ -85,6 +87,8 @@ where
             state: State::Open,
             read_buffer: Bytes::default(),
             fin_ack: None,
+            closed: GracefullyClosed::default(),
+            sent_fin: false,
             drop_notifier: Some(sender),
         };
         let listener = DropListener::new(framed_dc::new(data_channel), receiver);
@@ -133,6 +137,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Stream<T> {
         if self.fin_ack.is_some() {
             ready!(self.io.poll_flush_unpin(cx))?;
             self.fin_ack = None;
+            self.closed.peer_fin_acked = true;
         }
         Poll::Ready(Ok(()))
     }
@@ -171,6 +176,7 @@ where
                 io,
                 state,
                 fin_ack,
+                closed,
                 ..
             } = &mut *self;
 
@@ -178,6 +184,9 @@ where
                 Some((flag, message)) => {
                     if let Some(flag) = flag {
                         state.handle_inbound_flag(flag, read_buffer);
+                        if flag == Flag::FinAck {
+                            closed.local_fin_acked = true;
+                        }
                         if flag == Flag::Fin {
                             *fin_ack = Some(Closing::Requested);
                         }
@@ -224,6 +233,7 @@ where
                 io,
                 state,
                 fin_ack,
+                closed,
                 ..
             } = &mut *self;
 
@@ -233,6 +243,9 @@ where
                     drop(message);
                     // But still handle flags, e.g. a `Flag::StopSending`.
                     state.handle_inbound_flag(flag, read_buffer);
+                    if flag == Flag::FinAck {
+                        closed.local_fin_acked = true;
+                    }
                     if flag == Flag::Fin {
                         *fin_ack = Some(Closing::Requested);
                     }
@@ -279,16 +292,22 @@ where
                     ready!(self.io.poll_flush_unpin(cx))?;
 
                     self.state.write_closed();
-                    let _ = self
-                        .drop_notifier
-                        .take()
-                        .expect("to not close twice")
-                        .send(GracefullyClosed {});
+                    self.sent_fin = true;
 
                     return Poll::Ready(Ok(()));
                 }
                 None => return Poll::Ready(Ok(())),
             }
+        }
+    }
+}
+
+impl<T> Drop for Stream<T> {
+    fn drop(&mut self) {
+        if self.sent_fin
+            && let Some(sender) = self.drop_notifier.take()
+        {
+            let _ = sender.send(std::mem::take(&mut self.closed));
         }
     }
 }
