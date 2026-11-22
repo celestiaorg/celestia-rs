@@ -50,7 +50,7 @@ libp2p-autonat = { version = "=0.16.0", default-features = false, features = ["v
 libp2p-webrtc = { version = "=0.10.0-alpha", default-features = false, features = ["tokio", "pem"], optional = true }
 webrtc-rand = { package = "rand", version = "0.10", optional = true }
 libp2p-stream = { version = "=0.5.0-alpha", optional = true }
-libp2p = { version = "=0.57.0", default-features = false, features = ["ed25519", "tokio", "tcp", "quic", "websocket", "tls", "noise", "yamux", "dns", "identify", "kad", "gossipsub", "macros"], optional = true }
+libp2p = { version = "=0.57.0", default-features = false, features = ["ed25519", "tokio", "tcp", "quic", "upnp", "websocket", "tls", "noise", "yamux", "dns", "identify", "kad", "gossipsub", "macros"], optional = true }
 abci-server = { path = "../../tier-4-runtime/abci-server" }
 anyhow.workspace = true
 axum = { version = "=0.7.9", default-features = false, features = ["http1", "http2", "tokio"] }

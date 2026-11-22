@@ -621,8 +621,12 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     // Bind synchronously with startup so a busy port is reported to the operator.
     let (status, observer) = tokio::sync::watch::channel(stats::Sampling::default());
     let identity = PeerIdentity::load(&dir.join("peer.key"), &args.p2p_listen)?;
-    let mut behaviour =
-        super::network::Behaviour::new(&identity.key, &args.network, libp2p::kad::Mode::Client)?;
+    let mut behaviour = super::network::Behaviour::new(
+        &identity.key,
+        &args.network,
+        libp2p::kad::Mode::Client,
+        &args.p2p_listen,
+    )?;
     let blocklist = super::admin::Blocklist::open(&dir)?;
     blocklist.restore(&mut behaviour)?;
     for peer in addresses.keys() {

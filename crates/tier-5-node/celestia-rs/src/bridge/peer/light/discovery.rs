@@ -73,6 +73,8 @@ pub(super) async fn maintain_connections(
                     }
                     SwarmEvent::NewListenAddr { address, .. } => { peers.listen_address(&mut swarm, &address); tracing::info!(%address, peer=%swarm.local_peer_id(), "DA light peer listening"); }
                     SwarmEvent::ExpiredListenAddr { address, .. } => peers.expire_address(&mut swarm, &address),
+                    SwarmEvent::ExternalAddrConfirmed { address } if !peers.advertised(&address) => swarm.remove_external_address(&address),
+                    SwarmEvent::ExternalAddrExpired { address } if peers.announce.contains(&address) => swarm.add_external_address(address),
                     SwarmEvent::ConnectionEstablished { connection_id, .. } => operations.dial_result(connection_id, Ok(())),
                     _ => continue,
                 }

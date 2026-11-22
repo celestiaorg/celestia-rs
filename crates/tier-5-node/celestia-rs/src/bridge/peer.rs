@@ -296,7 +296,8 @@ async fn run(
         admin::Blocklist,
     ),
 ) -> Result<()> {
-    let mut behaviour = network::Behaviour::new(&identity.key, network, libp2p::kad::Mode::Server)?;
+    let mut behaviour =
+        network::Behaviour::new(&identity.key, network, libp2p::kad::Mode::Server, &listen)?;
     blocklist.restore(&mut behaviour)?;
     for peer in peers.bootstrap.keys() {
         behaviour.protected.protect(*peer, "protected-bootstrap");
@@ -369,6 +370,8 @@ async fn run(
                     }
                 }
                 SwarmEvent::ExpiredListenAddr { address, .. } => peers.expire_address(&mut swarm, &address),
+                SwarmEvent::ExternalAddrConfirmed { address } if !peers.advertised(&address) => swarm.remove_external_address(&address),
+                SwarmEvent::ExternalAddrExpired { address } if peers.announce.contains(&address) => swarm.add_external_address(address),
                 SwarmEvent::ListenerClosed { reason, .. } => {
                     reason?;
                     bail!("DA peer listener closed");

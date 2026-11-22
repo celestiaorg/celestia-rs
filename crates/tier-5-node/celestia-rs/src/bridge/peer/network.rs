@@ -14,6 +14,8 @@ mod composed {
         // Reject blocked connections before stateful behaviours observe establishment.
         pub(crate) gate:
             libp2p::allow_block_list::Behaviour<libp2p::allow_block_list::BlockedPeers>,
+        pub(crate) port_mapping:
+            libp2p::swarm::behaviour::toggle::Toggle<libp2p::upnp::tokio::Behaviour>,
         pub(crate) autonat: libp2p_autonat::Behaviour,
         pub(crate) protected: super::super::protected::Protected,
         pub(crate) streams:
@@ -39,7 +41,12 @@ pub(super) fn provider_key() -> kad::RecordKey {
 }
 
 impl Behaviour {
-    pub(super) fn new(key: &identity::Keypair, network: &str, mode: kad::Mode) -> Result<Self> {
+    pub(super) fn new(
+        key: &identity::Keypair,
+        network: &str,
+        mode: kad::Mode,
+        listeners: &[libp2p::Multiaddr],
+    ) -> Result<Self> {
         let id = key.public().to_peer_id();
         let protocol = StreamProtocol::try_from_owned(format!("/celestia/{network}/kad/1.0.0"))?;
         let mut dht = kad::Behaviour::with_config(
@@ -73,7 +80,16 @@ impl Behaviour {
         )
         .map_err(anyhow::Error::msg)?;
         gossip.subscribe(&header_topic(network))?;
+        // The gateway can only map IPv4 listeners. Avoid IGD discovery for
+        // loopback fixtures and for light nodes with no inbound listeners.
+        let map_ports = listeners.iter().any(|addr| {
+            matches!(addr.iter().next(),
+            Some(libp2p::multiaddr::Protocol::Ip4(ip)) if ip.is_private() || ip.is_unspecified())
+        });
         Ok(Self {
+            port_mapping: map_ports
+                .then(libp2p::upnp::tokio::Behaviour::default)
+                .into(),
             autonat: libp2p_autonat::Behaviour::new(id, libp2p_autonat::Config::default()),
             protected: super::protected::Protected::default(),
             gate: libp2p::allow_block_list::Behaviour::default(),
@@ -117,12 +133,16 @@ pub(super) struct Peering {
 }
 
 impl Peering {
+    pub(super) fn advertised(&self, address: &libp2p::Multiaddr) -> bool {
+        self.announce.contains(address) || !self.no_announce.contains(address)
+    }
+
     pub(super) fn listen_address(
         &self,
         swarm: &mut libp2p::Swarm<Behaviour>,
         address: &libp2p::Multiaddr,
     ) {
-        if !self.no_announce.contains(address) {
+        if self.advertised(address) {
             swarm.add_external_address(address.clone());
         }
     }
