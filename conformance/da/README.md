@@ -82,6 +82,10 @@ reachable TCP addresses. The DA RPC listener is configured independently.
 
 The opt-in P2P bridge publishes signed non-empty EDS announcements on the release's FloodSub topic `<chain>/eds-sub/v0.2.0`. This stream runs independently of header GossipSub. The peer fixture subscribes with the released Go SHREX library before paying for its blob, checks the publisher identity, then fetches the signed header to verify the announced height and data hash. The Rust publisher signs locally verified commitments once their headers are readable. A separate pair of Go hosts verifies relay through Rust, including the original author signature. The relay validates signatures, network topic and notification shape, deduplicates messages, and preserves the original publisher.
 
+### Released RPC surface
+
+The Mainnet and Mocha-5 matrix regenerates `inventory/release.tsv` from each pinned Go checkout. Each row records the client method, required permission, call or subscription, ordered OpenRPC parameter names and Go function signature. Run `go run /path/to/conformance/da/inventory/reference.go -openrpc` in that checkout to export the full upstream document with JSON schemas and examples. The inventory describes the Go API. Passing mixed-node probes establish Rust behavior for the individual roles.
+
 ## Standalone Rust DA light mode
 
 Build the same executable with `--features da-light`. A fresh
