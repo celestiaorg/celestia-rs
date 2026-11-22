@@ -1,4 +1,6 @@
 //! Inbound go-header exchange and SHREX over negotiated libp2p streams.
+mod admin;
+pub(crate) use admin::Control;
 mod inbound;
 #[cfg(feature = "da-light")]
 pub(crate) mod light;
@@ -56,6 +58,7 @@ impl Serving {
     ) -> Self {
         Self {
             bridge: Arc::new(Bridge {
+                peer_control: None,
                 wallet: None,
                 waiters: Arc::new(Semaphore::new(32)),
                 blocks,
@@ -92,7 +95,7 @@ pub(crate) fn start(
     serving: Serving,
     bootstrap: &[Multiaddr],
     announce: Vec<Multiaddr>,
-) -> Result<Server> {
+) -> Result<(Server, Control)> {
     let peers = network::Peering::new(network, bootstrap, announce)?;
     let key = identity(&home.join("config/da_peer.key"))?;
     let listen = Multiaddr::from(match addr.ip() {
@@ -103,6 +106,7 @@ pub(crate) fn start(
     let net = network.to_owned();
     let (stop, stopped) = oneshot::channel();
     let (ready, started) = mpsc::sync_channel(1);
+    let (control, requests) = admin::Control::channel();
     let thread = std::thread::Builder::new()
         .name("da-peer".into())
         .spawn(move || {
@@ -111,7 +115,15 @@ pub(crate) fn start(
                 .build()
                 .map_err(anyhow::Error::from)
                 .and_then(|rt| {
-                    rt.block_on(run(key, listen, &net, serving, stopped, &ready, peers))
+                    rt.block_on(run(
+                        key,
+                        listen,
+                        &net,
+                        serving,
+                        stopped,
+                        &ready,
+                        (peers, requests),
+                    ))
                 });
             if let Err(e) = result {
                 let _ = ready.try_send(Err(e.to_string()));
@@ -125,7 +137,7 @@ pub(crate) fn start(
     started
         .recv_timeout(Duration::from_secs(10))?
         .map_err(anyhow::Error::msg)?;
-    Ok(server)
+    Ok((server, control))
 }
 
 async fn run(
@@ -135,7 +147,10 @@ async fn run(
     serving: Serving,
     mut stopped: oneshot::Receiver<()>,
     ready: &mpsc::SyncSender<Result<(), String>>,
-    peers: network::Peering,
+    (peers, mut requests): (
+        network::Peering,
+        tokio::sync::mpsc::Receiver<admin::Request>,
+    ),
 ) -> Result<()> {
     let serving = Arc::new(serving);
     let bridge = &serving.bridge;
@@ -161,6 +176,7 @@ async fn run(
     let topic_hash = topic.hash();
     let mut timer = tokio::time::interval(Duration::from_millis(500));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut operations = admin::Operations::default();
     let mut announced = 0;
     let mut pending = tokio::task::JoinSet::new();
     // A Go DAS worker opens a separate stream for each sample in a batch.
@@ -168,6 +184,7 @@ async fn run(
     let admissions = Arc::new(Semaphore::new(64));
     loop {
         tokio::select! {
+            Some(request) = requests.recv() => operations.handle(request, &mut swarm, network),
             _ = &mut stopped => return Ok(()),
             _ = reconnect.tick(), if !peers.bootstrap.is_empty() => peers.connect(&mut swarm),
             _ = timer.tick(), if pending.is_empty() && swarm.behaviour().gossip.mesh_peers(&topic_hash).next().is_some() => {
@@ -188,6 +205,9 @@ async fn run(
                 }
             }
             event = swarm.select_next_some() => match event {
+                SwarmEvent::ConnectionEstablished {connection_id, ..} => operations.dial_result(connection_id, Ok(())),
+                SwarmEvent::OutgoingConnectionError {connection_id, error, ..} => operations.dial_result(connection_id, Err(error.into())),
+                SwarmEvent::ConnectionClosed {peer_id, num_established: 0, ..} => operations.closed(peer_id),
                 SwarmEvent::NewListenAddr { address, .. } => {
                     if peers.announce.is_empty() { swarm.add_external_address(address.clone()); }
                     tracing::info!(%address, peer=%swarm.local_peer_id(), "DA peer listening");

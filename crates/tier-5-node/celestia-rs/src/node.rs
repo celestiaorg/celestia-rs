@@ -442,6 +442,20 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         app_version: state.consensus_params.version.app,
     })?;
     exec.set_event_sink(rpc.publisher.clone());
+    #[cfg(feature = "bridge-p2p")]
+    let bridge_peer = opts
+        .bridge_p2p_listen
+        .map(|addr| {
+            crate::bridge::peer::start(
+                addr,
+                home,
+                &genesis.chain_id,
+                crate::bridge::peer::Serving::new(bs.clone(), ss.clone(), metrics.clone()),
+                &opts.bridge_bootstrap,
+                opts.bridge_announce.clone(),
+            )
+        })
+        .transpose()?;
     #[cfg(feature = "bridge")]
     let _bridge = opts
         .bridge_rpc_listen
@@ -459,7 +473,15 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                     )
                 })
                 .transpose()?;
-            crate::bridge::Server::start(addr, home, bs.clone(), ss.clone(), wallet)
+            crate::bridge::Server::start(
+                addr,
+                home,
+                bs.clone(),
+                ss.clone(),
+                #[cfg(feature = "bridge-p2p")]
+                bridge_peer.as_ref().map(|(_, control)| control.clone()),
+                wallet,
+            )
         })
         .transpose()?;
     rpc.spawn()?;

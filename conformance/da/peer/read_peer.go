@@ -8,7 +8,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	rpcclient "github.com/celestiaorg/celestia-node/api/rpc/client"
+	"github.com/libp2p/go-libp2p/core/network"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 
@@ -65,6 +68,9 @@ func main() {
 		if !errors.Is(err, multistream.ErrNotSupported[protocol.ID]{}) {
 			panic(fmt.Sprintf("unexpected network rejection: %v", err))
 		}
+	}
+	if endpoint := os.Getenv("DA_TEST_ADMIN_URL"); endpoint != "" {
+		checkAdmin(ctx, endpoint, chain, *info, host.ID())
 	}
 	gater, err := conngater.NewBasicConnectionGater(nil)
 	check(err)
@@ -145,4 +151,75 @@ func main() {
 		}
 	}
 	panic("expected blob missing")
+}
+
+func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInfo, clientID peer.ID) {
+	admin, err := rpcclient.NewClient(ctx, endpoint, os.Getenv("DA_TEST_ADMIN_TOKEN"))
+	check(err)
+	defer admin.Close()
+	info, err := admin.P2P.Info(ctx)
+	check(err)
+	if info.ID != server.ID || len(info.Addrs) == 0 {
+		panic("wrong DA listen identity")
+	}
+	name, err := admin.P2P.Network(ctx)
+	check(err)
+	if name.String() != chain {
+		panic("wrong DA network")
+	}
+	peers, err := admin.P2P.Peers(ctx)
+	check(err)
+	if !slices.Contains(peers, clientID) {
+		panic("active client absent")
+	}
+	state, err := admin.P2P.Connectedness(ctx, clientID)
+	check(err)
+	if state != network.Connected {
+		panic("client disconnected")
+	}
+	target, err := admin.P2P.PeerInfo(ctx, clientID)
+	check(err)
+	if target.ID != clientID {
+		panic("wrong remote identity")
+	}
+	topics, err := admin.P2P.PubSubTopics(ctx)
+	check(err)
+	if !slices.Contains(topics, "/"+chain+"/header-sub/v0.0.1") {
+		panic("missing header topic")
+	}
+	_, err = admin.P2P.PubSubPeers(ctx, topics[0])
+	check(err)
+	reader, err := rpcclient.NewClient(ctx, endpoint, os.Getenv("DA_TEST_READ_TOKEN"))
+	check(err)
+	defer reader.Close()
+	if _, err := reader.P2P.Peers(ctx); err == nil {
+		panic("read token accessed peer management")
+	}
+	extra, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
+	check(err)
+	defer extra.Close()
+	address := peer.AddrInfo{ID: extra.ID(), Addrs: extra.Addrs()}
+	if err := reader.P2P.Connect(ctx, address); err == nil {
+		panic("read token dialed peer")
+	}
+	check(admin.P2P.Connect(ctx, address))
+	check(admin.P2P.Connect(ctx, address))
+	connected, err := admin.P2P.Connectedness(ctx, address.ID)
+	check(err)
+	if connected != network.Connected {
+		panic("admin dial did not connect")
+	}
+	check(admin.P2P.ClosePeer(ctx, address.ID))
+	check(admin.P2P.ClosePeer(ctx, address.ID))
+	connected, err = admin.P2P.Connectedness(ctx, address.ID)
+	check(err)
+	if connected != network.NotConnected {
+		panic("admin close did not disconnect")
+	}
+	check(extra.Close())
+	if err := admin.P2P.Connect(ctx, address); err == nil {
+		panic("dial to stopped peer succeeded")
+	}
+	fmt.Println("Go dialed and disconnected a private peer, then observed a failed dial")
+	fmt.Println("Go inspected the live Rust swarm with an admin token")
 }
