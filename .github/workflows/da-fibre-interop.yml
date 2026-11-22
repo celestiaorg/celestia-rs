@@ -44,6 +44,13 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: '0'
       - name: Read a Go payment through the Rust light RPC
         run: conformance/da/fibre/test-go-provider.sh go-node --rust-node target/debug/celestia-rs
+        env:
+          DA_FIBRE_CONTROL: ${{ runner.temp }}/paid-fibre-control.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: paid-fibre-control-${{ matrix.network }}
+          path: ${{ runner.temp }}/paid-fibre-control.json
+          if-no-files-found: error
       - name: Settle uploads through the Rust bridge
         run: conformance/da/fibre/test-bridge-download.sh target/debug/celestia-rs go-node
       - name: Settle uploads through a separately funded Rust light wallet
