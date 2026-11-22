@@ -219,7 +219,9 @@ fn observed_swarm(
         tcp::Config::default().nodelay(true),
     ))?;
     let mut ws = libp2p::websocket::Config::new(tcp);
-    ws.set_tls_config(websocket::tls()?);
+    if let Some(tls) = websocket::server_tls()? {
+        ws.set_tls_config(tls);
+    }
     let ws_observed = connections.clone();
     let ws = ws
         .upgrade(Version::V1Lazy)

@@ -84,7 +84,7 @@ members = [
     "xtask",
 ]
 # libFuzzer targets (cargo-fuzz, nightly): their own workspace.
-exclude = ["fuzz"]
+exclude = ["fuzz", "vendor/libp2p-websocket"]
 
 [workspace.package]
 edition = "2024"
@@ -167,3 +167,6 @@ overflow-checks = true
 inherits = "release"
 lto = "fat"
 codegen-units = 1
+
+[patch.crates-io]
+libp2p-websocket = { path = "vendor/libp2p-websocket" }
