@@ -4083,8 +4083,6 @@ dependencies = [
 [[package]]
 name = "libp2p-webrtc"
 version = "0.10.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f22c63271ed36da0385b8efb58dc4df9448720299a913f13147879c748620d6f"
 dependencies = [
  "async-trait",
  "futures",

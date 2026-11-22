@@ -16,7 +16,7 @@ workspace = true
 default = ["rocksdb", "jemalloc"]
 # Experimental in-process DA bridge. Runtime opt-in via --bridge-rpc-listen.
 da-fibre = ["da-light", "dep:celestia-fibre", "dep:celestia-grpc", "dep:fibre-types", "dep:k256", "dep:fibre-prost"]
-da-webrtc = ["bridge-p2p", "dep:libp2p-webrtc", "dep:webrtc-rand"]
+da-webrtc = ["bridge-p2p", "dep:rustls", "dep:libp2p-webrtc", "dep:webrtc-rand"]
 da-light = ["bridge-p2p", "dep:tonic", "dep:rustls"]
 bridge = ["axum/ws", "app/bridge", "dep:hmac", "dep:sha2", "dep:tempfile"]
 bridge-p2p = ["bridge", "dep:rustls-pki-types", "dep:libp2p", "dep:libp2p-autonat", "dep:libp2p-stream", "dep:multistream-select", "dep:futures"]
