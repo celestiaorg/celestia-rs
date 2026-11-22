@@ -15,7 +15,7 @@ workspace = true
 [features]
 default = ["rocksdb", "jemalloc"]
 # Experimental in-process DA bridge. Runtime opt-in via --bridge-rpc-listen.
-da-fibre = ["da-light", "dep:celestia-fibre", "dep:celestia-grpc", "dep:fibre-types", "dep:k256"]
+da-fibre = ["da-light", "dep:celestia-fibre", "dep:celestia-grpc", "dep:fibre-types", "dep:k256", "dep:fibre-prost"]
 da-light = ["bridge-p2p", "dep:tonic"]
 bridge = ["axum/ws", "app/bridge", "dep:hmac", "dep:sha2", "dep:tempfile"]
 bridge-p2p = ["bridge", "dep:libp2p", "dep:libp2p-stream", "dep:futures"]
@@ -31,10 +31,12 @@ jemalloc = ["dep:tikv-jemallocator"]
 memstats = ["jemalloc", "dep:tikv-jemalloc-ctl", "tikv-jemallocator/profiling", "tikv-jemallocator/stats"]
 
 [dependencies]
-fibre-types = { package = "celestia-types", version = "=1.3.0", default-features = false, optional = true }
-k256 = { version = "0.13", features = ["ecdsa"], optional = true }
-celestia-grpc = { version = "=1.3.0", default-features = false, features = ["tls-native-roots", "tls-ring"], optional = true }
-celestia-fibre = { version = "=1.3.0", optional = true }
+# Pin the upstream k256 0.14 migration until its first crates.io release (Lumina #1153).
+fibre-types = { package = "celestia-types", version = "=1.3.0", git = "https://github.com/celestiaorg/lumina", rev = "ccdbed9dbcd23fe31c7fb4b7001648a45262bc33", default-features = false, optional = true }
+fibre-prost = { package = "prost", version = "0.14", optional = true }
+k256 = { version = "0.14", features = ["ecdsa"], optional = true }
+celestia-grpc = { version = "=1.3.0", git = "https://github.com/celestiaorg/lumina", rev = "ccdbed9dbcd23fe31c7fb4b7001648a45262bc33", default-features = false, features = ["tls-native-roots", "tls-ring"], optional = true }
+celestia-fibre = { version = "=1.3.0", git = "https://github.com/celestiaorg/lumina", rev = "ccdbed9dbcd23fe31c7fb4b7001648a45262bc33", optional = true }
 tonic = { version = "=0.12.3", default-features = false, features = ["transport", "prost", "tls-native-roots"], optional = true }
 hmac = { version = "0.12", optional = true }
 sha2 = { version = "0.10", optional = true }
