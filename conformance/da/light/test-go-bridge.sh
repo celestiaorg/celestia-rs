@@ -106,6 +106,8 @@ follower_home="$work/follower"
 "$rust" init observer --home "$follower_home" --chain-id "$chain" >"$work/follower-init.log" 2>&1
 cp "$work/consensus/config/genesis.json" "$follower_home/config/genesis.json"
 "$rust" config set config rpc.laddr tcp://127.0.0.1:37657 --home "$follower_home"
+"$rust" config set app grpc.address 127.0.0.1:37990 --home "$follower_home"
+"$rust" config set config rpc.grpc_laddr tcp://127.0.0.1:37998 --home "$follower_home"
 validator_id=$("$app" comet show-node-id "${home_arg[@]}")
 start_link() {
     rm -f "$work/link.ready"
