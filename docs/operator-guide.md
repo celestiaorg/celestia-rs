@@ -118,14 +118,25 @@ celestia-rs start --network mocha --home ~/.celestia-rs/mocha
 
 ### Experimental DA bridge on a private network
 
-The default build runs consensus only. Build the same executable with
-`cargo build --locked --release -p celestia-rs --features bridge-p2p` to
-include the DA peer and authenticated JSON-RPC service. Each listener
-requires its own startup flag. A private canary can exercise both on loopback.
+Release binaries include the DA peer, authenticated JSON-RPC service and
+standalone DA light node. For a source build, use
+`cargo build --locked --release -p celestia-rs --features da-light`.
+DA listeners are disabled until configured. A private canary can exercise
+both on loopback.
 
 ```sh
 target/release/celestia-rs start --network local --home "$DA_HOME" \
   --bridge-rpc-listen 127.0.0.1:32658 --bridge-p2p-listen 127.0.0.1:32121
+```
+
+For a managed validator, add the listeners to its `config/app.toml` and
+restart the service. The corresponding CLI options override these settings.
+Remove the section and restart to disable both listeners.
+
+```toml
+[da-bridge]
+rpc-listen = "127.0.0.1:32658"
+p2p-listen = ["127.0.0.1:32121"]
 ```
 
 To accept QUIC v1 peers on that host, also pass `--bridge-p2p-listen /ip4/127.0.0.1/udp/32121/quic-v1`. Expose the selected UDP port to the peers that should reach it. For WebSocket peers, supply a separate TCP listener ending in `/ws` or `/tls/ws`. For TLS, set `CELESTIA_TLS_PATH` to a directory containing the PEM certificate chain in `cert.pem` and its private key in `key.pem`.

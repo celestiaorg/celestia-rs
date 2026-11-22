@@ -139,7 +139,7 @@ jobs:
       - name: Build
         env:
           CELESTIA_RS_BUILD_PROFILE: dist
-        run: cargo build --profile dist --locked -p celestia-rs --target ${{ matrix.target }}
+        run: cargo build --profile dist --locked -p celestia-rs --features da-light --target ${{ matrix.target }}
       - name: Smoke test
         shell: bash
         env:
@@ -157,6 +157,8 @@ jobs:
           grep -Fx "commit: $GITHUB_SHA" <<<"$details"
           grep -Fx 'build_profile: dist' <<<"$details"
           [[ "$("$@" "$bin" version)" == "$VERSION" ]]
+          "$@" "$bin" start --help | grep -- --bridge-p2p-listen
+          "$@" "$bin" da-light --help >/dev/null
       - name: Package
         shell: bash
         env:
