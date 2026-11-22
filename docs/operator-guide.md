@@ -172,6 +172,8 @@ After more than seven days offline, the last sampled header can fall outside the
 
 To enable wallet reads and signing on a light node, configure its consensus gRPC endpoint with `--core.ip` and `--core.port`, then select a funded account with `--keyring.keyname` and `--keyring.backend`. Use `--core.tls` for TLS and `--core.xtoken.path` for a core that requires an authentication token. A bridge selects its local account with `--bridge-signer`. Give signing clients a write token. Fibre downloads and payment promises additionally require a build with `--features da-fibre` and registered storage providers on the chain. All three feature selections produce the same executable name.
 
+Repeat `--bridge-signer` or the light node's `--keyring.keyname` to authorize additional DA accounts. The first account supplies `state.AccountAddress` and signs requests with default transaction options. Go clients can select another authorized account using `WithKeyName` or `WithSignerAddress`. A supplied address takes precedence over the key name. A write token can spend funds from every account listed for that service. Keep unrelated operator accounts outside the list.
+
 #### Mocha 5 non-validating bridge canary
 
 Use a fresh non-validator home on a separate host. Record the release

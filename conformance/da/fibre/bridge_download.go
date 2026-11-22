@@ -230,13 +230,21 @@ func main() {
 		return len(signatures) == expected && signed == 1
 	}
 	for _, sync := range []bool{true, false} {
-		before, err := svc.QueryEscrowAccount(ctx, rpcSigner.String())
+		selected := rpcSigner.String()
+		submitOpts := opts
+		if !sync {
+			selected = os.Getenv("DA_TEST_SECOND_SIGNER")
+			submitOpts = txclient.NewTxConfig(txclient.WithGas(500000), txclient.WithGasPrice(0.01), txclient.WithKeyName("da-secondary"))
+			check(writer.Fibre.Deposit(ctx, sdk.NewCoin("utia", sdkmath.NewInt(50000000)), submitOpts))
+			submitOpts = txclient.NewTxConfig(txclient.WithGas(500000), txclient.WithGasPrice(0.01), txclient.WithSignerAddress(selected))
+		}
+		before, err := svc.QueryEscrowAccount(ctx, selected)
 		check(err)
 		_, err = rand.Read(data)
 		check(err)
 		var id appfibre.BlobID
 		if sync {
-			out, err := writer.Fibre.Submit(ctx, ns, data, opts)
+			out, err := writer.Fibre.Submit(ctx, ns, data, submitOpts)
 			check(err)
 			if out.Height == 0 || out.PaymentPromise == nil || !validSignatures(out.ValidatorSignatures) {
 				panic("incomplete settlement receipt")
@@ -262,7 +270,7 @@ func main() {
 			uploadCtx, cancelUpload := context.WithCancel(ctx)
 			uploader, err := client.NewClient(uploadCtx, endpoint, os.Getenv("DA_TEST_WRITE_TOKEN"))
 			check(err)
-			out, err := uploader.Fibre.Upload(uploadCtx, ns, data, opts)
+			out, err := uploader.Fibre.Upload(uploadCtx, ns, data, submitOpts)
 			cancelUpload()
 			uploader.Close()
 			check(err)
@@ -278,7 +286,7 @@ func main() {
 		}
 		debit := fibretypes.PaymentAmount(uint32(appfibre.DefaultBlobConfigV0().UploadSize(len(data))))
 		for {
-			after, err := svc.QueryEscrowAccount(ctx, rpcSigner.String())
+			after, err := svc.QueryEscrowAccount(ctx, selected)
 			check(err)
 			difference := before.Balance.Sub(after.Balance)
 			if difference.Equal(debit) {
@@ -291,7 +299,7 @@ func main() {
 			}
 		}
 	}
-	fmt.Println("Go verified Upload settlement after the submitting client closed")
+	fmt.Println("Go verified secondary-account Upload settlement after the submitting client closed")
 	fmt.Println("Go verified signed Rust Submit and Upload, exact escrow debits, commit receipt, payloads and write permissions")
 
 }

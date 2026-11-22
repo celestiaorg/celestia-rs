@@ -198,10 +198,10 @@ struct StartArgs {
     #[cfg(feature = "bridge")]
     #[arg(long)]
     bridge_archival: bool,
-    /// Allow write-authorized DA clients to submit blobs with this keyring account.
+    /// Authorize a DA signing account. Repeat for additional accounts; the first is the default.
     #[cfg(feature = "bridge")]
     #[arg(long, requires = "bridge_rpc_listen")]
-    bridge_signer: Option<String>,
+    bridge_signer: Vec<String>,
     /// Built-in network (mainnet, mocha, arabica, local): initializes the
     /// home on first start and checks the genesis.
     #[arg(long, env = "CELESTIA_RS_NETWORK")]
@@ -1325,7 +1325,9 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
     {
         opts.bridge_rpc_listen = a.bridge_rpc_listen;
         opts.bridge_archival = a.bridge_archival;
-        opts.bridge_signer.clone_from(&a.bridge_signer);
+        let mut signers = a.bridge_signer.iter().cloned();
+        opts.bridge_signer = signers.next();
+        opts.bridge_additional_signers = signers.collect();
     }
     #[cfg(feature = "bridge-p2p")]
     {

@@ -164,6 +164,9 @@ pub struct StartOptions {
     /// Keyring account explicitly assigned to DA blob submission.
     #[cfg(feature = "bridge")]
     pub bridge_signer: Option<String>,
+    /// Additional local keyring accounts explicitly authorized for DA writes.
+    #[cfg(feature = "bridge")]
+    pub bridge_additional_signers: Vec<String>,
     /// Node home.
     pub home: PathBuf,
     /// Stop after committing this height (0 = run forever); unlike Go's
@@ -206,6 +209,8 @@ impl StartOptions {
             bridge_archival: false,
             #[cfg(feature = "bridge")]
             bridge_signer: None,
+            #[cfg(feature = "bridge")]
+            bridge_additional_signers: Vec::new(),
             #[cfg(feature = "bridge-p2p")]
             bridge_p2p_listen: None,
             #[cfg(feature = "bridge-p2p")]
@@ -521,20 +526,21 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         .bridge_rpc_listen
         .zip(bridge_index.as_ref())
         .map(|(addr, index)| {
-            let wallet = opts
+            let names = opts
                 .bridge_signer
-                .as_deref()
-                .map(|name| {
-                    crate::bridge::submit::Wallet::open(
-                        home,
-                        name,
-                        &rpc.settings.rpc.laddr,
-                        app::AbciApp::from_shared(app.clone()),
-                        &genesis.chain_id,
-                        ss.clone(),
-                    )
-                })
-                .transpose()?;
+                .iter()
+                .chain(&opts.bridge_additional_signers);
+            let wallet = crate::bridge::submit::Accounts::open(names, |name| {
+                let wallet = crate::bridge::submit::Wallet::open(
+                    home,
+                    name,
+                    &rpc.settings.rpc.laddr,
+                    app::AbciApp::from_shared(app.clone()),
+                    &genesis.chain_id,
+                    ss.clone(),
+                )?;
+                Ok((wallet.address(), wallet))
+            })?;
             crate::bridge::Server::start(
                 addr,
                 home,

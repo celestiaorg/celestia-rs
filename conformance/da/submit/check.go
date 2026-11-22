@@ -7,6 +7,7 @@ import (
 	sdkmath "cosmossdk.io/math"
 	"crypto/rand"
 	"fmt"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"os"
 	"strings"
 	"time"
@@ -21,6 +22,47 @@ func check(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func verifySecondSigner(ctx context.Context, read, write *client.Client, primary state.Address, encoded string) {
+	recipient, err := sdk.AccAddressFromBech32(encoded)
+	check(err)
+	secondary := state.Address{Address: recipient}
+	amount := sdkmath.NewInt(100000)
+	funded, err := write.State.Transfer(ctx, recipient, amount, nil)
+	check(err)
+	_, err = read.Header.WaitForHeight(ctx, uint64(funded.Height)+1)
+	check(err)
+	for _, options := range []*state.TxConfig{
+		state.NewTxConfig(state.WithKeyName("da-secondary"), state.WithGas(200000), state.WithGasPrice(0.01)),
+		state.NewTxConfig(state.WithKeyName("unused"), state.WithSignerAddress(encoded), state.WithGas(200000), state.WithGasPrice(0.01)),
+	} {
+		tx, err := write.State.Transfer(ctx, state.AccAddress(primary.Bytes()), sdkmath.NewInt(17), options)
+		check(err)
+		if tx.Code != 0 || tx.Height <= 0 {
+			panic("invalid secondary signer receipt")
+		}
+	}
+	// Each transaction sends 17 and pays 2,000 utia in fees from the selected account.
+	want := amount.SubRaw(2 * (17 + 2000))
+	for {
+		balance, err := read.State.BalanceForAddress(ctx, secondary)
+		check(err)
+		if balance.Amount.Equal(want) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			panic("secondary signer debit did not reach sampled state")
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	defaultAccount, err := read.State.AccountAddress(ctx)
+	check(err)
+	if !bytes.Equal(defaultAccount.Bytes(), primary.Bytes()) {
+		panic("transaction changed the default account")
+	}
+	fmt.Println("Go verified named DA signer, address precedence, exact secondary balance and preserved default account")
 }
 
 func main() {
@@ -97,6 +139,9 @@ func main() {
 		}
 	}
 	fmt.Printf("Go verified both committed transfer receipts and the recipient's %sutia balance\n", total)
+	if secondary := os.Getenv("DA_TEST_SECOND_SIGNER"); secondary != "" {
+		verifySecondSigner(ctx, read, write, account, secondary)
+	}
 	ns, err := share.NewV0Namespace([]byte("writer"))
 	check(err)
 	multirow, err := blob.NewBlobV0(ns, bytes.Repeat([]byte("bridge DA"), 1400))

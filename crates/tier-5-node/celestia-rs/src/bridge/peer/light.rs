@@ -42,9 +42,9 @@ pub struct LightArgs {
     /// Consensus gRPC hostname or IP for proof-verified state reads.
     #[arg(long = "core.ip")]
     core_ip: Option<String>,
-    /// Read this account from the node home's keyring for wallet-specific RPCs.
+    /// Authorize a DA signing account. Repeat for additional accounts; the first is the default.
     #[arg(long = "keyring.keyname", requires = "core_ip")]
-    key_name: Option<String>,
+    key_name: Vec<String>,
     /// Keyring backend used to open the selected account.
     #[arg(long = "keyring.backend", requires = "key_name")]
     key_backend: Option<String>,
