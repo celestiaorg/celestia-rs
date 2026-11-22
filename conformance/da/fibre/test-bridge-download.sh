@@ -10,7 +10,9 @@ esac
 source_file=$(realpath "$(dirname "$0")/bridge_download.go")
 work=$(mktemp -d)
 pid=
+light=
 cleanup() {
+    if [[ -n "$light" ]]; then kill "$light" 2>/dev/null || true; wait "$light" 2>/dev/null || true; fi
     if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
     rm -rf -- "$work"
 }
@@ -30,6 +32,27 @@ for attempt in {1..90}; do
     if [[ "$attempt" == 90 ]]; then echo 'private Rust bridge did not produce a header' >&2; exit 1; fi
     sleep 1
 done
+if [[ ${3:-} == --light ]]; then
+    home="$work/light"
+    "$binary" keys add light --home "$home" --no-backup --keyring-backend test >/dev/null 2>&1
+    addr=$("$binary" keys show light -a --home "$home" --keyring-backend test)
+    "$binary" tx bank send validator "$addr" 100000000utia --home "$work/node" --keyring-backend test \
+        --chain-id celestia-rs-local --node tcp://127.0.0.1:26657 --fees 20000utia | jq -e '.code == 0' >/dev/null
+    for attempt in {1..60}; do
+        if "$binary" query bank balances "$addr" --node tcp://127.0.0.1:26657 --home "$work/node" |
+            jq -e '.balances[] | select(.denom == "utia" and .amount == "100000000")' >/dev/null; then break; fi
+        if [[ "$attempt" == 60 ]]; then echo 'light account was not funded' >&2; exit 1; fi
+        sleep 1
+    done
+    endpoint=http://127.0.0.1:39659
+    DA_TEST_READ_TOKEN=$("$binary" da-auth read --home "$home")
+    DA_TEST_WRITE_TOKEN=$("$binary" da-auth write --home "$home")
+    "$binary" da-light --home "$home" --network celestia-rs-local \
+        --peer /ip4/127.0.0.1/tcp/1/p2p/12D3KooWLiGKA7tFRoMSfcztssRgUzthfpJP1cAm16Fhztkn46rk \
+        --core.ip 127.0.0.1 --core.port 9090 --keyring.keyname light --keyring.backend test \
+        --rpc-listen 127.0.0.1:39659 >"$work/light.log" 2>&1 &
+    light=$!
+fi
 if ! "$work/go-provider" "$work/node" 127.0.0.1:9090 "$endpoint" >"$work/provider.log" 2>&1; then
     grep -E '^panic:|^Go ' "$work/provider.log" >&2 || true
     exit 1

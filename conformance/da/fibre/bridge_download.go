@@ -26,7 +26,9 @@ import (
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	staking "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 func main() {
@@ -97,9 +99,9 @@ func main() {
 	result, err := rpc.Fibre.Download(ctx, id)
 	check(err)
 	if !bytes.Equal(result.Data, data) {
-		panic("bridge download mismatch")
+		panic("Rust DA download mismatch")
 	}
-	fmt.Println("Go verified the bridge downloaded 32768 bytes from its local chain's FSP")
+	fmt.Println("Go verified the Rust node downloaded 32768 bytes from its local chain's FSP")
 	writer, err := client.NewClient(ctx, endpoint, os.Getenv("DA_TEST_WRITE_TOKEN"))
 	check(err)
 	defer writer.Close()
@@ -111,8 +113,13 @@ func main() {
 	check(err)
 	signer, err := rec.GetAddress()
 	check(err)
+	rpcSigner, err := rpc.State.AccountAddress(ctx)
+	check(err)
+	if !bytes.Equal(rpcSigner.Bytes(), signer.Bytes()) {
+		check(writer.Fibre.Deposit(ctx, sdk.NewCoin("utia", sdkmath.NewInt(50000000)), opts))
+	}
 	for _, sync := range []bool{true, false} {
-		before, err := svc.QueryEscrowAccount(ctx, signer.String())
+		before, err := svc.QueryEscrowAccount(ctx, rpcSigner.String())
 		check(err)
 		_, err = rand.Read(data)
 		check(err)
@@ -123,7 +130,18 @@ func main() {
 			if out.Height == 0 || out.PaymentPromise == nil || len(out.ValidatorSignatures) != 1 {
 				panic("incomplete settlement receipt")
 			}
-			tx, err := txtypes.NewServiceClient(conn).GetTx(ctx, &txtypes.GetTxRequest{Hash: out.TxHash})
+			// The transaction status becomes committed before the SDK transaction index catches up.
+			txs := txtypes.NewServiceClient(conn)
+			req := &txtypes.GetTxRequest{Hash: out.TxHash}
+			tx, err := txs.GetTx(ctx, req)
+			for status.Code(err) == codes.NotFound {
+				select {
+				case <-ctx.Done():
+					panic("committed Fibre transaction did not reach the index")
+				case <-time.After(250 * time.Millisecond):
+				}
+				tx, err = txs.GetTx(ctx, req)
+			}
 			check(err)
 			if tx.TxResponse.Code != 0 || uint64(tx.TxResponse.Height) != out.Height {
 				panic("transaction inclusion mismatch")
@@ -144,7 +162,7 @@ func main() {
 		}
 		debit := fibretypes.PaymentAmount(uint32(appfibre.DefaultBlobConfigV0().UploadSize(len(data))))
 		for {
-			after, err := svc.QueryEscrowAccount(ctx, signer.String())
+			after, err := svc.QueryEscrowAccount(ctx, rpcSigner.String())
 			check(err)
 			difference := before.Balance.Sub(after.Balance)
 			if difference.Equal(debit) {

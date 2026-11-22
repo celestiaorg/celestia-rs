@@ -1,6 +1,6 @@
 //! Submit paid blobs through the local consensus RPC with an operator-selected account.
 #[cfg(feature = "da-fibre")]
-mod fibre;
+pub(super) mod fibre;
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};

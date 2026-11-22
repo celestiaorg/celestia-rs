@@ -16,7 +16,9 @@ use std::{path::Path, sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 
 pub(super) fn handles(method: &str) -> bool {
-    state_rpc::writes(method) || matches!(method, "blob.Submit" | "state.SubmitPayForBlob")
+    (cfg!(feature = "da-fibre") && matches!(method, "fibre.Submit" | "fibre.Upload"))
+        || state_rpc::writes(method)
+        || matches!(method, "blob.Submit" | "state.SubmitPayForBlob")
 }
 
 pub(super) struct Wallet {
@@ -55,6 +57,10 @@ impl Wallet {
         method: &str,
         args: &[Value],
     ) -> Result<Value> {
+        #[cfg(feature = "da-fibre")]
+        if matches!(method, "fibre.Submit" | "fibre.Upload") {
+            return self.submit_fibre(core, method, args).await;
+        }
         let request = submit::transaction(args, method, &self.address)?;
         request.options.validate(&self.name, &self.address)?;
         let permit = self
@@ -73,6 +79,50 @@ impl Wallet {
             "fibre.Deposit" | "fibre.Withdraw" => Value::Null,
             _ => json!({"height":height,"txhash":hash,"logs":null,"events":null}),
         })
+    }
+
+    #[cfg(feature = "da-fibre")]
+    async fn submit_fibre(
+        self: &Arc<Self>,
+        core: Core,
+        method: &str,
+        args: &[Value],
+    ) -> Result<Value> {
+        let upload = submit::fibre::Upload::parse(args)?;
+        upload.options.validate(&self.name, &self.address)?;
+        let permit = self
+            .sequence
+            .clone()
+            .try_acquire_owned()
+            .context("light signer busy")?;
+        let (message, mut result, options) = upload
+            .prepare(&core.fibre, &self.signer, &self.address)
+            .await?;
+        let wallet = self.clone();
+        let settle = tokio::spawn(async move {
+            let _permit = permit;
+            let tx = submit::Transaction {
+                message,
+                options,
+                blobs: None,
+                blob_gas: None,
+            };
+            wallet.broadcast(&core, tx).await
+        });
+        if method == "fibre.Submit" {
+            let (height, hash) = settle.await??;
+            result["height"] = json!(height);
+            result["tx_hash"] = json!(hash);
+        } else {
+            tokio::spawn(async move {
+                match settle.await {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(error)) => tracing::error!(%error, "light Fibre settlement failed"),
+                    Err(error) => tracing::error!(%error, "light Fibre settlement worker stopped"),
+                }
+            });
+        }
+        Ok(result)
     }
 
     async fn broadcast(&self, core: &Core, req: submit::Transaction) -> Result<(i64, String)> {

@@ -177,3 +177,5 @@ To expose a selected light account through `state.AccountAddress` and
 and pass `--keyring.keyname NAME` with the configured core endpoint.
 `--keyring.backend` selects its backend. The light node uses the same sampled
 bank proofs for the selected account and for address-specific reads.
+
+To exercise light Fibre settlement, run `conformance/da/fibre/test-bridge-download.sh /path/to/celestia-rs /path/to/pinned-celestia-node --light` with a `da-fibre` build. The fixture funds a fresh light key, registers a Go storage provider on a local Rust consensus chain, and checks the synchronous receipt, asynchronous settlement, returned bytes and escrow debits through the released Go client.
