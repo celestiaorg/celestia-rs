@@ -6,6 +6,7 @@ use std::{
 };
 use tokio::net::UdpSocket;
 
+#[derive(PartialEq, Eq)]
 pub(super) struct Client {
     router: SocketAddrV4,
     pub(super) local: Ipv4Addr,

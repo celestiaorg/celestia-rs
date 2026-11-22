@@ -97,11 +97,18 @@ async fn maintain(mut desired: watch::Receiver<Addresses>, output: watch::Sender
         let addresses = desired.borrow_and_update().clone();
         let mut delay = 20;
         let mut mapped = Addresses::new();
-        if client.is_none()
-            && !addresses.is_empty()
+        let next_client = if !addresses.is_empty()
             && let Ok(Ok(router)) = tokio::task::spawn_blocking(gateway::default_gateway).await
         {
-            client = protocol::Client::new(router).await.ok();
+            protocol::Client::new(router).await.ok()
+        } else {
+            None
+        };
+        if next_client != client {
+            if let Some(previous) = client {
+                release(&previous, &mut ports).await;
+            }
+            client = next_client;
         }
         if let Some(conn) = &client {
             let wanted: BTreeSet<_> = addresses
@@ -158,8 +165,12 @@ async fn maintain(mut desired: watch::Receiver<Addresses>, output: watch::Sender
         }
     }
     if let Some(client) = client {
-        for ((opcode, inside), outside) in ports {
-            let _ = client.map(opcode, inside, outside, 0).await;
-        }
+        release(&client, &mut ports).await;
+    }
+}
+
+async fn release(client: &protocol::Client, ports: &mut Ports) {
+    for ((opcode, inside), outside) in std::mem::take(ports) {
+        let _ = client.map(opcode, inside, outside, 0).await;
     }
 }
