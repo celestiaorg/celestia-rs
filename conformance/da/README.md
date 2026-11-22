@@ -83,3 +83,10 @@ with `celestia-rs da-auth read --home "$LIGHT_HOME"`. The light store indexes
 a header after verifying its selected shares, and retains headers for the Go
 storage window of seven days plus one hour, measured from the sampled head.
 A home created by an earlier light build starts its history at its saved head.
+
+Run `conformance/da/fibre/test-go-provider.sh /path/to/pinned/celestia-node`
+to exercise the reference Fibre provider on loopback. The release suite
+starts a private Go validator, registers the FSP on chain and uses the
+node-side Fibre service to deposit escrow, submit and retrieve blobs, and
+withdraw. The harness adapts the release test's in-memory store factory
+to the v11 context argument using a Go test overlay.
