@@ -3,6 +3,7 @@ mod core;
 mod data;
 mod discovery;
 mod exchange;
+mod recovery;
 mod rpc;
 mod stats;
 mod wallet;
@@ -195,6 +196,40 @@ struct Verified {
 
 impl Verified {
     fn decode(bytes: &[u8], chain: &str, last: Option<&Self>) -> Result<Self> {
+        let block = Self::decode_signed(bytes, chain)?;
+        let now = light::verifier::now();
+        ensure!(!block.expired(now)?, "header outside trust period");
+        if let Some(last) = last {
+            ensure!(
+                block.header()?.last_block_id.hash == last.hash,
+                "header chain discontinuity"
+            );
+            light::verifier::verify_adjacent(
+                &last.signed,
+                &block.signed,
+                &block.validators,
+                TRUST_NS,
+                now,
+                DRIFT_NS,
+            )?;
+        }
+        Ok(block)
+    }
+
+    fn header(&self) -> Result<&ctypes::Header> {
+        self.signed.header.as_ref().context("missing signed header")
+    }
+
+    fn expired(&self, now: ctypes::Time) -> Result<bool> {
+        Ok(light::verifier::header_expired(
+            self.header()?,
+            TRUST_NS,
+            now,
+        ))
+    }
+
+    // Structural, DAH and commit checks shared by live and hash-pinned historical reads.
+    fn decode_signed(bytes: &[u8], chain: &str) -> Result<Self> {
         let wire = HeaderWire::decode(bytes)?;
         let h = ctypes::Header::from_proto(&wire.header.context("missing header")?)?;
         let commit = ctypes::Commit::from_proto(&wire.commit.context("missing commit")?)?;
@@ -210,8 +245,7 @@ impl Verified {
         let height = u64::try_from(h.height)?;
         let now = light::verifier::now();
         ensure!(
-            !light::verifier::header_expired(&h, TRUST_NS, now)
-                && h.time.unix_nanos() <= now.unix_nanos() + i128::from(DRIFT_NS),
+            h.time.unix_nanos() <= now.unix_nanos() + i128::from(DRIFT_NS),
             "header outside trust period"
         );
         ensure!(
@@ -221,20 +255,11 @@ impl Verified {
             "extended header commitment mismatch"
         );
         ctypes::verify_commit_light(chain, &set, &commit.block_id, h.height, &commit)?;
-        if let Some(last) = last {
-            ensure!(
-                h.last_block_id.hash == last.hash,
-                "header chain discontinuity"
-            );
-        }
         let signed = ctypes::SignedHeader {
             header: Some(h),
             commit: Some(commit),
         };
         signed.validate_basic(chain)?;
-        if let Some(last) = last {
-            light::verifier::verify_adjacent(&last.signed, &signed, &set, TRUST_NS, now, DRIFT_NS)?;
-        }
         Ok(Self {
             validators: set,
             signed,
@@ -423,7 +448,7 @@ fn load_checkpoint(db: &RedbBackend, args: &LightArgs, anchor: &[u8]) -> Result<
     let stored_head = db.get(b"head")?;
     let last = stored_head
         .as_deref()
-        .map(|raw| Verified::decode(raw, &args.network, None))
+        .map(|raw| Verified::decode_signed(raw, &args.network))
         .transpose()?;
     if let (Some(raw), Some(block)) = (stored_head, &last)
         && db.get(b"tail")?.is_none()
@@ -472,36 +497,32 @@ async fn follow(
     if let Some(head) = &last {
         status.send_modify(|s| s.complete(head.height));
     }
-    loop {
+    'sync: loop {
         if last
             .as_ref()
             .is_some_and(|h| args.until.is_some_and(|end| h.height >= end))
         {
             return Ok(());
         }
-        let origin = if let Some(h) = &last {
-            Origin::Height(h.height + 1)
+        let expired = last
+            .as_ref()
+            .map(|h| h.expired(light::verifier::now()))
+            .transpose()?
+            .unwrap_or(false);
+        let next = if let Some(previous) = last.as_ref().filter(|_| expired) {
+            status.send_modify(|s| s.done = false);
+            recovery::next(db, peers, &args.network, previous).await?
         } else {
-            Origin::Hash(anchor.clone())
-        };
-        if let Some(last) = &last {
-            ensure!(
-                !light::verifier::header_expired(
-                    last.signed
-                        .header
-                        .as_ref()
-                        .context("missing trusted header")?,
-                    TRUST_NS,
-                    light::verifier::now()
-                ),
-                "trusted header expired"
+            let origin = last.as_ref().map_or_else(
+                || Origin::Hash(anchor.clone()),
+                |h| Origin::Height(h.height + 1),
             );
-        }
-        let Some((raw, block)) = peers
-            .verified_header(origin, &args.network, last.as_ref())
-            .await
-        else {
-            if let Some(head) = &last {
+            peers
+                .verified_header(origin, &args.network, last.as_ref())
+                .await
+        };
+        let Some((raw, block)) = next else {
+            if let Some(head) = last.as_ref().filter(|_| !expired) {
                 let (tip, matching) = peers.network_tip(head, &args.network).await;
                 let done = tip.is_none() && matching;
                 let network = tip.map_or(head.height, |tip| tip.height);
@@ -523,14 +544,10 @@ async fn follow(
         ensure!(completed <= indices.len(), "invalid persisted sample count");
         for (n, &at) in indices.iter().enumerate().skip(completed) {
             while !peers.sample(&block, at).await {
-                ensure!(
-                    !light::verifier::header_expired(
-                        block.signed.header.as_ref().context("missing header")?,
-                        TRUST_NS,
-                        light::verifier::now()
-                    ),
-                    "sampling header expired"
-                );
+                if block.expired(light::verifier::now())? {
+                    ensure!(last.is_some(), "initial sampling checkpoint expired");
+                    continue 'sync;
+                }
                 status.send_modify(|s| s.retries = s.retries.saturating_add(1));
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
@@ -541,7 +558,16 @@ async fn follow(
         let mut batch = WriteBatch::new();
         batch.delete(b"pending".to_vec());
         batch.delete(b"completed-samples".to_vec());
-        rpc::store_header(db, &mut batch, &block, &raw)?;
+        if expired
+            && let Some(old) = &last
+            && block.height > old.height + 1
+        {
+            recovery::discard_gap(db, &mut batch, old, &block, &raw).await?;
+        } else {
+            rpc::store_header(db, &mut batch, &block, &raw)?;
+        }
+        batch.delete(b"recovery-cursor".to_vec());
+        batch.delete(b"recovery-sample".to_vec());
         batch.put(b"head".to_vec(), raw);
         db.write(batch)?;
         writeln!(
