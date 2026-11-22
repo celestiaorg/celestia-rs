@@ -2,7 +2,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
@@ -42,6 +44,10 @@ func verify() error {
 		return fmt.Errorf("wait for %d returned %d", end, published.Height())
 	}
 	fmt.Printf("DA publication confirmed through %d after %v\n", end, time.Since(started))
+	address, err := hex.DecodeString(os.Args[4])
+	if err != nil || len(address) != 20 {
+		return fmt.Errorf("invalid local validator address %q", os.Args[4])
+	}
 	var previous *header.ExtendedHeader
 	for n := start; n <= end; n++ {
 		h, err := c.Header.GetByHeight(ctx, n)
@@ -50,6 +56,10 @@ func verify() error {
 		}
 		if h.Height() != n || h.ChainID() != "celestia-rs-local" || len(h.ValidatorSet.Validators) != 1 {
 			return fmt.Errorf("unexpected validator set or chain at %d", n)
+		}
+		v := h.ValidatorSet.Validators[0]
+		if !bytes.Equal(v.Address, address) || v.VotingPower <= 0 {
+			return fmt.Errorf("local validator %X missing voting power at %d", address, n)
 		}
 		if err := h.Validate(); err != nil {
 			return err

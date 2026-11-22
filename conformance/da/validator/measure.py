@@ -9,12 +9,14 @@ import urllib.request
 from pathlib import Path
 
 
-def height():
+def status():
     with urllib.request.urlopen("http://127.0.0.1:26657/status", timeout=3) as response:
         status = json.load(response)["result"]
-    if int(status["validator_info"]["voting_power"]) <= 0:
-        raise RuntimeError("local node has no voting power")
-    return int(status["sync_info"]["latest_block_height"])
+    return status
+
+
+def height():
+    return int(status()["sync_info"]["latest_block_height"])
 
 
 def cpu(pid):
@@ -23,7 +25,9 @@ def cpu(pid):
 
 
 def measure(duration, pid, commands, checker, rpc):
-    first = previous = height()
+    initial = status()
+    validator = initial["validator_info"]["address"]
+    first = previous = int(initial["sync_info"]["latest_block_height"])
     start = last = time.monotonic()
     started_cpu = cpu(pid)
     longest_gap = 0.0
@@ -62,7 +66,7 @@ def measure(duration, pid, commands, checker, rpc):
     processor = cpu(pid) - started_cpu
     if end - first < 2 or any(count == 0 for count in counts.values()):
         raise RuntimeError("insufficient commits or completed proof reads")
-    subprocess.run([checker, rpc, str(first), str(end)], check=True, timeout=130)
+    subprocess.run([checker, rpc, str(first), str(end), validator], check=True, timeout=130)
     return dict(first=first, last=end, elapsed_seconds=round(elapsed, 2),
                 max_observed_commit_gap_seconds=round(longest_gap, 2),
                 validator_cpu_seconds=round(processor, 2), verified_reads=counts)
