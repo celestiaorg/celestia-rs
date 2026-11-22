@@ -32,6 +32,8 @@ impl Control {
             "p2p.Info"
                 | "p2p.Ping"
                 | "p2p.ConnectionState"
+                | "p2p.BandwidthStats"
+                | "p2p.BandwidthForPeer"
                 | "p2p.Connect"
                 | "p2p.ClosePeer"
                 | "p2p.Protect"
@@ -125,10 +127,19 @@ impl Operations {
             }
             return;
         }
-        if method == "p2p.ConnectionState" {
-            let result = match args.as_slice() {
-                [id] => parse_peer(id).and_then(|id| self.connections.state(id)),
-                _ => Err(anyhow::anyhow!("invalid ConnectionState parameters")),
+        if matches!(
+            method.as_str(),
+            "p2p.ConnectionState" | "p2p.BandwidthStats" | "p2p.BandwidthForPeer"
+        ) {
+            let result = match (method.as_str(), args.as_slice()) {
+                ("p2p.ConnectionState", [id]) => {
+                    parse_peer(id).and_then(|id| self.connections.state(id))
+                }
+                ("p2p.BandwidthStats", []) => Ok(self.connections.bandwidth.snapshot(None)),
+                ("p2p.BandwidthForPeer", [id]) => {
+                    parse_peer(id).map(|id| self.connections.bandwidth.snapshot(Some(id)))
+                }
+                _ => Err(anyhow::anyhow!("invalid {method} parameters")),
             };
             let _ = reply.send(result);
             return;
