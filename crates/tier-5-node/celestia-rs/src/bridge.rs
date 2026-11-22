@@ -1,6 +1,7 @@
 //! Opt-in DA RPC backed by the consensus node's committed block and state stores.
 
 pub(crate) mod auth;
+mod envelope;
 mod header_rpc;
 mod share_rpc;
 pub(crate) mod submit;
@@ -33,6 +34,7 @@ impl Server {
         home: &std::path::Path,
         blocks: BlockStore,
         states: StateStore,
+        #[cfg(feature = "bridge-p2p")] peer_control: Option<peer::Control>,
         wallet: Option<Arc<submit::Wallet>>,
     ) -> Result<Self> {
         ensure!(
@@ -50,6 +52,8 @@ impl Server {
         };
         let (stop, stopped) = oneshot::channel();
         let state = Arc::new(Bridge {
+            #[cfg(feature = "bridge-p2p")]
+            peer_control,
             wallet,
             waiters: Arc::new(Semaphore::new(32)),
             blocks,
@@ -87,6 +91,8 @@ impl Drop for Server {
 }
 
 struct Bridge {
+    #[cfg(feature = "bridge-p2p")]
+    peer_control: Option<peer::Control>,
     wallet: Option<Arc<submit::Wallet>>,
     waiters: Arc<Semaphore>,
     blocks: BlockStore,
@@ -346,24 +352,29 @@ impl Bridge {
 
 impl Committed {
     fn header_json(&self) -> J {
-        let roots =
-            |rs: &[[u8; square::DAH_ROOT_SIZE]]| J::Arr(rs.iter().map(|r| J::b64(r)).collect());
-        J::obj([
-            ("header", rpc::encode::header(&self.header)),
-            ("commit", rpc::encode::commit(&self.commit)),
-            (
-                "validator_set",
-                rpc::encode::validator_set(&self.validators),
-            ),
-            (
-                "dah",
-                J::obj([
-                    ("row_roots", roots(&self.dah.row_roots)),
-                    ("column_roots", roots(&self.dah.column_roots)),
-                ]),
-            ),
-        ])
+        header_json(&self.header, &self.commit, &self.validators, &self.dah)
     }
+}
+
+fn header_json(
+    header: &ctypes::Header,
+    commit: &ctypes::Commit,
+    validators: &ctypes::ValidatorSet,
+    dah: &square::DataAvailabilityHeader,
+) -> J {
+    let roots = |rs: &[[u8; square::DAH_ROOT_SIZE]]| J::Arr(rs.iter().map(|r| J::b64(r)).collect());
+    J::obj([
+        ("header", rpc::encode::header(header)),
+        ("commit", rpc::encode::commit(commit)),
+        ("validator_set", rpc::encode::validator_set(validators)),
+        (
+            "dah",
+            J::obj([
+                ("row_roots", roots(&dah.row_roots)),
+                ("column_roots", roots(&dah.column_roots)),
+            ]),
+        ),
+    ])
 }
 
 /// Walk Q0 in block order, retaining the EDS index used by the Go blob API.
@@ -508,86 +519,95 @@ fn credentials<'a>(
     Ok((token, permissions))
 }
 
+fn require_permission(
+    permissions: &[String],
+    method: &str,
+    perm: &str,
+) -> Result<(), (i32, String)> {
+    if permissions.iter().any(|p| p == perm) {
+        Ok(())
+    } else {
+        Err((
+            1,
+            format!(
+                "missing permission to invoke '{}' (need '{perm}')",
+                method.rsplit('.').next().unwrap_or(method)
+            ),
+        ))
+    }
+}
+
 async fn dispatch(
     bridge: Arc<Bridge>,
     auth: &auth::Auth,
     permissions: &[String],
     body: &[u8],
 ) -> String {
-    let require = |method: &str, perm: &str| {
-        if permissions.iter().any(|p| p == perm) {
-            Ok(())
-        } else {
-            Err((
-                1,
-                format!(
-                    "missing permission to invoke '{}' (need '{perm}')",
-                    method.rsplit('.').next().unwrap_or(method)
-                ),
-            ))
-        }
-    };
     let mut id = J::Null;
     let result = async {
-        let req: Value =
-            serde_json::from_slice(body).map_err(|_| (-32700, "parse error".to_owned()))?;
+        let req = envelope::Request::parse(body)?;
         let invalid = || (-32600, "invalid request".to_owned());
-        if req["jsonrpc"] != "2.0" {
-            return Err(invalid());
-        }
-        let request_id = req.get("id").ok_or_else(invalid)?;
-        if !(request_id.is_string() || request_id.is_number() || request_id.is_null()) {
-            return Err(invalid());
-        }
+        let request_id = req.id.as_ref().ok_or_else(invalid)?;
         id = J::Raw(request_id.to_string());
-        let method = req["method"].as_str().ok_or_else(invalid)?;
+        let method = req.method.as_str().ok_or_else(invalid)?;
         let empty = Value::Array(Vec::new());
+        let params = if req.params.is_null() {
+            &empty
+        } else {
+            &req.params
+        };
         if matches!(
             method,
             "node.AuthNew" | "node.AuthNewWithExpiry" | "node.AuthVerify" | "node.AuthRevoke"
         ) {
-            require(method, "admin")?;
-            let args = req["params"].as_array().ok_or_else(invalid)?;
+            require_permission(permissions, method, "admin")?;
+            let args = req.params.as_array().ok_or_else(invalid)?;
             return auth
                 .admin(method, args)
                 .map(|value| J::Raw(value.to_string()))
                 .map_err(|e| (1, e.to_string()));
         }
+        #[cfg(feature = "bridge-p2p")]
+        if peer::Control::handles(method) {
+            require_permission(permissions, method, "admin")?;
+            let control = bridge
+                .peer_control
+                .as_ref()
+                .ok_or_else(|| (1, "DA peer is disabled".to_owned()))?;
+            let args = params.as_array().ok_or_else(invalid)?;
+            return control
+                .call(method, args)
+                .await
+                .map(|value| J::Raw(value.to_string()))
+                .map_err(|e| (1, e.to_string()));
+        }
         if matches!(method, "blob.Submit" | "state.AccountAddress") {
             let submit = method == "blob.Submit";
-            require(method, if submit { "write" } else { "read" })?;
+            require_permission(permissions, method, if submit { "write" } else { "read" })?;
             let wallet = bridge
                 .wallet
                 .as_ref()
                 .ok_or_else(|| (1, "bridge signer is not configured".to_owned()))?;
             if submit {
                 return wallet
-                    .submit(&req["params"], bridge.states.clone())
+                    .submit(&req.params, bridge.states.clone())
                     .await
                     .map(J::num)
                     .map_err(|e| (1, e.to_string()));
             }
-            if req
-                .get("params")
-                .is_some_and(|p| !p.is_null() && p != &empty)
-            {
+            if params != &empty {
                 return Err(invalid());
             }
             return Ok(J::str(wallet.address()));
         }
         if header_rpc::handles(method) {
-            require(method, "read")?;
-            let params = req.get("params").filter(|v| !v.is_null()).unwrap_or(&empty);
+            require_permission(permissions, method, "read")?;
             return header_rpc::handle(bridge, method, params)
                 .await
                 .map_err(|e| (1, e.to_string()));
         }
-        let query = Query::parse(
-            method,
-            req.get("params").filter(|v| !v.is_null()).unwrap_or(&empty),
-        )
-        .map_err(|(code, msg)| (code, msg.to_owned()))?;
-        require(method, "read")?;
+        let query = Query::parse(method, params).map_err(|(code, msg)| (code, msg.to_owned()))?;
+        require_permission(permissions, method, "read")?;
         let permit = bridge
             .worker
             .clone()
