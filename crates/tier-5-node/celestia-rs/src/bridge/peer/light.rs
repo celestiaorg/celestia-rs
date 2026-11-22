@@ -1,4 +1,6 @@
 //! Authenticated, sequential DA sync and restartable sampling from a trusted checkpoint.
+mod rpc;
+
 use super::{HeaderResponse, HeaderWire, Origin, Proof, Request, Sample, identity};
 use anyhow::{Context, Result, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
@@ -27,6 +29,9 @@ pub struct LightArgs {
     /// Hex-encoded 32-byte header hash obtained through a trusted channel.
     #[arg(long)]
     trusted_hash: String,
+    /// Serve authenticated sampled headers on this loopback HTTP socket.
+    #[arg(long)]
+    rpc_listen: Option<std::net::SocketAddr>,
     /// Exit after this height has been authenticated and sampled.
     #[arg(long)]
     until: Option<u64>,
@@ -305,10 +310,18 @@ async fn follow(
         batch.put(b"trust".to_vec(), trust);
         db.write(batch)?;
     }
-    let mut last = db
-        .get(b"head")?
-        .map(|raw| Verified::decode(&raw, &args.network, None))
+    let stored_head = db.get(b"head")?;
+    let mut last = stored_head
+        .as_deref()
+        .map(|raw| Verified::decode(raw, &args.network, None))
         .transpose()?;
+    if let (Some(raw), Some(block)) = (stored_head, &last)
+        && db.get(b"tail")?.is_none()
+    {
+        let mut upgrade = WriteBatch::new();
+        rpc::store_header(db, &mut upgrade, block, &raw)?;
+        db.write(upgrade)?;
+    }
     loop {
         if last
             .as_ref()
@@ -367,6 +380,7 @@ async fn follow(
         let mut batch = WriteBatch::new();
         batch.delete(b"pending".to_vec());
         batch.delete(b"completed-samples".to_vec());
+        rpc::store_header(db, &mut batch, &block, &raw)?;
         batch.put(b"head".to_vec(), raw);
         db.write(batch)?;
         writeln!(
@@ -393,7 +407,12 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     }
     let dir = home.join("da-light");
     std::fs::create_dir_all(&dir)?;
-    let db = RedbBackend::open(dir.join("light.redb"), RedbOptions::default())?;
+    let db = std::sync::Arc::new(RedbBackend::open(
+        dir.join("light.redb"),
+        RedbOptions::default(),
+    )?);
+    // Bind synchronously with startup so a busy port is reported to the operator.
+    let listener = rpc::listener(args.rpc_listen, home, db.clone()).await?;
     let key = identity(&dir.join("peer.key"))?;
     let swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
@@ -423,6 +442,7 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
         connected: online,
     };
     tokio::select! {
+        result = listener => result,
         result = follow(&db, &mut peers, &args, anchor) => result,
         result = tokio::signal::ctrl_c() => Ok(result?),
         () = maintain_connections(swarm, &addresses, connected) => anyhow::bail!("DA network stopped"),
