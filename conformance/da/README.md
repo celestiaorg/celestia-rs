@@ -156,3 +156,11 @@ starts a private Go validator, registers the FSP on chain and uses the
 node-side Fibre service to deposit escrow, submit and retrieve blobs, and
 withdraw. The harness adapts the release test's in-memory store factory
 to the v11 context argument using a Go test overlay.
+
+With a configured `--bridge-signer` and a write token, the bridge also accepts
+`fibre.Upload` and `fibre.Submit`. Both encode the supplied bytes, distribute
+rows to the providers and return the signed payment promise and provider
+signatures. Upload starts settlement in the background. Submit waits for a
+successful commitment and includes its height and transaction hash. The wallet
+holds the account sequence until settlement completes. The fixture uses the
+Go service to recover each Rust upload and checks the exact escrow debit.

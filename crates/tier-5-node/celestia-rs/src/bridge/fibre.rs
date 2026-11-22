@@ -13,7 +13,7 @@ use tokio::sync::Semaphore;
 
 #[derive(Clone)]
 pub(super) struct Client {
-    inner: Arc<FibreClient>,
+    pub(super) inner: Arc<FibreClient>,
     reads: Arc<Semaphore>,
 }
 

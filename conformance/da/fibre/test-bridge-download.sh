@@ -18,8 +18,9 @@ trap cleanup EXIT
 (cd "$node" && go build -p 2 -o "$work/go-provider" "$source_file")
 endpoint=http://127.0.0.1:32658
 DA_TEST_READ_TOKEN=$("$binary" da-auth read --home "$work/node")
-export DA_TEST_READ_TOKEN
-"$binary" start --network local --home "$work/node" --bridge-rpc-listen 127.0.0.1:32658 >"$work/node.log" 2>&1 &
+DA_TEST_WRITE_TOKEN=$("$binary" da-auth write --home "$work/node")
+export DA_TEST_READ_TOKEN DA_TEST_WRITE_TOKEN
+"$binary" start --network local --home "$work/node" --bridge-signer validator --bridge-rpc-listen 127.0.0.1:32658 >"$work/node.log" 2>&1 &
 pid=$!
 for attempt in {1..90}; do
     kill -0 "$pid"

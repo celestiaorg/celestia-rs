@@ -1,4 +1,7 @@
 //! Submit paid blobs through the local consensus RPC with an operator-selected account.
+#[cfg(feature = "da-fibre")]
+mod fibre;
+
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -119,21 +122,7 @@ impl Wallet {
         options: &Options,
         states: &nodestore::StateStore,
     ) -> Result<Receipt> {
-        let address = self.address();
-        let requested = if options.signer_address.is_empty() {
-            options.key_name.is_empty() || options.key_name == self.flags.from
-        } else {
-            options.signer_address == address
-        };
-        ensure!(
-            requested,
-            "requested account is not configured for bridge signing"
-        );
-        ensure!(
-            options.fee_granter_address.is_empty()
-                || client::acc_address_from_bech32(&options.fee_granter_address).is_some(),
-            "invalid fee granter address"
-        );
+        self.check_options(options)?;
         let mut flags = self.flags.clone();
         let (price, gas) = if let Some(default_gas) = blob_gas {
             (
@@ -165,6 +154,24 @@ impl Wallet {
             height,
             hash: hash.to_owned(),
         })
+    }
+    fn check_options(&self, options: &Options) -> Result<()> {
+        let address = self.address();
+        let requested = if options.signer_address.is_empty() {
+            options.key_name.is_empty() || options.key_name == self.flags.from
+        } else {
+            options.signer_address == address
+        };
+        ensure!(
+            requested,
+            "requested account is not configured for bridge signing"
+        );
+        ensure!(
+            options.fee_granter_address.is_empty()
+                || client::acc_address_from_bech32(&options.fee_granter_address).is_some(),
+            "invalid fee granter address"
+        );
+        Ok(())
     }
     fn message_fee(&self, message: &Any, opts: &Options) -> Result<(f64, u64)> {
         let explicit = opts.is_gas_price_set && opts.gas_price.to_bits() != (-1.0_f64).to_bits();

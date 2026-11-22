@@ -671,6 +671,28 @@ async fn dispatch(
             require_permission(permissions, method, "read")?;
             return fibre::rpc(bridge.fibre.as_ref(), params).await;
         }
+        #[cfg(feature = "da-fibre")]
+        if matches!(method, "fibre.Upload" | "fibre.Submit") {
+            require_permission(permissions, method, "write")?;
+            let client = bridge
+                .fibre
+                .as_ref()
+                .ok_or_else(|| (1, "Fibre core unavailable".into()))?;
+            let wallet = bridge
+                .wallet
+                .as_ref()
+                .ok_or_else(|| (1, "bridge signer is not configured".into()))?;
+            return wallet
+                .submit_fibre(
+                    client,
+                    params,
+                    method == "fibre.Submit",
+                    bridge.states.clone(),
+                )
+                .await
+                .map(|v| J::Raw(v.to_string()))
+                .map_err(|e| (1, e.to_string()));
+        }
         if let Some(permission) = node_rpc::permission(method) {
             require_permission(permissions, method, permission)?;
             let args = params.as_array().ok_or_else(invalid)?;

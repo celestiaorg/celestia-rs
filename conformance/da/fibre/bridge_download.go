@@ -13,6 +13,7 @@ import (
 	"github.com/celestiaorg/celestia-app/v11/app"
 	"github.com/celestiaorg/celestia-app/v11/app/encoding"
 	appfibre "github.com/celestiaorg/celestia-app/v11/fibre"
+	fibretypes "github.com/celestiaorg/celestia-app/v11/x/fibre/types"
 	valtypes "github.com/celestiaorg/celestia-app/v11/x/valaddr/types"
 	"github.com/celestiaorg/celestia-node/api/rpc/client"
 	nodefibre "github.com/celestiaorg/celestia-node/fibre"
@@ -22,6 +23,7 @@ import (
 	core "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	staking "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -80,8 +82,9 @@ func main() {
 	data := make([]byte, 32768)
 	_, err = rand.Read(data)
 	check(err)
-	_, id, err := svc.Upload(ctx, libshare.MustNewV0Namespace([]byte{0xca, 0xfe}), data, opts)
+	_, paid, err := svc.Submit(ctx, libshare.MustNewV0Namespace([]byte{0xca, 0xfe}), data, opts)
 	check(err)
+	id := appfibre.NewBlobID(uint8(paid.BlobVersion), paid.Commitment)
 	control, err := svc.Download(ctx, id)
 	check(err)
 	if !bytes.Equal(control, data) {
@@ -97,4 +100,63 @@ func main() {
 		panic("bridge download mismatch")
 	}
 	fmt.Println("Go verified the bridge downloaded 32768 bytes from its local chain's FSP")
+	writer, err := client.NewClient(ctx, endpoint, os.Getenv("DA_TEST_WRITE_TOKEN"))
+	check(err)
+	defer writer.Close()
+	ns := libshare.MustNewV0Namespace([]byte{0xf1, 0xb3})
+	if _, err := rpc.Fibre.Submit(ctx, ns, data, opts); err == nil {
+		panic("read token authorized a write")
+	}
+	rec, err := ring.Key("validator")
+	check(err)
+	signer, err := rec.GetAddress()
+	check(err)
+	for _, sync := range []bool{true, false} {
+		before, err := svc.QueryEscrowAccount(ctx, signer.String())
+		check(err)
+		_, err = rand.Read(data)
+		check(err)
+		var id appfibre.BlobID
+		if sync {
+			out, err := writer.Fibre.Submit(ctx, ns, data, opts)
+			check(err)
+			if out.Height == 0 || out.PaymentPromise == nil || len(out.ValidatorSignatures) != 1 {
+				panic("incomplete settlement receipt")
+			}
+			tx, err := txtypes.NewServiceClient(conn).GetTx(ctx, &txtypes.GetTxRequest{Hash: out.TxHash})
+			check(err)
+			if tx.TxResponse.Code != 0 || uint64(tx.TxResponse.Height) != out.Height {
+				panic("transaction inclusion mismatch")
+			}
+			id = out.BlobID
+		} else {
+			out, err := writer.Fibre.Upload(ctx, ns, data, opts)
+			check(err)
+			if out.PaymentPromise == nil || len(out.ValidatorSignatures) != 1 {
+				panic("incomplete upload promise")
+			}
+			id = out.BlobID
+		}
+		got, err := svc.Download(ctx, id)
+		check(err)
+		if !bytes.Equal(got, data) {
+			panic("Rust upload differed from Go download")
+		}
+		debit := fibretypes.PaymentAmount(uint32(appfibre.DefaultBlobConfigV0().UploadSize(len(data))))
+		for {
+			after, err := svc.QueryEscrowAccount(ctx, signer.String())
+			check(err)
+			difference := before.Balance.Sub(after.Balance)
+			if difference.Equal(debit) {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				panic("escrow settlement did not appear")
+			case <-time.After(300 * time.Millisecond):
+			}
+		}
+	}
+	fmt.Println("Go verified signed Rust Submit and Upload, exact escrow debits, commit receipt, payloads and write permissions")
+
 }
