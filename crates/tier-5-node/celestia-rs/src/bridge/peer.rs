@@ -8,6 +8,8 @@ mod security;
 #[cfg(feature = "da-webrtc")]
 mod webrtc;
 mod websocket;
+#[cfg(feature = "da-webtransport")]
+mod webtransport;
 pub(crate) use admin::Control;
 mod flood;
 mod inbound;
@@ -211,7 +213,7 @@ fn observed_swarm(
     let tcp_observed = connections.clone();
     let tcp = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true)).and_then(
         move |socket, point| {
-            tcp_security.connect(socket, point, tcp_observed, connections::Transport::Tcp)
+            tcp_security.connect(socket, point, tcp_observed, connections::PeerTransport::Tcp)
         },
     );
     let quic_observed = connections.clone();
@@ -223,7 +225,7 @@ fn observed_swarm(
                     peer,
                     &point,
                     mux,
-                    connections::Transport::Quic,
+                    connections::PeerTransport::Quic,
                 )),
             )
         },
@@ -246,13 +248,29 @@ fn observed_swarm(
                     peer,
                     &point,
                     mux,
-                    connections::Transport::WebRtc,
+                    connections::PeerTransport::WebRtc,
                 )),
             )
         });
         native
             .or_transport(rtc)
             .map(|either, _| either.into_inner())
+    };
+    #[cfg(feature = "da-webtransport")]
+    let native = {
+        let observed = connections.clone();
+        let wt = webtransport::Dialer(key.clone()).map(move |(peer, mux), point| {
+            (
+                peer,
+                StreamMuxerBox::new(observed.observe(
+                    peer,
+                    &point,
+                    mux,
+                    connections::PeerTransport::WebTransport,
+                )),
+            )
+        });
+        native.or_transport(wt).map(|either, _| either.into_inner())
     };
     let native = libp2p::dns::tokio::Transport::system(native)?;
 
@@ -270,7 +288,7 @@ fn observed_swarm(
             socket,
             point,
             ws_observed,
-            connections::Transport::WebSocket,
+            connections::PeerTransport::WebSocket,
         )
     });
     let swarm = SwarmBuilder::with_existing_identity(key)

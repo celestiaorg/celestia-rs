@@ -154,6 +154,14 @@ timeout 120 "$rust" da-light --home "$work/quic-light" --network "$chain" --peer
 grep -Fq "sampled height $height (16 verified shares), hash $hash" "$work/quic-samples.log"
 echo "Rust verified the signed paid header and 16 samples from the Go QUIC peer"
 
+if [[ ${DA_TEST_WEBTRANSPORT:-} == 1 ]]; then
+    wt=$(sed -nE 's@.*/ip4/[0-9.]+(/udp/39221/quic-v1/webtransport(/certhash/[[:alnum:]_-]+)+/p2p/[[:alnum:]]+).*@/ip4/127.0.0.1\1@p' "$work/bridge.log" | head -1)
+    : "${wt:?missing Go WebTransport address with certificate hashes}"
+    timeout 120 "$rust" da-light --home "$work/webtransport-light" --network "$chain" --peer "$wt" \
+        --trusted-hash "$hash" --until "$height" >"$work/webtransport-samples.log"
+    grep -Fq "sampled height $height (16 verified shares), hash $hash" "$work/webtransport-samples.log"
+fi
+
 if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then
     rtc=$(sed -n 's@.*/ip4/[0-9.]*\(/udp/39221/webrtc-direct/certhash/[[:alnum:]_-]*/p2p/[[:alnum:]]*\).*@/ip4/127.0.0.1\1@p' "$work/bridge.log" | head -1)
     [[ -n "$rtc" ]]

@@ -1,6 +1,6 @@
 //! Negotiate the released host's stream security protocols and retain the
 //! selected protocol for the connection-state RPC.
-use super::connections::{Connections, Transport};
+use super::connections::{Connections, PeerTransport};
 use futures::{AsyncRead, AsyncWrite, future::Either};
 use libp2p::{
     PeerId,
@@ -33,7 +33,7 @@ impl Config {
         socket: C,
         point: ConnectedPoint,
         observed: Connections,
-        transport: fn(&'static str) -> Transport,
+        transport: fn(&'static str) -> PeerTransport,
     ) -> io::Result<(PeerId, StreamMuxerBox)>
     where
         C: AsyncRead + AsyncWrite + Send + Unpin + 'static,

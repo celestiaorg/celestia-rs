@@ -571,6 +571,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "048006790404103c488e6c5616b3e7e702a71292aadda08e8f7698a9e0d2eb53"
 dependencies = [
  "aws-lc-sys",
+ "untrusted 0.7.1",
  "zeroize",
 ]
 
@@ -1254,7 +1255,10 @@ dependencies = [
  "tempfile",
  "tikv-jemalloc-ctl",
  "tikv-jemallocator",
+ "tobi_quic",
+ "tobi_webtransport",
  "tokio",
+ "tokio-util",
  "toml",
  "toml_edit",
  "tonic 0.12.3",
@@ -1263,6 +1267,7 @@ dependencies = [
  "txdecode",
  "x-blob",
  "x-consensus",
+ "x509-parser 0.18.1",
 ]
 
 [[package]]
@@ -4815,6 +4820,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bf50223579dc7cdcfb3bfcacf7069ff68243f8c363f62ffa99cf000a6b9c451"
 
 [[package]]
+name = "nojson"
+version = "0.3.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d7473c448719d0214889f9ff75d4cdb6cf96582e4a9058e6eb2a52dc8d342ae"
+
+[[package]]
 name = "nom"
 version = "7.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6041,7 +6052,7 @@ dependencies = [
  "cfg-if",
  "getrandom 0.2.17",
  "libc",
- "untrusted",
+ "untrusted 0.9.0",
  "windows-sys 0.52.0",
 ]
 
@@ -6297,7 +6308,7 @@ dependencies = [
  "aws-lc-rs",
  "ring",
  "rustls-pki-types",
- "untrusted",
+ "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -6642,6 +6653,12 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "shiguredo_http3"
+version = "2026.1.0-canary.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7db6788a921e17a85903bddd18464d99c79d5fb3b6cf5193b90373a075fa35c0"
 
 [[package]]
 name = "shlex"
@@ -7241,6 +7258,113 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
+name = "tobi_core"
+version = "2026.0.0"
+source = "git+https://github.com/shiguredo/tobi-quic?rev=1a178417a286512e936dda3393d531cf2afa3a08#1a178417a286512e936dda3393d531cf2afa3a08"
+dependencies = [
+ "hashbrown 0.17.1",
+ "libm",
+]
+
+[[package]]
+name = "tobi_crypto"
+version = "2026.0.0"
+source = "git+https://github.com/shiguredo/tobi-quic?rev=1a178417a286512e936dda3393d531cf2afa3a08#1a178417a286512e936dda3393d531cf2afa3a08"
+dependencies = [
+ "aws-lc-rs",
+ "tobi_core",
+ "zeroize",
+]
+
+[[package]]
+name = "tobi_http3"
+version = "2026.0.0"
+source = "git+https://github.com/shiguredo/tobi-quic?rev=1a178417a286512e936dda3393d531cf2afa3a08#1a178417a286512e936dda3393d531cf2afa3a08"
+dependencies = [
+ "shiguredo_http3",
+ "tobi_quic",
+ "tokio",
+]
+
+[[package]]
+name = "tobi_platform"
+version = "2026.0.0"
+source = "git+https://github.com/shiguredo/tobi-quic?rev=1a178417a286512e936dda3393d531cf2afa3a08#1a178417a286512e936dda3393d531cf2afa3a08"
+dependencies = [
+ "aws-lc-rs",
+ "libc",
+ "rustls",
+ "socket2 0.6.5",
+ "tobi_core",
+ "tobi_crypto",
+ "tobi_qlog",
+ "tobi_transport",
+ "tokio",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
+name = "tobi_qlog"
+version = "2026.0.0"
+source = "git+https://github.com/shiguredo/tobi-quic?rev=1a178417a286512e936dda3393d531cf2afa3a08#1a178417a286512e936dda3393d531cf2afa3a08"
+dependencies = [
+ "nojson",
+ "tobi_core",
+]
+
+[[package]]
+name = "tobi_quic"
+version = "2026.0.0"
+source = "git+https://github.com/shiguredo/tobi-quic?rev=1a178417a286512e936dda3393d531cf2afa3a08#1a178417a286512e936dda3393d531cf2afa3a08"
+dependencies = [
+ "aws-lc-rs",
+ "nojson",
+ "rustls",
+ "tobi_core",
+ "tobi_crypto",
+ "tobi_platform",
+ "tobi_qlog",
+ "tobi_transport",
+ "tokio",
+]
+
+[[package]]
+name = "tobi_rustls"
+version = "2026.0.0"
+source = "git+https://github.com/shiguredo/tobi-quic?rev=1a178417a286512e936dda3393d531cf2afa3a08#1a178417a286512e936dda3393d531cf2afa3a08"
+dependencies = [
+ "aws-lc-rs",
+ "rustls",
+ "tobi_core",
+]
+
+[[package]]
+name = "tobi_transport"
+version = "2026.0.0"
+source = "git+https://github.com/shiguredo/tobi-quic?rev=1a178417a286512e936dda3393d531cf2afa3a08#1a178417a286512e936dda3393d531cf2afa3a08"
+dependencies = [
+ "tobi_core",
+ "tobi_crypto",
+ "tobi_qlog",
+ "tobi_rustls",
+ "tracing",
+]
+
+[[package]]
+name = "tobi_webtransport"
+version = "2026.0.0"
+source = "git+https://github.com/shiguredo/tobi-quic?rev=1a178417a286512e936dda3393d531cf2afa3a08#1a178417a286512e936dda3393d531cf2afa3a08"
+dependencies = [
+ "rustls",
+ "shiguredo_http3",
+ "tobi_http3",
+ "tobi_quic",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "tokio"
 version = "1.54.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7792,6 +7916,12 @@ name = "unsigned-varint"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb066959b24b5196ae73cb057f45598450d2c5f71460e98c49b738086eff9c06"
+
+[[package]]
+name = "untrusted"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
 name = "untrusted"

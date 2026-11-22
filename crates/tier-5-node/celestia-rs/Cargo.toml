@@ -16,6 +16,7 @@ workspace = true
 default = ["rocksdb", "jemalloc"]
 # Experimental in-process DA bridge. Runtime opt-in via --bridge-rpc-listen.
 da-fibre = ["da-light", "dep:celestia-fibre", "dep:celestia-grpc", "dep:fibre-types", "dep:k256", "dep:fibre-prost"]
+da-webtransport = ["bridge-p2p", "dep:rustls", "dep:tobi_quic", "dep:tobi_webtransport", "dep:x509-parser", "dep:tokio-util"]
 da-webrtc = ["bridge-p2p", "dep:rustls", "dep:libp2p-webrtc", "dep:webrtc-rand"]
 da-light = ["bridge-p2p", "dep:tonic", "dep:rustls"]
 bridge = ["axum/ws", "app/bridge", "dep:hmac", "dep:sha2", "dep:tempfile"]
@@ -45,6 +46,10 @@ hmac = { version = "0.12", optional = true }
 sha2 = { version = "0.10", optional = true }
 tempfile = { version = "3", optional = true }
 multistream-select = { version = "0.14", optional = true }
+tobi_quic = { git = "https://github.com/shiguredo/tobi-quic", rev = "1a178417a286512e936dda3393d531cf2afa3a08", optional = true }
+tobi_webtransport = { git = "https://github.com/shiguredo/tobi-quic", rev = "1a178417a286512e936dda3393d531cf2afa3a08", optional = true }
+x509-parser = { version = "0.18", optional = true }
+tokio-util = { version = "0.7", features = ["compat"], optional = true }
 futures = { version = "0.3", optional = true }
 libp2p-autonat = { version = "=0.16.0", default-features = false, features = ["v1"], optional = true }
 libp2p-webrtc = { version = "=0.10.0-alpha", default-features = false, features = ["tokio", "pem"], optional = true }

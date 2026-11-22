@@ -44,7 +44,7 @@ jobs:
           cache-dependency-path: |
             go-app/go.sum
             go-node/go.sum
-      - run: cargo build --locked -p celestia-rs --no-default-features --features da-light,da-webrtc
+      - run: cargo build --locked -p celestia-rs --no-default-features --features da-light,da-webrtc,da-webtransport
         env:
           CARGO_PROFILE_DEV_DEBUG: '0'
       - name: Build the release network probe
@@ -59,6 +59,7 @@ jobs:
         working-directory: go-node
       - run: conformance/da/light/test-go-bridge.sh target/debug/celestia-rs go-app go-node
         env:
+          DA_TEST_WEBTRANSPORT: "1"
           DA_TEST_WEBRTC: "1"
           DA_QUALIFICATION_SECONDS: ${{ inputs.observer_seconds || '10' }}
       - name: Check real Go AutoNAT dial-backs with private routing

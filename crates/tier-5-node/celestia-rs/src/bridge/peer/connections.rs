@@ -17,21 +17,25 @@ use std::{
 };
 
 #[derive(Clone, Copy)]
-pub(super) enum Transport {
+pub(super) enum PeerTransport {
     Tcp(&'static str),
     WebSocket(&'static str),
     #[cfg(feature = "da-webrtc")]
     WebRtc,
+    #[cfg(feature = "da-webtransport")]
+    WebTransport,
     Quic,
 }
 
-impl Transport {
+impl PeerTransport {
     fn info(self) -> Value {
         let (transport, security, muxer) = match self {
             Self::Tcp(sec) => ("tcp", sec, "/yamux/1.0.0"),
             Self::WebSocket(sec) => ("websocket", sec, "/yamux/1.0.0"),
             #[cfg(feature = "da-webrtc")]
             Self::WebRtc => ("webrtc-direct", "", ""),
+            #[cfg(feature = "da-webtransport")]
+            Self::WebTransport => ("webtransport", "", ""),
             Self::Quic => ("quic-v1", "", ""),
         };
         json!({"Transport":transport,"Security":security,"StreamMultiplexer":muxer,"UsedEarlyMuxerNegotiation":false})
@@ -39,7 +43,7 @@ impl Transport {
 }
 
 struct Connection {
-    transport: Transport,
+    transport: PeerTransport,
     peer: PeerId,
     inbound: bool,
     opened: String,
@@ -81,7 +85,7 @@ impl Connections {
         peer: PeerId,
         point: &ConnectedPoint,
         inner: M,
-        transport: Transport,
+        transport: PeerTransport,
     ) -> ObservedMuxer<M> {
         let now = light::verifier::now();
         let conn = Arc::new(Connection {
@@ -111,7 +115,10 @@ impl Connections {
             snapshot.connection(
                 conn.peer,
                 !conn.inbound,
-                matches!(conn.transport, Transport::Tcp(_) | Transport::WebSocket(_)),
+                matches!(
+                    conn.transport,
+                    PeerTransport::Tcp(_) | PeerTransport::WebSocket(_)
+                ),
             );
             for stream in conn.live_streams() {
                 snapshot.stream(conn.peer, &stream);
