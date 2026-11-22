@@ -98,6 +98,8 @@ pub(super) async fn listener(
                     .as_deref()
                     .map(|host| {
                         super::core::channel(
+                            #[cfg(feature = "da-fibre")]
+                            &args.network,
                             host,
                             args.core_port.unwrap_or(9090),
                             args.core_tls,
@@ -159,6 +161,7 @@ async fn call(service: &Service, perms: &[String], body: &[u8]) -> String {
         let node_permission = node_rpc::permission(method);
         if node_permission.is_none()
             && !blobstream::handles(method)
+            && !(cfg!(feature = "da-fibre") && method == "fibre.Download")
             && !super::data::handles(method)
             && !matches!(
                 method,
@@ -206,8 +209,10 @@ async fn dispatch(
     method: &str,
     args: Vec<Value>,
 ) -> Result<String, (i32, String)> {
-    if method == "state.BalanceForAddress" {
-        return balance(service, &args).await;
+    if method == "state.BalanceForAddress"
+        || (cfg!(feature = "da-fibre") && method == "fibre.Download")
+    {
+        return core_read(service, method, &args).await;
     }
     if matches!(method, "header.SyncState" | "header.SyncWait") {
         if !args.is_empty() {
@@ -304,23 +309,32 @@ async fn dispatch(
     .map_err(|e| (1, e.to_string()))?
     .map_err(|e| (1, e.to_string()))
 }
-async fn balance(service: &Service, args: &[Value]) -> Result<String, (i32, String)> {
-    let [Value::String(address)] = args else {
-        return Err((-32602, "expected address".into()));
+async fn core_read(
+    service: &Service,
+    method: &str,
+    args: &[Value],
+) -> Result<String, (i32, String)> {
+    let [Value::String(value)] = args else {
+        return Err((-32602, "expected one string argument".into()));
     };
     let core = service.core.clone().ok_or_else(|| {
-        (
-            1,
+        let reason = if method == "fibre.Download" {
+            "fibre module is not available: node is not connected to a core endpoint"
+        } else {
             "node is running without state access. run with --core.ip <CORE NODE IP> to resolve"
-                .to_owned(),
-        )
+        };
+        (1, reason.to_owned())
     })?;
     let _permit = service
         .workers
         .try_acquire()
         .map_err(|_| (-32000, "light RPC busy".into()))?;
-    super::core::balance(core, &service.db, address)
-        .await
+    let result = match method {
+        #[cfg(feature = "da-fibre")]
+        "fibre.Download" => super::core::download(core, value).await,
+        _ => super::core::balance(core, &service.db, value).await,
+    };
+    result
         .map(|v| v.to_string())
         .map_err(|e| (1, e.to_string()))
 }

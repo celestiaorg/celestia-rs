@@ -127,3 +127,17 @@ at the height preceding the sampled head. The node checks the bank proof and
 multistore proof against that head's app hash before returning the amount.
 The private fixture checks a funded account, a proven absent account and
 rejection of a changed core response over an authenticated TLS connection.
+
+Build the same executable with `--features da-fibre` to expose
+`fibre.Download` on the authenticated light RPC listener. Configure a
+Fibre-capable core with the light role's `--core.ip` flags. The client uses
+the configured core for validator and provider discovery, verifies the
+provider's rows, and reconstructs the blob for the requested commitment.
+The provider must retain the blob. The request accepts the Go JSON encoding
+of a blob ID and returns the recovered bytes in the Go result's `data` field.
+
+To exercise the complete read path privately, pass the pinned celestia-node
+checkout, `--rust-node`, and the absolute path of the feature-enabled executable
+to `conformance/da/fibre/test-go-provider.sh`. Its Go node service uploads
+random bytes to a registered local FSP. A released Go RPC client reads them
+from the Rust light listener and checks missing and malformed commitments.
