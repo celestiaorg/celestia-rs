@@ -149,6 +149,12 @@ pub struct StartOptions {
     /// Experimental libp2p bridge listener.
     #[cfg(feature = "bridge-p2p")]
     pub bridge_p2p_listen: Option<std::net::SocketAddr>,
+    /// Operator bootstrap overrides for the opt-in DA network.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_bootstrap: Vec<libp2p::Multiaddr>,
+    /// DA addresses reachable behind an operator's NAT.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_announce: Vec<libp2p::Multiaddr>,
     /// Explicit listener for the experimental read-only DA bridge.
     #[cfg(feature = "bridge")]
     pub bridge_rpc_listen: Option<std::net::SocketAddr>,
@@ -197,6 +203,10 @@ impl StartOptions {
             bridge_signer: None,
             #[cfg(feature = "bridge-p2p")]
             bridge_p2p_listen: None,
+            #[cfg(feature = "bridge-p2p")]
+            bridge_bootstrap: Vec::new(),
+            #[cfg(feature = "bridge-p2p")]
+            bridge_announce: Vec::new(),
             config,
             mempool: mempool::MempoolConfig::celestia_app(),
             p2p: None,
@@ -463,7 +473,15 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     let _bridge_peer = opts
         .bridge_p2p_listen
         .map(|addr| {
-            crate::bridge::peer::start(addr, home, &genesis.chain_id, bs.clone(), ss.clone())
+            crate::bridge::peer::start(
+                addr,
+                home,
+                &genesis.chain_id,
+                bs.clone(),
+                ss.clone(),
+                &opts.bridge_bootstrap,
+                opts.bridge_announce.clone(),
+            )
         })
         .transpose()?;
     rpc.spawn()?;
