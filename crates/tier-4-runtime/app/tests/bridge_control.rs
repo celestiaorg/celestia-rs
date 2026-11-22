@@ -17,6 +17,8 @@ fn go_bridge_control() {
     for raw in [
         include_str!("../../../../conformance/da/fixtures/v11-9.json"),
         include_str!("../../../../conformance/da/fixtures/v11-35.json"),
+        include_str!("../../../../conformance/da/fixtures/mocha-v11-empty.json"),
+        include_str!("../../../../conformance/da/fixtures/mocha-v11-paid.json"),
     ] {
         let f: Value = serde_json::from_str(raw).unwrap();
         let header = &f["header"]["header"];

@@ -11,3 +11,17 @@ Run the offline comparison with:
 ```sh
 cargo test --locked -p app --no-default-features --features bridge --test bridge_control
 ```
+
+## Mocha 5 release controls
+
+The Mocha captures come from a separate private `da-oracle` chain. The app was
+built from v11.0.0-mocha at `58be8ae90d00518800df5506b3a1e988f009c1c6` and the
+bridge from v0.36.0-mocha at `af9897bb471959660a4179048656694f3013b2f5`, using
+`go build` on their respective command packages. Height 2 is empty. Height 4
+contains both paid namespaces with the same input bytes described above.
+
+| SHA-256 input | Digest |
+|---|---|
+| Genesis | `2a455c809c8d94ee6a29e57de77291e125fe81d7e69bc67d3b5b92577309b2dc` |
+| celestia-appd | `a6646e915a8bfe7f25397524e11d2a3e3f3cc7dc420365846b2dbb35b69468ab` |
+| celestia bridge executable | `ee3c335dfba223c309e362e9c82a03fdfb2de48f01e3b3551b58e7ed99edbebe` |
