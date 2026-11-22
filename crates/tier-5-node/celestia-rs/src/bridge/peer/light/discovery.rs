@@ -95,6 +95,7 @@ pub(super) async fn maintain_connections(
                     SwarmEvent::OutgoingConnectionError { peer_id: Some(peer_id), .. } => {
                         if !swarm.is_connected(&peer_id) { providers.remove(&peer_id); }
                     }
+                    SwarmEvent::NewListenAddr { address, .. } => tracing::info!(%address, peer=%swarm.local_peer_id(), "DA light peer listening"),
                     SwarmEvent::ConnectionEstablished { .. } => {}
                     _ => continue,
                 }

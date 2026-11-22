@@ -18,7 +18,7 @@ use std::{future::Future, net::SocketAddr, path::Path, sync::Arc};
 pub(super) fn at(height: u64) -> Vec<u8> {
     [b"height/".as_slice(), &height.to_be_bytes()].concat()
 }
-fn by_hash(hash: &[u8]) -> Vec<u8> {
+pub(super) fn by_hash(hash: &[u8]) -> Vec<u8> {
     [b"hash/".as_slice(), hash].concat()
 }
 

@@ -1,6 +1,7 @@
 //! Authenticated, sequential DA sync and restartable sampling from a trusted checkpoint.
 mod data;
 mod discovery;
+mod exchange;
 mod rpc;
 mod stats;
 
@@ -29,6 +30,9 @@ pub struct LightArgs {
     /// Pin a trusted 32-byte header hash. A fresh unpinned store starts at the trusted peers’ head.
     #[arg(long)]
     trusted_hash: Option<String>,
+    /// Listen for incoming DA peer connections at this TCP multiaddress.
+    #[arg(long)]
+    p2p_listen: Option<Multiaddr>,
     /// Serve authenticated sampled headers on this loopback HTTP socket.
     #[arg(long)]
     rpc_listen: Option<std::net::SocketAddr>,
@@ -565,12 +569,20 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
         .with_behaviour(|_| behaviour)?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(120)))
         .build();
+    if let Some(addr) = &args.p2p_listen {
+        swarm.listen_on(addr.clone())?;
+    }
     for (peer, addrs) in &addresses {
         for addr in addrs {
             swarm.add_peer_address(*peer, addr.clone());
         }
     }
     let headers = StreamProtocol::try_from_owned(format!("/{}/header-ex/v0.0.3", args.network))?;
+    exchange::start(
+        swarm.behaviour().streams.new_control(),
+        headers.clone(),
+        db.clone(),
+    )?;
     let samples =
         StreamProtocol::try_from_owned(format!("/{}/shrex/v0.1.0/sample_v0", args.network))?;
     let eds = StreamProtocol::try_from_owned(format!("/{}/shrex/v0.1.0/eds_v0", args.network))?;

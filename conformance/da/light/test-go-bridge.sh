@@ -122,7 +122,7 @@ bridge=
 DA_TEST_READ_TOKEN=$("$rust" da-auth read --home "$work/rust-light")
 export DA_TEST_READ_TOKEN
 endpoint=http://127.0.0.1:39658
-"$rust" "${args[@]}" --rpc-listen 127.0.0.1:39658 >"$work/light.log" 2>&1 &
+RUST_LOG=celestia_rs::bridge::peer=info "$rust" "${args[@]}" --p2p-listen /ip4/127.0.0.1/tcp/39621 --rpc-listen 127.0.0.1:39658 >"$work/light.log" 2>&1 &
 light=$!
 for attempt in {1..60}; do
     kill -0 "$light"
@@ -134,6 +134,10 @@ for attempt in {1..60}; do
 done
 probe=$(realpath "$(dirname "$0")/read.go")
 (cd "$node_src" && go run "$probe" "$endpoint" "$height" "$hash")
+light_peer=$(sed -n 's/.*DA light peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/light.log" | head -1)
+: "${light_peer:?missing light peer identity}"
+exchange_probe=$(realpath "$(dirname "$0")/read_exchange.go")
+(cd "$node_src" && go run "$exchange_probe" "$chain" "/ip4/127.0.0.1/tcp/39621/p2p/$light_peer" "$height" "$hash")
 tuple_probe=$(realpath "$(dirname "$0")/../subscriptions/check.go")
 (cd "$node_src" && go run "$tuple_probe" "$endpoint" blobstream "$height" "$((height+3))")
 auth_probe=$(realpath "$(dirname "$0")/../auth/check.go")

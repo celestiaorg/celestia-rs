@@ -110,3 +110,10 @@ Historical blob subscriptions start at a retained sampled header and verify
 the square from a DA provider before delivering the namespace's blobs.
 The private fixture replays its paid blob, cancels the subscription and
 checks the next two live headers through the released Go client.
+
+The light peer serves retained sampled headers through the chain's
+go-header exchange. To accept a new incoming TCP connection, supply a
+listen multiaddress such as `--p2p-listen /ip4/127.0.0.1/tcp/39621`.
+The private fixture disconnects the Go bridge, connects a fresh Go
+exchange client directly to the Rust light peer and verifies the paid
+checkpoint by height and hash, its next two signed headers and the head.
