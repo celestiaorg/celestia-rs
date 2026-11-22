@@ -48,3 +48,5 @@ jobs:
         run: conformance/da/fibre/test-bridge-download.sh target/debug/celestia-rs go-node
       - name: Settle uploads through a separately funded Rust light wallet
         run: conformance/da/fibre/test-bridge-download.sh target/debug/celestia-rs go-node --light
+      - name: Reconstruct after a registered minority provider stops
+        run: conformance/da/fibre/test-bridge-download.sh target/debug/celestia-rs go-node --provider-loss
