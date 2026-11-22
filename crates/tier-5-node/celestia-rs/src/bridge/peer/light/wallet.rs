@@ -123,16 +123,14 @@ impl Wallet {
             Some(blobs) => txs::blob_tx(&signed.raw, &blobs),
             None => signed.raw,
         };
-        let resp: tx::BroadcastTxResponse = core
-            .unary(
-                "/cosmos.tx.v1beta1.Service/BroadcastTx",
-                tx::BroadcastTxRequest {
-                    tx_bytes: bytes,
-                    mode: tx::BroadcastMode::Sync.into(),
-                },
-            )
+        let request = tx::BroadcastTxRequest {
+            tx_bytes: bytes,
+            mode: tx::BroadcastMode::Sync.into(),
+        };
+        let response: tx::BroadcastTxResponse = core
+            .unary("/cosmos.tx.v1beta1.Service/BroadcastTx", request.clone())
             .await?;
-        let check = resp
+        let check = response
             .tx_response
             .context("missing core transaction response")?;
         ensure!(check.code == 0, "transaction rejected: {}", check.raw_log);
@@ -140,7 +138,8 @@ impl Wallet {
             check.txhash.eq_ignore_ascii_case(&hash),
             "core returned a different transaction hash"
         );
-        let height = tokio::time::timeout(Duration::from_secs(120), confirm(core, &hash)).await??;
+        let height =
+            tokio::time::timeout(Duration::from_secs(180), confirm(core, &hash, request)).await??;
         Ok((height, hash))
     }
 }
@@ -198,32 +197,40 @@ async fn fees(
     Ok((price, units))
 }
 
-async fn confirm(core: &Core, hash: &str) -> Result<i64> {
+async fn confirm(core: &Core, hash: &str, request: tx::BroadcastTxRequest) -> Result<i64> {
+    use celestia_proto::celestia::core::v1::tx as status;
+    let mut retry = Some(request);
     loop {
-        let result: Result<tx::GetTxResponse, _> = core
+        let response: status::TxStatusResponse = core
             .unary(
-                "/cosmos.tx.v1beta1.Service/GetTx",
-                tx::GetTxRequest {
-                    hash: hash.to_owned(),
+                "/celestia.core.v1.tx.Tx/TxStatus",
+                status::TxStatusRequest {
+                    tx_id: hash.to_owned(),
                 },
             )
-            .await;
-        match result {
-            Ok(response) => {
-                let tx = response
-                    .tx_response
-                    .context("missing committed transaction")?;
+            .await?;
+        match response.status.as_str() {
+            "COMMITTED" => {
                 ensure!(
-                    tx.height > 0 && tx.txhash.eq_ignore_ascii_case(hash),
-                    "invalid core transaction receipt"
+                    response.execution_code == 0,
+                    "transaction failed: {}",
+                    response.error
                 );
-                ensure!(tx.code == 0, "transaction failed: {}", tx.raw_log);
-                return Ok(tx.height);
+                ensure!(response.height > 0, "missing commit height");
+                return Ok(response.height);
             }
-            Err(err) if err.code() == tonic::Code::NotFound => {
-                tokio::time::sleep(Duration::from_millis(250)).await;
+            "EVICTED" => {
+                if let Some(request) = retry.take() {
+                    let _: tx::BroadcastTxResponse = core
+                        .unary("/cosmos.tx.v1beta1.Service/BroadcastTx", request)
+                        .await?;
+                }
             }
-            Err(err) => return Err(err.into()),
+            "PENDING" => {}
+            // A Rust core can remove the proposal just before its receipt is published.
+            "REJECTED" if response.execution_code == 0 && response.error.is_empty() => {}
+            _ => anyhow::bail!("transaction {hash} {}: {}", response.status, response.error),
         }
+        tokio::time::sleep(Duration::from_millis(250)).await;
     }
 }
