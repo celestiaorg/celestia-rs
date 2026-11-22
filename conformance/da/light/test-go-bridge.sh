@@ -154,6 +154,14 @@ timeout 120 "$rust" da-light --home "$work/quic-light" --network "$chain" --peer
 grep -Fq "sampled height $height (16 verified shares), hash $hash" "$work/quic-samples.log"
 echo "Rust verified the signed paid header and 16 samples from the Go QUIC peer"
 
+if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then
+    rtc=$(sed -n 's@.*/ip4/[0-9.]*\(/udp/39221/webrtc-direct/certhash/[[:alnum:]_-]*/p2p/[[:alnum:]]*\).*@/ip4/127.0.0.1\1@p' "$work/bridge.log" | head -1)
+    [[ -n "$rtc" ]]
+    timeout 120 "$rust" da-light --home "$work/rtc-light" --network "$chain" --peer "$rtc" \
+        --p2p-listen /ip4/127.0.0.1/udp/0/webrtc-direct --trusted-hash "$hash" --until "$height" >"$work/rtc-samples.log"
+    grep -Fq "sampled height $height (16 verified shares), hash $hash" "$work/rtc-samples.log"
+fi
+
 # A new store may bootstrap at a trusted Go peer's signed head without a fixed hash.
 auto_home="$work/trusted-head"
 timeout 90 "$rust" da-light --home "$auto_home" --network "$chain" --peer "$peer" --until 1 >"$work/trusted.log"

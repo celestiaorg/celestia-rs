@@ -130,6 +130,8 @@ target/release/celestia-rs start --network local --home "$DA_HOME" \
 
 To accept QUIC v1 peers on that host, also pass `--bridge-p2p-listen /ip4/127.0.0.1/udp/32121/quic-v1`. Expose the selected UDP port to the peers that should reach it. For WebSocket peers, supply a separate TCP listener ending in `/ws` or `/tls/ws`. For TLS, set `CELESTIA_TLS_PATH` to a directory containing the PEM certificate chain in `cert.pem` and its private key in `key.pem`.
 
+For WebRTC direct, add the optional Cargo feature `da-webrtc` and a listener such as `--bridge-p2p-listen /ip4/0.0.0.0/udp/32124/webrtc-direct`. Use a separate UDP port from QUIC. The node adds its DTLS certificate hash to the advertised address and stores the certificate beside its DA peer key. Standalone light mode uses the same transport with `--p2p-listen`. Configure a WebRTC listener when dialing a WebRTC-only peer so the transport has a local UDP socket.
+
 Set `DA_HOME` to a fresh directory before starting the canary. The Rust
 node creates its own DA identity. In a second shell, mint a read token
 for the same home and compare the DA commit hash with the consensus

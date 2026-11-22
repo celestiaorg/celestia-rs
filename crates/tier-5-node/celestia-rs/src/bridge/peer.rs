@@ -4,6 +4,8 @@ mod bandwidth;
 mod connections;
 mod negotiation;
 mod resources;
+#[cfg(feature = "da-webrtc")]
+mod webrtc;
 mod websocket;
 pub(crate) use admin::Control;
 mod flood;
@@ -28,6 +30,25 @@ use prost::Message;
 use tokio::sync::{Semaphore, oneshot};
 
 use super::{Bridge, Committed, HeaderWire, Server, index};
+
+struct PeerIdentity {
+    key: identity::Keypair,
+    #[cfg(feature = "da-webrtc")]
+    certificate: Option<libp2p_webrtc::tokio::Certificate>,
+}
+
+impl PeerIdentity {
+    fn load(path: &Path, _listeners: &[Multiaddr]) -> Result<Self> {
+        let key = identity(path)?;
+        #[cfg(feature = "da-webrtc")]
+        let certificate = webrtc::for_listeners(path, _listeners)?;
+        Ok(Self {
+            key,
+            #[cfg(feature = "da-webrtc")]
+            certificate,
+        })
+    }
+}
 
 fn identity(path: &Path) -> Result<identity::Keypair> {
     match std::fs::read(path) {
@@ -134,7 +155,7 @@ pub(crate) fn start(
     announce: Vec<Multiaddr>,
 ) -> Result<(Server, Control)> {
     let peers = network::Peering::new(network, bootstrap, announce)?;
-    let key = identity(&home.join("config/da_peer.key"))?;
+    let key = PeerIdentity::load(&home.join("config/da_peer.key"), &listen)?;
     let net = network.to_owned();
     let (stop, stopped) = oneshot::channel();
     let (ready, started) = mpsc::sync_channel(1);
@@ -174,12 +195,13 @@ pub(crate) fn start(
 }
 
 fn observed_swarm(
-    key: identity::Keypair,
+    identity: PeerIdentity,
     behaviour: network::Behaviour,
     connections: &connections::Connections,
 ) -> Result<libp2p::Swarm<network::Behaviour>> {
     use libp2p::core::{muxing::StreamMuxerBox, upgrade::Version};
 
+    let key = identity.key;
     let tcp_observed = connections.clone();
     let tcp = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
         .upgrade(Version::V1Lazy)
@@ -210,9 +232,33 @@ fn observed_swarm(
             )
         },
     );
-    let native = libp2p::dns::tokio::Transport::system(
-        tcp.or_transport(quic).map(|either, _| either.into_inner()),
-    )?;
+    let native = tcp.or_transport(quic).map(|either, _| either.into_inner());
+    #[cfg(feature = "da-webrtc")]
+    let native = {
+        use libp2p::core::transport::OptionalTransport;
+        let rtc = match identity.certificate {
+            Some(cert) => {
+                OptionalTransport::some(libp2p_webrtc::tokio::Transport::new(key.clone(), cert))
+            }
+            None => OptionalTransport::none(),
+        };
+        let observed = connections.clone();
+        let rtc = rtc.map(move |(peer, mux), point| {
+            (
+                peer,
+                StreamMuxerBox::new(observed.observe(
+                    peer,
+                    &point,
+                    mux,
+                    connections::Transport::WebRtc,
+                )),
+            )
+        });
+        native
+            .or_transport(rtc)
+            .map(|either, _| either.into_inner())
+    };
+    let native = libp2p::dns::tokio::Transport::system(native)?;
 
     // WebSocket must see the hostname before DNS resolution so TLS can verify it.
     let tcp = libp2p::dns::tokio::Transport::system(tcp::tokio::Transport::new(
@@ -242,7 +288,7 @@ fn observed_swarm(
 }
 
 async fn run(
-    key: identity::Keypair,
+    identity: PeerIdentity,
     listen: Vec<Multiaddr>,
     network: &str,
     serving: Serving,
@@ -254,7 +300,7 @@ async fn run(
         admin::Blocklist,
     ),
 ) -> Result<()> {
-    let mut behaviour = network::Behaviour::new(&key, network, libp2p::kad::Mode::Server)?;
+    let mut behaviour = network::Behaviour::new(&identity.key, network, libp2p::kad::Mode::Server)?;
     blocklist.restore(&mut behaviour)?;
     for peer in peers.bootstrap.keys() {
         behaviour.protected.protect(*peer, "protected-bootstrap");
@@ -264,12 +310,12 @@ async fn run(
     let ping = ping::Ping::start(behaviour.negotiated.new_control())?;
     flood::start(
         behaviour.negotiated.new_control(),
-        key.clone(),
+        identity.key.clone(),
         network,
         bridge.clone(),
     )?;
     let connections = connections::Connections::default();
-    let mut swarm = observed_swarm(key, behaviour, &connections)?;
+    let mut swarm = observed_swarm(identity, behaviour, &connections)?;
     let mut starting: HashSet<_> = listen
         .into_iter()
         .map(|addr| swarm.listen_on(addr))

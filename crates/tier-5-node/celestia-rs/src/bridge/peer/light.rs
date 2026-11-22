@@ -11,7 +11,7 @@ mod rpc;
 mod stats;
 mod wallet;
 
-use super::{HeaderResponse, HeaderWire, Origin, Proof, Request, Sample, identity};
+use super::{HeaderResponse, HeaderWire, Origin, PeerIdentity, Proof, Request, Sample};
 use anyhow::{Context, Result, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use kvdb::{KvBackend, RedbBackend, RedbOptions, WriteBatch};
@@ -608,9 +608,9 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     )?);
     // Bind synchronously with startup so a busy port is reported to the operator.
     let (status, observer) = tokio::sync::watch::channel(stats::Sampling::default());
-    let key = identity(&dir.join("peer.key"))?;
+    let identity = PeerIdentity::load(&dir.join("peer.key"), &args.p2p_listen)?;
     let mut behaviour =
-        super::network::Behaviour::new(&key, &args.network, libp2p::kad::Mode::Client)?;
+        super::network::Behaviour::new(&identity.key, &args.network, libp2p::kad::Mode::Client)?;
     let blocklist = super::admin::Blocklist::open(&dir)?;
     blocklist.restore(&mut behaviour)?;
     for peer in addresses.keys() {
@@ -618,7 +618,7 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     }
     let ping = super::ping::Ping::start(behaviour.negotiated.new_control())?;
     let connections = super::connections::Connections::default();
-    let mut swarm = super::observed_swarm(key, behaviour, &connections)?;
+    let mut swarm = super::observed_swarm(identity, behaviour, &connections)?;
     let operations = super::admin::Operations::new(ping, connections);
     let (peer_control, requests) = super::admin::Control::channel();
     for addr in &args.p2p_listen {

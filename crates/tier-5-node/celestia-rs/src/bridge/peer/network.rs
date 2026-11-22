@@ -151,6 +151,11 @@ impl Peering {
                     };
                     matches!(port, Some(Protocol::Tcp(port)) if port != 0)
                 }
+                #[cfg(feature = "da-webrtc")]
+                Some(Protocol::Certhash(_)) => {
+                    endpoint.pop() == Some(Protocol::WebRTCDirect)
+                        && matches!(endpoint.pop(),Some(Protocol::Udp(port)) if port != 0)
+                }
                 Some(Protocol::QuicV1) => {
                     matches!(endpoint.pop(), Some(Protocol::Udp(port)) if port != 0)
                 }

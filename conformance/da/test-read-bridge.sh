@@ -15,6 +15,9 @@ peer_args=()
 if [[ "${3:-}" == --peer || "${3:-}" == --stock-light || "${3:-}" == --validator-load ]]; then
     peer_args=(--prometheus-listen-addr 127.0.0.1:32660 --bridge-p2p-listen 127.0.0.1:32121 --bridge-p2p-listen /ip4/127.0.0.1/udp/32121/quic-v1
         --bridge-p2p-listen /ip4/127.0.0.1/tcp/32122/ws --bridge-p2p-listen /ip4/127.0.0.1/tcp/32123/tls/ws)
+    if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then
+        peer_args+=(--bridge-p2p-listen /ip4/127.0.0.1/udp/32124/webrtc-direct)
+    fi
 fi
 pid=
 bootstrap_pid=
@@ -159,6 +162,14 @@ if (( ${#peer_args[@]} )); then
         DA_TEST_ADMIN_URL=http://127.0.0.1:32658 SSL_CERT_FILE="$tls_dir/ca.pem" CELESTIA_TLS_PATH="$tls_dir" \
             "$work/websocket-reader" celestia-rs-local "$transport/p2p/$peer_id" "$height" "$namespace" "$data"
     done
+    if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then
+        rtc_addr() {
+            sed -n 's@.*address=\(/ip4/127.0.0.1/udp/32124/webrtc-direct/certhash/[[:alnum:]_-]*\).*@\1@p' "$work/node.log" | head -1
+        }
+        rtc=$(rtc_addr)
+        [[ -n "$rtc" ]]
+        DA_TEST_ADMIN_URL=http://127.0.0.1:32658 "$work/websocket-reader" celestia-rs-local "$rtc/p2p/$peer_id" "$height" "$namespace" "$data"
+    fi
     verify_count() {
         local protocol=$1 outcome=$2 minimum=$3
         awk -v series="protocol=\"$protocol\",outcome=\"$outcome\"" -v minimum="$minimum" '
@@ -221,6 +232,7 @@ if [[ "${3:-}" == --stock-light ]]; then
     start_rust
     recovered_id=$(sed -n 's/.*DA peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/node.log" | head -1)
     [[ "$recovered_id" == "$peer_id" ]]
+    if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then [[ $(rtc_addr) == "$rtc" ]]; fi
     data=$(python3 -c 'print("a4b2c6" * 4000)')
     pay_for_blob
     read_from_light
