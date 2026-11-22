@@ -65,10 +65,14 @@ jobs:
         run: cargo test --locked -p celestia-rs --no-default-features --features bridge-p2p,da-webrtc --test da_index_restart -- --ignored --nocapture
         env:
           CARGO_PROFILE_DEV_DEBUG: '0'
+      - name: Install the locked browser interoperability client
+        working-directory: conformance/da/peer/browser
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify a paid blob with the release client
         run: conformance/da/test-read-bridge.sh target/debug/celestia-rs reference-node --stock-light
         env:
           DA_TEST_WEBRTC: "1"
+          DA_TEST_BROWSER: "1"
       - name: Verify validator commits under concurrent RPC and SHREX load
         if: github.event_name == 'workflow_dispatch' && inputs.validator_seconds != ''
         env:

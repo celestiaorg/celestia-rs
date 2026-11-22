@@ -173,6 +173,11 @@ if (( ${#peer_args[@]} )); then
         [[ -n "$rtc" ]]
         DA_TEST_ADMIN_URL=http://127.0.0.1:32658 "$work/websocket-reader" celestia-rs-local "$rtc/p2p/$peer_id" "$height" "$namespace" "$data"
         DA_TEST_WEBRTC_V2=1 DA_TEST_ADMIN_URL=http://127.0.0.1:32658 "$work/websocket-reader" celestia-rs-local "$rtc/p2p/$peer_id" "$height" "$namespace" "$data"
+        if [[ ${DA_TEST_BROWSER:-} == 1 ]]; then
+            browser_dir=$(dirname "$peer_probe")/browser
+            committed=$(curl -fsS "http://127.0.0.1:26657/block?height=$height" | jq -er '.result.block_id.hash')
+            (cd "$go_tree" && go run "$browser_dir/verify.go" "$browser_dir/run.mjs" "$rtc/p2p/$peer_id" celestia-rs-local "$height" "$committed")
+        fi
     fi
     verify_count() {
         local protocol=$1 outcome=$2 minimum=$3
