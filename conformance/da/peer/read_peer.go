@@ -40,7 +40,8 @@ func check(err error) {
 }
 
 func main() {
-	if len(os.Args) != 6 {
+	lightAdmin := len(os.Args) == 4 && os.Args[3] == "--light-admin"
+	if len(os.Args) != 6 && !lightAdmin {
 		panic("expected CHAIN MULTIADDR HEIGHT NAMESPACE_HEX BLOB_HEX")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -49,14 +50,6 @@ func main() {
 	addr, err := ma.NewMultiaddr(os.Args[2])
 	check(err)
 	info, err := peer.AddrInfoFromP2pAddr(addr)
-	check(err)
-	h, err := strconv.ParseUint(os.Args[3], 10, 64)
-	check(err)
-	sub, err := hex.DecodeString(os.Args[4])
-	check(err)
-	ns, err := share.NewV0Namespace(sub)
-	check(err)
-	data, err := hex.DecodeString(os.Args[5])
 	check(err)
 	host, err := libp2p.New(libp2p.NoListenAddrs)
 	check(err)
@@ -75,6 +68,24 @@ func main() {
 		stop()
 		checkAdmin(ctx, endpoint, chain, *info, host)
 	}
+	if lightAdmin {
+		if os.Getenv("DA_TEST_ADMIN_URL") == "" {
+			panic("missing light admin endpoint")
+		}
+		_, err := host.NewStream(ctx, info.ID, protocol.ID("/"+chain+"/shrex/v0.1.0/sample_v0"))
+		if !errors.Is(err, multistream.ErrNotSupported[protocol.ID]{}) {
+			panic("light advertised bridge sample serving")
+		}
+		return
+	}
+	h, err := strconv.ParseUint(os.Args[3], 10, 64)
+	check(err)
+	sub, err := hex.DecodeString(os.Args[4])
+	check(err)
+	ns, err := share.NewV0Namespace(sub)
+	check(err)
+	data, err := hex.DecodeString(os.Args[5])
+	check(err)
 	for _, proto := range []protocol.ID{"/other-private-chain/header-ex/v0.0.3", "/other-private-chain/shrex/v0.1.0/sample_v0"} {
 		stream, err := host.NewStream(ctx, info.ID, proto)
 		if err == nil {
@@ -176,7 +187,7 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	if latency <= 0 {
 		panic("missing Go ping echo")
 	}
-	fmt.Println("Verified bidirectional libp2p ping with the Rust bridge")
+	fmt.Println("Verified bidirectional libp2p ping with the Rust DA peer")
 	info, err := admin.P2P.Info(ctx)
 	check(err)
 	if info.ID != server.ID || len(info.Addrs) == 0 {

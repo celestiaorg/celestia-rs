@@ -984,7 +984,7 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
             Ok(())
         }
         #[cfg(feature = "da-light")]
-        Cmd::DaLight(args) => celestia_rs::run_light(&home, args).await,
+        Cmd::DaLight(args) => Box::pin(celestia_rs::run_light(&home, args)).await,
         #[cfg(feature = "bridge")]
         Cmd::DaAuth { level, ttl_seconds } => {
             util::out(celestia_rs::operator_token(&home, &level, ttl_seconds)?);

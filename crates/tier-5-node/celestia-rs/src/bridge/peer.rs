@@ -178,6 +178,29 @@ pub(crate) fn start(
     Ok((server, control))
 }
 
+fn observed_swarm(
+    key: identity::Keypair,
+    behaviour: network::Behaviour,
+    connections: &connections::Connections,
+) -> Result<libp2p::Swarm<network::Behaviour>> {
+    let observed = connections.clone();
+    let security = noise::Config::new(&key)?;
+    let swarm = SwarmBuilder::with_existing_identity(key)
+        .with_tokio()
+        .with_other_transport(move |_| {
+            tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
+                .upgrade(libp2p::core::upgrade::Version::V1Lazy)
+                .authenticate(security)
+                .multiplex(yamux::Config::default())
+                .map(move |(peer, mux), point| (peer, observed.observe(peer, &point, mux)))
+        })?
+        .with_dns()?
+        .with_behaviour(move |_| behaviour)?
+        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(120)))
+        .build();
+    Ok(swarm)
+}
+
 async fn run(
     key: identity::Keypair,
     listen: Multiaddr,
@@ -191,7 +214,7 @@ async fn run(
         admin::Blocklist,
     ),
 ) -> Result<()> {
-    let mut behaviour = network::Behaviour::new(&key, network)?;
+    let mut behaviour = network::Behaviour::new(&key, network, libp2p::kad::Mode::Server)?;
     blocklist.restore(&mut behaviour)?;
     for peer in peers.bootstrap.keys() {
         behaviour.protected.protect(*peer, "protected-bootstrap");
@@ -206,21 +229,7 @@ async fn run(
         bridge.clone(),
     )?;
     let connections = connections::Connections::default();
-    let observed = connections.clone();
-    let security = noise::Config::new(&key)?;
-    let mut swarm = SwarmBuilder::with_existing_identity(key)
-        .with_tokio()
-        .with_other_transport(move |_| {
-            tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
-                .upgrade(libp2p::core::upgrade::Version::V1Lazy)
-                .authenticate(security)
-                .multiplex(yamux::Config::default())
-                .map(move |(peer, mux), point| (peer, observed.observe(peer, &point, mux)))
-        })?
-        .with_dns()?
-        .with_behaviour(move |_| behaviour)?
-        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(120)))
-        .build();
+    let mut swarm = observed_swarm(key, behaviour, &connections)?;
     swarm.listen_on(listen)?;
     for address in &peers.announce {
         swarm.add_external_address(address.clone());

@@ -362,11 +362,11 @@ mod tests {
         let args = [json!(id.to_string())];
         for action in ["p2p.BlockPeer", "p2p.UnblockPeer"] {
             let db = Blocklist::open(dir.path())?;
-            let mut gate = Behaviour::new(&key, "private")?;
+            let mut gate = Behaviour::new(&key, "private", libp2p::kad::Mode::Server)?;
             db.restore(&mut gate)?;
             db.update(&mut gate, action, &args)?;
             drop(db);
-            let mut restored = Behaviour::new(&key, "private")?;
+            let mut restored = Behaviour::new(&key, "private", libp2p::kad::Mode::Server)?;
             Blocklist::open(dir.path())?.restore(&mut restored)?;
             assert_eq!(
                 restored.gate.blocked_peers().contains(&id),

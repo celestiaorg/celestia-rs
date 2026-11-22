@@ -64,6 +64,7 @@ pub(super) fn store_header(
 }
 
 struct Service {
+    peer: crate::bridge::peer::Control,
     data: super::data::Client,
     core: Option<super::core::Core>,
     wallet: Option<Arc<super::wallet::Wallet>>,
@@ -90,6 +91,7 @@ pub(super) async fn listener(
     db: Arc<RedbBackend>,
     status: tokio::sync::watch::Receiver<super::stats::Sampling>,
     peers: super::Peers,
+    peer: crate::bridge::peer::Control,
 ) -> Result<impl Future<Output = Result<()>> + use<>> {
     let server = if let Some(addr) = args.rpc_listen {
         ensure!(
@@ -100,6 +102,7 @@ pub(super) async fn listener(
         let router = Router::new()
             .route("/", post(handle).get(upgrade))
             .with_state(Arc::new(Service {
+                peer,
                 auth: Arc::new(Auth::open(home)?),
                 data: super::data::Client::new(peers)?,
                 wallet: args
@@ -183,7 +186,8 @@ async fn call(service: &Service, perms: &[String], body: &[u8]) -> String {
         let invalid = || (-32600, "invalid request".to_owned());
         id = req.id.ok_or_else(invalid)?;
         let method = req.method.as_str().ok_or_else(invalid)?;
-        let node_permission = node_rpc::permission(method);
+        let node_permission = node_rpc::permission(method)
+            .or_else(|| crate::bridge::peer::Control::handles(method).then_some("admin"));
         if node_permission.is_none()
             && !blobstream::handles(method)
             && !core_method(method)
@@ -223,6 +227,12 @@ async fn call(service: &Service, perms: &[String], body: &[u8]) -> String {
         Ok((method.to_owned(), args.clone()))
     })();
     let result = match response {
+        Ok((method, args)) if crate::bridge::peer::Control::handles(&method) => service
+            .peer
+            .call(&method, &args)
+            .await
+            .map(|v| v.to_string())
+            .map_err(|e| (1, e.to_string())),
         Ok((method, args)) => dispatch(service, &method, args).await,
         Err(e) => Err(e),
     };
