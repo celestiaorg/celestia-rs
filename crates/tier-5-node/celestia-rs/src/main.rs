@@ -900,7 +900,14 @@ enum CometCmd {
     ShowAddress,
 }
 
+#[cfg(feature = "footprint-narrow")]
+mod narrow_measure;
+
 fn main() -> anyhow::Result<()> {
+    #[cfg(feature = "footprint-narrow")]
+    if std::env::args().nth(1).as_deref() == Some("measure-download") {
+        return tokio::runtime::Runtime::new()?.block_on(narrow_measure::download());
+    }
     let cli = Cli::parse();
     celestia_rs::version::register_build_info();
     let home = cli.home.clone().unwrap_or_else(util::default_home);

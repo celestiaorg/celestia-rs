@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -167,6 +168,22 @@ func main() {
 		panic("Go FSP control mismatch")
 	}
 	fmt.Println("Go registered a provider and recovered the uploaded bytes against Rust consensus")
+	if binary := os.Getenv("DA_FIBRE_NARROW"); binary != "" {
+		pk, err := primaryKey.GetPubKey()
+		check(err)
+		output := filepath.Join(home, "narrow-download")
+		cmd := exec.CommandContext(ctx, binary, "measure-download", server.ListenAddress(),
+			fmt.Sprintf("%x", pk.Bytes()), paid.ChainID, fmt.Sprintf("%x", []byte(id)), output)
+		if log, err := cmd.CombinedOutput(); err != nil {
+			panic(fmt.Sprintf("narrow download: %v %s", err, log))
+		}
+		got, err := os.ReadFile(output)
+		check(err)
+		if !bytes.Equal(got, data) {
+			panic("narrow authenticated download differed from Go control")
+		}
+		fmt.Printf("Go verified the narrow authenticated transport reconstructed %d bytes\n", len(got))
+	}
 	rpc, err := client.NewClient(ctx, endpoint, os.Getenv("DA_TEST_READ_TOKEN"))
 	check(err)
 	defer rpc.Close()
