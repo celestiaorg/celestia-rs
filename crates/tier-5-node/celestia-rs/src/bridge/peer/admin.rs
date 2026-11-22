@@ -42,6 +42,7 @@ impl Control {
                 | "p2p.BlockPeer"
                 | "p2p.UnblockPeer"
                 | "p2p.ListBlockedPeers"
+                | "p2p.NATStatus"
                 | "p2p.Network"
                 | "p2p.Peers"
                 | "p2p.PeerInfo"
@@ -299,6 +300,11 @@ fn read(
                 .map(ToString::to_string)
                 .collect::<Vec<_>>()
         )),
+        ("p2p.NATStatus", []) => Ok(json!(match swarm.behaviour().autonat.nat_status() {
+            libp2p_autonat::NatStatus::Unknown => 0,
+            libp2p_autonat::NatStatus::Public(_) => 1,
+            libp2p_autonat::NatStatus::Private => 2,
+        })),
         ("p2p.Network", []) => Ok(json!(network)),
         ("p2p.Info", []) => Ok(info(
             *swarm.local_peer_id(),

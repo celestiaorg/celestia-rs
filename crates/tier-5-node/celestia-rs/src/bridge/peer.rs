@@ -277,6 +277,7 @@ async fn run(
                     tracing::info!(%address, peer=%swarm.local_peer_id(), "DA peer listening");
                     let _ = ready.try_send(Ok(()));
                 }
+                SwarmEvent::Behaviour(network::BehaviourEvent::Autonat(event)) => tracing::debug!(?event, "DA AutoNAT probe"),
                 SwarmEvent::Behaviour(network::BehaviourEvent::Identify(libp2p::identify::Event::Received { peer_id, info, .. })) => {
                     for addr in info.listen_addrs {
                         swarm.behaviour_mut().dht.add_address(&peer_id, addr);
