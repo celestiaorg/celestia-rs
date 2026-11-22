@@ -163,6 +163,9 @@ data_probe=$(realpath "$(dirname "$0")/../read_bridge.go")
 (cd "$node_src" && go run "$data_probe" "$endpoint" "$height" 0103 "$data_hex")
 
 
+ws_endpoint=${endpoint/http:/ws:}
+(cd "$node_src" && go run "$tuple_probe" "$ws_endpoint" "$height" 0103 "$data_hex" light)
+
 # The only configured peer in this fresh home has no headers or SHREX handler.
 # The nonempty checkpoint and its proofs must come from the discovered provider.
 router_src=$(realpath "$(dirname "$0")/provider_router.go")

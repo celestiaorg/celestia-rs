@@ -66,7 +66,7 @@ pub(super) fn store_header(
 
 struct Service {
     data: super::data::Client,
-    auth: Auth,
+    auth: Arc<Auth>,
     db: Arc<RedbBackend>,
     workers: Arc<tokio::sync::Semaphore>,
     waiters: tokio::sync::Semaphore,
@@ -87,10 +87,10 @@ pub(super) async fn listener(
         );
         let socket = tokio::net::TcpListener::bind(addr).await?;
         let router = Router::new()
-            .route("/", post(handle))
+            .route("/", post(handle).get(upgrade))
             .layer(DefaultBodyLimit::max(64 * 1024))
             .with_state(Arc::new(Service {
-                auth: Auth::open(home)?,
+                auth: Arc::new(Auth::open(home)?),
                 data: super::data::Client::new(peers)?,
                 db,
                 status,
@@ -114,9 +114,32 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
     let Ok((token, perms)) = credentials(&service.auth, &headers) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
+    let payload = tokio::select! {
+        result = call(&service,&perms,&body) => result,
+        () = service.auth.revoked(changed, token) => {
+            let id = crate::bridge::envelope::Request::parse(&body).ok().and_then(|req| req.id);
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":1,"message":"token revoked"}}).to_string()
+        }
+    };
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        payload,
+    )
+        .into_response()
+}
+
+async fn upgrade(
+    State(service): State<Arc<Service>>,
+    headers: HeaderMap,
+    ws: axum::extract::WebSocketUpgrade,
+) -> Response {
+    crate::bridge::ws::upgrade_endpoint(service.clone(), service.auth.clone(), headers, ws)
+}
+
+async fn call(service: &Service, perms: &[String], body: &[u8]) -> String {
     let mut id = Value::Null;
     let response = (|| {
-        let req = crate::bridge::envelope::Request::parse(&body)?;
+        let req = crate::bridge::envelope::Request::parse(body)?;
         let invalid = || (-32600, "invalid request".to_owned());
         id = req.id.ok_or_else(invalid)?;
         let method = req.method.as_str().ok_or_else(invalid)?;
@@ -128,6 +151,8 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
                 method,
                 "header.LocalHead"
                     | "header.NetworkHead"
+                    | "header.SyncState"
+                    | "header.SyncWait"
                     | "header.Tail"
                     | "header.GetByHeight"
                     | "header.GetByHash"
@@ -152,29 +177,40 @@ async fn handle(State(service): State<Arc<Service>>, headers: HeaderMap, body: B
         Ok((method.to_owned(), args.clone()))
     })();
     let result = match response {
-        Ok((method, args)) => tokio::select! {
-            result = dispatch(&service, &method, args) => result,
-            () = service.auth.revoked(changed, token) => Err((1,"token revoked".into())),
-        },
+        Ok((method, args)) => dispatch(service, &method, args).await,
         Err(e) => Err(e),
     };
-    let payload = match result {
+    match result {
         Ok(result) => format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{result}}}"#),
         Err((code, message)) => {
             json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}}).to_string()
         }
-    };
-    (
-        [(axum::http::header::CONTENT_TYPE, "application/json")],
-        payload,
-    )
-        .into_response()
+    }
 }
 async fn dispatch(
     service: &Service,
     method: &str,
     args: Vec<Value>,
 ) -> Result<String, (i32, String)> {
+    if matches!(method, "header.SyncState" | "header.SyncWait") {
+        if !args.is_empty() {
+            return Err((-32602, "invalid parameters".into()));
+        }
+        let mut status = service.status.clone();
+        if method == "header.SyncState" {
+            return Ok(status.borrow().sync_state().to_string());
+        }
+        let target = status.borrow().sync_target();
+        let _permit = service
+            .waiters
+            .try_acquire()
+            .map_err(|_| (-32000, "too many header waiters".to_owned()))?;
+        status
+            .wait_for(|s| s.sampled >= target)
+            .await
+            .map_err(|_| (1, "sampler stopped".to_owned()))?;
+        return Ok("null".into());
+    }
     if method == "header.NetworkHead" {
         if !args.is_empty() {
             return Err((-32602, "invalid parameters".into()));
@@ -366,4 +402,61 @@ fn decode_header(
         &ctypes::ValidatorSet::from_proto(&validators.context("missing validators")?)?,
         &square::DataAvailabilityHeader::from_proto_bytes(dah)?,
     ))
+}
+
+impl crate::bridge::ws::Endpoint for Service {
+    fn body_limit(&self, _: &[String]) -> usize {
+        64 * 1024
+    }
+
+    fn bounds(&self) -> Result<(i64, i64)> {
+        let tail = self
+            .db
+            .get(b"tail")?
+            .map(|v| height_of(&v))
+            .transpose()?
+            .context("missing sampled tail")?;
+        Ok((
+            i64::try_from(tail)?,
+            i64::try_from(self.status.borrow().sampled)?,
+        ))
+    }
+
+    async fn call(
+        self: Arc<Self>,
+        _: Arc<Auth>,
+        permissions: Arc<[String]>,
+        bytes: Vec<u8>,
+    ) -> String {
+        call(&self, &permissions, &bytes).await
+    }
+
+    async fn event(
+        self: Arc<Self>,
+        height: i64,
+        ns: Option<shares::Namespace>,
+    ) -> Result<Option<String>> {
+        let _permit = self.workers.try_acquire().context("light RPC busy")?;
+        let height_u = u64::try_from(height)?;
+        let raw = self
+            .db
+            .get(&at(height_u))?
+            .context("sampled header unavailable")?;
+        let wire = HeaderWire::decode(raw.as_slice())?;
+        let header = ctypes::Header::from_proto(&wire.header.context("missing header")?)?;
+        let value = if let Some(ns) = ns {
+            let blobs = self
+                .data
+                .read(&self.db, crate::bridge::Query::Blobs(height, vec![ns]))
+                .await?;
+            rpc::json::J::obj([
+                ("Blobs", rpc::json::J::Raw(blobs)),
+                ("Height", rpc::json::J::num(height)),
+                ("Header", crate::bridge::ws::raw_header(&header)?),
+            ])
+        } else {
+            decode_header(&header, wire.commit, wire.validators, &wire.dah)?
+        };
+        Ok(Some(value.encode()))
+    }
 }

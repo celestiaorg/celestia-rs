@@ -24,17 +24,42 @@ pub(super) async fn upgrade(
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
+    upgrade_endpoint(bridge, auth, headers, ws)
+}
+
+pub(super) trait Endpoint: Send + Sync + 'static {
+    fn body_limit(&self, permissions: &[String]) -> usize;
+    fn bounds(&self) -> Result<(i64, i64)>;
+    fn call(
+        self: Arc<Self>,
+        auth: Arc<Auth>,
+        permissions: Arc<[String]>,
+        bytes: Vec<u8>,
+    ) -> impl std::future::Future<Output = String> + Send;
+    fn event(
+        self: Arc<Self>,
+        height: i64,
+        ns: Option<shares::Namespace>,
+    ) -> impl std::future::Future<Output = Result<Option<String>>> + Send;
+}
+
+pub(super) fn upgrade_endpoint<E: Endpoint>(
+    endpoint: Arc<E>,
+    auth: Arc<Auth>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
     let changed = auth.subscribe();
     let Ok((token, permissions)) = credentials(&auth, &headers) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
     let token = token.map(str::to_owned);
-    let limit = bridge.body_limit(&permissions);
+    let limit = endpoint.body_limit(&permissions);
     ws.max_message_size(limit)
         .max_frame_size(limit)
         .on_upgrade(move |socket| async move {
             tokio::select! {
-                _=connection(socket,bridge,auth.clone(), permissions.into())=>{}
+                _=connection(socket,endpoint,auth.clone(), permissions.into())=>{}
                 ()=auth.revoked(changed,token.as_deref())=>{}
             }
         })
@@ -47,8 +72,8 @@ struct Subscription {
 }
 
 impl Subscription {
-    fn new(bridge: &Bridge, method: &str, params: &Value, channel: u64) -> Result<Self> {
-        let head = bridge.blocks.height();
+    fn new(bounds: (i64, i64), method: &str, params: &Value, channel: u64) -> Result<Self> {
+        let (base, head) = bounds;
         let args = params.as_array().context("invalid params")?;
         let mut next = head.checked_add(1).context("height overflow")?;
         let ns = match (method, args.len()) {
@@ -56,30 +81,55 @@ impl Subscription {
             ("blob.Subscribe", 1) | ("blob.SubscribeFromStartHeight", 2) => {
                 let raw = base64::engine::general_purpose::STANDARD
                     .decode(args[0].as_str().context("invalid namespace")?)?;
+                let ns = shares::Namespace::from_slice(&raw)?;
                 if args.len() == 2 {
+                    ns.validate_basic()?;
+                    ensure!(
+                        !ns.is_parity_shares() && ns != shares::TAIL_PADDING_NAMESPACE,
+                        "parity and tail padding namespace are forbidden"
+                    );
                     next = args[1].as_i64().context("invalid start height")?;
                     ensure!(
-                        next > 0 && next >= bridge.blocks.base() && next <= head,
+                        next > 0 && next >= base && next <= head,
                         "start height unavailable"
                     );
                 }
-                Some(shares::Namespace::from_slice(&raw)?)
+                Some(ns)
             }
             _ => anyhow::bail!("invalid subscription parameters"),
         };
         Ok(Self { channel, next, ns })
     }
+}
 
-    async fn event(&self, bridge: &Arc<Bridge>) -> Result<Option<String>> {
-        let height = self.next;
-        let ns = self.ns;
+impl Endpoint for Bridge {
+    fn body_limit(&self, permissions: &[String]) -> usize {
+        self.body_limit(permissions)
+    }
+    fn bounds(&self) -> Result<(i64, i64)> {
+        Ok((self.blocks.base(), self.blocks.height()))
+    }
+    async fn call(
+        self: Arc<Self>,
+        auth: Arc<Auth>,
+        permissions: Arc<[String]>,
+        bytes: Vec<u8>,
+    ) -> String {
+        dispatch(self, &auth, &permissions, &bytes).await
+    }
+
+    async fn event(
+        self: Arc<Self>,
+        height: i64,
+        ns: Option<shares::Namespace>,
+    ) -> Result<Option<String>> {
+        let bridge = self;
         if height > bridge.blocks.height() {
             return Ok(None);
         }
         let Ok(permit) = bridge.worker.clone().try_acquire_owned() else {
             return Ok(None);
         };
-        let bridge = bridge.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
             let value = if let Some(ns) = ns {
@@ -118,14 +168,23 @@ async fn send(socket: &mut WebSocket, data: String) -> Result<()> {
 struct Streams {
     subs: HashMap<String, Subscription>,
     next_channel: u64,
+    events: HashMap<u64, tokio::task::AbortHandle>,
     calls: tokio::task::JoinSet<(String, String)>,
     requests: HashMap<String, tokio::task::AbortHandle>,
 }
 
 impl Streams {
-    fn request(
+    fn close_subscription(&mut self, key: &str) -> Option<String> {
+        let sub = self.subs.remove(key)?;
+        if let Some(event) = self.events.remove(&sub.channel) {
+            event.abort();
+        }
+        Some(closed(sub.channel))
+    }
+
+    fn request<E: Endpoint>(
         &mut self,
-        bridge: &Arc<Bridge>,
+        endpoint: &Arc<E>,
         auth: &Arc<Auth>,
         perms: &Arc<[String]>,
         bytes: Vec<u8>,
@@ -149,10 +208,7 @@ impl Streams {
                 // go-jsonrpc waits for a final reply to the original call after xrpc.cancel.
                 return Ok(Some(json!({"jsonrpc":"2.0","id":id,"error":{"code":1,"message":"context canceled"}}).to_string()));
             }
-            return Ok(self
-                .subs
-                .remove(&id.to_string())
-                .map(|sub| closed(sub.channel)));
+            return Ok(self.close_subscription(&id.to_string()));
         }
         let id = request.id.as_ref().unwrap_or(&Value::Null);
         let key = id.to_string();
@@ -166,11 +222,11 @@ impl Streams {
             if self.calls.len() >= 16 {
                 return Ok(Some(json!({"jsonrpc":"2.0","id":id,"error":{"code":1,"message":"too many requests"}}).to_string()));
             }
-            let (bridge, auth, perms) = (bridge.clone(), auth.clone(), perms.clone());
+            let (endpoint, auth, perms) = (endpoint.clone(), auth.clone(), perms.clone());
             let request_id = key.clone();
             let handle = self
                 .calls
-                .spawn(async move { (request_id, dispatch(bridge, &auth, &perms, &bytes).await) });
+                .spawn(async move { (request_id, endpoint.call(auth, perms, bytes).await) });
             self.requests.insert(key, handle);
             return Ok(None);
         }
@@ -188,7 +244,10 @@ impl Streams {
                 &request.params
             };
             let channel = self.next_channel;
-            match Subscription::new(bridge, method, params, channel) {
+            match endpoint
+                .bounds()
+                .and_then(|bounds| Subscription::new(bounds, method, params, channel))
+            {
                 Ok(sub) => {
                     self.next_channel = channel.checked_add(1).context("channel ID exhausted")?;
                     self.subs.insert(id.to_string(), sub);
@@ -203,13 +262,14 @@ impl Streams {
     }
 }
 
-async fn connection(
+async fn connection<E: Endpoint>(
     mut socket: WebSocket,
-    bridge: Arc<Bridge>,
+    endpoint: Arc<E>,
     auth: Arc<Auth>,
     perms: Arc<[String]>,
 ) -> Result<()> {
     let mut streams = Streams::default();
+    let mut events = tokio::task::JoinSet::new();
     let mut tick = tokio::time::interval(Duration::from_millis(200));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
@@ -217,7 +277,7 @@ async fn connection(
             frame=socket.recv()=>{
                 let Some(frame)=frame else {return Ok(())};
                 let bytes=match frame? {Message::Text(t)=>t.into_bytes(),Message::Binary(b)=>b,Message::Close(_)=>return Ok(()),_=>continue};
-                if let Some(reply) = streams.request(&bridge, &auth, &perms, bytes)? {
+                if let Some(reply) = streams.request(&endpoint, &auth, &perms, bytes)? {
                     send(&mut socket, reply).await?;
                 }
             }
@@ -231,20 +291,37 @@ async fn connection(
                     _ => {}
                 }
             }
-            _=tick.tick(),if !streams.subs.is_empty()=>{
-                let mut ended=Vec::new();
-                for (id,sub) in &mut streams.subs {
-                    if sub.next<bridge.blocks.base(){ended.push(id.clone());continue}
-                    match sub.event(&bridge).await {
-                        Ok(Some(value))=>{
-                            send(&mut socket,format!(r#"{{"jsonrpc":"2.0","method":"xrpc.ch.val","params":[{},{}]}}"#,sub.channel,value)).await?;
+            Some(result) = events.join_next(), if !events.is_empty() => {
+                let (id, channel, value): (String,u64,Result<Option<String>>) = match result {
+                    Ok(event) => event,
+                    Err(error) if error.is_cancelled() => continue,
+                    Err(error) => return Err(error.into()),
+                };
+                streams.events.remove(&channel);
+                if let Some(sub) = streams.subs.get_mut(&id).filter(|s| s.channel == channel) {
+                    match value {
+                        Ok(Some(value)) => {
+                            send(&mut socket, format!(r#"{{"jsonrpc":"2.0","method":"xrpc.ch.val","params":[{channel},{value}]}}"#)).await?;
                             sub.next=sub.next.checked_add(1).context("height overflow")?;
                         }
-                        Ok(None)=>{}
-                        Err(e)=>tracing::debug!(height=sub.next,error=%e,"subscription read deferred"),
+                        Ok(None) => {}
+                        Err(error) => tracing::debug!(height=sub.next,%error,"subscription read deferred"),
                     }
                 }
-                for id in ended {if let Some(sub)=streams.subs.remove(&id){send(&mut socket,closed(sub.channel)).await?;}}
+            }
+            _=tick.tick(),if !streams.subs.is_empty()=>{
+                let (base, head) = endpoint.bounds()?;
+                let mut ended = Vec::new();
+                for (id,sub) in &streams.subs {
+                    if sub.next < base { ended.push(id.clone()); continue; }
+                    if sub.next <= head && events.len() < 16 && !streams.events.contains_key(&sub.channel) {
+                        let (id, channel, next, ns) = (id.clone(), sub.channel, sub.next, sub.ns);
+                        let endpoint = endpoint.clone();
+                        let task = events.spawn(async move { (id, channel, endpoint.event(next,ns).await) });
+                        streams.events.insert(channel,task);
+                    }
+                }
+                for id in ended {if let Some(reply)=streams.close_subscription(&id){send(&mut socket,reply).await?;}}
             }
         }
     }
@@ -256,7 +333,7 @@ fn closed(id: u64) -> String {
 
 // SubscriptionResponse.Header is marshaled with Go encoding/json. ExtendedHeader
 // uses CometBFT JSON, which represents the same 64-bit fields as strings.
-fn raw_header(h: &ctypes::Header) -> Result<J> {
+pub(super) fn raw_header(h: &ctypes::Header) -> Result<J> {
     let mut value: Value = serde_json::from_str(&rpc::encode::header(h).encode())?;
     value["height"] = json!(h.height);
     value["version"]["block"] = json!(h.version.block);

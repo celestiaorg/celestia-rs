@@ -489,7 +489,7 @@ async fn follow(
             tokio::time::sleep(Duration::from_secs(1)).await;
             continue;
         };
-        status.send_modify(|s| s.start(block.height));
+        status.send_modify(|s| s.begin_header(last.as_ref(), &block));
         let indices = sample_indices(db, &block)?;
         let completed = db
             .get(b"completed-samples")?

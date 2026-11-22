@@ -103,3 +103,10 @@ with `celestia-rs da-auth read --home "$LIGHT_HOME"`. The light store indexes
 a header after verifying its selected shares, and retains headers for the Go
 storage window of seven days plus one hour, measured from the sampled head.
 A home created by an earlier light build starts its history at its saved head.
+
+The same light RPC listener supports authenticated Go WebSocket clients.
+Header subscriptions advance as the node verifies and samples each height.
+Historical blob subscriptions start at a retained sampled header and verify
+the square from a DA provider before delivering the namespace's blobs.
+The private fixture replays its paid blob, cancels the subscription and
+checks the next two live headers through the released Go client.
