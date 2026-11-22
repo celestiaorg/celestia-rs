@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v0.1.0-rc.8 (2026-11-22)
+
+### Added
+
+- Release builds include the opt-in DA bridge and standalone DA light node.
+- Operators can configure DA bridge listeners in the validator's `app.toml`.
+
 ### Fixed
 
 - At app version 12, Fibre escrow deposits and withdrawal requests use the

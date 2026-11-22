@@ -923,7 +923,12 @@ fn main() -> anyhow::Result<()> {
     });
     #[cfg(feature = "bridge")]
     let da_rpc = match &cli.command {
-        Cmd::Start(args) => args.bridge_rpc_listen.is_some(),
+        Cmd::Start(args) => {
+            args.bridge_rpc_listen.is_some()
+                || files
+                    .as_ref()
+                    .is_some_and(|files| files.value(File::App, "da-bridge.rpc-listen").is_some())
+        }
         #[cfg(feature = "da-light")]
         Cmd::DaLight(_) => true,
         _ => false,
@@ -1327,7 +1332,19 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
     );
     #[cfg(feature = "bridge")]
     {
-        opts.bridge_rpc_listen = a.bridge_rpc_listen;
+        opts.bridge_rpc_listen = match a.bridge_rpc_listen {
+            Some(addr) => Some(addr),
+            None => files
+                .value(File::App, "da-bridge.rpc-listen")
+                .map(|value| {
+                    value
+                        .as_str()
+                        .context("da-bridge.rpc-listen must be a socket address string")?
+                        .parse()
+                        .context("invalid da-bridge.rpc-listen")
+                })
+                .transpose()?,
+        };
         opts.bridge_archival = a.bridge_archival;
         let mut signers = a.bridge_signer.iter().cloned();
         opts.bridge_signer = signers.next();
@@ -1335,7 +1352,27 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
     }
     #[cfg(feature = "bridge-p2p")]
     {
-        opts.bridge_listeners.clone_from(&a.bridge_p2p_listen);
+        opts.bridge_listeners = if a.bridge_p2p_listen.is_empty() {
+            files
+                .value(File::App, "da-bridge.p2p-listen")
+                .map(|value| {
+                    value
+                        .as_array()
+                        .context("da-bridge.p2p-listen must be an array of addresses")?
+                        .iter()
+                        .map(|addr| {
+                            node::parse_bridge_listener(
+                                addr.as_str().context("DA listener must be a string")?,
+                            )
+                            .context("invalid da-bridge.p2p-listen")
+                        })
+                        .collect::<anyhow::Result<Vec<_>>>()
+                })
+                .transpose()?
+                .unwrap_or_default()
+        } else {
+            a.bridge_p2p_listen.clone()
+        };
         opts.bridge_bootstrap.clone_from(&a.bridge_bootstrap);
         opts.bridge_announce.clone_from(&a.bridge_announce);
         opts.bridge_no_announce.clone_from(&a.bridge_no_announce);
