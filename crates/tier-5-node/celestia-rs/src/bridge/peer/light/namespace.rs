@@ -45,17 +45,25 @@ impl Remote {
 
 fn verify(row: Row, ns: shares::Namespace, width: usize, root: &[u8]) -> Result<NamespaceRow> {
     let proof = row.proof.context("missing namespace proof")?;
-    ensure!(proof.ignore_max, "unexpected namespace proof mode");
     let decoded = NamespaceRow {
         shares: row.shares.into_iter().map(|s| s.data).collect(),
-        proof: celestia_proto::celestia::core::v1::proof::NmtProof {
-            start: proof.start.try_into()?,
-            end: proof.end.try_into()?,
-            nodes: proof.nodes,
-            leaf_hash: proof.leaf_hash,
-        },
+        proof: proof.try_into()?,
     };
     app::inclusion_proof::verify_namespace_row(&decoded, ns, width, root)
         .map_err(|err| anyhow::anyhow!("{}", err.log))?;
     Ok(decoded)
+}
+
+impl TryFrom<super::super::Proof> for celestia_proto::celestia::core::v1::proof::NmtProof {
+    type Error = anyhow::Error;
+
+    fn try_from(proof: super::super::Proof) -> Result<Self> {
+        ensure!(proof.ignore_max, "unexpected SHREX proof mode");
+        Ok(Self {
+            start: proof.start.try_into()?,
+            end: proof.end.try_into()?,
+            nodes: proof.nodes,
+            leaf_hash: proof.leaf_hash,
+        })
+    }
 }

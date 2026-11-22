@@ -72,24 +72,15 @@ impl Client {
         {
             return Ok(data);
         }
-        if let Query::ShareRead(_, share_rpc::Read::Row(index)) = query {
-            ensure!(index < dah.row_roots.len(), "row outside EDS");
-            for mut remote in self.peers.online() {
-                if let Ok(Ok(row)) =
-                    tokio::time::timeout(DEADLINE, remote.row(height, index, width)).await
-                {
-                    let roots = dah.clone();
-                    let permit = worker.clone();
-                    if let Ok(data) = tokio::task::spawn_blocking(move || {
-                        let _permit = permit;
-                        super::row::authenticate(row, index, &roots)
-                    })
-                    .await?
-                    {
-                        return Ok(data);
-                    }
-                }
-            }
+        if let Query::ShareRead(_, share_rpc::Read::Range(start, end)) = query
+            && let Some(data) = self.range_data(height, start, end, &dah, &worker).await?
+        {
+            return Ok(data);
+        }
+        if let Query::ShareRead(_, share_rpc::Read::Row(index)) = query
+            && let Some(data) = self.row_data(height, index, &dah, &worker).await?
+        {
+            return Ok(data);
         }
         if let Query::Share(_, row, col) = query {
             let sample = self.verified_cell(height, &dah, row, col).await?;

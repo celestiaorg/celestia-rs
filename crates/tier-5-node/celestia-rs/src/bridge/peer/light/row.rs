@@ -1,6 +1,6 @@
 //! Recover either SHREX half-row and check its signed NMT root.
 use super::super::HalfRow;
-use super::{Remote, Status, frame};
+use super::{DEADLINE, Remote, Status, data::Client, frame};
 use anyhow::{Result, ensure};
 use futures::AsyncWriteExt as _;
 use prost::Message;
@@ -61,4 +61,34 @@ pub(super) fn authenticate(
         ("side", J::str("LEFT")),
     ])
     .encode())
+}
+
+impl Client {
+    pub(super) async fn row_data(
+        &self,
+        height: u64,
+        index: usize,
+        dah: &square::DataAvailabilityHeader,
+        worker: &std::sync::Arc<tokio::sync::OwnedSemaphorePermit>,
+    ) -> Result<Option<String>> {
+        let width = dah.row_roots.len() / 2;
+        ensure!(index < dah.row_roots.len(), "row outside EDS");
+        for mut remote in self.peers.online() {
+            if let Ok(Ok(row)) =
+                tokio::time::timeout(DEADLINE, remote.row(height, index, width)).await
+            {
+                let roots = dah.clone();
+                let permit = worker.clone();
+                if let Ok(data) = tokio::task::spawn_blocking(move || {
+                    let _permit = permit;
+                    authenticate(row, index, &roots)
+                })
+                .await?
+                {
+                    return Ok(Some(data));
+                }
+            }
+        }
+        Ok(None)
+    }
 }

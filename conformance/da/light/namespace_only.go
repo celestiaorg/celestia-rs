@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/celestiaorg/celestia-node/api/rpc/client"
+	nodeshare "github.com/celestiaorg/celestia-node/share"
 	"github.com/celestiaorg/go-square/v4/share"
 )
 
@@ -49,6 +50,21 @@ func main() {
 		if len(blobs) != 1 || !bytes.Equal(blobs[0].Data(), data) {
 			panic("namespace payload mismatch")
 		}
+		indices, err := nodeshare.RowsWithNamespace(h.DAH, ns)
+		check(err)
+		first := indices[0]*len(h.DAH.RowRoots)/2 + rows[0].Proof.Start()
+		want := rows.Flatten()
+		result, err := c.Share.GetRange(ctx, height, first, first+len(want))
+		check(err)
+		check(result.VerifyRange(h.DataHash, first, first+len(want)))
+		if !bytes.Equal(bytes.Join(share.ToBytes(want), nil), bytes.Join(share.ToBytes(result.Shares), nil)) {
+			panic("range payload mismatch")
+		}
+		check(os.WriteFile(filepath.Join(filepath.Dir(os.Args[4]), "wrong-range"), []byte("wrong"), 0600))
+		if _, err = c.Share.GetRange(ctx, height, first, first+1); err == nil {
+			panic("accepted proof for adjacent share range")
+		}
+		fmt.Println("Go verified the paid range across row boundaries and rejected a substituted interval without a full square provider")
 		break
 	}
 	check(os.WriteFile(os.Args[4], []byte("wrong"), 0600))

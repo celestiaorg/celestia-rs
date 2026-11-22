@@ -505,8 +505,75 @@ pub fn verify_namespace_row(
     width: usize,
     root: &[u8],
 ) -> Result<(), SdkError> {
+    verify_namespace_span(row, ns, width, root, true)
+}
+
+/// Verify a requested original share interval. A complete original half-row can
+/// omit its proof on SHREX; regenerate the parity sibling for the RPC response.
+#[cfg(feature = "bridge")]
+pub fn verify_range_row(
+    cells: Vec<Vec<u8>>,
+    proof: Option<pb::NmtProof>,
+    span: std::ops::Range<usize>,
+    width: usize,
+    root: &[u8],
+    ns: Namespace,
+) -> Result<NamespaceRow, SdkError> {
+    use square::ErasureCodec as _;
+    if !width.is_power_of_two()
+        || span.is_empty()
+        || span.end > width / 2
+        || cells.len() != span.len()
+        || cells.iter().any(|s| s.len() != shares::SHARE_SIZE)
+    {
+        return Err(plain("invalid original share range"));
+    }
+    let proof = if let Some(p) = proof {
+        if usize::try_from(p.start).ok() != Some(span.start)
+            || usize::try_from(p.end).ok() != Some(span.end)
+            || !p.leaf_hash.is_empty()
+        {
+            return Err(plain("range proof coordinates do not match request"));
+        }
+        p
+    } else {
+        if span != (0..width / 2) {
+            return Err(plain("missing partial row proof"));
+        }
+        let parity = square::LeoRsCodec::new()
+            .encode(&cells)
+            .map_err(|e| square_err(&e))?;
+        let leaves: Vec<_> = parity
+            .iter()
+            .map(|cell| Node::leaf(&nmt_leaf(width / 2, 0, width / 2, cell)))
+            .collect();
+        let sibling = range_proof(&leaves, 0, leaves.len(), &mut Vec::new())?;
+        pb::NmtProof {
+            start: 0,
+            end: i32::try_from(span.end).map_err(|_| plain("invalid proof end"))?,
+            nodes: vec![sibling.to_bytes()],
+            leaf_hash: Vec::new(),
+        }
+    };
+    let row = NamespaceRow {
+        shares: cells,
+        proof,
+    };
+    verify_namespace_span(&row, ns, width, root, false)?;
+    Ok(row)
+}
+
+#[cfg(feature = "bridge")]
+fn verify_namespace_span(
+    row: &NamespaceRow,
+    ns: Namespace,
+    width: usize,
+    root: &[u8],
+    complete: bool,
+) -> Result<(), SdkError> {
     use std::ops::Range;
     struct Witness<'a> {
+        complete: bool,
         ns: Namespace,
         span: Range<usize>,
         siblings: std::slice::Iter<'a, Vec<u8>>,
@@ -520,8 +587,9 @@ pub fn verify_namespace_row(
                     .next()
                     .ok_or_else(|| plain("missing namespace proof node"))?;
                 let node = Node::from_bytes(bytes)?;
-                if (start < self.span.start && &node.max >= self.ns.as_bytes())
-                    || (start >= self.span.end && &node.min <= self.ns.as_bytes())
+                if self.complete
+                    && ((start < self.span.start && &node.max >= self.ns.as_bytes())
+                        || (start >= self.span.end && &node.min <= self.ns.as_bytes()))
                 {
                     return Err(plain("incomplete namespace range"));
                 }
@@ -572,6 +640,7 @@ pub fn verify_namespace_row(
         leaves.push(leaf);
     }
     let mut witness = Witness {
+        complete,
         ns,
         span: start..end,
         siblings: p.nodes.iter(),

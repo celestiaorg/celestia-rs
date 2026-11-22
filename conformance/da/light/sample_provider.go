@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -42,6 +43,7 @@ func run(ctx context.Context, chain, provider, dir string) error {
 	}
 	header := protocol.ID("/" + chain + "/header-ex/v0.0.3")
 	sample := protocol.ID("/" + chain + "/shrex/v0.1.0/sample_v0")
+	rangeProtocol := protocol.ID("/" + chain + "/shrex/v0.1.0/rangeNamespaceData_v0")
 	rowProtocol := protocol.ID("/" + chain + "/shrex/v0.1.0/row_v0")
 	namespace := protocol.ID("/" + chain + "/shrex/v0.1.0/nd_v0")
 	handle := func(in network.Stream) error {
@@ -52,6 +54,15 @@ func run(ctx context.Context, chain, provider, dir string) error {
 		request, err := io.ReadAll(io.LimitReader(in, 1024))
 		if err != nil {
 			return err
+		}
+		if in.Protocol() == rangeProtocol {
+			if len(request) != 16 {
+				return fmt.Errorf("unexpected range identifier length %d", len(request))
+			}
+			if _, err := os.Stat(filepath.Join(dir, "wrong-range")); err == nil {
+				binary.BigEndian.PutUint32(request[8:12], binary.BigEndian.Uint32(request[8:12])+1)
+				binary.BigEndian.PutUint32(request[12:16], binary.BigEndian.Uint32(request[12:16])+1)
+			}
 		}
 		if in.Protocol() == rowProtocol {
 			if len(request) != 10 {
@@ -142,7 +153,7 @@ func run(ctx context.Context, chain, provider, dir string) error {
 		_, err = io.Copy(in, io.LimitReader(out, 4<<20))
 		return err
 	}
-	for _, id := range []protocol.ID{header, sample, namespace, rowProtocol} {
+	for _, id := range []protocol.ID{header, sample, namespace, rowProtocol, rangeProtocol} {
 		host.SetStreamHandler(id, func(in network.Stream) {
 			if err := handle(in); err != nil {
 				in.Reset()
