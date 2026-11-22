@@ -1,7 +1,8 @@
 //! Fibre provider discovery and commitment-verified reconstruction for both DA roles.
 use anyhow::{Context, Result};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use celestia_fibre::{BlobID, DownloadOptions, Endpoint, FibreClient, FibreClientConfig};
+use celestia_fibre::{BlobID, DownloadOptions, FibreClient, FibreClientConfig};
+use celestia_grpc::Endpoint;
 use rpc::json::J;
 use serde_json::{Value, json};
 use std::{
