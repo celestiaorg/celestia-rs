@@ -51,9 +51,16 @@ const COMPONENTS: &[(&[&str], &str)] = &[
     ),
     (&["fibre"], "celestia_rs::bridge::submit::fibre"),
     (&["fibre"], "celestia_fibre"),
+    (&["pubsub"], "libp2p_gossipsub"),
+    (&["dht"], "libp2p_kad"),
+    (&["swarm2"], "libp2p_swarm"),
 ];
 
 pub(crate) fn set_level(name: &str, level: &str) -> Result<()> {
+    update(FILTER.get().context("DA logging unavailable")?, name, level)
+}
+
+fn update(handle: &reload::Handle<EnvFilter, Registry>, name: &str, level: &str) -> Result<()> {
     let level = match level.to_ascii_lowercase().as_str() {
         "debug" => "debug",
         "" | "info" => "info",
@@ -69,14 +76,33 @@ pub(crate) fn set_level(name: &str, level: &str) -> Result<()> {
         .collect::<Result<Vec<_>, _>>()?;
     // go-log accepts a setting for an as-yet unused component.
     if !directives.is_empty() {
-        FILTER
-            .get()
-            .context("DA logging unavailable")?
-            .modify(|filter| {
-                *filter = directives
-                    .into_iter()
-                    .fold(filter.clone(), EnvFilter::add_directive);
-            })?;
+        handle.modify(|filter| {
+            *filter = directives
+                .into_iter()
+                .fold(filter.clone(), EnvFilter::add_directive);
+        })?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn changing_da_severity_preserves_the_consensus_filter() {
+        let (layer, handle) = reload::Layer::new(EnvFilter::new("error"));
+        tracing::subscriber::with_default(tracing_subscriber::registry().with(layer), || {
+            let enabled =
+                || tracing::enabled!(target: "celestia_rs::bridge::peer", tracing::Level::DEBUG);
+            assert!(!enabled());
+            update(&handle, "module/p2p", "debug").unwrap();
+            assert!(enabled());
+            assert!(!tracing::enabled!(target: "consensus", tracing::Level::DEBUG));
+            update(&handle, "*", "warn").unwrap();
+            assert!(!enabled());
+            assert!(tracing::enabled!(target: "celestia_rs::bridge::peer", tracing::Level::WARN));
+            assert!(!tracing::enabled!(target: "consensus", tracing::Level::WARN));
+        });
+    }
 }
