@@ -37,12 +37,13 @@ impl Server {
     pub(crate) fn start(
         addr: SocketAddr,
         home: &std::path::Path,
-        blocks: BlockStore,
-        states: StateStore,
+        stores: (BlockStore, StateStore),
         app: app::AbciApp,
         #[cfg(feature = "da-fibre")] core: (&str, &str),
+        #[cfg(feature = "bridge-p2p")] peer_control: Option<peer::Control>,
         wallet: Option<Arc<submit::Wallet>>,
     ) -> Result<Self> {
+        let (blocks, states) = stores;
         ensure!(
             addr.ip().is_loopback(),
             "bridge RPC requires a loopback listener"
@@ -64,6 +65,8 @@ impl Server {
                 fibre::Client::local(core.0, core.1)?
             },
             app: Some(app),
+            #[cfg(feature = "bridge-p2p")]
+            peer_control,
             wallet,
             waiters: Arc::new(Semaphore::new(32)),
             blocks,
@@ -104,6 +107,8 @@ struct Bridge {
     #[cfg(feature = "da-fibre")]
     fibre: Option<fibre::Client>,
     app: Option<app::AbciApp>,
+    #[cfg(feature = "bridge-p2p")]
+    peer_control: Option<peer::Control>,
     wallet: Option<Arc<submit::Wallet>>,
     waiters: Arc<Semaphore>,
     blocks: BlockStore,
@@ -676,24 +681,7 @@ async fn dispatch(
         #[cfg(feature = "da-fibre")]
         if matches!(method, "fibre.Upload" | "fibre.Submit") {
             require_permission(permissions, method, "write")?;
-            let client = bridge
-                .fibre
-                .as_ref()
-                .ok_or_else(|| (1, "Fibre core unavailable".into()))?;
-            let wallet = bridge
-                .wallet
-                .as_ref()
-                .ok_or_else(|| (1, "bridge signer is not configured".into()))?;
-            return wallet
-                .submit_fibre(
-                    client,
-                    params,
-                    method == "fibre.Submit",
-                    bridge.states.clone(),
-                )
-                .await
-                .map(|v| J::Raw(v.to_string()))
-                .map_err(|e| (1, e.to_string()));
+            return fibre_write(&bridge, method, params).await;
         }
         if let Some(permission) = node_rpc::permission(method) {
             require_permission(permissions, method, permission)?;
@@ -708,6 +696,20 @@ async fn dispatch(
                 return Err((-32602, "invalid parameters".to_owned()));
             }
             return Err((1, "module/das: stubbed: dasing is disabled".to_owned()));
+        }
+        #[cfg(feature = "bridge-p2p")]
+        if peer::Control::handles(method) {
+            require_permission(permissions, method, "admin")?;
+            let control = bridge
+                .peer_control
+                .as_ref()
+                .ok_or_else(|| (1, "DA peer is disabled".to_owned()))?;
+            let args = params.as_array().ok_or_else(invalid)?;
+            return control
+                .call(method, args)
+                .await
+                .map(|value| J::Raw(value.to_string()))
+                .map_err(|e| (1, e.to_string()));
         }
         if state_rpc::writes(method)
             || matches!(
@@ -749,6 +751,28 @@ async fn dispatch(
         ),
     };
     J::obj([("jsonrpc", J::str("2.0")), ("id", id), payload]).encode()
+}
+
+#[cfg(feature = "da-fibre")]
+async fn fibre_write(bridge: &Bridge, method: &str, params: &Value) -> Result<J, (i32, String)> {
+    let client = bridge
+        .fibre
+        .as_ref()
+        .ok_or_else(|| (1, "Fibre core unavailable".into()))?;
+    let wallet = bridge
+        .wallet
+        .as_ref()
+        .ok_or_else(|| (1, "bridge signer is not configured".into()))?;
+    wallet
+        .submit_fibre(
+            client,
+            params,
+            method == "fibre.Submit",
+            bridge.states.clone(),
+        )
+        .await
+        .map(|v| J::Raw(v.to_string()))
+        .map_err(|e| (1, e.to_string()))
 }
 
 async fn wallet_rpc(bridge: &Bridge, method: &str, params: &Value) -> Result<J, (i32, String)> {
