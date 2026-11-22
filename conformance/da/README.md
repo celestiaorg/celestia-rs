@@ -172,3 +172,8 @@ the transaction hash and execution code before returning a receipt. The
 private Go fixture funds a separate light key, uses both estimated and
 explicit fees, and reads the committed balance and paid blobs through the
 same light listener after sampling catches up.
+To expose a selected light account through `state.AccountAddress` and
+`state.Balance`, create the account in the light home with `celestia-rs keys`
+and pass `--keyring.keyname NAME` with the configured core endpoint.
+`--keyring.backend` selects its backend. The light node uses the same sampled
+bank proofs for the selected account and for address-specific reads.
