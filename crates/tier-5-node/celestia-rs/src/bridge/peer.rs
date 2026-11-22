@@ -484,7 +484,13 @@ impl Bridge {
                     .iter()
                     .map(|data| WireShare { data: data.clone() })
                     .collect();
-                Payload::Frame(HalfRow { shares: half }.encode_length_delimited_to_vec())
+                Payload::Frame(
+                    HalfRow {
+                        shares: half,
+                        side: 0,
+                    }
+                    .encode_length_delimited_to_vec(),
+                )
             }
             Kind::Sample => {
                 let row = usize::from(u16::from_be_bytes(id[8..10].try_into()?));
@@ -578,9 +584,11 @@ fn row_wire(row: app::inclusion_proof::NamespaceRow) -> Vec<u8> {
     .encode_length_delimited_to_vec()
 }
 
-// SHWAP Row with half_side LEFT (the protobuf default).
+// SHWAP Row with an original or parity half.
 #[derive(Clone, PartialEq, Message)]
 struct HalfRow {
+    #[prost(int32, tag = "2")]
+    side: i32,
     #[prost(message, repeated, tag = "1")]
     shares: Vec<WireShare>,
 }

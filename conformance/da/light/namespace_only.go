@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -54,5 +55,15 @@ func main() {
 	if _, err := c.Share.GetNamespaceData(ctx, height, ns); err == nil {
 		panic("accepted another namespace's response")
 	}
+	for _, index := range []int{0, len(h.DAH.RowRoots) - 1} {
+		row, err := c.Share.GetRow(ctx, height, index)
+		check(err)
+		check(row.Verify(h.DAH, index))
+	}
+	check(os.WriteFile(filepath.Join(filepath.Dir(os.Args[4]), "wrong-row"), []byte("wrong"), 0600))
+	if _, err := c.Share.GetRow(ctx, height, 0); err == nil {
+		panic("accepted a different row")
+	}
+	fmt.Println("Go verified original and parity rows reconstructed from RIGHT halves and rejected a substituted row")
 	fmt.Println("Go recovered the paid namespace from a Rust light node without an EDS provider and rejected a substituted response")
 }

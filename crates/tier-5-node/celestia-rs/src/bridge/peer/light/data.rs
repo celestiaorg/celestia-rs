@@ -66,31 +66,30 @@ impl Client {
             (1..=512).contains(&width) && width.is_power_of_two(),
             "invalid ODS width"
         );
-        if let Query::Namespace(_, namespace) = query {
-            ensure!(
-                !namespace.is_parity_shares() && !namespace.is_tail_padding(),
-                "invalid data namespace"
-            );
-            let candidates = dah.rows_with_namespace(namespace)?;
-            if candidates.is_empty() {
-                return Ok("[]".into());
-            }
+        // A partial provider can still serve the authenticated ODS if SHREX rows are unavailable.
+        if let Query::Namespace(_, namespace) = query
+            && let Some(data) = self.namespace_data(height, namespace, &dah).await?
+        {
+            return Ok(data);
+        }
+        if let Query::ShareRead(_, share_rpc::Read::Row(index)) = query {
+            ensure!(index < dah.row_roots.len(), "row outside EDS");
             for mut remote in self.peers.online() {
-                if let Ok(Ok(rows)) = tokio::time::timeout(
-                    DEADLINE,
-                    remote.namespace(height, namespace, &dah, &candidates),
-                )
-                .await
+                if let Ok(Ok(row)) =
+                    tokio::time::timeout(DEADLINE, remote.row(height, index, width)).await
                 {
-                    return Ok(J::Arr(
-                        rows.into_iter()
-                            .map(crate::bridge::namespace_row_json)
-                            .collect(),
-                    )
-                    .encode());
+                    let roots = dah.clone();
+                    let permit = worker.clone();
+                    if let Ok(data) = tokio::task::spawn_blocking(move || {
+                        let _permit = permit;
+                        super::row::authenticate(row, index, &roots)
+                    })
+                    .await?
+                    {
+                        return Ok(data);
+                    }
                 }
             }
-            // An older or partial provider can still serve the authenticated ODS.
         }
         if let Query::Share(_, row, col) = query {
             let sample = self.verified_cell(height, &dah, row, col).await?;
@@ -131,6 +130,40 @@ impl Client {
             }
         }
         anyhow::bail!("no connected DA peer supplied the verified square at height {height}")
+    }
+
+    async fn namespace_data(
+        &self,
+        height: u64,
+        namespace: shares::Namespace,
+        dah: &square::DataAvailabilityHeader,
+    ) -> Result<Option<String>> {
+        ensure!(
+            !namespace.is_parity_shares() && !namespace.is_tail_padding(),
+            "invalid data namespace"
+        );
+        let candidates = dah.rows_with_namespace(namespace)?;
+        if candidates.is_empty() {
+            return Ok(Some("[]".into()));
+        }
+        for mut remote in self.peers.online() {
+            if let Ok(Ok(rows)) = tokio::time::timeout(
+                DEADLINE,
+                remote.namespace(height, namespace, dah, &candidates),
+            )
+            .await
+            {
+                return Ok(Some(
+                    J::Arr(
+                        rows.into_iter()
+                            .map(crate::bridge::namespace_row_json)
+                            .collect(),
+                    )
+                    .encode(),
+                ));
+            }
+        }
+        Ok(None)
     }
 
     async fn verified_cell(

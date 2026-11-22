@@ -4,6 +4,7 @@ mod data;
 mod discovery;
 mod exchange;
 mod namespace;
+mod row;
 mod rpc;
 mod stats;
 mod wallet;
@@ -74,6 +75,7 @@ struct Streams {
     headers: StreamProtocol,
     samples: StreamProtocol,
     namespaces: StreamProtocol,
+    rows: StreamProtocol,
     eds: StreamProtocol,
 }
 
@@ -615,6 +617,7 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
             control: swarm.behaviour().negotiated.new_control(),
             headers,
             samples,
+            rows: StreamProtocol::try_from_owned(format!("/{}/shrex/v0.1.0/row_v0", args.network))?,
             namespaces: StreamProtocol::try_from_owned(format!(
                 "/{}/shrex/v0.1.0/nd_v0",
                 args.network

@@ -467,6 +467,36 @@ pub fn verify_sample(
     Ok(())
 }
 
+/// Authenticate a reconstructed SHREX row, including parity namespace wrapping.
+#[cfg(feature = "bridge")]
+pub fn verify_row(
+    dah: &square::DataAvailabilityHeader,
+    row: usize,
+    cells: &[Vec<u8>],
+) -> Result<(), SdkError> {
+    let width = dah.row_roots.len();
+    let expected = dah
+        .row_roots
+        .get(row)
+        .ok_or_else(|| plain("row outside EDS"))?;
+    if width < 2
+        || !width.is_power_of_two()
+        || cells.len() != width
+        || cells.iter().any(|c| c.len() != shares::SHARE_SIZE)
+    {
+        return Err(plain("invalid reconstructed row dimensions"));
+    }
+    let leaves: Vec<_> = cells
+        .iter()
+        .enumerate()
+        .map(|(col, cell)| Node::leaf(&nmt_leaf(width / 2, row, col, cell)))
+        .collect();
+    if range_proof(&leaves, 0, width, &mut Vec::new())?.to_bytes() != expected[..] {
+        return Err(plain("row does not match sampled header"));
+    }
+    Ok(())
+}
+
 /// Authenticate all matching shares in a single candidate row or prove their absence.
 #[cfg(feature = "bridge")]
 pub fn verify_namespace_row(
