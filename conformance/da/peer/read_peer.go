@@ -215,6 +215,11 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	if _, err := reader.P2P.ConnectionState(ctx, clientID); err == nil {
 		panic("read token inspected peer connections")
 	}
+	if _, err := reader.P2P.BandwidthStats(ctx); err == nil {
+		panic("read token obtained bandwidth statistics")
+	}
+	before, err := admin.P2P.BandwidthForPeer(ctx, clientID)
+	check(err)
 	var held []network.Stream
 	for i := 0; i < 3; i++ {
 		st, err := clientHost.NewStream(ctx, server.ID, protocol.ID("/ipfs/ping/1.0.0"))
@@ -225,6 +230,23 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 		check(err)
 		held = append(held, st)
 	}
+	for {
+		measured, err := admin.P2P.BandwidthForPeer(ctx, clientID)
+		check(err)
+		all, err := admin.P2P.BandwidthStats(ctx)
+		check(err)
+		if measured.TotalIn >= before.TotalIn+96 && measured.TotalOut >= before.TotalOut+96 &&
+			measured.RateIn > 0 && measured.RateOut > 0 &&
+			all.TotalIn >= measured.TotalIn && all.TotalOut >= measured.TotalOut {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			panic("ping bytes and transfer rates did not appear")
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	fmt.Println("Go verified measured per-peer and total stream bandwidth in both directions")
 	active, err := admin.P2P.ConnectionState(ctx, clientID)
 	check(err)
 	if len(active) != 1 || active[0].NumStreams < 3 || active[0].Direction != network.DirInbound ||

@@ -1,5 +1,6 @@
 //! Inbound go-header exchange and SHREX over negotiated libp2p streams.
 mod admin;
+mod bandwidth;
 mod connections;
 pub(crate) use admin::Control;
 mod flood;

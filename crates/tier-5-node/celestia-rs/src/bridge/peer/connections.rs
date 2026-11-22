@@ -21,10 +21,14 @@ struct Connection {
     inbound: bool,
     opened: String,
     streams: Arc<()>,
+    traffic: super::bandwidth::Traffic,
 }
 
 #[derive(Clone, Default)]
-pub(super) struct Connections(Arc<Mutex<Vec<Weak<Connection>>>>);
+pub(super) struct Connections {
+    active: Arc<Mutex<Vec<Weak<Connection>>>>,
+    pub(super) bandwidth: super::bandwidth::Bandwidth,
+}
 
 impl Connections {
     pub(super) fn observe<M>(
@@ -39,9 +43,10 @@ impl Connections {
             inbound: point.is_listener(),
             opened: crate::util::rfc3339_nano(now.seconds, now.nanos.unsigned_abs()),
             streams: Arc::new(()),
+            traffic: self.bandwidth.for_connection(peer),
         });
         let mut active = self
-            .0
+            .active
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         active.retain(|c| c.strong_count() > 0);
@@ -51,7 +56,7 @@ impl Connections {
 
     pub(super) fn state(&self, peer: PeerId) -> Result<Value> {
         let active = self
-            .0
+            .active
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let states:Vec<_>=active.iter().filter_map(Weak::upgrade).filter(|c|c.peer==peer).map(|c|json!({
@@ -71,6 +76,7 @@ pub(super) struct ObservedMuxer<M> {
 pub(super) struct ObservedStream<S> {
     inner: S,
     _live: Arc<()>,
+    traffic: super::bandwidth::Traffic,
 }
 
 impl<M: StreamMuxer + Unpin> StreamMuxer for ObservedMuxer<M>
@@ -88,6 +94,7 @@ where
             .map_ok(|inner| ObservedStream {
                 inner,
                 _live: self.conn.streams.clone(),
+                traffic: self.conn.traffic.clone(),
             })
     }
     fn poll_outbound(
@@ -99,6 +106,7 @@ where
             .map_ok(|inner| ObservedStream {
                 inner,
                 _live: self.conn.streams.clone(),
+                traffic: self.conn.traffic.clone(),
             })
     }
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -118,14 +126,22 @@ impl<S: AsyncRead + Unpin> AsyncRead for ObservedStream<S> {
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.inner).poll_read(cx, buf)
+        Pin::new(&mut self.inner).poll_read(cx, buf).map_ok(|n| {
+            self.traffic.record(false, n);
+            n
+        })
     }
     fn poll_read_vectored(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         bufs: &mut [io::IoSliceMut<'_>],
     ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.inner).poll_read_vectored(cx, bufs)
+        Pin::new(&mut self.inner)
+            .poll_read_vectored(cx, bufs)
+            .map_ok(|n| {
+                self.traffic.record(false, n);
+                n
+            })
     }
 }
 impl<S: AsyncWrite + Unpin> AsyncWrite for ObservedStream<S> {
@@ -134,14 +150,22 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for ObservedStream<S> {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.inner).poll_write(cx, buf)
+        Pin::new(&mut self.inner).poll_write(cx, buf).map_ok(|n| {
+            self.traffic.record(true, n);
+            n
+        })
     }
     fn poll_write_vectored(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         bufs: &[io::IoSlice<'_>],
     ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
+        Pin::new(&mut self.inner)
+            .poll_write_vectored(cx, bufs)
+            .map_ok(|n| {
+                self.traffic.record(true, n);
+                n
+            })
     }
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.inner).poll_flush(cx)
