@@ -11,6 +11,7 @@ on:
       - 'crates/tier-5-node/celestia-rs/src/bridge/**'
       - 'crates/tier-5-node/celestia-rs/src/bridge.rs'
       - 'conformance/da/light/**'
+      - 'conformance/da/peer/nat/**'
       - '.github/workflows/da-light-interop.yml'
 permissions:
   contents: read
@@ -51,3 +52,7 @@ jobs:
       - run: conformance/da/light/test-go-bridge.sh target/debug/celestia-rs go-app go-node
         env:
           DA_QUALIFICATION_SECONDS: ${{ inputs.observer_seconds || '10' }}
+      - name: Check real Go AutoNAT dial-backs with private routing
+        run: |
+          (cd go-node && go build -o "$RUNNER_TEMP/nat-probe" ../conformance/da/peer/nat/dialback.go)
+          sudo unshare --net conformance/da/peer/nat/test-routed.sh target/debug/celestia-rs "$RUNNER_TEMP/nat-probe"
