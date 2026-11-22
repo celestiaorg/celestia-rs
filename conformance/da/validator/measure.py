@@ -31,7 +31,14 @@ def measure(duration, pid, commands, checker, rpc):
 
     def load(name, args):
         while time.monotonic() - start < duration:
-            subprocess.run(args, check=True, timeout=45, stdout=subprocess.DEVNULL)
+            try:
+                result = subprocess.run(args, timeout=45, stdout=subprocess.DEVNULL)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError(f"{name} exceeded 45 s after {counts[name]} verified reads, "
+                                   f"last observed validator height {previous}") from None
+            if result.returncode:
+                raise RuntimeError(f"{name} failed with status {result.returncode} after "
+                                   f"{counts[name]} verified reads at validator height {previous}")
             counts[name] += 1
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
