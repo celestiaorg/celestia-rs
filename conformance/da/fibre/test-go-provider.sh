@@ -9,6 +9,24 @@ case "$revision" in
 esac
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
+if [[ ${2:-} == --rust-control ]]; then
+    mkdir -p "$work/probe/src"
+    cp "$(dirname "$0")/download_control.rs" "$work/probe/src/main.rs"
+    cat >"$work/probe/Cargo.toml" <<'TOML'
+[package]
+name = "fibre-download-control"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+celestia-fibre = "=1.3.0"
+hex = "0.4"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+TOML
+    cargo build --manifest-path "$work/probe/Cargo.toml" --target-dir "${CARGO_TARGET_DIR:-$work/target}"
+    export RUST_FIBRE_PROBE
+    RUST_FIBRE_PROBE=$(realpath "${CARGO_TARGET_DIR:-$work/target}/debug/fibre-download-control")
+fi
 cd "$node/nodebuilder/tests/tastora"
 # Both node tags' suite supplies the older memory-store factory signature.
 # Adapt only that test callback to v11's context argument through a Go overlay.
@@ -22,6 +40,21 @@ signature = "serverCfg.StoreFn = func(sc appfibre.StoreConfig)"
 if fixture.count(signature) != 1:
     raise SystemExit("unexpected pinned Fibre test callback")
 overlay = work / "fibre_e2e_test.go"
+fixture = fixture.replace('"encoding/json"', '"encoding/json"\n "encoding/hex"\n "os"\n "os/exec"')
+needle = 'require.Equal(t, data, got)'
+assert fixture.count(needle) == 1
+fixture = fixture.replace(needle, needle + """
+    if probe := os.Getenv("RUST_FIBRE_PROBE"); probe != "" {
+    output := filepath.Join(t.TempDir(), "downloaded")
+    command := exec.CommandContext(ctx, probe, "http://"+s.conn.Target(), s.cctx.ChainID, hex.EncodeToString(blobID[:]), output)
+    detail, err := command.CombinedOutput()
+    require.NoError(t, err, string(detail))
+    actual, err := os.ReadFile(output)
+    require.NoError(t, err)
+    require.Equal(t, data, actual)
+    t.Log("Rust Fibre client returned identical 32768 Go-uploaded bytes")
+    }
+""")
 overlay.write_text(fixture.replace(signature, "serverCfg.StoreFn = func(_ context.Context, sc appfibre.StoreConfig)"))
 (work / "overlay.json").write_text(json.dumps({"Replace": {str(source): str(overlay)}}))
 PY
@@ -30,4 +63,4 @@ if ! go test -p 2 -tags fibre_e2e -overlay "$work/overlay.json" -timeout 12m -co
     grep -E '(^#|^FAIL|--- FAIL:|fibre_e2e_test.go:[[:digit:]]+|Error:)' "$work/control.log" | tail -30 >&2 || true
     exit 1
 fi
-grep -E '(--- PASS: TestFibreE2ESuite|^ok[[:space:]])' "$work/control.log"
+grep -E '(Rust Fibre client returned|--- PASS: TestFibreE2ESuite|^ok[[:space:]])' "$work/control.log"
