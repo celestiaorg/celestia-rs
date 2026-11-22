@@ -459,7 +459,14 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                     )
                 })
                 .transpose()?;
-            crate::bridge::Server::start(addr, home, bs.clone(), ss.clone(), wallet)
+            crate::bridge::Server::start(
+                addr,
+                home,
+                bs.clone(),
+                ss.clone(),
+                app::AbciApp::from_shared(app.clone()),
+                wallet,
+            )
         })
         .transpose()?;
     #[cfg(feature = "bridge-p2p")]

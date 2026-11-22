@@ -1385,6 +1385,75 @@ fn exception(e: &SdkError) -> response::Value {
     })
 }
 
+#[cfg(feature = "bridge")]
+impl AbciApp {
+    /// Resolve a utia balance and verify the two store proofs against the next header's app hash.
+    pub fn verified_balance(
+        &self,
+        address: &[u8],
+        height: i64,
+        app_hash: &[u8],
+    ) -> std::result::Result<String, String> {
+        use ics23_proofs::{
+            CommitmentOp, PROOF_OP_IAVL_COMMITMENT, PROOF_OP_SIMPLE_MERKLE_COMMITMENT, ProofOp,
+        };
+        if height < 1 {
+            return Err("no prior committed state".into());
+        }
+        let key = x_bank::balance_key(address, "utia");
+        let response =
+            self.inner
+                .lock()
+                .map_err(|_| "poisoned app lock")?
+                .query(&abci::RequestQuery {
+                    path: "/store/bank/key".into(),
+                    data: key.clone(),
+                    height,
+                    prove: true,
+                });
+        if response.code != 0 || response.height != height {
+            return Err(format!("bank query failed at {height}: {}", response.log));
+        }
+        let ops = response.proof_ops.ok_or("missing bank proof")?.ops;
+        if ops.len() != 2 {
+            return Err("expected bank and multistore proofs".into());
+        }
+        let mut value = response.value.clone();
+        for (op, (kind, expected_key)) in ops.into_iter().zip([
+            (PROOF_OP_IAVL_COMMITMENT, key.as_slice()),
+            (PROOF_OP_SIMPLE_MERKLE_COMMITMENT, b"bank".as_slice()),
+        ]) {
+            if op.key != expected_key || op.r#type != kind {
+                return Err("unexpected bank proof path".into());
+            }
+            let commitment = CommitmentOp::from_proof_op(ProofOp {
+                field_type: op.r#type,
+                key: op.key,
+                data: op.data,
+            })
+            .map_err(|e| e.to_string())?;
+            let args = [value.as_slice()];
+            let roots = commitment
+                .run(if value.is_empty() { &[] } else { &args })
+                .map_err(|e| e.to_string())?;
+            let [root] = roots.as_slice() else {
+                return Err("invalid bank proof root".into());
+            };
+            value = root.to_vec();
+        }
+        if value != app_hash {
+            return Err("bank proof does not match header app hash".into());
+        }
+        if response.value.is_empty() {
+            return Ok("0".into());
+        }
+        if !response.value.iter().all(u8::is_ascii_digit) {
+            return Err("invalid utia balance".into());
+        }
+        String::from_utf8(response.value).map_err(|e| e.to_string())
+    }
+}
+
 impl Application for AbciApp {
     fn handle_envelope(&self, request: request::Value) -> Option<response::Value> {
         let request::Value::Query(req) = request else {

@@ -36,6 +36,7 @@ impl Server {
         home: &std::path::Path,
         blocks: BlockStore,
         states: StateStore,
+        app: app::AbciApp,
         wallet: Option<Arc<submit::Wallet>>,
     ) -> Result<Self> {
         ensure!(
@@ -53,6 +54,7 @@ impl Server {
         };
         let (stop, stopped) = oneshot::channel();
         let state = Arc::new(Bridge {
+            app: Some(app),
             wallet,
             waiters: Arc::new(Semaphore::new(32)),
             blocks,
@@ -90,6 +92,7 @@ impl Drop for Server {
 }
 
 struct Bridge {
+    app: Option<app::AbciApp>,
     wallet: Option<Arc<submit::Wallet>>,
     waiters: Arc<Semaphore>,
     blocks: BlockStore,
@@ -98,6 +101,7 @@ struct Bridge {
 }
 
 enum Query {
+    Balance(Option<String>),
     Blobs(i64, Vec<shares::Namespace>),
     Blob(i64, shares::Namespace, Vec<u8>),
     Namespace(i64, shares::Namespace),
@@ -124,6 +128,22 @@ fn bytes(value: &Value) -> Result<Vec<u8>, (i32, &'static str)> {
         .map_err(|_| invalid)
 }
 
+fn index(value: &Value) -> Result<usize, (i32, &'static str)> {
+    value
+        .as_u64()
+        .and_then(|i| usize::try_from(i).ok())
+        .ok_or((-32602, "invalid params"))
+}
+
+fn sample_coordinates(value: &Value) -> Result<Vec<(usize, usize)>, (i32, &'static str)> {
+    value
+        .as_array()
+        .ok_or((-32602, "invalid params"))?
+        .iter()
+        .map(|v| Ok((index(&v["row"])?, index(&v["col"])?)))
+        .collect()
+}
+
 impl Query {
     fn parse(method: &str, params: &Value) -> Result<Self, (i32, &'static str)> {
         let bad = (-32602, "invalid params");
@@ -135,7 +155,6 @@ impl Query {
                 .ok_or(bad)
         };
         let namespace = |v: &Value| shares::Namespace::from_slice(&bytes(v)?).map_err(|_| bad);
-        let index = |v: &Value| v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or(bad);
         match method {
             "header.LocalHead" | "header.NetworkHead" if args.is_empty() => Ok(Self::Head),
             "header.Tail" if args.is_empty() => Ok(Self::Tail),
@@ -157,13 +176,12 @@ impl Query {
                 share_rpc::Read::Range(index(&args[1])?, index(&args[2])?),
             )),
             "share.GetSamples" if args.len() == 2 => {
-                let coords = args[1]
-                    .as_array()
-                    .ok_or(bad)?
-                    .iter()
-                    .map(|v| Ok((index(&v["row"])?, index(&v["col"])?)))
-                    .collect::<Result<_, _>>()?;
+                let coords = sample_coordinates(&args[1])?;
                 Ok(Self::ShareRead(height()?, share_rpc::Read::Samples(coords)))
+            }
+            "state.Balance" if args.is_empty() => Ok(Self::Balance(None)),
+            "state.BalanceForAddress" if args.len() == 1 => {
+                Ok(Self::Balance(Some(args[0].as_str().ok_or(bad)?.to_owned())))
             }
             "header.GetByHeight" if args.len() == 1 => Ok(Self::Header(height()?)),
             "blob.GetAll" if args.len() == 2 => {
@@ -205,6 +223,8 @@ impl Query {
             "header.LocalHead"
             | "header.NetworkHead"
             | "header.Tail"
+            | "state.Balance"
+            | "state.BalanceForAddress"
             | "header.GetByHash"
             | "share.SharesAvailable"
             | "share.GetEDS"
@@ -281,6 +301,41 @@ impl Bridge {
         })
     }
 
+    fn balance(&self, head: i64, address: Option<String>) -> Result<J> {
+        let address = match address {
+            Some(value) => value,
+            None => self
+                .wallet
+                .as_ref()
+                .context("bridge signer is not configured")?
+                .address(),
+        };
+        let (prefix, bytes) =
+            encoding::bech32::decode_and_convert(&address).map_err(anyhow::Error::msg)?;
+        ensure!(
+            matches!(
+                prefix.as_str(),
+                crate::keys::ACC_PREFIX | crate::keys::VAL_PREFIX
+            ) && (1..=255).contains(&bytes.len()),
+            "invalid account or validator address"
+        );
+        let header = self
+            .blocks
+            .load_block_meta(head)?
+            .context("no committed header")?
+            .header;
+        let amount = self
+            .app
+            .as_ref()
+            .context("no bridge application")?
+            .verified_balance(&bytes, head - 1, &header.app_hash)
+            .map_err(anyhow::Error::msg)?;
+        Ok(J::obj([
+            ("denom", J::str("utia")),
+            ("amount", J::str(amount)),
+        ]))
+    }
+
     fn read(&self, query: Query) -> Result<J> {
         let head = self
             .states
@@ -288,6 +343,7 @@ impl Bridge {
             .context("no committed state")?
             .last_block_height;
         let height = match query {
+            Query::Balance(address) => return self.balance(head, address),
             Query::Head => head,
             Query::Tail => self.blocks.base(),
             Query::Hash(ref hash) => {

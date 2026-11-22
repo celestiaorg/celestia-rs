@@ -33,6 +33,23 @@ func main() {
 	defer write.Close()
 	account, err := read.State.AccountAddress(ctx)
 	check(err)
+	balance, err := read.State.Balance(ctx)
+	check(err)
+	if balance.Denom != "utia" || !balance.Amount.IsPositive() {
+		panic(fmt.Sprintf("unexpected funded balance %v", balance))
+	}
+	for _, addr := range []state.Address{account, {Address: state.ValAddress(account.Bytes())}} {
+		accountBalance, err := read.State.BalanceForAddress(ctx, addr)
+		check(err)
+		if !balance.IsEqual(*accountBalance) {
+			panic(fmt.Sprintf("unexpected balance for %s", addr))
+		}
+	}
+	absent, err := read.State.BalanceForAddress(ctx, state.Address{Address: state.AccAddress(bytes.Repeat([]byte{0x91}, 20))})
+	check(err)
+	if absent.Denom != "utia" || !absent.Amount.IsZero() {
+		panic("absent balance must be zero utia")
+	}
 	ns, err := share.NewV0Namespace([]byte("writer"))
 	check(err)
 	multirow, err := blob.NewBlobV0(ns, bytes.Repeat([]byte("bridge DA"), 1400))
