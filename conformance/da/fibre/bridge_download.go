@@ -40,7 +40,7 @@ func main() {
 			panic(e)
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
 	defer cancel()
 	home, addr, endpoint := os.Args[1], os.Args[2], os.Args[3]
 	ring, err := keyring.New("celestia", "test", home, nil, encoding.MakeConfig(app.ModuleEncodingRegisters...).Codec)
@@ -52,6 +52,7 @@ func main() {
 	check(err)
 	check(tc.Start(ctx))
 	defer tc.Stop(ctx)
+	var primaryStore *appfibre.Store
 	startProvider := func(home string, client *txclient.TxClient, name string) (*appfibre.Server, *privval.FilePV) {
 		key := privval.LoadFilePV(filepath.Join(home, "config", "priv_validator_key.json"), filepath.Join(home, "data", "priv_validator_state.json"))
 		cfg := appfibre.DefaultServerConfig()
@@ -59,7 +60,11 @@ func main() {
 		cfg.ServerListenAddress = "127.0.0.1:0"
 		cfg.SignerFn = func(string) (core.PrivValidator, error) { return key, nil }
 		cfg.StoreFn = func(_ context.Context, sc appfibre.StoreConfig) (*appfibre.Store, error) {
-			return appfibre.NewMemoryStore(sc), nil
+			store := appfibre.NewMemoryStore(sc)
+			if name == "validator" {
+				primaryStore = store
+			}
+			return store, nil
 		}
 		server, err := appfibre.NewServer(cfg)
 		check(err)
@@ -95,6 +100,18 @@ func main() {
 	check(provider.Start(ctx))
 	defer provider.Stop(ctx)
 	svc := nodefibre.NewService(provider, tc, nodefibre.NewAccountClient(tc, conn))
+	writer, err := client.NewClient(ctx, endpoint, os.Getenv("DA_TEST_WRITE_TOKEN"))
+	check(err)
+	defer writer.Close()
+	// Both fresh operator accounts have bank funds and no Fibre escrow yet.
+	ns := libshare.MustNewV0Namespace([]byte{0xf1, 0xb3})
+	if _, err := writer.Fibre.Submit(ctx, ns, []byte("unfunded"), opts); err == nil || ctx.Err() != nil {
+		panic(fmt.Sprintf("unexpected unfunded Fibre submit result: %v", err))
+	}
+	if _, err := writer.Fibre.Upload(ctx, ns, []byte("unfunded"), opts); err == nil || ctx.Err() != nil {
+		panic(fmt.Sprintf("unexpected unfunded Fibre upload result: %v", err))
+	}
+	fmt.Println("Go verified the Rust wallet rejected Submit and Upload before escrow funding")
 	check(svc.Deposit(ctx, sdk.NewCoin("utia", sdkmath.NewInt(50000000)), opts))
 	data := make([]byte, 32768)
 	_, err = rand.Read(data)
@@ -153,16 +170,40 @@ func main() {
 	rpc, err := client.NewClient(ctx, endpoint, os.Getenv("DA_TEST_READ_TOKEN"))
 	check(err)
 	defer rpc.Close()
+	for _, invalid := range []appfibre.BlobID{appfibre.NewBlobID(255, paid.Commitment), appfibre.NewBlobID(0, appfibre.Commitment{})} {
+		if _, err := rpc.Fibre.Download(ctx, invalid); err == nil || ctx.Err() != nil {
+			panic(fmt.Sprintf("unexpected invalid Fibre ID result: %v", err))
+		}
+	}
+	// Exercise the actual validator-authenticated transport with a damaged stored row.
+	// The surviving store is private to this test, and the registered minority is offline.
+	shard, err := primaryStore.Get(ctx, paid.Commitment)
+	check(err)
+	if len(shard.Rows) == 0 || len(shard.Rows[0].Data) == 0 {
+		panic("no row data to check")
+	}
+	rewrite := func() {
+		check(primaryStore.Put(ctx, paid.PaymentPromise, shard, time.Now().Add(24*time.Hour)))
+		read, err := primaryStore.Get(ctx, paid.Commitment)
+		check(err)
+		if !bytes.Equal(read.Rows[0].Data, shard.Rows[0].Data) {
+			panic("test provider did not save the changed shard")
+		}
+	}
+	shard.Rows[0].Data[0] ^= 1
+	rewrite()
+	if _, err := rpc.Fibre.Download(ctx, id); err == nil || ctx.Err() != nil {
+		panic(fmt.Sprintf("unexpected damaged Fibre shard result: %v", err))
+	}
+	shard.Rows[0].Data[0] ^= 1
+	rewrite()
 	result, err := rpc.Fibre.Download(ctx, id)
 	check(err)
 	if !bytes.Equal(result.Data, data) {
 		panic("Rust DA download mismatch")
 	}
 	fmt.Println("Go verified the Rust node downloaded 32768 bytes from its local chain's FSP")
-	writer, err := client.NewClient(ctx, endpoint, os.Getenv("DA_TEST_WRITE_TOKEN"))
-	check(err)
-	defer writer.Close()
-	ns := libshare.MustNewV0Namespace([]byte{0xf1, 0xb3})
+	fmt.Println("Go verified rejection of missing, unsupported and damaged Fibre data, then recovered the restored payload")
 	if _, err := rpc.Fibre.Submit(ctx, ns, data, opts); err == nil {
 		panic("read token authorized a write")
 	}
@@ -218,7 +259,12 @@ func main() {
 			}
 			id = out.BlobID
 		} else {
-			out, err := writer.Fibre.Upload(ctx, ns, data, opts)
+			uploadCtx, cancelUpload := context.WithCancel(ctx)
+			uploader, err := client.NewClient(uploadCtx, endpoint, os.Getenv("DA_TEST_WRITE_TOKEN"))
+			check(err)
+			out, err := uploader.Fibre.Upload(uploadCtx, ns, data, opts)
+			cancelUpload()
+			uploader.Close()
 			check(err)
 			if out.PaymentPromise == nil || !validSignatures(out.ValidatorSignatures) {
 				panic("incomplete upload promise")
@@ -245,6 +291,7 @@ func main() {
 			}
 		}
 	}
+	fmt.Println("Go verified Upload settlement after the submitting client closed")
 	fmt.Println("Go verified signed Rust Submit and Upload, exact escrow debits, commit receipt, payloads and write permissions")
 
 }
