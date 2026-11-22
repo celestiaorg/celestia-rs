@@ -25,6 +25,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	ma "github.com/multiformats/go-multiaddr"
 	multistream "github.com/multiformats/go-multistream"
 	"golang.org/x/sync/errgroup"
@@ -60,6 +61,16 @@ func main() {
 	defer host.Close()
 	check(host.Connect(ctx, *info))
 	if endpoint := os.Getenv("DA_TEST_ADMIN_URL"); endpoint != "" {
+		pingCtx, stop := context.WithCancel(ctx)
+		pings := ping.Ping(pingCtx, host, info.ID)
+		for range 2 {
+			result := <-pings
+			check(result.Error)
+			if result.RTT <= 0 {
+				panic("missing Rust ping echo")
+			}
+		}
+		stop()
 		checkAdmin(ctx, endpoint, chain, *info, host.ID())
 	}
 	for _, proto := range []protocol.ID{"/other-private-chain/header-ex/v0.0.3", "/other-private-chain/shrex/v0.1.0/sample_v0"} {
@@ -157,6 +168,12 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	admin, err := rpcclient.NewClient(ctx, endpoint, os.Getenv("DA_TEST_ADMIN_TOKEN"))
 	check(err)
 	defer admin.Close()
+	latency, err := admin.P2P.Ping(ctx, clientID)
+	check(err)
+	if latency <= 0 {
+		panic("missing Go ping echo")
+	}
+	fmt.Println("Verified bidirectional libp2p ping with the Rust bridge")
 	info, err := admin.P2P.Info(ctx)
 	check(err)
 	if info.ID != server.ID || len(info.Addrs) == 0 {
@@ -192,6 +209,9 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	reader, err := rpcclient.NewClient(ctx, endpoint, os.Getenv("DA_TEST_READ_TOKEN"))
 	check(err)
 	defer reader.Close()
+	if _, err := reader.P2P.Ping(ctx, clientID); err == nil {
+		panic("read token permitted peer ping")
+	}
 	if _, err := reader.P2P.Peers(ctx); err == nil {
 		panic("read token accessed peer management")
 	}

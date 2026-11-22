@@ -15,7 +15,7 @@ mod composed {
         pub(crate) gate:
             libp2p::allow_block_list::Behaviour<libp2p::allow_block_list::BlockedPeers>,
         pub(crate) streams: super::super::inbound::Inbound,
-        pub(crate) flood: libp2p_stream::Behaviour,
+        pub(crate) negotiated: libp2p_stream::Behaviour,
         pub(crate) identify: identify::Behaviour,
         pub(crate) dht: kad::Behaviour<kad::store::MemoryStore>,
         pub(crate) gossip: gossipsub::Behaviour,
@@ -65,7 +65,7 @@ impl Behaviour {
             protected: super::protected::Protected::default(),
             gate: libp2p::allow_block_list::Behaviour::default(),
             streams: super::inbound::Inbound::new(network)?,
-            flood: libp2p_stream::Behaviour::new(),
+            negotiated: libp2p_stream::Behaviour::new(),
             identify: identify::Behaviour::new(identify::Config::new(
                 "ipfs/0.1.0".to_owned(),
                 key.public(),

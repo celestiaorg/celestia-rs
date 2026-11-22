@@ -6,6 +6,7 @@ mod inbound;
 #[cfg(feature = "da-light")]
 pub(crate) mod light;
 mod network;
+mod ping;
 mod protected;
 
 use std::io::{ErrorKind, Write as _};
@@ -69,6 +70,37 @@ impl Serving {
             }),
             metrics,
         }
+    }
+
+    fn accept(
+        self: &Arc<Self>,
+        admissions: &Arc<Semaphore>,
+        peer: libp2p::PeerId,
+        inbound::Accepted { kind, mut stream }: inbound::Accepted,
+    ) {
+        let Ok(admission) = admissions.clone().try_acquire_owned() else {
+            self.record(kind, "busy");
+            return;
+        };
+        let serving = self.clone();
+        tokio::spawn(async move {
+            let _admission = admission;
+            let Ok(Ok(_worker)) =
+                tokio::time::timeout(TIMEOUT, serving.bridge.worker.acquire()).await
+            else {
+                serving.record(kind, "busy");
+                return;
+            };
+            let outcome = match serve(&serving.bridge, kind, &mut stream).await {
+                Ok(true) => "served",
+                Ok(false) => "not_found",
+                Err(error) => {
+                    tracing::debug!(%peer, %error, "DA stream ended");
+                    "error"
+                }
+            };
+            serving.record(kind, outcome);
+        });
     }
 
     fn record(&self, kind: Kind, outcome: &str) {
@@ -163,8 +195,9 @@ async fn run(
     }
     let serving = Arc::new(serving);
     let bridge = &serving.bridge;
+    let ping = ping::Ping::start(behaviour.negotiated.new_control())?;
     flood::start(
-        behaviour.flood.new_control(),
+        behaviour.negotiated.new_control(),
         key.clone(),
         network,
         bridge.clone(),
@@ -190,7 +223,7 @@ async fn run(
     let topic_hash = topic.hash();
     let mut timer = tokio::time::interval(Duration::from_millis(500));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut operations = admin::Operations::default();
+    let mut operations = admin::Operations::new(ping);
     let mut announced = 0;
     let mut pending = tokio::task::JoinSet::new();
     // A Go DAS worker opens a separate stream for each sample in a batch.
@@ -236,28 +269,8 @@ async fn run(
                     reason?;
                     bail!("DA peer listener closed");
                 }
-                SwarmEvent::Behaviour(network::BehaviourEvent::Streams((peer, inbound::Accepted {kind, mut stream}))) => {
-                let Ok(admission) = admissions.clone().try_acquire_owned() else {
-                    serving.record(kind, "busy");
-                    continue
-                };
-                let serving = serving.clone();
-                tokio::spawn(async move {
-                    let _admission = admission;
-                    let Ok(Ok(_worker)) = tokio::time::timeout(TIMEOUT, serving.bridge.worker.acquire()).await else {
-                        serving.record(kind, "busy");
-                        return
-                    };
-                    let outcome = match serve(&serving.bridge, kind, &mut stream).await {
-                        Ok(true) => "served",
-                        Ok(false) => "not_found",
-                        Err(error) => {
-                            tracing::debug!(%peer, %error, "DA stream ended");
-                            "error"
-                        }
-                    };
-                    serving.record(kind, outcome);
-                });
+                SwarmEvent::Behaviour(network::BehaviourEvent::Streams((peer, request))) => {
+                    serving.accept(&admissions, peer, request);
                 }
                 _ => {}
             },

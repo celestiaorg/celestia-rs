@@ -30,6 +30,7 @@ impl Control {
         matches!(
             method,
             "p2p.Info"
+                | "p2p.Ping"
                 | "p2p.Connect"
                 | "p2p.ClosePeer"
                 | "p2p.Protect"
@@ -63,13 +64,21 @@ impl Control {
 
 type Reply = oneshot::Sender<Result<Value>>;
 
-#[derive(Default)]
 pub(super) struct Operations {
+    ping: super::ping::Ping,
     dialing: HashMap<ConnectionId, Reply>,
     closing: HashMap<PeerId, Vec<Reply>>,
 }
 
 impl Operations {
+    pub(super) fn new(ping: super::ping::Ping) -> Self {
+        Self {
+            ping,
+            dialing: HashMap::new(),
+            closing: HashMap::new(),
+        }
+    }
+
     pub(super) fn dial_result(&mut self, id: ConnectionId, result: Result<()>) {
         if let Some(reply) = self.dialing.remove(&id) {
             let _ = reply.send(result.map(|()| Value::Null));
@@ -95,6 +104,19 @@ impl Operations {
             reply,
         } = request;
         if reply.is_closed() {
+            return;
+        }
+        if method == "p2p.Ping" {
+            let peer = match args.as_slice() {
+                [value] => parse_peer(value),
+                _ => Err(anyhow::anyhow!("expected a peer ID")),
+            };
+            match peer {
+                Ok(peer) => self.ping.measure(peer, reply),
+                Err(error) => {
+                    let _ = reply.send(Err(error));
+                }
+            }
             return;
         }
         if matches!(method.as_str(), "p2p.BlockPeer" | "p2p.UnblockPeer") {
