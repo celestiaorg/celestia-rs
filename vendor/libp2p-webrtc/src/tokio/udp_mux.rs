@@ -19,7 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     io,
     io::ErrorKind,
     net::SocketAddr,
@@ -34,11 +34,11 @@ use futures::{
     future::{BoxFuture, FutureExt, OptionFuture},
     stream::FuturesUnordered,
 };
+use std::time::{Duration, Instant};
 use stun::{
     attributes::ATTR_USERNAME,
     message::{Message as STUNMessage, is_message as is_stun_message},
 };
-use thiserror::Error;
 use tokio::{io::ReadBuf, net::UdpSocket};
 use webrtc::{
     ice::udp_mux::{UDPMux, UDPMuxConn, UDPMuxConnParams, UDPMuxWriter},
@@ -80,8 +80,8 @@ pub(crate) struct UDPMuxNewAddr {
     /// Maps from socket address to the underlying connection.
     address_map: HashMap<SocketAddr, UDPMuxConn>,
 
-    /// Set of the new addresses to avoid sending the same address multiple times.
-    new_addrs: HashSet<SocketAddr>,
+    /// One pending handshake per ICE session, even when several candidates send checks.
+    pending: HashMap<String, Instant>,
 
     /// `true` when UDP mux is closed.
     is_closed: bool,
@@ -118,7 +118,7 @@ impl UDPMuxNewAddr {
             listen_addr,
             conns: HashMap::default(),
             address_map: HashMap::default(),
-            new_addrs: HashSet::default(),
+            pending: HashMap::default(),
             is_closed: false,
             send_buffer: None,
             close_futures: FuturesUnordered::default(),
@@ -154,33 +154,6 @@ impl UDPMuxNewAddr {
         };
 
         Ok(UDPMuxConn::new(params))
-    }
-
-    /// Returns a muxed connection if the `ufrag` from the given STUN message matches an existing
-    /// connection.
-    fn conn_from_stun_message(
-        &self,
-        buffer: &[u8],
-        addr: &SocketAddr,
-    ) -> Option<Result<UDPMuxConn, ConnQueryError>> {
-        match credentials_from_stun(buffer) {
-            Ok(credentials) => {
-                if let Some(conn) = self.conns.get(&credentials.local) {
-                    let associated_addrs = conn.get_addresses();
-                    // This basically ensures only one address is registered per ufrag.
-                    if associated_addrs.is_empty() || associated_addrs.contains(addr) {
-                        return Some(Ok(conn.clone()));
-                    } else {
-                        return Some(Err(ConnQueryError::UfragAlreadyTaken { associated_addrs }));
-                    }
-                }
-                None
-            }
-            Err(e) => {
-                tracing::debug!(address=%addr, "{}", e);
-                None
-            }
-        }
     }
 
     /// Reads from the underlying UDP socket and either reports a new address or proxies data to the
@@ -228,9 +201,6 @@ impl UDPMuxNewAddr {
                     })
                     .or_insert_with(|| conn.clone());
 
-                // remove addr from new_addrs once conn is established
-                self.new_addrs.remove(&addr);
-
                 let _ = response.send(());
 
                 continue;
@@ -268,6 +238,7 @@ impl UDPMuxNewAddr {
                     })
                 });
 
+                self.pending.remove(&ufrag);
                 self.conns.insert(ufrag, muxed_conn.clone());
 
                 let _ = response.send(Ok(Arc::new(muxed_conn) as Arc<dyn Conn + Send + Sync>));
@@ -292,7 +263,7 @@ impl UDPMuxNewAddr {
 
                 // NOTE: This is important, we need to drop all instances of `UDPMuxConn` to
                 // avoid a retain cycle due to the use of [`std::sync::Arc`] on both sides.
-                self.new_addrs.clear();
+                self.pending.clear();
 
                 let _ = response.send(Ok(()));
 
@@ -334,70 +305,56 @@ impl UDPMuxNewAddr {
 
                     match self.udp_sock.poll_recv_from(cx, &mut read) {
                         Poll::Ready(Ok(addr)) => {
-                            // Find connection based on previously having seen this source address
-                            let conn = self.address_map.get(&addr);
-
-                            let conn = match conn {
-                                // If we couldn't find the connection based on source address, see
-                                // if this is a STUN message and if
-                                // so if we can find the connection based on ufrag.
-                                None if is_stun_message(read.filled()) => {
-                                    match self.conn_from_stun_message(read.filled(), &addr) {
-                                        Some(Ok(s)) => Some(s),
-                                        Some(Err(e)) => {
-                                            tracing::debug!(address=%&addr, "Error when querying existing connections: {}", e);
+                            let conn = if let Some(conn) = self.address_map.get(&addr) {
+                                conn.clone()
+                            } else {
+                                if !is_stun_message(read.filled()) {
+                                    continue;
+                                }
+                                let Ok(credentials) = credentials_from_stun(read.filled()) else {
+                                    continue;
+                                };
+                                if let Some(conn) = self.conns.get(&credentials.local) {
+                                    // ICE authenticates the binding request before registering a candidate.
+                                    conn.clone()
+                                } else {
+                                    if self
+                                        .pending
+                                        .get(&credentials.local)
+                                        .is_some_and(|at| at.elapsed() < Duration::from_secs(10))
+                                    {
+                                        continue;
+                                    }
+                                    if self.pending.len() >= 1024 {
+                                        self.pending
+                                            .retain(|_, at| at.elapsed() < Duration::from_secs(10));
+                                        if self.pending.len() >= 1024 {
                                             continue;
                                         }
-                                        None => None,
                                     }
+                                    self.pending
+                                        .insert(credentials.local.clone(), Instant::now());
+                                    tracing::debug!(%addr, "DA WebRTC ICE binding request received");
+                                    return Poll::Ready(UDPMuxEvent::NewAddr(NewAddr {
+                                        addr,
+                                        credentials,
+                                    }));
                                 }
-                                Some(s) => Some(s.to_owned()),
-                                _ => None,
                             };
-
-                            match conn {
-                                None => {
-                                    if !self.new_addrs.contains(&addr) {
-                                        match credentials_from_stun(read.filled()) {
-                                            Ok(credentials) => {
-                                                tracing::debug!(%addr, "DA WebRTC ICE binding request received");
-                                                tracing::trace!(
-                                                    address=%&addr,
-                                                    "Notifying about new address from ufrag",
-                                                );
-                                                self.new_addrs.insert(addr);
-                                                return Poll::Ready(UDPMuxEvent::NewAddr(
-                                                    NewAddr { addr, credentials },
-                                                ));
-                                            }
-                                            Err(e) => {
-                                                tracing::debug!(
-                                                    address=%&addr,
-                                                    "Unknown address (non STUN packet: {})",
-                                                    e
-                                                );
-                                            }
-                                        }
+                            let mut packet = vec![0u8; read.filled().len()];
+                            packet.copy_from_slice(read.filled());
+                            self.write_future = OptionFuture::from(Some(
+                                async move {
+                                    if let Err(err) = conn.write_packet(&packet, addr).await {
+                                        tracing::error!(
+                                            address=%addr,
+                                            "Failed to write packet: {}",
+                                            err,
+                                        );
                                     }
                                 }
-                                Some(conn) => {
-                                    let mut packet = vec![0u8; read.filled().len()];
-                                    packet.copy_from_slice(read.filled());
-                                    self.write_future = OptionFuture::from(Some(
-                                        async move {
-                                            if let Err(err) = conn.write_packet(&packet, addr).await
-                                            {
-                                                tracing::error!(
-                                                    address=%addr,
-                                                    "Failed to write packet: {}",
-                                                    err,
-                                                );
-                                            }
-                                        }
-                                        .boxed(),
-                                    ));
-                                }
-                            }
+                                .boxed(),
+                            ));
 
                             continue;
                         }
@@ -589,10 +546,4 @@ fn credentials_from_stun(buffer: &[u8]) -> Result<Credentials, Error> {
         local: local.to_owned(),
         remote: remote.to_owned(),
     })
-}
-
-#[derive(Error, Debug)]
-enum ConnQueryError {
-    #[error("ufrag is already taken (associated_addrs={associated_addrs:?})")]
-    UfragAlreadyTaken { associated_addrs: Vec<SocketAddr> },
 }
