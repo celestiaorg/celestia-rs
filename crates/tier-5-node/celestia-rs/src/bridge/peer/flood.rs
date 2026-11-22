@@ -191,19 +191,22 @@ pub(super) fn start(
     let relay = relay::start(local, events.clone())?;
     let publisher = events.clone();
     let publish_topic = topic.clone();
+    let mut next = bridge.index.head()?.max(1);
+    let empty_hash = square::min_data_availability_header().hash();
     tokio::spawn(async move {
         let mut seq = rand::random::<u64>();
-        let mut next = bridge.blocks.height().max(1);
         let mut timer = tokio::time::interval(Duration::from_millis(250));
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             timer.tick().await;
-            let head = bridge.blocks.height();
+            let (Ok(head), Ok(tail)) = (bridge.index.head(), bridge.index.tail()) else {
+                continue;
+            };
             if publisher.receiver_count() == 0 {
                 next = head.max(1);
                 continue;
             }
-            next = next.max(bridge.blocks.base());
+            next = next.max(tail);
             if next > head {
                 continue;
             }
@@ -215,32 +218,22 @@ pub(super) fn start(
             let height = next;
             let result = tokio::task::spawn_blocking(move || -> Result<_> {
                 let _permit = permit;
-                let meta = source
-                    .blocks
-                    .load_block_meta(height)?
-                    .context("block unavailable")?;
-                if meta.num_txs == 0 {
-                    return Ok(None);
-                }
-                // The block store can lead the committed state during application.
-                // Publish only once go-header can serve the same height immediately.
-                ensure!(
-                    height <= crate::bridge::header_rpc::head(&source)?,
-                    "state not committed"
-                );
-                let block = source.committed(height)?;
-                Ok(Some(Notification {
+                let bytes = source.index.header_wire(height)?;
+                let header = crate::bridge::HeaderWire::decode(bytes.as_slice())?
+                    .header
+                    .context("missing indexed header")?;
+                Ok(Notification {
                     height: u64::try_from(height)?,
-                    data_hash: block.header.data_hash,
-                }))
+                    data_hash: header.data_hash,
+                })
             })
             .await;
-            let Ok(Ok(notification)) = result else {
+            let Ok(Ok(data)) = result else {
                 tracing::debug!(height, "EDS publication deferred");
                 continue;
             };
             next += 1;
-            if let Some(data) = notification {
+            if data.data_hash.as_slice() != empty_hash.as_slice() {
                 seq = seq.wrapping_add(1);
                 match signed(&key, &publish_topic, seq, data) {
                     Ok(frame) => {
