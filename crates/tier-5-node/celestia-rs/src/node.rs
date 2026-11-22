@@ -442,26 +442,6 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         app_version: state.consensus_params.version.app,
     })?;
     exec.set_event_sink(rpc.publisher.clone());
-    #[cfg(feature = "bridge")]
-    let _bridge = opts
-        .bridge_rpc_listen
-        .map(|addr| {
-            let wallet = opts
-                .bridge_signer
-                .as_deref()
-                .map(|name| {
-                    crate::bridge::submit::Wallet::open(
-                        home,
-                        name,
-                        &rpc.settings.rpc.laddr,
-                        app::AbciApp::from_shared(app.clone()),
-                        &genesis.chain_id,
-                    )
-                })
-                .transpose()?;
-            crate::bridge::Server::start(addr, home, bs.clone(), ss.clone(), wallet)
-        })
-        .transpose()?;
     rpc.spawn()?;
     let local_addr = pv.address().to_vec();
     // Go: a fresh node with state sync enabled skips the handshake; the
@@ -500,7 +480,7 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         None => None,
     };
     #[cfg(feature = "bridge-p2p")]
-    let _bridge_peer = opts
+    let bridge_peer = opts
         .bridge_p2p_listen
         .map(|addr| {
             crate::bridge::peer::start(
@@ -510,6 +490,34 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                 crate::bridge::peer::Serving::new(bs.clone(), ss.clone(), metrics.clone()),
                 &opts.bridge_bootstrap,
                 opts.bridge_announce.clone(),
+            )
+        })
+        .transpose()?;
+    #[cfg(feature = "bridge")]
+    let _bridge = opts
+        .bridge_rpc_listen
+        .map(|addr| {
+            let wallet = opts
+                .bridge_signer
+                .as_deref()
+                .map(|name| {
+                    crate::bridge::submit::Wallet::open(
+                        home,
+                        name,
+                        &rpc.settings.rpc.laddr,
+                        app::AbciApp::from_shared(app.clone()),
+                        &genesis.chain_id,
+                    )
+                })
+                .transpose()?;
+            crate::bridge::Server::start(
+                addr,
+                home,
+                bs.clone(),
+                ss.clone(),
+                #[cfg(feature = "bridge-p2p")]
+                bridge_peer.as_ref().map(|(_, control)| control.clone()),
+                wallet,
             )
         })
         .transpose()?;
