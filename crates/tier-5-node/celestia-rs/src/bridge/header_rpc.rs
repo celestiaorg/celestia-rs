@@ -127,7 +127,7 @@ pub(super) fn range_bounds(from: &Value, to: &Value) -> Result<(std::ops::Range<
     Ok((start + 1..end, hash))
 }
 
-fn head(bridge: &Bridge) -> Result<i64> {
+pub(super) fn head(bridge: &Bridge) -> Result<i64> {
     Ok(bridge
         .states
         .load()?

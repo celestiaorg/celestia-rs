@@ -6,9 +6,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	rpcclient "github.com/celestiaorg/celestia-node/api/rpc/client"
+	libhost "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
+	"io"
 	"os"
 	"slices"
 	"strconv"
@@ -22,8 +25,11 @@ import (
 	"github.com/celestiaorg/go-square/v4/share"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	ma "github.com/multiformats/go-multiaddr"
+	multistream "github.com/multiformats/go-multistream"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -57,7 +63,27 @@ func main() {
 	defer host.Close()
 	check(host.Connect(ctx, *info))
 	if endpoint := os.Getenv("DA_TEST_ADMIN_URL"); endpoint != "" {
-		checkAdmin(ctx, endpoint, chain, *info, host.ID())
+		pingCtx, stop := context.WithCancel(ctx)
+		pings := ping.Ping(pingCtx, host, info.ID)
+		for range 2 {
+			result := <-pings
+			check(result.Error)
+			if result.RTT <= 0 {
+				panic("missing Rust ping echo")
+			}
+		}
+		stop()
+		checkAdmin(ctx, endpoint, chain, *info, host)
+	}
+	for _, proto := range []protocol.ID{"/other-private-chain/header-ex/v0.0.3", "/other-private-chain/shrex/v0.1.0/sample_v0"} {
+		stream, err := host.NewStream(ctx, info.ID, proto)
+		if err == nil {
+			stream.Reset()
+			panic("negotiated a different DA network")
+		}
+		if !errors.Is(err, multistream.ErrNotSupported[protocol.ID]{}) {
+			panic(fmt.Sprintf("unexpected network rejection: %v", err))
+		}
 	}
 	gater, err := conngater.NewBasicConnectionGater(nil)
 	check(err)
@@ -76,6 +102,12 @@ func main() {
 	params.WithNetworkID(chain)
 	client, err := shrex.NewClient(params, host)
 	check(err)
+	missing, err := shwap.NewEdsID(h + 1_000_000)
+	check(err)
+	var unavailable bytes.Buffer
+	if _, _, err = client.Get(ctx, &missing, &unavailable, info.ID); !errors.Is(err, shrex.ErrNotFound) || unavailable.Len() != 0 {
+		panic(fmt.Sprintf("expected missing EDS, got %v and %d bytes", err, unavailable.Len()))
+	}
 	width := len(eh.DAH.RowRoots)
 	eid, err := shwap.NewEdsID(h)
 	check(err)
@@ -134,10 +166,17 @@ func main() {
 	panic("expected blob missing")
 }
 
-func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInfo, clientID peer.ID) {
+func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInfo, clientHost libhost.Host) {
+	clientID := clientHost.ID()
 	admin, err := rpcclient.NewClient(ctx, endpoint, os.Getenv("DA_TEST_ADMIN_TOKEN"))
 	check(err)
 	defer admin.Close()
+	latency, err := admin.P2P.Ping(ctx, clientID)
+	check(err)
+	if latency <= 0 {
+		panic("missing Go ping echo")
+	}
+	fmt.Println("Verified bidirectional libp2p ping with the Rust bridge")
 	info, err := admin.P2P.Info(ctx)
 	check(err)
 	if info.ID != server.ID || len(info.Addrs) == 0 {
@@ -173,6 +212,31 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	reader, err := rpcclient.NewClient(ctx, endpoint, os.Getenv("DA_TEST_READ_TOKEN"))
 	check(err)
 	defer reader.Close()
+	if _, err := reader.P2P.ConnectionState(ctx, clientID); err == nil {
+		panic("read token inspected peer connections")
+	}
+	var held []network.Stream
+	for i := 0; i < 3; i++ {
+		st, err := clientHost.NewStream(ctx, server.ID, protocol.ID("/ipfs/ping/1.0.0"))
+		check(err)
+		_, err = st.Write(make([]byte, 32))
+		check(err)
+		_, err = io.ReadFull(st, make([]byte, 32))
+		check(err)
+		held = append(held, st)
+	}
+	active, err := admin.P2P.ConnectionState(ctx, clientID)
+	check(err)
+	if len(active) != 1 || active[0].NumStreams < 3 || active[0].Direction != network.DirInbound ||
+		active[0].Opened.IsZero() || active[0].Limited || active[0].Info != clientHost.Network().ConnsToPeer(server.ID)[0].ConnState() {
+		panic(fmt.Sprintf("invalid inbound connection state: %+v", active))
+	}
+	for _, s := range held {
+		check(s.Close())
+	}
+	if _, err := reader.P2P.Ping(ctx, clientID); err == nil {
+		panic("read token permitted peer ping")
+	}
 	if _, err := reader.P2P.Peers(ctx); err == nil {
 		panic("read token accessed peer management")
 	}
@@ -187,16 +251,99 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	check(admin.P2P.Connect(ctx, address))
 	connected, err := admin.P2P.Connectedness(ctx, address.ID)
 	check(err)
+	active, err = admin.P2P.ConnectionState(ctx, address.ID)
+	check(err)
+	if len(active) != 1 || active[0].Direction != network.DirOutbound {
+		panic("Rust dial direction mismatch")
+	}
 	if connected != network.Connected {
 		panic("admin dial did not connect")
 	}
+	if err := reader.P2P.Protect(ctx, address.ID, "first"); err == nil {
+		panic("read token protected a peer")
+	}
+	check(admin.P2P.Protect(ctx, address.ID, "first"))
+	check(admin.P2P.Protect(ctx, address.ID, "first"))
+	check(admin.P2P.Protect(ctx, address.ID, "second"))
+	present, err := admin.P2P.IsProtected(ctx, address.ID, "")
+	check(err)
+	if !present {
+		panic("wildcard did not see protected peer")
+	}
+	still, err := admin.P2P.Unprotect(ctx, address.ID, "first")
+	check(err)
+	if !still {
+		panic("removing one tag removed all protection")
+	}
+	present, err = admin.P2P.IsProtected(ctx, address.ID, "first")
+	check(err)
+	if present {
+		panic("removed tag still active")
+	}
+	if err := reader.P2P.BlockPeer(ctx, address.ID); err == nil {
+		panic("read token blocked a DA peer")
+	}
+	check(admin.P2P.BlockPeer(ctx, address.ID))
+	check(admin.P2P.BlockPeer(ctx, address.ID))
+	blocked, err := admin.P2P.ListBlockedPeers(ctx)
+	check(err)
+	if !slices.Contains(blocked, address.ID) {
+		panic("blocked peer missing")
+	}
+	for {
+		state, err := admin.P2P.Connectedness(ctx, address.ID)
+		check(err)
+		if state == network.NotConnected {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			panic(ctx.Err())
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	if err := admin.P2P.Connect(ctx, address); err == nil {
+		panic("blocked outbound dial succeeded")
+	}
+	extra.Peerstore().AddAddrs(server.ID, server.Addrs, time.Minute)
+	if stream, err := extra.NewStream(ctx, server.ID, protocol.ID("/"+chain+"/header-ex/v0.0.3")); err == nil {
+		stream.Reset()
+		panic("blocked inbound header exchange negotiated")
+	}
+	check(admin.P2P.UnblockPeer(ctx, address.ID))
+	check(admin.P2P.UnblockPeer(ctx, address.ID))
+	blocked, err = admin.P2P.ListBlockedPeers(ctx)
+	check(err)
+	if slices.Contains(blocked, address.ID) {
+		panic("unblocked peer still listed")
+	}
+	check(admin.P2P.Connect(ctx, address))
+	stream, err := extra.NewStream(ctx, server.ID, protocol.ID("/"+chain+"/header-ex/v0.0.3"))
+	check(err)
+	check(stream.Close())
+	fmt.Println("Go verified inbound and outbound peer blocking, disconnect and unblock")
 	check(admin.P2P.ClosePeer(ctx, address.ID))
 	check(admin.P2P.ClosePeer(ctx, address.ID))
 	connected, err = admin.P2P.Connectedness(ctx, address.ID)
 	check(err)
+	if _, err = admin.P2P.ConnectionState(ctx, address.ID); err == nil {
+		panic("closed connection still present")
+	}
+	fmt.Println("Go verified connection directions, negotiated transport, open stream count and close cleanup")
 	if connected != network.NotConnected {
 		panic("admin close did not disconnect")
 	}
+	present, err = admin.P2P.IsProtected(ctx, address.ID, "second")
+	check(err)
+	if !present {
+		panic("tag lost across explicit disconnect")
+	}
+	still, err = admin.P2P.Unprotect(ctx, address.ID, "second")
+	check(err)
+	if still {
+		panic("final tag left protection active")
+	}
+	fmt.Println("Go verified independent connection-manager tags and wildcard protection")
 	check(extra.Close())
 	if err := admin.P2P.Connect(ctx, address); err == nil {
 		panic("dial to stopped peer succeeded")
