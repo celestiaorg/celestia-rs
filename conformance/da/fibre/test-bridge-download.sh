@@ -22,7 +22,14 @@ endpoint=http://127.0.0.1:32658
 DA_TEST_READ_TOKEN=$("$binary" da-auth read --home "$work/node")
 DA_TEST_WRITE_TOKEN=$("$binary" da-auth write --home "$work/node")
 export DA_TEST_READ_TOKEN DA_TEST_WRITE_TOKEN
-"$binary" start --network local --home "$work/node" --bridge-signer validator --bridge-rpc-listen 127.0.0.1:32658 >"$work/node.log" 2>&1 &
+active_home="$work/node"
+if [[ ${3:-} == --light ]]; then active_home="$work/light"; fi
+"$binary" keys add da-secondary --home "$active_home" --no-backup --keyring-backend test >/dev/null 2>&1
+DA_TEST_SECOND_SIGNER=$("$binary" keys show da-secondary -a --home "$active_home" --keyring-backend test)
+export DA_TEST_SECOND_SIGNER
+extra=()
+if [[ $active_home == "$work/node" ]]; then extra=(--bridge-signer da-secondary); fi
+"$binary" start --network local --home "$work/node" --bridge-signer validator "${extra[@]}" --bridge-rpc-listen 127.0.0.1:32658 >"$work/node.log" 2>&1 &
 pid=$!
 for attempt in {1..90}; do
     kill -0 "$pid"
@@ -32,6 +39,8 @@ for attempt in {1..90}; do
     if [[ "$attempt" == 90 ]]; then echo 'private Rust bridge did not produce a header' >&2; exit 1; fi
     sleep 1
 done
+"$binary" tx bank send validator "$DA_TEST_SECOND_SIGNER" 100000000utia --home "$work/node" --keyring-backend test \
+    --chain-id celestia-rs-local --node tcp://127.0.0.1:26657 --fees 20000utia --wait | jq -e '.code == 0' >/dev/null
 if [[ ${3:-} == --light ]]; then
     home="$work/light"
     "$binary" keys add light --home "$home" --no-backup --keyring-backend test >/dev/null 2>&1
@@ -49,7 +58,7 @@ if [[ ${3:-} == --light ]]; then
     DA_TEST_WRITE_TOKEN=$("$binary" da-auth write --home "$home")
     "$binary" da-light --home "$home" --network celestia-rs-local \
         --peer /ip4/127.0.0.1/tcp/1/p2p/12D3KooWLiGKA7tFRoMSfcztssRgUzthfpJP1cAm16Fhztkn46rk \
-        --core.ip 127.0.0.1 --core.port 9090 --keyring.keyname light --keyring.backend test \
+        --core.ip 127.0.0.1 --core.port 9090 --keyring.keyname light --keyring.keyname da-secondary --keyring.backend test \
         --rpc-listen 127.0.0.1:39659 >"$work/light.log" 2>&1 &
     light=$!
 fi

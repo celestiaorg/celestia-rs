@@ -42,7 +42,7 @@ impl Server {
         app: app::AbciApp,
         #[cfg(feature = "da-fibre")] core: (&str, &str),
         #[cfg(feature = "bridge-p2p")] peer_control: Option<peer::Control>,
-        wallet: Option<Arc<submit::Wallet>>,
+        wallet: Option<submit::Accounts<submit::Wallet>>,
     ) -> Result<Self> {
         ensure!(
             addr.ip().is_loopback(),
@@ -109,7 +109,7 @@ struct Bridge {
     index: Arc<index::Store>,
     #[cfg(feature = "bridge-p2p")]
     peer_control: Option<peer::Control>,
-    wallet: Option<Arc<submit::Wallet>>,
+    wallet: Option<submit::Accounts<submit::Wallet>>,
     waiters: Arc<Semaphore>,
     worker: Arc<Semaphore>,
 }
@@ -328,6 +328,7 @@ impl Bridge {
                 .wallet
                 .as_ref()
                 .context("bridge signer is not configured")?
+                .default_wallet()
                 .address(),
         };
         let (prefix, bytes) =
@@ -390,7 +391,8 @@ impl Bridge {
                     .context("bridge signer is not configured")?;
                 let app = self.app.as_ref().context("no bridge application")?;
                 return Ok(J::Raw(
-                    state_rpc::read(app, &method, &args, &wallet.address())?.to_string(),
+                    state_rpc::read(app, &method, &args, &wallet.default_wallet().address())?
+                        .to_string(),
                 ));
             }
             Query::Balance(address) => return self.balance(head, address),
@@ -762,6 +764,12 @@ async fn fibre_write(bridge: &Bridge, method: &str, params: &Value) -> Result<J,
         .as_ref()
         .ok_or_else(|| (1, "bridge signer is not configured".into()))?;
     wallet
+        .select(
+            params
+                .as_array()
+                .ok_or_else(|| (-32602, "invalid transaction parameters".to_owned()))?,
+        )
+        .map_err(|e| (1, e.to_string()))?
         .submit_fibre(client, params, method == "fibre.Submit")
         .await
         .map(|v| J::Raw(v.to_string()))
@@ -775,6 +783,12 @@ async fn wallet_rpc(bridge: &Bridge, method: &str, params: &Value) -> Result<J, 
         .ok_or_else(|| (1, "bridge signer is not configured".to_owned()))?;
     if method != "state.AccountAddress" {
         let receipt = wallet
+            .select(
+                params
+                    .as_array()
+                    .ok_or_else(|| (-32602, "invalid transaction parameters".to_owned()))?,
+            )
+            .map_err(|e| (1, e.to_string()))?
             .submit(params, method)
             .await
             .map_err(|e| (1, e.to_string()))?;
@@ -794,7 +808,7 @@ async fn wallet_rpc(bridge: &Bridge, method: &str, params: &Value) -> Result<J, 
     if !params.is_null() && params.as_array().is_none_or(|p| !p.is_empty()) {
         return Err((-32600, "invalid request".to_owned()));
     }
-    Ok(J::str(wallet.address()))
+    Ok(J::str(wallet.default_wallet().address()))
 }
 
 fn proof_json(p: &celestia_proto::celestia::core::v1::proof::NmtProof, shwap: bool) -> J {

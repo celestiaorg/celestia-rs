@@ -16,6 +16,9 @@ use tokio::sync::Semaphore;
 
 use crate::{client, keys::ACC_PREFIX, txs};
 
+mod accounts;
+pub(crate) use accounts::Accounts;
+
 pub(super) const BODY_LIMIT: usize = 2 * app::proposal::MAX_TX_SIZE;
 
 pub(super) struct Receipt {
@@ -65,7 +68,7 @@ impl Wallet {
         }))
     }
 
-    pub(super) fn address(&self) -> String {
+    pub(crate) fn address(&self) -> String {
         self.signer.bech32(ACC_PREFIX)
     }
 

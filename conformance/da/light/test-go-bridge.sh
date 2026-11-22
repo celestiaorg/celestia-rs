@@ -40,6 +40,9 @@ home_arg=(--home "$work/consensus")
 key_arg=(--keyring-backend test "${home_arg[@]}")
 chain=da-oracle
 "$rust" keys add light --no-backup --keyring-backend test --home "$work/rust-light" >/dev/null 2>&1
+"$rust" keys add da-secondary --no-backup --keyring-backend test --home "$work/rust-light" >/dev/null 2>&1
+DA_TEST_SECOND_SIGNER=$("$rust" keys show da-secondary --address --keyring-backend test --home "$work/rust-light")
+export DA_TEST_SECOND_SIGNER
 light_wallet=$("$rust" keys show light -a --keyring-backend test --home "$work/rust-light")
 {
     "$app" init oracle --chain-id "$chain" "${home_arg[@]}"
@@ -184,7 +187,7 @@ for attempt in {1..30}; do
     kill -0 "$core_proxy"
     sleep 1
 done
-SSL_CERT_FILE="$work/ca.pem" RUST_LOG=celestia_rs::bridge::peer=info "$rust" "${args[@]}" --core.ip 127.0.0.1 --core.port "$(cat "$work/proxy-port")" --core.tls --core.xtoken.path "$work" --keyring.keyname light --keyring.backend test --p2p-listen /ip4/127.0.0.1/tcp/39621 --rpc-listen 127.0.0.1:39658 >"$work/light.log" 2>&1 &
+SSL_CERT_FILE="$work/ca.pem" RUST_LOG=celestia_rs::bridge::peer=info "$rust" "${args[@]}" --core.ip 127.0.0.1 --core.port "$(cat "$work/proxy-port")" --core.tls --core.xtoken.path "$work" --keyring.keyname light --keyring.keyname da-secondary --keyring.backend test --p2p-listen /ip4/127.0.0.1/tcp/39621 --rpc-listen 127.0.0.1:39658 >"$work/light.log" 2>&1 &
 light=$!
 for attempt in {1..60}; do
     kill -0 "$light"
@@ -315,7 +318,7 @@ echo "Rust verified the paid checkpoint from a Go provider learned only through 
 kill -INT "$light"
 wait "$light"
 light=
-"$rust" "${args[@]}" --core.ip 127.0.0.1 --core.port 39090 --keyring.keyname light --keyring.backend test \
+"$rust" "${args[@]}" --core.ip 127.0.0.1 --core.port 39090 --keyring.keyname light --keyring.keyname da-secondary --keyring.backend test \
     --rpc-listen 127.0.0.1:39658 >"$work/light-wallet.log" 2>&1 &
 light=$!
 for attempt in {1..60}; do

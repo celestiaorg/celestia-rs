@@ -51,10 +51,13 @@ DA_TEST_READ_TOKEN=$("$binary" da-auth read --home "$work/node")
 export DA_TEST_READ_TOKEN
 # Keep the fresh validator keys and the startup log inside the temporary home.
 rust_token=$DA_TEST_READ_TOKEN
+"$binary" keys add da-secondary --no-backup --keyring-backend test --home "$work/node" >/dev/null 2>&1
+DA_TEST_SECOND_SIGNER=$("$binary" keys show da-secondary --address --keyring-backend test --home "$work/node")
+export DA_TEST_SECOND_SIGNER
 start_rust() {
     local first= head
     RUST_LOG=celestia_rs::bridge::peer=info "$binary" start --network local --home "$work/node" \
-        --bridge-rpc-listen 127.0.0.1:32658 --bridge-signer validator "${peer_args[@]}" >"$work/node.log" 2>&1 &
+        --bridge-rpc-listen 127.0.0.1:32658 --bridge-signer validator --bridge-signer da-secondary "${peer_args[@]}" >"$work/node.log" 2>&1 &
     pid=$!
     for attempt in {1..120}; do
         kill -0 "$pid"

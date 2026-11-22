@@ -67,7 +67,7 @@ struct Service {
     peer: crate::bridge::peer::Control,
     data: super::data::Client,
     core: Option<super::core::Core>,
-    wallet: Option<Arc<super::wallet::Wallet>>,
+    wallet: Option<crate::bridge::submit::Accounts<super::wallet::Wallet>>,
     auth: Arc<Auth>,
     db: Arc<RedbBackend>,
     workers: Arc<tokio::sync::Semaphore>,
@@ -105,18 +105,15 @@ pub(super) async fn listener(
                 peer,
                 auth: Arc::new(Auth::open(home)?),
                 data: super::data::Client::new(peers)?,
-                wallet: args
-                    .key_name
-                    .as_deref()
-                    .map(|name| {
-                        super::wallet::Wallet::open(
-                            home,
-                            name,
-                            args.key_backend.clone(),
-                            args.network.clone(),
-                        )
-                    })
-                    .transpose()?,
+                wallet: crate::bridge::submit::Accounts::open(args.key_name.iter(), |name| {
+                    let wallet = super::wallet::Wallet::open(
+                        home,
+                        name,
+                        args.key_backend.clone(),
+                        args.network.clone(),
+                    )?;
+                    Ok((wallet.address.clone(), wallet))
+                })?,
                 core: args
                     .core_ip
                     .as_deref()
@@ -400,6 +397,8 @@ async fn core_read(
             .as_ref()
             .ok_or_else(|| (1, "light signer is not configured".to_owned()))?;
         return wallet
+            .select(args)
+            .map_err(|e| (1, e.to_string()))?
             .submit(core, method, args)
             .await
             .map(|value| value.to_string())
@@ -411,7 +410,7 @@ async fn core_read(
                 .wallet
                 .as_ref()
                 .ok_or_else(|| (1, "light signer is not configured".to_owned()))?;
-            (wallet.address.as_str(), args)
+            (wallet.default_wallet().address.as_str(), args)
         } else {
             let [Value::String(signer)] = args else {
                 return Err((-32602, "expected signer address".into()));
@@ -429,14 +428,16 @@ async fn core_read(
     }
     let address = match (method, args) {
         ("state.BalanceForAddress" | "fibre.Download", [Value::String(address)]) => address,
-        ("state.Balance" | "state.AccountAddress", []) => {
-            service.wallet.as_ref().map(|w| &w.address).ok_or_else(|| {
+        ("state.Balance" | "state.AccountAddress", []) => service
+            .wallet
+            .as_ref()
+            .map(|w| &w.default_wallet().address)
+            .ok_or_else(|| {
                 (
                     1,
                     "no light account selected (use --keyring.keyname)".to_owned(),
                 )
-            })?
-        }
+            })?,
         _ => return Err((-32602, "invalid account parameters".into())),
     };
     if method == "state.AccountAddress" {
