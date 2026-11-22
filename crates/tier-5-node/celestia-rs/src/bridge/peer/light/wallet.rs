@@ -12,7 +12,14 @@ use celestia_proto::{
     cosmos::{auth::v1beta1 as auth, tx::v1beta1 as tx},
 };
 use serde_json::{Value, json};
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 use tokio::sync::Semaphore;
 
 pub(super) fn handles(method: &str) -> bool {
@@ -27,6 +34,7 @@ pub(super) struct Wallet {
     name: String,
     chain: String,
     sequence: Arc<Semaphore>,
+    confirmed_next: AtomicU64,
 }
 
 impl Wallet {
@@ -48,6 +56,7 @@ impl Wallet {
             name: name.to_owned(),
             chain,
             sequence: Arc::new(Semaphore::new(1)),
+            confirmed_next: AtomicU64::new(0),
         }))
     }
 
@@ -126,19 +135,21 @@ impl Wallet {
     }
 
     async fn broadcast(&self, core: &Core, req: submit::Transaction) -> Result<(i64, String)> {
-        let response: auth::QueryAccountInfoResponse = core
-            .unary(
-                "/cosmos.auth.v1beta1.Query/AccountInfo",
-                auth::QueryAccountInfoRequest {
-                    address: self.address.clone(),
-                },
-            )
-            .await?;
-        let account = response.info.context("missing signer account")?;
-        ensure!(
-            account.address == self.address,
-            "core returned a different signer account"
-        );
+        let account = current_account(
+            &self.address,
+            self.confirmed_next.load(Ordering::Relaxed),
+            || async {
+                Ok(core
+                    .unary(
+                        "/cosmos.auth.v1beta1.Query/AccountInfo",
+                        auth::QueryAccountInfoRequest {
+                            address: self.address.clone(),
+                        },
+                    )
+                    .await?)
+            },
+        )
+        .await?;
         let key = self.signer.key().context("missing light signing key")?;
         let mut utx = txs::UnsignedTx {
             msgs: vec![req.message],
@@ -190,8 +201,33 @@ impl Wallet {
         );
         let height =
             tokio::time::timeout(Duration::from_secs(180), confirm(core, &hash, request)).await??;
+        self.confirmed_next
+            .store(account.sequence.saturating_add(1), Ordering::Relaxed);
         Ok((height, hash))
     }
+}
+
+// TxStatus can publish the commit before AccountInfo exposes its state.
+async fn current_account<F: Future<Output = Result<auth::QueryAccountInfoResponse>>>(
+    address: &str,
+    minimum: u64,
+    mut query: impl FnMut() -> F,
+) -> Result<auth::BaseAccount> {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let account = query().await?.info.context("missing signer account")?;
+            ensure!(
+                account.address == address,
+                "core returned a different signer account"
+            );
+            if account.sequence >= minimum {
+                return Ok(account);
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .context("core account has not caught up to the confirmed transaction")?
 }
 
 async fn fees(
@@ -282,5 +318,31 @@ async fn confirm(core: &Core, hash: &str, request: tx::BroadcastTxRequest) -> Re
             _ => anyhow::bail!("transaction {hash} {}: {}", response.status, response.error),
         }
         tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn waits_for_the_previously_confirmed_sequence() {
+        let mut sequences = [10, 10, 11].into_iter();
+        let account = current_account("signer", 11, || {
+            let sequence = sequences.next();
+            async move {
+                Ok(auth::QueryAccountInfoResponse {
+                    info: Some(auth::BaseAccount {
+                        address: "signer".to_owned(),
+                        sequence: sequence.context("unexpected retry")?,
+                        ..Default::default()
+                    }),
+                })
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(account.sequence, 11);
+        assert!(sequences.next().is_none());
     }
 }
