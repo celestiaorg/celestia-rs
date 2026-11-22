@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	rpcclient "github.com/celestiaorg/celestia-node/api/rpc/client"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -25,6 +26,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	ma "github.com/multiformats/go-multiaddr"
+	multistream "github.com/multiformats/go-multistream"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -60,6 +62,16 @@ func main() {
 	if endpoint := os.Getenv("DA_TEST_ADMIN_URL"); endpoint != "" {
 		checkAdmin(ctx, endpoint, chain, *info, host.ID())
 	}
+	for _, proto := range []protocol.ID{"/other-private-chain/header-ex/v0.0.3", "/other-private-chain/shrex/v0.1.0/sample_v0"} {
+		stream, err := host.NewStream(ctx, info.ID, proto)
+		if err == nil {
+			stream.Reset()
+			panic("negotiated a different DA network")
+		}
+		if !errors.Is(err, multistream.ErrNotSupported[protocol.ID]{}) {
+			panic(fmt.Sprintf("unexpected network rejection: %v", err))
+		}
+	}
 	gater, err := conngater.NewBasicConnectionGater(nil)
 	check(err)
 	ex, err := exchange.NewExchange[*header.ExtendedHeader](host, peer.IDSlice{info.ID}, gater,
@@ -77,6 +89,12 @@ func main() {
 	params.WithNetworkID(chain)
 	client, err := shrex.NewClient(params, host)
 	check(err)
+	missing, err := shwap.NewEdsID(h + 1_000_000)
+	check(err)
+	var unavailable bytes.Buffer
+	if _, _, err = client.Get(ctx, &missing, &unavailable, info.ID); !errors.Is(err, shrex.ErrNotFound) || unavailable.Len() != 0 {
+		panic(fmt.Sprintf("expected missing EDS, got %v and %d bytes", err, unavailable.Len()))
+	}
 	width := len(eh.DAH.RowRoots)
 	eid, err := shwap.NewEdsID(h)
 	check(err)

@@ -119,7 +119,7 @@ pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) ->
     }
 }
 
-fn head(bridge: &Bridge) -> Result<i64> {
+pub(super) fn head(bridge: &Bridge) -> Result<i64> {
     Ok(bridge
         .states
         .load()?
