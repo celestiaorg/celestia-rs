@@ -84,7 +84,7 @@ members = [
     "xtask",
 ]
 # libFuzzer targets (cargo-fuzz, nightly): their own workspace.
-exclude = ["fuzz", "vendor/igd-next", "vendor/libp2p-webrtc", "vendor/libp2p-webrtc-utils", "vendor/libp2p-websocket"]
+exclude = ["fuzz", "vendor/igd-next", "vendor/libp2p-webrtc", "vendor/libp2p-webrtc-utils", "vendor/libp2p-websocket", "vendor/webrtc-sctp"]
 
 [workspace.package]
 edition = "2024"
@@ -169,6 +169,8 @@ lto = "fat"
 codegen-units = 1
 
 [patch.crates-io]
+# Discard unsent DATA for retired SCTP streams before assigning transmit sequence numbers.
+webrtc-sctp = { path = "vendor/webrtc-sctp" }
 libp2p-webrtc-utils = { path = "vendor/libp2p-webrtc-utils" }
 # Use the Tokio IGD client without the upstream synchronous HTTP stack.
 igd-next = { path = "vendor/igd-next" }
