@@ -3,6 +3,8 @@
 pub(crate) mod auth;
 mod blobstream;
 mod envelope;
+#[cfg(feature = "da-fibre")]
+mod fibre;
 mod header_rpc;
 mod node_rpc;
 mod share_rpc;
@@ -37,6 +39,7 @@ impl Server {
         blocks: BlockStore,
         states: StateStore,
         app: app::AbciApp,
+        #[cfg(feature = "da-fibre")] core: (&str, &str),
         wallet: Option<Arc<submit::Wallet>>,
     ) -> Result<Self> {
         ensure!(
@@ -54,6 +57,11 @@ impl Server {
         };
         let (stop, stopped) = oneshot::channel();
         let state = Arc::new(Bridge {
+            #[cfg(feature = "da-fibre")]
+            fibre: {
+                let _enter = runtime.enter();
+                fibre::Client::local(core.0, core.1)?
+            },
             app: Some(app),
             wallet,
             waiters: Arc::new(Semaphore::new(32)),
@@ -92,6 +100,8 @@ impl Drop for Server {
 }
 
 struct Bridge {
+    #[cfg(feature = "da-fibre")]
+    fibre: Option<fibre::Client>,
     app: Option<app::AbciApp>,
     wallet: Option<Arc<submit::Wallet>>,
     waiters: Arc<Semaphore>,
@@ -623,6 +633,11 @@ async fn dispatch(
         } else {
             &req.params
         };
+        #[cfg(feature = "da-fibre")]
+        if method == "fibre.Download" {
+            require_permission(permissions, method, "read")?;
+            return fibre::rpc(bridge.fibre.as_ref(), params).await;
+        }
         if let Some(permission) = node_rpc::permission(method) {
             require_permission(permissions, method, permission)?;
             let args = params.as_array().ok_or_else(invalid)?;

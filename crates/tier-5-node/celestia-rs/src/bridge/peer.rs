@@ -63,6 +63,8 @@ pub(crate) fn start(
     let (stop, stopped) = oneshot::channel();
     let (ready, started) = mpsc::sync_channel(1);
     let bridge = Arc::new(Bridge {
+        #[cfg(feature = "da-fibre")]
+        fibre: None,
         app: None,
         wallet: None,
         waiters: Arc::new(Semaphore::new(32)),

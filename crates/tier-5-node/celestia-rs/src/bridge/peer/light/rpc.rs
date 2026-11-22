@@ -333,7 +333,7 @@ async fn core_read(
         .map_err(|_| (-32000, "light RPC busy".into()))?;
     let result = match method {
         #[cfg(feature = "da-fibre")]
-        "fibre.Download" => super::core::download(core, value).await,
+        "fibre.Download" => core.fibre.download(value).await,
         _ => super::core::balance(core, &service.db, value).await,
     };
     result

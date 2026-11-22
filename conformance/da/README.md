@@ -141,3 +141,11 @@ checkout, `--rust-node`, and the absolute path of the feature-enabled executable
 to `conformance/da/fibre/test-go-provider.sh`. Its Go node service uploads
 random bytes to a registered local FSP. A released Go RPC client reads them
 from the Rust light listener and checks missing and malformed commitments.
+
+In bridge mode the same Fibre client discovers providers through the node's
+own application gRPC listener. Build with `--features da-fibre`, enable app
+gRPC and supply `--bridge-rpc-listen` at startup. The bridge admits one Fibre
+download at a time. Run `conformance/da/fibre/test-bridge-download.sh` with
+the binary and pinned Go checkout to start a private Rust chain, register a
+Go FSP, deposit escrow, upload through the Go service and read the same bytes
+through the Rust bridge.

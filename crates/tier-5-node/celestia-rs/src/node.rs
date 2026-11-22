@@ -465,6 +465,8 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                 bs.clone(),
                 ss.clone(),
                 app::AbciApp::from_shared(app.clone()),
+                #[cfg(feature = "da-fibre")]
+                (&rpc.settings.app_grpc, &genesis.chain_id),
                 wallet,
             )
         })
