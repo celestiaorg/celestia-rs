@@ -471,8 +471,6 @@ impl KvBackend for RedbBackend {
     }
 
     fn write(&self, batch: WriteBatch) -> Result<()> {
-        // Drop the cached reader first so it does not pin old pages.
-        *self.reader.lock().map_err(poisoned)? = None;
         let mut txn = self.db.begin_write().map_err(Error::new)?;
         txn.set_durability(if self.options.sync_writes {
             redb::Durability::Immediate
@@ -495,6 +493,9 @@ impl KvBackend for RedbBackend {
             }
         }
         txn.commit().map_err(Error::new)?;
+        // A reader can open a snapshot while the write transaction is in flight.
+        // Invalidate it after publication so subsequent reads see the committed batch.
+        *self.reader.lock().map_err(poisoned)? = None;
         self.writes.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
@@ -791,6 +792,35 @@ mod tests {
         let db = RedbBackend::open(&path, RedbOptions::default()).unwrap();
         assert_eq!(db.get(b"y").unwrap(), Some(b"2".to_vec()));
         assert_eq!(collect(db.range(None, None, false).unwrap()).len(), 5);
+    }
+
+    #[test]
+    fn redb_readers_observe_the_new_snapshot_after_write_returns() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = RedbBackend::open(dir.path().join("db.redb"), RedbOptions::default()).unwrap();
+        let mut batch = WriteBatch::new();
+        for i in 0u32..1024 {
+            batch.put(i.to_be_bytes().to_vec(), vec![7; 1024]);
+        }
+        batch.put(b"head".to_vec(), vec![1]);
+        let running = AtomicBool::new(true);
+        let ready = std::sync::Barrier::new(2);
+        let latest = std::thread::scope(|scope| {
+            let reader = scope.spawn(|| {
+                assert!(db.get(b"head").unwrap().is_none());
+                ready.wait();
+                while running.load(Ordering::Acquire) {
+                    let _ = db.get(b"head").unwrap();
+                }
+            });
+            ready.wait();
+            let written = db.write(batch);
+            running.store(false, Ordering::Release);
+            reader.join().unwrap();
+            written.unwrap();
+            db.get(b"head").unwrap()
+        });
+        assert_eq!(latest, Some(vec![1]));
     }
 
     #[test]
