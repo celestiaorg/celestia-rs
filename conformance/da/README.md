@@ -127,3 +127,9 @@ at the height preceding the sampled head. The node checks the bank proof and
 multistore proof against that head's app hash before returning the amount.
 The private fixture checks a funded account, a proven absent account and
 rejection of a changed core response over an authenticated TLS connection.
+
+To expose a selected light account through `state.AccountAddress` and
+`state.Balance`, create the account in the light home with `celestia-rs keys`
+and pass `--keyring.keyname NAME` with the configured core endpoint.
+`--keyring.backend` selects its backend. The light node uses the same sampled
+bank proofs for the selected account and for address-specific reads.
