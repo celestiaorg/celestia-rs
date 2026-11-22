@@ -70,6 +70,37 @@ impl Serving {
         }
     }
 
+    fn accept(
+        self: &Arc<Self>,
+        admissions: &Arc<Semaphore>,
+        peer: libp2p::PeerId,
+        inbound::Accepted { kind, mut stream }: inbound::Accepted,
+    ) {
+        let Ok(admission) = admissions.clone().try_acquire_owned() else {
+            self.record(kind, "busy");
+            return;
+        };
+        let serving = self.clone();
+        tokio::spawn(async move {
+            let _admission = admission;
+            let Ok(Ok(_worker)) =
+                tokio::time::timeout(TIMEOUT, serving.bridge.worker.acquire()).await
+            else {
+                serving.record(kind, "busy");
+                return;
+            };
+            let outcome = match serve(&serving.bridge, kind, &mut stream).await {
+                Ok(true) => "served",
+                Ok(false) => "not_found",
+                Err(error) => {
+                    tracing::debug!(%peer, %error, "DA stream ended");
+                    "error"
+                }
+            };
+            serving.record(kind, outcome);
+        });
+    }
+
     fn record(&self, kind: Kind, outcome: &str) {
         if let Some(metrics) = &self.metrics {
             let protocol = match kind {
@@ -229,28 +260,8 @@ async fn run(
                     reason?;
                     bail!("DA peer listener closed");
                 }
-                SwarmEvent::Behaviour(network::BehaviourEvent::Streams((peer, inbound::Accepted {kind, mut stream}))) => {
-                let Ok(admission) = admissions.clone().try_acquire_owned() else {
-                    serving.record(kind, "busy");
-                    continue
-                };
-                let serving = serving.clone();
-                tokio::spawn(async move {
-                    let _admission = admission;
-                    let Ok(Ok(_worker)) = tokio::time::timeout(TIMEOUT, serving.bridge.worker.acquire()).await else {
-                        serving.record(kind, "busy");
-                        return
-                    };
-                    let outcome = match serve(&serving.bridge, kind, &mut stream).await {
-                        Ok(true) => "served",
-                        Ok(false) => "not_found",
-                        Err(error) => {
-                            tracing::debug!(%peer, %error, "DA stream ended");
-                            "error"
-                        }
-                    };
-                    serving.record(kind, outcome);
-                });
+                SwarmEvent::Behaviour(network::BehaviourEvent::Streams((peer, stream))) => {
+                    serving.accept(&admissions, peer, stream);
                 }
                 _ => {}
             },
