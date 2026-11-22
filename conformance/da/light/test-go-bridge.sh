@@ -26,8 +26,8 @@ cleanup() {
     done
     if (( status != 0 )); then
         # Initialization logs contain generated key material. Only report daemon errors.
-        for log in "$work/app.log" "$work/bridge.log" "$work/follower.log"; do
-            if [[ -f "$log" ]]; then grep -Ei '(^Error:|panic:|disk space|address already in use)' "$log" | tail -10 || true; fi
+        for log in "$work/app.log" "$work/bridge.log" "$work/follower.log" "$work/light.log" "$work/light-wallet.log"; do
+            if [[ -f "$log" ]]; then grep -Ei '(^Error:|panicked at|panic:|disk space|address already in use)' "$log" | tail -10 || true; fi
         done
         df -h "$work"
     fi
