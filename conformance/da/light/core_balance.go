@@ -62,6 +62,17 @@ func main() {
 	c, err := client.NewClient(ctx, os.Args[1], os.Getenv("DA_TEST_READ_TOKEN"))
 	check(err)
 	defer c.Close()
+	selected, err := c.State.AccountAddress(ctx)
+	check(err)
+	if selected.String() != os.Args[4] {
+		panic("unexpected selected keyring account")
+	}
+	own, err := c.State.Balance(ctx)
+	check(err)
+	if own.Denom != "utia" || own.Amount.String() != "12345000" {
+		panic("wrong selected account balance")
+	}
+	fmt.Println("Go verified the light keyring account and its own proof-backed balance")
 	var funded state.Address
 	raw, err := json.Marshal(os.Args[2])
 	check(err)

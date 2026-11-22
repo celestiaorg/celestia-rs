@@ -37,11 +37,14 @@ trap cleanup EXIT
 home_arg=(--home "$work/consensus")
 key_arg=(--keyring-backend test "${home_arg[@]}")
 chain=da-oracle
+"$rust" keys add light --no-backup --keyring-backend test --home "$work/rust-light" >/dev/null 2>&1
+light_wallet=$("$rust" keys show light -a --keyring-backend test --home "$work/rust-light")
 {
     "$app" init oracle --chain-id "$chain" "${home_arg[@]}"
     "$app" keys add validator "${key_arg[@]}"
     address=$("$app" keys show validator -a "${key_arg[@]}")
     "$app" genesis add-genesis-account "$address" 1000000000000000utia "${home_arg[@]}"
+    "$app" genesis add-genesis-account "$light_wallet" 12345000utia "${home_arg[@]}"
     "$app" genesis gentx validator 5000000000utia --chain-id "$chain" --fees 500utia \
         --commission-rate 0.05 --commission-max-rate 1 --commission-max-change-rate 1 "${key_arg[@]}"
     "$app" genesis collect-gentxs "${home_arg[@]}"
@@ -142,7 +145,7 @@ for attempt in {1..30}; do
     kill -0 "$core_proxy"
     sleep 1
 done
-SSL_CERT_FILE="$work/ca.pem" RUST_LOG=celestia_rs::bridge::peer=info "$rust" "${args[@]}" --core.ip 127.0.0.1 --core.port "$(cat "$work/proxy-port")" --core.tls --core.xtoken.path "$work" --p2p-listen /ip4/127.0.0.1/tcp/39621 --rpc-listen 127.0.0.1:39658 >"$work/light.log" 2>&1 &
+SSL_CERT_FILE="$work/ca.pem" RUST_LOG=celestia_rs::bridge::peer=info "$rust" "${args[@]}" --core.ip 127.0.0.1 --core.port "$(cat "$work/proxy-port")" --core.tls --core.xtoken.path "$work" --keyring.keyname light --keyring.backend test --p2p-listen /ip4/127.0.0.1/tcp/39621 --rpc-listen 127.0.0.1:39658 >"$work/light.log" 2>&1 &
 light=$!
 for attempt in {1..60}; do
     kill -0 "$light"
@@ -153,7 +156,7 @@ for attempt in {1..60}; do
     sleep 1
 done
 expected=$("$app" query bank balances "$address" "${home_arg[@]}" --height "$((height+1))" --node tcp://127.0.0.1:36657 --output json | jq -er '.balances[] | select(.denom == "utia") | .amount')
-"$work/balance-probe" "$endpoint" "$address" "$expected"
+"$work/balance-probe" "$endpoint" "$address" "$expected" "$light_wallet"
 probe=$(realpath "$(dirname "$0")/read.go")
 (cd "$node_src" && go run "$probe" "$endpoint" "$height" "$hash")
 light_peer=$(sed -n 's/.*DA light peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/light.log" | head -1)

@@ -67,6 +67,7 @@ pub(super) fn store_header(
 struct Service {
     data: super::data::Client,
     core: Option<super::core::Core>,
+    address: Option<String>,
     auth: Arc<Auth>,
     db: Arc<RedbBackend>,
     workers: Arc<tokio::sync::Semaphore>,
@@ -93,6 +94,21 @@ pub(super) async fn listener(
             .with_state(Arc::new(Service {
                 auth: Arc::new(Auth::open(home)?),
                 data: super::data::Client::new(peers)?,
+                address: args
+                    .key_name
+                    .as_deref()
+                    .map(|name| {
+                        let flags = crate::client::TxFlags {
+                            from: name.to_owned(),
+                            keyring_backend: args.key_backend.clone(),
+                            ..Default::default()
+                        };
+                        Ok::<_, anyhow::Error>(
+                            crate::client::resolve_from(home, &flags)?
+                                .bech32(crate::keys::ACC_PREFIX),
+                        )
+                    })
+                    .transpose()?,
                 core: args
                     .core_ip
                     .as_deref()
@@ -307,8 +323,10 @@ async fn dispatch(
     .map_err(|e| (1, e.to_string()))
 }
 fn core_method(method: &str) -> bool {
-    method == "state.BalanceForAddress"
-        || (cfg!(feature = "da-fibre") && method == "fibre.Download")
+    matches!(
+        method,
+        "state.BalanceForAddress" | "state.Balance" | "state.AccountAddress"
+    ) || (cfg!(feature = "da-fibre") && method == "fibre.Download")
 }
 
 async fn core_read(
@@ -316,9 +334,6 @@ async fn core_read(
     method: &str,
     args: &[Value],
 ) -> Result<String, (i32, String)> {
-    let [Value::String(value)] = args else {
-        return Err((-32602, "expected one string argument".into()));
-    };
     let core = service.core.clone().ok_or_else(|| {
         let reason = if method == "fibre.Download" {
             "fibre module is not available: node is not connected to a core endpoint"
@@ -327,14 +342,29 @@ async fn core_read(
         };
         (1, reason.to_owned())
     })?;
+    let address = match (method, args) {
+        ("state.BalanceForAddress" | "fibre.Download", [Value::String(address)]) => address,
+        ("state.Balance" | "state.AccountAddress", []) => {
+            service.address.as_ref().ok_or_else(|| {
+                (
+                    1,
+                    "no light account selected (use --keyring.keyname)".to_owned(),
+                )
+            })?
+        }
+        _ => return Err((-32602, "invalid account parameters".into())),
+    };
+    if method == "state.AccountAddress" {
+        return Ok(json!(address).to_string());
+    }
     let _permit = service
         .workers
         .try_acquire()
         .map_err(|_| (-32000, "light RPC busy".into()))?;
     let result = match method {
         #[cfg(feature = "da-fibre")]
-        "fibre.Download" => core.fibre.download(value).await,
-        _ => super::core::balance(core, &service.db, value).await,
+        "fibre.Download" => core.fibre.download(address).await,
+        _ => super::core::balance(core, &service.db, address).await,
     };
     result
         .map(|v| v.to_string())
