@@ -17,6 +17,9 @@ if [[ "${3:-}" == --peer || "${3:-}" == --stock-light || "${3:-}" == --validator
         --bridge-p2p-listen /ip4/127.0.0.1/tcp/32122/ws --bridge-p2p-listen /ip4/127.0.0.1/tcp/32123/tls/ws)
     export DA_TEST_ADVERTISED=/dns4/localhost/tcp/32121 DA_TEST_HIDDEN=/ip4/127.0.0.1/tcp/32125 DA_TEST_LISTENER=/ip4/127.0.0.1/tcp/32121
     peer_args+=(--bridge-p2p-listen "$DA_TEST_HIDDEN" --bridge-announce "$DA_TEST_ADVERTISED" --bridge-no-announce "$DA_TEST_HIDDEN")
+    if [[ ${DA_TEST_WEBTRANSPORT:-} == 1 ]]; then
+        peer_args+=(--bridge-p2p-listen /ip4/127.0.0.1/udp/32126/quic-v1/webtransport)
+    fi
     if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then
         peer_args+=(--bridge-p2p-listen /ip4/127.0.0.1/udp/32124/webrtc-direct)
     fi
@@ -170,6 +173,19 @@ if (( ${#peer_args[@]} )); then
         done
     done
     DA_TEST_ADMIN_URL=http://127.0.0.1:32658 "$work/websocket-reader" celestia-rs-local "/ip4/127.0.0.1/udp/32121/quic-v1/p2p/$peer_id" "$height" "$namespace" "$data"
+    if [[ ${DA_TEST_WEBTRANSPORT:-} == 1 ]]; then
+        wt_addr() {
+            sed -nE 's@.*address=(/ip4/127.0.0.1/udp/32126/quic-v1/webtransport(/certhash/[[:alnum:]_-]+){2}).*@\1@p' "$work/node.log" | head -1
+        }
+        wt=$(wt_addr)
+        : "${wt:?missing Rust WebTransport listener}"
+        DA_TEST_ADMIN_URL=http://127.0.0.1:32658 "$work/websocket-reader" celestia-rs-local "$wt/p2p/$peer_id" "$height" "$namespace" "$data"
+        if [[ ${DA_TEST_BROWSER:-} == 1 ]]; then
+            browser_dir=$(dirname "$peer_probe")/browser
+            committed=$(curl -fsS "http://127.0.0.1:26657/block?height=$height" | jq -er '.result.block_id.hash')
+            (cd "$go_tree" && go run "$browser_dir/verify.go" "$browser_dir/run.mjs" "$wt/p2p/$peer_id" celestia-rs-local "$height" "$committed")
+        fi
+    fi
     if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then
         rtc_addr() {
             sed -n 's@.*address=\(/ip4/127.0.0.1/udp/32124/webrtc-direct/certhash/[[:alnum:]_-]*\).*@\1@p' "$work/node.log" | head -1
@@ -246,6 +262,7 @@ if [[ "${3:-}" == --stock-light ]]; then
     start_rust
     recovered_id=$(sed -n 's/.*DA peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/node.log" | head -1)
     [[ "$recovered_id" == "$peer_id" ]]
+    if [[ ${DA_TEST_WEBTRANSPORT:-} == 1 ]]; then [[ $(wt_addr) == "$wt" ]]; fi
     if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then [[ $(rtc_addr) == "$rtc" ]]; fi
     data=$(python3 -c 'print("a4b2c6" * 4000)')
     pay_for_blob

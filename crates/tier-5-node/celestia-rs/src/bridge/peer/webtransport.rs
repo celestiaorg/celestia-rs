@@ -1,12 +1,12 @@
 //! Native WebTransport dialing. DNS resolution is performed by the containing transport.
 mod certificate;
+mod listener;
 mod mux;
+mod rotation;
+mod server_mux;
 mod stream;
 
-use futures::{
-    AsyncWriteExt, FutureExt,
-    future::{BoxFuture, Pending},
-};
+use futures::{AsyncWriteExt, FutureExt, future::BoxFuture};
 use libp2p::{
     Multiaddr, PeerId,
     core::{
@@ -19,37 +19,93 @@ use libp2p::{
     noise,
 };
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet, VecDeque},
     io,
     net::{IpAddr, SocketAddr},
+    path::PathBuf,
     pin::Pin,
     sync::Arc,
-    task::{Context, Poll},
+    task::{Context, Poll, ready},
 };
 use tobi_webtransport::client::{Client, ClientConfig};
 
-pub(super) struct Dialer(pub(super) identity::Keypair);
-
-impl Transport for Dialer {
+pub(super) struct Native {
+    key: identity::Keypair,
+    directory: PathBuf,
+    listeners: HashMap<ListenerId, tokio::task::JoinHandle<()>>,
+    send: tokio::sync::mpsc::Sender<(ListenerId, listener::Event)>,
+    events: tokio::sync::mpsc::Receiver<(ListenerId, listener::Event)>,
+    removed: VecDeque<ListenerId>,
+}
+impl Native {
+    pub(super) fn new(key: identity::Keypair, directory: PathBuf) -> Self {
+        let (send, events) = tokio::sync::mpsc::channel(32);
+        Self {
+            key,
+            directory,
+            listeners: HashMap::new(),
+            send,
+            events,
+            removed: VecDeque::new(),
+        }
+    }
+}
+impl Drop for Native {
+    fn drop(&mut self) {
+        for task in self.listeners.values() {
+            task.abort();
+        }
+    }
+}
+impl Transport for Native {
     type Output = (PeerId, StreamMuxerBox);
     type Error = io::Error;
-    type ListenerUpgrade = Pending<io::Result<Self::Output>>;
+    type ListenerUpgrade = listener::Upgrade;
     type Dial = BoxFuture<'static, io::Result<Self::Output>>;
     fn listen_on(
         &mut self,
-        _: ListenerId,
+        id: ListenerId,
         addr: Multiaddr,
     ) -> Result<(), TransportError<Self::Error>> {
-        Err(TransportError::MultiaddrNotSupported(addr))
+        let bind = listener::socket(&addr).ok_or(TransportError::MultiaddrNotSupported(addr))?;
+        let driver = listener::start(
+            id,
+            bind,
+            &self.directory,
+            self.key.clone(),
+            self.send.clone(),
+        )
+        .map_err(TransportError::Other)?;
+        self.listeners.insert(id, driver);
+        Ok(())
     }
-    fn remove_listener(&mut self, _: ListenerId) -> bool {
-        false
+    fn remove_listener(&mut self, id: ListenerId) -> bool {
+        if let Some(task) = self.listeners.remove(&id) {
+            task.abort();
+            self.removed.push_back(id);
+            true
+        } else {
+            false
+        }
     }
-    fn poll(
-        self: Pin<&mut Self>,
-        _: &mut Context<'_>,
-    ) -> Poll<TransportEvent<Self::ListenerUpgrade, Self::Error>> {
-        Poll::Pending
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<listener::Event> {
+        if let Some(id) = self.removed.pop_front() {
+            return Poll::Ready(TransportEvent::ListenerClosed {
+                listener_id: id,
+                reason: Ok(()),
+            });
+        }
+        loop {
+            let Some((id, event)) = ready!(self.events.poll_recv(cx)) else {
+                return Poll::Pending;
+            };
+            if self.listeners.contains_key(&id) {
+                if matches!(event, TransportEvent::ListenerClosed { .. }) {
+                    self.listeners.remove(&id);
+                }
+                return Poll::Ready(event);
+            }
+        }
     }
     fn dial(
         &mut self,
@@ -92,7 +148,7 @@ impl Transport for Dialer {
         if !has_pin || !valid_suffix {
             return Err(unsupported());
         }
-        let key = self.0.clone();
+        let key = self.key.clone();
         let remote = SocketAddr::new(ip, port);
         Ok(async move {
             let bind = SocketAddr::new(

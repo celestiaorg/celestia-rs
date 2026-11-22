@@ -36,6 +36,8 @@ use super::{Bridge, Committed, HeaderWire, Server, index};
 
 struct PeerIdentity {
     key: identity::Keypair,
+    #[cfg(feature = "da-webtransport")]
+    directory: std::path::PathBuf,
     #[cfg(feature = "da-webrtc")]
     certificate: Option<libp2p_webrtc::tokio::Certificate>,
 }
@@ -49,6 +51,11 @@ impl PeerIdentity {
         let certificate = webrtc::for_listeners(path, listeners)?;
         Ok(Self {
             key,
+            #[cfg(feature = "da-webtransport")]
+            directory: path
+                .parent()
+                .context("missing DA identity directory")?
+                .to_owned(),
             #[cfg(feature = "da-webrtc")]
             certificate,
         })
@@ -259,17 +266,19 @@ fn observed_swarm(
     #[cfg(feature = "da-webtransport")]
     let native = {
         let observed = connections.clone();
-        let wt = webtransport::Dialer(key.clone()).map(move |(peer, mux), point| {
-            (
-                peer,
-                StreamMuxerBox::new(observed.observe(
+        let wt = webtransport::Native::new(key.clone(), identity.directory).map(
+            move |(peer, mux), point| {
+                (
                     peer,
-                    &point,
-                    mux,
-                    connections::PeerTransport::WebTransport,
-                )),
-            )
-        });
+                    StreamMuxerBox::new(observed.observe(
+                        peer,
+                        &point,
+                        mux,
+                        connections::PeerTransport::WebTransport,
+                    )),
+                )
+            },
+        );
         native.or_transport(wt).map(|either, _| either.into_inner())
     };
     let native = libp2p::dns::tokio::Transport::system(native)?;

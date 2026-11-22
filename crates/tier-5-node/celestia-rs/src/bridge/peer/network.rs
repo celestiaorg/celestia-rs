@@ -193,10 +193,25 @@ impl Peering {
                     };
                     matches!(port, Some(Protocol::Tcp(port)) if port != 0)
                 }
-                #[cfg(feature = "da-webrtc")]
+                #[cfg(any(feature = "da-webrtc", feature = "da-webtransport"))]
                 Some(Protocol::Certhash(_)) => {
-                    endpoint.pop() == Some(Protocol::WebRTCDirect)
-                        && matches!(endpoint.pop(),Some(Protocol::Udp(port)) if port != 0)
+                    let mut kind = endpoint.pop();
+                    #[cfg(feature = "da-webtransport")]
+                    while matches!(kind, Some(Protocol::Certhash(_))) {
+                        kind = endpoint.pop();
+                    }
+                    match kind {
+                        #[cfg(feature = "da-webrtc")]
+                        Some(Protocol::WebRTCDirect) => {
+                            matches!(endpoint.pop(), Some(Protocol::Udp(port)) if port != 0)
+                        }
+                        #[cfg(feature = "da-webtransport")]
+                        Some(Protocol::WebTransport) => {
+                            endpoint.pop() == Some(Protocol::QuicV1)
+                                && matches!(endpoint.pop(), Some(Protocol::Udp(port)) if port != 0)
+                        }
+                        _ => false,
+                    }
                 }
                 Some(Protocol::QuicV1) => {
                     matches!(endpoint.pop(), Some(Protocol::Udp(port)) if port != 0)
@@ -205,7 +220,7 @@ impl Peering {
             };
             anyhow::ensure!(
                 valid,
-                "announced DA address needs a TCP, WebSocket or QUIC v1 endpoint"
+                "announced DA address needs a supported transport and a nonzero port"
             );
         }
         if no_announce.is_empty() {

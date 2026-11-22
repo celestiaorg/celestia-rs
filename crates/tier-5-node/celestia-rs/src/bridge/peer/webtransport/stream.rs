@@ -9,6 +9,11 @@ use tobi_webtransport::stream::WtBidirectionalStream;
 use tokio::io::AsyncReadExt as _;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
+enum Sender {
+    Client(tobi_webtransport::stream::WtSendStream),
+    Server(tobi_webtransport::server::WtSendStream),
+}
+
 pub(super) struct Stream {
     read: Pin<Box<dyn AsyncRead + Send>>,
     write: Compat<tokio::io::WriteHalf<tokio::io::SimplexStream>>,
@@ -18,7 +23,7 @@ pub(super) struct Stream {
 
 impl Stream {
     pub(super) fn new(stream: WtBidirectionalStream) -> Self {
-        let (mut send, recv) = stream.split();
+        let (send, recv) = stream.split();
         let read = futures::stream::try_unfold(recv, |mut recv| async move {
             Ok::<_, io::Error>(
                 recv.recv()
@@ -29,6 +34,24 @@ impl Stream {
         })
         .boxed()
         .into_async_read();
+        Self::from_parts(read, Sender::Client(send))
+    }
+
+    pub(super) fn incoming(stream: tobi_webtransport::server::WtBiStream) -> Self {
+        let (send, recv) = stream.into_parts();
+        let read = futures::stream::try_unfold(recv, |mut recv| async move {
+            match recv.recv().await {
+                Ok(bytes) => Ok(Some((bytes, recv))),
+                Err(tobi_webtransport::server::Error::StreamClosed) => Ok(None),
+                Err(e) => Err(io::Error::other(e)),
+            }
+        })
+        .boxed()
+        .into_async_read();
+        Self::from_parts(read, Sender::Server(send))
+    }
+
+    fn from_parts(read: impl AsyncRead + Send + 'static, mut send: Sender) -> Self {
         // One bounded writer per stream. On drop the worker drains accepted bytes
         // before sending FIN. Closing explicitly also propagates the peer's error.
         let (mut input, output) = tokio::io::simplex(16 * 1024);
@@ -37,9 +60,15 @@ impl Stream {
             loop {
                 let n = input.read(&mut buf).await?;
                 if n == 0 {
-                    return send.finish().await.map_err(io::Error::other);
+                    return match &mut send {
+                        Sender::Client(s) => s.finish().await.map_err(io::Error::other),
+                        Sender::Server(s) => s.finish().await.map_err(io::Error::other),
+                    };
                 }
-                send.send(&buf[..n]).await.map_err(io::Error::other)?;
+                match &mut send {
+                    Sender::Client(s) => s.send(&buf[..n]).await.map_err(io::Error::other),
+                    Sender::Server(s) => s.send(&buf[..n]).await.map_err(io::Error::other),
+                }?;
             }
         });
         Self {

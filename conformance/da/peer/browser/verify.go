@@ -64,7 +64,7 @@ func run() error {
 	if eh.ChainID() != os.Args[3] || eh.Height() != height || !bytes.Equal(eh.Hash(), hash) {
 		return fmt.Errorf("browser response differs from committed block")
 	}
-	fmt.Printf("Chromium retrieved the signed header at %d over WebRTC Direct v2, matching consensus block %X\n", height, hash)
+	fmt.Printf("Chromium retrieved the signed header at %d from %s, matching consensus block %X\n", height, os.Args[2], hash)
 	return nil
 }
 

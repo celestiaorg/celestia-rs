@@ -373,6 +373,9 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	if active[0].Info.Transport == "webrtc-direct" {
 		wantFD = 0
 		dialAddress = "/ip4/127.0.0.1/udp/0/webrtc-direct"
+	} else if active[0].Info.Transport == "webtransport" {
+		wantFD = 0
+		dialAddress = "/ip4/127.0.0.1/udp/0/quic-v1/webtransport"
 	} else if active[0].Info.Transport == "quic-v1" {
 		wantFD = 0
 		dialAddress = "/ip4/127.0.0.1/udp/0/quic-v1"
