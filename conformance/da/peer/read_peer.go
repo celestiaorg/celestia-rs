@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"time"
@@ -27,7 +29,14 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
+	identify "github.com/libp2p/go-libp2p/p2p/protocol/identify"
+	idpb "github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	libtls "github.com/libp2p/go-libp2p/p2p/security/tls"
+	webrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
+	"github.com/libp2p/go-libp2p/p2p/transport/websocket"
+	"github.com/libp2p/go-msgio/pbio"
 	ma "github.com/multiformats/go-multiaddr"
 	multistream "github.com/multiformats/go-multistream"
 	"golang.org/x/sync/errgroup"
@@ -36,6 +45,19 @@ import (
 func check(err error) {
 	if err != nil {
 		panic(err)
+	}
+}
+
+func streamSecurity() []libp2p.Option {
+	switch os.Getenv("DA_TEST_STREAM_SECURITY") {
+	case "":
+		return nil
+	case libtls.ID:
+		return []libp2p.Option{libp2p.Security(libtls.ID, libtls.New)}
+	case noise.ID:
+		return []libp2p.Option{libp2p.Security(noise.ID, noise.New)}
+	default:
+		panic("unknown stream security protocol")
 	}
 }
 
@@ -51,7 +73,11 @@ func main() {
 	check(err)
 	info, err := peer.AddrInfoFromP2pAddr(addr)
 	check(err)
-	host, err := libp2p.New(libp2p.NoListenAddrs)
+	opts := append(streamSecurity(), libp2p.NoListenAddrs)
+	if os.Getenv("DA_TEST_WEBRTC_V2") == "1" {
+		opts = append(opts, libp2p.Transport(webrtc.New, webrtc.WithDialerVersion(2)))
+	}
+	host, err := libp2p.New(opts...)
 	check(err)
 	defer host.Close()
 	check(host.Connect(ctx, *info))
@@ -191,6 +217,38 @@ func main() {
 	panic("expected blob missing")
 }
 
+// Compare the actual Identify reply as well as the released admin API.
+func checkAdvertisements(ctx context.Context, host libhost.Host, info peer.AddrInfo) {
+	explicit := os.Getenv("DA_TEST_ADVERTISED")
+	if explicit == "" {
+		return
+	}
+	verify := func(addrs []ma.Multiaddr) {
+		seen := make(map[string]bool)
+		for _, addr := range addrs {
+			seen[addr.String()] = true
+		}
+		if !seen[explicit] || !seen[os.Getenv("DA_TEST_LISTENER")] || seen[os.Getenv("DA_TEST_HIDDEN")] {
+			panic(fmt.Sprintf("unexpected advertised addresses %v", addrs))
+		}
+	}
+	verify(info.Addrs)
+	stream, err := host.NewStream(ctx, info.ID, identify.ID)
+	check(err)
+	defer stream.Close()
+	deadline, _ := ctx.Deadline()
+	check(stream.SetDeadline(deadline))
+	var msg idpb.Identify
+	check(pbio.NewDelimitedReader(stream, 64<<10).ReadMsg(&msg))
+	var addrs []ma.Multiaddr
+	for _, raw := range msg.ListenAddrs {
+		addr, err := ma.NewMultiaddrBytes(raw)
+		check(err)
+		addrs = append(addrs, addr)
+	}
+	verify(addrs)
+}
+
 func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInfo, clientHost libhost.Host) {
 	clientID := clientHost.ID()
 	admin, err := rpcclient.NewClient(ctx, endpoint, os.Getenv("DA_TEST_ADMIN_TOKEN"))
@@ -207,6 +265,7 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	if info.ID != server.ID || len(info.Addrs) == 0 {
 		panic("wrong DA listen identity")
 	}
+	checkAdvertisements(ctx, clientHost, info)
 	name, err := admin.P2P.Network(ctx)
 	check(err)
 	if name.String() != chain {
@@ -283,7 +342,7 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 		check(err)
 		if pings.TotalIn >= pingBefore.TotalIn+96 && pings.TotalOut >= pingBefore.TotalOut+96 &&
 			pings.RateIn > 0 && pings.RateOut > 0 &&
-			measured.TotalIn >= pings.TotalIn && measured.TotalOut >= pings.TotalOut &&
+			measured.TotalIn >= pings.TotalIn-pingBefore.TotalIn && measured.TotalOut >= pings.TotalOut-pingBefore.TotalOut &&
 			measured.TotalIn >= before.TotalIn+96 && measured.TotalOut >= before.TotalOut+96 &&
 			measured.RateIn > 0 && measured.RateOut > 0 &&
 			all.TotalIn >= measured.TotalIn && all.TotalOut >= measured.TotalOut {
@@ -309,7 +368,19 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	check(err)
 	peerScope := resources.Peers[clientID]
 	pingScope := resources.Protocols[pingProtocol]
-	if peerScope.NumStreamsInbound < len(held) || peerScope.NumConnsInbound != 1 || peerScope.NumFD != 1 ||
+	wantFD := 1
+	dialAddress := "/ip4/127.0.0.1/tcp/0"
+	if active[0].Info.Transport == "webrtc-direct" {
+		wantFD = 0
+		dialAddress = "/ip4/127.0.0.1/udp/0/webrtc-direct"
+	} else if active[0].Info.Transport == "webtransport" {
+		wantFD = 0
+		dialAddress = "/ip4/127.0.0.1/udp/0/quic-v1/webtransport"
+	} else if active[0].Info.Transport == "quic-v1" {
+		wantFD = 0
+		dialAddress = "/ip4/127.0.0.1/udp/0/quic-v1"
+	}
+	if peerScope.NumStreamsInbound < len(held) || peerScope.NumConnsInbound != 1 || peerScope.NumFD != wantFD ||
 		resources.System.NumFD < peerScope.NumFD || resources.System.NumStreamsInbound < peerScope.NumStreamsInbound ||
 		pingScope.NumStreamsInbound < len(held) || resources.Services["libp2p.ping"].NumStreamsInbound != pingScope.NumStreamsInbound {
 		panic(fmt.Sprintf("wrong live resource scopes: %+v", resources))
@@ -323,7 +394,21 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	if _, err := reader.P2P.Peers(ctx); err == nil {
 		panic("read token accessed peer management")
 	}
-	extra, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
+	extraOptions := streamSecurity()
+	if active[0].Info.Transport == "websocket" {
+		dialAddress += "/ws"
+		_, tlsAddress := server.Addrs[0].ValueForProtocol(ma.P_TLS)
+		_, wssAddress := server.Addrs[0].ValueForProtocol(ma.P_WSS)
+		if tlsAddress == nil || wssAddress == nil {
+			dir := os.Getenv("CELESTIA_TLS_PATH")
+			pair, err := tls.LoadX509KeyPair(filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem"))
+			check(err)
+			extraOptions = append(extraOptions, libp2p.Transport(websocket.New, websocket.WithTLSConfig(&tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12})))
+			dialAddress = "/ip4/127.0.0.1/tcp/0/tls/ws"
+		}
+	}
+	extraOptions = append(extraOptions, libp2p.ListenAddrStrings(dialAddress))
+	extra, err := libp2p.New(extraOptions...)
 	check(err)
 	defer extra.Close()
 	address := peer.AddrInfo{ID: extra.ID(), Addrs: extra.Addrs()}
@@ -336,7 +421,8 @@ func checkAdmin(ctx context.Context, endpoint, chain string, server peer.AddrInf
 	check(err)
 	active, err = admin.P2P.ConnectionState(ctx, address.ID)
 	check(err)
-	if len(active) != 1 || active[0].Direction != network.DirOutbound {
+	outbound := extra.Network().ConnsToPeer(server.ID)
+	if len(active) != 1 || len(outbound) != 1 || active[0].Direction != network.DirOutbound || active[0].Info != outbound[0].ConnState() {
 		panic("Rust dial direction mismatch")
 	}
 	if connected != network.Connected {

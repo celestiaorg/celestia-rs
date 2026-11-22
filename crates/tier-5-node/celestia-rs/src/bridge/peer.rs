@@ -4,17 +4,24 @@ mod bandwidth;
 mod connections;
 mod negotiation;
 mod resources;
+mod security;
+#[cfg(feature = "da-webrtc")]
+mod webrtc;
+mod websocket;
+#[cfg(feature = "da-webtransport")]
+mod webtransport;
 pub(crate) use admin::Control;
 mod flood;
 mod inbound;
 #[cfg(feature = "da-light")]
 pub(crate) mod light;
+mod nat_pmp;
 mod network;
 mod ping;
 mod protected;
 
+use std::collections::HashSet;
 use std::io::{ErrorKind, Write as _};
-use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
@@ -22,14 +29,39 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt as _};
 use libp2p::Transport as _;
-use libp2p::{
-    Multiaddr, Stream, SwarmBuilder, identity, multiaddr::Protocol, noise, swarm::SwarmEvent, tcp,
-    yamux,
-};
+use libp2p::{Multiaddr, Stream, SwarmBuilder, identity, swarm::SwarmEvent, tcp};
 use prost::Message;
 use tokio::sync::{Semaphore, oneshot};
 
 use super::{Bridge, Committed, HeaderWire, Server, index};
+
+struct PeerIdentity {
+    key: identity::Keypair,
+    #[cfg(feature = "da-webtransport")]
+    directory: std::path::PathBuf,
+    #[cfg(feature = "da-webrtc")]
+    certificate: Option<libp2p_webrtc::tokio::Certificate>,
+}
+
+impl PeerIdentity {
+    fn load(path: &Path, listeners: &[Multiaddr]) -> Result<Self> {
+        #[cfg(not(feature = "da-webrtc"))]
+        let _ = listeners;
+        let key = identity(path)?;
+        #[cfg(feature = "da-webrtc")]
+        let certificate = webrtc::for_listeners(path, listeners)?;
+        Ok(Self {
+            key,
+            #[cfg(feature = "da-webtransport")]
+            directory: path
+                .parent()
+                .context("missing DA identity directory")?
+                .to_owned(),
+            #[cfg(feature = "da-webrtc")]
+            certificate,
+        })
+    }
+}
 
 fn identity(path: &Path) -> Result<identity::Keypair> {
     match std::fs::read(path) {
@@ -128,20 +160,16 @@ impl Serving {
 }
 
 pub(crate) fn start(
-    addr: SocketAddr,
+    listen: Vec<Multiaddr>,
     home: &Path,
     network: &str,
     serving: Serving,
     bootstrap: &[Multiaddr],
     announce: Vec<Multiaddr>,
+    no_announce: Vec<Multiaddr>,
 ) -> Result<(Server, Control)> {
-    let peers = network::Peering::new(network, bootstrap, announce)?;
-    let key = identity(&home.join("config/da_peer.key"))?;
-    let listen = Multiaddr::from(match addr.ip() {
-        IpAddr::V4(ip) => Protocol::Ip4(ip),
-        IpAddr::V6(ip) => Protocol::Ip6(ip),
-    })
-    .with(Protocol::Tcp(addr.port()));
+    let peers = network::Peering::new(network, bootstrap, announce, no_announce)?;
+    let key = PeerIdentity::load(&home.join("config/da_peer.key"), &listen)?;
     let net = network.to_owned();
     let (stop, stopped) = oneshot::channel();
     let (ready, started) = mpsc::sync_channel(1);
@@ -181,22 +209,102 @@ pub(crate) fn start(
 }
 
 fn observed_swarm(
-    key: identity::Keypair,
+    identity: PeerIdentity,
     behaviour: network::Behaviour,
     connections: &connections::Connections,
 ) -> Result<libp2p::Swarm<network::Behaviour>> {
-    let observed = connections.clone();
-    let security = noise::Config::new(&key)?;
+    use libp2p::core::muxing::StreamMuxerBox;
+
+    let key = identity.key;
+    let security = security::Config::new(&key)?;
+    let tcp_security = security.clone();
+    let tcp_observed = connections.clone();
+    let tcp = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true)).and_then(
+        move |socket, point| {
+            tcp_security.connect(socket, point, tcp_observed, connections::PeerTransport::Tcp)
+        },
+    );
+    let quic_observed = connections.clone();
+    let quic = libp2p::quic::tokio::Transport::new(libp2p::quic::Config::new(&key)).map(
+        move |(peer, mux), point| {
+            (
+                peer,
+                StreamMuxerBox::new(quic_observed.observe(
+                    peer,
+                    &point,
+                    mux,
+                    connections::PeerTransport::Quic,
+                )),
+            )
+        },
+    );
+    let native = tcp.or_transport(quic).map(|either, _| either.into_inner());
+    #[cfg(feature = "da-webrtc")]
+    let native = {
+        use libp2p::core::transport::OptionalTransport;
+        let rtc = match identity.certificate {
+            Some(cert) => {
+                OptionalTransport::some(libp2p_webrtc::tokio::Transport::new(key.clone(), cert))
+            }
+            None => OptionalTransport::none(),
+        };
+        let observed = connections.clone();
+        let rtc = rtc.map(move |(peer, mux), point| {
+            (
+                peer,
+                StreamMuxerBox::new(observed.observe(
+                    peer,
+                    &point,
+                    mux,
+                    connections::PeerTransport::WebRtc,
+                )),
+            )
+        });
+        native
+            .or_transport(rtc)
+            .map(|either, _| either.into_inner())
+    };
+    #[cfg(feature = "da-webtransport")]
+    let native = {
+        let observed = connections.clone();
+        let wt = webtransport::Native::new(key.clone(), identity.directory).map(
+            move |(peer, mux), point| {
+                (
+                    peer,
+                    StreamMuxerBox::new(observed.observe(
+                        peer,
+                        &point,
+                        mux,
+                        connections::PeerTransport::WebTransport,
+                    )),
+                )
+            },
+        );
+        native.or_transport(wt).map(|either, _| either.into_inner())
+    };
+    let native = libp2p::dns::tokio::Transport::system(native)?;
+
+    // WebSocket must see the hostname before DNS resolution so TLS can verify it.
+    let tcp = libp2p::dns::tokio::Transport::system(tcp::tokio::Transport::new(
+        tcp::Config::default().nodelay(true),
+    ))?;
+    let mut ws = libp2p::websocket::Config::new(tcp);
+    if let Some(tls) = websocket::server_tls()? {
+        ws.set_tls_config(tls);
+    }
+    let ws_observed = connections.clone();
+    let ws = ws.and_then(move |socket, point| {
+        security.connect(
+            socket,
+            point,
+            ws_observed,
+            connections::PeerTransport::WebSocket,
+        )
+    });
     let swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
-        .with_other_transport(move |_| {
-            tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
-                .upgrade(libp2p::core::upgrade::Version::V1Lazy)
-                .authenticate(security)
-                .multiplex(yamux::Config::default())
-                .map(move |(peer, mux), point| (peer, observed.observe(peer, &point, mux)))
-        })?
-        .with_dns()?
+        .with_other_transport(move |_| ws)?
+        .with_other_transport(move |_| native)?
         .with_behaviour(move |_| behaviour)?
         .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(120)))
         .build();
@@ -204,8 +312,8 @@ fn observed_swarm(
 }
 
 async fn run(
-    key: identity::Keypair,
-    listen: Multiaddr,
+    identity: PeerIdentity,
+    listen: Vec<Multiaddr>,
     network: &str,
     serving: Serving,
     mut stopped: oneshot::Receiver<()>,
@@ -216,7 +324,8 @@ async fn run(
         admin::Blocklist,
     ),
 ) -> Result<()> {
-    let mut behaviour = network::Behaviour::new(&key, network, libp2p::kad::Mode::Server)?;
+    let mut behaviour =
+        network::Behaviour::new(&identity.key, network, libp2p::kad::Mode::Server, &listen)?;
     blocklist.restore(&mut behaviour)?;
     for peer in peers.bootstrap.keys() {
         behaviour.protected.protect(*peer, "protected-bootstrap");
@@ -226,13 +335,16 @@ async fn run(
     let ping = ping::Ping::start(behaviour.negotiated.new_control())?;
     flood::start(
         behaviour.negotiated.new_control(),
-        key.clone(),
+        identity.key.clone(),
         network,
         bridge.clone(),
     )?;
     let connections = connections::Connections::default();
-    let mut swarm = observed_swarm(key, behaviour, &connections)?;
-    swarm.listen_on(listen)?;
+    let mut swarm = observed_swarm(identity, behaviour, &connections)?;
+    let mut starting: HashSet<_> = listen
+        .into_iter()
+        .map(|addr| swarm.listen_on(addr))
+        .collect::<Result<_, _>>()?;
     for address in &peers.announce {
         swarm.add_external_address(address.clone());
     }
@@ -242,6 +354,7 @@ async fn run(
     let topic_hash = topic.hash();
     let mut timer = tokio::time::interval(Duration::from_millis(500));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut pmp = nat_pmp::Mapper::default();
     let mut operations = admin::Operations::new(ping, connections);
     let mut announced = 0;
     let mut pending = tokio::task::JoinSet::new();
@@ -250,6 +363,7 @@ async fn run(
     let admissions = Arc::new(Semaphore::new(64));
     loop {
         tokio::select! {
+            addresses = pmp.changed() => pmp.apply(addresses, &peers, &mut swarm),
             Some(request) = requests.recv() => operations.handle(request, &mut swarm, network, &blocklist),
             _ = &mut stopped => return Ok(()),
             _ = reconnect.tick(), if !peers.bootstrap.is_empty() => peers.connect(&mut swarm),
@@ -272,12 +386,14 @@ async fn run(
             }
             event = swarm.select_next_some() => match event {
                 SwarmEvent::ConnectionEstablished {connection_id, ..} => operations.dial_result(connection_id, Ok(())),
+                SwarmEvent::IncomingConnectionError { local_addr, error, .. } => tracing::debug!(%local_addr, %error, "DA inbound connection failed"),
                 SwarmEvent::OutgoingConnectionError {connection_id, error, ..} => operations.dial_result(connection_id, Err(error.into())),
                 SwarmEvent::ConnectionClosed {peer_id, num_established: 0, ..} => operations.closed(peer_id),
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    if peers.announce.is_empty() { swarm.add_external_address(address.clone()); }
+                SwarmEvent::NewListenAddr { listener_id, address } => {
+                    pmp.refresh(&swarm);
+                    peers.listen_address(&mut swarm, &address);
                     tracing::info!(%address, peer=%swarm.local_peer_id(), "DA peer listening");
-                    let _ = ready.try_send(Ok(()));
+                    if starting.remove(&listener_id) && starting.is_empty() { let _ = ready.try_send(Ok(())); }
                 }
                 SwarmEvent::Behaviour(network::BehaviourEvent::Autonat(event)) => tracing::debug!(?event, "DA AutoNAT probe"),
                 SwarmEvent::Behaviour(network::BehaviourEvent::Identify(libp2p::identify::Event::Received { peer_id, info, .. })) => {
@@ -285,6 +401,10 @@ async fn run(
                         swarm.behaviour_mut().dht.add_address(&peer_id, addr);
                     }
                 }
+                SwarmEvent::ExpiredListenAddr { address, .. } => {pmp.refresh(&swarm);peers.expire_address(&mut swarm, &address);}
+                SwarmEvent::Behaviour(network::BehaviourEvent::PortMapping(libp2p::upnp::Event::GatewayNotFound)) => pmp.fallback(&swarm),
+                SwarmEvent::ExternalAddrConfirmed { address } if !peers.advertised(&address) => swarm.remove_external_address(&address),
+                SwarmEvent::ExternalAddrExpired { address } if peers.announce.contains(&address) => swarm.add_external_address(address),
                 SwarmEvent::ListenerClosed { reason, .. } => {
                     reason?;
                     bail!("DA peer listener closed");

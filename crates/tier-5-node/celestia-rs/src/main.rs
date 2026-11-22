@@ -178,10 +178,10 @@ enum Cmd {
 #[derive(Args, Debug)]
 #[allow(clippy::struct_excessive_bools)]
 struct StartArgs {
-    /// Listen for DA header and share exchange streams over libp2p TCP.
+    /// DA listener. Repeat for TCP sockets or libp2p TCP, WebSocket and QUIC v1 multiaddresses.
     #[cfg(feature = "bridge-p2p")]
-    #[arg(long)]
-    bridge_p2p_listen: Option<std::net::SocketAddr>,
+    #[arg(long, value_parser = node::parse_bridge_listener)]
+    bridge_p2p_listen: Vec<libp2p::Multiaddr>,
     /// Bootstrap DA peers. Repeat to replace the network's published bootstrap list.
     #[cfg(feature = "bridge-p2p")]
     #[arg(long, requires = "bridge_p2p_listen")]
@@ -190,6 +190,10 @@ struct StartArgs {
     #[cfg(feature = "bridge-p2p")]
     #[arg(long, requires = "bridge_p2p_listen")]
     bridge_announce: Vec<libp2p::Multiaddr>,
+    /// Listener addresses to omit from DA advertisements. Repeat for each exact multiaddress.
+    #[cfg(feature = "bridge-p2p")]
+    #[arg(long, requires = "bridge_p2p_listen")]
+    bridge_no_announce: Vec<libp2p::Multiaddr>,
     /// Serve experimental DA JSON-RPC on this loopback address.
     #[cfg(feature = "bridge")]
     #[arg(long)]
@@ -1331,9 +1335,10 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
     }
     #[cfg(feature = "bridge-p2p")]
     {
-        opts.bridge_p2p_listen = a.bridge_p2p_listen;
+        opts.bridge_listeners.clone_from(&a.bridge_p2p_listen);
         opts.bridge_bootstrap.clone_from(&a.bridge_bootstrap);
         opts.bridge_announce.clone_from(&a.bridge_announce);
+        opts.bridge_no_announce.clone_from(&a.bridge_no_announce);
     }
     opts.mempool = config::mempool_options(&files)?;
     opts.block_sync = !a.no_block_sync;

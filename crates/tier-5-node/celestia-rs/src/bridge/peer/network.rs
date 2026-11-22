@@ -14,6 +14,8 @@ mod composed {
         // Reject blocked connections before stateful behaviours observe establishment.
         pub(crate) gate:
             libp2p::allow_block_list::Behaviour<libp2p::allow_block_list::BlockedPeers>,
+        pub(crate) port_mapping:
+            libp2p::swarm::behaviour::toggle::Toggle<libp2p::upnp::tokio::Behaviour>,
         pub(crate) autonat: libp2p_autonat::Behaviour,
         pub(crate) protected: super::super::protected::Protected,
         pub(crate) streams:
@@ -39,7 +41,12 @@ pub(super) fn provider_key() -> kad::RecordKey {
 }
 
 impl Behaviour {
-    pub(super) fn new(key: &identity::Keypair, network: &str, mode: kad::Mode) -> Result<Self> {
+    pub(super) fn new(
+        key: &identity::Keypair,
+        network: &str,
+        mode: kad::Mode,
+        listeners: &[libp2p::Multiaddr],
+    ) -> Result<Self> {
         let id = key.public().to_peer_id();
         let protocol = StreamProtocol::try_from_owned(format!("/celestia/{network}/kad/1.0.0"))?;
         let mut dht = kad::Behaviour::with_config(
@@ -73,16 +80,25 @@ impl Behaviour {
         )
         .map_err(anyhow::Error::msg)?;
         gossip.subscribe(&header_topic(network))?;
+        // The gateway can only map IPv4 listeners. Avoid IGD discovery for
+        // loopback fixtures and for light nodes with no inbound listeners.
+        let map_ports = listeners.iter().any(|addr| {
+            matches!(addr.iter().next(),
+            Some(libp2p::multiaddr::Protocol::Ip4(ip)) if ip.is_private() || ip.is_unspecified())
+        });
         Ok(Self {
+            port_mapping: map_ports
+                .then(libp2p::upnp::tokio::Behaviour::default)
+                .into(),
             autonat: libp2p_autonat::Behaviour::new(id, libp2p_autonat::Config::default()),
             protected: super::protected::Protected::default(),
             gate: libp2p::allow_block_list::Behaviour::default(),
             streams: streams.into(),
             negotiated: libp2p_stream::Behaviour::new(),
-            identify: identify::Behaviour::new(identify::Config::new(
-                "ipfs/0.1.0".to_owned(),
-                key.public(),
-            )),
+            identify: identify::Behaviour::new(
+                identify::Config::new("ipfs/0.1.0".to_owned(), key.public())
+                    .with_hide_listen_addrs(true),
+            ),
             dht,
             gossip,
         })
@@ -113,13 +129,39 @@ fn release_peers(chain: &str) -> &'static [&'static str] {
 pub(super) struct Peering {
     pub(super) bootstrap: std::collections::BTreeMap<libp2p::PeerId, Vec<libp2p::Multiaddr>>,
     pub(super) announce: Vec<libp2p::Multiaddr>,
+    no_announce: Vec<libp2p::Multiaddr>,
 }
 
 impl Peering {
+    pub(super) fn advertised(&self, address: &libp2p::Multiaddr) -> bool {
+        self.announce.contains(address) || !self.no_announce.contains(address)
+    }
+
+    pub(super) fn listen_address(
+        &self,
+        swarm: &mut libp2p::Swarm<Behaviour>,
+        address: &libp2p::Multiaddr,
+    ) {
+        if self.advertised(address) {
+            swarm.add_external_address(address.clone());
+        }
+    }
+
+    pub(super) fn expire_address(
+        &self,
+        swarm: &mut libp2p::Swarm<Behaviour>,
+        address: &libp2p::Multiaddr,
+    ) {
+        if !self.announce.contains(address) && !swarm.listeners().any(|addr| addr == address) {
+            swarm.remove_external_address(address);
+        }
+    }
+
     pub(super) fn new(
         chain: &str,
         override_peers: &[libp2p::Multiaddr],
         announce: Vec<libp2p::Multiaddr>,
+        mut no_announce: Vec<libp2p::Multiaddr>,
     ) -> Result<Self> {
         let seeds = if override_peers.is_empty() {
             release_peers(chain)
@@ -138,14 +180,70 @@ impl Peering {
             bootstrap.entry(id).or_default().push(addr);
         }
         for addr in &announce {
+            use libp2p::multiaddr::Protocol;
+            let mut endpoint = addr.clone();
+            let valid = match endpoint.pop() {
+                Some(Protocol::Tcp(port)) => port != 0,
+                Some(Protocol::Ws(_) | Protocol::Wss(_)) => {
+                    let suffix = endpoint.pop();
+                    let port = if suffix == Some(Protocol::Tls) {
+                        endpoint.pop()
+                    } else {
+                        suffix
+                    };
+                    matches!(port, Some(Protocol::Tcp(port)) if port != 0)
+                }
+                #[cfg(any(feature = "da-webrtc", feature = "da-webtransport"))]
+                Some(Protocol::Certhash(_)) => {
+                    let kind = endpoint.pop();
+                    #[cfg(feature = "da-webtransport")]
+                    let kind = {
+                        let mut next = kind;
+                        while matches!(next, Some(Protocol::Certhash(_))) {
+                            next = endpoint.pop();
+                        }
+                        next
+                    };
+                    match kind {
+                        #[cfg(feature = "da-webrtc")]
+                        Some(Protocol::WebRTCDirect) => {
+                            matches!(endpoint.pop(), Some(Protocol::Udp(port)) if port != 0)
+                        }
+                        #[cfg(feature = "da-webtransport")]
+                        Some(Protocol::WebTransport) => {
+                            endpoint.pop() == Some(Protocol::QuicV1)
+                                && matches!(endpoint.pop(), Some(Protocol::Udp(port)) if port != 0)
+                        }
+                        _ => false,
+                    }
+                }
+                Some(Protocol::QuicV1) => {
+                    matches!(endpoint.pop(), Some(Protocol::Udp(port)) if port != 0)
+                }
+                _ => false,
+            };
             anyhow::ensure!(
-                matches!(addr.iter().last(),Some(libp2p::multiaddr::Protocol::Tcp(port)) if port != 0),
-                "announced DA address must end in a TCP port"
+                valid,
+                "announced DA address needs a supported transport and a nonzero port"
             );
+        }
+        if no_announce.is_empty() {
+            // Exact exclusions from nodebuilder/p2p.DefaultConfig on both release pins.
+            for host in ["/ip4/0.0.0.0", "/ip4/127.0.0.1", "/ip6/::"] {
+                for endpoint in [
+                    "/udp/2121/quic-v1/webtransport",
+                    "/udp/2121/quic-v1",
+                    "/udp/2121/webrtc-direct",
+                    "/tcp/2121",
+                ] {
+                    no_announce.push(format!("{host}{endpoint}").parse()?);
+                }
+            }
         }
         Ok(Self {
             bootstrap,
             announce,
+            no_announce,
         })
     }
 

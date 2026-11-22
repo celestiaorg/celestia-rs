@@ -128,6 +128,14 @@ target/release/celestia-rs start --network local --home "$DA_HOME" \
   --bridge-rpc-listen 127.0.0.1:32658 --bridge-p2p-listen 127.0.0.1:32121
 ```
 
+To accept QUIC v1 peers on that host, also pass `--bridge-p2p-listen /ip4/127.0.0.1/udp/32121/quic-v1`. Expose the selected UDP port to the peers that should reach it. For WebSocket peers, supply a separate TCP listener ending in `/ws` or `/tls/ws`. For TLS, set `CELESTIA_TLS_PATH` to a directory containing the PEM certificate chain in `cert.pem` and its private key in `key.pem`.
+
+For WebRTC direct, add the optional Cargo feature `da-webrtc` and a listener such as `--bridge-p2p-listen /ip4/0.0.0.0/udp/32124/webrtc-direct`. Use a separate UDP port from QUIC. The node adds its DTLS certificate hash to the advertised address and stores the certificate beside its DA peer key. Standalone light mode uses the same transport with `--p2p-listen`. Configure a WebRTC listener when dialing a WebRTC-only peer so the transport has a local UDP socket.
+
+For native and browser WebTransport, build with Rust 1.95 or later and the optional `da-webtransport` feature. Use a separate UDP port, for example `--bridge-p2p-listen /ip4/0.0.0.0/udp/32126/quic-v1/webtransport`, or `--p2p-listen` for a standalone light node. Copy the full address from `p2p.Info`, including both certificate hashes. Keep the DA key directory across restarts so clients can continue using their saved addresses during certificate rotation.
+
+Private IPv4 DA listeners can request port mappings from the local router using IGD or NAT-PMP. Use `--bridge-announce` and `--bridge-no-announce` on a bridge or `--announce` and `--no-announce` on a light node to control advertised addresses.
+
 Set `DA_HOME` to a fresh directory before starting the canary. The Rust
 node creates its own DA identity. In a second shell, mint a read token
 for the same home and compare the DA commit hash with the consensus
@@ -166,7 +174,7 @@ target/release/celestia-rs da-light --home "$LIGHT_HOME" --network "$CHAIN_ID" \
   --peer "$TRUSTED_PEER" --trusted-hash "$BLOCK_HASH" --rpc-listen 127.0.0.1:32658
 ```
 
-The light store in `da-light/light.redb` records sampled headers and pending sample coordinates. Restart with the same home and trust inputs to resume. Mint a read token with `da-auth read --home "$LIGHT_HOME"`. Use `das.SamplingStats` to observe the last sampled height and retries. An optional `--p2p-listen` multiaddress accepts inbound DA connections.
+The light store in `da-light/light.redb` records sampled headers and pending sample coordinates. Restart with the same home and trust inputs to resume. Mint a read token with `da-auth read --home "$LIGHT_HOME"`. Use `das.SamplingStats` to observe the last sampled height and retries. Repeat `--p2p-listen` with TCP or QUIC v1 multiaddresses to accept inbound DA connections.
 
 After more than seven days offline, the last sampled header can fall outside the trusting period. The node uses its configured trusted peers to select a fresh signed head, including when the original home was initialized with an explicit block hash. Keep those peer identities current. While a fresh head is unavailable, the node waits and keeps its previous sampled head. Once it authenticates the new chain and completes sampling, check `header.Tail` and `header.LocalHead` for the new retained interval. Heights skipped outside the sampling window have no local availability receipt.
 

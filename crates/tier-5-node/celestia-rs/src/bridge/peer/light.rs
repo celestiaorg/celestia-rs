@@ -11,7 +11,7 @@ mod rpc;
 mod stats;
 mod wallet;
 
-use super::{HeaderResponse, HeaderWire, Origin, Proof, Request, Sample, identity};
+use super::{HeaderResponse, HeaderWire, Origin, PeerIdentity, Proof, Request, Sample};
 use anyhow::{Context, Result, ensure};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use kvdb::{KvBackend, RedbBackend, RedbOptions, WriteBatch};
@@ -36,9 +36,15 @@ pub struct LightArgs {
     /// Pin a trusted 32-byte header hash. A fresh unpinned store starts at the trusted peers’ head.
     #[arg(long)]
     trusted_hash: Option<String>,
-    /// Listen for incoming DA peer connections at this TCP multiaddress.
+    /// Listen for incoming DA connections. Repeat for TCP, WebSocket or QUIC v1 multiaddresses.
     #[arg(long)]
-    p2p_listen: Option<Multiaddr>,
+    p2p_listen: Vec<Multiaddr>,
+    /// Additional reachable DA addresses to advertise.
+    #[arg(long)]
+    announce: Vec<Multiaddr>,
+    /// Listener addresses to omit from DA advertisements. Repeat for each exact multiaddress.
+    #[arg(long)]
+    no_announce: Vec<Multiaddr>,
     /// Consensus gRPC hostname or IP for proof-verified state reads.
     #[arg(long = "core.ip")]
     core_ip: Option<String>,
@@ -595,7 +601,13 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
         anchor.as_ref().is_none_or(|h| h.len() == 32),
         "trusted hash must be 32 bytes"
     );
-    let addresses = super::network::Peering::new(&args.network, &args.peer, vec![])?.bootstrap;
+    let peering = super::network::Peering::new(
+        &args.network,
+        &args.peer,
+        args.announce.clone(),
+        args.no_announce.clone(),
+    )?;
+    let addresses = &peering.bootstrap;
     ensure!(
         !addresses.is_empty(),
         "provide a trusted peer for this network"
@@ -608,9 +620,13 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     )?);
     // Bind synchronously with startup so a busy port is reported to the operator.
     let (status, observer) = tokio::sync::watch::channel(stats::Sampling::default());
-    let key = identity(&dir.join("peer.key"))?;
-    let mut behaviour =
-        super::network::Behaviour::new(&key, &args.network, libp2p::kad::Mode::Client)?;
+    let identity = PeerIdentity::load(&dir.join("peer.key"), &args.p2p_listen)?;
+    let mut behaviour = super::network::Behaviour::new(
+        &identity.key,
+        &args.network,
+        libp2p::kad::Mode::Client,
+        &args.p2p_listen,
+    )?;
     let blocklist = super::admin::Blocklist::open(&dir)?;
     blocklist.restore(&mut behaviour)?;
     for peer in addresses.keys() {
@@ -618,13 +634,16 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
     }
     let ping = super::ping::Ping::start(behaviour.negotiated.new_control())?;
     let connections = super::connections::Connections::default();
-    let mut swarm = super::observed_swarm(key, behaviour, &connections)?;
+    let mut swarm = super::observed_swarm(identity, behaviour, &connections)?;
     let operations = super::admin::Operations::new(ping, connections);
     let (peer_control, requests) = super::admin::Control::channel();
-    if let Some(addr) = &args.p2p_listen {
+    for addr in &args.p2p_listen {
         swarm.listen_on(addr.clone())?;
     }
-    for (peer, addrs) in &addresses {
+    for addr in &peering.announce {
+        swarm.add_external_address(addr.clone());
+    }
+    for (peer, addrs) in addresses {
         for addr in addrs {
             swarm.add_peer_address(*peer, addr.clone());
         }
@@ -671,6 +690,6 @@ pub async fn run_light(home: &Path, args: LightArgs) -> Result<()> {
         result = listener => result,
         result = follow(&db, &mut peers, &args, anchor, &status) => result,
         result = tokio::signal::ctrl_c() => Ok(result?),
-        () = discovery::maintain_connections(swarm, &addresses, connected, &args.network, requests, operations, blocklist) => anyhow::bail!("DA network stopped"),
+        () = discovery::maintain_connections(swarm, &peering, connected, &args.network, requests, operations, blocklist) => anyhow::bail!("DA network stopped"),
     }
 }

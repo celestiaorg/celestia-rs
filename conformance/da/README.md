@@ -73,12 +73,15 @@ index in pruning mode permits removal of expired data. A pruned index needs a
 fresh resync to become archival.
 An index first opened on a pruned consensus store starts at its retained base.
 
-With the DA peer enabled, `--bridge-p2p-listen` selects the TCP interface and
-port. Mainnet and Mocha 5 use the bootstrap addresses from the pinned Go DA
+Each `--bridge-p2p-listen` selects a DA listener. A socket such as
+`127.0.0.1:32121` selects TCP. Add `/ip4/127.0.0.1/udp/32121/quic-v1`
+with a second flag to listen on QUIC v1 as well. Mainnet and Mocha 5 use the bootstrap addresses from the pinned Go DA
 releases. Private networks have an empty default bootstrap list. Repeat
 `--bridge-bootstrap <multiaddress>/p2p/<peer-id>` to supply an explicit list.
 For a node behind NAT, repeat `--bridge-announce <multiaddress>` with its
-reachable TCP addresses. The DA RPC listener is configured independently.
+reachable addresses. Both Identify and the DA admin API also report active listeners.
+Repeat `--bridge-no-announce` to replace the release’s default exclusions with exact listener multiaddresses.
+The standalone light role accepts `--announce` and `--no-announce` for the same purpose.
 
 The opt-in P2P bridge publishes signed non-empty EDS announcements on the release's FloodSub topic `<chain>/eds-sub/v0.2.0`. This stream runs independently of header GossipSub. The peer fixture subscribes with the released Go SHREX library before paying for its blob, checks the publisher identity, then fetches the signed header to verify the announced height and data hash. The Rust publisher signs locally verified commitments once their headers are readable. A separate pair of Go hosts verifies relay through Rust, including the original author signature. The relay validates signatures, network topic and notification shape, deduplicates messages, and preserves the original publisher.
 
@@ -136,8 +139,7 @@ The private fixture replays its paid blob, cancels the subscription and
 checks the next two live headers through the released Go client.
 
 The light peer serves retained sampled headers through the chain's
-go-header exchange. To accept a new incoming TCP connection, supply a
-listen multiaddress such as `--p2p-listen /ip4/127.0.0.1/tcp/39621`.
+go-header exchange. To accept incoming connections, repeat `--p2p-listen` with TCP, WebSocket or QUIC v1 multiaddresses.
 The private fixture disconnects the Go bridge, connects a fresh Go
 exchange client directly to the Rust light peer and verifies the paid
 checkpoint by height and hash, its next two signed headers and the head.

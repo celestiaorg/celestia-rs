@@ -1,21 +1,18 @@
 //! Discover DA providers without adding them to the trusted checkpoint set.
 use futures::StreamExt;
 use libp2p::swarm::{SwarmEvent, dial_opts::DialOpts};
-use libp2p::{Multiaddr, PeerId, Swarm, identify, kad};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    time::Duration,
-};
+use libp2p::{PeerId, Swarm, identify, kad};
+use std::{collections::BTreeSet, time::Duration};
 use tokio::sync::watch;
 
 use super::super::{
     admin,
-    network::{Behaviour, BehaviourEvent},
+    network::{Behaviour, BehaviourEvent, Peering},
 };
 
 pub(super) async fn maintain_connections(
     mut swarm: Swarm<Behaviour>,
-    trusted: &BTreeMap<PeerId, Vec<Multiaddr>>,
+    peers: &Peering,
     connected: watch::Sender<Vec<PeerId>>,
     network: &str,
     mut requests: tokio::sync::mpsc::Receiver<admin::Request>,
@@ -23,10 +20,12 @@ pub(super) async fn maintain_connections(
     blocklist: admin::Blocklist,
 ) {
     const MAX_PROVIDERS: usize = 16;
+    let trusted = &peers.bootstrap;
     let mut retry = tokio::time::interval(Duration::from_secs(3));
     retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut discovery = tokio::time::interval(Duration::from_secs(10));
     discovery.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut pmp = super::super::nat_pmp::Mapper::default();
     let mut query = None;
     let mut providers = BTreeSet::new();
     for (peer, addresses) in trusted {
@@ -36,6 +35,7 @@ pub(super) async fn maintain_connections(
     }
     loop {
         tokio::select! {
+            addresses = pmp.changed() => pmp.apply(addresses, peers, &mut swarm),
             Some(request) = requests.recv() => operations.handle(request, &mut swarm, network, &blocklist),
             _ = retry.tick() => {
                 for (peer, addresses) in trusted {
@@ -73,7 +73,11 @@ pub(super) async fn maintain_connections(
                         let Some(peer_id) = peer_id else { continue };
                         if !swarm.is_connected(&peer_id) { providers.remove(&peer_id); }
                     }
-                    SwarmEvent::NewListenAddr { address, .. } => { swarm.add_external_address(address.clone()); tracing::info!(%address, peer=%swarm.local_peer_id(), "DA light peer listening"); }
+                    SwarmEvent::NewListenAddr { address, .. } => { pmp.refresh(&swarm); peers.listen_address(&mut swarm, &address); tracing::info!(%address, peer=%swarm.local_peer_id(), "DA light peer listening"); }
+                    SwarmEvent::ExpiredListenAddr { address, .. } => {pmp.refresh(&swarm);peers.expire_address(&mut swarm, &address);}
+                    SwarmEvent::Behaviour(BehaviourEvent::PortMapping(libp2p::upnp::Event::GatewayNotFound)) => pmp.fallback(&swarm),
+                    SwarmEvent::ExternalAddrConfirmed { address } if !peers.advertised(&address) => swarm.remove_external_address(&address),
+                    SwarmEvent::ExternalAddrExpired { address } if peers.announce.contains(&address) => swarm.add_external_address(address),
                     SwarmEvent::ConnectionEstablished { connection_id, .. } => operations.dial_result(connection_id, Ok(())),
                     _ => continue,
                 }

@@ -13,12 +13,26 @@ esac
 work=$(mktemp -d)
 peer_args=()
 if [[ "${3:-}" == --peer || "${3:-}" == --stock-light || "${3:-}" == --validator-load ]]; then
-    peer_args=(--prometheus-listen-addr 127.0.0.1:32660 --bridge-p2p-listen 127.0.0.1:32121)
+    peer_args=(--prometheus-listen-addr 127.0.0.1:32660 --bridge-p2p-listen 127.0.0.1:32121 --bridge-p2p-listen /ip4/127.0.0.1/udp/32121/quic-v1
+        --bridge-p2p-listen /ip4/127.0.0.1/tcp/32122/ws --bridge-p2p-listen /ip4/127.0.0.1/tcp/32123/tls/ws)
+    export DA_TEST_ADVERTISED=/dns4/localhost/tcp/32121 DA_TEST_HIDDEN=/ip4/127.0.0.1/tcp/32125 DA_TEST_LISTENER=/ip4/127.0.0.1/tcp/32121
+    peer_args+=(--bridge-p2p-listen "$DA_TEST_HIDDEN" --bridge-announce "$DA_TEST_ADVERTISED" --bridge-no-announce "$DA_TEST_HIDDEN")
+    if [[ ${DA_TEST_WEBTRANSPORT:-} == 1 ]]; then
+        peer_args+=(--bridge-p2p-listen /ip4/127.0.0.1/udp/32126/quic-v1/webtransport)
+    fi
+    if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then
+        peer_args+=(--bridge-p2p-listen /ip4/127.0.0.1/udp/32124/webrtc-direct)
+    fi
 fi
 pid=
 bootstrap_pid=
 light_pid=
 cleanup() {
+    local code=$?
+    if ((code)) && [[ -f "$work/node.log" ]]; then
+        # Limit failure output to transport diagnostics. The node log also contains wallet activity.
+        grep -E 'DA inbound connection failed|DA WebRTC|panicked at|CryptoProvider|ICE failed|DTLS handshake' "$work/node.log" | tail -25 || true
+    fi
     if [[ -n "${subscriber:-}" ]]; then kill "$subscriber" 2>/dev/null || true; wait "$subscriber" || true; fi
     if [[ -n "$bootstrap_pid" ]]; then
         kill "$bootstrap_pid" 2>/dev/null || true
@@ -37,6 +51,14 @@ cleanup() {
 trap cleanup EXIT
 
 if (( ${#peer_args[@]} )); then
+    tls_dir="$work/ws-tls"
+    mkdir -p "$tls_dir"
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 -subj /CN=private-da-ca \
+        -keyout "$tls_dir/ca.key" -out "$tls_dir/ca.pem" >/dev/null 2>&1
+    openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj /CN=localhost \
+        -keyout "$tls_dir/key.pem" -out "$tls_dir/csr.pem" >/dev/null 2>&1
+    openssl x509 -req -in "$tls_dir/csr.pem" -CA "$tls_dir/ca.pem" -CAkey "$tls_dir/ca.key" -CAcreateserial -days 1 \
+        -extfile <(echo 'subjectAltName=DNS:localhost,IP:127.0.0.1') -out "$tls_dir/cert.pem" >/dev/null 2>&1
     (cd "$go_tree" && go build -o "$work/bootstrap-probe" "$(dirname "$probe")/bootstrap/check.go")
     "$work/bootstrap-probe" "$work/bootstrap.addr" celestia-rs-local &
     bootstrap_pid=$!
@@ -56,7 +78,9 @@ DA_TEST_SECOND_SIGNER=$("$binary" keys show da-secondary --address --keyring-bac
 export DA_TEST_SECOND_SIGNER
 start_rust() {
     local first= head
-    RUST_LOG=celestia_rs::bridge::peer=info "$binary" start --network local --home "$work/node" \
+    local -a tls_env=()
+    if [[ -n ${tls_dir:-} ]]; then tls_env=(CELESTIA_TLS_PATH="$tls_dir" SSL_CERT_FILE="$tls_dir/ca.pem"); fi
+    env "${tls_env[@]}" RUST_LOG=celestia_rs::bridge::peer=debug,libp2p_webrtc::tokio::udp_mux=debug "$binary" start --network local --home "$work/node" \
         --bridge-rpc-listen 127.0.0.1:32658 --bridge-signer validator --bridge-signer da-secondary "${peer_args[@]}" >"$work/node.log" 2>&1 &
     pid=$!
     for attempt in {1..120}; do
@@ -141,7 +165,41 @@ if (( ${#peer_args[@]} )); then
     peer_id=$(sed -n 's/.*DA peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/node.log" | head -1)
     [[ -n "$peer_id" ]] || { echo 'missing DA peer identity' >&2; exit 1; }
     peer_probe=$(dirname "$probe")/peer/read_peer.go
-    (cd "$go_tree" && DA_TEST_ADMIN_URL=http://127.0.0.1:32658 go run "$peer_probe" celestia-rs-local "/ip4/127.0.0.1/tcp/32121/p2p/$peer_id" "$height" "$namespace" "$data")
+    (cd "$go_tree" && go build -o "$work/websocket-reader" "$peer_probe")
+    for transport in /ip4/127.0.0.1/tcp/32121 /ip4/127.0.0.1/tcp/32122/ws /dns4/localhost/tcp/32123/tls/ws; do
+        for security in /tls/1.0.0 /noise; do
+            DA_TEST_STREAM_SECURITY="$security" DA_TEST_ADMIN_URL=http://127.0.0.1:32658 SSL_CERT_FILE="$tls_dir/ca.pem" CELESTIA_TLS_PATH="$tls_dir" \
+                "$work/websocket-reader" celestia-rs-local "$transport/p2p/$peer_id" "$height" "$namespace" "$data"
+        done
+    done
+    DA_TEST_ADMIN_URL=http://127.0.0.1:32658 "$work/websocket-reader" celestia-rs-local "/ip4/127.0.0.1/udp/32121/quic-v1/p2p/$peer_id" "$height" "$namespace" "$data"
+    if [[ ${DA_TEST_WEBTRANSPORT:-} == 1 ]]; then
+        wt_addr() {
+            sed -nE 's@.*address=(/ip4/127.0.0.1/udp/32126/quic-v1/webtransport(/certhash/[[:alnum:]_-]+){2}).*@\1@p' "$work/node.log" | head -1
+        }
+        wt=$(wt_addr)
+        : "${wt:?missing Rust WebTransport listener}"
+        DA_TEST_ADMIN_URL=http://127.0.0.1:32658 "$work/websocket-reader" celestia-rs-local "$wt/p2p/$peer_id" "$height" "$namespace" "$data"
+        if [[ ${DA_TEST_BROWSER:-} == 1 ]]; then
+            browser_dir=$(dirname "$peer_probe")/browser
+            committed=$(curl -fsS "http://127.0.0.1:26657/block?height=$height" | jq -er '.result.block_id.hash')
+            (cd "$go_tree" && go run "$browser_dir/verify.go" "$browser_dir/run.mjs" "$wt/p2p/$peer_id" celestia-rs-local "$height" "$committed")
+        fi
+    fi
+    if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then
+        rtc_addr() {
+            sed -n 's@.*address=\(/ip4/127.0.0.1/udp/32124/webrtc-direct/certhash/[[:alnum:]_-]*\).*@\1@p' "$work/node.log" | head -1
+        }
+        rtc=$(rtc_addr)
+        [[ -n "$rtc" ]]
+        DA_TEST_ADMIN_URL=http://127.0.0.1:32658 "$work/websocket-reader" celestia-rs-local "$rtc/p2p/$peer_id" "$height" "$namespace" "$data"
+        DA_TEST_WEBRTC_V2=1 DA_TEST_ADMIN_URL=http://127.0.0.1:32658 "$work/websocket-reader" celestia-rs-local "$rtc/p2p/$peer_id" "$height" "$namespace" "$data"
+        if [[ ${DA_TEST_BROWSER:-} == 1 ]]; then
+            browser_dir=$(dirname "$peer_probe")/browser
+            committed=$(curl -fsS "http://127.0.0.1:26657/block?height=$height" | jq -er '.result.block_id.hash')
+            (cd "$go_tree" && go run "$browser_dir/verify.go" "$browser_dir/run.mjs" "$rtc/p2p/$peer_id" celestia-rs-local "$height" "$committed")
+        fi
+    fi
     verify_count() {
         local protocol=$1 outcome=$2 minimum=$3
         awk -v series="protocol=\"$protocol\",outcome=\"$outcome\"" -v minimum="$minimum" '
@@ -204,6 +262,8 @@ if [[ "${3:-}" == --stock-light ]]; then
     start_rust
     recovered_id=$(sed -n 's/.*DA peer listening.*peer=\([[:alnum:]]*\).*/\1/p' "$work/node.log" | head -1)
     [[ "$recovered_id" == "$peer_id" ]]
+    if [[ ${DA_TEST_WEBTRANSPORT:-} == 1 ]]; then [[ $(wt_addr) == "$wt" ]]; fi
+    if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then [[ $(rtc_addr) == "$rtc" ]]; fi
     data=$(python3 -c 'print("a4b2c6" * 4000)')
     pay_for_blob
     read_from_light

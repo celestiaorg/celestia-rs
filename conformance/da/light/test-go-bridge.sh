@@ -147,6 +147,29 @@ timeout 120 "$rust" "${args[@]}" --until "$((height+2))" | tee "$work/resume.log
 grep -Fq "sampled height $((height+2)) " "$work/resume.log"
 if grep -Fq "sampled height $height " "$work/resume.log"; then exit 1; fi
 
+# Independently anchor and sample through the Go bridge's UDP listener.
+quic_peer="/ip4/127.0.0.1/udp/39221/quic-v1/p2p/${peer##*/}"
+timeout 120 "$rust" da-light --home "$work/quic-light" --network "$chain" --peer "$quic_peer" \
+    --trusted-hash "$hash" --until "$height" >"$work/quic-samples.log"
+grep -Fq "sampled height $height (16 verified shares), hash $hash" "$work/quic-samples.log"
+echo "Rust verified the signed paid header and 16 samples from the Go QUIC peer"
+
+if [[ ${DA_TEST_WEBTRANSPORT:-} == 1 ]]; then
+    wt=$(sed -nE 's@.*/ip4/[0-9.]+(/udp/39221/quic-v1/webtransport(/certhash/[[:alnum:]_-]+)+/p2p/[[:alnum:]]+).*@/ip4/127.0.0.1\1@p' "$work/bridge.log" | head -1)
+    : "${wt:?missing Go WebTransport address with certificate hashes}"
+    timeout 120 "$rust" da-light --home "$work/webtransport-light" --network "$chain" --peer "$wt" \
+        --trusted-hash "$hash" --until "$height" >"$work/webtransport-samples.log"
+    grep -Fq "sampled height $height (16 verified shares), hash $hash" "$work/webtransport-samples.log"
+fi
+
+if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then
+    rtc=$(sed -n 's@.*/ip4/[0-9.]*\(/udp/39221/webrtc-direct/certhash/[[:alnum:]_-]*/p2p/[[:alnum:]]*\).*@/ip4/127.0.0.1\1@p' "$work/bridge.log" | head -1)
+    [[ -n "$rtc" ]]
+    timeout 120 "$rust" da-light --home "$work/rtc-light" --network "$chain" --peer "$rtc" \
+        --p2p-listen /ip4/127.0.0.1/udp/0/webrtc-direct --trusted-hash "$hash" --until "$height" >"$work/rtc-samples.log"
+    grep -Fq "sampled height $height (16 verified shares), hash $hash" "$work/rtc-samples.log"
+fi
+
 # A new store may bootstrap at a trusted Go peer's signed head without a fixed hash.
 auto_home="$work/trusted-head"
 timeout 90 "$rust" da-light --home "$auto_home" --network "$chain" --peer "$peer" --until 1 >"$work/trusted.log"
@@ -175,7 +198,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=private-core-ca \
     -keyout "$work/ca.key" -out "$work/ca.pem" 2>/dev/null
 openssl req -new -newkey rsa:2048 -nodes -subj /CN=localhost \
     -keyout "$work/core.key" -out "$work/core.csr" 2>/dev/null
-printf '%s\n' 'subjectAltName=IP:127.0.0.1' 'extendedKeyUsage=serverAuth' >"$work/extensions"
+printf '%s\n' 'subjectAltName=IP:127.0.0.1,DNS:localhost' 'extendedKeyUsage=serverAuth' >"$work/extensions"
 openssl x509 -req -in "$work/core.csr" -CA "$work/ca.pem" -CAkey "$work/ca.key" \
     -CAcreateserial -days 1 -extfile "$work/extensions" -out "$work/core.pem" 2>/dev/null
 CORE_TEST_TOKEN=$(openssl rand -hex 24)
@@ -187,7 +210,13 @@ for attempt in {1..30}; do
     kill -0 "$core_proxy"
     sleep 1
 done
-SSL_CERT_FILE="$work/ca.pem" RUST_LOG=celestia_rs::bridge::peer=info "$rust" "${args[@]}" --core.ip 127.0.0.1 --core.port "$(cat "$work/proxy-port")" --core.tls --core.xtoken.path "$work" --keyring.keyname light --keyring.keyname da-secondary --keyring.backend test --p2p-listen /ip4/127.0.0.1/tcp/39621 --rpc-listen 127.0.0.1:39658 >"$work/light.log" 2>&1 &
+extra_listeners=(--p2p-listen /ip4/127.0.0.1/tcp/39623/ws --p2p-listen /ip4/127.0.0.1/tcp/39624/tls/ws)
+mkdir "$work/peer-tls"
+cp "$work/core.pem" "$work/peer-tls/cert.pem"
+cp "$work/core.key" "$work/peer-tls/key.pem"
+if [[ ${DA_TEST_WEBRTC:-} == 1 ]]; then extra_listeners+=(--p2p-listen /ip4/127.0.0.1/udp/39625/webrtc-direct); fi
+if [[ ${DA_TEST_WEBTRANSPORT:-} == 1 ]]; then extra_listeners+=(--p2p-listen /ip4/127.0.0.1/udp/39626/quic-v1/webtransport); fi
+CELESTIA_TLS_PATH="$work/peer-tls" SSL_CERT_FILE="$work/ca.pem" RUST_LOG=celestia_rs::bridge::peer=info "$rust" "${args[@]}" "${extra_listeners[@]}" --core.ip 127.0.0.1 --core.port "$(cat "$work/proxy-port")" --core.tls --core.xtoken.path "$work" --keyring.keyname light --keyring.keyname da-secondary --keyring.backend test --announce /dns4/localhost/tcp/39621 --no-announce /ip4/127.0.0.1/tcp/39622 --p2p-listen /ip4/127.0.0.1/tcp/39622 --p2p-listen /ip4/127.0.0.1/tcp/39621 --p2p-listen /ip4/127.0.0.1/udp/39621/quic-v1 --rpc-listen 127.0.0.1:39658 >"$work/light.log" 2>&1 &
 light=$!
 for attempt in {1..60}; do
     kill -0 "$light"
@@ -205,6 +234,21 @@ light_peer=$(sed -n 's/.*DA light peer listening.*peer=\([[:alnum:]]*\).*/\1/p' 
 : "${light_peer:?missing light peer identity}"
 exchange_probe=$(realpath "$(dirname "$0")/read_exchange.go")
 (cd "$node_src" && go run "$exchange_probe" "$chain" "/ip4/127.0.0.1/tcp/39621/p2p/$light_peer" "$height" "$hash")
+(cd "$node_src" && go run "$exchange_probe" "$chain" "/ip4/127.0.0.1/udp/39621/quic-v1/p2p/$light_peer" "$height" "$hash")
+(cd "$node_src" && go build -o "$work/light-reader" "$exchange_probe")
+"$work/light-reader" "$chain" "/ip4/127.0.0.1/tcp/39623/ws/p2p/$light_peer" "$height" "$hash"
+SSL_CERT_FILE="$work/ca.pem" "$work/light-reader" "$chain" "/dns4/localhost/tcp/39624/tls/ws/p2p/$light_peer" "$height" "$hash"
+for port in 39625 39626; do
+    if [[ $port == 39625 && ${DA_TEST_WEBRTC:-} != 1 ]]; then continue; fi
+    if [[ $port == 39626 && ${DA_TEST_WEBTRANSPORT:-} != 1 ]]; then continue; fi
+    addr=$(awk -v prefix="address=/ip4/127.0.0.1/udp/$port/" '/DA light peer listening/{for(i=1;i<=NF;i++) if(index($i,prefix)==1){sub(/^address=/,"",$i); print $i;exit}}' "$work/light.log")
+    : "${addr:?missing light listener address}"
+    "$work/light-reader" "$chain" "$addr/p2p/$light_peer" "$height" "$hash"
+    if [[ ${DA_TEST_BROWSER:-} == 1 ]]; then
+        browser_dir=$(realpath "$(dirname "$0")/../peer/browser")
+        (cd "$node_src" && go run "$browser_dir/verify.go" "$browser_dir/run.mjs" "$addr/p2p/$light_peer" "$chain" "$height" "$hash")
+    fi
+done
 tuple_probe=$(realpath "$(dirname "$0")/../subscriptions/check.go")
 (cd "$node_src" && go run "$tuple_probe" "$endpoint" blobstream "$height" "$((height+3))")
 auth_probe=$(realpath "$(dirname "$0")/../auth/check.go")
@@ -212,7 +256,7 @@ DA_TEST_ADMIN_TOKEN=$("$rust" da-auth admin --home "$work/rust-light")
 export DA_TEST_ADMIN_TOKEN
 (cd "$node_src" && DA_TEST_LOG="$work/light.log" go run "$auth_probe" "$endpoint" Light)
 admin_probe=$(realpath "$(dirname "$0")/../peer/read_peer.go")
-(cd "$node_src" && DA_TEST_ADMIN_URL="$endpoint" go run "$admin_probe" "$chain" "/ip4/127.0.0.1/tcp/39621/p2p/$light_peer" --light-admin)
+(cd "$node_src" && DA_TEST_ADVERTISED=/dns4/localhost/tcp/39621 DA_TEST_HIDDEN=/ip4/127.0.0.1/tcp/39622 DA_TEST_LISTENER=/ip4/127.0.0.1/tcp/39621 DA_TEST_ADMIN_URL="$endpoint" go run "$admin_probe" "$chain" "/ip4/127.0.0.1/udp/39621/quic-v1/p2p/$light_peer" --light-admin)
 unset DA_TEST_ADMIN_TOKEN
 curl -fsS "$endpoint" -H "Authorization: Bearer $DA_TEST_READ_TOKEN" \
     -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"share.GetEDS\",\"params\":[$height]}" |

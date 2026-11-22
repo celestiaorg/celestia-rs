@@ -143,18 +143,38 @@ pub struct MetricsOptions {
     pub namespace: String,
 }
 
+/// Parse a bridge listener supplied as a TCP socket or a libp2p multiaddress.
+#[cfg(feature = "bridge-p2p")]
+pub fn parse_bridge_listener(value: &str) -> anyhow::Result<libp2p::Multiaddr> {
+    if let Ok(addr) = value.parse::<std::net::SocketAddr>() {
+        return Ok(bridge_tcp_address(addr));
+    }
+    Ok(value.parse()?)
+}
+
+#[cfg(feature = "bridge-p2p")]
+fn bridge_tcp_address(addr: std::net::SocketAddr) -> libp2p::Multiaddr {
+    libp2p::Multiaddr::from(addr.ip()).with(libp2p::multiaddr::Protocol::Tcp(addr.port()))
+}
+
 /// Options of `celestia-rs start`.
 #[derive(Debug, Clone)]
 pub struct StartOptions {
     /// Experimental libp2p bridge listener.
     #[cfg(feature = "bridge-p2p")]
     pub bridge_p2p_listen: Option<std::net::SocketAddr>,
+    /// Explicit DA listener multiaddresses, in addition to the optional TCP socket.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_listeners: Vec<libp2p::Multiaddr>,
     /// Operator bootstrap overrides for the opt-in DA network.
     #[cfg(feature = "bridge-p2p")]
     pub bridge_bootstrap: Vec<libp2p::Multiaddr>,
     /// DA addresses reachable behind an operator's NAT.
     #[cfg(feature = "bridge-p2p")]
     pub bridge_announce: Vec<libp2p::Multiaddr>,
+    /// Exact listener addresses to omit from DA advertisements.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_no_announce: Vec<libp2p::Multiaddr>,
     /// Explicit listener for the experimental read-only DA bridge.
     #[cfg(feature = "bridge")]
     pub bridge_rpc_listen: Option<std::net::SocketAddr>,
@@ -214,9 +234,13 @@ impl StartOptions {
             #[cfg(feature = "bridge-p2p")]
             bridge_p2p_listen: None,
             #[cfg(feature = "bridge-p2p")]
+            bridge_listeners: Vec::new(),
+            #[cfg(feature = "bridge-p2p")]
             bridge_bootstrap: Vec::new(),
             #[cfg(feature = "bridge-p2p")]
             bridge_announce: Vec::new(),
+            #[cfg(feature = "bridge-p2p")]
+            bridge_no_announce: Vec::new(),
             config,
             mempool: mempool::MempoolConfig::celestia_app(),
             p2p: None,
@@ -452,11 +476,18 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         app_version: state.consensus_params.version.app,
     })?;
     exec.set_event_sink(rpc.publisher.clone());
+    #[cfg(feature = "bridge-p2p")]
+    let bridge_listeners: Vec<_> = opts
+        .bridge_p2p_listen
+        .into_iter()
+        .map(bridge_tcp_address)
+        .chain(opts.bridge_listeners.iter().cloned())
+        .collect();
     #[cfg(feature = "bridge")]
     let bridge_index = {
         let enabled = opts.bridge_rpc_listen.is_some();
         #[cfg(feature = "bridge-p2p")]
-        let enabled = enabled || opts.bridge_p2p_listen.is_some();
+        let enabled = enabled || !bridge_listeners.is_empty();
         enabled
             .then(|| {
                 crate::bridge::index::Indexer::start(
@@ -507,17 +538,18 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         None => None,
     };
     #[cfg(feature = "bridge-p2p")]
-    let bridge_peer = opts
-        .bridge_p2p_listen
-        .zip(bridge_index.as_ref())
-        .map(|(addr, index)| {
+    let bridge_peer = bridge_index
+        .as_ref()
+        .filter(|_| !bridge_listeners.is_empty())
+        .map(|index| {
             crate::bridge::peer::start(
-                addr,
+                bridge_listeners,
                 home,
                 &genesis.chain_id,
                 crate::bridge::peer::Serving::new(index.store.clone(), metrics.clone()),
                 &opts.bridge_bootstrap,
                 opts.bridge_announce.clone(),
+                opts.bridge_no_announce.clone(),
             )
         })
         .transpose()?;
