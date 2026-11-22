@@ -132,6 +132,10 @@ To accept QUIC v1 peers on that host, also pass `--bridge-p2p-listen /ip4/127.0.
 
 For WebRTC direct, add the optional Cargo feature `da-webrtc` and a listener such as `--bridge-p2p-listen /ip4/0.0.0.0/udp/32124/webrtc-direct`. Use a separate UDP port from QUIC. The node adds its DTLS certificate hash to the advertised address and stores the certificate beside its DA peer key. Standalone light mode uses the same transport with `--p2p-listen`. Configure a WebRTC listener when dialing a WebRTC-only peer so the transport has a local UDP socket.
 
+For native and browser WebTransport, build with Rust 1.95 or later and the optional `da-webtransport` feature. Use a separate UDP port, for example `--bridge-p2p-listen /ip4/0.0.0.0/udp/32126/quic-v1/webtransport`, or `--p2p-listen` for a standalone light node. Copy the full address from `p2p.Info`, including both certificate hashes. Keep the DA key directory across restarts so clients can continue using their saved addresses during certificate rotation.
+
+Private IPv4 DA listeners can request port mappings from the local router using IGD or NAT-PMP. Use `--bridge-announce` and `--bridge-no-announce` on a bridge or `--announce` and `--no-announce` on a light node to control advertised addresses.
+
 Set `DA_HOME` to a fresh directory before starting the canary. The Rust
 node creates its own DA identity. In a second shell, mint a read token
 for the same home and compare the DA commit hash with the consensus

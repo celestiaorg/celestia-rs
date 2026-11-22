@@ -195,11 +195,15 @@ impl Peering {
                 }
                 #[cfg(any(feature = "da-webrtc", feature = "da-webtransport"))]
                 Some(Protocol::Certhash(_)) => {
-                    let mut kind = endpoint.pop();
+                    let kind = endpoint.pop();
                     #[cfg(feature = "da-webtransport")]
-                    while matches!(kind, Some(Protocol::Certhash(_))) {
-                        kind = endpoint.pop();
-                    }
+                    let kind = {
+                        let mut next = kind;
+                        while matches!(next, Some(Protocol::Certhash(_))) {
+                            next = endpoint.pop();
+                        }
+                        next
+                    };
                     match kind {
                         #[cfg(feature = "da-webrtc")]
                         Some(Protocol::WebRTCDirect) => {

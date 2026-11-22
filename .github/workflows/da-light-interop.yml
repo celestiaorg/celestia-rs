@@ -59,8 +59,12 @@ jobs:
           done
       - run: DA_TEST_RUST="$GITHUB_WORKSPACE/target/debug/celestia-rs" go test -v "$GITHUB_WORKSPACE/conformance/da/light/trust_test.go"
         working-directory: go-node
+      - name: Install the locked browser interoperability client
+        working-directory: conformance/da/peer/browser
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - run: conformance/da/light/test-go-bridge.sh target/debug/celestia-rs go-app go-node
         env:
+          DA_TEST_BROWSER: "1"
           DA_TEST_WEBTRANSPORT: "1"
           DA_TEST_WEBRTC: "1"
           DA_QUALIFICATION_SECONDS: ${{ inputs.observer_seconds || '10' }}
