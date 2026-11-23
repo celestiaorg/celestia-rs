@@ -63,5 +63,5 @@ if [[ "$phase" == seed ]]; then
 else
     cmp "$work/header-seed" "$work/header-restart"
     cmp "$work/square-seed" "$work/square-restart"
-    echo "Reopened the paid square at height $paid after consensus pruning and abrupt DA shutdown"
+    echo "Reopened the blockstore-backed paid square at height $paid after abrupt DA shutdown"
 fi

@@ -1,7 +1,11 @@
 //! Verified DA data, indexed in commit order independently of consensus execution.
 use std::{
     path::Path,
-    sync::{Arc, mpsc},
+    sync::{
+        Arc,
+        atomic::{AtomicI64, Ordering},
+        mpsc,
+    },
     thread::JoinHandle,
     time::Duration,
 };
@@ -13,10 +17,19 @@ use prost::Message;
 
 use super::{Committed, HeaderWire};
 
-const STORAGE_WINDOW_NS: i128 = 169 * 3600 * 1_000_000_000;
+const HOUR_NS: i128 = 3600 * 1_000_000_000;
+const DEFAULT_RETENTION_HOURS: u64 = 169;
+const BATCH_SIZE: i64 = 64;
+
+#[derive(Default)]
+struct PruneProgress {
+    requested: AtomicI64,
+    safe: AtomicI64,
+}
 
 pub(crate) struct Indexer {
     pub(crate) store: Arc<Store>,
+    pruning: Arc<PruneProgress>,
     stop: Option<mpsc::Sender<()>>,
     thread: Option<JoinHandle<()>>,
 }
@@ -28,11 +41,16 @@ impl Indexer {
         blocks: BlockStore,
         states: StateStore,
         archival: bool,
+        retention_hours: Option<u64>,
     ) -> Result<Self> {
         let dir = home.join("data/da-bridge");
         std::fs::create_dir_all(&dir)?;
-        let store = Arc::new(Store::open(&dir.join("index.redb"), chain, archival)?);
+        let window = (!archival)
+            .then(|| i128::from(retention_hours.unwrap_or(DEFAULT_RETENTION_HOURS)) * HOUR_NS);
+        let store = Arc::new(Store::open_index(&dir, chain, window, blocks.clone())?);
         store.check_source(&blocks)?;
+        let pruning = Arc::new(PruneProgress::default());
+        let archive = pruning.clone();
         let writer = store.clone();
         let (stop, stopped) = mpsc::channel();
         let thread = std::thread::Builder::new()
@@ -42,7 +60,7 @@ impl Indexer {
                     if stopped.try_recv() != Err(mpsc::TryRecvError::Empty) {
                         break;
                     }
-                    match writer.advance(&blocks, &states) {
+                    match writer.advance(&blocks, &states, &archive) {
                         Ok(true) => continue,
                         Ok(false) => {}
                         Err(error) => {
@@ -58,9 +76,18 @@ impl Indexer {
             })?;
         Ok(Self {
             store,
+            pruning,
             stop: Some(stop),
             thread: Some(thread),
         })
+    }
+
+    pub(crate) fn prune_limit(&self) -> impl Fn(i64) -> i64 + Send + Sync + 'static {
+        let progress = self.pruning.clone();
+        move |requested| {
+            progress.requested.fetch_max(requested, Ordering::Release);
+            progress.safe.load(Ordering::Acquire)
+        }
     }
 }
 impl Drop for Indexer {
@@ -74,8 +101,9 @@ impl Drop for Indexer {
 
 pub(crate) struct Store {
     db: RedbBackend,
-    archival: bool,
-    target: std::sync::atomic::AtomicI64,
+    window: Option<i128>,
+    blocks: BlockStore,
+    target: AtomicI64,
     chain: String,
 }
 
@@ -87,7 +115,7 @@ fn by_hash(hash: &[u8]) -> Vec<u8> {
 }
 
 impl Store {
-    fn open(path: &Path, chain: &str, archival: bool) -> Result<Self> {
+    fn open(path: &Path, chain: &str, window: Option<i128>, blocks: BlockStore) -> Result<Self> {
         let db = RedbBackend::open(
             path,
             RedbOptions {
@@ -96,7 +124,7 @@ impl Store {
                 ..Default::default()
             },
         )?;
-        let mode = [u8::from(archival)];
+        let mode = [u8::from(window.is_none())];
         if let Some(existing) = db.get(b"chain")? {
             ensure!(
                 existing == chain.as_bytes(),
@@ -105,7 +133,10 @@ impl Store {
             let previous = db.get(b"archival")?.context("missing retention mode")?;
             ensure!(previous == [0] || previous == [1], "invalid retention mode");
             if previous != mode {
-                ensure!(!archival, "a pruned index cannot be converted to archival");
+                ensure!(
+                    window.is_some(),
+                    "a pruned index cannot be converted to archival"
+                );
                 let mut batch = WriteBatch::new();
                 batch.put(b"archival", mode);
                 db.write(batch)?;
@@ -118,10 +149,97 @@ impl Store {
         }
         Ok(Self {
             db,
-            archival,
-            target: std::sync::atomic::AtomicI64::new(0),
+            window,
+            blocks,
+            target: AtomicI64::new(0),
             chain: chain.to_owned(),
         })
+    }
+
+    fn open_index(
+        dir: &Path,
+        chain: &str,
+        window: Option<i128>,
+        blocks: BlockStore,
+    ) -> Result<Self> {
+        let path = dir.join("index-v2.redb");
+        let legacy = dir.join("index.redb");
+        if !path.exists() && legacy.exists() {
+            let original = RedbBackend::open(legacy, RedbOptions::default())?;
+            let temp = tempfile::NamedTempFile::new_in(dir)?;
+            let next = Self::open(temp.path(), chain, window, blocks.clone())?;
+            next.import_legacy(&original)?;
+            next.check_source(&blocks)?;
+            drop(next);
+            temp.persist_noclobber(&path)?;
+            std::fs::File::open(dir)?.sync_all()?;
+        }
+        Self::open(&path, chain, window, blocks)
+    }
+
+    fn import_legacy(&self, original: &RedbBackend) -> Result<()> {
+        ensure!(
+            original.get(b"chain")?.as_deref() == Some(self.chain.as_bytes()),
+            "DA index belongs to another chain"
+        );
+        ensure!(
+            self.window.is_some() || original.get(b"archival")?.as_deref() == Some(&[1]),
+            "a pruned index cannot be converted to archival"
+        );
+        let Some(head) = original.get(b"head")? else {
+            return Ok(());
+        };
+        let head = i64::from_be_bytes(head.as_slice().try_into()?);
+        let mut height = i64::from_be_bytes(
+            original
+                .get(b"tail")?
+                .context("missing legacy DA tail")?
+                .as_slice()
+                .try_into()?,
+        );
+        ensure!(
+            height > 0 && height <= head,
+            "invalid legacy DA height range"
+        );
+        let base = self.blocks.base();
+        let cutoff = self.cutoff();
+        let mut tail = None;
+        while height <= head {
+            let mut batch = WriteBatch::new();
+            let end = height.saturating_add(BATCH_SIZE - 1).min(head);
+            for h in height..=end {
+                let raw = original
+                    .get(&at(b'h', h))?
+                    .context("missing legacy DA header")?;
+                let header = decode_header(&raw)?;
+                if tail.is_none() && h != head && header.time.unix_nanos() < cutoff {
+                    continue;
+                }
+                let hash = header.hash().context("missing legacy DA header hash")?;
+                batch.put(at(b'h', h), raw);
+                batch.put(by_hash(&hash), h.to_be_bytes());
+                if h < base {
+                    let ods = original
+                        .get(&at(b's', h))?
+                        .context("missing legacy DA square")?;
+                    batch.put(at(b's', h), ods);
+                }
+                if tail.is_none() {
+                    batch.put(b"tail", h.to_be_bytes());
+                    tail = Some(h);
+                }
+                batch.put(b"head", h.to_be_bytes());
+                batch.put(b"tip", hash);
+            }
+            if !batch.is_empty() {
+                self.db.write(batch)?;
+            }
+            if end == head {
+                break;
+            }
+            height = end + 1;
+        }
+        Ok(())
     }
 
     fn number(&self, key: &[u8]) -> Result<Option<i64>> {
@@ -181,21 +299,28 @@ impl Store {
         Ok(())
     }
 
-    fn advance(&self, blocks: &BlockStore, states: &StateStore) -> Result<bool> {
+    fn advance(
+        &self,
+        blocks: &BlockStore,
+        states: &StateStore,
+        pruning: &PruneProgress,
+    ) -> Result<bool> {
         self.target
             .store(blocks.height(), std::sync::atomic::Ordering::Release);
         let head = self.head()?;
+        if self.archive_pending(pruning, head)? {
+            return Ok(true);
+        }
         let next = if head == 0 {
             blocks.base().max(1)
         } else {
             head.checked_add(1).context("DA height overflow")?
         };
         if blocks.height() < next || states.load()?.is_none_or(|s| s.last_block_height < next) {
-            if !self.archival && head > 0 {
+            if self.window.is_some() && head > 0 {
                 let mut batch = WriteBatch::new();
                 let old = self.tail()?;
-                let tail =
-                    self.prune(&mut batch, old, head, light::verifier::now().unix_nanos())?;
+                let tail = self.prune(&mut batch, old, head)?;
                 if tail != old {
                     batch.put(b"tail", tail.to_be_bytes());
                     self.db.write(batch)?;
@@ -220,18 +345,61 @@ impl Store {
         Ok(true)
     }
 
-    fn prune(&self, batch: &mut WriteBatch, mut tail: i64, h: i64, now: i128) -> Result<i64> {
-        let cutoff = now - STORAGE_WINDOW_NS;
-        let limit = tail.saturating_add(64).min(h);
-        while !self.archival && tail < limit {
+    /// Persist the data still needed after the requested consensus prune. The
+    /// executor only reads the watermark, so it never waits on DA writes.
+    fn archive_pending(&self, progress: &PruneProgress, head: i64) -> Result<bool> {
+        let start = progress
+            .safe
+            .load(Ordering::Relaxed)
+            .max(self.blocks.base())
+            .max(1);
+        let end = progress
+            .requested
+            .load(Ordering::Acquire)
+            .min(head.saturating_add(1))
+            .min(start.saturating_add(BATCH_SIZE));
+        if start >= end {
+            return Ok(false);
+        }
+        let tail = self.tail()?;
+        let mut batch = WriteBatch::new();
+        for height in start.max(tail)..end {
+            let header = decode_header(&self.header_wire(height)?)?;
+            let block = self
+                .blocks
+                .load_block(height)?
+                .context("block disappeared before DA archival")?;
+            ensure!(
+                block.header.hash() == header.hash(),
+                "DA header and consensus block disagree"
+            );
+            batch.put(at(b't', height), block.data.to_proto().encode_to_vec());
+        }
+        if !batch.is_empty() {
+            self.db.write(batch)?;
+        }
+        progress.safe.store(end, Ordering::Release);
+        Ok(true)
+    }
+
+    fn cutoff(&self) -> i128 {
+        self.window.map_or(i128::MIN, |window| {
+            light::verifier::now().unix_nanos() - window
+        })
+    }
+
+    fn prune(&self, batch: &mut WriteBatch, mut tail: i64, h: i64) -> Result<i64> {
+        let cutoff = self.cutoff();
+        let limit = tail.saturating_add(BATCH_SIZE).min(h);
+        while self.window.is_some() && tail < limit {
             let raw = self.header_wire(tail)?;
-            let wire = HeaderWire::decode(raw.as_slice())?;
-            let old = ctypes::Header::from_proto(&wire.header.context("missing indexed header")?)?;
+            let old = decode_header(&raw)?;
             if old.time.unix_nanos() >= cutoff {
                 break;
             }
             batch.delete(at(b'h', tail));
             batch.delete(at(b's', tail));
+            batch.delete(at(b't', tail));
             batch.delete(by_hash(&old.hash().context("missing old header hash")?));
             tail += 1;
         }
@@ -245,17 +413,9 @@ impl Store {
         if tail == 0 {
             tail = h;
         }
-        tail = self.prune(&mut batch, tail, h, light::verifier::now().unix_nanos())?;
-        let width = block.eds.original_width();
-        let mut ods = Vec::with_capacity(width * width * shares::SHARE_SIZE);
-        for row in 0..width {
-            for col in 0..width {
-                ods.extend_from_slice(block.eds.share(row, col)?);
-            }
-        }
+        tail = self.prune(&mut batch, tail, h)?;
         let hash = &block.commit.block_id.hash;
         batch.put(at(b'h', h), block.header_wire()?);
-        batch.put(at(b's', h), ods);
         batch.put(by_hash(hash), h.to_be_bytes());
         batch.put(b"tip", hash.clone());
         batch.put(b"tail", tail.to_be_bytes());
@@ -273,29 +433,23 @@ impl Store {
             &wire.validators.context("missing indexed validators")?,
         )?;
         let dah = square::DataAvailabilityHeader::from_proto_bytes(&wire.dah)?;
-        let width = dah.row_roots.len() / 2;
-        let raw = self
-            .db
-            .get(&at(b's', height))?
-            .context("original data square unavailable")?;
-        ensure!(
-            (1..=512).contains(&width)
-                && width.is_power_of_two()
-                && raw.len() == width * width * shares::SHARE_SIZE,
-            "invalid stored square dimensions"
-        );
-        let shares = raw
-            .as_chunks::<{ shares::SHARE_SIZE }>()
-            .0
-            .iter()
-            .copied()
-            .map(shares::Share::from_bytes)
-            .collect::<Result<Vec<_>, _>>()?;
-        let eds = square::extend_shares(&shares)?;
-        ensure!(
-            square::new_data_availability_header(&eds)? == dah && header.data_hash == dah.hash(),
-            "stored square does not match committed root"
-        );
+        let eds = if let Some(block) = self.blocks.load_block(height)? {
+            ensure!(
+                block.header.hash().as_ref() == Some(&commit.block_id.hash),
+                "DA header and consensus block disagree"
+            );
+            let txs: Vec<_> = block.data.txs.into_iter().map(|tx| tx.0).collect();
+            rebuild(&header, &dah, &txs)?
+        } else if let Some(raw) = self.db.get(&at(b't', height))? {
+            let data = ctypes::proto::types::Data::decode(raw.as_slice())?;
+            rebuild(&header, &dah, &data.txs)?
+        } else {
+            let raw = self
+                .db
+                .get(&at(b's', height))?
+                .context("original data square unavailable")?;
+            extend_legacy(&raw, &dah, &header)?
+        };
         Ok(Committed {
             header,
             commit,
@@ -304,6 +458,55 @@ impl Store {
             dah,
         })
     }
+}
+
+fn decode_header(raw: &[u8]) -> Result<ctypes::Header> {
+    let wire = HeaderWire::decode(raw)?;
+    Ok(ctypes::Header::from_proto(
+        &wire.header.context("missing indexed header")?,
+    )?)
+}
+
+fn rebuild(
+    header: &ctypes::Header,
+    dah: &square::DataAvailabilityHeader,
+    txs: &[Vec<u8>],
+) -> Result<square::ExtendedDataSquare> {
+    let (eds, actual) =
+        app::proposal::verified_block_eds(header.version.app, txs, &header.data_hash)
+            .map_err(anyhow::Error::msg)?;
+    ensure!(
+        &actual == dah,
+        "reconstructed square does not match indexed DA header"
+    );
+    Ok(eds)
+}
+
+fn extend_legacy(
+    raw: &[u8],
+    dah: &square::DataAvailabilityHeader,
+    header: &ctypes::Header,
+) -> Result<square::ExtendedDataSquare> {
+    let width = dah.row_roots.len() / 2;
+    ensure!(
+        (1..=512).contains(&width)
+            && width.is_power_of_two()
+            && raw.len() == width * width * shares::SHARE_SIZE,
+        "invalid stored square dimensions"
+    );
+    let shares = raw
+        .as_chunks::<{ shares::SHARE_SIZE }>()
+        .0
+        .iter()
+        .copied()
+        .map(shares::Share::from_bytes)
+        .collect::<Result<Vec<_>, _>>()?;
+    let eds = square::extend_shares(&shares)?;
+    ensure!(
+        &square::new_data_availability_header(&eds)? == dah && header.data_hash == dah.hash(),
+        "stored square does not match committed root"
+    );
+    Ok(eds)
 }
 
 fn reconstruct(
@@ -365,9 +568,15 @@ mod tests {
             validators_hash: validators.hash(),
             proposer_address: validators.validators[0].address.clone(),
             data_hash: dah.hash().to_vec(),
+            last_commit_hash: ctypes::Commit::default().hash(),
+            evidence_hash: ctypes::EvidenceData::default().hash(),
             ..Default::default()
         };
-        let mut commit = ctypes::Commit::default();
+        let mut commit = ctypes::Commit {
+            height,
+            signatures: vec![ctypes::CommitSig::absent()],
+            ..Default::default()
+        };
         commit.block_id.hash = header.hash().context("empty hash")?;
         Ok(Committed {
             header,
@@ -385,15 +594,17 @@ mod tests {
         for archival in [false, true] {
             let temp = tempfile::tempdir()?;
             let path = temp.path().join("index.redb");
-            let store = Store::open(&path, "controls", archival)?;
+            let blocks = BlockStore::new(Arc::new(kvdb::MemBackend::default()))?;
+            let window = (!archival).then_some(169 * HOUR_NS);
+            let store = Store::open(&path, "controls", window, blocks.clone())?;
             store.save(&first)?;
             drop(store);
-            let store = Store::open(&path, "controls", archival)?;
+            let store = Store::open(&path, "controls", window, blocks.clone())?;
             assert_eq!(store.head()?, 10);
             assert_eq!(store.by_hash(&first.commit.block_id.hash)?, Some(10));
             store.save(&next)?;
             drop(store);
-            let store = Store::open(&path, "controls", archival)?;
+            let store = Store::open(&path, "controls", window, blocks.clone())?;
             assert_eq!(store.head()?, 11);
             assert_eq!(store.tail()?, if archival { 10 } else { 11 });
             assert_eq!(
@@ -401,12 +612,81 @@ mod tests {
                 archival
             );
             assert_eq!(store.header_wire(10).is_ok(), archival);
-            assert_eq!(store.db.get(&at(b's', 10))?.is_some(), archival);
+            assert!(store.db.get(&at(b's', 10))?.is_none());
+            assert!(store.db.get(&at(b't', 10))?.is_none());
             assert_eq!(store.by_hash(&next.commit.block_id.hash)?, Some(11));
             drop(store);
-            assert!(Store::open(&path, "different", archival).is_err());
-            assert_eq!(Store::open(&path, "controls", !archival).is_ok(), archival);
+            assert!(Store::open(&path, "different", window, blocks.clone()).is_err());
+            assert_eq!(
+                Store::open(&path, "controls", archival.then_some(HOUR_NS), blocks).is_ok(),
+                archival
+            );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn reads_from_consensus_then_archives_before_pruning() -> Result<()> {
+        let blocks = BlockStore::new(Arc::new(kvdb::MemBackend::default()))?;
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("index-v2.redb");
+        let store = Store::open(&path, "controls", None, blocks.clone())?;
+        let now = light::verifier::now()
+            .unix_nanos()
+            .div_euclid(1_000_000_000);
+        for h in 1..=3 {
+            let mut committed = block(h, i64::try_from(now)? - 7200 + h)?;
+            let txs = vec![vec![0x0a, 0x00]];
+            let (width, root) = app::proposal::block_data_root_with_max(11, &txs, 64)
+                .map_err(anyhow::Error::msg)?;
+            (committed.eds, committed.dah) =
+                app::proposal::verified_block_eds(11, &txs, &root).map_err(anyhow::Error::msg)?;
+            committed.header.data_hash = root.clone();
+            committed.commit.block_id.hash = committed.header.hash().context("empty hash")?;
+            let mut consensus = ctypes::Block::new(
+                committed.header.clone(),
+                ctypes::Data::new(txs.into_iter().map(ctypes::Tx).collect(), width, Some(root)),
+                ctypes::EvidenceData::default(),
+                Some(ctypes::Commit::default()),
+            );
+            let parts = consensus.make_part_set(65_536)?;
+            blocks.save_block(&mut consensus, &parts, &committed.commit)?;
+            store.save(&committed)?;
+        }
+        let expected = store.block(1)?.dah;
+        assert!(store.db.get(&at(b't', 1))?.is_none());
+        let progress = PruneProgress {
+            requested: AtomicI64::new(2),
+            safe: AtomicI64::new(0),
+        };
+        assert!(store.archive_pending(&progress, store.head()?)?);
+        assert_eq!(progress.safe.load(Ordering::Acquire), 2);
+        assert!(store.db.get(&at(b't', 1))?.is_some());
+        assert!(store.db.get(&at(b't', 2))?.is_none());
+
+        let state = nodestore::state::make_genesis_state(&nodestore::GenesisDoc {
+            genesis_time: ctypes::Time::from_unix(i64::try_from(now)?, 0),
+            chain_id: "controls".into(),
+            initial_height: 1,
+            consensus_params: ctypes::ConsensusParams::default(),
+            validators: Vec::new(),
+            app_hash: Vec::new(),
+            app_state: Vec::new(),
+        })?;
+        blocks.prune_blocks(progress.safe.load(Ordering::Acquire), &state)?;
+        assert!(blocks.load_block(1)?.is_none());
+        drop(store);
+        let store = Store::open(&path, "controls", None, blocks.clone())?;
+        assert_eq!(store.block(1)?.dah, expected);
+        drop(store);
+
+        let store = Store::open(&path, "controls", Some(HOUR_NS), blocks)?;
+        let mut batch = WriteBatch::new();
+        let tail = store.prune(&mut batch, store.tail()?, store.head()?)?;
+        batch.put(b"tail", tail.to_be_bytes());
+        store.db.write(batch)?;
+        assert_eq!(tail, 3);
+        assert!(store.db.get(&at(b't', 1))?.is_none());
         Ok(())
     }
 }
