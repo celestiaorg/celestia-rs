@@ -182,6 +182,7 @@ pub struct BlockExecutor {
     /// Number of states pruned so far.
     pub pruned_states: u64,
     event_sink: Option<std::sync::Arc<dyn BlockEventSink>>,
+    prune_limit: Option<Box<dyn Fn(i64) -> i64 + Send + Sync>>,
 }
 
 impl std::fmt::Debug for BlockExecutor {
@@ -527,6 +528,7 @@ impl BlockExecutor {
             evpool,
             pruned_states: 0,
             event_sink: None,
+            prune_limit: None,
         }
     }
 
@@ -534,6 +536,11 @@ impl BlockExecutor {
     /// indexers).
     pub fn set_event_sink(&mut self, sink: std::sync::Arc<dyn BlockEventSink>) {
         self.event_sink = Some(sink);
+    }
+
+    /// Limit consensus pruning while an asynchronous consumer retains block data.
+    pub fn set_prune_limit(&mut self, limit: impl Fn(i64) -> i64 + Send + Sync + 'static) {
+        self.prune_limit = Some(Box::new(limit));
     }
 
     /// The application connection.
@@ -801,6 +808,9 @@ impl BlockExecutor {
     }
 
     fn prune_blocks(&mut self, retain_height: i64, state: &State) -> Result<u64> {
+        let retain_height = self.prune_limit.as_ref().map_or(retain_height, |limit| {
+            retain_height.min(limit(retain_height))
+        });
         let base = self.block_store.base();
         if retain_height <= base {
             return Ok(0);

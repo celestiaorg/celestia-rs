@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.1.0-rc.9 (2026-11-23)
+
+### Changed
+
+- The bridge reconstructs recent DA squares from the validator blockstore.
+  It retains transaction data only when consensus is about to prune a block
+  that remains inside the DA retention window.
+- Operators can shorten the 169-hour default DA window with
+  `da-bridge.retention-hours` or `--bridge-retention-hours`.
+
 ## v0.1.0-rc.8 (2026-11-22)
 
 ### Added

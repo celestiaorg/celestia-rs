@@ -60,7 +60,7 @@ jobs:
         env:
           CARGO_PROFILE_DEV_DEBUG: '0'
           DA_GO_TESTDATA: ${{ github.workspace }}/reference-node/core/testdata
-      - name: Reopen a DA index after consensus block pruning
+      - name: Reopen a blockstore-backed DA index after abrupt shutdown
         if: matrix.network == 'Mainnet'
         run: cargo test --locked -p celestia-rs --no-default-features --features bridge-p2p,da-webrtc,da-webtransport --test da_index_restart -- --ignored --nocapture
         env:

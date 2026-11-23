@@ -181,6 +181,9 @@ pub struct StartOptions {
     /// Preserve verified DA data older than the normal retention window.
     #[cfg(feature = "bridge")]
     pub bridge_archival: bool,
+    /// DA retention in hours when archival mode is disabled.
+    #[cfg(feature = "bridge")]
+    pub bridge_retention_hours: Option<u64>,
     /// Keyring account explicitly assigned to DA blob submission.
     #[cfg(feature = "bridge")]
     pub bridge_signer: Option<String>,
@@ -227,6 +230,8 @@ impl StartOptions {
             bridge_rpc_listen: None,
             #[cfg(feature = "bridge")]
             bridge_archival: false,
+            #[cfg(feature = "bridge")]
+            bridge_retention_hours: None,
             #[cfg(feature = "bridge")]
             bridge_signer: None,
             #[cfg(feature = "bridge")]
@@ -496,10 +501,15 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                     bs.clone(),
                     ss.clone(),
                     opts.bridge_archival,
+                    opts.bridge_retention_hours,
                 )
             })
             .transpose()?
     };
+    #[cfg(feature = "bridge")]
+    if let Some(index) = &bridge_index {
+        exec.set_prune_limit(index.prune_limit());
+    }
     rpc.spawn()?;
     let local_addr = pv.address().to_vec();
     // Go: a fresh node with state sync enabled skips the handshake; the

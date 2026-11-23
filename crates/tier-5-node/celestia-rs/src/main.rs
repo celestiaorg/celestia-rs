@@ -202,6 +202,10 @@ struct StartArgs {
     #[cfg(feature = "bridge")]
     #[arg(long)]
     bridge_archival: bool,
+    /// Hours of DA data to retain (default 169; overrides app.toml).
+    #[cfg(feature = "bridge")]
+    #[arg(long, conflicts_with = "bridge_archival", value_parser = clap::value_parser!(u64).range(1..))]
+    bridge_retention_hours: Option<u64>,
     /// Authorize a DA signing account. Repeat for additional accounts; the first is the default.
     #[cfg(feature = "bridge")]
     #[arg(long, requires = "bridge_rpc_listen")]
@@ -1346,6 +1350,21 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
                 .transpose()?,
         };
         opts.bridge_archival = a.bridge_archival;
+        if !a.bridge_archival {
+            opts.bridge_retention_hours = match a.bridge_retention_hours {
+                Some(hours) => Some(hours),
+                None => files
+                    .value(File::App, "da-bridge.retention-hours")
+                    .map(|value| {
+                        value
+                            .as_integer()
+                            .and_then(|hours| u64::try_from(hours).ok())
+                            .filter(|hours| *hours > 0)
+                            .context("da-bridge.retention-hours must be a positive integer")
+                    })
+                    .transpose()?,
+            };
+        }
         let mut signers = a.bridge_signer.iter().cloned();
         opts.bridge_signer = signers.next();
         opts.bridge_additional_signers = signers.collect();

@@ -137,6 +137,7 @@ Remove the section and restart to disable both listeners.
 [da-bridge]
 rpc-listen = "127.0.0.1:32658"
 p2p-listen = ["127.0.0.1:32121"]
+# retention-hours = 1
 ```
 
 To accept QUIC v1 peers on that host, also pass `--bridge-p2p-listen /ip4/127.0.0.1/udp/32121/quic-v1`. Expose the selected UDP port to the peers that should reach it. For WebSocket peers, supply a separate TCP listener ending in `/ws` or `/tls/ws`. For TLS, set `CELESTIA_TLS_PATH` to a directory containing the PEM certificate chain in `cert.pem` and its private key in `key.pem`.
@@ -176,7 +177,11 @@ database backends. [Go conformance probe](../conformance/da/README.md) ·
 
 #### DA storage and role selection
 
-The bridge index in `data/da-bridge/index.redb` stores verified headers and original squares. `header.LocalHead` reports its durable cursor. Compare that height with the consensus RPC height to measure indexing lag. The default retention window is 169 hours of block time. Set `--bridge-archival` when starting a fresh index to retain every indexed square. Monitor disk use under the node home as the index grows.
+The bridge index in `data/da-bridge/index-v2.redb` stores verified headers. It reconstructs squares from the validator's blockstore whenever that block is present. Before consensus removes a block that is still in the DA window, the index saves its transaction data durably so it can reconstruct the same square after the prune. The bridge can defer pruning briefly while its background worker completes this handoff.
+
+The default retention window is 169 hours of block time. Set `[da-bridge].retention-hours` in `app.toml`, or pass `--bridge-retention-hours`, to shorten it. A shorter window reduces availability for clients requesting older data. When the DA window fits inside the consensus blockstore window, the bridge only needs the header index. Set `--bridge-archival` on a fresh index to retain all indexed data. Check `header.Tail` and `header.LocalHead` for the available interval and compare the head with consensus to measure indexing lag.
+
+The first start with an older `index.redb` imports the retained headers and any required squares whose blocks are already gone. It leaves the legacy file available for rollback. After verifying the new index, remove the legacy file when it is no longer needed to reclaim its space. Redb reuses pages freed by normal pruning, so the allocated size can reflect a past peak.
 
 For a standalone light node, build the operator executable with `--features da-light`. Start `da-light` in its own home. Supply the chain ID (`mocha-5` or `celestia`), a trusted DA peer multiaddress, and a recent block hash independently obtained from the same chain. The following command uses a loopback RPC listener. Set the four environment variables to your light home and trust inputs.
 
