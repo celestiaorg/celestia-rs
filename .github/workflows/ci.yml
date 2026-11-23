@@ -201,6 +201,7 @@ jobs:
           - fuzzoracle/v10
           - grpc-limits/recorder
           - grpc-lifecycle/recorder
+          - grpc-reflection
           - lightvectors
           - mathvectors
           - mintvectors
@@ -212,6 +213,7 @@ jobs:
           - mainnet-rpc/module-closure/proofcheck
           - txdecode
           - v11-frozen
+          - websocket-lifecycle
     env:
       GOFLAGS: -mod=mod
       GOPROXY: https://proxy.golang.org,direct
@@ -232,8 +234,12 @@ jobs:
           exit 1
       - name: Build
         working-directory: conformance/${{ matrix.module }}
-        run: go build ./...
+        # Keep binaries out of the source tree checked by the evidence tests.
+        run: go build -o "$(mktemp -d)/" ./...
       - name: Test
-        if: matrix.module == 'fixturegen' || matrix.module == 'antereplay' || matrix.module == 'fuzzoracle/v10' || matrix.module == 'pfm-fork'
+        if: >-
+          matrix.module == 'fixturegen' || matrix.module == 'antereplay' ||
+          matrix.module == 'fuzzoracle/v10' || matrix.module == 'pfm-fork' ||
+          matrix.module == 'websocket-lifecycle'
         working-directory: conformance/${{ matrix.module }}
         run: go test ./...
