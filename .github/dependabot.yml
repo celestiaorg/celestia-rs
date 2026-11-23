@@ -10,16 +10,17 @@
 #   directory.
 version: 2
 updates:
-  # Rust workspace (the node binary). One weekly pull request for every
-  # minor / patch update; majors arrive one per crate, except the
+  # Rust workspace (the node binary). Minor / patch updates are grouped
+  # into one monthly pull request; majors arrive one per crate, except the
   # consensus-sensitive families below, which are migrated by hand
   # because a new major can change encoding, hashing or signatures
   # (every bump must keep the parity suite green).
   - package-ecosystem: cargo
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       rust-minor-patch:
@@ -95,8 +96,9 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns: ["*"]
