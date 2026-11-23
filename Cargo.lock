@@ -9151,6 +9151,7 @@ dependencies = [
  "prost-build 0.13.5",
  "prost-reflect 0.14.7",
  "protox 0.7.2",
+ "semver",
 ]
 
 [[package]]
