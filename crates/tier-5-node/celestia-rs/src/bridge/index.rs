@@ -20,6 +20,7 @@ use super::{Committed, HeaderWire};
 const HOUR_NS: i128 = 3600 * 1_000_000_000;
 const DEFAULT_RETENTION_HOURS: u64 = 169;
 const BATCH_SIZE: i64 = 64;
+const ARCHIVE_BATCH_BYTES: usize = 16 << 20;
 
 #[derive(Default)]
 struct PruneProgress {
@@ -353,17 +354,23 @@ impl Store {
             .load(Ordering::Relaxed)
             .max(self.blocks.base())
             .max(1);
-        let end = progress
+        let limit = progress
             .requested
             .load(Ordering::Acquire)
             .min(head.saturating_add(1))
             .min(start.saturating_add(BATCH_SIZE));
-        if start >= end {
+        if start >= limit {
             return Ok(false);
         }
         let tail = self.tail()?;
         let mut batch = WriteBatch::new();
-        for height in start.max(tail)..end {
+        let mut bytes = 0;
+        let mut end = limit;
+        for height in start.max(tail)..limit {
+            if bytes >= ARCHIVE_BATCH_BYTES {
+                end = height;
+                break;
+            }
             let header = decode_header(&self.header_wire(height)?)?;
             let block = self
                 .blocks
@@ -373,7 +380,9 @@ impl Store {
                 block.header.hash() == header.hash(),
                 "DA header and consensus block disagree"
             );
-            batch.put(at(b't', height), block.data.to_proto().encode_to_vec());
+            let raw = block.data.to_proto().encode_to_vec();
+            bytes += raw.len();
+            batch.put(at(b't', height), raw);
         }
         if !batch.is_empty() {
             self.db.write(batch)?;
@@ -433,7 +442,12 @@ impl Store {
             &wire.validators.context("missing indexed validators")?,
         )?;
         let dah = square::DataAvailabilityHeader::from_proto_bytes(&wire.dah)?;
-        let eds = if let Some(block) = self.blocks.load_block(height)? {
+        let consensus = if height >= self.blocks.base() {
+            self.blocks.load_block(height)?
+        } else {
+            None
+        };
+        let eds = if let Some(block) = consensus {
             ensure!(
                 block.header.hash().as_ref() == Some(&commit.block_id.hash),
                 "DA header and consensus block disagree"
