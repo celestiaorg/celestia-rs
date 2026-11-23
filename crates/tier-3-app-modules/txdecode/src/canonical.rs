@@ -1,5 +1,5 @@
-//! celestia-app's proposed strict SDK encoding rule for txs
-//! (`StrictTxDecoder`, cosmos-sdk #186), applied from app version 12.
+//! celestia-app's strict SDK encoding rule for txs
+//! (`StrictTxDecoder`, cosmos-sdk #214, tag v0.53.8), applied from app version 12.
 //!
 //! A tx decodes only if every message in it (`TxRaw`, `TxBody`, `AuthInfo`
 //! and the message in every `Any`, at any depth) uses an encoding that all
@@ -10,10 +10,12 @@
 //! integers in range for their type; valid UTF-8 strings; and `math.Int` /
 //! `LegacyDec` values present when not nullable and in canonical decimal
 //! form. Proto3 defaults written out and empty messages left out stay valid.
+//! A multisignature must have a canonical bit array (no set padding bits)
+//! and one mode info and one signature per selected key, at every level.
 //!
 //! Acceptance follows the SDK strict walker; error details reach the tx log only.
 
-use celestia_proto::cosmos::crypto::multisig::v1beta1::MultiSignature;
+use celestia_proto::cosmos::crypto::multisig::v1beta1::{CompactBitArray, MultiSignature};
 use celestia_proto::cosmos::tx::v1beta1::{ModeInfo, mode_info};
 use celestia_proto::wire_table::{FieldInfo, MessageInfo, ty};
 use prost::Message;
@@ -56,10 +58,20 @@ pub(crate) fn check_tx(tx: &[u8]) -> Result<(), GoError> {
 
 /// The strict decoder validates each multisignature against the corresponding
 /// signer mode. AuthInfo has already passed the SDK's nesting limit here.
+/// With legacy Amino JSON signing no signature covers the bit array or the
+/// unselected children, so the bit array must be canonical and the
+/// multisignature must hold one mode info and one signature per selected key.
 pub(crate) fn check_multisignature(mode: &ModeInfo, signature: &[u8]) -> Result<(), GoError> {
     let Some(mode_info::Sum::Multi(multi)) = &mode.sum else {
         return Ok(());
     };
+    let selected = selected_bits(multi.bitarray.as_ref())?;
+    if multi.mode_infos.len() != selected {
+        return Err(GoError::new(format!(
+            "multisignature has {} mode infos for {selected} selected keys",
+            multi.mode_infos.len()
+        )));
+    }
     check_message(
         signature,
         gogo::info("cosmos.crypto.multisig.v1beta1.MultiSignature")?,
@@ -77,6 +89,36 @@ pub(crate) fn check_multisignature(mode: &ModeInfo, signature: &[u8]) -> Result<
         check_multisignature(inner, bytes)?;
     }
     Ok(())
+}
+
+/// SDK `selectedBits`: the number of set bits in a bit array whose
+/// `extra_bits_stored` is below 8, has a byte to hold it, and leaves every
+/// padding bit after the last logical bit zero. A missing bit array selects
+/// no keys.
+fn selected_bits(bits: Option<&CompactBitArray>) -> Result<usize, GoError> {
+    let Some(bits) = bits else {
+        return Ok(0);
+    };
+    let extra = bits.extra_bits_stored;
+    if extra >= 8 {
+        return Err(GoError::new(format!(
+            "bit array has {extra} extra bits stored, want less than 8"
+        )));
+    }
+    if extra > 0 {
+        let Some(&last) = bits.elems.last() else {
+            return Err(GoError::new(format!(
+                "bit array has {extra} extra bits stored and no elems"
+            )));
+        };
+        let padding = last & (0xff >> extra);
+        if padding != 0 {
+            return Err(GoError::new(format!(
+                "bit array has nonzero padding bits {padding:#x}"
+            )));
+        }
+    }
+    Ok(bits.elems.iter().map(|b| b.count_ones() as usize).sum())
 }
 
 fn is_decimal(custom: &str) -> bool {
@@ -681,12 +723,15 @@ mod tests {
     fn sdk_depth_budget_starts_at_each_tx_component() {
         // AuthInfo -> SignerInfo -> ModeInfo, followed by alternating
         // ModeInfo.Multi and ModeInfo messages. 48 pairs put the leaf at
-        // level 99 (root is level 1). Its Single child is level 100.
+        // level 99 (root is level 1). Its Single child is level 100. Each
+        // Multi selects its one key in a 1-bit array, which is no deeper than
+        // the ModeInfo beside it.
+        let one_of_one = field(1, &cat(&[&varint_field(1, 1), &field(2, &[0x80])]));
         let mut mode = mode_info(1);
         let mut signature = vec![7; 64];
         for _ in 0..48 {
             signature = field(1, &signature);
-            mode = field(2, &field(2, &mode));
+            mode = field(2, &cat(&[&one_of_one, &field(2, &mode)]));
         }
         let raw = cat(&[
             &field(1, &body(b"", &[any(SEND, &canonical_send())])),

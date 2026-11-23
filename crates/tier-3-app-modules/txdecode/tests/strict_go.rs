@@ -1,4 +1,4 @@
-//! Acceptance fixtures from the proposed Go SDK StrictTxDecoder.
+//! Acceptance fixtures from the Go SDK StrictTxDecoder (v0.53.8).
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -23,7 +23,7 @@ fn strict_and_historical_decoders_match_go() {
     .unwrap();
     assert_eq!(
         fixtures.sdk_commit,
-        "aeb605c12be19efae4cf614000c7dbb5fc15785a"
+        "8bf1b2edb405d2d1072c4962b7d61bdb03559ded"
     );
     assert!(fixtures.vectors.len() >= 40);
     for v in fixtures.vectors {
