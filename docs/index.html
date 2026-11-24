@@ -115,163 +115,52 @@
         </p>
       </section>
       <section id="benchmarks">
-        <h2>Sync time, RAM and disk</h2>
-        <p>The current comparison target is
-          <a href="https://github.com/celestiaorg/celestia-app/releases/tag/v11.0.0">celestia-app v11.0.0</a>.
-          The mainnet comparison covers snapshot-to-tip time, peak RAM and disk usage.
-          Genesis testing uses a fixed early block interval. The Rust release
-          candidate currently stops during mainnet genesis initialization, before
-          block 1. Cloud measurements are pending.</p>
-        <p><a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/benchmarks/operator-sync.md">Operator benchmark protocol</a></p>
-        <h3>Historical Mac Mini M4 results</h3>
-        <p>
-          On a Mac Mini M4 with 16 GB RAM, both release builds replayed 386,980
-          transactions across 511 heights and matched every recorded app hash.
-          Rust executed 4.0× as many transactions per second in the execution
-          phase.
-        </p>
-        <p class="meta">
-          20 Oct 2026 · celestia-rs fb42fd2 · celestia-appd v10.4.0
-        </p>
-        <div class="legend">
-          <span><i class="rust"></i>celestia-rs</span
-          ><span><i class="go"></i>Go</span>
-        </div>
+        <h2>Recovery time and hardware sizing</h2>
+        <p>For the upcoming mainnet comparison with celestia-app v11.0.0,
+          we propose three measurements for a non-validating consensus node.</p>
+        <ol>
+          <li><strong>How long until my node is current?</strong> Time a clean start
+            from a shared state-sync snapshot until the node follows advancing
+            mainnet blocks and its block ID agrees with an independent RPC.</li>
+          <li><strong>How much RAM should I provision?</strong> Show the highest
+            memory charged to the node during catch-up, alongside its memory use once it has followed the tip for 30 minutes.</li>
+          <li><strong>How large should my SSD be?</strong> Show peak disk use
+            during sync and the final size of the whole node home at a matched
+            height. Publish the pruning settings and earliest retained height.</li>
+        </ol>
+        <p>Cloud measurements are pending. The separate genesis test covers
+          a fixed early interval. The Rust release candidate currently stops
+          during mainnet genesis initialization, before block 1.</p>
+        <p><a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/benchmarks/operator-sync.md">Comparison protocol</a>
+          · <a href="https://docs.celestia.org/operate/consensus-validators/consensus-node/">Celestia state-sync guide</a>
+          · <a href="https://docs.celestia.org/operate/getting-started/hardware-requirements/">Celestia hardware and retention guidance</a></p>
+
+        <h3>Historical Mac Mini M4 measurements</h3>
+        <p>These release builds synced full consensus nodes against a local Go
+          validator on a 16 GB Mac Mini. The recovery timer ended at the first
+          block after restoring snapshot 600. RAM and disk figures came from
+          a separate 511-height block sync. The workload contained no bridge traffic.</p>
+        <p class="meta">20 Oct 2026 · celestia-rs fb42fd2 · celestia-appd v10.4.0</p>
         <div class="charts">
           <figure>
-            <figcaption>
-              <strong>Block execution</strong><br />tx/s · higher is better
-            </figcaption>
-            <div class="bar">
-              <span>Rust</span
-              ><i aria-hidden="true" class="rust" style="width: 100%"></i
-              ><b>4,765</b>
-            </div>
-            <div class="bar">
-              <span>Go</span
-              ><i aria-hidden="true" class="go" style="width: 24.95%"></i
-              ><b>1,189</b>
-            </div>
+            <figcaption><strong>State sync to first new block</strong><br />Seconds from node launch</figcaption>
+            <div class="bar"><span>Rust</span><i aria-hidden="true" class="rust" style="width: 28.43%"></i><b>11.6</b></div>
+            <div class="bar"><span>Go</span><i aria-hidden="true" class="go" style="width: 100%"></i><b>40.8</b></div>
           </figure>
           <figure>
-            <figcaption>
-              <strong>CheckTx for new transactions</strong><br />tx/s · higher
-              is better
-            </figcaption>
-            <div class="bar">
-              <span>Rust</span
-              ><i aria-hidden="true" class="rust" style="width: 100%"></i
-              ><b>13,178</b>
-            </div>
-            <div class="bar">
-              <span>Go</span
-              ><i aria-hidden="true" class="go" style="width: 48.5%"></i
-              ><b>6,391</b>
-            </div>
+            <figcaption><strong>Peak resident memory during block sync</strong><br />MB · sampled every 0.2 seconds</figcaption>
+            <div class="bar"><span>Rust</span><i aria-hidden="true" class="rust" style="width: 71.93%"></i><b>1,707</b></div>
+            <div class="bar"><span>Go</span><i aria-hidden="true" class="go" style="width: 100%"></i><b>2,373</b></div>
           </figure>
           <figure>
-            <figcaption>
-              <strong>State sync to first block</strong><br />seconds · lower is
-              better
-            </figcaption>
-            <div class="bar">
-              <span>Rust</span
-              ><i aria-hidden="true" class="rust" style="width: 28.43%"></i
-              ><b>11.6</b>
-            </div>
-            <div class="bar">
-              <span>Go</span
-              ><i aria-hidden="true" class="go" style="width: 100%"></i
-              ><b>40.8</b>
-            </div>
-          </figure>
-          <figure>
-            <figcaption>
-              <strong>Block sync over 511 heights</strong><br />seconds · lower
-              is better
-            </figcaption>
-            <div class="bar">
-              <span>Rust</span
-              ><i aria-hidden="true" class="rust" style="width: 72.03%"></i
-              ><b>134.4</b>
-            </div>
-            <div class="bar">
-              <span>Go</span
-              ><i aria-hidden="true" class="go" style="width: 100%"></i
-              ><b>186.6</b>
-            </div>
-          </figure>
-          <figure>
-            <figcaption>
-              <strong>Resident memory after block sync</strong><br />MB · lower
-              is better
-            </figcaption>
-            <div class="bar">
-              <span>Rust</span
-              ><i aria-hidden="true" class="rust" style="width: 58.2%"></i
-              ><b>1,381</b>
-            </div>
-            <div class="bar">
-              <span>Go</span
-              ><i aria-hidden="true" class="go" style="width: 100%"></i
-              ><b>2,373</b>
-            </div>
-          </figure>
-          <figure>
-            <figcaption>
-              <strong>App state on disk after replay</strong><br />MB · lower is
-              better
-            </figcaption>
-            <div class="bar">
-              <span>Rust</span
-              ><i aria-hidden="true" class="rust" style="width: 100%"></i
-              ><b>487</b>
-            </div>
-            <div class="bar">
-              <span>Go</span
-              ><i aria-hidden="true" class="go" style="width: 93.63%"></i
-              ><b>456</b>
-            </div>
-          </figure>
-          <figure>
-            <figcaption>
-              <strong>PrepareProposal, max-size squares</strong><br />median ms
-              · lower is better
-            </figcaption>
-            <div class="bar">
-              <span>Rust</span
-              ><i aria-hidden="true" class="rust" style="width: 100%"></i
-              ><b>211.6</b>
-            </div>
-            <div class="bar">
-              <span>Go</span
-              ><i aria-hidden="true" class="go" style="width: 97.16%"></i
-              ><b>205.6</b>
-            </div>
-          </figure>
-          <figure>
-            <figcaption>
-              <strong>ProcessProposal, max-size squares</strong><br />median ms
-              · lower is better
-            </figcaption>
-            <div class="bar">
-              <span>Rust</span
-              ><i aria-hidden="true" class="rust" style="width: 27.42%"></i
-              ><b>58.1</b>
-            </div>
-            <div class="bar">
-              <span>Go</span
-              ><i aria-hidden="true" class="go" style="width: 100%"></i
-              ><b>211.9</b>
-            </div>
+            <figcaption><strong>Node data directory after block sync</strong><br />MB · allocated on disk</figcaption>
+            <div class="bar"><span>Rust</span><i aria-hidden="true" class="rust" style="width: 77.03%"></i><b>1,405</b></div>
+            <div class="bar"><span>Go</span><i aria-hidden="true" class="go" style="width: 100%"></i><b>1,824</b></div>
           </figure>
         </div>
-        <p>
-          Each chart starts at zero and uses its own scale. Execution throughput
-          measures FinalizeBlock and Commit. Sync and memory measurements come
-          from full nodes. These runs compared consensus implementations and
-          excluded DA bridge traffic.
-        </p>
+        <p>The retained data and measured interval determine these footprints.
+          Each chart starts at zero and has its own scale. The full report also
+          covers execution throughput, proposal timings and application-state storage.</p>
         <a
           href="https://github.com/celestiaorg/celestia-rs/blob/4d84c7ce159ac07d0c4d79df1552274fde9f9368/docs/benchmarks/README.md#results-mac-mini-m4-2026-10-20-b1-reference"
           >Read the benchmark method and reproduce the run</a

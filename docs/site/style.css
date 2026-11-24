@@ -214,6 +214,7 @@ code {
   margin-right: 0.4em;
 }
 .charts {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
   gap: 1rem;
 }
 figure {
