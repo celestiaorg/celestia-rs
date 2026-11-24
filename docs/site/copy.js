@@ -4,7 +4,7 @@ const feedback = document.getElementById("feedback");
 button.hidden = false;
 button.addEventListener("click", async () => {
   try {
-    await navigator.clipboard.writeText(promptText.textContent);
+    await navigator.clipboard.writeText(promptText.innerText.trim());
     feedback.textContent = "Prompt copied.";
   } catch {
     const range = document.createRange();
