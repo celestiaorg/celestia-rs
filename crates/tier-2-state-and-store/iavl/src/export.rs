@@ -170,9 +170,14 @@ impl Importer {
                 right.hash_for(version),
             );
             let bytes = match (&left, &right) {
-                (Link::Stored(l), Link::Stored(r)) => {
-                    Some(encode_inner(&node.key, node.height, size, l, r))
-                }
+                (Link::Stored(l), Link::Stored(r)) => Some(encode_inner(
+                    &node.key,
+                    node.height,
+                    size,
+                    &hash,
+                    l.nk,
+                    r.nk,
+                )),
                 _ => None,
             };
             let saved = Node::Inner(Inner {

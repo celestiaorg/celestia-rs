@@ -69,11 +69,14 @@ family; Go-like prefixes; the format is ours):
 `s/k:<store>/n‖nodekey` → node, `s/k:<store>/r‖version` → root reference,
 `s/k:<store>/o‖to-version‖nodekey` → orphan record, `s/<version>` →
 `CommitInfo` proto, `s/latest` → version, `m/<key>` → app metadata (chain
-ID). Node keys are `version‖nonce` big-endian. A parent stores each child's
-node key **and hash, height and size**, so re-hashing a dirty path and AVL
-rebalancing never load an unchanged sibling; a node's own hash comes from the
-reference used to reach it. One `KvBackend::write` per height carries every
-store's new nodes, root and orphan records plus the commit info and
+ID). Node keys are `version‖nonce` big-endian. Inner nodes store their own hash,
+height, size, separator key and the two child node keys. On a cache miss, loading an inner node can take two
+additional point reads to obtain the child references. Each read stops at
+the child. The bounded node cache keeps these bytes to serve later traversals.
+Leaves supply their hash from their key, value and birth version.
+In memory each reference still carries the hash, height and size. One
+`KvBackend::write` per height carries every store's new nodes, root and
+orphan records plus the commit info and
 `s/latest`; pruning runs in a separate batch afterwards and is idempotent.
 
 An orphan record `o‖t‖nk` says node `nk` is live in versions `nk.version..=t`.
@@ -81,6 +84,14 @@ Deleting version `t` moves the record to the newest retained version
 `≥ nk.version` and `< t`, or deletes the node if there is none — so a retained
 version never loses a node (tests check exact hashes/contents of retained
 versions and that every stored node is reachable from a retained root).
+
+The reader accepts both the original inner nodes with inline child hashes
+(tag 1) and compact inner nodes (tag 2). New commits and snapshot imports
+write tag 2. The application RocksDB uses 16 MiB memtables and a 32 MiB
+WAL cap so that obsolete IAVL versions enter compaction sooner.
+Existing homes upgrade on write. Untouched historical nodes
+keep their existing format until pruned. To downgrade after writing, restore
+a pre-upgrade backup or import a compatible snapshot.
 
 Snapshots are taken synchronously after Commit when `height % interval == 0`
 and served from `<home>/data/snapshots/<h>/3/<chunk>`. Restores verify each
@@ -186,7 +197,7 @@ build, which needs no C/C++ toolchain).
 | write amplification | | 3.2–3.8, flat | 4.2–7.3, rising |
 | RSS | ≤ 8 GB | 1.05–1.3 GiB | ~1.0 GiB |
 
-RocksDB settings (`kvdb::RocksOptions`): one LRU block cache holding data,
+The RocksDB settings in this backend benchmark used one LRU block cache holding data,
 index and filter blocks (`--db-cache-mib`, default 512), 10-bit bloom
 filters, 16 KiB blocks, 2 × 64 MiB memtables, WAL capped at 128 MiB,
 dynamic level sizing, no compression above the bottommost level and zstd

@@ -589,7 +589,14 @@ fn persist(
                 height: inner.height,
                 size: inner.size,
             };
-            let bytes = encode_inner(&inner.key, inner.height, inner.size, &left, &right);
+            let bytes = encode_inner(
+                &inner.key,
+                inner.height,
+                inner.size,
+                &hash,
+                left.nk,
+                right.nk,
+            );
             let saved = Node::Inner(Inner {
                 key: inner.key,
                 height: inner.height,
