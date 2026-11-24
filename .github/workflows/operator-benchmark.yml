@@ -5,7 +5,7 @@ on:
 permissions: {}
 
 jobs:
-  verify-identity:
+  preflight:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -13,6 +13,7 @@ jobs:
       id-token: write
     steps:
       - name: Exchange GitHub identity for a short-lived benchmark credential
+        id: auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           project_id: fibreda
@@ -22,3 +23,48 @@ jobs:
           export_environment_variables: false
           token_format: access_token
           access_token_lifetime: 300s
+      - name: Check Google Cloud permissions
+        shell: bash
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          api() {
+            curl --fail --silent --show-error --max-time 30 \
+              --header "Authorization: Bearer $ACCESS_TOKEN" "$@"
+          }
+
+          # The proposed VM uses a boot disk and a VPC subnet, with no
+          # attached service account. This check is at project scope.
+          required=$(jq -nc '$ARGS.positional' --args \
+            compute.disks.create compute.disks.use \
+            compute.instances.create compute.instances.delete compute.instances.get \
+            compute.instances.setMetadata compute.instances.setLabels \
+            compute.subnetworks.use compute.zoneOperations.get)
+          granted=$(api --json "$(jq -nc --argjson permissions "$required" '{permissions: $permissions}')" \
+            'https://cloudresourcemanager.googleapis.com/v1/projects/fibreda:testIamPermissions')
+
+          missing=$(jq -nr --argjson required "$required" --argjson granted "$granted" \
+            '$required - ($granted.permissions // []) | .[]')
+          if [[ -n "$missing" ]]; then
+            echo 'Compute permissions missing at project scope:'
+            printf '%s\n' "$missing"
+          else
+            echo 'Compute permissions granted at project scope.'
+          fi
+
+          # Keep billing optional and report only whether the account permits
+          # creating budgets. The billing account identifier stays in the job.
+          if billing=$(api 'https://cloudbilling.googleapis.com/v1/projects/fibreda/billingInfo' 2>/dev/null) \
+            && account=$(jq -er 'select(.billingEnabled) | .billingAccountName | select(test("^billingAccounts/[A-Za-z0-9-]+$"))' <<<"$billing") \
+            && budget=$(api --json '{"permissions":["billing.budgets.create"]}' \
+              "https://cloudbilling.googleapis.com/v1/$account:testIamPermissions" 2>/dev/null); then
+            if jq -e '(.permissions // []) | index("billing.budgets.create") != null' <<<"$budget" >/dev/null; then
+              echo 'Billing account allows creating budgets.'
+            else
+              echo 'Billing account did not grant permission to create budgets.'
+            fi
+          else
+            echo 'Could not verify permission to create budgets.'
+          fi
+
+          [[ -z "$missing" ]]
