@@ -280,10 +280,19 @@
         <h2>Start on Mocha</h2>
         <p>
           The project is experimental. Use a fresh home on a machine with free
-          node ports. The reference configuration is a Mac Mini M4 with 16 GB
-          RAM and a 512 GB SSD. Release archives also support x86-64 and ARM64
-          Linux.
+          node ports. A non-validating full node needs no validator signing key.
         </p>
+        <h3 id="hardware">Hardware and operating system</h3>
+        <p>The project's reference validator is a 10-core Mac Mini M4 with
+          16 GB RAM and a 512 GB SSD. Release binaries run on Apple silicon
+          macOS and on x86-64 or ARM64 Linux with glibc 2.35 or newer.
+          Minimum CPU, RAM and disk requirements have yet to be established.</p>
+        <p>For a pruned validator, the design budgets are 8 GB resident
+          memory in steady state, 12 GB at peak and 350 GB of disk after
+          one year. Allow extra SSD space for snapshots, database compaction
+          and any additional DA history you retain. Archival bridge storage
+          grows with retained chain data.
+          <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/hardware.md">Hardware targets and pruning assumptions</a></p>
         <h3>Install the release candidate</h3>
         <p>
           The installer checks the archive’s SHA-256. This example pins the
@@ -393,6 +402,16 @@
             >
             and the validator runbook before moving signing duties.
           </p>
+        </details>
+        <details id="kms">
+          <summary>Can a validator sign with Horcrux, TMKMS or an HSM?</summary>
+          <p>celestia-rs currently supports local-file consensus signing.
+            It uses <code>priv_validator_key.json</code> for the key and
+            <code>priv_validator_state.json</code> to guard against double signing.
+            Remote signing with Horcrux or TMKMS and HSM-backed consensus signing
+            are unsupported. If your validator requires external key custody,
+            keep its existing signer and try celestia-rs as a non-validating full node.
+            <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/adr/0008-mainnet-recommendation.md#scope">Validator signing scope</a></p>
         </details>
         <details>
           <summary>Can I reuse my Go validator home?</summary>
