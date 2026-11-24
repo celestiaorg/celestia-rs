@@ -370,7 +370,7 @@ fn verify_rust_proof_against_admitted_root(app: &mut app::App, capture: &Value) 
         height: query_height,
         prove: true,
     });
-    assert_eq!(response.code, 0, "{}", response.log);
+    assert_eq!(response.code, 0);
     let ops = response.proof_ops.expect("Rust store proof").ops;
     assert_eq!(ops.len(), 2, "IAVL and multistore proof operations");
     let decode = |op: &AbciProofOp| {

@@ -328,10 +328,10 @@ fn dispatch_with_merkle_and_igp_hooks() {
     assert_eq!(ev[0].attributes[0].value, "\"\"");
 }
 
-fn incoming(recipient: HexAddress, nonce: u32) -> HyperlaneMessage {
+fn incoming(recipient: HexAddress, message_index: u32) -> HyperlaneMessage {
     HyperlaneMessage {
         version: 3,
-        nonce,
+        nonce: message_index,
         origin: 1,
         sender: HexAddress([3; 32]),
         destination: 7,

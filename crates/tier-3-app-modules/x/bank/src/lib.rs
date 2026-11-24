@@ -697,7 +697,7 @@ mod tests {
                 assert_eq!(
                     result.is_err(),
                     rejected,
-                    "route {route}, executable {executable}, consensus {version}: {result:?}"
+                    "route {route}, executable {executable}, consensus {version}"
                 );
                 if let Err(e) = result {
                     assert_eq!((e.codespace, e.code), ("frozen", 2));

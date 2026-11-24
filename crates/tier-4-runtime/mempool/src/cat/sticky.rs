@@ -31,11 +31,11 @@ impl std::fmt::Debug for StickyPeer {
 /// `stickyScore64`: `sha256(namespace || salt || signer || 0x00 ||
 /// peerID)[:8]` big-endian.
 #[must_use]
-pub fn sticky_score64(signer: &[u8], peer_id: &str, salt: &[u8]) -> u64 {
+pub fn sticky_score64(signer: &[u8], peer_id: &str, ranking_salt: &[u8]) -> u64 {
     let mut h = hash::Sha256Hasher::new();
     h.update(STICKY_HASH_NAMESPACE.as_bytes());
-    if !salt.is_empty() {
-        h.update(salt);
+    if !ranking_salt.is_empty() {
+        h.update(ranking_salt);
     }
     if !signer.is_empty() {
         h.update(signer);
@@ -56,7 +56,7 @@ pub fn select_sticky_peers(
     signer: &[u8],
     peers: &HashMap<u16, Arc<dyn MempoolPeer>>,
     limit: usize,
-    salt: &[u8],
+    ranking_salt: &[u8],
 ) -> Vec<StickyPeer> {
     if limit == 0 || peers.is_empty() {
         return Vec::new();
@@ -65,7 +65,7 @@ pub fn select_sticky_peers(
         .iter()
         .map(|(&id, peer)| {
             let pid = peer.id();
-            let score = sticky_score64(signer, &pid, salt);
+            let score = sticky_score64(signer, &pid, ranking_salt);
             (
                 StickyPeer {
                     id,

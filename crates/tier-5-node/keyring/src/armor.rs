@@ -8,7 +8,6 @@ use std::fmt::Write as _;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as B64;
 use chacha20poly1305::aead::{Aead as _, KeyInit as _};
-use rand_core::{OsRng, RngCore as _};
 
 use crate::Error;
 
@@ -103,11 +102,11 @@ pub fn decode(s: &str) -> Result<Armored, Error> {
     Ok((block_type, headers, data))
 }
 
-fn argon2_key(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], Error> {
+fn argon2_key(passphrase: &str, salt: &[u8]) -> Result<chacha20poly1305::Key, Error> {
     let params =
         argon2::Params::new(64 * 1024, 1, 4, Some(32)).map_err(|e| Error::Crypto(e.to_string()))?;
     let a = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
-    let mut key = [0u8; 32];
+    let mut key = chacha20poly1305::Key::default();
     a.hash_password_into(passphrase.as_bytes(), salt, &mut key)
         .map_err(|e| Error::Crypto(e.to_string()))?;
     Ok(key)
@@ -116,14 +115,16 @@ fn argon2_key(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], Error> {
 /// `EncryptArmorPrivKey(privKey, passphrase, "secp256k1")`.
 pub fn encrypt_secp256k1(secret: &[u8; 32], passphrase: &str) -> Result<String, Error> {
     let mut salt = [0u8; 16];
-    OsRng.fill_bytes(&mut salt);
+    getrandom::fill(&mut salt).map_err(|e| Error::Crypto(e.to_string()))?;
     let key = argon2_key(passphrase, &salt)?;
     let mut plain = SECP256K1_PRIV_PREFIX.to_vec();
     plain.push(32);
     plain.extend_from_slice(secret);
-    let aead = chacha20poly1305::ChaCha20Poly1305::new((&key).into());
+    let aead = chacha20poly1305::ChaCha20Poly1305::new(&key);
+    // The SDK armor format uses one key per export (fresh random salt) and
+    // the all-zero nonce. Go imports rely on this implicit nonce.
     let enc = aead
-        .encrypt(&[0u8; 12].into(), plain.as_slice())
+        .encrypt(&chacha20poly1305::Nonce::default(), plain.as_slice())
         .map_err(|_| Error::Crypto("encryption failed".into()))?;
     Ok(encode(
         BLOCK_TYPE,
@@ -160,8 +161,8 @@ pub fn decrypt_secp256k1(armor: &str, passphrase: &str) -> Result<[u8; 32], Erro
     let plain = match header("kdf").as_deref() {
         Some("argon2") => {
             let key = argon2_key(passphrase, &salt)?;
-            let aead = chacha20poly1305::ChaCha20Poly1305::new((&key).into());
-            aead.decrypt(&[0u8; 12].into(), data.as_slice())
+            let aead = chacha20poly1305::ChaCha20Poly1305::new(&key);
+            aead.decrypt(&chacha20poly1305::Nonce::default(), data.as_slice())
                 .map_err(|_| Error::WrongPassword)?
         }
         Some(other) => {
