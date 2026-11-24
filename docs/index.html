@@ -6,7 +6,7 @@
     <title>celestia-rs · Node operator guide</title>
     <meta
       name="description"
-      content="Run a Celestia consensus node and experimental DA bridge in Rust. Explore benchmarks, try Mocha, and get help operating your node."
+      content="Run a Celestia consensus node and experimental DA bridge in Rust. Explore benchmarks, join Mainnet, and get help operating your node."
     />
     <link rel="stylesheet" href="site/style.css" />
     <script defer src="site/copy.js"></script>
@@ -28,7 +28,7 @@
           <h1>Consensus and bridge in Rust.</h1>
           <p>
             Follow Celestia, verify blocks, and serve data availability proofs
-            from one process. Start with a full node on Mocha testnet.
+            from one process. Run a non-validating full node on Celestia Mainnet.
           </p>
           <div class="actions">
             <a class="btn" href="#start">Run a node</a
@@ -167,10 +167,12 @@
         >
       </section>
       <section id="start">
-        <h2>Start on Mocha</h2>
+        <h2>Start on Mainnet</h2>
         <p>
-          The project is experimental. Use a fresh home on a machine with free
-          node ports. A non-validating full node needs no validator signing key.
+          Run an experimental, non-validating node on your own machine.
+          Joining Mainnet and syncing blocks require no wallet, TIA, stake or
+          transaction fees. Your machine supplies the disk, bandwidth and power.
+          Have Bash, curl and jq available, with the default node ports free.
         </p>
         <h3 id="hardware">Hardware and operating system</h3>
         <p>The project's reference validator is a 10-core Mac Mini M4 with
@@ -192,29 +194,56 @@
           <pre><code>curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/celestiaorg/celestia-rs/v0.1.0-rc.9/scripts/install.sh | sh -s -- --version v0.1.0-rc.9
 ~/.celestia-rs/bin/celestia-rs version --long</code></pre>
         </div>
-        <h3>Launch a non-validating full node</h3>
-        <p>
-          Run this in a terminal and leave it open. On first start the node
-          initializes its home, verifies the Mocha genesis and begins syncing
-          from peers.
-        </p>
-        <div class="terminal">
-          <pre><code>ulimit -n 65536
-~/.celestia-rs/bin/celestia-rs start --network mocha --home ~/.celestia-rs/mocha</code></pre>
-        </div>
+        <h3>Start from a verified Mainnet snapshot</h3>
+        <p>Paste this first-launch block into Bash. It checks a recent block hash
+          with two independent Mainnet RPCs, initializes a fresh node home,
+          and starts peer-to-peer state sync. Keep the terminal open. The node
+          discovers a snapshot from peers, restores it, then catches up to tip.
+          This avoids the release candidate’s known Mainnet genesis replay issue.</p>
+        <div class="terminal"><pre><code>(
+  set -eu
+  node="$HOME/.celestia-rs/bin/celestia-rs"
+  home_dir="$HOME/.celestia-rs/mainnet"
+  rpc=https://rpc.celestia.pops.one:443
+  witness=https://celestia-rpc.polkachu.com:443
+  latest=$(curl -fsSL "$rpc/block" | jq -er '.result.block.header | select(.chain_id == "celestia") | .height | tonumber')
+  height=$((latest - 3000))
+  hash_at() {
+    curl -fsSL "$1/block?height=$height" | jq -er --arg h "$height" '
+      .result | select(.block.header.chain_id == "celestia" and .block.header.height == $h)
+      | .block_id.hash | select(test("^[0-9A-Fa-f]{64}$"))'
+  }
+  hash=$(hash_at "$rpc")
+  other=$(hash_at "$witness")
+  if [ "$hash" != "$other" ]; then
+    echo "Mainnet RPCs disagree at height $height. Stopping." &gt;&amp;2
+    exit 1
+  fi
+  mkdir "$home_dir"  # first launch only, requires a fresh directory
+  if ! "$node" init my-mainnet-node --network mainnet --home "$home_dir" &gt;"$home_dir/init.log" 2&gt;&amp;1; then
+    tail -n 10 "$home_dir/init.log" &gt;&amp;2
+    exit 1
+  fi
+  rm "$home_dir/init.log"  # successful init prints the entire genesis
+  "$node" config set config statesync.rpc_servers "$rpc,$witness" --home "$home_dir"
+  "$node" config set config statesync.trust_height "$height" --home "$home_dir"
+  "$node" config set config statesync.trust_hash "$hash" --home "$home_dir"
+  "$node" config set config statesync.enable true --home "$home_dir"
+  ulimit -n 4096
+  exec "$node" start --network mainnet --home "$home_dir"
+)</code></pre></div>
         <h3>Check progress in a second terminal</h3>
-        <div class="terminal">
-          <pre><code>~/.celestia-rs/bin/celestia-rs status --home ~/.celestia-rs/mocha</code></pre>
-        </div>
-        <p>
-          Look for an advancing <code>sync_info.latest_block_height</code>. Once
-          <code>catching_up</code> is false, compare the height and app hash
-          with an independent Mocha RPC. Use Ctrl+C in the first terminal for a
-          graceful stop.
-        </p>
+        <div class="terminal"><pre><code>~/.celestia-rs/bin/celestia-rs status --home ~/.celestia-rs/mainnet</code></pre></div>
+        <p>Check that the network is <code>celestia</code> and that
+          <code>sync_info.latest_block_height</code> advances between checks.
+          Once <code>catching_up</code> is false, compare the block ID at the same
+          height with an independent Mainnet RPC. If snapshot discovery stalls,
+          see the <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md#12-mainnet-validator-m14">Mainnet peer and snapshot guidance</a>.</p>
+        <p>Stop gracefully with Ctrl+C. To resume from the same home, run:</p>
+        <div class="terminal"><pre><code>~/.celestia-rs/bin/celestia-rs start --network mainnet --home ~/.celestia-rs/mainnet</code></pre></div>
         <h3>Try the integrated bridge locally</h3>
         <p>
-          Stop the Mocha process first to free its ports. Start a private local
+          Stop the Mainnet process first to free its ports. Start a private local
           chain in a fresh home with both DA listeners bound to loopback.
         </p>
         <div class="terminal">
@@ -236,14 +265,14 @@
             host your node.
           </p>
           <p class="prompt" id="prompt">
-            Set up and run a non-validating celestia-rs full node on Mocha
-            testnet on this machine. Read
+            Set up and run a non-validating celestia-rs full node on Celestia Mainnet
+            (chain ID celestia) on this machine. Use existing hardware and free public endpoints. Read
             https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md
             first. Check OS, architecture, disk, file limits, existing node
             homes, processes and port conflicts. Use a fresh user-owned home and
             an isolated binary install. Leave existing services, keys and
             firewall rules alone. Use the official release installer pinned to
-            v0.1.0-rc.9 and verify the installed version. Start the node as my
+            v0.1.0-rc.9 and verify the installed version. Initialize with --network mainnet and configure P2P state sync using a recent trust height and matching block hashes from two independent Mainnet RPCs. Stop if either check fails. Do not replay from genesis, provision cloud resources, fund a wallet or submit transactions. Start the node as my
             user, with logs and local-only management endpoints. Leave validator
             signing and the DA bridge disabled. Check the local status twice and
             report the chain ID, heights, peer count and catching_up value. If
