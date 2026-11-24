@@ -1566,7 +1566,7 @@ mod finalize_gas_tests {
         let sk = crypto::secp256k1::secret_key_from_secret(b"end-block-gas");
         let pk = crypto::secp256k1::public_key_from_secret_key(&sk).unwrap_or([0; 33]);
         let addr = crypto::secp256k1::address(&pk).to_vec();
-        let ok = |r: Result<()>| assert!(r.is_ok(), "{r:?}");
+        let ok = |r: Result<()>| assert!(r.is_ok(), "failed to initialize signed send fixture");
         ok(x_auth::set_params(
             ctx,
             &AuthParams {

@@ -1,6 +1,7 @@
 # v11 patch release and v12 consensus gates
 
-Both celestia-app tags `v11.0.0-corto` and `v11.0.0-mocha` resolve to
+The final [celestia-app v11.0.0](https://github.com/celestiaorg/celestia-app/releases/tag/v11.0.0)
+and the earlier tags `v11.0.0-corto` and `v11.0.0-mocha` resolve to
 [`58be8ae90d00518800df5506b3a1e988f009c1c6`](https://github.com/celestiaorg/celestia-app/tree/58be8ae90d00518800df5506b3a1e988f009c1c6).
 They are the v10 release line with the v11 emergency changes, rather than the
 former v11 mainline rule set. This is the release assignment recorded by

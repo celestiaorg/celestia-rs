@@ -1,6 +1,6 @@
 //! Go-compatible HS256 permissions and durable token revocation.
 use std::io::{ErrorKind, Write as _};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result, ensure};
 use base64::{
@@ -26,9 +26,7 @@ struct Claims {
 
 pub(crate) struct Auth {
     key: [u8; 32],
-    revoked: PathBuf,
-    #[cfg(unix)]
-    revoked_dir: std::fs::File,
+    revoked_dir: cap_std::fs::Dir,
     changed: watch::Sender<()>,
 }
 
@@ -113,9 +111,10 @@ impl Auth {
         std::fs::create_dir_all(&revoked)?;
         Ok(Self {
             key: secret(home)?,
-            #[cfg(unix)]
-            revoked_dir: std::fs::File::open(&revoked)?,
-            revoked,
+            revoked_dir: cap_std::fs::Dir::open_ambient_dir(
+                &revoked,
+                cap_std::ambient_authority(),
+            )?,
             changed: watch::channel(()).0,
         })
     }
@@ -133,14 +132,6 @@ impl Auth {
         Ok((claims, hash::sha256(&signature)))
     }
 
-    fn marker(&self, digest: &[u8; 32]) -> Result<PathBuf> {
-        let encoded = hex::encode(digest);
-        let component = Path::new(&encoded)
-            .file_name()
-            .context("missing token digest")?;
-        Ok(self.revoked.join(component))
-    }
-
     pub(super) fn verify(&self, token: &str) -> Result<Vec<String>> {
         let (claims, digest) = self.claims(token)?;
         if claims.expires_at != ZERO {
@@ -152,7 +143,7 @@ impl Auth {
                 "token expired"
             );
         }
-        match std::fs::symlink_metadata(self.marker(&digest)?) {
+        match self.revoked_dir.symlink_metadata(hex::encode(digest)) {
             Err(e) if e.kind() == ErrorKind::NotFound => {}
             Err(e) => return Err(e.into()),
             Ok(_) => anyhow::bail!("token revoked"),
@@ -182,14 +173,16 @@ impl Auth {
             ("node.AuthVerify", 1) => Ok(serde_json::to_value(self.verify(token()?)?)?),
             ("node.AuthRevoke", 1) => {
                 let (_, digest) = self.claims(token()?)?;
-                match std::fs::File::create_new(self.marker(&digest)?) {
+                let mut options = cap_std::fs::OpenOptions::new();
+                options.write(true).create_new(true);
+                match self.revoked_dir.open_with(hex::encode(digest), &options) {
                     Ok(file) => file.sync_all()?,
                     Err(e) if e.kind() == ErrorKind::AlreadyExists => {}
                     Err(e) => return Err(e.into()),
                 }
                 self.changed.send_replace(());
                 #[cfg(unix)]
-                self.revoked_dir.sync_all()?;
+                self.revoked_dir.open(".")?.sync_all()?;
                 Ok(Value::Null)
             }
             ("node.AuthNew", 1) | ("node.AuthNewWithExpiry", 2) => {
@@ -235,9 +228,33 @@ fn existing_revocation_marker_is_never_followed() -> Result<()> {
     let token = operator_token(root.path(), "read", 0)?;
     let (_, digest) = auth.claims(&token)?;
     let absent = root.path().join("absent");
-    std::os::unix::fs::symlink(&absent, auth.marker(&digest)?)?;
+    std::os::unix::fs::symlink(
+        &absent,
+        root.path()
+            .join("data/da-revoked")
+            .join(hex::encode(digest)),
+    )?;
     assert!(auth.verify(&token).is_err());
     auth.admin("node.AuthRevoke", &[Value::String(token)])?;
     assert!(!absent.exists());
+    Ok(())
+}
+
+#[cfg(all(test, unix))]
+#[test]
+fn revocations_stay_in_the_open_directory() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let auth = Auth::open(root.path())?;
+    let token = operator_token(root.path(), "read", 0)?;
+    let original = root.path().join("data/da-revoked");
+    let moved = root.path().join("original-markers");
+    let replacement = tempfile::tempdir()?;
+    std::fs::rename(&original, &moved)?;
+    std::os::unix::fs::symlink(replacement.path(), &original)?;
+
+    auth.admin("node.AuthRevoke", &[Value::String(token.clone())])?;
+    assert!(auth.verify(&token).is_err());
+    assert_eq!(std::fs::read_dir(&moved)?.count(), 1);
+    assert_eq!(std::fs::read_dir(replacement.path())?.count(), 0);
     Ok(())
 }

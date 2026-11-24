@@ -195,15 +195,17 @@ pub(crate) fn make_inner(key: Vec<u8>, left: Link, right: Link) -> Node {
 // Encoding (our own format; only hashes are consensus relevant)
 //
 //   leaf  = 0x00 | uvarint(len) key | uvarint(len) value
-//   inner = 0x01 | height:u8 | uvarint size | uvarint(len) key | ref | ref
+//   inner = 0x02 | height:u8 | uvarint size | hash[32] | uvarint(len) key | nk | nk
+//   nk = uvarint version | uvarint nonce
+//   legacy inner = 0x01 | height:u8 | uvarint size | uvarint(len) key | ref | ref
 //   ref   = uvarint version | uvarint nonce | hash[32] | height:u8 | uvarint size
 //
-// A node's own version is its node key's version; its hash is carried by
-// the reference used to reach it (parent or root record).
+// The node key supplies the version. Root records still carry a full ref.
 // ---------------------------------------------------------------------------
 
 const TAG_LEAF: u8 = 0;
-const TAG_INNER: u8 = 1;
+const TAG_LEGACY_INNER: u8 = 1;
+const TAG_INNER: u8 = 2;
 
 pub(crate) fn encode_leaf(key: &[u8], value: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(key.len() + value.len() + 8);
@@ -217,22 +219,28 @@ pub(crate) fn encode_inner(
     key: &[u8],
     height: i8,
     size: i64,
-    left: &StoredRef,
-    right: &StoredRef,
+    hash: &Hash,
+    left: NodeKey,
+    right: NodeKey,
 ) -> Vec<u8> {
-    let mut out = Vec::with_capacity(key.len() + 2 * 48 + 12);
+    let mut out = Vec::with_capacity(key.len() + 56);
     out.push(TAG_INNER);
     out.push(height.to_ne_bytes()[0]);
     put_uvarint(&mut out, u64::try_from(size).unwrap_or(0));
+    out.extend_from_slice(hash);
     put_bytes(&mut out, key);
-    encode_ref(&mut out, left);
-    encode_ref(&mut out, right);
+    put_node_key(&mut out, left);
+    put_node_key(&mut out, right);
     out
 }
 
-pub(crate) fn encode_ref(out: &mut Vec<u8>, r: &StoredRef) {
-    put_uvarint(out, u64::try_from(r.nk.version).unwrap_or(0));
-    put_uvarint(out, u64::from(r.nk.nonce));
+fn put_node_key(out: &mut Vec<u8>, nk: NodeKey) {
+    put_uvarint(out, u64::try_from(nk.version).unwrap_or(0));
+    put_uvarint(out, u64::from(nk.nonce));
+}
+
+fn encode_ref(out: &mut Vec<u8>, r: &StoredRef) {
+    put_node_key(out, r.nk);
     out.extend_from_slice(&r.hash);
     out.push(r.height.to_ne_bytes()[0]);
     put_uvarint(out, u64::try_from(r.size).unwrap_or(0));
@@ -257,13 +265,54 @@ pub(crate) fn decode_root(bytes: &[u8]) -> Result<Option<StoredRef>> {
     Ok(Some(r))
 }
 
-/// Decodes a persisted node reached through `r`.
-pub(crate) fn decode_node(bytes: &[u8], r: &StoredRef) -> Result<Node> {
+/// Resolve the reference from one read, including when a new parent points
+/// at a node written by an older binary. Legacy parents contain both hashes.
+pub(crate) fn read_ref(bytes: &[u8], nk: NodeKey) -> Result<StoredRef> {
     let mut cursor = Cursor { bytes, pos: 0 };
-    let node = match cursor.byte()? {
+    let tag = cursor.byte()?;
+    if tag == TAG_LEAF {
+        let key = cursor.byte_slice()?;
+        let value = cursor.byte_slice()?;
+        cursor.finish()?;
+        return Ok(StoredRef {
+            nk,
+            height: 0,
+            size: 1,
+            hash: leaf_hash(nk.version, key, value),
+        });
+    }
+    let (height, size) = cursor.dimensions()?;
+    let hash = match tag {
+        TAG_INNER => cursor.hash()?,
+        TAG_LEGACY_INNER => {
+            cursor.byte_slice()?;
+            let left = cursor.stored_ref()?;
+            let right = cursor.stored_ref()?;
+            cursor.finish()?;
+            inner_hash(i64::from(height), size, nk.version, left.hash, right.hash)
+        }
+        _ => return Err(Error::Corrupt("node tag")),
+    };
+    Ok(StoredRef {
+        nk,
+        hash,
+        height,
+        size,
+    })
+}
+
+/// Decodes a persisted node reached through `r`.
+pub(crate) fn decode_node(
+    bytes: &[u8],
+    r: &StoredRef,
+    mut child: impl FnMut(NodeKey) -> Result<StoredRef>,
+) -> Result<Node> {
+    let mut cursor = Cursor { bytes, pos: 0 };
+    let tag = cursor.byte()?;
+    let node = match tag {
         TAG_LEAF => {
-            let key = cursor.bytes()?;
-            let value = cursor.bytes()?;
+            let key = cursor.byte_slice()?.to_vec();
+            let value = cursor.byte_slice()?.to_vec();
             Node::Leaf(Leaf {
                 key,
                 value,
@@ -271,12 +320,17 @@ pub(crate) fn decode_node(bytes: &[u8], r: &StoredRef) -> Result<Node> {
                 hash: Some(r.hash),
             })
         }
-        TAG_INNER => {
-            let height = i8::from_ne_bytes([cursor.byte()?]);
-            let size = i64::try_from(cursor.uvarint()?).map_err(|_| Error::Corrupt("size"))?;
-            let key = cursor.bytes()?;
-            let left = cursor.stored_ref()?;
-            let right = cursor.stored_ref()?;
+        TAG_INNER | TAG_LEGACY_INNER => {
+            let (height, size) = cursor.dimensions()?;
+            if tag == TAG_INNER && cursor.hash()? != r.hash {
+                return Err(Error::Corrupt("node hash does not match its reference"));
+            }
+            let key = cursor.byte_slice()?.to_vec();
+            let (left, right) = if tag == TAG_LEGACY_INNER {
+                (cursor.stored_ref()?, cursor.stored_ref()?)
+            } else {
+                (child(cursor.node_key()?)?, child(cursor.node_key()?)?)
+            };
             Node::Inner(Inner {
                 key,
                 height,
@@ -315,7 +369,7 @@ struct Cursor<'a> {
     pos: usize,
 }
 
-impl Cursor<'_> {
+impl<'a> Cursor<'a> {
     fn byte(&mut self) -> Result<u8> {
         let b = *self
             .bytes
@@ -337,7 +391,7 @@ impl Cursor<'_> {
         Err(Error::Corrupt("varint overflow"))
     }
 
-    fn take(&mut self, n: usize) -> Result<&[u8]> {
+    fn take(&mut self, n: usize) -> Result<&'a [u8]> {
         let end = self
             .pos
             .checked_add(n)
@@ -348,20 +402,35 @@ impl Cursor<'_> {
         Ok(out)
     }
 
-    fn bytes(&mut self) -> Result<Vec<u8>> {
+    fn byte_slice(&mut self) -> Result<&'a [u8]> {
         let len = usize::try_from(self.uvarint()?).map_err(|_| Error::Corrupt("length"))?;
-        Ok(self.take(len)?.to_vec())
+        self.take(len)
+    }
+
+    fn node_key(&mut self) -> Result<NodeKey> {
+        let version = Version::try_from(self.uvarint()?).map_err(|_| Error::Corrupt("version"))?;
+        let nonce = u32::try_from(self.uvarint()?).map_err(|_| Error::Corrupt("nonce"))?;
+        Ok(NodeKey { version, nonce })
+    }
+
+    fn hash(&mut self) -> Result<Hash> {
+        let mut hash = [0u8; 32];
+        hash.copy_from_slice(self.take(32)?);
+        Ok(hash)
+    }
+
+    fn dimensions(&mut self) -> Result<(i8, i64)> {
+        let height = i8::from_ne_bytes([self.byte()?]);
+        let size = i64::try_from(self.uvarint()?).map_err(|_| Error::Corrupt("size"))?;
+        Ok((height, size))
     }
 
     fn stored_ref(&mut self) -> Result<StoredRef> {
-        let version = Version::try_from(self.uvarint()?).map_err(|_| Error::Corrupt("version"))?;
-        let nonce = u32::try_from(self.uvarint()?).map_err(|_| Error::Corrupt("nonce"))?;
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(self.take(32)?);
-        let height = i8::from_ne_bytes([self.byte()?]);
-        let size = i64::try_from(self.uvarint()?).map_err(|_| Error::Corrupt("size"))?;
+        let nk = self.node_key()?;
+        let hash = self.hash()?;
+        let (height, size) = self.dimensions()?;
         Ok(StoredRef {
-            nk: NodeKey { version, nonce },
+            nk,
             hash,
             height,
             size,
@@ -382,6 +451,29 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn legacy_inner_supplies_its_hash_to_a_compact_parent() {
+        // Original tag-1 layout with a one-byte separator and two leaf refs.
+        let mut legacy = vec![1, 1, 2, 1, b'b', 1, 1];
+        legacy.extend([0xab; 32]);
+        legacy.extend([0, 1, 1, 2]);
+        legacy.extend([0xcd; 32]);
+        legacy.extend([0, 1]);
+        let nk = NodeKey {
+            version: 1,
+            nonce: 3,
+        };
+        let reference = read_ref(&legacy, nk).unwrap();
+        assert_eq!(reference.hash, inner_hash(1, 2, 1, [0xab; 32], [0xcd; 32]));
+        let Node::Inner(node) = decode_node(&legacy, &reference, |_| unreachable!()).unwrap()
+        else {
+            unreachable!()
+        };
+        assert_eq!(node.key, b"b");
+        assert_eq!(node.left.hash_for(1), [0xab; 32]);
+        assert_eq!(node.right.hash_for(1), [0xcd; 32]);
+    }
 
     #[test]
     fn node_and_root_encoding_round_trips() {
@@ -412,17 +504,21 @@ mod tests {
             height: 3,
             size: 4,
         };
-        let bytes = encode_inner(b"sep", 3, 4, &left, &right);
-        let Node::Inner(inner) = decode_node(&bytes, &me).unwrap() else {
+        let bytes = encode_inner(b"sep", 3, 4, &me.hash, left.nk, right.nk);
+        assert_eq!(read_ref(&bytes, me.nk).unwrap(), me);
+        let child = |nk| Ok(if nk == left.nk { left } else { right });
+        let Node::Inner(inner) = decode_node(&bytes, &me, child).unwrap() else {
             unreachable!()
         };
         assert_eq!(inner.key, b"sep");
         assert_eq!(inner.version, 301);
         assert!(matches!(inner.right, Link::Stored(r) if r == right));
-        assert!(decode_node(&bytes[..bytes.len() - 1], &me).is_err());
+        assert!(decode_node(&bytes[..bytes.len() - 1], &me, child).is_err());
         let leaf = encode_leaf(b"k", b"");
-        assert!(matches!(decode_node(&leaf, &left).unwrap(), Node::Leaf(l) if l.value.is_empty()));
-        assert!(decode_node(&leaf, &me).is_err());
+        assert!(
+            matches!(decode_node(&leaf, &left, child).unwrap(), Node::Leaf(l) if l.value.is_empty())
+        );
+        assert!(decode_node(&leaf, &me, child).is_err());
         assert_eq!(decode_root(&encode_root(Some(&me))).unwrap(), Some(me));
         assert_eq!(decode_root(&encode_root(None)).unwrap(), None);
         let nk = me.nk;

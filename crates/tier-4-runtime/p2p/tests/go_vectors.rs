@@ -36,8 +36,8 @@ fn arr32(v: &Value) -> [u8; 32] {
     hx(v).try_into().unwrap()
 }
 
-fn pattern(n: usize, salt: u8) -> Vec<u8> {
-    (0..n).map(|i| ((i * 7) as u8) ^ salt).collect()
+fn pattern(n: usize, xor_mask: u8) -> Vec<u8> {
+    (0..n).map(|i| ((i * 7) as u8) ^ xor_mask).collect()
 }
 
 /// Run our side of a recorded handshake: we are the peer with `seed` /

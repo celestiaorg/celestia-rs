@@ -871,7 +871,7 @@ fn seen_tx_skips_peers_far_behind() {
 
 fn plan_peers(
     signer: &[u8],
-    salt: &[u8],
+    ranking_salt: &[u8],
     total: usize,
     bottom: usize,
     top: usize,
@@ -887,8 +887,8 @@ fn plan_peers(
     let mut order: Vec<usize> = (0..total).collect();
     order.sort_by(|&a, &b| {
         let (sa, sb) = (
-            sticky_score64(signer, &plans[a].0, salt),
-            sticky_score64(signer, &plans[b].0, salt),
+            sticky_score64(signer, &plans[a].0, ranking_salt),
+            sticky_score64(signer, &plans[b].0, ranking_salt),
         );
         sb.cmp(&sa).then_with(|| plans[a].0.cmp(&plans[b].0))
     });

@@ -172,11 +172,11 @@ impl Reactor {
     }
 
     /// `SetStickySalt`.
-    pub fn set_sticky_salt(&self, salt: &[u8]) {
+    pub fn set_sticky_salt(&self, ranking_salt: &[u8]) {
         *self
             .sticky_salt
             .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = salt.to_vec();
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = ranking_salt.to_vec();
     }
 
     fn sticky_salt(&self) -> Vec<u8> {

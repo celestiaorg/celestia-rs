@@ -25,6 +25,12 @@ jobs:
           languages: rust
           build-mode: none
       - uses: github/codeql-action/analyze@v4
+        with:
+          output: ${{ runner.temp }}/codeql-results
+      - name: Report Rust CodeQL finding count
+        run: |
+          jq -er '"Rust CodeQL findings: \([.runs[].results[]] | length)"' \
+            "$RUNNER_TEMP/codeql-results/rust.sarif" | tee -a "$GITHUB_STEP_SUMMARY"
 
   kani:
     name: Kani (shares)

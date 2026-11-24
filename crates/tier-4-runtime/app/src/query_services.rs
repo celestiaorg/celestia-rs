@@ -428,8 +428,7 @@ mod tests {
                 error
                     .log
                     .contains(&format!("sequence mismatch, expected 6, got {sequence}")),
-                "{}",
-                error.log
+                "expected a sequence mismatch for sequence {sequence}"
             );
         }
         let (_, result) = simulate(&mut app, &simulate_send(6));

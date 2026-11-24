@@ -5,10 +5,10 @@
 use aes::cipher::{
     BlockDecrypt as _, BlockEncrypt as _, KeyInit as _, generic_array::GenericArray,
 };
-use aes_gcm::aead::{Aead as _, Payload};
+use aes_gcm::aead::{Aead as _, AeadCore as _, Payload};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64URL;
-use rand_core::{OsRng, RngCore as _};
+use rand_core::OsRng;
 
 use crate::Error;
 
@@ -94,9 +94,7 @@ fn kek(password: &str, p2s: &[u8], p2c: u32) -> [u8; 16] {
     let mut salt = ALG.as_bytes().to_vec();
     salt.push(0);
     salt.extend_from_slice(p2s);
-    let mut out = [0u8; 16];
-    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(password.as_bytes(), &salt, p2c, &mut out);
-    out
+    pbkdf2::pbkdf2_hmac_array::<sha2::Sha256, 16>(password.as_bytes(), &salt, p2c)
 }
 
 /// `jose.Encrypt(payload, PBES2_HS256_A128KW, A256GCM, password,
@@ -104,11 +102,9 @@ fn kek(password: &str, p2s: &[u8], p2c: u32) -> [u8; 16] {
 pub fn encrypt(payload: &[u8], password: &str, created: &str) -> Result<String, Error> {
     let mut rng = OsRng;
     let mut p2s = [0u8; 12];
-    rng.fill_bytes(&mut p2s);
-    let mut cek = [0u8; 32];
-    rng.fill_bytes(&mut cek);
-    let mut iv = [0u8; 12];
-    rng.fill_bytes(&mut iv);
+    getrandom::fill(&mut p2s).map_err(|e| Error::Crypto(e.to_string()))?;
+    let cek = aes_gcm::Aes256Gcm::generate_key(&mut rng);
+    let iv = aes_gcm::Aes256Gcm::generate_nonce(&mut rng);
     // Go marshals the header map with sorted keys.
     let header = serde_json::json!({
         "alg": ALG,
@@ -119,10 +115,10 @@ pub fn encrypt(payload: &[u8], password: &str, created: &str) -> Result<String, 
     });
     let header_b64 = B64URL.encode(header.to_string());
     let ecek = aes_kw_wrap(&kek(password, &p2s, DEFAULT_P2C), &cek);
-    let gcm = aes_gcm::Aes256Gcm::new(GenericArray::from_slice(&cek));
+    let gcm = aes_gcm::Aes256Gcm::new(&cek);
     let sealed = gcm
         .encrypt(
-            GenericArray::from_slice(&iv),
+            &iv,
             Payload {
                 msg: payload,
                 aad: header_b64.as_bytes(),
@@ -213,8 +209,9 @@ mod tests {
 
     #[test]
     fn roundtrip() {
-        let t = encrypt(b"hello", "pw", "now").unwrap();
-        assert_eq!(decrypt(&t, "pw").unwrap(), b"hello");
-        assert!(decrypt(&t, "wrong").is_err());
+        let password = B64URL.encode(aes_gcm::Aes256Gcm::generate_key(OsRng));
+        let t = encrypt(b"hello", &password, "now").unwrap();
+        assert_eq!(decrypt(&t, &password).unwrap(), b"hello");
+        assert!(decrypt(&t, &format!("{password}!")).is_err());
     }
 }

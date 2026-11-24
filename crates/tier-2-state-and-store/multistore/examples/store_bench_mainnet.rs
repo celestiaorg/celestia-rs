@@ -173,7 +173,7 @@ struct Config {
     backend: String,
     blocks: u64,
     txs: u64,
-    accounts: u64,
+    genesis_population: u64,
     pruning: PruningOptions,
     cache_nodes: usize,
     db_cache: usize,
@@ -248,7 +248,7 @@ fn main() -> anyhow::Result<()> {
         backend: kv.get("backend").cloned().unwrap_or_else(|| "redb".into()),
         blocks: num("blocks", 3000),
         txs: num("txs", 600),
-        accounts: num("accounts", 200_000),
+        genesis_population: num("accounts", 200_000),
         pruning: PruningOptions {
             keep_recent: num("keep_recent", 100),
             keep_every: 0,
@@ -275,9 +275,9 @@ fn main() -> anyhow::Result<()> {
 
     // Genesis.
     let t = Instant::now();
-    let mut accounts = cfg.accounts;
+    let mut population = cfg.genesis_population;
     {
-        for i in 0..accounts {
+        for i in 0..population {
             let a = addr(1, i);
             store
                 .get_store_mut("acc")?
@@ -296,7 +296,7 @@ fn main() -> anyhow::Result<()> {
                 d.set(key(&[tag], &[&val]), rng.bytes(150))?;
             }
         }
-        for i in 0..accounts / 10 {
+        for i in 0..population / 10 {
             let del = addr(1, i);
             let val = addr(2, i % VALIDATORS);
             store
@@ -312,7 +312,7 @@ fn main() -> anyhow::Result<()> {
         "# backend={} txs/block={} genesis_accounts={} keep_recent={} interval={} sync={} genesis_s={:.1}",
         cfg.backend,
         cfg.txs,
-        cfg.accounts,
+        cfg.genesis_population,
         cfg.pruning.keep_recent,
         cfg.pruning.interval,
         cfg.sync,
@@ -328,7 +328,7 @@ fn main() -> anyhow::Result<()> {
     let mut periods = vec![1u64; usize::try_from(VALIDATORS)?];
     let mut commits: Vec<Duration> = Vec::new();
     let mut all_commits: Vec<Duration> = Vec::new();
-    let hot = (cfg.accounts / 100).max(1);
+    let hot = (cfg.genesis_population / 100).max(1);
     let start = Instant::now();
     let mut compact_total = Duration::ZERO;
     let mut store_opt = Some(store);
@@ -340,17 +340,17 @@ fn main() -> anyhow::Result<()> {
             let sender = if rng.chance(50) {
                 rng.below(hot)
             } else {
-                rng.below(accounts)
+                rng.below(population)
             };
             let recipient = if rng.chance(10) {
-                accounts += 1;
-                let a = addr(1, accounts - 1);
+                population += 1;
+                let a = addr(1, population - 1);
                 store
                     .get_store_mut("acc")?
                     .set(key(&[1], &[&a]), rng.bytes(110))?;
-                accounts - 1
+                population - 1
             } else {
-                rng.below(accounts)
+                rng.below(population)
             };
             let s = addr(1, sender);
             store
@@ -499,7 +499,7 @@ fn main() -> anyhow::Result<()> {
     println!(
         "# done: blocks={} accounts={} commit_p50_ms={:.1} p99_ms={:.1} max_ms={:.1} peak_rss_mib={:.0} compaction_s={:.1} total_s={:.0}",
         cfg.blocks,
-        accounts,
+        population,
         percentile(&all_commits, 0.5),
         percentile(&all_commits, 0.99),
         percentile(&all_commits, 1.0),
