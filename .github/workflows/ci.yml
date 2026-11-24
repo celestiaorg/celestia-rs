@@ -212,6 +212,7 @@ jobs:
           - rpccorpus/recorder
           - mainnet-rpc/module-closure/proofcheck
           - txdecode
+          - strict-txdecode
           - v11-frozen
           - websocket-lifecycle
     env:

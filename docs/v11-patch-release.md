@@ -19,7 +19,7 @@ binary can differ from the committed consensus version during an upgrade.
 | Blob params absent from module store (Go #8601) | Legacy subspace fallback | No legacy fallback |
 | PFM error acknowledgements / gov failure reason (Go #8602) | Historical error text | Fixed acknowledgement / codespace and code |
 | Signal version checks (Go #8599) | Header version, including historical zero-header behavior | Consensus app version; clear non-increasing reached upgrades |
-| Strict transaction encoding (Rust #377, Go #8611 / SDK #186) | Historical decoder | Strict decoder, once its pending PR merges |
+| Strict transaction encoding (Rust #377, Go #8611 / SDK #214, `v0.53.8`) | Historical decoder | Strict decoder, once celestia-app #8611 merges |
 | Packet-forward memos (Rust #387, Go #8683) | Historical middleware | Pending adoption of the tagged Celestia middleware fork |
 | In-process account sequence (Go #8443, #8449) | Read the signer’s check-state sequence | After the first commit, return the greater of the committed sequence and one past the highest pending sequence. Simulation accounts for pending transactions on its discarded branch. |
 
