@@ -6,6 +6,8 @@ and [celestia-core](https://github.com/celestiaorg/celestia-core). One
 binary, `celestia-rs`, runs the state machine, Tendermint consensus, P2P,
 mempool, RPC and gRPC.
 
+[Operator website](https://celestiaorg.github.io/celestia-rs/) · Quickstart, DA bridge setup, performance charts and operator FAQ.
+
 ## Install
 
 ```sh
