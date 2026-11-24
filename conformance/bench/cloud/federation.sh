@@ -11,7 +11,8 @@ email="$account@$project.iam.gserviceaccount.com"
 issuer=https://token.actions.githubusercontent.com
 number=$(gcloud projects describe "$project" --format='value(projectNumber)')
 
-location=(--project="$number" --location=global)
+# gcloud flags take the project ID. IAM resource names use its number.
+location=(--project="$project" --location=global)
 
 # IAM can acknowledge creation before a dependent API sees the new resource.
 retry_not_found() {
