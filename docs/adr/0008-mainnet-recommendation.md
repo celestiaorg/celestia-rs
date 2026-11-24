@@ -27,10 +27,11 @@ compatibility evidence.
   resource use under load, observability, and persistent double-sign protection.
 - Linux and macOS deployment, including the existing Mac Mini M4 target.
 
-Archival RPC service, HSMs and remote signers are later goals. Local-file
-signing remains supported. An independent external security audit is
-**optional**, not a prerequisite for general recommendation. This does not
-remove F1.12's independent code-review requirement.
+Archival RPC service and direct HSM integration are later goals. Validators
+can use local-file signing or a compatible Horcrux or tmkms remote signer.
+Production qualification for remote signing is a separate goal. An independent
+external security audit remains optional for general recommendation. F1.12
+still requires an independent code review.
 
 ## Evidence and rollout
 

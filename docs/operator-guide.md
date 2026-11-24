@@ -344,12 +344,54 @@ the validator signed. Both binaries refuse to sign anything at or below it
   the process, in the same format as Go, so switching back to Go later is
   safe under the same rules.
 
+### Using tmkms or Horcrux
+
+Horcrux v3.3.3-celestia and Celestia's tmkms v0.14.0-celestia support
+compact-block signing and vote extensions. Stock tmkms v0.15.0 supports
+compact-block signing on chains with vote extensions disabled. Its wire
+format drops extension signatures from signed vote responses.
+[Horcrux release](https://github.com/celestiaorg/horcrux/releases/tag/v3.3.3-celestia) ·
+[Celestia tmkms release](https://github.com/celestiaorg/tmkms/releases/tag/v0.14.0-celestia) ·
+[Stock tmkms release tag](https://github.com/iqlusioninc/tmkms/tree/v0.15.0)
+
+Set the top-level `priv_validator_laddr` in the node's `config/config.toml`.
+
+```toml
+priv_validator_laddr = "tcp://127.0.0.1:26659"
+```
+
+The signer dials this listener. For tmkms, set `[[validator]] addr` to
+`tcp://<node-id>@127.0.0.1:26659` and use the genesis chain ID as
+`chain_id`. Get the TCP identity with `celestia-rs comet show-node-id`.
+Set `protocol_version = "v0.38"` on the validator entry for stock tmkms
+v0.15.0 or `protocol_version = "v0.34"` for v0.14.0-celestia. On chains
+with vote extensions enabled, set `sign_extensions = true` in the matching
+tmkms `[[chain]]` entry.
+For Horcrux, set the `chainNodes` entry's `privValAddr` to
+`tcp://127.0.0.1:26659` (or use `--node tcp://127.0.0.1:26659` when
+initializing the Horcrux config).
+
+Keep the TCP listener on a private interface reachable by the signer.
+For tmkms on the same Unix host, both sides can instead use
+`unix:///absolute/path/signer.sock` in a directory with restricted
+access. Start the signer and then run `celestia-rs start`. The node
+waits up to ten seconds for the signer's public key. After a disconnect
+the listener accepts the signer again and checks that its validator key
+matches the key received at startup. Check the active consensus key in
+the node's RPC `/status` response under `validator_info`.
+
+With `priv_validator_laddr` set, the external signer holds the consensus
+key and signing state. When migrating a validator, stop the previous
+signing setup and preserve its latest signing state using the signer's
+migration procedure before starting the new setup.
+
 ## 6. Ports
 
 | port | what | config |
 |---|---|---|
 | 26656 | P2P | `config.toml [p2p] laddr` |
 | 26657 | CometBFT RPC (JSON-RPC, URI, WebSocket) | `[rpc] laddr` |
+| 26659 | Remote validator signer (example port) | `priv_validator_laddr` |
 | 9098 | celestia-core gRPC (BlockAPI, BlobstreamAPI) | `[rpc] grpc_laddr` |
 | 9090 | app gRPC (+ BlockAPI) | `app.toml [grpc] address` (`enable = true`) |
 | 1317 | REST API | `app.toml [api] address` (`enable = true`) |

@@ -50,8 +50,9 @@ priv_validator_key_file = "config/priv_validator_key.json"
 # Path to the JSON file containing the last sign state of a validator
 priv_validator_state_file = "data/priv_validator_state.json"
 
-# TCP or UNIX socket address for CometBFT to listen on for
-# connections from an external PrivValidator process
+# Listen address for an external validator signer such as tmkms or Horcrux.
+# Use tcp://host:port (encrypted) or unix:///path/to/socket (local tmkms).
+# An empty address uses the validator key and signing state files above.
 priv_validator_laddr = ""
 
 # gRPC address for the PrivValidator server.

@@ -209,3 +209,119 @@ fn single_validator_node_produces_verifiable_blocks() {
     let pv = std::fs::read_to_string(home.join("data").join("priv_validator_state.json")).unwrap();
     assert!(pv.starts_with("{\n  \"height\": \"4\","), "{pv}");
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn remote_signer_can_propose_and_commit_without_local_signing_files() {
+    use std::time::Duration;
+
+    use ctypes::proto::privval::{self as wire, message::Sum};
+    use p2p::secret_connection::{Plain, read_delimited};
+    use privval::{FilePv, FilePvKey, PrivValidator as _};
+    use tokio::io::AsyncWriteExt as _;
+    use tokio::net::UnixStream;
+
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    copy_fixture(home);
+    let genesis_path = home.join("config/genesis.json");
+    let mut genesis: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&genesis_path).unwrap()).unwrap();
+    genesis["consensus"]["params"]["abci"]["vote_extensions_enable_height"] = "1".into();
+    std::fs::write(&genesis_path, serde_json::to_vec(&genesis).unwrap()).unwrap();
+    let key_path = home.join("config/priv_validator_key.json");
+    let key = FilePvKey::from_json(&std::fs::read(&key_path).unwrap()).unwrap();
+    std::fs::remove_file(&key_path).unwrap();
+    std::fs::remove_file(home.join("data/priv_validator_state.json")).unwrap();
+    let mut signer = FilePv::new(key, None, None);
+    let socket = home.join("pv");
+    let mut options = opts(home, 2);
+    options.priv_validator_laddr = format!("unix://{}", socket.display());
+    let shutdown = options.shutdown.clone();
+    let node = tokio::task::spawn_blocking(move || node::start(&options));
+
+    let peer_socket = socket.clone();
+    let peer = tokio::spawn(async move {
+        let stream = loop {
+            match UnixStream::connect(&peer_socket).await {
+                Ok(stream) => break stream,
+                Err(_) => tokio::time::sleep(Duration::from_millis(20)).await,
+            }
+        };
+        let (reader, mut writer) = stream.into_split();
+        let mut reader = Plain(reader);
+        let mut raw_signatures = 0;
+        let mut extension_signatures = 0;
+        loop {
+            let (bytes, _) = match read_delimited(&mut reader, 1024 * 1024).await {
+                Ok(frame) => frame,
+                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(e) => panic!("read signer request: {e}"),
+            };
+            let request = wire::Message::decode(bytes.as_slice()).unwrap();
+            let response = match request.sum.unwrap() {
+                Sum::PubKeyRequest(req) => {
+                    assert_eq!(req.chain_id, "rs-node-test");
+                    Sum::PubKeyResponse(wire::PubKeyResponse {
+                        pub_key: Some(signer.pub_key().unwrap().to_proto()),
+                        error: None,
+                    })
+                }
+                Sum::SignProposalRequest(req) => {
+                    let mut proposal = req.proposal.unwrap();
+                    // Return only signing fields, as Horcrux does.
+                    signer.sign_proposal(&req.chain_id, &mut proposal).unwrap();
+                    Sum::SignedProposalResponse(wire::SignedProposalResponse {
+                        proposal: Some(ctypes::proto::types::Proposal {
+                            timestamp: proposal.timestamp,
+                            signature: proposal.signature,
+                            ..Default::default()
+                        }),
+                        error: None,
+                    })
+                }
+                Sum::SignVoteRequest(req) => {
+                    let mut vote = req.vote.unwrap();
+                    signer.sign_vote(&req.chain_id, &mut vote).unwrap();
+                    extension_signatures += usize::from(!vote.extension_signature.is_empty());
+                    Sum::SignedVoteResponse(wire::SignedVoteResponse {
+                        vote: Some(ctypes::proto::types::Vote {
+                            timestamp: vote.timestamp,
+                            signature: vote.signature,
+                            extension_signature: vote.extension_signature,
+                            ..Default::default()
+                        }),
+                        error: None,
+                    })
+                }
+                Sum::SignRawBytesRequest(req) => {
+                    assert_eq!(req.unique_id, propagation::COMPACT_BLOCK_UID);
+                    raw_signatures += 1;
+                    Sum::SignedRawBytesResponse(wire::SignedRawBytesResponse {
+                        signature: signer
+                            .sign_raw_bytes(&req.chain_id, &req.unique_id, &req.raw_bytes)
+                            .unwrap(),
+                        error: None,
+                    })
+                }
+                Sum::PingRequest(_) => Sum::PingResponse(wire::PingResponse {}),
+                other => panic!("unexpected signer request: {other:?}"),
+            };
+            let response = wire::Message {
+                sum: Some(response),
+            };
+            writer
+                .write_all(&response.encode_length_delimited_to_vec())
+                .await
+                .unwrap();
+        }
+        (raw_signatures, extension_signatures)
+    });
+    let exchange = tokio::time::timeout(Duration::from_secs(20), peer).await;
+    shutdown.trigger();
+    node.await.unwrap().unwrap();
+    assert_eq!(exchange.unwrap().unwrap(), (2, 2));
+    assert!(!home.join("data/priv_validator_state.json").exists());
+    assert!(!socket.exists());
+    assert_eq!(node::open_stores(home).unwrap().0.height(), 2);
+}

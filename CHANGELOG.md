@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Validators can use compatible Horcrux or tmkms remote signers through
+  `priv_validator_laddr`, including Celestia compact-block signing.
+
 ## v0.1.0-rc.9 (2026-11-23)
 
 ### Changed

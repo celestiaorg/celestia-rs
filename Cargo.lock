@@ -5448,11 +5448,14 @@ dependencies = [
  "gojson",
  "hash",
  "hex",
+ "p2p",
  "pbjson-types",
  "prost 0.13.5",
  "rustix",
  "serde_json",
  "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
