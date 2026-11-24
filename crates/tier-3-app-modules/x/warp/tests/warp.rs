@@ -52,14 +52,20 @@ fn setup(c: &mut Context<'_>, deps: &Deps<'_>) -> HexAddress {
     core::create_mailbox(c, deps, &owner(), 7, noop_ism, Some(hook), Some(hook)).unwrap()
 }
 
-fn incoming(mailbox: HexAddress, token: HexAddress, nonce: u32, to: &[u8], amount: u64) -> Vec<u8> {
+fn incoming(
+    mailbox: HexAddress,
+    token: HexAddress,
+    message_index: u32,
+    to: &[u8],
+    amount: u64,
+) -> Vec<u8> {
     let mut recipient = vec![0u8; 12];
     recipient.extend_from_slice(to);
     let body = WarpPayload::new(&recipient, amount.into()).unwrap().bytes();
     let _ = mailbox;
     HyperlaneMessage {
         version: 3,
-        nonce,
+        nonce: message_index,
         origin: 1,
         sender: REMOTE,
         destination: 7,

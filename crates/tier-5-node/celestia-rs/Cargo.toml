@@ -19,7 +19,7 @@ da-fibre = ["da-light", "dep:celestia-fibre", "dep:celestia-grpc", "dep:fibre-ty
 da-webtransport = ["bridge-p2p", "dep:rustls", "dep:rcgen", "dep:time", "dep:if-watch", "dep:shiguredo_http3", "dep:tobi_quic", "dep:tobi_webtransport", "dep:x509-parser", "dep:tokio-util"]
 da-webrtc = ["bridge-p2p", "dep:rustls", "dep:libp2p-webrtc", "dep:webrtc-rand"]
 da-light = ["bridge-p2p", "dep:tonic", "dep:rustls"]
-bridge = ["axum/ws", "app/bridge", "dep:hmac", "dep:sha2", "dep:tempfile"]
+bridge = ["axum/ws", "app/bridge", "dep:cap-std", "dep:hmac", "dep:sha2", "dep:tempfile"]
 bridge-p2p = ["bridge", "dep:rustls-pki-types", "dep:libp2p", "dep:libp2p-autonat", "dep:libp2p-stream", "dep:multistream-select", "dep:futures"]
 # RocksDB state backend (default); `--no-default-features` builds redb only.
 rocksdb = ["app/rocksdb", "api-server/rocksdb"]
@@ -33,6 +33,7 @@ jemalloc = ["dep:tikv-jemallocator"]
 memstats = ["jemalloc", "dep:tikv-jemalloc-ctl", "tikv-jemallocator/profiling", "tikv-jemallocator/stats"]
 
 [dependencies]
+cap-std = { version = "4", optional = true }
 # Pin the upstream k256 0.14 migration until its first crates.io release (Lumina #1153).
 fibre-types = { package = "celestia-types", version = "=1.3.0", git = "https://github.com/celestiaorg/lumina", rev = "ccdbed9dbcd23fe31c7fb4b7001648a45262bc33", default-features = false, optional = true }
 fibre-prost = { package = "prost", version = "0.14", optional = true }

@@ -429,9 +429,9 @@ mod tests {
             r#type: i32::from(CheckTxType::New),
         })?;
         // These reach the existing unsigned-transaction check.
-        assert_eq!(one.code, 15, "{}", one.log);
-        assert_eq!(historical.code, 15, "{}", historical.log);
-        assert_eq!(v12.code, 15, "{}", v12.log);
+        assert_eq!(one.code, 15);
+        assert_eq!(historical.code, 15);
+        assert_eq!(v12.code, 15);
         Ok(())
     }
 

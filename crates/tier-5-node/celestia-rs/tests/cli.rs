@@ -298,7 +298,8 @@ fn generate_only_address_from_needs_no_passphrase() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();
     let fx = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/generate-only");
-    let mut kr = keyring::Keyring::new(home, keyring::Backend::File).with_password("passw0rd123");
+    let password = hex::encode(rand::random::<[u8; 32]>());
+    let mut kr = keyring::Keyring::new(home, keyring::Backend::File).with_password(&password);
     let key = kr
         .add_mnemonic("op", MNEMONIC, "", keyring::hd::DEFAULT_HD_PATH)
         .unwrap();

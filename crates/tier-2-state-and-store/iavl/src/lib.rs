@@ -285,8 +285,8 @@ impl Tree {
             None => None,
             Some(root) => Some(match &self.ndb {
                 Some(ndb) => {
-                    let mut nonce = 0u32;
-                    Link::Stored(persist(ndb, root, next_version, &mut nonce, batch)?)
+                    let mut node_index = 0u32;
+                    Link::Stored(persist(ndb, root, next_version, &mut node_index, batch)?)
                 }
                 None => assign_hashes(root, next_version),
             }),
@@ -535,7 +535,7 @@ fn persist(
     ndb: &NodeDb,
     link: Link,
     version: Version,
-    nonce: &mut u32,
+    node_index: &mut u32,
     batch: &mut WriteBatch,
 ) -> Result<StoredRef> {
     let arc = match link {
@@ -551,11 +551,11 @@ fn persist(
     let (r, bytes, saved) = match node {
         Node::Leaf(leaf) => {
             let hash = leaf_hash(version, &leaf.key, &leaf.value);
-            *nonce += 1;
+            *node_index += 1;
             let r = StoredRef {
                 nk: NodeKey {
                     version,
-                    nonce: *nonce,
+                    nonce: *node_index,
                 },
                 hash,
                 height: 0,
@@ -570,8 +570,8 @@ fn persist(
             (r, bytes, saved)
         }
         Node::Inner(inner) => {
-            let left = persist(ndb, inner.left, version, nonce, batch)?;
-            let right = persist(ndb, inner.right, version, nonce, batch)?;
+            let left = persist(ndb, inner.left, version, node_index, batch)?;
+            let right = persist(ndb, inner.right, version, node_index, batch)?;
             let hash = inner_hash(
                 i64::from(inner.height),
                 inner.size,
@@ -579,11 +579,11 @@ fn persist(
                 left.hash,
                 right.hash,
             );
-            *nonce += 1;
+            *node_index += 1;
             let r = StoredRef {
                 nk: NodeKey {
                     version,
-                    nonce: *nonce,
+                    nonce: *node_index,
                 },
                 hash,
                 height: inner.height,

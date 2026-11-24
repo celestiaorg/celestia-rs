@@ -435,7 +435,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> SecretConnection<S> {
         let dh = shared.to_bytes();
         transcript.append_message(b"DH_SECRET", &dh);
 
-        let (recv_key, send_key) = derive_secrets(&dh, loc_is_least);
+        let (recv_key, send_key) = derive_secrets(&dh, loc_is_least)?;
         let mut challenge = [0u8; 32];
         transcript.challenge_bytes(b"SECRET_CONNECTION_MAC", &mut challenge);
 
@@ -515,16 +515,13 @@ impl<S> SecretConnection<S> {
 
 /// HKDF-SHA256 over the DH secret: 32-byte receive key, 32-byte send key
 /// (order swapped when the local ephemeral key is the larger one).
-fn derive_secrets(dh: &[u8; 32], loc_is_least: bool) -> ([u8; 32], [u8; 32]) {
+fn derive_secrets(dh: &[u8; 32], loc_is_least: bool) -> io::Result<([u8; 32], [u8; 32])> {
     let hk = Hkdf::<Sha256>::new(None, dh);
-    let mut okm = [0u8; 96];
-    // 96 <= 255 * 32, expand cannot fail.
-    let _ = hk.expand(KEY_AND_CHALLENGE_GEN, &mut okm);
-    let mut a = [0u8; 32];
-    let mut b = [0u8; 32];
-    a.copy_from_slice(&okm[..32]);
-    b.copy_from_slice(&okm[32..64]);
-    if loc_is_least { (a, b) } else { (b, a) }
+    let mut keys: [[u8; 32]; 2] = Default::default();
+    hk.expand(KEY_AND_CHALLENGE_GEN, keys.as_flattened_mut())
+        .map_err(|_| io::Error::other("invalid HKDF key material length"))?;
+    let [a, b] = keys;
+    Ok(if loc_is_least { (a, b) } else { (b, a) })
 }
 
 #[cfg(test)]
