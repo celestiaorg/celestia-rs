@@ -8,15 +8,39 @@ pool=celestia-rs-bench
 provider=github
 account=celestia-rs-bench
 email="$account@$project.iam.gserviceaccount.com"
-location=(--project="$project" --location=global)
 issuer=https://token.actions.githubusercontent.com
 number=$(gcloud projects describe "$project" --format='value(projectNumber)')
+
+location=(--project="$number" --location=global)
+
+# IAM can acknowledge creation before a dependent API sees the new resource.
+retry_not_found() {
+  local delay output errors status
+  errors=$(mktemp)
+  for delay in 2 4 8 16 30 60 0; do
+    if output=$("$@" 2>"$errors"); then
+      cat "$errors" >&2
+      rm -f "$errors"
+      printf '%s\n' "$output"
+      return 0
+    else
+      status=$?
+    fi
+    if [[ $delay == 0 ]] || ! grep -q 'NOT_FOUND' "$errors"; then
+      cat "$errors" >&2
+      rm -f "$errors"
+      return "$status"
+    fi
+    echo "IAM resource not visible yet; retrying in ${delay}s." >&2
+    sleep "$delay"
+  done
+}
 
 if [[ $mode == check ]]; then
   pools=$(gcloud iam workload-identity-pools list "${location[@]}" --format='value(name)')
   found=0
   for path in $pools; do
-    matches=$(gcloud iam workload-identity-pools providers list "${location[@]}" \
+    matches=$(retry_not_found gcloud iam workload-identity-pools providers list "${location[@]}" \
       --workload-identity-pool="${path##*/}" --filter="oidc.issuerUri=$issuer" \
       --format='value(name)')
     if [[ -n $matches ]]; then
@@ -40,9 +64,9 @@ if ! grep -Fxq "projects/$number/locations/global/workloadIdentityPools/$pool" <
 fi
 base="projects/$number/locations/global/workloadIdentityPools/$pool"
 full="$base/providers/$provider"
-providers=$(gcloud iam workload-identity-pools providers list "${location[@]}" --workload-identity-pool="$pool" --format='value(name)')
+providers=$(retry_not_found gcloud iam workload-identity-pools providers list "${location[@]}" --workload-identity-pool="$pool" --format='value(name)')
 if [[ -z $providers ]]; then
-  gcloud iam workload-identity-pools providers create-oidc "$provider" "${location[@]}" \
+  retry_not_found gcloud iam workload-identity-pools providers create-oidc "$provider" "${location[@]}" \
     --workload-identity-pool="$pool" --display-name='GitHub benchmark workflow' \
     --issuer-uri="$issuer" --attribute-mapping="$mapping" --attribute-condition="$condition"
 elif [[ $providers == "$full" ]]; then
@@ -61,7 +85,7 @@ if ! grep -Fxq "$email" <<<"$accounts"; then
 elif [[ $(gcloud iam service-accounts describe "$email" --project="$project" --format='value(displayName)') != 'Celestia operator benchmarks' ]]; then
   echo "Existing service account $email has a different purpose. Inspect it before proceeding." >&2; exit 1
 fi
-gcloud iam service-accounts add-iam-policy-binding "$email" --project="$project" \
+retry_not_found gcloud iam service-accounts add-iam-policy-binding "$email" --project="$project" \
   --role=roles/iam.workloadIdentityUser \
   --member="principalSet://iam.googleapis.com/$base/attribute.repository_id/$repo_id" >/dev/null
 printf 'Provider: %s\nService account: %s\n' "$full" "$email"
