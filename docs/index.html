@@ -115,7 +115,14 @@
         </p>
       </section>
       <section id="benchmarks">
-        <h2>Measured against Go</h2>
+        <h2>Sync time, RAM and disk</h2>
+        <p>The current comparison target is
+          <a href="https://github.com/celestiaorg/celestia-app/releases/tag/v11.0.0">celestia-app v11.0.0</a>.
+          The Google Cloud comparison will measure how long a fresh node takes to reach
+          a verified chain tip from a state-sync snapshot and from genesis, plus peak
+          memory and disk use at the same height. Results are pending.</p>
+        <p><a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/benchmarks/operator-sync.md">Operator benchmark protocol</a></p>
+        <h3>Historical Mac Mini M4 results</h3>
         <p>
           On a Mac Mini M4 with 16 GB RAM, both release builds replayed 386,980
           transactions across 511 heights and matched every recorded app hash.
@@ -378,7 +385,7 @@
           <summary>Is it ready for my mainnet validator?</summary>
           <p>
             The project runs validators on Mocha and mainnet. Its general
-            mainnet recommendation is pending qualification against Go v10.6.0.
+            mainnet recommendation is pending qualification.
             Review
             <a
               href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/adr/0008-mainnet-recommendation.md"

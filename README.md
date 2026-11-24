@@ -31,8 +31,7 @@ alongside the Go validators:
 | Mainnet | [Mainnet validator](https://celenium.io/validator/1499834894?tab=proposed+blocks) |
 
 General mainnet recommendation for non-archival RPC nodes, full consensus
-nodes and validators is pending qualification against Go celestia-app
-v10.6.0. See [ADR 0008](docs/adr/0008-mainnet-recommendation.md) for scope
+nodes and validators is pending qualification. See [ADR 0008](docs/adr/0008-mainnet-recommendation.md) for scope
 and evidence requirements.
 
 See the [milestones](MILESTONES.md) for qualification progress and the
@@ -65,6 +64,11 @@ See the [milestones](MILESTONES.md) for qualification progress and the
   release archives for macOS and Linux, launchd and systemd units.
 
 ## Performance vs Go
+
+The current operator benchmark target is [celestia-app v11.0.0](https://github.com/celestiaorg/celestia-app/releases/tag/v11.0.0).
+The [operator comparison protocol](docs/benchmarks/operator-sync.md) covers snapshot and genesis sync to tip, RAM and disk usage. Results are pending.
+
+### Historical Mac Mini M4 results
 
 The October 20 reference run used release builds on the same Mac Mini M4
 (16 GB RAM, 256 GB SSD) with Go celestia-appd v10.4.0 and celestia-rs
