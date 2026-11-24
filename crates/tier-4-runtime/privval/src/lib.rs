@@ -14,6 +14,9 @@
 //! when the sign bytes are identical, or when they differ only in their
 //! timestamp (the old timestamp is then restored into the message); any
 //! other difference is refused with `conflicting data`.
+//!
+//! [`RemotePv`] delegates signing to a validator signer such as tmkms or
+//! Horcrux over the CometBFT socket protocol.
 
 #![forbid(unsafe_code)]
 
@@ -29,6 +32,9 @@ use ctypes::PubKey;
 use ctypes::canonical::{proposal_sign_bytes, vote_extension_sign_bytes, vote_sign_bytes};
 use ctypes::proto::types as pb;
 use prost::Message;
+
+mod remote;
+pub use remote::RemotePv;
 
 /// `stepNone`: the initial state.
 pub const STEP_NONE: i8 = 0;

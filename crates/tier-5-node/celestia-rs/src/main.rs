@@ -1397,6 +1397,7 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
         opts.bridge_no_announce.clone_from(&a.bridge_no_announce);
     }
     opts.mempool = config::mempool_options(&files)?;
+    opts.priv_validator_laddr = cfg("priv_validator_laddr");
     opts.block_sync = !a.no_block_sync;
     opts.discard_abci_responses = files.bool(File::Config, "storage.discard_abci_responses");
     let laddr = match &a.p2p_laddr {

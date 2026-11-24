@@ -424,13 +424,14 @@ crontab -e</code></pre></div>
           </p>
         </details>
         <details id="kms">
-          <summary>Can a validator sign with Horcrux, TMKMS or an HSM?</summary>
-          <p>celestia-rs currently supports local-file consensus signing.
-            It uses <code>priv_validator_key.json</code> for the key and
-            <code>priv_validator_state.json</code> to guard against double signing.
-            Remote signing with Horcrux or TMKMS and HSM-backed consensus signing
-            are unsupported. If your validator requires external key custody,
-            keep its existing signer and try celestia-rs as a non-validating full node.
+          <summary>Can a validator sign with Horcrux, tmkms or an HSM?</summary>
+          <p>Builds from <code>main</code> support local-file signing and remote
+            signing with Horcrux or tmkms through <code>priv_validator_laddr</code>.
+            Use Horcrux <code>v3.3.3-celestia</code> or tmkms
+            <code>v0.14.0-celestia</code> on chains with vote extensions enabled.
+            Stock tmkms <code>v0.15.0</code> requires vote extensions to be disabled.
+            <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md#using-tmkms-or-horcrux">Remote signer setup</a></p>
+          <p>Direct HSM integration remains outside the current validator scope.
             <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/adr/0008-mainnet-recommendation.md#scope">Validator signing scope</a></p>
         </details>
         <details>

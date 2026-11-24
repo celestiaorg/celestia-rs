@@ -29,7 +29,7 @@ use consensus::{ConsensusConfig, ConsensusState, Event, FileWal, SystemClock};
 use ctypes::proto::abci;
 use kvdb::{DbOptions, KvBackend};
 use nodestore::{AppConn, BlockExecutor, BlockStore, GenesisDoc, Handshaker, StateStore};
-use privval::FilePv;
+use privval::{FilePv, PrivValidator, RemotePv};
 use prost::Message as _;
 
 /// The Rust app behind [`AppConn`].
@@ -202,6 +202,8 @@ pub struct StartOptions {
     pub mempool: mempool::MempoolConfig,
     /// P2P (None: no networking, a lone validator).
     pub p2p: Option<crate::net::P2pOptions>,
+    /// CometBFT `priv_validator_laddr`. Empty uses the local file signer.
+    pub priv_validator_laddr: String,
     /// `block_sync`: catch up from peers before consensus (Go default).
     pub block_sync: bool,
     /// `[storage] discard_abci_responses`: retain only the last response.
@@ -249,6 +251,7 @@ impl StartOptions {
             config,
             mempool: mempool::MempoolConfig::celestia_app(),
             p2p: None,
+            priv_validator_laddr: String::new(),
             block_sync: true,
             discard_abci_responses: false,
             state_sync: None,
@@ -394,6 +397,25 @@ pub fn open_stores(home: &Path) -> anyhow::Result<(BlockStore, StateStore)> {
     Ok((bs, ss))
 }
 
+fn validator_signer(opts: &StartOptions, chain_id: &str) -> anyhow::Result<Box<dyn PrivValidator>> {
+    if !opts.priv_validator_laddr.is_empty() {
+        let signer = RemotePv::listen(
+            &opts.priv_validator_laddr,
+            chain_id,
+            crate::net::node_key(&opts.home)?,
+        )
+        .with_context(|| format!("priv_validator_laddr {}", opts.priv_validator_laddr))?;
+        return Ok(Box::new(signer));
+    }
+    let key_path = opts.home.join("config/priv_validator_key.json");
+    let state_path = opts.home.join("data/priv_validator_state.json");
+    // Init creates the pristine signing state. Losing it does not make an
+    // existing key safe to sign.
+    let pv = FilePv::load(&key_path, &state_path)
+        .map_err(|e| anyhow!("privval: {e}; refusing to reset signing state"))?;
+    Ok(Box::new(pv))
+}
+
 /// `celestia-rs start`.
 #[allow(clippy::too_many_lines)]
 pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
@@ -461,12 +483,9 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         pool.clone(),
         evpool.executor_handle(),
     );
-    let key_path = home.join("config").join("priv_validator_key.json");
-    let state_path = home.join("data").join("priv_validator_state.json");
-    // Init creates the pristine signing state. Never recreate it here:
-    // losing the persisted H/R/S does not make an existing key safe to sign.
-    let pv = FilePv::load(&key_path, &state_path)
-        .map_err(|e| anyhow!("privval: {e}; refusing to reset signing state"))?;
+    let pv = validator_signer(opts, &genesis.chain_id)?;
+    let pub_key = pv.pub_key().context("get validator public key")?;
+    let local_addr = pub_key.address();
     // RPC (ADR 0003 `rpc`): JSON-RPC/WebSocket, celestia-core gRPC, the
     // app's gRPC (+BlockAPI) and REST servers, indexers and the event bus.
     let mut rpc = crate::rpc_service::Rpc::new(crate::rpc_service::RpcInputs {
@@ -477,7 +496,7 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         app: app.clone(),
         mempool: pool.clone(),
         evidence: evpool.clone(),
-        pub_key: ctypes::PubKey::Ed25519(pv.key.pub_key),
+        pub_key,
         app_version: state.consensus_params.version.app,
     })?;
     exec.set_event_sink(rpc.publisher.clone());
@@ -511,7 +530,6 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         exec.set_prune_limit(index.prune_limit());
     }
     rpc.spawn()?;
-    let local_addr = pv.address().to_vec();
     // Go: a fresh node with state sync enabled skips the handshake; the
     // state comes from the snapshot.
     let state_sync_mode = opts.state_sync.is_some() && state.last_block_height == 0;
@@ -610,7 +628,7 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         exec,
         Box::new(wal),
         Box::new(SystemClock::with_stop(cs_stopping.clone())),
-        Some(Box::new(pv)),
+        Some(pv),
     )
     .map_err(|e| anyhow!("consensus: {e}"))?;
     let only_validator_is_us =
