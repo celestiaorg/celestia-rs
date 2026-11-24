@@ -74,6 +74,50 @@ phase A (e.g. `--no-default-features --features rocksdb`, the system
 allocator). Record `sysctl -n machdep.cpu.brand_string`, `sysctl hw.ncpu
 hw.memsize` and keep the machine otherwise idle.
 
+## Application-state disk comparison
+
+The B1 reference replay below measured 487 MB of application state for Rust
+and 456 MB for Go. The compact IAVL encoding removes one 32-byte hash and
+two sets of child height/size fields from every newly written inner node.
+It applies to ordinary commits, snapshot restore and both Rust storage
+backends. The application RocksDB now uses 16 MiB write buffers, which let
+pruning tombstones reach disk and compaction sooner.
+
+To isolate the storage changes, replay the same account writes through both
+persistent IAVL implementations. Supply a Celestia Go checkout to select
+its IAVL and database dependency versions.
+
+```bash
+python3 conformance/bench/iavl/run.py ../celestia-app
+python3 conformance/bench/iavl/run.py ../celestia-app --heights 1000
+```
+
+The first height creates 20,000 accounts. Each subsequent height writes 500
+20-byte keys and 80-byte values, with a growing pool of addresses. Both
+trees use a 100,000-node cache, retain 100 versions and prune every ten
+heights. The driver compares every root and measures allocated KiB with
+`du -sk` after clean shutdown, including database logs. It uses the Go
+default PebbleDB with the fast-node index enabled. Pass
+`--go-backend goleveldb` to compare against GoLevelDB. Background compaction
+can change the final size between runs.
+
+Linux measurements with RocksDB 10.4.2, Go IAVL v1.2.8 and Pebble v1.1.5.
+The previous Rust build was `2da1bf7`. All 1,000 roots matched Go.
+
+| Heights | Previous Rust | Go | Updated Rust | Disk saved vs Go |
+|---:|---:|---:|---:|---:|
+| 200 | 61.7 MiB | 53.4 MiB | 42.2 MiB | 21.0% |
+| 1,000 | 97.7 MiB | 70.6 MiB | 52.5 MiB | 25.6% |
+
+These measurements cover one persistent account tree. The full ABCI replay,
+block store, snapshots and consensus WAL are outside this measurement.
+
+An uncached parent may need to fetch both children to resolve their hashes.
+The same bounded node cache retains those records for traversal. In a
+20,000-key lookup after reopening the 200-height store, the backend served
+52,557 point reads, up from 46,278 with the original format. Repeating the
+lookup with a warm node cache issued zero backend reads in either build.
+
 ## Results: Mac Mini M4 (2026-10-20, B1 reference)
 
 Machine: Mac Mini M4 (4 performance + 6 efficiency cores), 16 GB, 256 GB

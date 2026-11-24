@@ -642,14 +642,19 @@ pub fn open_backend(dir: &Path, name: &str, options: &DbOptions) -> Result<Arc<d
     }
     Ok(match options.backend {
         #[cfg(feature = "rocksdb")]
-        BackendKind::RocksDb => Arc::new(RocksBackend::open(
-            path,
-            RocksOptions {
+        BackendKind::RocksDb => {
+            let mut rocks = RocksOptions {
                 block_cache_size: options.cache_size,
                 sync_writes: options.sync_writes,
                 ..RocksOptions::default()
-            },
-        )?),
+            };
+            // Application-state pruning generates tombstones every few heights.
+            // Flush them in smaller batches so compaction can reclaim old nodes.
+            if name == "application" {
+                rocks.write_buffer_size = 16 << 20;
+            }
+            Arc::new(RocksBackend::open(path, rocks)?)
+        }
         BackendKind::Redb => Arc::new(RedbBackend::open(
             path,
             RedbOptions {

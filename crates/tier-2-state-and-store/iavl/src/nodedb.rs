@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 use kvdb::{KvBackend, WriteBatch};
 use lru::LruCache;
 
-use crate::node::{NODE_KEY_LEN, Node, NodeKey, StoredRef, decode_node, decode_root};
+use crate::node::{NODE_KEY_LEN, Node, NodeKey, StoredRef, decode_node, decode_root, read_ref};
 use crate::{Error, Result, Version};
 
 const NODE: u8 = b'n';
@@ -31,9 +31,22 @@ const ORPHAN: u8 = b'o';
 
 static NEXT_DB_ID: AtomicU64 = AtomicU64::new(1);
 
-/// Bounded LRU cache of decoded nodes, shareable by many trees.
+// Resolving a compact parent's child references reads the child records.
+// Keep those bytes in the same bounded cache until a traversal needs them.
+#[derive(Clone)]
+enum CachedNode {
+    Decoded(Arc<Node>),
+    Encoded(Arc<EncodedNode>),
+}
+
+struct EncodedNode {
+    reference: StoredRef,
+    bytes: Vec<u8>,
+}
+
+/// Bounded LRU cache of persisted nodes, shareable by many trees.
 pub struct NodeCache {
-    lru: Mutex<LruCache<(u64, NodeKey), Arc<Node>>>,
+    lru: Mutex<LruCache<(u64, NodeKey), CachedNode>>,
     hits: AtomicU64,
     misses: AtomicU64,
 }
@@ -89,7 +102,7 @@ impl NodeCache {
         }
     }
 
-    fn get(&self, key: &(u64, NodeKey)) -> Option<Arc<Node>> {
+    fn get(&self, key: &(u64, NodeKey)) -> Option<CachedNode> {
         let found = self.lru.lock().ok()?.get(key).cloned();
         if found.is_some() {
             self.hits.fetch_add(1, Ordering::Relaxed);
@@ -99,7 +112,7 @@ impl NodeCache {
         found
     }
 
-    fn put(&self, key: (u64, NodeKey), node: Arc<Node>) {
+    fn put(&self, key: (u64, NodeKey), node: CachedNode) {
         if let Ok(mut lru) = self.lru.lock() {
             lru.put(key, node);
         }
@@ -203,20 +216,47 @@ impl NodeDb {
     /// Loads (through the cache) the node `r` points at.
     pub(crate) fn load(&self, r: &StoredRef) -> Result<Arc<Node>> {
         let cache_key = (self.id, r.nk);
-        if let Some(node) = self.cache.get(&cache_key) {
-            return Ok(node);
-        }
-        let bytes = self
-            .backend
-            .get(&self.node_key(r.nk))
+        let decode = |bytes: &[u8]| decode_node(bytes, r, |nk| self.child_ref(nk));
+        let node = Arc::new(match self.cache.get(&cache_key) {
+            Some(CachedNode::Decoded(node)) => return Ok(node),
+            Some(CachedNode::Encoded(node)) => decode(&node.bytes)?,
+            None => decode(&self.node_bytes(r.nk)?)?,
+        });
+        self.cache
+            .put(cache_key, CachedNode::Decoded(Arc::clone(&node)));
+        Ok(node)
+    }
+
+    fn node_bytes(&self, nk: NodeKey) -> Result<Vec<u8>> {
+        self.backend
+            .get(&self.node_key(nk))
             .map_err(db_err)?
             .ok_or(Error::MissingNode {
-                version: r.nk.version,
-                nonce: r.nk.nonce,
-            })?;
-        let node = Arc::new(decode_node(&bytes, r)?);
-        self.cache.put(cache_key, Arc::clone(&node));
-        Ok(node)
+                version: nk.version,
+                nonce: nk.nonce,
+            })
+    }
+
+    fn child_ref(&self, nk: NodeKey) -> Result<StoredRef> {
+        let key = (self.id, nk);
+        match self.cache.get(&key) {
+            Some(CachedNode::Decoded(node)) => Ok(StoredRef {
+                nk,
+                hash: node.hash_for(nk.version),
+                height: node.height(),
+                size: node.size(),
+            }),
+            Some(CachedNode::Encoded(node)) => Ok(node.reference),
+            None => {
+                let bytes = self.node_bytes(nk)?;
+                let reference = read_ref(&bytes, nk)?;
+                self.cache.put(
+                    key,
+                    CachedNode::Encoded(Arc::new(EncodedNode { reference, bytes })),
+                );
+                Ok(reference)
+            }
+        }
     }
 
     /// Queues a node write and warms the cache with it.
@@ -228,7 +268,7 @@ impl NodeDb {
         node: Arc<Node>,
     ) {
         batch.put(self.node_key(nk), bytes);
-        self.cache.put((self.id, nk), node);
+        self.cache.put((self.id, nk), CachedNode::Decoded(node));
     }
 
     pub(crate) fn delete_node(&self, batch: &mut WriteBatch, nk: NodeKey) {
