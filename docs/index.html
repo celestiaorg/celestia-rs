@@ -185,6 +185,54 @@
           and any additional DA history you retain. Archival bridge storage
           grows with retained chain data.
           <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/hardware.md">Hardware targets and pruning assumptions</a></p>
+        <h3 id="profiles">Choose a node profile</h3>
+        <p>Apply one profile to a freshly initialized home. For the Mainnet
+          quickstart below, insert its commands just before the final
+          <code>exec</code> line, in the same shell block where <code>node</code>
+          and <code>home_dir</code> are set. Config changes persist across restarts.
+          Switching to shorter retention can permanently prune history.</p>
+        <details>
+          <summary>Resource-minimized · personal full node</summary>
+          <p>For a machine with limited memory and SSD space, keep recent blocks,
+            prune older app states, and skip producing snapshots for other peers.
+            The node can still bootstrap from a peer’s snapshot. A smaller IAVL
+            cache trades memory savings for more database reads. Disabling the transaction index saves disk and removes historical transaction search. These settings
+            are a starting point; minimum hardware has yet to be measured.</p>
+          <div class="terminal"><pre><code>"$node" config set app pruning everything --home "$home_dir"
+"$node" config set app min-retain-blocks 3000 --home "$home_dir"
+"$node" config set app iavl-cache-size 100000 --home "$home_dir"
+"$node" config set config tx_index.indexer null --home "$home_dir"
+"$node" config set app state-sync.snapshot-interval 0 --home "$home_dir"</code></pre></div>
+        </details>
+        <details>
+          <summary>Recommended · validator</summary>
+          <p>Use the project’s validator defaults. Rust keeps 100 recent app
+            versions and prunes each commit. A 3,000-block retention setting
+            and snapshots every 1,500 heights balance disk use and peer recovery.
+            Leave the DA bridge disabled for a consensus-only validator.
+            Applying these settings does not register a validator or move stake.</p>
+          <div class="terminal"><pre><code>"$node" config set app pruning default --home "$home_dir"
+"$node" config set app min-retain-blocks 3000 --home "$home_dir"
+"$node" config set app state-sync.snapshot-interval 1500 --home "$home_dir"</code></pre></div>
+          <p>Follow the <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md#12-mainnet-validator-m14">validator runbook</a>
+            for signing, monitoring and Mainnet qualification status.</p>
+        </details>
+        <details>
+          <summary>Archival · preserve block and application history</summary>
+          <p>Keep every block and app-state version the node acquires. Enable
+            transaction indexing from the start for historical transaction searches.
+            Size the SSD for growing history and compaction.</p>
+          <div class="terminal"><pre><code>"$node" config set app pruning nothing --home "$home_dir"
+"$node" config set app min-retain-blocks 0 --home "$home_dir"
+"$node" config set config tx_index.indexer kv --home "$home_dir"</code></pre></div>
+          <p>For an archival DA bridge, enable a bridge listener and pass
+            <code>--bridge-archival</code> on every start, beginning with a fresh
+            bridge index. Check <code>header.Tail</code> and <code>header.LocalHead</code>
+            for its served range. A node started from a snapshot retains history
+            forward from that checkpoint. Full Mainnet history requires independently
+            verified archival stores or verified replay from genesis; this release
+            currently stops during Mainnet genesis initialization.</p>
+        </details>
         <h3>Install the release candidate</h3>
         <p>
           The installer checks the archive’s SHA-256. This example pins the
@@ -295,6 +343,59 @@
       </section>
       <section id="faq">
         <h2>Operator FAQ</h2>
+        <details id="hardware-faq">
+          <summary>What hardware requirements do I need?</summary>
+          <p>The reference pruned validator uses a 10-core Mac Mini M4,
+            16 GB RAM and a 512 GB SSD. Its design budgets are 8 GB resident
+            memory at steady state and 12 GB at peak. Linux releases support
+            x86-64 and ARM64. The project has not established a minimum
+            machine size or a fixed disk size for an archive. Choose a
+            <a href="#profiles">node profile</a> based on the history you need,
+            and allow disk headroom for sync and compaction.</p>
+        </details>
+        <details id="automatic-updates">
+          <summary>How do I configure automatic updates?</summary>
+          <p><strong>macOS with launchd.</strong> The packaged updater builds
+            the latest published release, including release candidates, after
+            its CI passes. It deploys to a Mocha canary first, checks progress
+            and app hashes, then updates Mainnet. A failed health check triggers
+            rollback. This setup expects both managed nodes.</p>
+          <ol>
+            <li>Set up the two launchd services, their executable paths and
+              restart permissions as described in the
+              <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md#following-releases-automatically-optional">auto-update guide</a>.
+              Install the Rust build prerequisites, curl, jq and git.</li>
+            <li>From the repository checkout, install and check the updater:
+              <div class="terminal"><pre><code>install -m 755 packaging/macos/celestia-rs-auto-update.sh packaging/check-apphash.sh ~/.celestia-rs/bin/
+~/.celestia-rs/bin/celestia-rs-auto-update.sh check</code></pre></div></li>
+            <li>Use the install commands at the top of the
+              <a href="https://github.com/celestiaorg/celestia-rs/blob/main/packaging/macos/org.celestia.celestia-rs-auto-update.plist">hourly launchd job</a>
+              to fill in the user and home directory and bootstrap the job.
+              Inspect <code>~/Library/Logs/celestia-rs-auto-update.log</code>
+              after the first pass.</li>
+          </ol>
+          <p><strong>Linux full node with a systemd user service.</strong>
+            For a single non-validating node, the following daily cron job
+            uses the checksum-verifying release installer. This example assumes
+            your user service is named <code>celestia-rs.service</code> and runs
+            <code>~/.celestia-rs/bin/celestia-rs</code>. The packaged Linux
+            system service uses a different executable path. Verify yours with
+            <code>systemctl --user cat celestia-rs.service</code>.</p>
+          <p>Save the installer once, then open your user crontab:</p>
+          <div class="terminal"><pre><code>mkdir -p ~/.celestia-rs/bin
+curl -fsSL https://raw.githubusercontent.com/celestiaorg/celestia-rs/v0.1.0-rc.9/scripts/install.sh -o ~/.celestia-rs/bin/install-release.sh
+crontab -e</code></pre></div>
+          <p>Add this single line. It checks daily at 04:15 local time,
+            includes release candidates, and restarts an active service when
+            its running executable differs from the installed one. Remove
+            <code>--prerelease</code> to follow stable releases only.</p>
+          <div class="terminal"><pre><code>15 4 * * * (export XDG_RUNTIME_DIR="/run/user/$(id -u)"; set -e; unit=celestia-rs.service; systemctl --user is-active --quiet "$unit"; sh "$HOME/.celestia-rs/bin/install-release.sh" --no-modify-path --prerelease; pid=$(systemctl --user show "$unit" -p MainPID --value); if [ "$pid" -gt 0 ] &amp;&amp; ! [ "/proc/$pid/exe" -ef "$HOME/.celestia-rs/bin/celestia-rs" ]; then systemctl --user try-restart "$unit"; fi) &gt;&gt;"$HOME/.celestia-rs/update.log" 2&gt;&amp;1</code></pre></div>
+          <p>Check <code>~/.celestia-rs/update.log</code> and confirm the node
+            advances after restart. Remove the cron entry to pause updates.
+            The installer keeps the replaced binary as <code>celestia-rs.prev</code>.
+            For validators, test releases on a non-signing node first and
+            preserve the latest signing state through every restart.</p>
+        </details>
         <details>
           <summary>Do I still need a separate Go bridge?</summary>
           <p>
