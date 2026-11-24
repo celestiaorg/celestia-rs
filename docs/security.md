@@ -103,12 +103,14 @@ Dependabot rules) that can auto-dismiss alerts by package name for the
 `.github/dependabot.yml` (there was none; the alerts' pull requests came
 from repository-level security updates):
 
-- **cargo** (root): weekly; all minor / patch version updates in one
-  grouped pull request, all security updates in one grouped pull request.
+- **cargo** (root): monthly with a seven-day version update cooldown.
+  Minor / patch version updates and security updates each have their own
+  pull request group.
   `flate2`, `blst` and `axum` (pinned with `=`) are ignored, and new
   *major* versions of the consensus-sensitive families listed under
   "Deferred majors" are ignored (migrated by hand).
-- **github-actions**: weekly, one grouped pull request.
+- **github-actions**: monthly with a seven-day version update cooldown
+  and one group for version update pull requests.
 - **gomod** (all 16 `conformance/` modules in one entry): no version
   updates (`open-pull-requests-limit: 0`); security updates grouped into
   one pull request; the pinned reference modules (`github.com/celestiaorg/*`,

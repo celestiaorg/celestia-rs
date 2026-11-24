@@ -86,6 +86,18 @@ enum Cmd {
     /// Run a node: Rust consensus, P2P, mempool and RPC on top of the
     /// in-process state machine.
     Start(Box<StartArgs>),
+    /// Follow a trusted DA checkpoint and sample shares over the DA network.
+    #[cfg(feature = "da-light")]
+    DaLight(celestia_rs::LightArgs),
+    /// Create a token for the DA JSON-RPC listener using this node home.
+    #[cfg(feature = "bridge")]
+    DaAuth {
+        #[arg(value_parser=["public","read","write","admin"])]
+        level: String,
+        /// Lifetime in seconds, or zero for an unexpiring token.
+        #[arg(long, default_value_t = 0)]
+        ttl_seconds: u64,
+    },
     /// Follow a network over celestia-core RPC (HTTP/HTTPS) instead of
     /// P2P: verify every block with the light client, execute it and stop
     /// at the first app hash / results / validator set divergence.
@@ -166,6 +178,38 @@ enum Cmd {
 #[derive(Args, Debug)]
 #[allow(clippy::struct_excessive_bools)]
 struct StartArgs {
+    /// DA listener. Repeat for TCP sockets or libp2p TCP, WebSocket and QUIC v1 multiaddresses.
+    #[cfg(feature = "bridge-p2p")]
+    #[arg(long, value_parser = node::parse_bridge_listener)]
+    bridge_p2p_listen: Vec<libp2p::Multiaddr>,
+    /// Bootstrap DA peers. Repeat to replace the network's published bootstrap list.
+    #[cfg(feature = "bridge-p2p")]
+    #[arg(long, requires = "bridge_p2p_listen")]
+    bridge_bootstrap: Vec<libp2p::Multiaddr>,
+    /// Reachable DA addresses to advertise (for example, a NAT-mapped TCP port).
+    #[cfg(feature = "bridge-p2p")]
+    #[arg(long, requires = "bridge_p2p_listen")]
+    bridge_announce: Vec<libp2p::Multiaddr>,
+    /// Listener addresses to omit from DA advertisements. Repeat for each exact multiaddress.
+    #[cfg(feature = "bridge-p2p")]
+    #[arg(long, requires = "bridge_p2p_listen")]
+    bridge_no_announce: Vec<libp2p::Multiaddr>,
+    /// Serve experimental DA JSON-RPC on this loopback address.
+    #[cfg(feature = "bridge")]
+    #[arg(long)]
+    bridge_rpc_listen: Option<std::net::SocketAddr>,
+    /// Retain all indexed DA headers and original data squares when a bridge listener is enabled.
+    #[cfg(feature = "bridge")]
+    #[arg(long)]
+    bridge_archival: bool,
+    /// Hours of DA data to retain (default 169; overrides app.toml).
+    #[cfg(feature = "bridge")]
+    #[arg(long, conflicts_with = "bridge_archival", value_parser = clap::value_parser!(u64).range(1..))]
+    bridge_retention_hours: Option<u64>,
+    /// Authorize a DA signing account. Repeat for additional accounts; the first is the default.
+    #[cfg(feature = "bridge")]
+    #[arg(long, requires = "bridge_rpc_listen")]
+    bridge_signer: Vec<String>,
     /// Built-in network (mainnet, mocha, arabica, local): initializes the
     /// home on first start and checks the genesis.
     #[arg(long, env = "CELESTIA_RS_NETWORK")]
@@ -881,6 +925,25 @@ fn main() -> anyhow::Result<()> {
             .map(|f| f.string(File::Config, "log_format"))
             .unwrap_or_default()
     });
+    #[cfg(feature = "bridge")]
+    let da_rpc = match &cli.command {
+        Cmd::Start(args) => {
+            args.bridge_rpc_listen.is_some()
+                || files
+                    .as_ref()
+                    .is_some_and(|files| files.value(File::App, "da-bridge.rpc-listen").is_some())
+        }
+        #[cfg(feature = "da-light")]
+        Cmd::DaLight(_) => true,
+        _ => false,
+    };
+    #[cfg(feature = "bridge")]
+    if da_rpc {
+        ops::da_logging::init(&level, &format)?;
+    } else {
+        ops::init_logging(&level, &format);
+    }
+    #[cfg(not(feature = "bridge"))]
     ops::init_logging(&level, &format);
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -945,6 +1008,13 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
                 "Downloaded and verified the genesis file for {}",
                 net.chain_id
             ));
+            Ok(())
+        }
+        #[cfg(feature = "da-light")]
+        Cmd::DaLight(args) => Box::pin(celestia_rs::run_light(&home, args)).await,
+        #[cfg(feature = "bridge")]
+        Cmd::DaAuth { level, ttl_seconds } => {
+            util::out(celestia_rs::operator_token(&home, &level, ttl_seconds)?);
             Ok(())
         }
         Cmd::Start(args) => start(&home, *args).await,
@@ -1264,6 +1334,68 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
             ..consensus::ConsensusConfig::default()
         },
     );
+    #[cfg(feature = "bridge")]
+    {
+        opts.bridge_rpc_listen = match a.bridge_rpc_listen {
+            Some(addr) => Some(addr),
+            None => files
+                .value(File::App, "da-bridge.rpc-listen")
+                .map(|value| {
+                    value
+                        .as_str()
+                        .context("da-bridge.rpc-listen must be a socket address string")?
+                        .parse()
+                        .context("invalid da-bridge.rpc-listen")
+                })
+                .transpose()?,
+        };
+        opts.bridge_archival = a.bridge_archival;
+        if !a.bridge_archival {
+            opts.bridge_retention_hours = match a.bridge_retention_hours {
+                Some(hours) => Some(hours),
+                None => files
+                    .value(File::App, "da-bridge.retention-hours")
+                    .map(|value| {
+                        value
+                            .as_integer()
+                            .and_then(|hours| u64::try_from(hours).ok())
+                            .filter(|hours| *hours > 0)
+                            .context("da-bridge.retention-hours must be a positive integer")
+                    })
+                    .transpose()?,
+            };
+        }
+        let mut signers = a.bridge_signer.iter().cloned();
+        opts.bridge_signer = signers.next();
+        opts.bridge_additional_signers = signers.collect();
+    }
+    #[cfg(feature = "bridge-p2p")]
+    {
+        opts.bridge_listeners = if a.bridge_p2p_listen.is_empty() {
+            files
+                .value(File::App, "da-bridge.p2p-listen")
+                .map(|value| {
+                    value
+                        .as_array()
+                        .context("da-bridge.p2p-listen must be an array of addresses")?
+                        .iter()
+                        .map(|addr| {
+                            node::parse_bridge_listener(
+                                addr.as_str().context("DA listener must be a string")?,
+                            )
+                            .context("invalid da-bridge.p2p-listen")
+                        })
+                        .collect::<anyhow::Result<Vec<_>>>()
+                })
+                .transpose()?
+                .unwrap_or_default()
+        } else {
+            a.bridge_p2p_listen.clone()
+        };
+        opts.bridge_bootstrap.clone_from(&a.bridge_bootstrap);
+        opts.bridge_announce.clone_from(&a.bridge_announce);
+        opts.bridge_no_announce.clone_from(&a.bridge_no_announce);
+    }
     opts.mempool = config::mempool_options(&files)?;
     opts.block_sync = !a.no_block_sync;
     opts.discard_abci_responses = files.bool(File::Config, "storage.discard_abci_responses");
@@ -1819,6 +1951,22 @@ fn utia_min_gas_price(s: &str) -> anyhow::Result<Option<math::LegacyDec>> {
 #[cfg(test)]
 mod cli_tests {
     use super::*;
+
+    #[test]
+    fn bridge_listener_requires_build_and_runtime_opt_in() {
+        let explicit = Cli::try_parse_from([
+            "celestia-rs",
+            "start",
+            "--bridge-rpc-listen",
+            "127.0.0.1:32658",
+        ]);
+        assert_eq!(explicit.is_ok(), cfg!(feature = "bridge"));
+        #[cfg(feature = "bridge")]
+        {
+            let cli = Cli::try_parse_from(["celestia-rs", "start"]).unwrap();
+            assert!(matches!(cli.command, Cmd::Start(args) if args.bridge_rpc_listen.is_none()));
+        }
+    }
 
     fn skip_heights(args: &[&str]) -> Vec<i64> {
         let cli = Cli::try_parse_from(args).expect("parse CLI");

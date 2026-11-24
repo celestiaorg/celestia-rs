@@ -614,11 +614,34 @@ fn hx(b: &[u8]) -> String {
 }
 
 /// `types.EncodeDataRootTuple`.
-fn encode_data_root_tuple(height: u64, data_root: &[u8]) -> Vec<u8> {
+#[must_use]
+pub fn encode_data_root_tuple(height: u64, data_root: &[u8]) -> Vec<u8> {
     let mut out = vec![0u8; 32];
     out[24..].copy_from_slice(&height.to_be_bytes());
     out.extend_from_slice(data_root);
     out
+}
+
+/// ABI-encode each committed block height and data root in an already validated, end-exclusive range.
+pub fn data_root_tuples(blocks: &BlockStore, start: u64, end: u64) -> Result<Vec<Vec<u8>>, String> {
+    let mut out = Vec::new();
+    for h in start..end {
+        let meta = blocks
+            .load_block_meta(i64::try_from(h).unwrap_or(i64::MAX))
+            .map_err(s)?
+            .ok_or_else(|| format!("couldn't load block meta {h}"))?;
+        if meta.header.data_hash.len() != 32 {
+            return Err(format!(
+                "unexpected data hash length {} at height {h}",
+                meta.header.data_hash.len()
+            ));
+        }
+        out.push(encode_data_root_tuple(
+            u64::try_from(meta.header.height).unwrap_or(0),
+            &meta.header.data_hash,
+        ));
+    }
+    Ok(out)
 }
 
 impl Environment {
@@ -1272,29 +1295,36 @@ impl Environment {
         ]))
     }
 
+    fn committed_tx_status(&self, hash: &[u8]) -> Result<Option<J>, String> {
+        let Some(info) = self.block_store.load_tx_info(hash).map_err(s)? else {
+            return Ok(None);
+        };
+        let mut o = J::obj([
+            ("height", J::i64s(info.height)),
+            ("index", J::num(info.index)),
+            ("execution_code", J::num(info.code)),
+            ("error", J::str(&info.error)),
+            ("status", J::str("COMMITTED")),
+        ]);
+        if !info.codespace.is_empty() {
+            o.push("codespace", J::str(&info.codespace));
+        }
+        if info.gas_wanted != 0 {
+            o.push("gas_wanted", J::i64s(info.gas_wanted));
+        }
+        if info.gas_used != 0 {
+            o.push("gas_used", J::i64s(info.gas_used));
+        }
+        if !info.signers.is_empty() {
+            o.push("signers", J::Arr(info.signers.iter().map(J::str).collect()));
+        }
+        Ok(Some(o))
+    }
+
     /// `TxStatus`; also returns whether the tx is committed.
     pub fn tx_status(&self, hash: &[u8]) -> Result<(J, bool), String> {
-        if let Some(info) = self.block_store.load_tx_info(hash).map_err(s)? {
-            let mut o = J::obj([
-                ("height", J::i64s(info.height)),
-                ("index", J::num(info.index)),
-                ("execution_code", J::num(info.code)),
-                ("error", J::str(&info.error)),
-                ("status", J::str("COMMITTED")),
-            ]);
-            if !info.codespace.is_empty() {
-                o.push("codespace", J::str(&info.codespace));
-            }
-            if info.gas_wanted != 0 {
-                o.push("gas_wanted", J::i64s(info.gas_wanted));
-            }
-            if info.gas_used != 0 {
-                o.push("gas_used", J::i64s(info.gas_used));
-            }
-            if !info.signers.is_empty() {
-                o.push("signers", J::Arr(info.signers.iter().map(J::str).collect()));
-            }
-            return Ok((o, true));
+        if let Some(status) = self.committed_tx_status(hash)? {
+            return Ok((status, true));
         }
         let key: mempool::TxKey = hash.try_into().map_err(|_| {
             format!(
@@ -1319,6 +1349,14 @@ impl Environment {
         }
         let (rejected, code, log) = self.mempool.was_recently_rejected(&key);
         if rejected {
+            // Commit writes the receipt before removing the transaction from the pool.
+            // A removal observed after our first lookup can already have a receipt.
+            if code == 0
+                && log.is_empty()
+                && let Some(status) = self.committed_tx_status(hash)?
+            {
+                return Ok((status, true));
+            }
             return Ok((simple("REJECTED", code, &log), false));
         }
         Ok((simple("UNKNOWN", 0, ""), false))
@@ -1484,35 +1522,13 @@ impl Environment {
         Ok(())
     }
 
-    fn data_root_tuples(&self, start: u64, end: u64) -> Result<Vec<Vec<u8>>, String> {
-        let mut out = Vec::new();
-        for h in start..end {
-            let meta = self
-                .block_store
-                .load_block_meta(i64::try_from(h).unwrap_or(i64::MAX))
-                .map_err(s)?
-                .ok_or_else(|| format!("couldn't load block meta {h}"))?;
-            if meta.header.data_hash.len() != 32 {
-                return Err(format!(
-                    "unexpected data hash length {} at height {h}",
-                    meta.header.data_hash.len()
-                ));
-            }
-            out.push(encode_data_root_tuple(
-                u64::try_from(meta.header.height).unwrap_or(0),
-                &meta.header.data_hash,
-            ));
-        }
-        Ok(out)
-    }
-
     fn data_commitment(&self, start: i128, end: i128) -> Result<J, String> {
         let (start, end) = (
             u64::try_from(start).unwrap_or(0),
             u64::try_from(end).unwrap_or(0),
         );
         self.validate_data_commitment_range(start, end)?;
-        let tuples = self.data_root_tuples(start, end)?;
+        let tuples = data_root_tuples(&self.block_store, start, end)?;
         Ok(J::obj([(
             "data_commitment",
             J::hex(&ctypes::merkle_proof::hash_from_byte_slices(&tuples)),
@@ -1534,7 +1550,7 @@ impl Environment {
                 "height {uh} should be in the end exclusive interval first_block {start} last_block {end}"
             ));
         }
-        let tuples = self.data_root_tuples(start, end)?;
+        let tuples = data_root_tuples(&self.block_store, start, end)?;
         let (_, proofs) = ctypes::merkle_proof::proofs_from_byte_slices(&tuples);
         let idx = usize::try_from(uh - start).unwrap_or(0);
         proofs
@@ -1582,3 +1598,6 @@ pub struct StatusParts {
     /// Own voting power.
     pub voting_power: i64,
 }
+
+#[cfg(test)]
+mod receipt_tests;

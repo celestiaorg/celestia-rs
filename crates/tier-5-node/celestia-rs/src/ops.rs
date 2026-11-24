@@ -5,6 +5,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
+#[cfg(feature = "bridge")]
+pub mod da_logging;
+
 type Hook = Box<dyn Fn() + Send>;
 
 /// A shutdown request shared by the signal handler and the node's loops:

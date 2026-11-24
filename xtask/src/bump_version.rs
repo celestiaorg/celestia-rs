@@ -66,19 +66,7 @@ fn read(path: &Path) -> Result<String> {
 /// MAJOR.MINOR.PATCH with an optional `-PRERELEASE` (`0.1.0`, `0.1.0-rc.2`);
 /// no build metadata, which tags and the installer don't carry.
 fn check_version(v: &str) -> Result<()> {
-    let (core, pre) = match v.split_once('-') {
-        Some((c, p)) => (c, Some(p)),
-        None => (v, None),
-    };
-    let parts: Vec<&str> = core.split('.').collect();
-    let numeric = |s: &str| {
-        !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) && (s == "0" || !s.starts_with('0'))
-    };
-    let ok_pre = pre.is_none_or(|p| {
-        p.split('.')
-            .all(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
-    });
-    if parts.len() != 3 || !parts.iter().all(|p| numeric(p)) || !ok_pre {
+    if !semver::Version::parse(v).is_ok_and(|version| version.build.is_empty()) {
         bail!("'{v}' is not a version like 0.1.0 or 0.1.0-rc.2");
     }
     Ok(())
@@ -197,7 +185,14 @@ mod tests {
 
     #[test]
     fn versions() {
-        for ok in ["0.1.0", "0.1.0-rc.2", "1.10.0-alpha.1", "10.0.0"] {
+        for ok in [
+            "0.1.0",
+            "0.1.0-rc.2",
+            "1.10.0-alpha.1",
+            "10.0.0",
+            "1.2.3-rc.0",
+            "1.2.3-rc.01a",
+        ] {
             assert!(check_version(ok).is_ok(), "{ok}");
         }
         for bad in [
@@ -207,6 +202,8 @@ mod tests {
             "01.0.0",
             "0.1.0+build",
             "0.1.0-rc..1",
+            "0.1.0-rc.01",
+            "18446744073709551616.0.0",
             "",
         ] {
             assert!(check_version(bad).is_err(), "{bad}");

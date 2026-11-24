@@ -1,0 +1,226 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/celestiaorg/celestia-app/v11/pkg/wrapper"
+	"github.com/celestiaorg/celestia-node/api/rpc/client"
+	"github.com/celestiaorg/celestia-node/blob"
+	"github.com/celestiaorg/celestia-node/header"
+	nodeShare "github.com/celestiaorg/celestia-node/share"
+	"github.com/celestiaorg/celestia-node/share/shwap"
+	"github.com/celestiaorg/go-square/v4/share"
+	"github.com/celestiaorg/rsmt2d"
+)
+
+func main() {
+	nextHeight := len(os.Args) == 3 && os.Args[2] == "--next-height"
+	checkTail := len(os.Args) == 3 && os.Args[2] == "--genesis-tail"
+	if len(os.Args) != 2 && len(os.Args) != 5 && !nextHeight && !checkTail {
+		panic("usage: read_bridge URL [--next-height | --genesis-tail | height namespace-id-hex blob-hex]")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	c, err := client.NewClient(ctx, os.Args[1], os.Getenv("DA_TEST_READ_TOKEN"))
+	if err != nil {
+		panic(err)
+	}
+	defer c.Close()
+	h, err := c.Header.LocalHead(ctx)
+	if err != nil {
+		panic(err)
+	}
+	if err = h.Validate(); err != nil {
+		panic(err)
+	}
+	if checkTail {
+		tail, err := c.Header.Tail(ctx)
+		if err != nil {
+			panic(err)
+		}
+		if err := tail.Validate(); err != nil {
+			panic(err)
+		}
+		if tail.Height() != 1 || tail.ChainID() != h.ChainID() {
+			panic("fresh bridge did not retain its genesis header")
+		}
+		byHash, err := c.Header.GetByHash(ctx, tail.Hash())
+		if err != nil {
+			panic(err)
+		}
+		if !tail.Equals(byHash) {
+			panic("tail hash lookup returned a different header")
+		}
+		fmt.Printf("Go verified the signed bridge tail at height %d by hash\n", tail.Height())
+		return
+	}
+	if nextHeight {
+		next, err := c.Header.GetByHeight(ctx, h.Height()+1)
+		if err != nil {
+			panic(err)
+		}
+		if next.Height() != h.Height()+1 || h.Verify(next) != nil {
+			panic("next height did not return the adjacent signed header")
+		}
+		if _, err := c.Header.GetByHeight(ctx, next.Height()+1000); err == nil {
+			panic("far future height accepted")
+		}
+		fmt.Printf("Go verified immediate next-height publication at %d\n", next.Height())
+		return
+	}
+	h2, err := c.Header.GetByHeight(ctx, h.Height())
+	if err != nil || !h.Equals(h2) {
+		panic(fmt.Sprintf("by-height mismatch: %v", err))
+	}
+	s, err := c.Share.GetShare(ctx, h.Height(), 0, 0)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Go validated %s height %d, share bytes %d\n", h.ChainID(), h.Height(), len(s.ToBytes()))
+	if len(os.Args) == 5 {
+		if err := verifyBlob(ctx, c, os.Args[2:]); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func verifyBlob(ctx context.Context, c *client.Client, args []string) error {
+	height, err := strconv.ParseUint(args[0], 10, 64)
+	if err != nil {
+		return err
+	}
+	nsID, err := hex.DecodeString(args[1])
+	if err != nil {
+		return err
+	}
+	ns, err := share.NewV0Namespace(nsID)
+	if err != nil {
+		return err
+	}
+	data, err := hex.DecodeString(args[2])
+	if err != nil {
+		return err
+	}
+	expected, err := blob.NewBlobV0(ns, data)
+	if err != nil {
+		return err
+	}
+	header, err := c.Header.GetByHeight(ctx, height)
+	if err != nil {
+		return fmt.Errorf("Header.GetByHeight: %w", err)
+	}
+	if err := header.Validate(); err != nil {
+		return err
+	}
+	if err := verifyShareAPI(ctx, c, header); err != nil {
+		return err
+	}
+	rows, err := c.Share.GetNamespaceData(ctx, height, ns)
+	if err != nil {
+		return fmt.Errorf("Share.GetNamespaceData: %w", err)
+	}
+	if err := rows.Verify(header.DAH, ns); err != nil {
+		return err
+	}
+	got, err := c.Blob.Get(ctx, height, ns, expected.Commitment)
+	if err != nil {
+		return fmt.Errorf("Blob.Get: %w", err)
+	}
+	if !bytes.Equal(got.Data(), data) || !bytes.Equal(got.Commitment, expected.Commitment) {
+		return fmt.Errorf("blob.Get returned different blob")
+	}
+	proof, err := c.Blob.GetProof(ctx, height, ns, expected.Commitment)
+	if err != nil {
+		return fmt.Errorf("Blob.GetProof: %w", err)
+	}
+	included, err := c.Blob.Included(ctx, height, ns, proof, expected.Commitment)
+	if err != nil {
+		return fmt.Errorf("Blob.Included: %w", err)
+	}
+	if !included {
+		return fmt.Errorf("blob inclusion mismatch")
+	}
+	commitmentProof, err := c.Blob.GetCommitmentProof(ctx, height, ns, expected.Commitment)
+	if err != nil {
+		return fmt.Errorf("Blob.GetCommitmentProof: %w", err)
+	}
+	if err := commitmentProof.Verify(header.DataHash, expected.Commitment); err != nil {
+		return err
+	}
+	all, err := c.Blob.GetAll(ctx, height, []share.Namespace{ns})
+	if err != nil {
+		return fmt.Errorf("Blob.GetAll: %w", err)
+	}
+	for _, b := range all {
+		if bytes.Equal(b.Data(), data) && bytes.Equal(b.Commitment, expected.Commitment) && b.Index() == got.Index() {
+			fmt.Printf("Go verified %d namespace rows and recovered %d bytes at height %d, EDS index %d\n", len(rows), len(data), height, b.Index())
+			return nil
+		}
+	}
+	return fmt.Errorf("blob missing from blob.GetAll")
+}
+
+func verifyShareAPI(ctx context.Context, c *client.Client, h *header.ExtendedHeader) error {
+	byHash, err := c.Header.GetByHash(ctx, h.Hash())
+	if err != nil {
+		return fmt.Errorf("Header.GetByHash: %w", err)
+	}
+	if !byHash.Equals(h) {
+		return fmt.Errorf("header hash mismatch")
+	}
+	if err := c.Share.SharesAvailable(ctx, h.Height()); err != nil {
+		return fmt.Errorf("Share.SharesAvailable: %w", err)
+	}
+	width := len(h.DAH.RowRoots)
+	indices := []shwap.SampleCoords{{Row: 0, Col: 1}, {Row: width - 1, Col: width - 1}}
+	samples, err := c.Share.GetSamples(ctx, h.Height(), indices)
+	if err != nil {
+		return fmt.Errorf("Share.GetSamples: %w", err)
+	}
+	if len(samples) != len(indices) {
+		return fmt.Errorf("wrong sample count")
+	}
+	for i, sample := range samples {
+		if err := sample.Verify(h.DAH, indices[i].Row, indices[i].Col); err != nil {
+			return err
+		}
+	}
+	row, err := c.Share.GetRow(ctx, h.Height(), width-1)
+	if err != nil {
+		return fmt.Errorf("Share.GetRow: %w", err)
+	}
+	if err := row.Verify(h.DAH, width-1); err != nil {
+		return err
+	}
+	square, err := c.Share.GetEDS(ctx, h.Height())
+	if err != nil {
+		return fmt.Errorf("Share.GetEDS: %w", err)
+	}
+	square, err = rsmt2d.ImportExtendedDataSquare(square.Flattened(), nodeShare.DefaultRSMT2DCodec(), wrapper.NewConstructor(uint64(width/2)))
+	if err != nil {
+		return err
+	}
+	roots, err := square.RowRoots()
+	if err != nil {
+		return err
+	}
+	if len(roots) != width {
+		return fmt.Errorf("wrong EDS width")
+	}
+	for i, root := range roots {
+		if !bytes.Equal(root, h.DAH.RowRoots[i]) {
+			return fmt.Errorf("EDS row %d disagrees with signed header", i)
+		}
+	}
+	rng, err := c.Share.GetRange(ctx, h.Height(), 0, 1)
+	if err != nil {
+		return fmt.Errorf("Share.GetRange: %w", err)
+	}
+	return rng.Verify(h.DataHash)
+}

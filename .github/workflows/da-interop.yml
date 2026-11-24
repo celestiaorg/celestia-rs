@@ -1,0 +1,81 @@
+name: DA client interoperability
+on:
+  workflow_dispatch:
+    inputs:
+      validator_seconds:
+        description: Seconds per idle and loaded private validator interval (at least 10)
+        required: false
+        type: string
+  pull_request:
+    paths:
+      - 'conformance/da/**'
+      - 'crates/tier-5-node/celestia-rs/src/bridge*'
+      - 'crates/tier-5-node/celestia-rs/src/bridge/**'
+      - '.github/workflows/da-interop.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rpc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - network: Mainnet
+            revision: d5dfb21a0885622828e30e8e2daf50e5d1bb72b2
+          - network: Mocha-5
+            revision: af9897bb471959660a4179048656694f3013b2f5
+    name: RPC client (${{ matrix.network }})
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: celestiaorg/celestia-node
+          ref: ${{ matrix.revision }}
+          path: reference-node
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: reference-node/go.mod
+          cache-dependency-path: reference-node/go.sum
+      - name: Compare the released OpenRPC and client method inventory
+        working-directory: reference-node
+        run: |
+          go run ../conformance/da/inventory/reference.go > "$RUNNER_TEMP/da-methods.tsv"
+          diff -u ../conformance/da/inventory/release.tsv "$RUNNER_TEMP/da-methods.tsv"
+      - name: Verify namespace control proofs with the release verifier
+        working-directory: reference-node
+        run: go run ../conformance/da/namespace/verify.go ../conformance/da/fixtures
+      - name: Build the operator binary with bridge RPC and libp2p
+        run: cargo build --locked --no-default-features --features bridge-p2p,da-webrtc,da-webtransport -p celestia-rs
+        env:
+          CARGO_PROFILE_DEV_DEBUG: '0'
+      - name: Replay pinned Go bridge controls
+        if: matrix.network == 'Mainnet'
+        run: cargo test --locked -p app --no-default-features --features bridge --test bridge_control -- --include-ignored
+        env:
+          CARGO_PROFILE_DEV_DEBUG: '0'
+          DA_GO_TESTDATA: ${{ github.workspace }}/reference-node/core/testdata
+      - name: Reopen a blockstore-backed DA index after abrupt shutdown
+        if: matrix.network == 'Mainnet'
+        run: cargo test --locked -p celestia-rs --no-default-features --features bridge-p2p,da-webrtc,da-webtransport --test da_index_restart -- --ignored --nocapture
+        env:
+          CARGO_PROFILE_DEV_DEBUG: '0'
+      - name: Install the locked browser interoperability client
+        working-directory: conformance/da/peer/browser
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify a paid blob with the release client
+        run: conformance/da/test-read-bridge.sh target/debug/celestia-rs reference-node --stock-light
+        env:
+          DA_TEST_WEBTRANSPORT: "1"
+          DA_TEST_WEBRTC: "1"
+          DA_TEST_BROWSER: "1"
+      - name: Verify validator commits under concurrent RPC and SHREX load
+        if: github.event_name == 'workflow_dispatch' && inputs.validator_seconds != ''
+        env:
+          DA_VALIDATOR_SECONDS: ${{ inputs.validator_seconds }}
+        run: conformance/da/test-read-bridge.sh target/debug/celestia-rs reference-node --validator-load

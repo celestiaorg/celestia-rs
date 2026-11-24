@@ -1,0 +1,342 @@
+//! Channel transport used by go-jsonrpc. Each socket has its own cancellable cursors.
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+
+use super::{Bridge, Query, auth::Auth, credentials, dispatch, read_blobs};
+use anyhow::{Context, Result, ensure};
+use axum::{
+    Extension,
+    extract::{
+        State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
+    },
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+};
+use base64::Engine as _;
+use rpc::json::J;
+use serde_json::{Value, json};
+
+pub(super) async fn upgrade(
+    State(bridge): State<Arc<Bridge>>,
+    Extension(auth): Extension<Arc<Auth>>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
+    upgrade_endpoint(bridge, auth, headers, ws)
+}
+
+pub(super) trait Endpoint: Send + Sync + 'static {
+    fn body_limit(&self, permissions: &[String]) -> usize;
+    fn bounds(&self) -> Result<(i64, i64)>;
+    fn call(
+        self: Arc<Self>,
+        auth: Arc<Auth>,
+        permissions: Arc<[String]>,
+        bytes: Vec<u8>,
+    ) -> impl std::future::Future<Output = String> + Send;
+    fn event(
+        self: Arc<Self>,
+        height: i64,
+        ns: Option<shares::Namespace>,
+    ) -> impl std::future::Future<Output = Result<Option<String>>> + Send;
+}
+
+pub(super) fn upgrade_endpoint<E: Endpoint>(
+    endpoint: Arc<E>,
+    auth: Arc<Auth>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
+    let changed = auth.subscribe();
+    let Ok((token, permissions)) = credentials(&auth, &headers) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let token = token.map(str::to_owned);
+    let limit = endpoint.body_limit(&permissions);
+    ws.max_message_size(limit)
+        .max_frame_size(limit)
+        .on_upgrade(move |socket| async move {
+            tokio::select! {
+                _=connection(socket,endpoint,auth.clone(), permissions.into())=>{}
+                ()=auth.revoked(changed,token.as_deref())=>{}
+            }
+        })
+}
+
+struct Subscription {
+    channel: u64,
+    next: i64,
+    ns: Option<shares::Namespace>,
+}
+
+impl Subscription {
+    fn new(bounds: (i64, i64), method: &str, params: &Value, channel: u64) -> Result<Self> {
+        let (base, head) = bounds;
+        let args = params.as_array().context("invalid params")?;
+        let mut next = head.checked_add(1).context("height overflow")?;
+        let ns = match (method, args.len()) {
+            ("header.Subscribe", 0) => None,
+            ("blob.Subscribe", 1) | ("blob.SubscribeFromStartHeight", 2) => {
+                let raw = base64::engine::general_purpose::STANDARD
+                    .decode(args[0].as_str().context("invalid namespace")?)?;
+                let ns = shares::Namespace::from_slice(&raw)?;
+                if args.len() == 2 {
+                    ns.validate_basic()?;
+                    ensure!(
+                        !ns.is_parity_shares() && ns != shares::TAIL_PADDING_NAMESPACE,
+                        "parity and tail padding namespace are forbidden"
+                    );
+                    next = args[1].as_i64().context("invalid start height")?;
+                    ensure!(
+                        next > 0 && next >= base && next <= head,
+                        "start height unavailable"
+                    );
+                }
+                Some(ns)
+            }
+            _ => anyhow::bail!("invalid subscription parameters"),
+        };
+        Ok(Self { channel, next, ns })
+    }
+}
+
+impl Endpoint for Bridge {
+    fn body_limit(&self, permissions: &[String]) -> usize {
+        self.body_limit(permissions)
+    }
+    fn bounds(&self) -> Result<(i64, i64)> {
+        Ok((self.index.tail()?, self.index.head()?))
+    }
+    async fn call(
+        self: Arc<Self>,
+        auth: Arc<Auth>,
+        permissions: Arc<[String]>,
+        bytes: Vec<u8>,
+    ) -> String {
+        dispatch(self, &auth, &permissions, &bytes).await
+    }
+
+    async fn event(
+        self: Arc<Self>,
+        height: i64,
+        ns: Option<shares::Namespace>,
+    ) -> Result<Option<String>> {
+        let bridge = self;
+        if height > bridge.index.head()? {
+            return Ok(None);
+        }
+        let Ok(permit) = bridge.worker.clone().try_acquire_owned() else {
+            return Ok(None);
+        };
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            let value = if let Some(ns) = ns {
+                let block = bridge.committed(height)?;
+                let blobs = read_blobs(&block.eds, &block.dah, ns)?
+                    .into_iter()
+                    .map(|(_, blob)| blob)
+                    .collect::<Vec<_>>();
+                J::obj([
+                    (
+                        "Blobs",
+                        if blobs.is_empty() {
+                            J::Null
+                        } else {
+                            J::Arr(blobs)
+                        },
+                    ),
+                    ("Height", J::num(height)),
+                    ("Header", raw_header(&block.header)?),
+                ])
+            } else {
+                bridge.read(Query::Header(height))?
+            };
+            Ok(Some(value.encode()))
+        })
+        .await?
+    }
+}
+
+async fn send(socket: &mut WebSocket, data: String) -> Result<()> {
+    tokio::time::timeout(Duration::from_secs(15), socket.send(Message::Text(data))).await??;
+    Ok(())
+}
+
+#[derive(Default)]
+struct Streams {
+    subs: HashMap<String, Subscription>,
+    next_channel: u64,
+    events: HashMap<u64, tokio::task::AbortHandle>,
+    calls: tokio::task::JoinSet<(String, String)>,
+    requests: HashMap<String, tokio::task::AbortHandle>,
+}
+
+impl Streams {
+    fn close_subscription(&mut self, key: &str) -> Option<String> {
+        let sub = self.subs.remove(key)?;
+        if let Some(event) = self.events.remove(&sub.channel) {
+            event.abort();
+        }
+        Some(closed(sub.channel))
+    }
+
+    fn request<E: Endpoint>(
+        &mut self,
+        endpoint: &Arc<E>,
+        auth: &Arc<Auth>,
+        perms: &Arc<[String]>,
+        bytes: Vec<u8>,
+    ) -> Result<Option<String>> {
+        let request = match super::envelope::Request::parse(&bytes) {
+            Ok(request) => request,
+            Err((code, message)) => {
+                return Ok(Some(
+                    json!({"jsonrpc":"2.0","id":null,"error":{"code":code,"message":message}})
+                        .to_string(),
+                ));
+            }
+        };
+        let method = request.method.as_str().unwrap_or_default();
+        if method == "xrpc.cancel" {
+            let Some(id) = request.params.get(0) else {
+                return Ok(None);
+            };
+            if let Some(call) = self.requests.remove(&id.to_string()) {
+                call.abort();
+                // go-jsonrpc waits for a final reply to the original call after xrpc.cancel.
+                return Ok(Some(json!({"jsonrpc":"2.0","id":id,"error":{"code":1,"message":"context canceled"}}).to_string()));
+            }
+            return Ok(self.close_subscription(&id.to_string()));
+        }
+        let id = request.id.as_ref().unwrap_or(&Value::Null);
+        let key = id.to_string();
+        if self.requests.contains_key(&key) || self.subs.contains_key(&key) {
+            return Ok(Some(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32600,"message":"duplicate request ID"}}).to_string()));
+        }
+        if !matches!(
+            method,
+            "header.Subscribe" | "blob.Subscribe" | "blob.SubscribeFromStartHeight"
+        ) {
+            if self.calls.len() >= 16 {
+                return Ok(Some(json!({"jsonrpc":"2.0","id":id,"error":{"code":1,"message":"too many requests"}}).to_string()));
+            }
+            let (endpoint, auth, perms) = (endpoint.clone(), auth.clone(), perms.clone());
+            let request_id = key.clone();
+            let handle = self
+                .calls
+                .spawn(async move { (request_id, endpoint.call(auth, perms, bytes).await) });
+            self.requests.insert(key, handle);
+            return Ok(None);
+        }
+        let mut reply = if !(id.is_string() || id.is_number()) {
+            json!({"error":{"code":-32600,"message":"invalid request"}})
+        } else if !perms.iter().any(|p| p == "read") {
+            json!({"error":{"code":1,"message":"subscription requires read permission"}})
+        } else if self.subs.len() >= 16 {
+            json!({"error":{"code":1,"message":"too many subscriptions"}})
+        } else {
+            let empty = json!([]);
+            let params = if request.params.is_null() {
+                &empty
+            } else {
+                &request.params
+            };
+            let channel = self.next_channel;
+            match endpoint
+                .bounds()
+                .and_then(|bounds| Subscription::new(bounds, method, params, channel))
+            {
+                Ok(sub) => {
+                    self.next_channel = channel.checked_add(1).context("channel ID exhausted")?;
+                    self.subs.insert(id.to_string(), sub);
+                    json!({"result":channel})
+                }
+                Err(error) => json!({"error":{"code":1,"message":error.to_string()}}),
+            }
+        };
+        reply["jsonrpc"] = json!("2.0");
+        reply["id"] = id.clone();
+        Ok(Some(reply.to_string()))
+    }
+}
+
+async fn connection<E: Endpoint>(
+    mut socket: WebSocket,
+    endpoint: Arc<E>,
+    auth: Arc<Auth>,
+    perms: Arc<[String]>,
+) -> Result<()> {
+    let mut streams = Streams::default();
+    let mut events = tokio::task::JoinSet::new();
+    let mut tick = tokio::time::interval(Duration::from_millis(200));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            frame=socket.recv()=>{
+                let Some(frame)=frame else {return Ok(())};
+                let bytes=match frame? {Message::Text(t)=>t.into_bytes(),Message::Binary(b)=>b,Message::Close(_)=>return Ok(()),_=>continue};
+                if let Some(reply) = streams.request(&endpoint, &auth, &perms, bytes)? {
+                    send(&mut socket, reply).await?;
+                }
+            }
+            Some(result) = streams.calls.join_next_with_id(), if !streams.calls.is_empty() => {
+                match result {
+                    Ok((task, (key, reply))) if streams.requests.get(&key).is_some_and(|handle|handle.id()==task) => {
+                        streams.requests.remove(&key);
+                        send(&mut socket,reply).await?;
+                    }
+                    Err(error) if !error.is_cancelled() => return Err(error.into()),
+                    _ => {}
+                }
+            }
+            Some(result) = events.join_next(), if !events.is_empty() => {
+                let (id, channel, value): (String,u64,Result<Option<String>>) = match result {
+                    Ok(event) => event,
+                    Err(error) if error.is_cancelled() => continue,
+                    Err(error) => return Err(error.into()),
+                };
+                streams.events.remove(&channel);
+                if let Some(sub) = streams.subs.get_mut(&id).filter(|s| s.channel == channel) {
+                    match value {
+                        Ok(Some(value)) => {
+                            send(&mut socket, format!(r#"{{"jsonrpc":"2.0","method":"xrpc.ch.val","params":[{channel},{value}]}}"#)).await?;
+                            sub.next=sub.next.checked_add(1).context("height overflow")?;
+                        }
+                        Ok(None) => {}
+                        Err(error) => tracing::debug!(height=sub.next,%error,"subscription read deferred"),
+                    }
+                }
+            }
+            _=tick.tick(),if !streams.subs.is_empty()=>{
+                let (base, head) = endpoint.bounds()?;
+                let mut ended = Vec::new();
+                for (id,sub) in &streams.subs {
+                    if sub.next < base { ended.push(id.clone()); continue; }
+                    if sub.next <= head && events.len() < 16 && !streams.events.contains_key(&sub.channel) {
+                        let (id, channel, next, ns) = (id.clone(), sub.channel, sub.next, sub.ns);
+                        let endpoint = endpoint.clone();
+                        let task = events.spawn(async move { (id, channel, endpoint.event(next,ns).await) });
+                        streams.events.insert(channel,task);
+                    }
+                }
+                for id in ended {if let Some(reply)=streams.close_subscription(&id){send(&mut socket,reply).await?;}}
+            }
+        }
+    }
+}
+
+fn closed(id: u64) -> String {
+    json!({"jsonrpc":"2.0","method":"xrpc.ch.close","params":[id]}).to_string()
+}
+
+// SubscriptionResponse.Header is marshaled with Go encoding/json. ExtendedHeader
+// uses CometBFT JSON, which represents the same 64-bit fields as strings.
+pub(super) fn raw_header(h: &ctypes::Header) -> Result<J> {
+    let mut value: Value = serde_json::from_str(&rpc::encode::header(h).encode())?;
+    value["height"] = json!(h.height);
+    value["version"]["block"] = json!(h.version.block);
+    value["version"]["app"] = json!(h.version.app);
+    Ok(J::Raw(value.to_string()))
+}

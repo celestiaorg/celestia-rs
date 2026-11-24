@@ -1,0 +1,895 @@
+//! Opt-in DA RPC backed by the consensus node's committed block and state stores.
+
+pub(crate) mod auth;
+mod blobstream;
+mod envelope;
+#[cfg(feature = "da-fibre")]
+mod fibre;
+mod header_rpc;
+pub(crate) mod index;
+mod node_rpc;
+mod share_rpc;
+mod state_rpc;
+pub(crate) mod submit;
+mod ws;
+
+use std::net::{SocketAddr, TcpListener};
+use std::sync::Arc;
+use std::thread::JoinHandle;
+
+use anyhow::{Context, Result, ensure};
+use axum::extract::State;
+use axum::http::header::CONTENT_TYPE;
+use axum::{Router, routing::post};
+use prost::Message;
+use rpc::json::J;
+use serde_json::Value;
+use tokio::sync::{Semaphore, oneshot};
+
+#[cfg(feature = "bridge-p2p")]
+pub(crate) mod peer;
+
+pub(crate) struct Server {
+    stop: Option<oneshot::Sender<()>>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl Server {
+    pub(crate) fn start(
+        addr: SocketAddr,
+        home: &std::path::Path,
+        index: Arc<index::Store>,
+        app: app::AbciApp,
+        #[cfg(feature = "da-fibre")] core: (&str, &str),
+        #[cfg(feature = "bridge-p2p")] peer_control: Option<peer::Control>,
+        wallet: Option<submit::Accounts<submit::Wallet>>,
+    ) -> Result<Self> {
+        ensure!(
+            addr.ip().is_loopback(),
+            "bridge RPC requires a loopback listener"
+        );
+        let listener = TcpListener::bind(addr).context("bind bridge RPC")?;
+        listener.set_nonblocking(true)?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        let listener = {
+            let _enter = runtime.enter();
+            tokio::net::TcpListener::from_std(listener)?
+        };
+        let (stop, stopped) = oneshot::channel();
+        let state = Arc::new(Bridge {
+            #[cfg(feature = "da-fibre")]
+            fibre: {
+                let _enter = runtime.enter();
+                fibre::Client::local(core.0, core.1)?
+            },
+            app: Some(app),
+            index,
+            #[cfg(feature = "bridge-p2p")]
+            peer_control,
+            wallet,
+            waiters: Arc::new(Semaphore::new(32)),
+            worker: Arc::new(Semaphore::new(1)),
+        });
+        let router = Router::new()
+            .route("/", post(handle).get(ws::upgrade))
+            .layer(axum::Extension(Arc::new(auth::Auth::open(home)?)))
+            .with_state(state);
+        let thread = std::thread::Builder::new().name("da-bridge".into()).spawn(move || {
+            runtime.block_on(async move {
+                tokio::select! {
+                    result = axum::serve(listener, router).into_future() => {
+                        if let Err(error) = result { tracing::error!(%error, "bridge listener stopped"); }
+                    }
+                    _ = stopped => {}
+                }
+            });
+        })?;
+        Ok(Self {
+            stop: Some(stop),
+            thread: Some(thread),
+        })
+    }
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        drop(self.stop.take());
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+struct Bridge {
+    #[cfg(feature = "da-fibre")]
+    fibre: Option<fibre::Client>,
+    app: Option<app::AbciApp>,
+    index: Arc<index::Store>,
+    #[cfg(feature = "bridge-p2p")]
+    peer_control: Option<peer::Control>,
+    wallet: Option<submit::Accounts<submit::Wallet>>,
+    waiters: Arc<Semaphore>,
+    worker: Arc<Semaphore>,
+}
+
+enum Query {
+    Escrow(String, String),
+    Staking(String, Vec<Value>),
+    Balance(Option<String>),
+    Blobs(i64, Vec<shares::Namespace>),
+    Blob(i64, shares::Namespace, Vec<u8>),
+    Namespace(i64, shares::Namespace),
+    Header(i64),
+    Head,
+    BlobProof(i64, shares::Namespace, Vec<u8>, ProofRequest),
+    Tail,
+    Hash(Vec<u8>),
+    ShareRead(i64, share_rpc::Read),
+    Share(i64, usize, usize),
+}
+
+enum ProofRequest {
+    Get,
+    Commitment,
+    Included(Value),
+}
+
+fn bytes(value: &Value) -> Result<Vec<u8>, (i32, &'static str)> {
+    use base64::Engine as _;
+    let invalid = (-32602, "invalid params");
+    base64::engine::general_purpose::STANDARD
+        .decode(value.as_str().ok_or(invalid)?)
+        .map_err(|_| invalid)
+}
+
+fn positive_height(value: Option<&Value>) -> Option<i64> {
+    value.and_then(Value::as_i64).filter(|h| *h > 0)
+}
+
+fn index(value: &Value) -> Result<usize, (i32, &'static str)> {
+    value
+        .as_u64()
+        .and_then(|i| usize::try_from(i).ok())
+        .ok_or((-32602, "invalid params"))
+}
+
+fn sample_coordinates(value: &Value) -> Result<Vec<(usize, usize)>, (i32, &'static str)> {
+    value
+        .as_array()
+        .ok_or((-32602, "invalid params"))?
+        .iter()
+        .map(|v| Ok((index(&v["row"])?, index(&v["col"])?)))
+        .collect()
+}
+
+impl Query {
+    fn escrow(method: &str, args: &[Value]) -> Result<Self, (i32, &'static str)> {
+        let [signer] = args else {
+            return Err((-32602, "invalid params"));
+        };
+        let signer = signer.as_str().ok_or((-32602, "invalid params"))?;
+        Ok(Self::Escrow(method.into(), signer.into()))
+    }
+
+    fn parse(method: &str, params: &Value) -> Result<Self, (i32, &'static str)> {
+        let bad = (-32602, "invalid params");
+        let args = params.as_array().ok_or(bad)?;
+        let height = || positive_height(args.first()).ok_or(bad);
+        let namespace = |v: &Value| shares::Namespace::from_slice(&bytes(v)?).map_err(|_| bad);
+        if matches!(
+            method,
+            "fibre.QueryEscrowAccount" | "fibre.PendingWithdrawals"
+        ) {
+            return Self::escrow(method, args);
+        }
+        if state_rpc::reads(method) {
+            return Ok(Self::Staking(method.to_owned(), args.clone()));
+        }
+        match method {
+            "header.LocalHead" | "header.NetworkHead" if args.is_empty() => Ok(Self::Head),
+            "header.Tail" if args.is_empty() => Ok(Self::Tail),
+            "header.GetByHash" if args.len() == 1 => Ok(Self::Hash(
+                hex::decode(args[0].as_str().ok_or(bad)?).map_err(|_| bad)?,
+            )),
+            "share.SharesAvailable" if args.len() == 1 => {
+                Ok(Self::ShareRead(height()?, share_rpc::Read::Available))
+            }
+            "share.GetEDS" if args.len() == 1 => {
+                Ok(Self::ShareRead(height()?, share_rpc::Read::Eds))
+            }
+            "share.GetRow" if args.len() == 2 => Ok(Self::ShareRead(
+                height()?,
+                share_rpc::Read::Row(index(&args[1])?),
+            )),
+            "share.GetRange" if args.len() == 3 => Ok(Self::ShareRead(
+                height()?,
+                share_rpc::Read::Range(index(&args[1])?, index(&args[2])?),
+            )),
+            "share.GetSamples" if args.len() == 2 => {
+                let coords = sample_coordinates(&args[1])?;
+                Ok(Self::ShareRead(height()?, share_rpc::Read::Samples(coords)))
+            }
+            "state.Balance" if args.is_empty() => Ok(Self::Balance(None)),
+            "state.BalanceForAddress" if args.len() == 1 => {
+                Ok(Self::Balance(Some(args[0].as_str().ok_or(bad)?.to_owned())))
+            }
+            "header.GetByHeight" if args.len() == 1 => Ok(Self::Header(height()?)),
+            "blob.GetAll" if args.len() == 2 => {
+                let namespaces = args[1]
+                    .as_array()
+                    .ok_or(bad)?
+                    .iter()
+                    .map(namespace)
+                    .collect::<Result<_, _>>()?;
+                Ok(Self::Blobs(height()?, namespaces))
+            }
+            "blob.GetProof" | "blob.GetCommitmentProof" if args.len() == 3 => Ok(Self::BlobProof(
+                height()?,
+                namespace(&args[1])?,
+                bytes(&args[2])?,
+                if method == "blob.GetProof" {
+                    ProofRequest::Get
+                } else {
+                    ProofRequest::Commitment
+                },
+            )),
+            "blob.Included" if args.len() == 4 && args[2].is_array() => Ok(Self::BlobProof(
+                height()?,
+                namespace(&args[1])?,
+                bytes(&args[3])?,
+                ProofRequest::Included(args[2].clone()),
+            )),
+            "blob.Get" if args.len() == 3 => Ok(Self::Blob(
+                height()?,
+                namespace(&args[1])?,
+                bytes(&args[2])?,
+            )),
+            "share.GetNamespaceData" if args.len() == 2 => {
+                Ok(Self::Namespace(height()?, namespace(&args[1])?))
+            }
+            "share.GetShare" if args.len() == 3 => {
+                Ok(Self::Share(height()?, index(&args[1])?, index(&args[2])?))
+            }
+            "header.LocalHead"
+            | "header.NetworkHead"
+            | "header.Tail"
+            | "state.Balance"
+            | "state.BalanceForAddress"
+            | "header.GetByHash"
+            | "share.SharesAvailable"
+            | "share.GetEDS"
+            | "share.GetRow"
+            | "share.GetRange"
+            | "share.GetSamples"
+            | "header.GetByHeight"
+            | "blob.Get"
+            | "blob.GetProof"
+            | "blob.GetCommitmentProof"
+            | "blob.Included"
+            | "blob.GetAll"
+            | "share.GetNamespaceData"
+            | "share.GetShare" => Err(bad),
+            _ => Err((-32601, "method not found")),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Message)]
+struct HeaderWire {
+    #[prost(message, optional, tag = "1")]
+    header: Option<ctypes::proto::types::Header>,
+    #[prost(message, optional, tag = "2")]
+    commit: Option<ctypes::proto::types::Commit>,
+    #[prost(message, optional, tag = "3")]
+    validators: Option<ctypes::proto::types::ValidatorSet>,
+    #[prost(bytes, tag = "4")]
+    dah: Vec<u8>,
+}
+
+impl Committed {
+    fn header_wire(&self) -> Result<Vec<u8>> {
+        Ok(HeaderWire {
+            header: Some(self.header.to_proto()),
+            commit: Some(self.commit.to_proto()),
+            validators: Some(self.validators.to_proto()?),
+            dah: self.dah.to_proto_bytes()?,
+        }
+        .encode_to_vec())
+    }
+}
+
+struct Committed {
+    header: ctypes::Header,
+    commit: ctypes::Commit,
+    validators: ctypes::ValidatorSet,
+    eds: square::ExtendedDataSquare,
+    dah: square::DataAvailabilityHeader,
+}
+
+impl Bridge {
+    fn body_limit(&self, permissions: &[String]) -> usize {
+        if self.wallet.is_some() && permissions.iter().any(|p| p == "write") {
+            submit::BODY_LIMIT
+        } else {
+            64 * 1024
+        }
+    }
+
+    fn committed(&self, height: i64) -> Result<Committed> {
+        self.index.block(height)
+    }
+
+    fn balance(&self, head: i64, address: Option<String>) -> Result<J> {
+        let address = match address {
+            Some(value) => value,
+            None => self
+                .wallet
+                .as_ref()
+                .context("bridge signer is not configured")?
+                .default_wallet()
+                .address(),
+        };
+        let (prefix, bytes) =
+            encoding::bech32::decode_and_convert(&address).map_err(anyhow::Error::msg)?;
+        ensure!(
+            matches!(
+                prefix.as_str(),
+                crate::keys::ACC_PREFIX | crate::keys::VAL_PREFIX
+            ) && (1..=255).contains(&bytes.len()),
+            "invalid account or validator address"
+        );
+        let header = HeaderWire::decode(self.index.header_wire(head)?.as_slice())?
+            .header
+            .context("no committed header")?;
+        let amount = self
+            .app
+            .as_ref()
+            .context("no bridge application")?
+            .verified_balance(&bytes, head - 1, &header.app_hash)
+            .map_err(anyhow::Error::msg)?;
+        Ok(J::obj([
+            ("denom", J::str("utia")),
+            ("amount", J::str(amount)),
+        ]))
+    }
+
+    async fn read_query(self: Arc<Self>, query: Query) -> Result<J> {
+        // A committed OP batch reference may reach the reader before the DA
+        // index publishes its height. Go waits for the next header in this case.
+        if let Some(height) = query.explicit_height()
+            && self.index.head()?.checked_add(1) == Some(height)
+        {
+            header_rpc::wait(&self, height).await?;
+        }
+        let permit = self
+            .worker
+            .clone()
+            .try_acquire_owned()
+            .context("bridge busy")?;
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            self.read(query)
+        })
+        .await?
+    }
+
+    fn read(&self, query: Query) -> Result<J> {
+        let head = self.index.head()?;
+        let height = match query {
+            Query::Escrow(method, signer) => {
+                let app = self.app.as_ref().context("no bridge application")?;
+                return Ok(J::Raw(
+                    state_rpc::read(app, &method, &[], &signer)?.to_string(),
+                ));
+            }
+            Query::Staking(method, args) => {
+                let wallet = self
+                    .wallet
+                    .as_ref()
+                    .context("bridge signer is not configured")?;
+                let app = self.app.as_ref().context("no bridge application")?;
+                return Ok(J::Raw(
+                    state_rpc::read(app, &method, &args, &wallet.default_wallet().address())?
+                        .to_string(),
+                ));
+            }
+            Query::Balance(address) => return self.balance(head, address),
+            Query::Head => head,
+            Query::Tail => self.index.tail()?,
+            Query::Hash(ref hash) => self.index.by_hash(hash)?.context("header not found")?,
+            _ => query.explicit_height().context("missing query height")?,
+        };
+        ensure!(
+            height > 0 && height <= head,
+            "height {height} is not committed"
+        );
+        let block = self.committed(height)?;
+        match query {
+            Query::Header(_) | Query::Head | Query::Tail | Query::Hash(_) => {
+                Ok(block.header_json())
+            }
+            _ => query.answer_square(&block.eds, &block.dah),
+        }
+    }
+}
+
+impl Query {
+    fn explicit_height(&self) -> Option<i64> {
+        match self {
+            Self::ShareRead(h, _)
+            | Self::Header(h)
+            | Self::Share(h, ..)
+            | Self::Namespace(h, _)
+            | Self::Blobs(h, _)
+            | Self::BlobProof(h, ..)
+            | Self::Blob(h, ..) => Some(*h),
+            Self::Escrow(..)
+            | Self::Staking(..)
+            | Self::Balance(_)
+            | Self::Head
+            | Self::Tail
+            | Self::Hash(_) => None,
+        }
+    }
+
+    fn answer_square(
+        self,
+        eds: &square::ExtendedDataSquare,
+        dah: &square::DataAvailabilityHeader,
+    ) -> Result<J> {
+        if let Query::BlobProof(_, ns, hash, kind) = self {
+            return prove_blob(eds, dah, ns, &hash, kind);
+        }
+        if let Query::ShareRead(_, method) = self {
+            return method.response(eds, dah);
+        }
+        if let Query::Share(_, row, col) = self {
+            return Ok(J::b64(eds.share(row, col)?));
+        }
+        if let Query::Namespace(_, ns) = self {
+            let rows = app::inclusion_proof::namespace_rows(eds, dah, ns)
+                .map_err(|e| anyhow::anyhow!("{}", e.log))?;
+            return Ok(J::Arr(rows.into_iter().map(namespace_row_json).collect()));
+        }
+        if let Query::Blobs(_, namespaces) = self {
+            let mut blobs = Vec::new();
+            for ns in namespaces {
+                blobs.extend(read_blobs(eds, dah, ns)?.into_iter().map(|(_, blob)| blob));
+            }
+            return Ok(if blobs.is_empty() {
+                J::Null
+            } else {
+                J::Arr(blobs)
+            });
+        }
+        if let Query::Blob(_, ns, commitment) = self {
+            return read_blobs(eds, dah, ns)?
+                .into_iter()
+                .find(|(hash, _)| hash.as_slice() == commitment)
+                .map(|(_, blob)| blob)
+                .context("blob: not found");
+        }
+        anyhow::bail!("expected a blob or share query")
+    }
+}
+
+impl Committed {
+    fn header_json(&self) -> J {
+        header_json(&self.header, &self.commit, &self.validators, &self.dah)
+    }
+}
+
+fn header_json(
+    header: &ctypes::Header,
+    commit: &ctypes::Commit,
+    validators: &ctypes::ValidatorSet,
+    dah: &square::DataAvailabilityHeader,
+) -> J {
+    let roots = |rs: &[[u8; square::DAH_ROOT_SIZE]]| J::Arr(rs.iter().map(|r| J::b64(r)).collect());
+    J::obj([
+        ("header", rpc::encode::header(header)),
+        ("commit", rpc::encode::commit(commit)),
+        ("validator_set", rpc::encode::validator_set(validators)),
+        (
+            "dah",
+            J::obj([
+                ("row_roots", roots(&dah.row_roots)),
+                ("column_roots", roots(&dah.column_roots)),
+            ]),
+        ),
+    ])
+}
+
+/// Walk Q0 in block order, retaining the EDS index used by the Go blob API.
+fn read_blobs(
+    eds: &square::ExtendedDataSquare,
+    dah: &square::DataAvailabilityHeader,
+    ns: shares::Namespace,
+) -> Result<Vec<([u8; 32], J)>> {
+    Ok(blob_records(eds, dah, ns)?
+        .into_iter()
+        .map(|r| (r.commitment, r.value))
+        .collect())
+}
+
+struct BlobRecord {
+    commitment: [u8; 32],
+    value: J,
+    start: usize,
+    end: usize,
+    roots: Vec<Vec<u8>>,
+}
+
+fn blob_records(
+    eds: &square::ExtendedDataSquare,
+    dah: &square::DataAvailabilityHeader,
+    ns: shares::Namespace,
+) -> Result<Vec<BlobRecord>> {
+    let mut shares = Vec::new();
+    let mut starts = Vec::new();
+    for row in dah.rows_with_namespace(ns)? {
+        for col in 0..eds.original_width() {
+            let bytes = eds.share(row, col)?;
+            if bytes.get(..shares::NAMESPACE_SIZE) != Some(ns.as_bytes().as_slice()) {
+                continue;
+            }
+            let share = shares::Share::from_slice(bytes)?;
+            if share.is_padding()? {
+                continue;
+            }
+            if share.is_sequence_start()? {
+                starts.push((shares.len(), row * eds.width() + col));
+            }
+            shares.push(share);
+        }
+    }
+    let mut result = Vec::with_capacity(starts.len());
+    for (i, &(start, index)) in starts.iter().enumerate() {
+        let end = starts.get(i + 1).map_or(shares.len(), |(next, _)| *next);
+        let first = &shares[start];
+        let blob = if first.version()? == shares::SHARE_VERSION_TWO {
+            let len = first
+                .sequence_len()?
+                .context("missing fibre sequence length")? as usize;
+            let data = first
+                .raw_data()?
+                .get(..len)
+                .context("invalid fibre share length")?;
+            shares::Blob::new_with_signer(
+                ns,
+                data.to_vec(),
+                shares::SHARE_VERSION_TWO,
+                first.signer()?,
+            )?
+        } else {
+            shares::parse_blobs(&shares[start..end])?
+                .pop()
+                .context("invalid blob sequence")?
+        };
+        let roots = square::commitment::commitment_subtree_roots(
+            &blob,
+            square::DEFAULT_SUBTREE_ROOT_THRESHOLD,
+        )?;
+        let commitment = merkle::root_from_byte_slices(&roots);
+        let mut value = J::obj([
+            ("namespace", J::b64(ns.as_bytes())),
+            ("data", J::b64(&blob.data)),
+            ("share_version", J::num(blob.share_version)),
+            ("commitment", J::b64(&commitment)),
+            ("index", J::num(index)),
+        ]);
+        if let Some(signer) = blob.signer {
+            value.push("signer", J::b64(&signer));
+        }
+        let ods_start = index / eds.width() * eds.original_width() + index % eds.width();
+        result.push(BlobRecord {
+            commitment,
+            value,
+            start: ods_start,
+            end: ods_start + end - start,
+            roots,
+        });
+    }
+    Ok(result)
+}
+
+fn namespace_row_json(row: app::inclusion_proof::NamespaceRow) -> J {
+    let proof = proof_json(&row.proof, true);
+    let shares = if row.shares.is_empty() {
+        J::Null
+    } else {
+        J::Arr(row.shares.iter().map(|s| J::b64(s)).collect())
+    };
+    J::obj([("shares", shares), ("proof", proof)])
+}
+
+async fn handle(
+    State(bridge): State<Arc<Bridge>>,
+    axum::Extension(auth): axum::Extension<Arc<auth::Auth>>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Body,
+) -> axum::response::Response {
+    use axum::response::IntoResponse as _;
+    let changed = auth.subscribe();
+    let Ok((token, permissions)) = credentials(&auth, &headers) else {
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    };
+    let limit = bridge.body_limit(&permissions);
+    let Ok(body) = axum::body::to_bytes(body, limit).await else {
+        return axum::http::StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    };
+    tokio::select! {
+        value=dispatch(bridge,&auth,&permissions,&body) => ([(CONTENT_TYPE, "application/json")], value).into_response(),
+        ()=auth.revoked(changed,token)=>axum::http::StatusCode::UNAUTHORIZED.into_response(),
+    }
+}
+
+fn credentials<'a>(
+    auth: &auth::Auth,
+    headers: &'a axum::http::HeaderMap,
+) -> Result<(Option<&'a str>, Vec<String>)> {
+    let token = match headers.get(axum::http::header::AUTHORIZATION) {
+        None => None,
+        Some(raw) => match raw.to_str().ok().and_then(|s| s.strip_prefix("Bearer ")) {
+            Some(token) => Some(token),
+            None => anyhow::bail!("invalid authorization header"),
+        },
+    };
+    let permissions = token
+        .map(|t| auth.verify(t))
+        .transpose()?
+        .unwrap_or_else(|| vec!["public".to_owned()]);
+    Ok((token, permissions))
+}
+
+fn require_permission(
+    permissions: &[String],
+    method: &str,
+    perm: &str,
+) -> Result<(), (i32, String)> {
+    if permissions.iter().any(|p| p == perm) {
+        Ok(())
+    } else {
+        Err((
+            1,
+            format!(
+                "missing permission to invoke '{}' (need '{perm}')",
+                method.rsplit('.').next().unwrap_or(method)
+            ),
+        ))
+    }
+}
+
+async fn dispatch(
+    bridge: Arc<Bridge>,
+    auth: &auth::Auth,
+    permissions: &[String],
+    body: &[u8],
+) -> String {
+    let mut id = J::Null;
+    let result = async {
+        let req = envelope::Request::parse(body)?;
+        let invalid = || (-32600, "invalid request".to_owned());
+        let request_id = req.id.as_ref().ok_or_else(invalid)?;
+        id = J::Raw(request_id.to_string());
+        let method = req.method.as_str().ok_or_else(invalid)?;
+        let empty = Value::Array(Vec::new());
+        let params = if req.params.is_null() {
+            &empty
+        } else {
+            &req.params
+        };
+        #[cfg(feature = "da-fibre")]
+        if method == "fibre.Download" {
+            require_permission(permissions, method, "read")?;
+            return fibre::rpc(bridge.fibre.as_ref(), params).await;
+        }
+        #[cfg(feature = "da-fibre")]
+        if matches!(method, "fibre.Upload" | "fibre.Submit") {
+            require_permission(permissions, method, "write")?;
+            return fibre_write(&bridge, method, params).await;
+        }
+        if let Some(permission) = node_rpc::permission(method) {
+            require_permission(permissions, method, permission)?;
+            let args = params.as_array().ok_or_else(invalid)?;
+            return node_rpc::call(auth, "Bridge", method, args)
+                .map(|value| J::Raw(value.to_string()))
+                .map_err(|e| (1, e.to_string()));
+        }
+        if matches!(method, "das.SamplingStats" | "das.WaitCatchUp") {
+            require_permission(permissions, method, "read")?;
+            if params != &empty {
+                return Err((-32602, "invalid parameters".to_owned()));
+            }
+            return Err((1, "module/das: stubbed: dasing is disabled".to_owned()));
+        }
+        #[cfg(feature = "bridge-p2p")]
+        if peer::Control::handles(method) {
+            require_permission(permissions, method, "admin")?;
+            let control = bridge
+                .peer_control
+                .as_ref()
+                .ok_or_else(|| (1, "DA peer is disabled".to_owned()))?;
+            let args = params.as_array().ok_or_else(invalid)?;
+            return control
+                .call(method, args)
+                .await
+                .map(|value| J::Raw(value.to_string()))
+                .map_err(|e| (1, e.to_string()));
+        }
+        if state_rpc::writes(method)
+            || matches!(
+                method,
+                "blob.Submit" | "state.SubmitPayForBlob" | "state.AccountAddress"
+            )
+        {
+            let submit = method != "state.AccountAddress";
+            require_permission(permissions, method, if submit { "write" } else { "read" })?;
+            return wallet_rpc(&bridge, method, &req.params).await;
+        }
+        if header_rpc::handles(method) {
+            require_permission(permissions, method, "read")?;
+            return header_rpc::handle(bridge, method, params)
+                .await
+                .map_err(|e| (1, e.to_string()));
+        }
+        let query = Query::parse(method, params).map_err(|(code, msg)| (code, msg.to_owned()))?;
+        require_permission(permissions, method, "read")?;
+        bridge
+            .read_query(query)
+            .await
+            .map_err(|e| (-32000, e.to_string()))
+    }
+    .await;
+    let payload = match result {
+        Ok(value) => ("result", value),
+        Err((code, msg)) => (
+            "error",
+            J::obj([("code", J::num(code)), ("message", J::str(msg))]),
+        ),
+    };
+    J::obj([("jsonrpc", J::str("2.0")), ("id", id), payload]).encode()
+}
+
+#[cfg(feature = "da-fibre")]
+async fn fibre_write(bridge: &Bridge, method: &str, params: &Value) -> Result<J, (i32, String)> {
+    let client = bridge
+        .fibre
+        .as_ref()
+        .ok_or_else(|| (1, "Fibre core unavailable".into()))?;
+    let wallet = bridge
+        .wallet
+        .as_ref()
+        .ok_or_else(|| (1, "bridge signer is not configured".into()))?;
+    wallet
+        .select(
+            params
+                .as_array()
+                .ok_or_else(|| (-32602, "invalid transaction parameters".to_owned()))?,
+        )
+        .map_err(|e| (1, e.to_string()))?
+        .submit_fibre(client, params, method == "fibre.Submit")
+        .await
+        .map(|v| J::Raw(v.to_string()))
+        .map_err(|e| (1, e.to_string()))
+}
+
+async fn wallet_rpc(bridge: &Bridge, method: &str, params: &Value) -> Result<J, (i32, String)> {
+    let wallet = bridge
+        .wallet
+        .as_ref()
+        .ok_or_else(|| (1, "bridge signer is not configured".to_owned()))?;
+    if method != "state.AccountAddress" {
+        let receipt = wallet
+            .select(
+                params
+                    .as_array()
+                    .ok_or_else(|| (-32602, "invalid transaction parameters".to_owned()))?,
+            )
+            .map_err(|e| (1, e.to_string()))?
+            .submit(params, method)
+            .await
+            .map_err(|e| (1, e.to_string()))?;
+        if matches!(method, "fibre.Deposit" | "fibre.Withdraw") {
+            return Ok(J::Null);
+        }
+        if method != "blob.Submit" {
+            return Ok(J::obj([
+                ("height", J::num(receipt.height)),
+                ("txhash", J::str(receipt.hash)),
+                ("logs", J::Null),
+                ("events", J::Null),
+            ]));
+        }
+        return Ok(J::num(receipt.height));
+    }
+    if !params.is_null() && params.as_array().is_none_or(|p| !p.is_empty()) {
+        return Err((-32600, "invalid request".to_owned()));
+    }
+    Ok(J::str(wallet.default_wallet().address()))
+}
+
+fn proof_json(p: &celestia_proto::celestia::core::v1::proof::NmtProof, shwap: bool) -> J {
+    let mut proof = J::obj([("end", J::num(p.end))]);
+    if shwap {
+        proof.push("is_max_namespace_ignored", J::Bool(true));
+    }
+    if p.start != 0 {
+        proof.push("start", J::num(p.start));
+    }
+    if !p.nodes.is_empty() {
+        proof.push("nodes", J::Arr(p.nodes.iter().map(|n| J::b64(n)).collect()));
+    }
+    if !p.leaf_hash.is_empty() {
+        proof.push("leaf_hash", J::b64(&p.leaf_hash));
+    }
+    proof
+}
+
+fn prove_blob(
+    eds: &square::ExtendedDataSquare,
+    dah: &square::DataAvailabilityHeader,
+    ns: shares::Namespace,
+    hash: &[u8],
+    kind: ProofRequest,
+) -> Result<J> {
+    let Some(record) = blob_records(eds, dah, ns)?
+        .into_iter()
+        .find(|r| r.commitment == hash)
+    else {
+        if matches!(kind, ProofRequest::Included(_)) {
+            return Ok(J::Bool(false));
+        }
+        anyhow::bail!("blob: not found")
+    };
+    if matches!(kind, ProofRequest::Commitment) {
+        return share_rpc::range(eds, dah, record.start, record.end, Some(record.roots));
+    }
+    let width = eds.original_width();
+    let covered = record.start / width..=(record.end - 1) / width;
+    let rows = app::inclusion_proof::namespace_rows(eds, dah, ns)
+        .map_err(|e| anyhow::anyhow!("{}", e.log))?;
+    let mut expected = Vec::new();
+    for (i, row) in dah.rows_with_namespace(ns)?.into_iter().zip(rows) {
+        if covered.contains(&i) {
+            expected.push(row.proof);
+        }
+    }
+    if let ProofRequest::Included(input) = kind {
+        let supplied = input.as_array().context("blob: proof cannot be nil")?;
+        ensure!(expected.len() == supplied.len(), "blob: invalid proof");
+        for (p, v) in expected.iter().zip(supplied) {
+            let equivalent = serde_json::from_value::<InputProof>(v.clone())?;
+            ensure!(equivalent.matches(p), "blob: invalid proof");
+        }
+        Ok(J::Bool(true))
+    } else {
+        Ok(J::Arr(
+            expected.iter().map(|p| proof_json(p, true)).collect(),
+        ))
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(default)]
+#[derive(Default)]
+struct InputProof {
+    start: i32,
+    end: i32,
+    nodes: Option<Vec<String>>,
+    leaf_hash: Option<String>,
+}
+impl InputProof {
+    fn matches(&self, p: &celestia_proto::celestia::core::v1::proof::NmtProof) -> bool {
+        use base64::Engine as _;
+        let enc = base64::engine::general_purpose::STANDARD;
+        let nodes = self.nodes.as_deref().unwrap_or_default();
+        self.start == p.start
+            && self.end == p.end
+            && self.leaf_hash.as_deref().unwrap_or_default() == enc.encode(&p.leaf_hash)
+            && nodes.len() == p.nodes.len()
+            && nodes.iter().zip(&p.nodes).all(|(a, b)| a == &enc.encode(b))
+    }
+}

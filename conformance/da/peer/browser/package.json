@@ -1,0 +1,14 @@
+{
+  "name": "celestia-da-browser-conformance",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@chainsafe/libp2p-noise": "17.0.0",
+    "@libp2p/webrtc": "7.0.2",
+    "@libp2p/webtransport": "6.0.44",
+    "@multiformats/multiaddr": "13.0.3",
+    "esbuild": "0.28.2",
+    "libp2p": "3.5.1",
+    "playwright-core": "1.65.1"
+  }
+}

@@ -61,6 +61,29 @@ record describes one check only. It cannot replace missing F1 evidence or
 the required elapsed nights. Publishing or changing a live validator is a
 separate operator action.
 
+## Choosing the first official version
+
+For an initial **v0.1.0**, describe the supported networks, app versions,
+node roles and known limitations in the release notes. The README currently
+describes an experimental node. Keep that scope explicit if publishing
+while mainnet qualification is open. The installer selects an official
+release by default, so include the operator-facing changes since the first
+RC, even if the last RC introduced only a small change.
+
+Reserve **v1.0.0** for a defined compatibility commitment. Record which CLI,
+RPC and on-disk interfaces operators can rely on and how upgrades work. For
+a general mainnet recommendation, use the repository's C1, F1 and Q1 exit
+criteria and link their candidate-specific evidence. [Milestones](../MILESTONES.md)
+and [recommendation scope](adr/0008-mainnet-recommendation.md).
+
+Before promotion, compare the candidate tag with the proposed release
+source. If consensus code changed, qualify a new candidate containing the
+change. Record the candidate and promotion commits and review the final
+diff. Run the **release** workflow manually on the proposed source to
+rehearse all three archive builds without publishing. Check the embedded
+version, commit and build profile, the archive checksums and the installer.
+The **prepare release** workflow creates the PR whose merge publishes.
+
 ## Cutting a release
 
 1. **Actions → prepare release → Run workflow**, with the version, e.g.

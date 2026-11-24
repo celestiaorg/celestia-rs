@@ -259,6 +259,92 @@ pub fn block_data_root_with_max(
     txs: &[Vec<u8>],
     max_square_size: usize,
 ) -> Result<(u64, Vec<u8>), String> {
+    let eds = block_eds_with_max(app_version, txs, max_square_size)?;
+    let (width, root) = eds_data_root(&eds).map_err(|e| e.0)?;
+    Ok((width as u64, root))
+}
+
+/// Reconstruct the shares and axis roots for a block whose consensus header
+/// has already been authenticated. Return them only if they reproduce its
+/// data hash. The caller supplies the app version from that same header.
+pub fn verified_block_eds(
+    app_version: u64,
+    txs: &[Vec<u8>],
+    committed_data_hash: &[u8],
+) -> Result<(square::ExtendedDataSquare, square::DataAvailabilityHeader), String> {
+    if app_version == 0 {
+        return Err("app version cannot be 0".to_owned());
+    }
+    let max_size = usize::try_from(SQUARE_SIZE_UPPER_BOUND).map_err(|e| e.to_string())?;
+    let eds = if app_version <= 7 {
+        historical_eds(app_version, txs, max_size)?
+    } else {
+        block_eds_with_max(app_version, txs, max_size)?
+    };
+    let dah = square::new_data_availability_header(&eds).map_err(|e| e.to_string())?;
+    let data_hash = dah.hash();
+    if data_hash != committed_data_hash {
+        return Err(format!(
+            "reconstructed data hash {} does not match committed {}",
+            hex::encode(data_hash),
+            hex::encode(committed_data_hash)
+        ));
+    }
+    Ok((eds, dah))
+}
+
+// The v11 Go bridge uses go-square v2 for app versions 1–5 and v3 for 6–7.
+// Both recognize BlobTx envelopes before canonical encoding checks were introduced.
+// A normal SDK transaction is never interpreted as a pay-for-fibre in these versions.
+fn historical_eds(
+    version: u64,
+    txs: &[Vec<u8>],
+    max_size: usize,
+) -> Result<square::ExtendedDataSquare, String> {
+    let mut classified = Vec::with_capacity(txs.len());
+    for raw in txs {
+        let tx = match txdecode::unmarshal_blob_tx_v9(raw) {
+            Some(Ok(tx)) => ClassifiedTx::Blob(to_square_blob_tx(&tx)?),
+            Some(Err(e)) => return Err(format!("unmarshalling historical blob tx: {e:?}")),
+            None => ClassifiedTx::Normal(raw.clone()),
+        };
+        classified.push(tx);
+    }
+    let square = if version <= 5 {
+        let mut builder =
+            square::Builder::new(128, SUBTREE_ROOT_THRESHOLD, &[]).map_err(|e| e.to_string())?;
+        let mut seen_blob = false;
+        for tx in classified {
+            let fits = match tx {
+                ClassifiedTx::Normal(bytes) if !seen_blob => builder.append_tx(bytes),
+                ClassifiedTx::Blob(b) => {
+                    seen_blob = true;
+                    builder.append_blob_tx(square::BlobTx {
+                        tx: b.tx,
+                        blobs: b.blobs,
+                    })
+                }
+                _ => return Err("invalid historical transaction order".to_owned()),
+            };
+            if !fits {
+                return Err("transaction does not fit the historical data square".to_owned());
+            }
+        }
+        builder.export()
+    } else {
+        // The v3 layout accounts for signer bytes and uses 512-wide index estimates.
+        // The rc4 builder implements that layout for normal and blob transactions.
+        v4::construct_rc4(&classified, max_size, SUBTREE_ROOT_THRESHOLD)
+    }
+    .map_err(|e| e.to_string())?;
+    square::extend_shares(square.as_shares()).map_err(|e| e.to_string())
+}
+
+fn block_eds_with_max(
+    app_version: u64,
+    txs: &[Vec<u8>],
+    max_square_size: usize,
+) -> Result<square::ExtendedDataSquare, String> {
     let square = if crate::stores::is_v9(app_version) {
         v4::construct_rc4(
             &classify_txs_v9(txs)?,
@@ -269,14 +355,16 @@ pub fn block_data_root_with_max(
         v4::construct(&classify_txs(txs)?, max_square_size, SUBTREE_ROOT_THRESHOLD)
     }
     .map_err(|e| e.to_string())?;
-    let (width, root) = data_root(&square).map_err(|e| e.0)?;
-    Ok((width as u64, root))
+    square::extend_shares(square.as_shares()).map_err(|e| e.to_string())
 }
 
 /// Erasure-extends `square` and returns `(original width, data root)`.
 fn data_root(square: &square::Square) -> Result<(usize, Vec<u8>), Abort> {
-    let eds = square::extend_shares(square.as_shares())?;
-    let dah = square::new_data_availability_header(&eds)?;
+    eds_data_root(&square::extend_shares(square.as_shares())?)
+}
+
+fn eds_data_root(eds: &square::ExtendedDataSquare) -> Result<(usize, Vec<u8>), Abort> {
+    let dah = square::new_data_availability_header(eds)?;
     Ok((eds.width() / 2, dah.hash().to_vec()))
 }
 
@@ -977,6 +1065,36 @@ mod tests {
             hex::encode(root),
             "3d96b7d238e7e0456f6af8e7cdf0a67bd6cf9c2089ecb559c659dcaa1f880353"
         );
+    }
+
+    // Recorded using celestia-app v11.0.0 da.ConstructEDS(txs, 11, -1).
+    // The blob wrapper is go-square v4.3.1 MarshalBlobTx with inner tx
+    // 0a00 and one v0 blob ("rollup", "one committed rollup batch").
+    #[test]
+    fn bridge_reconstructs_go_v11_shares_and_checks_commitment() {
+        let raw = hex::decode("0a020a00123a0a1c00000000000000000000000000000000000000000000726f6c6c7570121a6f6e6520636f6d6d697474656420726f6c6c75702062617463681a04424c4f42").unwrap();
+        for (txs, width, cells, root) in [
+            (
+                vec![],
+                2,
+                "8bc6b5dd653da1c781e24bacac59ede3e17ce16b3709da428e723ada89cab711",
+                "3d96b7d238e7e0456f6af8e7cdf0a67bd6cf9c2089ecb559c659dcaa1f880353",
+            ),
+            (
+                vec![raw],
+                4,
+                "ddca934c04bffef33563be7e87a5681e098f39ad76cb202cd38a1ddb7004714b",
+                "0dac083083ebd284926ba1e86404eff366064ec191fdb52aaceae6bf2a337183",
+            ),
+        ] {
+            let root = hex::decode(root).unwrap();
+            let (eds, dah) = verified_block_eds(11, &txs, &root).unwrap();
+            assert_eq!(eds.width(), width);
+            assert_eq!(hex::encode(hash::sha256(&eds.flattened().concat())), cells);
+            assert_eq!(dah.hash().as_slice(), root);
+            assert!(verified_block_eds(11, &txs, &[0; 32]).is_err());
+            assert!(verified_block_eds(0, &txs, &root).is_err());
+        }
     }
 
     /// A `MsgPayForBlobs` whose `blob_sizes` are packed 10-byte varints

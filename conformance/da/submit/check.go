@@ -1,0 +1,197 @@
+// Submit through the released Go client and verify the paid data at the returned height.
+package main
+
+import (
+	"bytes"
+	"context"
+	sdkmath "cosmossdk.io/math"
+	"crypto/rand"
+	"fmt"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/celestiaorg/celestia-node/api/rpc/client"
+	"github.com/celestiaorg/celestia-node/blob"
+	"github.com/celestiaorg/celestia-node/state"
+	"github.com/celestiaorg/go-square/v4/share"
+)
+
+func check(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+func verifySecondSigner(ctx context.Context, read, write *client.Client, primary state.Address, encoded string) {
+	recipient, err := sdk.AccAddressFromBech32(encoded)
+	check(err)
+	secondary := state.Address{Address: recipient}
+	amount := sdkmath.NewInt(100000)
+	funded, err := write.State.Transfer(ctx, recipient, amount, nil)
+	check(err)
+	_, err = read.Header.WaitForHeight(ctx, uint64(funded.Height)+1)
+	check(err)
+	for _, options := range []*state.TxConfig{
+		state.NewTxConfig(state.WithKeyName("da-secondary"), state.WithGas(200000), state.WithGasPrice(0.01)),
+		state.NewTxConfig(state.WithKeyName("unused"), state.WithSignerAddress(encoded), state.WithGas(200000), state.WithGasPrice(0.01)),
+	} {
+		tx, err := write.State.Transfer(ctx, state.AccAddress(primary.Bytes()), sdkmath.NewInt(17), options)
+		check(err)
+		if tx.Code != 0 || tx.Height <= 0 {
+			panic("invalid secondary signer receipt")
+		}
+	}
+	// Each transaction sends 17 and pays 2,000 utia in fees from the selected account.
+	want := amount.SubRaw(2 * (17 + 2000))
+	for {
+		balance, err := read.State.BalanceForAddress(ctx, secondary)
+		check(err)
+		if balance.Amount.Equal(want) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			panic("secondary signer debit did not reach sampled state")
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	defaultAccount, err := read.State.AccountAddress(ctx)
+	check(err)
+	if !bytes.Equal(defaultAccount.Bytes(), primary.Bytes()) {
+		panic("transaction changed the default account")
+	}
+	fmt.Println("Go verified named DA signer, address precedence, exact secondary balance and preserved default account")
+}
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	endpoint := os.Args[1]
+	read, err := client.NewClient(ctx, endpoint, os.Getenv("DA_TEST_READ_TOKEN"))
+	check(err)
+	defer read.Close()
+	write, err := client.NewClient(ctx, endpoint, os.Getenv("DA_TEST_WRITE_TOKEN"))
+	check(err)
+	defer write.Close()
+	account, err := read.State.AccountAddress(ctx)
+	check(err)
+	balance, err := read.State.Balance(ctx)
+	check(err)
+	if balance.Denom != "utia" || !balance.Amount.IsPositive() {
+		panic(fmt.Sprintf("unexpected funded balance %v", balance))
+	}
+	for _, addr := range []state.Address{account, {Address: state.ValAddress(account.Bytes())}} {
+		accountBalance, err := read.State.BalanceForAddress(ctx, addr)
+		check(err)
+		if !balance.IsEqual(*accountBalance) {
+			panic(fmt.Sprintf("unexpected balance for %s", addr))
+		}
+	}
+	absent, err := read.State.BalanceForAddress(ctx, state.Address{Address: state.AccAddress(bytes.Repeat([]byte{0x91}, 20))})
+	check(err)
+	if absent.Denom != "utia" || !absent.Amount.IsZero() {
+		panic("absent balance must be zero utia")
+	}
+	recipient := make(state.AccAddress, 20)
+	_, err = rand.Read(recipient)
+	check(err)
+	amount := sdkmath.NewInt(23)
+	if _, err := read.State.Transfer(ctx, recipient, amount, nil); err == nil {
+		panic("read token transferred funds")
+	}
+	if _, err := write.State.Transfer(ctx, recipient, sdkmath.ZeroInt(), nil); err == nil {
+		panic("zero transfer succeeded")
+	}
+	total := sdkmath.ZeroInt()
+	for _, options := range []*state.TxConfig{nil, state.NewTxConfig(state.WithGas(200000), state.WithGasPrice(0.01))} {
+		sent, err := write.State.Transfer(ctx, recipient, amount, options)
+		check(err)
+		if sent.Height <= 0 || len(sent.TxHash) != 64 || sent.Code != 0 {
+			panic("invalid transfer receipt")
+		}
+		total = total.Add(amount)
+		// The transfer first appears in the following header's AppHash.
+		for {
+			h, err := read.Header.LocalHead(ctx)
+			check(err)
+			if h.Height() > uint64(sent.Height) {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				panic(ctx.Err())
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+		for {
+			current, err := read.State.BalanceForAddress(ctx, state.Address{Address: recipient})
+			check(err)
+			if current.Amount.Equal(total) {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				panic(ctx.Err())
+			case <-time.After(200 * time.Millisecond):
+			}
+		}
+	}
+	fmt.Printf("Go verified both committed transfer receipts and the recipient's %sutia balance\n", total)
+	if secondary := os.Getenv("DA_TEST_SECOND_SIGNER"); secondary != "" {
+		verifySecondSigner(ctx, read, write, account, secondary)
+	}
+	ns, err := share.NewV0Namespace([]byte("writer"))
+	check(err)
+	multirow, err := blob.NewBlobV0(ns, bytes.Repeat([]byte("bridge DA"), 1400))
+	check(err)
+	signed, err := blob.NewBlobV1(ns, []byte("account-bound blob"), account.Bytes())
+	check(err)
+	batch := []*blob.Blob{multirow, signed}
+	_, err = read.Blob.Submit(ctx, batch, nil)
+	if err == nil || !strings.Contains(err.Error(), "permission") {
+		panic(fmt.Sprintf("read token could submit or unexpected error: %v", err))
+	}
+	_, err = write.Blob.Submit(ctx, batch, state.NewTxConfig(state.WithKeyName("another-account")))
+	if err == nil || !strings.Contains(err.Error(), "requested account") {
+		panic(fmt.Sprintf("unexpected signer selection: %v", err))
+	}
+	coreBatch := []*share.Blob{multirow.Blob, signed.Blob}
+	if _, err := read.State.SubmitPayForBlob(ctx, coreBatch, nil); err == nil {
+		panic("read-only state.SubmitPayForBlob succeeded")
+	}
+	receipt, err := write.State.SubmitPayForBlob(ctx, coreBatch, nil)
+	check(err)
+	if receipt.Height <= 0 || len(receipt.TxHash) != 64 || receipt.Code != 0 {
+		panic(fmt.Sprintf("invalid PFB receipt: %v", receipt))
+	}
+	_, err = read.Header.WaitForHeight(ctx, uint64(receipt.Height))
+	check(err)
+	for _, want := range batch {
+		got, err := read.Blob.Get(ctx, uint64(receipt.Height), ns, want.Commitment)
+		check(err)
+		if !bytes.Equal(got.Data(), want.Data()) || !bytes.Equal(got.Signer(), want.Signer()) {
+			panic("state PFB payload differs")
+		}
+	}
+	fmt.Printf("Go resolved both blobs from state transaction %s at height %d\n", receipt.TxHash, receipt.Height)
+	for _, opts := range []*state.TxConfig{nil, state.NewTxConfig(state.WithGasPrice(0.01), state.WithSignerAddress(account.String()))} {
+		h, err := write.Blob.Submit(ctx, batch, opts)
+		check(err)
+		header, err := read.Header.GetByHeight(ctx, h)
+		check(err)
+		check(header.Validate())
+		for _, want := range batch {
+			got, err := read.Blob.Get(ctx, h, ns, want.Commitment)
+			check(err)
+			if !bytes.Equal(got.Data(), want.Data()) || !bytes.Equal(got.Signer(), want.Signer()) {
+				panic("submitted blob differs")
+			}
+			proof, err := read.Blob.GetCommitmentProof(ctx, h, ns, want.Commitment)
+			check(err)
+			check(proof.Verify(header.DataHash, want.Commitment))
+		}
+		fmt.Printf("Go submitted unsigned and signer-bearing blobs and verified both commitments at height %d\n", h)
+	}
+}

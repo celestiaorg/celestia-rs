@@ -14,7 +14,7 @@
 #      $SRC. Drafts and unreleased main commits are never deployed. Stop if
 #      every node already runs it, the commit failed a deploy before, or
 #      its CI is not green yet.
-#   2. Build it (`cargo build --release --locked`) and check that the
+#   2. Build it (`cargo build --release --locked --features da-light`) and check that the
 #      binary reports that commit.
 #   3. For each node in NODES order (Mocha first): keep the running binary
 #      as <bin>.prev, swap the new one in atomically, restart the
@@ -320,7 +320,7 @@ log "deploy $TAG (${SHA:0:7}) to: ${stale[*]}"
 
 git -C "$SRC" checkout --quiet --detach "$SHA"
 log "building"
-(cd "$SRC" && nice -n 10 cargo build --quiet --release --locked -j "$BUILD_JOBS" -p celestia-rs) ||
+(cd "$SRC" && nice -n 10 cargo build --quiet --release --locked -j "$BUILD_JOBS" -p celestia-rs --features da-light) ||
   die "build of ${SHA:0:7} failed"
 NEW=$SRC/target/release/celestia-rs
 [[ $(binary_commit "$NEW") == "$SHA" ]] || die "built binary does not report ${SHA:0:7}"

@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## v0.1.0-rc.9 (2026-11-23)
+
+### Changed
+
+- The bridge reconstructs recent DA squares from the validator blockstore.
+  It retains transaction data only when consensus is about to prune a block
+  that remains inside the DA retention window.
+- Operators can shorten the 169-hour default DA window with
+  `da-bridge.retention-hours` or `--bridge-retention-hours`.
+
+## v0.1.0-rc.8 (2026-11-22)
+
+### Added
+
+- Release builds include the opt-in DA bridge and standalone DA light node.
+- Operators can configure DA bridge listeners in the validator's `app.toml`.
+
+### Fixed
+
+- At app version 12, Fibre escrow deposits and withdrawal requests use the
+  canonical signer address for account lookups, stored records and events.
+- Release archives report the `dist` build profile in `version --long`.
+
 ## v0.1.0-rc.7 (2026-11-20)
 
 ### Changed

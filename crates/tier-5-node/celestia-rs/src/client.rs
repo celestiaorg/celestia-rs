@@ -131,14 +131,24 @@ pub fn resolve_from(home: &Path, f: &TxFlags) -> anyhow::Result<Signer> {
 /// Builds, signs and broadcasts `msgs` from `f.from`; prints Go's
 /// `TxResponse` JSON. Returns the response. With `--generate-only`, prints
 /// the unsigned tx instead (`--from` resolved by [`resolve_from`]).
-#[allow(clippy::too_many_lines)]
 pub fn send_tx(
     home: &Path,
     f: &TxFlags,
     msgs: impl FnOnce(&Signer) -> anyhow::Result<(Vec<Any>, Option<Vec<shares::Blob>>)>,
 ) -> anyhow::Result<Value> {
     let from = resolve_from(home, f)?;
-    let (msgs, blobs) = msgs(&from)?;
+    send_with_signer(home, f, &from, true, msgs)
+}
+
+#[allow(clippy::too_many_lines)]
+pub(crate) fn send_with_signer(
+    home: &Path,
+    f: &TxFlags,
+    from: &Signer,
+    print: bool,
+    msgs: impl FnOnce(&Signer) -> anyhow::Result<(Vec<Any>, Option<Vec<shares::Blob>>)>,
+) -> anyhow::Result<Value> {
+    let (msgs, blobs) = msgs(from)?;
     let node = Node::new(&node_addr(home, &f.node));
     let mut fee = f.fee.clone();
     if fee.gas == 0
@@ -242,7 +252,9 @@ pub fn send_tx(
         res["gas_wanted"] = st["gas_wanted"].clone();
         res["gas_used"] = st["gas_used"].clone();
     }
-    util::out(res.to_string());
+    if print {
+        util::out(res.to_string());
+    }
     if res["code"].as_u64().unwrap_or(0) != 0 {
         bail!(
             "tx failed with code {}: {}",
@@ -261,14 +273,15 @@ fn coins(s: &str) -> anyhow::Result<Vec<Coin>> {
 pub fn bank_send(home: &Path, f: &TxFlags, to: &str, amount: &str) -> anyhow::Result<Value> {
     let amount = coins(amount)?;
     send_tx(home, f, |k| {
-        Ok((
-            vec![Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend {
-                from_address: k.bech32(ACC_PREFIX),
-                to_address: to.to_owned(),
-                amount,
-            })],
-            None,
-        ))
+        Ok((vec![bank_message(k.bech32(ACC_PREFIX), to, amount)], None))
+    })
+}
+
+pub(crate) fn bank_message(from_address: String, to: &str, amount: Vec<Coin>) -> Any {
+    Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend {
+        from_address,
+        to_address: to.to_owned(),
+        amount,
     })
 }
 

@@ -143,9 +143,53 @@ pub struct MetricsOptions {
     pub namespace: String,
 }
 
+/// Parse a bridge listener supplied as a TCP socket or a libp2p multiaddress.
+#[cfg(feature = "bridge-p2p")]
+pub fn parse_bridge_listener(value: &str) -> anyhow::Result<libp2p::Multiaddr> {
+    if let Ok(addr) = value.parse::<std::net::SocketAddr>() {
+        return Ok(bridge_tcp_address(addr));
+    }
+    Ok(value.parse()?)
+}
+
+#[cfg(feature = "bridge-p2p")]
+fn bridge_tcp_address(addr: std::net::SocketAddr) -> libp2p::Multiaddr {
+    libp2p::Multiaddr::from(addr.ip()).with(libp2p::multiaddr::Protocol::Tcp(addr.port()))
+}
+
 /// Options of `celestia-rs start`.
 #[derive(Debug, Clone)]
 pub struct StartOptions {
+    /// Experimental libp2p bridge listener.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_p2p_listen: Option<std::net::SocketAddr>,
+    /// Explicit DA listener multiaddresses, in addition to the optional TCP socket.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_listeners: Vec<libp2p::Multiaddr>,
+    /// Operator bootstrap overrides for the opt-in DA network.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_bootstrap: Vec<libp2p::Multiaddr>,
+    /// DA addresses reachable behind an operator's NAT.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_announce: Vec<libp2p::Multiaddr>,
+    /// Exact listener addresses to omit from DA advertisements.
+    #[cfg(feature = "bridge-p2p")]
+    pub bridge_no_announce: Vec<libp2p::Multiaddr>,
+    /// Explicit listener for the experimental read-only DA bridge.
+    #[cfg(feature = "bridge")]
+    pub bridge_rpc_listen: Option<std::net::SocketAddr>,
+    /// Preserve verified DA data older than the normal retention window.
+    #[cfg(feature = "bridge")]
+    pub bridge_archival: bool,
+    /// DA retention in hours when archival mode is disabled.
+    #[cfg(feature = "bridge")]
+    pub bridge_retention_hours: Option<u64>,
+    /// Keyring account explicitly assigned to DA blob submission.
+    #[cfg(feature = "bridge")]
+    pub bridge_signer: Option<String>,
+    /// Additional local keyring accounts explicitly authorized for DA writes.
+    #[cfg(feature = "bridge")]
+    pub bridge_additional_signers: Vec<String>,
     /// Node home.
     pub home: PathBuf,
     /// Stop after committing this height (0 = run forever); unlike Go's
@@ -182,6 +226,26 @@ impl StartOptions {
         Self {
             home,
             stop_height,
+            #[cfg(feature = "bridge")]
+            bridge_rpc_listen: None,
+            #[cfg(feature = "bridge")]
+            bridge_archival: false,
+            #[cfg(feature = "bridge")]
+            bridge_retention_hours: None,
+            #[cfg(feature = "bridge")]
+            bridge_signer: None,
+            #[cfg(feature = "bridge")]
+            bridge_additional_signers: Vec::new(),
+            #[cfg(feature = "bridge-p2p")]
+            bridge_p2p_listen: None,
+            #[cfg(feature = "bridge-p2p")]
+            bridge_listeners: Vec::new(),
+            #[cfg(feature = "bridge-p2p")]
+            bridge_bootstrap: Vec::new(),
+            #[cfg(feature = "bridge-p2p")]
+            bridge_announce: Vec::new(),
+            #[cfg(feature = "bridge-p2p")]
+            bridge_no_announce: Vec::new(),
             config,
             mempool: mempool::MempoolConfig::celestia_app(),
             p2p: None,
@@ -417,6 +481,35 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         app_version: state.consensus_params.version.app,
     })?;
     exec.set_event_sink(rpc.publisher.clone());
+    #[cfg(feature = "bridge-p2p")]
+    let bridge_listeners: Vec<_> = opts
+        .bridge_p2p_listen
+        .into_iter()
+        .map(bridge_tcp_address)
+        .chain(opts.bridge_listeners.iter().cloned())
+        .collect();
+    #[cfg(feature = "bridge")]
+    let bridge_index = {
+        let enabled = opts.bridge_rpc_listen.is_some();
+        #[cfg(feature = "bridge-p2p")]
+        let enabled = enabled || !bridge_listeners.is_empty();
+        enabled
+            .then(|| {
+                crate::bridge::index::Indexer::start(
+                    home,
+                    &genesis.chain_id,
+                    bs.clone(),
+                    ss.clone(),
+                    opts.bridge_archival,
+                    opts.bridge_retention_hours,
+                )
+            })
+            .transpose()?
+    };
+    #[cfg(feature = "bridge")]
+    if let Some(index) = &bridge_index {
+        exec.set_prune_limit(index.prune_limit());
+    }
     rpc.spawn()?;
     let local_addr = pv.address().to_vec();
     // Go: a fresh node with state sync enabled skips the handshake; the
@@ -454,6 +547,55 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         Some(m) => Some(start_metrics(m, &genesis.chain_id, &pool)?),
         None => None,
     };
+    #[cfg(feature = "bridge-p2p")]
+    let bridge_peer = bridge_index
+        .as_ref()
+        .filter(|_| !bridge_listeners.is_empty())
+        .map(|index| {
+            crate::bridge::peer::start(
+                bridge_listeners,
+                home,
+                &genesis.chain_id,
+                crate::bridge::peer::Serving::new(index.store.clone(), metrics.clone()),
+                &opts.bridge_bootstrap,
+                opts.bridge_announce.clone(),
+                opts.bridge_no_announce.clone(),
+            )
+        })
+        .transpose()?;
+    #[cfg(feature = "bridge")]
+    let _bridge = opts
+        .bridge_rpc_listen
+        .zip(bridge_index.as_ref())
+        .map(|(addr, index)| {
+            let names = opts
+                .bridge_signer
+                .iter()
+                .chain(&opts.bridge_additional_signers);
+            let wallet = crate::bridge::submit::Accounts::open(names, |name| {
+                let wallet = crate::bridge::submit::Wallet::open(
+                    home,
+                    name,
+                    &rpc.settings.rpc.laddr,
+                    app::AbciApp::from_shared(app.clone()),
+                    &genesis.chain_id,
+                    ss.clone(),
+                )?;
+                Ok((wallet.address(), wallet))
+            })?;
+            crate::bridge::Server::start(
+                addr,
+                home,
+                index.store.clone(),
+                app::AbciApp::from_shared(app.clone()),
+                #[cfg(feature = "da-fibre")]
+                (&rpc.settings.app_grpc, &genesis.chain_id),
+                #[cfg(feature = "bridge-p2p")]
+                bridge_peer.as_ref().map(|(_, control)| control.clone()),
+                wallet,
+            )
+        })
+        .transpose()?;
     // The consensus state machine and its reactors exist from the start
     // (Go's `NewState` + `NewReactor`); block sync executes blocks through
     // the same block executor and then hands over (`SwitchToConsensus`).
