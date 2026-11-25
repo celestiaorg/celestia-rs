@@ -1,16 +1,22 @@
 //! App version 1 blocks against the Go v1 oracle
 //! (`conformance/v1-oracle`).
 //!
-//! `v1_blocks_1_to_10_match_the_oracle` runs InitChain on the canonical
-//! mainnet genesis and then mainnet blocks 1 to 10 through the v0.46
-//! driver, and requires for each block the oracle's KV changes for every
-//! store, its store roots, the app hash, every transaction result (code,
-//! codespace, gas wanted and used, data, log, info, events) and the
-//! block's events, validator updates, consensus params and timeouts:
+//! `v1_blocks_match_the_oracle` runs InitChain on the canonical mainnet
+//! genesis and then mainnet blocks 1 to 10 through the v0.46 driver, and
+//! requires for each block the oracle's KV changes for every store, its
+//! store roots, the app hash, every transaction result (code, codespace,
+//! gas wanted and used, data, log, info, events) and the block's events,
+//! validator updates, consensus params and timeouts:
 //!
 //! ```sh
 //! CELESTIA_MAINNET_GENESIS=<genesis.json> cargo test -p app --test v1_block_oracle -- --ignored
 //! ```
+//!
+//! It continues past height 10 with a local block file and oracle output
+//! (not committed): `CELESTIA_V1_BLOCKS=<blocks.jsonl[.gz]>` holding
+//! heights 12 to N+1, `CELESTIA_V1_ORACLE_EXT=<dir>` from `v1-oracle
+//! -from 11 -heights N -kv -out <dir>`, and optionally
+//! `CELESTIA_V1_LAST_HEIGHT` to stop earlier.
 //!
 //! `v1_begin_blockers_match_the_oracle_for_blocks_2_to_10` rebuilds the
 //! oracle state before each of blocks 2 to 10 from the full height-0 dump
@@ -236,12 +242,12 @@ fn update_set(v: &[ValidatorUpdate]) -> Vec<(Vec<u8>, i64)> {
 #[test]
 #[ignore = "needs the mainnet genesis: CELESTIA_MAINNET_GENESIS=<genesis.json>"]
 #[allow(clippy::too_many_lines)]
-fn v1_blocks_1_to_10_match_the_oracle() {
+fn v1_blocks_match_the_oracle() {
     let genesis = common::mainnet_genesis();
-    let archive = common::archive();
-    let diffs = common::oracle_diffs();
-    let results = common::oracle_results();
-    let roots = common::oracle_roots();
+    let oracle = common::Oracle::load();
+    let last_height = oracle.last_to_run();
+    let archive = common::archive_to(last_height);
+    let (diffs, results, roots) = (&oracle.diffs, &oracle.results, &oracle.roots);
     let stores = iavl_stores();
 
     let mut ms = v1_store();
@@ -251,7 +257,7 @@ fn v1_blocks_1_to_10_match_the_oracle() {
         .unwrap();
     drop(genesis);
     assert_eq!(init.app_hash, hash::sha256(&[]).to_vec());
-    assert_eq!(roots["heights"][1]["app_hash"], BLOCK_1_APP_HASH);
+    assert_eq!(roots[&1]["app_hash"], BLOCK_1_APP_HASH);
 
     // Validator sets by height, from the oracle's EndBlock updates (the
     // requests' inputs): the genesis set signs heights 1 and 2, and each
@@ -261,7 +267,7 @@ fn v1_blocks_1_to_10_match_the_oracle() {
     common::sort_validators(&mut genesis_set);
     vals.insert(1, genesis_set.clone());
     vals.insert(2, genesis_set);
-    for h in 1..=9 {
+    for h in 1..last_height {
         let next = common::apply_updates(&vals[&(h + 1)], &common::oracle_updates(&results[&h]));
         vals.insert(h + 2, next);
     }
@@ -272,19 +278,21 @@ fn v1_blocks_1_to_10_match_the_oracle() {
         .collect();
     let empty = BTreeMap::new();
     println!("height app-hash roots kv txs events updates");
-    for height in 1..=10i64 {
+    for height in 1..=last_height {
         let last = if height == 1 {
             Vec::new()
         } else {
             vals[&(height - 1)].clone()
         };
         let req = common::finalize_request(&archive[&height], &last);
-        let res = driver.finalize_block(&mut ms, &req).unwrap();
+        let res = driver
+            .finalize_block(&mut ms, &req)
+            .unwrap_or_else(|e| panic!("height {height}: {}", e.log));
         let id = driver.commit(&mut ms).unwrap();
 
         let mut failures = Vec::new();
         let want_diffs = diffs.get(&height).unwrap_or(&empty);
-        let hr = &roots["heights"][usize::try_from(height).unwrap()];
+        let hr = &roots[&height];
         assert_eq!(hr["height"], height);
         let info = ms.root().last_commit_info().unwrap().clone();
         let (mut kv_ok, mut roots_ok) = (true, true);

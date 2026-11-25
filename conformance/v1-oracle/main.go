@@ -4,12 +4,13 @@
 // tell which store, and which key, differs from Go.
 //
 //	v1-oracle -genesis genesis.json -blocks blocks.jsonl.gz \
-//	  -windows replay-windows.json -heights 10 -out <dir> [-kv]
+//	  [-windows replay-windows.json] [-from 1] -heights 10 -out <dir> [-kv]
 //
 // celestia-app v3.13.0 is the binary that the Go multiplexer runs for app
 // versions 1 to 3. This program builds that app in process and drives it as
 // Tendermint v0.34 does: Info, InitChain, then BeginBlock, DeliverTx,
-// EndBlock and Commit per block. It tracks the validator set from the
+// EndBlock and Commit per block. Like celestia-core v0.34, it delivers the
+// inner transaction of a BlobTx. It tracks the validator set from the
 // InitChain and EndBlock validator updates to build LastCommitInfo.
 //
 // Height 0 is the genesis state alone: a separate app runs InitChain and
@@ -21,8 +22,9 @@
 //   - the tracked validator set hashes to the header's validators_hash and
 //     next_validators_hash;
 //   - the InitChain app hash equals the app hash in header 1;
-//   - each Commit app hash equals the pinned post_app_hash in window 1 of
-//     replay-windows.json and the app hash in the next archived header;
+//   - each Commit app hash equals the app hash in the next archived header
+//     and, with -windows, the pinned post_app_hash in window 1 of
+//     replay-windows.json for each height it pins;
 //   - the commit info hash rebuilt from the dumped store roots equals the
 //     Commit app hash;
 //   - the DeliverTx results hash equals last_results_hash of the next header.
@@ -34,6 +36,11 @@
 //   - kv-height-0-modules.jsonl.gz: the same without the acc and bank
 //     stores, which hold the genesis accounts and balances;
 //   - kv-diffs.jsonl.gz: the keys that each block sets or deletes.
+//
+// With -from F > 1 the program still executes every block from genesis but
+// records only heights F..N: no height 0 or genesis dump, and the KV diffs
+// of blocks F..N (from the state at F-1). The blocks file must hold every
+// height from 1 to N+1.
 //
 // Keys and values are hex; stores are sorted by name and keys by bytes.
 // store-roots.json records the SHA-256 of each uncompressed dump and of
@@ -255,8 +262,8 @@ type Timeouts struct {
 
 // KVFiles records the SHA-256 of each uncompressed KV dump.
 type KVFiles struct {
-	Height0        string `json:"kv-height-0.jsonl"`
-	Height0Modules string `json:"kv-height-0-modules.jsonl"`
+	Height0        string `json:"kv-height-0.jsonl,omitempty"`
+	Height0Modules string `json:"kv-height-0-modules.jsonl,omitempty"`
 	Diffs          string `json:"kv-diffs.jsonl"`
 }
 
@@ -275,12 +282,13 @@ func main() {
 func run() error {
 	genesisPath := flag.String("genesis", "", "canonical mainnet genesis.json")
 	blocksPath := flag.String("blocks", "", "conformance/fixtures/mainnet/blocks.jsonl.gz")
-	windowsPath := flag.String("windows", "", "conformance/fixtures/mainnet/replay-windows.json")
+	windowsPath := flag.String("windows", "", "optional conformance/fixtures/mainnet/replay-windows.json: also check its pinned app hashes")
+	from := flag.Int64("from", 1, "first block height to record")
 	heights := flag.Int64("heights", 10, "last block height to execute")
 	out := flag.String("out", "", "output directory")
 	withKV := flag.Bool("kv", false, "also write the KV dump at height 0 and the per-block KV diffs")
 	flag.Parse()
-	if *genesisPath == "" || *blocksPath == "" || *windowsPath == "" || *out == "" || *heights < 1 {
+	if *genesisPath == "" || *blocksPath == "" || *out == "" || *heights < 1 || *from < 1 || *from > *heights {
 		flag.Usage()
 		return errors.New("missing arguments")
 	}
@@ -300,9 +308,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	postAppHash, err := readPostAppHashes(*windowsPath, genDoc.ChainID, *heights)
-	if err != nil {
-		return err
+	postAppHash := map[int64]string{}
+	if *windowsPath != "" {
+		if postAppHash, err = readPostAppHashes(*windowsPath, genDoc.ChainID); err != nil {
+			return err
+		}
 	}
 
 	fixture := Fixture{
@@ -314,39 +324,43 @@ func run() error {
 	}
 
 	// Height 0: the genesis state alone, committed as version 1.
-	home, err := os.MkdirTemp("", "v1-oracle-genesis-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(home)
-	genesisApp := newApp(home)
-	if _, err := initChain(genesisApp, genDoc); err != nil {
-		return err
-	}
-	commitID := genesisApp.Commit()
-	h0, prev, err := dumpState(genesisApp, 1, *withKV)
-	if err != nil {
-		return err
-	}
-	h0.Height = 0
-	if h0.AppHash != upper(commitID.Data) {
-		return fmt.Errorf("height 0: commit %X, commit info %s", commitID.Data, h0.AppHash)
-	}
-	fixture.Heights = append(fixture.Heights, h0)
+	var prev kvState
 	var kvHeight0, kvModules []byte
-	if *withKV {
-		if kvHeight0, err = encodeKV(h0, prev, nil); err != nil {
+	if *from == 1 {
+		home, err := os.MkdirTemp("", "v1-oracle-genesis-")
+		if err != nil {
 			return err
 		}
-		if kvModules, err = encodeKV(h0, prev, bulkStores); err != nil {
+		defer os.RemoveAll(home)
+		genesisApp := newApp(home)
+		if _, err := initChain(genesisApp, genDoc); err != nil {
 			return err
 		}
+		commitID := genesisApp.Commit()
+		var h0 Height
+		h0, prev, err = dumpState(genesisApp, 1, *withKV)
+		if err != nil {
+			return err
+		}
+		h0.Height = 0
+		if h0.AppHash != upper(commitID.Data) {
+			return fmt.Errorf("height 0: commit %X, commit info %s", commitID.Data, h0.AppHash)
+		}
+		fixture.Heights = append(fixture.Heights, h0)
+		if *withKV {
+			if kvHeight0, err = encodeKV(h0, prev, nil); err != nil {
+				return err
+			}
+			if kvModules, err = encodeKV(h0, prev, bulkStores); err != nil {
+				return err
+			}
+		}
+		genesisApp = nil
+		fmt.Fprintf(os.Stderr, "height 0: %s (%d stores)\n", h0.AppHash, len(h0.Stores))
 	}
-	genesisApp = nil
-	fmt.Fprintf(os.Stderr, "height 0: %s (%d stores)\n", h0.AppHash, len(h0.Stores))
 
 	// Heights 1..N.
-	home, err = os.MkdirTemp("", "v1-oracle-replay-")
+	home, err := os.MkdirTemp("", "v1-oracle-replay-")
 	if err != nil {
 		return err
 	}
@@ -405,11 +419,17 @@ func run() error {
 			if err != nil {
 				return err
 			}
+			sum := sha256.Sum256(tx)
+			// celestia-core v0.34 delivers a BlobTx's inner transaction
+			// (state/execution.go execBlockOnProxyApp); the blobs stay in
+			// the block only.
+			if blobTx, isBlobTx := tmtypes.UnmarshalBlobTx(tx); isBlobTx {
+				tx = blobTx.Tx
+			}
 			r := replayApp.DeliverTx(abci.RequestDeliverTx{Tx: tx})
 			results = append(results, &r)
 			txResults = append(txResults, [3]int64{int64(r.Code), r.GasWanted, r.GasUsed})
 			txData = append(txData, hex.EncodeToString(r.Data))
-			sum := sha256.Sum256(tx)
 			txs = append(txs, TxResult{
 				Index:     i,
 				Hash:      upper(sum[:]),
@@ -428,28 +448,36 @@ func run() error {
 
 		next := blocks[height+1].Block.Header
 		got := upper(commit.Data)
-		if got != postAppHash[height] || got != next.AppHash {
-			return fmt.Errorf("height %d: app hash %s, pinned %s, next header %s", height, got, postAppHash[height], next.AppHash)
+		if pinned, ok := postAppHash[height]; got != next.AppHash || (ok && got != pinned) {
+			return fmt.Errorf("height %d: app hash %s, pinned %s, next header %s", height, got, pinned, next.AppHash)
 		}
 		if rh := upper(tmtypes.NewResults(results).Hash()); rh != next.LastResultsHash {
 			return fmt.Errorf("height %d: results hash %s, next header %s", height, rh, next.LastResultsHash)
 		}
 
-		dumped, cur, err := dumpState(replayApp, height, *withKV)
-		if err != nil {
-			return err
-		}
-		if dumped.AppHash != got {
-			return fmt.Errorf("height %d: commit %s, commit info %s", height, got, dumped.AppHash)
-		}
-		dumped.TxResults = txResults
-		dumped.TxData = txData
-		fixture.Heights = append(fixture.Heights, dumped)
-		if *withKV {
-			if err := writeDiff(&diffs, height, prev, cur); err != nil {
+		// The state at from-1 is the base of the first recorded diff.
+		record := height >= *from
+		if record || (*withKV && height == *from-1) {
+			dumped, cur, err := dumpState(replayApp, height, *withKV)
+			if err != nil {
 				return err
 			}
-			prev = cur
+			if dumped.AppHash != got {
+				return fmt.Errorf("height %d: commit %s, commit info %s", height, got, dumped.AppHash)
+			}
+			dumped.TxResults = txResults
+			dumped.TxData = txData
+			if record {
+				fixture.Heights = append(fixture.Heights, dumped)
+			}
+			if *withKV {
+				if record {
+					if err := writeDiff(&diffs, height, prev, cur); err != nil {
+						return err
+					}
+				}
+				prev = cur
+			}
 		}
 
 		// Tendermint v0.34 applies EndBlock(H) validator updates at H+2.
@@ -480,7 +508,9 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		txResultsJSONL.Write(append(line, '\n'))
+		if record {
+			txResultsJSONL.Write(append(line, '\n'))
+		}
 		fmt.Fprintf(os.Stderr, "height %d: %s (%d txs, %d validator updates)\n", height, got, len(results), len(updates))
 	}
 
@@ -488,16 +518,15 @@ func run() error {
 		return err
 	}
 	if *withKV {
-		fixture.KV = &KVFiles{
-			Height0:        sha256Hex(kvHeight0),
-			Height0Modules: sha256Hex(kvModules),
-			Diffs:          sha256Hex(diffs.Bytes()),
+		fixture.KV = &KVFiles{Diffs: sha256Hex(diffs.Bytes())}
+		files := map[string][]byte{"kv-diffs.jsonl.gz": diffs.Bytes()}
+		if *from == 1 {
+			fixture.KV.Height0 = sha256Hex(kvHeight0)
+			fixture.KV.Height0Modules = sha256Hex(kvModules)
+			files["kv-height-0.jsonl.gz"] = kvHeight0
+			files["kv-height-0-modules.jsonl.gz"] = kvModules
 		}
-		for name, content := range map[string][]byte{
-			"kv-height-0.jsonl.gz":         kvHeight0,
-			"kv-height-0-modules.jsonl.gz": kvModules,
-			"kv-diffs.jsonl.gz":            diffs.Bytes(),
-		} {
+		for name, content := range files {
 			compressed, err := gzipBytes(content)
 			if err != nil {
 				return err
@@ -824,7 +853,9 @@ func readBlocks(path string, last int64) (map[int64]rpcBlock, error) {
 	return blocks, nil
 }
 
-func readPostAppHashes(path, chainID string, last int64) (map[int64]string, error) {
+// readPostAppHashes reads the pinned post-block app hashes of the app
+// version 1 windows.
+func readPostAppHashes(path, chainID string) (map[int64]string, error) {
 	bz, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -843,11 +874,6 @@ func readPostAppHashes(path, chainID string, last int64) (map[int64]string, erro
 		}
 		for _, b := range win.Blocks {
 			out[b.Height] = b.PostAppHash
-		}
-	}
-	for h := int64(1); h <= last; h++ {
-		if out[h] == "" {
-			return nil, fmt.Errorf("no pinned post_app_hash for height %d", h)
 		}
 	}
 	return out, nil

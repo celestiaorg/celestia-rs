@@ -112,6 +112,121 @@ pub fn archive() -> BTreeMap<i64, serde_json::Value> {
         .collect()
 }
 
+/// A local block file beyond the committed window
+/// (`CELESTIA_V1_BLOCKS`: JSON lines `{"height", "result"}`, plain or
+/// gzipped, as the oracle reads them).
+pub const BLOCKS_ENV: &str = "CELESTIA_V1_BLOCKS";
+/// A local oracle output beyond the committed window
+/// (`CELESTIA_V1_ORACLE_EXT`: a `-out` directory of `v1-oracle -from 11
+/// -kv`).
+pub const ORACLE_EXT_ENV: &str = "CELESTIA_V1_ORACLE_EXT";
+/// The last height to run against the oracle (`CELESTIA_V1_LAST_HEIGHT`;
+/// default: the last height the oracle records).
+pub const LAST_HEIGHT_ENV: &str = "CELESTIA_V1_LAST_HEIGHT";
+
+fn lines(path: &str) -> Box<dyn Iterator<Item = serde_json::Value> + '_> {
+    if std::path::Path::new(path)
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("gz"))
+    {
+        Box::new(gz_lines(path))
+    } else {
+        Box::new(
+            BufReader::new(std::fs::File::open(path).unwrap())
+                .lines()
+                .map(|l| serde_json::from_str(&l.unwrap()).unwrap()),
+        )
+    }
+}
+
+/// The archived blocks 1 to `last + 1`: the committed ones, then those
+/// of [`BLOCKS_ENV`].
+pub fn archive_to(last: i64) -> BTreeMap<i64, serde_json::Value> {
+    let mut out = archive();
+    if last >= 11 {
+        let path = std::env::var(BLOCKS_ENV).expect("set CELESTIA_V1_BLOCKS for heights past 10");
+        for d in lines(&path) {
+            let h = d["height"].as_i64().unwrap();
+            if (12..=last + 1).contains(&h) {
+                out.insert(h, d["result"].clone());
+            }
+        }
+    }
+    for h in 1..=last + 1 {
+        assert!(out.contains_key(&h), "no archived block {h}");
+    }
+    out
+}
+
+/// The oracle's record per height: the committed fixture (heights 0 to
+/// 10), extended by [`ORACLE_EXT_ENV`] when set.
+pub struct Oracle {
+    /// `store-roots.json` heights, by height.
+    pub roots: BTreeMap<i64, serde_json::Value>,
+    /// `tx-results.jsonl.gz` lines, by height.
+    pub results: BTreeMap<i64, serde_json::Value>,
+    /// `kv-diffs.jsonl.gz`, by height and store.
+    pub diffs: BTreeMap<i64, BTreeMap<String, Diff>>,
+}
+
+impl Oracle {
+    /// The committed fixture and, when [`ORACLE_EXT_ENV`] is set, the
+    /// extended output (its heights must start right after the fixture's).
+    pub fn load() -> Self {
+        let mut o = Self::from_dir(ORACLE);
+        if let Ok(dir) = std::env::var(ORACLE_EXT_ENV) {
+            let ext = Self::from_dir(&dir);
+            let first = *ext.roots.keys().next().unwrap();
+            assert_eq!(
+                first,
+                o.last() + 1,
+                "{dir} must start at height {}",
+                o.last() + 1
+            );
+            o.roots.extend(ext.roots);
+            o.results.extend(ext.results);
+            o.diffs.extend(ext.diffs);
+        }
+        o
+    }
+
+    fn from_dir(dir: &str) -> Self {
+        let roots: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(format!("{dir}/store-roots.json")).unwrap())
+                .unwrap();
+        Self {
+            roots: roots["heights"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|h| (h["height"].as_i64().unwrap(), h.clone()))
+                .collect(),
+            results: gz_lines(&format!("{dir}/tx-results.jsonl.gz"))
+                .map(|d| (d["height"].as_i64().unwrap(), d))
+                .collect(),
+            diffs: diffs_in(&format!("{dir}/kv-diffs.jsonl.gz")),
+        }
+    }
+
+    /// The last height recorded.
+    pub fn last(&self) -> i64 {
+        *self.roots.keys().next_back().unwrap()
+    }
+
+    /// The last height to run: [`LAST_HEIGHT_ENV`] or [`Self::last`].
+    pub fn last_to_run(&self) -> i64 {
+        std::env::var(LAST_HEIGHT_ENV).map_or(self.last(), |s| {
+            let h: i64 = s.parse().unwrap();
+            assert!(
+                h <= self.last(),
+                "the oracle records heights up to {}",
+                self.last()
+            );
+            h
+        })
+    }
+}
+
 /// The block's header as a proto.
 pub fn header(block: &serde_json::Value) -> Header {
     let h = &block["block"]["header"];
@@ -248,8 +363,12 @@ pub struct Diff {
 
 /// The oracle's KV diffs, by height and store.
 pub fn oracle_diffs() -> BTreeMap<i64, BTreeMap<String, Diff>> {
+    diffs_in(&format!("{ORACLE}/kv-diffs.jsonl.gz"))
+}
+
+fn diffs_in(path: &str) -> BTreeMap<i64, BTreeMap<String, Diff>> {
     let mut out: BTreeMap<i64, BTreeMap<String, Diff>> = BTreeMap::new();
-    for d in gz_lines(&format!("{ORACLE}/kv-diffs.jsonl.gz")) {
+    for d in gz_lines(path) {
         let diff = Diff {
             set: d["set"]
                 .as_array()

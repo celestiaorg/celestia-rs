@@ -249,6 +249,22 @@ cp "$OUT"/store-roots.json "$OUT"/tx-results.jsonl.gz \
   ../fixtures/mainnet/v1-oracle/
 ```
 
+To check heights past 10, run the oracle on a longer local block file
+(JSON lines `{"height", "result"}` of the RPC `block`, heights 1 to N+1,
+gzipped; not committed). With `-from 11` it still executes every block
+from genesis but records only heights 11 to N, and checks each app hash
+against the next header (`-windows` is optional; it adds the pinned
+hashes of window 1). Like celestia-core v0.34, the oracle delivers the
+inner transaction of a `BlobTx`. Then point the block test at both:
+
+```sh
+./v1-oracle -genesis <genesis.json> -blocks <blocks.jsonl.gz> \
+  -from 11 -heights N -kv -out "$EXT"
+CELESTIA_MAINNET_GENESIS=<genesis.json> CELESTIA_V1_BLOCKS=<blocks.jsonl.gz> \
+CELESTIA_V1_ORACLE_EXT="$EXT" [CELESTIA_V1_LAST_HEIGHT=<h>] \
+  cargo test -p app --test v1_block_oracle v1_blocks_match_the_oracle -- --ignored
+```
+
 #### Where checkpoints come from
 
 The QubeLabs archive (`celestia_2026-11-03.tar`, ETag
