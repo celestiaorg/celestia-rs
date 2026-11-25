@@ -6,6 +6,9 @@
 
 - Validators can use compatible Horcrux or tmkms remote signers through
   `priv_validator_laddr`, including Celestia compact-block signing.
+- `celestia-rs migrate` prepares a stopped Go `celestia-appd` home for
+  celestia-rs. It backs up the config, moves the Go databases to `data.go/`,
+  keeps `priv_validator_state.json` and can fill in `[statesync]`.
 
 ## v0.1.0-rc.9 (2026-11-23)
 
