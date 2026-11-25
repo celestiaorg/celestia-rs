@@ -247,15 +247,20 @@ const RELEASES: [Release; 12] = [
 /// The release that runs when no app version is set (0): app version 10.
 pub const CURRENT_APP_VERSION: u64 = 10;
 
+const CURRENT_RELEASE: &Release = &RELEASES[9];
+
 impl Release {
     /// The release that defines `v`, or `None` outside `1..=12`.
     #[must_use]
     pub const fn for_app_version(v: u64) -> Option<&'static Self> {
-        if v == 0 || v > RELEASES.len() as u64 {
-            None
-        } else {
-            Some(&RELEASES[(v - 1) as usize])
+        let mut i = 0;
+        while i < RELEASES.len() {
+            if RELEASES[i].app_version == v {
+                return Some(&RELEASES[i]);
+            }
+            i += 1;
         }
+        None
     }
 
     /// The release whose state machine celestia-rs runs for app version
@@ -267,7 +272,10 @@ impl Release {
             Some(r) => r.runs_as,
             None => CURRENT_APP_VERSION,
         };
-        &RELEASES[(runs_as - 1) as usize]
+        match Self::for_app_version(runs_as) {
+            Some(r) => r,
+            None => CURRENT_RELEASE,
+        }
     }
 
     /// Whether the release mounts store `name`.
@@ -419,5 +427,9 @@ mod tests {
         }
         assert!(!is_v9(0));
         assert!(!is_v9(13));
+        assert_eq!(CURRENT_RELEASE.app_version, CURRENT_APP_VERSION);
+        for v in [0, 13, u64::MAX] {
+            assert_eq!(Release::executing(v), CURRENT_RELEASE, "v{v}");
+        }
     }
 }
