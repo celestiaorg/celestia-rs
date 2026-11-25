@@ -74,12 +74,19 @@ bench_unchunk() {
 }
 
 # bench_log_excerpt: stdin is a node log. Prints its first 200 lines, then
-# at most 3000 later lines about state sync, snapshots, the light client,
-# block sync or problems. A whole node log is too large to publish.
+# later lines about state sync, snapshots, the light client, block sync or
+# problems: the first 1500 and the last 1500 of them, with a marker between.
+# A whole node log is too large to publish.
 bench_log_excerpt() {
   awk 'NR <= 200 { print; next }
-       tolower($0) ~ /snapshot|statesync|state sync|light|blocksync|block sync|chunk|error|warn|panic|fatal/ { keep[n++] = $0 }
-       END { for (i = (n > 3000 ? n - 3000 : 0); i < n; i++) print keep[i] }'
+       tolower($0) ~ /snapshot|statesync|state sync|light|blocksync|block sync|chunk|seed|error|warn|panic|fatal/ {
+         if (n < 1500) print; else tail[n % 1500] = $0
+         n++
+       }
+       END {
+         if (n > 3000) printf "... %d matching lines omitted ...\n", n - 3000
+         for (i = (n > 3000 ? n - 1500 : 1500); i < n; i++) print tail[i % 1500]
+       }'
 }
 
 # bench_toml_set FILE SECTION KEY VALUE: set KEY (VALUE is a TOML literal)
