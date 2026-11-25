@@ -148,9 +148,12 @@ Each milestone gets its own spec → plan → implementation cycle. Numbers are 
 - Single static binary; no plugin system; no required external services.
 - First-run UX: auto-init keystore + node identity to `~/.celestia-rs/`.
 
-### Explicitly out of scope
+### Outside the original consensus roadmap
 
-- Data Availability Sampling (`celestia-node` territory).
+- The later DA implementation added an in-process bridge and standalone
+  light node with Data Availability Sampling. See the
+  [current architecture](../../README.md#architecture) and
+  [operator guide](../operator-guide.md#3-quick-starts).
 - Rollkit / sovereign rollup support.
 - CLI/SDK parity with Go celestia-app's user-facing tooling beyond M12.
 
