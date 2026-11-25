@@ -38,6 +38,10 @@ run_sync() {
       # Phase B is the only enabled phase and returns before the restart.
       sed -i '/^  start_full "\$kind" "\$h" "\$W\/full-\$kind.log"$/a\  sudo -n "$PERF" record -e cpu-clock -F 99 -p "$FULL_PID" -o "$BENCH_DIR/perf.data" >"$BENCH_DIR/perf.log" 2>\&1 \&' "$d/harness.sh"
     fi
+    # Finish writing the copied RocksDB files before starting the clock.
+    # Read them in a fixed order so trials start with resident source data.
+    sync -f "$d/chain/home"
+    find "$d/chain/home" -type f -print0 | LC_ALL=C sort -z | xargs -0 -r cat >/dev/null
     start=$(date +%s)
     status=0
     BENCH_DIR="$d" BENCH_PHASES=B BENCH_KINDS=rs timeout 300 bash "$d/harness.sh" >"$d/run.log" 2>&1 || status=$?
@@ -69,6 +73,11 @@ done
 
 # Keep the diagnostic profile even when both timing pairs are noisy.
 sudo -n apt-get -qq install -y "linux-tools-$(uname -r)" || sudo -n apt-get -qq install -y linux-tools-generic
-PERF=$(find /usr/lib/linux-tools -type f -name perf | sort -V | tail -1)
+PERF=$(command -v perf || true)
+if [[ -z "$PERF" ]] || ! "$PERF" version; then
+  PERF=$(find -L /usr/lib/linux-tools -type f -executable -name perf | sort -V | tail -1)
+fi
+[[ -n "$PERF" ]] || { echo 'No executable perf installed' >&2; exit 1; }
+"$PERF" version
 export PERF
 run_sync "${selected:-split}" profile
