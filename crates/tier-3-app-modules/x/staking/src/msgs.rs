@@ -90,7 +90,8 @@ pub fn nil_deref() -> sdk::SdkError {
     sdk::error::go_panic("runtime error: invalid memory address or nil pointer dereference")
 }
 
-fn wire_dec(s: &str) -> Result<LegacyDec> {
+/// A gogoproto `LegacyDec` customtype field as sent on the wire.
+pub fn wire_dec(s: &str) -> Result<LegacyDec> {
     types::dec(s, Repr::Wire)
 }
 
@@ -206,7 +207,8 @@ pub fn handle_edit_validator(
 /// Whether the last occurrence of field `num` in the message `raw` is
 /// empty (length 0): a nullable customtype gogoproto leaves as a non-nil
 /// pointer to a nil value.
-fn empty_field(raw: &[u8], num: u64) -> bool {
+#[must_use]
+pub fn empty_field(raw: &[u8], num: u64) -> bool {
     fn varint(b: &mut &[u8]) -> Option<u64> {
         let mut v = 0u64;
         for i in 0..10 {

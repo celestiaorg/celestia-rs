@@ -131,6 +131,67 @@ fn validate_create_validator(
     Ok((commission, min_self))
 }
 
+/// The optional fields of a `MsgEditValidator` after its v0.46
+/// `ValidateBasic`.
+struct EditFields {
+    min_self: Option<math::Int>,
+    rate: Option<math::LegacyDec>,
+}
+
+/// staking `MsgEditValidator.ValidateBasic` (v0.46). `raw` is the
+/// message's wire form: a present but empty `min_self_delegation` or
+/// `commission_rate` is a non-nil pointer to a nil value, whose method
+/// call panics (recovered by `runTx`).
+fn validate_edit_validator(m: &staking::MsgEditValidator, raw: &[u8]) -> Result<EditFields> {
+    val_address(&m.validator_address, "validator")?;
+    if m.description.clone().unwrap_or_default() == staking::Description::default() {
+        return Err(errs::invalid_request("empty description"));
+    }
+    if x_staking::msgs::empty_field(raw, 4) {
+        return Err(x_staking::msgs::nil_deref());
+    }
+    let min_self = if m.min_self_delegation.is_empty() {
+        None
+    } else {
+        Some(x_staking::msgs::wire_int(&m.min_self_delegation)?)
+    };
+    if min_self.as_ref().is_some_and(|v| !v.is_positive()) {
+        return Err(errs::invalid_request(
+            "minimum self delegation must be a positive integer",
+        ));
+    }
+    if x_staking::msgs::empty_field(raw, 3) {
+        return Err(x_staking::msgs::nil_deref());
+    }
+    let rate = if m.commission_rate.is_empty() {
+        None
+    } else {
+        Some(x_staking::msgs::wire_dec(&m.commission_rate)?)
+    };
+    if rate
+        .as_ref()
+        .is_some_and(|r| *r > math::LegacyDec::one() || r.is_negative())
+    {
+        return Err(errs::invalid_request(
+            "commission rate must be between 0 and 1 (inclusive)",
+        ));
+    }
+    Ok(EditFields { min_self, rate })
+}
+
+/// v0.46 `Commission.String()`: YAML of its JSON form (keys sorted, the
+/// decimals and the RFC 3339 time quoted).
+#[must_use]
+pub fn commission_yaml(c: &x_staking::types::Commission) -> String {
+    format!(
+        "commission_rates:\n  max_change_rate: \"{}\"\n  max_rate: \"{}\"\n  rate: \"{}\"\nupdate_time: \"{}\"\n",
+        c.max_change_rate,
+        c.max_rate,
+        c.rate,
+        sdk::time::format_rfc3339_nano(&c.update_time)
+    )
+}
+
 /// `msg.ValidateBasic()` of a v0.46 message.
 pub fn validate_basic(msg: &Any) -> Result<()> {
     if let Some(r) = super::ibc::validate_basic(msg) {
@@ -157,6 +218,8 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
         valid_positive_coin(m.amount.as_ref())?;
     } else if msg.type_url == staking::MsgCreateValidator::type_url() {
         validate_create_validator(&decode(msg)?)?;
+    } else if msg.type_url == staking::MsgEditValidator::type_url() {
+        validate_edit_validator(&decode(msg)?, &msg.value)?;
     }
     Ok(())
 }
@@ -183,6 +246,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
     }
     if msg.type_url == staking::MsgCreateValidator::type_url() {
         return Ok(Any::pack(&create_validator(ctx, &decode(msg)?)?));
+    }
+    if msg.type_url == staking::MsgEditValidator::type_url() {
+        return Ok(Any::pack(&edit_validator(ctx, &decode(msg)?, &msg.value)?));
     }
     if let Some(r) = super::ibc::route(ctx, msg) {
         return r;
@@ -399,4 +465,44 @@ fn create_validator(
     ));
     staking_message_event(ctx, &msg.delegator_address);
     Ok(staking::MsgCreateValidatorResponse {})
+}
+
+/// staking `msgServer.EditValidator` (v0.46).
+fn edit_validator(
+    ctx: &mut Context<'_>,
+    msg: &staking::MsgEditValidator,
+    raw: &[u8],
+) -> Result<staking::MsgEditValidatorResponse> {
+    use x_staking::store;
+    // The msg server runs after `ValidateBasic`, which already passed.
+    let fields = validate_edit_validator(msg, raw)?;
+    let val = val_address(&msg.validator_address, "validator")?;
+    let mut v =
+        store::get_validator(ctx, &val)?.ok_or_else(x_staking::errors::no_validator_found)?;
+    let description = msg.description.clone().unwrap_or_default();
+    v.description = x_staking::types::update_description(&v.description, &description)?;
+    if let Some(rate) = &fields.rate {
+        let commission = x_staking::validator::update_validator_commission(ctx, &v, rate)?;
+        x_staking::hooks::hooks().before_validator_modified(ctx, &val)?;
+        v.commission = commission;
+    }
+    if let Some(min_self) = fields.min_self {
+        if min_self <= v.min_self_delegation {
+            return Err(x_staking::errors::min_self_delegation_decreased());
+        }
+        if min_self > v.tokens {
+            return Err(x_staking::errors::self_delegation_below_minimum());
+        }
+        v.min_self_delegation = min_self;
+    }
+    store::set_validator(ctx, &v)?;
+    ctx.events.emit(event(
+        "edit_validator",
+        [
+            ("commission_rate", commission_yaml(&v.commission)),
+            ("min_self_delegation", v.min_self_delegation.to_string()),
+        ],
+    ));
+    staking_message_event(ctx, &msg.validator_address);
+    Ok(staking::MsgEditValidatorResponse {})
 }

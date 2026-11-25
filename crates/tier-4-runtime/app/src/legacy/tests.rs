@@ -2048,3 +2048,75 @@ fn v1_run_tx_aborts_outside_the_v1_registry() {
         assert!(what.contains("not ported"), "{url}: {what}");
     }
 }
+
+/// v0.46 `Commission.String()` as mainnet's first `MsgEditValidator`
+/// (height 13) emitted it, and with a fractional update time.
+#[test]
+fn v046_commission_string_is_yaml() {
+    let dec = |s: &str| math::LegacyDec::from_str_go(s).unwrap();
+    let mut c = x_staking::types::Commission {
+        rate: dec("0.05"),
+        max_rate: dec("0.12"),
+        max_change_rate: dec("0.02"),
+        update_time: pbjson_types::Timestamp {
+            seconds: 1_698_760_800,
+            nanos: 0,
+        },
+    };
+    assert_eq!(
+        msgs::commission_yaml(&c),
+        "commission_rates:\n  max_change_rate: \"0.020000000000000000\"\n  max_rate: \"0.120000000000000000\"\n  rate: \"0.050000000000000000\"\nupdate_time: \"2023-10-31T14:00:00Z\"\n"
+    );
+    c.update_time.nanos = 500_000_000;
+    assert!(msgs::commission_yaml(&c).ends_with("update_time: \"2023-10-31T14:00:00.5Z\"\n"));
+}
+
+/// v0.46 `MsgEditValidator.ValidateBasic`: an empty description, a
+/// non-positive minimum self delegation and a rate outside [0, 1] fail;
+/// a present but empty decimal field panics (recovered as `ErrPanic`).
+#[test]
+fn v046_edit_validator_validate_basic() {
+    use celestia_proto::cosmos::staking::v1beta1 as staking;
+    let val = x_staking::addr::val_to_string(&[1; 20]).unwrap();
+    let edit = |f: &dyn Fn(&mut staking::MsgEditValidator)| {
+        let mut m = staking::MsgEditValidator {
+            description: Some(staking::Description {
+                moniker: "m".into(),
+                ..staking::Description::default()
+            }),
+            validator_address: val.clone(),
+            ..staking::MsgEditValidator::default()
+        };
+        f(&mut m);
+        sdk::error::recover(|| msgs::validate_basic(&celestia_proto::Any::pack(&m)))
+    };
+    edit(&|_| {}).unwrap();
+    let code = |f: &dyn Fn(&mut staking::MsgEditValidator)| {
+        let e = edit(f).unwrap_err();
+        (e.codespace, e.code)
+    };
+    assert_eq!(code(&|m| m.description = None), ("sdk", 18));
+    assert_eq!(code(&|m| m.validator_address = "x".into()), ("sdk", 7));
+    assert_eq!(code(&|m| m.min_self_delegation = "0".into()), ("sdk", 18));
+    assert_eq!(
+        code(&|m| m.commission_rate = "1000000000000000001".into()),
+        ("sdk", 18)
+    );
+    // Empty strings are not encoded: build a present-but-empty field.
+    let mut raw =
+        <staking::MsgEditValidator as prost::Message>::encode_to_vec(&staking::MsgEditValidator {
+            description: Some(staking::Description {
+                moniker: "m".into(),
+                ..staking::Description::default()
+            }),
+            validator_address: val.clone(),
+            ..staking::MsgEditValidator::default()
+        });
+    raw.extend([0x1a, 0x00]);
+    let any = celestia_proto::Any {
+        type_url: "/cosmos.staking.v1beta1.MsgEditValidator".into(),
+        value: raw,
+    };
+    let e = sdk::error::recover(|| msgs::validate_basic(&any)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("undefined", 111_222));
+}
