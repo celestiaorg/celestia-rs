@@ -36,15 +36,21 @@ const GENESIS_SHA256: &str = "9727aac9bbfb021ce7fc695a92f901986421283a891b89e0af
 
 /// The stores expected to match the oracle at height 0.
 const MATCHING: &[&str] = &[
+    "acc",
     "authz",
+    "bank",
     "blob",
     "capability",
+    "distribution",
     "evidence",
     "feegrant",
     "gov",
     "ibc",
     "mint",
+    "params",
     "qgb",
+    "slashing",
+    "staking",
     "transfer",
     "upgrade",
 ];

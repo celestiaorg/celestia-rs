@@ -38,6 +38,14 @@ pub fn executing(context_version: u64) -> u64 {
     }
 }
 
+/// Whether the executing app version (see [`executing`]) is a cosmos-sdk
+/// v0.46 one (celestia-app v1 to v3), whose modules keep their parameters
+/// in `x/params` subspaces and their state in v0.46 layouts.
+#[must_use]
+pub fn is_sdk_v046(context_version: u64) -> bool {
+    matches!(executing(context_version), 1..=3)
+}
+
 /// The cosmos-sdk line a celestia-app release is built on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SdkLine {

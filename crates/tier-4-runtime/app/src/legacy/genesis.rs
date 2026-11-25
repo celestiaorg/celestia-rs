@@ -64,6 +64,13 @@ fn unmarshal(what: impl std::fmt::Display) -> SdkError {
     sdk::error::sdk::json_unmarshal(what.to_string())
 }
 
+/// pbjson decode of a genesis message (unknown fields rejected).
+macro_rules! decode {
+    ($what:literal, $v:expr) => {
+        serde_json::from_value($v).map_err(|e| unmarshal(format!("{}: {e}", $what)))
+    };
+}
+
 /// The InitChainer of app version 1. `app_state` is the genesis
 /// `app_state` (tmjson into `map[string]json.RawMessage`).
 pub fn init_chainer(ctx: &mut Context<'_>, app_state: &[u8]) -> Result<Vec<ValidatorUpdate>> {
@@ -124,8 +131,19 @@ fn init_module(ctx: &mut Context<'_>, module: &str, g: &Json) -> Result<Vec<Vali
                 crate::txpipe::apply_validator_set,
             );
         }
-        // Not yet in their cosmos-sdk v0.46 form: the v9 code.
-        "auth" | "bank" | "distribution" | "staking" | "slashing" => {
+        "auth" => init_auth(ctx, g)?,
+        // The params go to their subspace first (as `SetParams` does at the
+        // start of each v0.46 InitGenesis); the rest of the module's
+        // genesis is the v9 code, whose state writes follow the v0.46
+        // layout at app versions 1 to 3 (`Context::is_sdk_v046`).
+        "bank" | "distribution" | "staking" | "slashing" => {
+            let p = g.get("params").cloned().unwrap_or_default();
+            match module {
+                "bank" => params::set_bank(ctx, &p)?,
+                "distribution" => params::set_distribution(ctx, &p)?,
+                "staking" => params::set_staking(ctx, &p)?,
+                _ => params::set_slashing(ctx, &p)?,
+            }
             return crate::modules::init_genesis(ctx, module, g);
         }
         _ => {
@@ -135,6 +153,47 @@ fn init_module(ctx: &mut Context<'_>, module: &str, g: &Json) -> Result<Vec<Vali
         }
     }
     Ok(Vec::new())
+}
+
+/// cosmos-sdk v0.46 auth `InitGenesis`: params into subspace `auth`, then
+/// the genesis accounts sorted by account number (`SanitizeGenesisAccounts`)
+/// each stored under the next account number (`NewAccount`), then the fee
+/// collector module account.
+fn init_auth(ctx: &mut Context<'_>, g: &Json) -> Result<()> {
+    use celestia_proto::cosmos::auth::v1beta1::GenesisState;
+    let raw_params = g.get("params").cloned().unwrap_or_default();
+    let gs: GenesisState = decode!("auth GenesisState", g.clone())?;
+    params::set_auth(ctx, &raw_params)?;
+    let mut accounts = gs
+        .accounts
+        .iter()
+        .map(x_auth::Account::from_any)
+        .collect::<Result<Vec<_>>>()?;
+    // Go's pdqsort leaves a non-decreasing slice as it is (its pivot
+    // choice reports it sorted and `partialInsertionSort` finds no
+    // inversion), so equal account numbers keep their genesis order, as on
+    // mainnet, where every genesis account number is 0. Duplicates in an
+    // unsorted list would need Go's unstable order.
+    let sorted = accounts
+        .windows(2)
+        .all(|w| w[0].account_number() <= w[1].account_number());
+    if !sorted {
+        accounts.sort_by_key(x_auth::Account::account_number);
+        if accounts
+            .windows(2)
+            .any(|w| w[0].account_number() == w[1].account_number())
+        {
+            return Err(sdk::error::sdk::not_supported(
+                "duplicate account numbers in an unsorted genesis account list",
+            ));
+        }
+    }
+    for mut acc in accounts {
+        acc.base_mut().account_number = x_auth::next_account_number(ctx)?;
+        x_auth::set_account(ctx, &acc)?;
+    }
+    x_auth::get_module_account(ctx, x_auth::FEE_COLLECTOR)?;
+    Ok(())
 }
 
 /// celestia-app v1 mint `InitGenesis`: the v1 default minter (initial
@@ -165,13 +224,6 @@ fn init_crisis(ctx: &mut Context<'_>, g: &Json) -> Result<()> {
     let fee = f.take("constant_fee").unwrap_or_default();
     f.finish()?;
     params::set_crisis(ctx, &fee)
-}
-
-/// pbjson decode of a genesis message (unknown fields rejected).
-macro_rules! decode {
-    ($what:literal, $v:expr) => {
-        serde_json::from_value($v).map_err(|e| unmarshal(format!("{}: {e}", $what)))
-    };
 }
 
 /// ibc-go v6 core `InitGenesis`: client, connection and channel genesis.

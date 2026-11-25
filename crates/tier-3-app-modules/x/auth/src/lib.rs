@@ -28,6 +28,8 @@ const PARAMS_KEY: &[u8] = &[0x00];
 const ACCOUNTS_PREFIX: u8 = 0x01;
 const ACCOUNT_NUMBER_KEY: &[u8] = &[0x02];
 const ACCOUNT_BY_NUMBER_PREFIX: &[u8] = b"accountNumber";
+/// cosmos-sdk v0.46 `GlobalAccountNumberKey`.
+const GLOBAL_ACCOUNT_NUMBER_V046: &[u8] = b"globalAccountNumber";
 
 /// Fee collector module account name.
 pub const FEE_COLLECTOR: &str = "fee_collector";
@@ -256,6 +258,18 @@ fn number_key(n: u64) -> Vec<u8> {
 
 /// Params.
 pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
+    // cosmos-sdk v0.46 (app versions 1 to 3) keeps the params in the
+    // x/params subspace `auth`, which only its InitGenesis writes.
+    if ctx.is_sdk_v046() {
+        use x_params::v046::get_u64;
+        return Ok(Params {
+            max_memo_characters: get_u64(ctx, MODULE_NAME, "MaxMemoCharacters")?,
+            tx_sig_limit: get_u64(ctx, MODULE_NAME, "TxSigLimit")?,
+            tx_size_cost_per_byte: get_u64(ctx, MODULE_NAME, "TxSizeCostPerByte")?,
+            sig_verify_cost_ed25519: get_u64(ctx, MODULE_NAME, "SigVerifyCostED25519")?,
+            sig_verify_cost_secp256k1: get_u64(ctx, MODULE_NAME, "SigVerifyCostSecp256k1")?,
+        });
+    }
     Ok(ctx
         .get(STORE_KEY, PARAMS_KEY)?
         .map(|b| decode(&b))
@@ -265,6 +279,10 @@ pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
 
 /// Sets params.
 pub fn set_params(ctx: &mut Context<'_>, p: &Params) -> Result<()> {
+    if ctx.is_sdk_v046() {
+        // Subspace `auth` (written by the v0.46 InitGenesis).
+        return Ok(());
+    }
     ctx.set(STORE_KEY, PARAMS_KEY.to_vec(), p.encode_to_vec())
 }
 
@@ -340,6 +358,24 @@ pub fn remove_account(ctx: &mut Context<'_>, acc: &Account) -> Result<()> {
 
 /// `NextAccountNumber` (`Sequence.Next` via `Item.Get` + `Set`).
 pub fn next_account_number(ctx: &mut Context<'_>) -> Result<u64> {
+    if ctx.is_sdk_v046() {
+        // cosmos-sdk v0.46: `globalAccountNumber` holds a
+        // `gogotypes.UInt64Value`.
+        let n = ctx
+            .get(STORE_KEY, GLOBAL_ACCOUNT_NUMBER_V046)?
+            .map(|b| pbjson_types::UInt64Value::decode(b.as_slice()).map(|v| v.value))
+            .transpose()
+            .map_err(|e| errs::logic(e.to_string()))?
+            .unwrap_or(0);
+        let next = pbjson_types::UInt64Value {
+            value: n
+                .checked_add(1)
+                .ok_or_else(|| errs::logic("account number overflow"))?,
+        }
+        .encode_to_vec();
+        ctx.set(STORE_KEY, GLOBAL_ACCOUNT_NUMBER_V046.to_vec(), next)?;
+        return Ok(n);
+    }
     let n = ctx
         .get(STORE_KEY, ACCOUNT_NUMBER_KEY)?
         .map(|b| sdk::codec::decode_u64(&b).ok_or_else(|| errs::logic("bad account number")))

@@ -637,3 +637,44 @@ fn v1_init_chainer_rejects_invalid_genesis() {
         assert!(genesis::init_chainer(&mut ctx, &bytes).is_err(), "case {i}");
     }
 }
+
+/// At app versions 1 to 3 the shared modules use the cosmos-sdk v0.46
+/// layout: params from their subspace, the `globalAccountNumber`
+/// `UInt64Value`, the bank `0x00` index sentinel, and no staking
+/// delegations-by-validator index or stored validator updates.
+#[test]
+fn shared_modules_use_the_v046_layout_at_v1() {
+    let g: serde_json::Value = serde_json::from_str(MAINNET_GENESIS_PARAMS).unwrap();
+    params_ctx(|ctx| {
+        ctx.consensus_params.version = Some(VersionParams { app: 1 });
+        params::set_auth(ctx, &g["auth"]["params"]).unwrap();
+        params::set_staking(ctx, &g["staking"]["params"]).unwrap();
+        assert_eq!(x_auth::get_params(ctx).unwrap().tx_sig_limit, 7);
+        assert_eq!(
+            x_staking::store::get_params(ctx).unwrap().max_validators,
+            100
+        );
+        assert_eq!(x_staking::store::bond_denom(ctx).unwrap(), "utia");
+        let p = x_staking::store::get_params(ctx).unwrap();
+        x_staking::store::set_params(ctx, &p).unwrap();
+        assert_eq!(ctx.get(x_staking::STORE_KEY, &[0x51]).unwrap(), None);
+
+        assert_eq!(x_auth::next_account_number(ctx).unwrap(), 0);
+        assert_eq!(x_auth::next_account_number(ctx).unwrap(), 1);
+        assert_eq!(
+            ctx.get(x_auth::STORE_KEY, b"globalAccountNumber").unwrap(),
+            Some(vec![0x08, 0x02])
+        );
+
+        let addr = [3u8; 20];
+        let coin = sdk::coins::Coin::new("utia", 5);
+        x_bank::set_balance(ctx, &addr, &coin).unwrap();
+        let mut index = vec![0x03];
+        index.extend_from_slice(b"utia\x00\x14");
+        index.extend_from_slice(&addr);
+        assert_eq!(ctx.get(x_bank::STORE_KEY, &index).unwrap(), Some(vec![0]));
+
+        x_staking::store::set_validator_updates(ctx, &[]).unwrap();
+        assert_eq!(ctx.get(x_staking::STORE_KEY, &[0x61]).unwrap(), None);
+    });
+}

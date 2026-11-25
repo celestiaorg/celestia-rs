@@ -184,6 +184,19 @@ cargo test --locked -p celestia-rs --test mainnet_replay \
   v1_oracle_store_roots_match_record
 ```
 
+The ignored test `v1_init_genesis_matches_the_oracle` runs the Rust app
+version 1 InitChain on the mainnet genesis, commits the genesis state
+alone, and compares it with height 0: the keys and values of every
+store in the committed dump, every store root and the app hash.
+`v1_init_genesis_acc_and_bank_match_the_full_dump` also compares `acc`
+and `bank` with the full dump:
+
+```sh
+CELESTIA_MAINNET_GENESIS=<genesis.json> \
+CELESTIA_V1_ORACLE_KV="$OUT"/kv-height-0.jsonl.gz \
+  cargo test -p app --test v1_genesis_oracle -- --ignored
+```
+
 To regenerate the fixture, run the oracle. It takes about two minutes
 and 4 GB of memory. Download the genesis from the URL in
 `crates/tier-5-node/celestia-rs/src/networks.rs`, and check that its

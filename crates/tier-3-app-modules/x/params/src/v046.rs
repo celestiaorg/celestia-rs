@@ -307,6 +307,91 @@ impl Subspace {
     }
 }
 
+/// `Subspace.Get`'s value: the stored amino JSON of `key`, parsed. Go
+/// panics when the key is absent or does not decode.
+fn get_json(ctx: &mut Context<'_>, space: &str, key: &str) -> Result<serde_json::Value> {
+    let raw = crate::get_raw(ctx, space, key.as_bytes())?.unwrap_or_default();
+    serde_json::from_slice(&raw)
+        .map_err(|e| sdk::error::go_panic(format!("subspace {space}: {key}: {e}")))
+}
+
+fn bad(space: &str, key: &str) -> sdk::SdkError {
+    sdk::error::go_panic(format!("subspace {space}: {key}: unexpected amino JSON"))
+}
+
+/// A quoted 64-bit integer parameter (`int64`, `uint64`, `time.Duration`).
+fn get_quoted<T: std::str::FromStr>(ctx: &mut Context<'_>, space: &str, key: &str) -> Result<T> {
+    match get_json(ctx, space, key)? {
+        serde_json::Value::String(s) => s.parse().map_err(|_| bad(space, key)),
+        _ => Err(bad(space, key)),
+    }
+}
+
+/// A `uint64` parameter.
+pub fn get_u64(ctx: &mut Context<'_>, space: &str, key: &str) -> Result<u64> {
+    get_quoted(ctx, space, key)
+}
+
+/// An `int64` parameter (also `time.Duration`, in nanoseconds).
+pub fn get_i64(ctx: &mut Context<'_>, space: &str, key: &str) -> Result<i64> {
+    get_quoted(ctx, space, key)
+}
+
+/// A `uint32` parameter (a bare number).
+pub fn get_u32(ctx: &mut Context<'_>, space: &str, key: &str) -> Result<u32> {
+    get_json(ctx, space, key)?
+        .as_u64()
+        .and_then(|v| u32::try_from(v).ok())
+        .ok_or_else(|| bad(space, key))
+}
+
+/// A `bool` parameter.
+pub fn get_bool(ctx: &mut Context<'_>, space: &str, key: &str) -> Result<bool> {
+    get_json(ctx, space, key)?
+        .as_bool()
+        .ok_or_else(|| bad(space, key))
+}
+
+/// A `string` parameter.
+pub fn get_string(ctx: &mut Context<'_>, space: &str, key: &str) -> Result<String> {
+    match get_json(ctx, space, key)? {
+        serde_json::Value::String(s) => Ok(s),
+        _ => Err(bad(space, key)),
+    }
+}
+
+/// An `sdk.Dec` parameter.
+pub fn get_dec(ctx: &mut Context<'_>, space: &str, key: &str) -> Result<LegacyDec> {
+    let s = get_string(ctx, space, key)?;
+    LegacyDec::from_str_go(&s).map_err(|_| bad(space, key))
+}
+
+/// The bank `SendEnabled` list.
+pub fn get_send_enabled(ctx: &mut Context<'_>, space: &str, key: &str) -> Result<Vec<SendEnabled>> {
+    let v = get_json(ctx, space, key)?;
+    let items = match &v {
+        serde_json::Value::Null => return Ok(Vec::new()),
+        serde_json::Value::Array(a) => a,
+        _ => return Err(bad(space, key)),
+    };
+    items
+        .iter()
+        .map(|e| {
+            let denom = match &e["denom"] {
+                serde_json::Value::Null => String::new(),
+                serde_json::Value::String(s) => s.clone(),
+                _ => return Err(bad(space, key)),
+            };
+            let enabled = match &e["enabled"] {
+                serde_json::Value::Null => false,
+                serde_json::Value::Bool(b) => *b,
+                _ => return Err(bad(space, key)),
+            };
+            Ok(SendEnabled { denom, enabled })
+        })
+        .collect()
+}
+
 /// The key-table entry of a registered parameter.
 #[must_use]
 pub const fn param(key: &'static str, kind: Kind, validate: Validator) -> Param {
