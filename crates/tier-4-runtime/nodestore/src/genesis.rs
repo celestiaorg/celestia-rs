@@ -60,6 +60,17 @@ fn int_field(v: &Value, what: &str) -> Result<i64> {
     }
 }
 
+/// The app version: Tendermint v0.34's `app_version` when set (the
+/// multiplexer's `GetGenesisVersion` then loads the genesis as v0.34),
+/// otherwise CometBFT's `app`.
+fn app_version_field(v: &Value) -> Result<i64> {
+    match &v["app_version"] {
+        Value::Null => int_field(&v["app"], "version.app"),
+        Value::String(s) if s.is_empty() => int_field(&v["app"], "version.app"),
+        legacy => int_field(legacy, "version.app_version"),
+    }
+}
+
 fn params_from_json(p: &Value) -> Result<ConsensusParams> {
     let b = &p["block"];
     let e = &p["evidence"];
@@ -84,7 +95,7 @@ fn params_from_json(p: &Value) -> Result<ConsensusParams> {
                 .unwrap_or_default(),
         },
         version: VersionParams {
-            app: u64::try_from(int_field(&p["version"]["app"], "version.app")?).unwrap_or(0),
+            app: u64::try_from(app_version_field(&p["version"])?).unwrap_or(0),
         },
         abci: AbciParams {
             vote_extensions_enable_height: int_field(
@@ -328,5 +339,25 @@ mod tests {
         );
         assert!(d.validators.is_empty());
         assert_eq!(d.app_state, br#"{"auth":{}}"#);
+    }
+
+    /// Tendermint v0.34 genesis (mainnet `celestia`, `mocha-4`): the app
+    /// version is `consensus_params.version.app_version`, which the
+    /// multiplexer reads (`GetGenesisVersion`) and prefers.
+    #[test]
+    fn v034_app_version() {
+        let doc = |version: &str| {
+            let g = format!(
+                r#"{{"genesis_time":"2023-10-31T14:00:00Z","chain_id":"celestia",
+                "initial_height":"1","consensus_params":{{"block":{{"max_bytes":"1974272",
+                "max_gas":"-1","time_iota_ms":"1"}},"validator":{{"pub_key_types":["ed25519"]}},
+                "version":{version}}},"app_hash":"","app_state":{{}}}}"#
+            );
+            GenesisDoc::from_json(g.as_bytes(), Time::ZERO).map(|d| d.consensus_params.version.app)
+        };
+        assert_eq!(doc(r#"{"app_version":"1"}"#).unwrap(), 1);
+        assert_eq!(doc(r#"{"app_version":"1","app":"3"}"#).unwrap(), 1);
+        assert_eq!(doc(r#"{"app_version":"","app":"3"}"#).unwrap(), 3);
+        assert!(doc(r#"{"app_version":"x"}"#).is_err());
     }
 }

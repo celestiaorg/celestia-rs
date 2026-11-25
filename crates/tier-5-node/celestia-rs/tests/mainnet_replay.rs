@@ -3,7 +3,7 @@
 
 #![allow(clippy::print_stdout)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead as _, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -16,6 +16,7 @@ use flate2::read::GzDecoder;
 use light::{RpcClient, http};
 use prost::Message as _;
 use serde::Deserialize;
+use x_upgrade::UpgradeHandlers as _;
 
 const CHAIN: &str = "celestia";
 const VERSIONS: [u64; 9] = [1, 2, 3, 4, 5, 6, 8, 9, 10];
@@ -35,8 +36,63 @@ struct Fixtures {
 struct Window {
     app_version: u64,
     start_height: i64,
+    #[serde(default)]
+    pre_state: Option<PreState>,
     blocks: Vec<ReferenceBlock>,
 }
+
+/// Commit info at the height before a window, from archive RPC proofs.
+#[derive(Deserialize)]
+struct PreState {
+    height: i64,
+    upgrade_plan: Option<UpgradePlan>,
+    /// Store name to root hash; empty for an SDK v0.46 memory store.
+    stores: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct UpgradePlan {
+    name: String,
+    height: i64,
+}
+
+/// Why a faithful Go checkpoint before each window cannot replay.
+/// Versions 9 and 10 have no structural blocker. App v1 starts at genesis.
+const EXPECTED_BLOCKERS: [(u64, &[&str]); 8] = [
+    (2, &["no public pre-state at height 2371494"]),
+    (3, &["no public pre-state at height 2993219"]),
+    (
+        4,
+        &[
+            "pre-state stores that celestia-rs does not mount: mem_capability",
+            "celestia-rs stores absent from the pre-state: circuit, consensus, hyperlane, minfee, warp, zkism",
+            "no celestia-rs handler for upgrade plan v4 at 6680340",
+        ],
+    ),
+    (
+        5,
+        &[
+            "celestia-rs stores absent from the pre-state: zkism",
+            "no celestia-rs handler for upgrade plan v5 at 6748822",
+        ],
+    ),
+    (
+        6,
+        &[
+            "celestia-rs stores absent from the pre-state: zkism",
+            "no celestia-rs handler for upgrade plan v6 at 8662013",
+        ],
+    ),
+    (
+        8,
+        &[
+            "celestia-rs stores absent from the pre-state: zkism",
+            "no celestia-rs handler for upgrade plan v8 at 10960600",
+        ],
+    ),
+    (9, &[]),
+    (10, &[]),
+];
 
 #[derive(Deserialize)]
 struct ReferenceBlock {
@@ -279,8 +335,9 @@ fn replay_window(
         std::fs::write(home.path().join("config/genesis.json"), bytes)?;
     } else {
         return Err(anyhow!(
-            "missing Go SDK checkpoint before height {}",
-            window.start_height
+            "missing Go SDK checkpoint before height {}; recorded blockers: {:?}",
+            window.start_height,
+            replay_blockers(window)?
         ));
     }
 
@@ -338,6 +395,86 @@ fn compare_replay(home: &Path, window: &Window, archive: &ArchivedBlocks) -> any
         );
     }
 
+    Ok(())
+}
+
+/// Checks the pinned pre-state against the window's first header app hash,
+/// then lists what stops celestia-rs from replaying the window from it.
+fn replay_blockers(window: &Window) -> anyhow::Result<Vec<String>> {
+    let height = window.start_height - 1;
+    let Some(pre) = &window.pre_state else {
+        return Ok(vec![format!("no public pre-state at height {height}")]);
+    };
+    ensure!(pre.height == height, "pre-state must be at height {height}");
+    let mut leaves = Vec::new();
+    for (name, root) in &pre.stores {
+        let name_len = u8::try_from(name.len()).ok().filter(|len| *len < 0x80);
+        let name_len = name_len.context("store name too long")?;
+        let mut leaf = vec![name_len];
+        leaf.extend_from_slice(name.as_bytes());
+        leaf.push(32);
+        leaf.extend_from_slice(&hash::sha256(&hex::decode(root)?));
+        leaves.push(leaf);
+    }
+    compare_hash(
+        "pre-state commit info",
+        height,
+        &merkle::root_from_byte_slices(&leaves),
+        &window.blocks[0].app_hash,
+    )?;
+
+    let go: BTreeSet<&str> = pre.stores.keys().map(String::as_str).collect();
+    let rust: BTreeSet<&str> = app::stores::IAVL_STORES
+        .iter()
+        .copied()
+        .filter(|name| app::stores::exists_at(name, window.app_version))
+        .collect();
+    let mut blockers = Vec::new();
+    for (label, names) in [
+        (
+            "pre-state stores that celestia-rs does not mount",
+            go.difference(&rust),
+        ),
+        (
+            "celestia-rs stores absent from the pre-state",
+            rust.difference(&go),
+        ),
+    ] {
+        let names: Vec<&str> = names.copied().collect();
+        if !names.is_empty() {
+            blockers.push(format!("{label}: {}", names.join(", ")));
+        }
+    }
+    if let Some(plan) = &pre.upgrade_plan {
+        ensure!(
+            plan.height == window.start_height,
+            "pre-state plan {} is not due at {}",
+            plan.name,
+            window.start_height
+        );
+        if !app::upgrades::Handlers::at(window.app_version).has_handler(&plan.name) {
+            blockers.push(format!(
+                "no celestia-rs handler for upgrade plan {} at {}",
+                plan.name, plan.height
+            ));
+        }
+    }
+    Ok(blockers)
+}
+
+#[test]
+fn historical_replay_blockers_match_record() -> anyhow::Result<()> {
+    let fixtures = read_fixtures()?;
+    let windows = fixtures.windows.iter().filter(|w| w.start_height > 1);
+    for (window, (version, expected)) in windows.zip(EXPECTED_BLOCKERS) {
+        ensure!(window.app_version == version, "blocker record order");
+        let blockers = replay_blockers(window)?;
+        println!("mainnet v{version}: {blockers:?}");
+        ensure!(
+            blockers == expected,
+            "app v{version} replay blockers changed: {blockers:#?}"
+        );
+    }
     Ok(())
 }
 

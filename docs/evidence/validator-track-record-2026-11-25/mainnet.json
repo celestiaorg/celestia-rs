@@ -1,0 +1,178 @@
+{
+ "config": {
+  "chain_id": "celestia",
+  "rpcs": [
+   "https://rpc.celestia.pops.one",
+   "https://public-celestia-rpc.numia.xyz"
+  ],
+  "lcd": "https://api.celestia.pops.one",
+  "consensus_hex": "7FC8073F6F0DE936593BBBF6E6EBE37E17487615",
+  "valcons": "celestiavalcons10lyqw0m0ph5nvkfmh0mwd6lr0ct5sas4ugtync",
+  "valoper": "celestiavaloper16v6qxgj2w996jt49tngf9fkvxw6j7u0uh6d9ec",
+  "account": "celestia16v6qxgj2w996jt49tngf9fkvxw6j7u0uj90u07",
+  "as_of_height": 16206000,
+  "jail_height": 15125848,
+  "first_event_height": 15104016,
+  "commit_sample": 1000,
+  "ranges": {
+   "before_create": [
+    1,
+    15104012
+   ],
+   "first_bonding_events": [
+    15104016,
+    15125848
+   ],
+   "jailed_gap": [
+    15125849,
+    15129615
+   ],
+   "second_bonding_events": [
+    15129616,
+    16206001
+   ],
+   "nov12_15_audit_events": [
+    15815627,
+    15906677
+   ],
+   "nov6_9_audit_events": [
+    15634039,
+    15725033
+   ]
+  }
+ },
+ "fetched_utc_start": "2026-11-25T02:03:58Z",
+ "as_of": {
+  "height": 16206000,
+  "time": "2026-11-25T01:54:13.454844363Z"
+ },
+ "signing_info": {
+  "val_signing_info": {
+   "address": "celestiavalcons10lyqw0m0ph5nvkfmh0mwd6lr0ct5sas4ugtync",
+   "start_height": "15129613",
+   "index_offset": "1076385",
+   "jailed_until": "2026-10-20T11:19:41.843285071Z",
+   "tombstoned": false,
+   "missed_blocks_counter": "18"
+  }
+ },
+ "validator": {
+  "operator_address": "celestiavaloper16v6qxgj2w996jt49tngf9fkvxw6j7u0uh6d9ec",
+  "consensus_pubkey": {
+   "@type": "/cosmos.crypto.ed25519.PubKey",
+   "key": "tkpVJ4+IErkYWefKg+3IhFFqP9PrFJ7S+6m2jMKpy1k="
+  },
+  "jailed": false,
+  "status": "BOND_STATUS_BONDED",
+  "tokens": "61303623",
+  "delegator_shares": "61303623.000000000000000000",
+  "unbonding_height": "15125848",
+  "unbonding_time": "2026-11-03T12:18:41.843285071Z",
+  "commission": {
+   "commission_rates": {
+    "rate": "0.200000000000000000",
+    "max_rate": "0.300000000000000000",
+    "max_change_rate": "0.010000000000000000"
+   },
+   "update_time": "2026-10-19T17:38:28.090404454Z"
+  },
+  "min_self_delegation": "1",
+  "unbonding_on_hold_ref_count": "0",
+  "unbonding_ids": [
+   "95799"
+  ]
+ },
+ "slashing_params": {
+  "signed_blocks_window": "10000",
+  "min_signed_per_window": "0.001000000000000000",
+  "downtime_jail_duration": "60s",
+  "slash_fraction_double_sign": "0.020000000000000000",
+  "slash_fraction_downtime": "0.000000000000000000"
+ },
+ "staking_pool": {
+  "not_bonded_tokens": "53835339424093",
+  "bonded_tokens": "465117017699641"
+ },
+ "operator_txs": [
+  {
+   "height": 15104013,
+   "hash": "144DF4AAB38FCB2492881204A09888B067CF9EAE1F9C438E05C8DF65FCB4ACB9",
+   "code": 0,
+   "actions": [
+    "/cosmos.staking.v1beta1.MsgCreateValidator"
+   ],
+   "time": "2026-10-19T17:38:28.090404454Z"
+  },
+  {
+   "height": 15129613,
+   "hash": "85A1E228DAE19BB1344F7806D81C3B22B3428E0D7EDA5BBD0B0C5974F4C531F6",
+   "code": 0,
+   "actions": [
+    "/cosmos.slashing.v1beta1.MsgUnjail"
+   ],
+   "time": "2026-10-20T14:18:26.650392076Z"
+  }
+ ],
+ "event_counts": {
+  "https://rpc.celestia.pops.one": {
+   "slash:all": 1,
+   "slash:before_create": 0,
+   "slash:first_bonding_events": 1,
+   "slash:jailed_gap": 0,
+   "slash:second_bonding_events": 0,
+   "slash:nov12_15_audit_events": 0,
+   "slash:nov6_9_audit_events": 0,
+   "liveness:all": 13662,
+   "liveness:before_create": 0,
+   "liveness:first_bonding_events": 10014,
+   "liveness:jailed_gap": 0,
+   "liveness:second_bonding_events": 3648,
+   "liveness:nov12_15_audit_events": 209,
+   "liveness:nov6_9_audit_events": 257
+  },
+  "https://public-celestia-rpc.numia.xyz": {
+   "slash:all": 0,
+   "slash:before_create": 0,
+   "slash:first_bonding_events": 1,
+   "slash:jailed_gap": 0,
+   "slash:second_bonding_events": 0,
+   "slash:nov12_15_audit_events": 0,
+   "slash:nov6_9_audit_events": 0,
+   "liveness:all": 13662,
+   "liveness:before_create": 0,
+   "liveness:first_bonding_events": 10014,
+   "liveness:jailed_gap": 0,
+   "liveness:second_bonding_events": 3648,
+   "liveness:nov12_15_audit_events": 209,
+   "liveness:nov6_9_audit_events": 257
+  }
+ },
+ "jail_miss_run_event_heights": [
+  15115858,
+  15125848
+ ],
+ "jail_miss_run_time": [
+  "2026-10-20T03:07:13.925546526Z",
+  "2026-10-20T11:18:41.843285071Z"
+ ],
+ "commit_sample": {
+  "range": [
+   16205001,
+   16206000
+  ],
+  "signed": 998,
+  "absent": [],
+  "nil": [],
+  "not_in_commit": [
+   16205476,
+   16205654
+  ],
+  "proposed": [],
+  "liveness_event_heights": [
+   16205477,
+   16205655
+  ],
+  "liveness_total": 2
+ },
+ "fetched_utc_end": "2026-11-25T02:17:55Z"
+}

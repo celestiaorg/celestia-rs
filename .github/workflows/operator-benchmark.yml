@@ -1,7 +1,27 @@
 name: Operator benchmark
+# Runs docs/benchmarks/operator-sync.md unattended. `provision` creates one
+# pair of identical VMs (celestia-rs and Go) per cold pair. Each VM runs
+# scripts/bench/vm.sh from its startup script and publishes results as
+# guest attributes. `collect` (dispatch it before the VMs delete themselves)
+# uploads them as an artifact. `delete` removes the VMs early.
+#
+# Price per comparison (us-central1 list prices, 2026-11): two n2-standard-8
+# at $0.3885/h, 80 GB + 200 GB pd-balanced each at $0.10/GB-month
+# ($0.038/h), an ephemeral IPv4 at $0.005/h, and egress capped on the VM at
+# 4 Mbit/s (1.8 GB/h at $0.12/GB = $0.216/h). Worst case is $0.648/h per VM,
+# $1.30/h per pair, for the whole max-run-duration:
+#   genesis-prefix 3 h = $3.89, state-sync 4 h = $5.18, bridge 5 h = $6.48.
 on:
   workflow_dispatch:
     inputs:
+      peer_wait_trial:
+        description: Block pool trial (wait ms, floor-N or control; expected pool.rs blob; reference seconds)
+        type: string
+        required: false
+      calibrate_existing:
+        description: Compare genesis sync timings with shared and separate CPU sets
+        type: boolean
+        default: false
       prepare_existing:
         description: Build the pinned genesis sync benchmark and generate its chain on the existing VM
         type: boolean
@@ -15,13 +35,38 @@ on:
         type: string
         required: false
 
+      action:
+        description: Mainnet campaigns - none, preflight (permissions only), provision, collect or delete
+        type: choice
+        options: [none, preflight, provision, collect, delete]
+        default: none
+      campaign:
+        type: choice
+        options: [genesis-prefix, state-sync, bridge]
+        default: genesis-prefix
+      height:
+        description: genesis-prefix target height H
+        default: "10"
+      pairs:
+        description: Cold pairs, run concurrently (1-3)
+        default: "1"
+      rust_commit:
+        description: celestia-rs commit to build (default the dispatching commit)
+        default: ""
+      peers:
+        description: Extra persistent peers, id@host:port,... (e.g. archive peers for genesis-prefix)
+        default: ""
+      run_id:
+        description: collect/delete only, the provisioning workflow run ID
+        default: ""
+
 permissions: {}
 
 jobs:
   preflight:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.action == 'none'
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.prepare_existing && 300 || 5 }}
+    timeout-minutes: ${{ (inputs.prepare_existing || inputs.calibrate_existing || inputs.peer_wait_trial) && 300 || 5 }}
     permissions:
       id-token: write
       contents: read
@@ -84,7 +129,7 @@ jobs:
           [[ -z "$missing" ]]
 
       - name: Create the genesis sync VM
-        if: inputs.provision && !inputs.prepare_existing
+        if: inputs.provision && !inputs.prepare_existing && !inputs.calibrate_existing && !inputs.peer_wait_trial
         env:
           CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
           OPERATOR_KEY: ${{ inputs.ssh_public_key }}
@@ -113,11 +158,11 @@ jobs:
           done
 
       - uses: actions/checkout@v7.0.1
-        if: inputs.prepare_existing
+        if: inputs.prepare_existing || inputs.calibrate_existing || inputs.peer_wait_trial
         with:
           persist-credentials: false
       - name: Connect to the existing VM
-        if: inputs.prepare_existing
+        if: inputs.prepare_existing || inputs.calibrate_existing || inputs.peer_wait_trial
         env:
           CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
         run: bash conformance/bench/cloud/operator-ssh.sh
@@ -162,3 +207,210 @@ jobs:
           name: genesis-sync-setup
           path: setup-results/*.json
           if-no-files-found: ignore
+
+      - name: Measure a peer discovery wait on the existing VM
+        if: inputs.peer_wait_trial
+        env:
+          TRIAL: ${{ inputs.peer_wait_trial }}
+        run: |
+          [[ "$TRIAL" =~ ^([0-9]{4}|floor-[2-8]|control),([0-9a-f]{40}),([0-9]{1,3}\.[0-9]{1,3})$ ]]
+          ssh -F "$RUNNER_TEMP/bench-config" campaign \
+            "bash -s -- ${BASH_REMATCH[1]} ${BASH_REMATCH[2]} ${BASH_REMATCH[3]}" < conformance/bench/cloud/calibrate-genesis.sh
+      - name: Compare calibration runs
+        if: inputs.calibrate_existing
+        run: |
+          ssh -F "$RUNNER_TEMP/bench-config" campaign 'bash -s' < conformance/bench/cloud/calibrate-genesis.sh
+      - name: Collect calibration results
+        if: (inputs.calibrate_existing || inputs.peer_wait_trial) && always()
+        run: |
+          mkdir calibration
+          scp -F "$RUNNER_TEMP/bench-config" 'campaign:genesis-sync/latest-calibration/*' calibration/
+          for result in calibration/*.json; do
+            printf '%s ' "$(basename "$result")"
+            jq -c '{kind, heights, secs}' "$result"
+          done
+      - uses: actions/upload-artifact@v7
+        if: (inputs.calibrate_existing || inputs.peer_wait_trial) && always()
+        with:
+          name: genesis-sync-calibration
+          path: calibration/
+          if-no-files-found: error
+
+  bench:
+    if: github.ref == 'refs/heads/main' && inputs.action != 'none'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+    env:
+      ACTION: ${{ inputs.action }}
+      CAMPAIGN: ${{ inputs.campaign }}
+      HEIGHT: ${{ inputs.height }}
+      PAIRS: ${{ inputs.pairs }}
+      RUST_COMMIT: ${{ inputs.rust_commit || github.sha }}
+      EXTRA_PEERS: ${{ inputs.peers }}
+      RUN_ID: ${{ inputs.action == 'provision' && github.run_id || inputs.run_id }}
+      ZONE: us-central1-a
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate inputs
+        run: |
+          set -euo pipefail
+          . scripts/bench/lib.sh
+          [[ $ACTION != preflight ]] || RUN_ID=0
+          for kv in "campaign:$CAMPAIGN" "height:$HEIGHT" "pairs:$PAIRS" "commit:$RUST_COMMIT" "peers:$EXTRA_PEERS" "run_id:$RUN_ID"; do
+            bench_valid "${kv%%:*}" "${kv#*:}" || { echo "invalid input: ${kv%%:*}"; exit 1; }
+          done
+          names=()
+          for ((p = 1; p <= PAIRS; p++)); do names+=("bench-$CAMPAIGN-$RUN_ID-p$p-rs" "bench-$CAMPAIGN-$RUN_ID-p$p-go"); done
+          echo "VM_NAMES=${names[*]}" >>"$GITHUB_ENV"
+      - name: Exchange GitHub identity for a short-lived benchmark credential
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: fibreda
+          workload_identity_provider: projects/33595313195/locations/global/workloadIdentityPools/celestia-rs-bench/providers/github
+          service_account: celestia-rs-bench@fibreda.iam.gserviceaccount.com
+          create_credentials_file: false
+          export_environment_variables: false
+          token_format: access_token
+          access_token_lifetime: 900s
+      - name: Check Google Cloud permissions
+        if: inputs.action == 'preflight' || inputs.action == 'provision'
+        shell: bash
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          api() {
+            curl --fail --silent --show-error --max-time 30 \
+              --header "Authorization: Bearer $ACCESS_TOKEN" "$@"
+          }
+
+          # The proposed VM uses a boot disk and a VPC subnet, with no
+          # attached service account. This check is at project scope.
+          required=$(jq -nc '$ARGS.positional' --args \
+            compute.disks.create compute.disks.use \
+            compute.instances.create compute.instances.delete compute.instances.get \
+            compute.instances.setMetadata compute.instances.setLabels \
+            compute.subnetworks.use compute.zoneOperations.get)
+          granted=$(api --json "$(jq -nc --argjson permissions "$required" '{permissions: $permissions}')" \
+            'https://cloudresourcemanager.googleapis.com/v1/projects/fibreda:testIamPermissions')
+
+          missing=$(jq -nr --argjson required "$required" --argjson granted "$granted" \
+            '$required - ($granted.permissions // []) | .[]')
+          if [[ -n "$missing" ]]; then
+            echo 'Compute permissions missing at project scope:'
+            printf '%s\n' "$missing"
+          else
+            echo 'Compute permissions granted at project scope.'
+          fi
+
+          # Keep billing optional and report only whether the account permits
+          # creating budgets. The billing account identifier stays in the job.
+          if billing=$(api 'https://cloudbilling.googleapis.com/v1/projects/fibreda/billingInfo' 2>/dev/null) \
+            && account=$(jq -er 'select(.billingEnabled) | .billingAccountName | select(test("^billingAccounts/[A-Za-z0-9-]+$"))' <<<"$billing") \
+            && budget=$(api --json '{"permissions":["billing.budgets.create"]}' \
+              "https://cloudbilling.googleapis.com/v1/$account:testIamPermissions" 2>/dev/null); then
+            if jq -e '(.permissions // []) | index("billing.budgets.create") != null' <<<"$budget" >/dev/null; then
+              echo 'Billing account allows creating budgets.'
+            else
+              echo 'Billing account did not grant permission to create budgets.'
+            fi
+          else
+            echo 'Could not verify permission to create budgets.'
+          fi
+
+          [[ -z "$missing" ]]
+
+      - name: Provision the pairs
+        if: inputs.action == 'provision'
+        env:
+          CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          . scripts/bench/lib.sh
+          read -r -a names <<<"$VM_NAMES"
+          case $CAMPAIGN in genesis-prefix) hours=3 ;; state-sync) hours=4 ;; bridge) hours=5 ;; esac
+          # Identical trust inputs and peers for every VM, from two reference RPCs.
+          trust_height='' trust_hash=''
+          if [[ $CAMPAIGN != genesis-prefix ]]; then
+            latest=$(curl -fsS -m 20 "${BENCH_REF_RPCS[0]}/status" | jq -er .result.sync_info.latest_block_height)
+            trust_height=$(((latest - 3000) / 1000 * 1000))
+            trust_hash=$(curl -fsS -m 20 "${BENCH_REF_RPCS[0]}/block?height=$trust_height" | jq -er .result.block_id.hash)
+            other=$(curl -fsS -m 20 "${BENCH_REF_RPCS[1]}/block?height=$trust_height" | jq -er .result.block_id.hash)
+            bench_valid trust_height "$trust_height" && bench_valid trust_hash "$trust_hash" && [[ $trust_hash == "$other" ]]
+          fi
+          curl -fsS -m 20 "${BENCH_REF_RPCS[0]}/net_info" >"$RUNNER_TEMP/net_info.json"
+          peers=$(bench_peers "$RUNNER_TEMP/net_info.json" 20)
+          peers=${EXTRA_PEERS}${EXTRA_PEERS:+${peers:+,}}$peers
+          bench_valid peers "$peers"
+          printf '%s' "$peers" >"$RUNNER_TEMP/peers"
+          # Publishing must start 40 minutes before the VMs delete themselves.
+          deadline=$(($(date +%s) + hours * 3600 - 2400))
+          { echo '#!/usr/bin/env bash'; cat scripts/bench/lib.sh scripts/bench/vm.sh; } >"$RUNNER_TEMP/startup.sh"
+          gcloud compute instances create "${names[@]}" \
+            --project=fibreda --zone="$ZONE" --machine-type=n2-standard-8 \
+            --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
+            --boot-disk-type=pd-balanced --boot-disk-size=80GB --boot-disk-auto-delete \
+            --create-disk=device-name=data,size=200GB,type=pd-balanced,auto-delete=yes \
+            --no-service-account --no-scopes --max-run-duration="${hours}h" \
+            --instance-termination-action=DELETE --no-restart-on-failure \
+            --metadata="block-project-ssh-keys=TRUE,enable-guest-attributes=TRUE,bench-campaign=$CAMPAIGN,bench-height=$HEIGHT,bench-rust-commit=$RUST_COMMIT,bench-trust-height=$trust_height,bench-trust-hash=$trust_hash,bench-deadline=$deadline" \
+            --metadata-from-file="startup-script=$RUNNER_TEMP/startup.sh,bench-peers=$RUNNER_TEMP/peers" \
+            --labels="campaign=$CAMPAIGN,bench-run=$RUN_ID"
+          {
+            echo "Provisioned run \`$RUN_ID\` ($CAMPAIGN, $PAIRS pair(s), celestia-rs \`$RUST_COMMIT\`)."
+            echo "The VMs delete themselves at $(date -u -d "@$((deadline + 2400))" +%FT%TZ)."
+            echo "Before then, dispatch \`collect\` with run_id \`$RUN_ID\`; repeat it until every VM reports done."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Collect results
+        if: inputs.action == 'collect'
+        env:
+          CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          . scripts/bench/lib.sh
+          out=$RUNNER_TEMP/results
+          read -r -a names <<<"$VM_NAMES"
+          for name in "${names[@]}"; do
+            d=$out/$name
+            mkdir -p "$d"
+            if ! gcloud compute instances get-guest-attributes "$name" --project=fibreda --zone="$ZONE" \
+              --query-path=bench/ --format=json >"$d/attributes.json"; then
+              echo "$name: no guest attributes (VM gone or not booted)" | tee -a "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            attr() { jq -r --arg k "$1" '.[] | select(.key == $k) | .value' "$d/attributes.json"; }
+            attr status >"$d/status"
+            attr summary >"$d/summary.json"
+            n=$(attr raw-count)
+            if [[ $n =~ ^[1-8]$ ]]; then
+              for ((i = 0; i < n; i++)); do attr "raw-$i" >"$d/raw.$i"; done
+              bench_unchunk "$n" "$d/raw" >"$d/raw.tar" && rm -f "$d"/raw.[0-9]*
+            fi
+            echo "$name: $(cat "$d/status")" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+          for ((p = 1; p <= PAIRS; p++)); do
+            snap() { jq -r '.snapshot // empty' "$out/bench-$CAMPAIGN-$RUN_ID-p$p-$1/summary.json" 2>/dev/null || true; }
+            verdict=$( [[ $CAMPAIGN == genesis-prefix ]] && echo not_applicable || bench_pair_check "$(snap rs)" "$(snap go)" || true)
+            echo "pair p$p: $verdict" | tee -a "$out/pairs.txt" "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Upload results
+        if: inputs.action == 'collect'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: operator-bench-${{ inputs.campaign }}-${{ inputs.run_id }}
+          path: ${{ runner.temp }}/results
+          retention-days: 90
+
+      - name: Delete the VMs
+        if: inputs.action == 'delete'
+        env:
+          CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          read -r -a names <<<"$VM_NAMES"
+          gcloud compute instances delete "${names[@]}" --project=fibreda --zone="$ZONE" --quiet

@@ -84,6 +84,79 @@ bytes, recomputed block IDs and data roots against the pinned archive
 responses. It also recomputes each post-block app hash from the locally
 committed multistore and checks it against the pinned successor header.
 
+### Coverage per app version
+
+Windows 2 to 8 start at the first block of their app version. The v9
+window starts mid-era, at 15,105,001. A window can execute only from a
+checkpoint: the complete Go state at the height before it.
+
+| App version | Window | Pre-state anchor | Replay result |
+|---|---|---|---|
+| 1 | 1–10 | Genesis | Fails: genesis initialization passes gov and stops at IBC with `invalid ibc channel genesis state parameters`; there is no app version 1 state machine |
+| 2 | 2,371,495–2,371,504 | None | Not executed: no checkpoint |
+| 3 | 2,993,220–2,993,229 | None | Not executed: no checkpoint |
+| 4 | 6,680,340–6,680,349 | 6,680,339, verified | Not executed: no checkpoint. Expected to fail at restore and at 6,680,340 |
+| 5 | 6,748,822–6,748,831 | 6,748,821, verified | Not executed: no checkpoint. Expected to fail at restore and at 6,748,822 |
+| 6 | 8,662,013–8,662,022 | 8,662,012, verified | Not executed: no checkpoint. Expected to fail at restore and at 8,662,013 |
+| 8 | 10,960,600–10,960,609 | 10,960,599, verified | Not executed: no checkpoint. Expected to fail at restore and at 10,960,600 |
+| 9 | 15,105,001–15,105,010 | 15,105,000, verified | Not executed: no checkpoint. No structural blocker |
+| 10 | 15,558,001–15,558,010 | 15,558,000, verified | All ten blocks match |
+
+celestia-rs runs every app version below 10 with celestia-app v9.0.8
+semantics ([ADR 0004](../docs/adr/0004-app-version-9.md)). It mounts the
+same 25 stores for all of them and registers no upgrade handler for
+`v2` to `v8`. So a faithful checkpoint cannot replay windows 4 to 8:
+
+- **Store set.** A restore must fill every store that celestia-rs mounts.
+  The v3 state at 6,680,339 is Cosmos SDK v0.46 state. Its commit info
+  includes the memory store `mem_capability` with an empty hash. It lacks
+  `circuit`, `consensus`, `hyperlane`, `minfee`, `warp` and `zkism`. The
+  states before the v5, v6 and v8 windows lack `zkism`.
+- **Upgrade plan.** The state before each of windows 4 to 8 holds the plan
+  `v4`, `v5`, `v6` or `v8`, due at the window's first height. Its
+  `PreBlocker` halts without a handler.
+
+Windows 2 and 3 need the v1 to v2 and v2 to v3 store and module migrations,
+which celestia-rs also lacks. Their pre-states are not public, so the test
+cannot pin their store sets.
+
+The offline test `historical_replay_blockers_match_record` checks this
+record. Each `pre_state` in [`replay-windows.json`](fixtures/mainnet/replay-windows.json)
+holds the store roots from `abci_query` multistore proofs. The test hashes
+them and compares the result with the window's first header app hash. It
+then derives each blocker from the celestia-rs store set and upgrade
+handlers. It fails if a derived blocker differs from the recorded one.
+Regenerate the anchors with
+[`fetch-replay-anchors.py`](mainnet-rpc/fetch-replay-anchors.py).
+
+```sh
+cargo test --locked -p celestia-rs --test mainnet_replay \
+  historical_replay_blockers_match_record
+```
+
+#### Where checkpoints come from
+
+The QubeLabs archive (`celestia_2026-11-03.tar`, ETag
+`"6aea4a03-95f79f8e800"`) holds 193 snapshot directories. Only
+15,556,500 and 15,558,000 are complete. Every other directory ends on a
+full 10 MB chunk with no metadata entry. The largest v9-era one,
+14,736,000 (45 chunks), has a truncated zlib stream. The P-OPS archive RPC
+answers state proofs from height 3,156,484. That is enough for the anchors
+but not for a full state: the IAVL tree shape is part of the app hash, and
+the v10 checkpoint alone has 30,936,015 nodes.
+
+To populate window N, an operator needs a Go node that has committed the
+height before it, H−1:
+
+1. Sync mainnet with celestia-app, with `halt-height = H−1` in `app.toml`.
+2. Run `celestia-appd snapshots export --height H−1` with the celestia-app
+   release that committed H−1.
+3. Run `python3 conformance/mainnet-rpc/verify-replay-checkpoint.py
+   <snapshot root>/H−1/<format>`. It rebuilds every IAVL root, compares
+   each with the pinned anchor and the commit hash with the signed header.
+4. Add the snapshot root, H−1 and the block hash at H−1 under key `N` in
+   `checkpoints`.
+
 To replay the v10 window, download the Go SDK checkpoint at height
 15,558,000. The [checkpoint fetcher](mainnet-rpc/fetch-replay-checkpoint.py)
 downloads and verifies 684 MB of snapshot chunks from the
@@ -133,6 +206,23 @@ app hash was `3B6020A36F10AF20E2AE6EA1FFBE706D8E167A1E8B8A5AAC57C4AD84C0172280`.
 The full run failed. Mainnet v1 genesis initialization returned
 `gov genesis params are nil`. The run lacked complete state checkpoints for
 v2–v6, v8 and v9.
+
+On 2026-11-25, a build of `8aec12b` with this record's test-only changes (SHA-256
+`1f3558f06806bb0c1ade58c4f4bb2a4f6c94acfdbe712ed548af0743c31aeafc`)
+replayed the v10 window again from the same checkpoint, and all ten blocks
+matched. Before that run, `verify-replay-checkpoint.py` reproduced the
+checkpoint's app hash from its 27 IAVL roots. A run with no checkpoints
+failed each of windows 2 to 9 with the recorded blockers above.
+
+On 2026-11-25, `celestia-rs genesis validate` on the canonical mainnet
+genesis got past gov: the node now reads the Tendermint v0.34
+`app_version` field and stores the three legacy gov parameter objects in
+the `x/params` subspace `gov`, as cosmos-sdk v0.46 does. InitChain now
+fails at IBC with `invalid ibc channel genesis state parameters: upgrade
+timeout timestamp invalid: 0: upgrade timeout is invalid`. The node has no
+app version 1 state machine: it mounts the v9 store set instead of v1's
+(no `qgb` store), and it runs ibc-go v8 and the v9 ante handler. The v1
+window cannot match until that exists.
 
 The offline block reconstruction check uses retained archive RPC responses.
 It rebuilds the block IDs and data roots for all 90 fixture blocks and

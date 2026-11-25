@@ -412,13 +412,32 @@ fn unknown_key(doc: &toml_edit::DocumentMut, f: File, key: &str) -> anyhow::Erro
 /// (comments and layout are kept). The value keeps the existing value's
 /// TOML type (string, integer, boolean, float, array).
 pub fn set(home: &Path, f: File, key: &str, value: &str) -> anyhow::Result<()> {
+    set_many(home, f, &[(key, value)])
+}
+
+/// [`set`] for several keys: every key is checked before the file is
+/// written once, so a bad key or value leaves the file unchanged.
+pub fn set_many(home: &Path, f: File, pairs: &[(&str, &str)]) -> anyhow::Result<()> {
     let p = file_path(home, f);
     let src = std::fs::read_to_string(&p).with_context(|| format!("read {}", p.display()))?;
     let mut doc = src
         .parse::<toml_edit::DocumentMut>()
         .with_context(|| format!("parse {}", p.display()))?;
-    let Some(target) = lookup_item_mut(&mut doc, key) else {
-        return Err(unknown_key(&doc, f, key));
+    for (key, value) in pairs {
+        set_in_doc(&mut doc, f, key, value)?;
+    }
+    std::fs::write(&p, doc.to_string()).with_context(|| format!("write {}", p.display()))?;
+    Ok(())
+}
+
+fn set_in_doc(
+    doc: &mut toml_edit::DocumentMut,
+    f: File,
+    key: &str,
+    value: &str,
+) -> anyhow::Result<()> {
+    let Some(target) = lookup_item_mut(doc, key) else {
+        return Err(unknown_key(doc, f, key));
     };
     let old = target
         .as_value()
@@ -458,7 +477,6 @@ pub fn set(home: &Path, f: File, key: &str, value: &str) -> anyhow::Result<()> {
     let mut new = new;
     *new.decor_mut() = decor;
     *target = toml_edit::Item::Value(new);
-    std::fs::write(&p, doc.to_string()).with_context(|| format!("write {}", p.display()))?;
     Ok(())
 }
 

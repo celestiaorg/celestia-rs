@@ -1,0 +1,34 @@
+--- a/crates/devnet-conformance/tests/v12_upgrade.rs
++++ b/crates/devnet-conformance/tests/v12_upgrade.rs
+@@ -28,7 +28,7 @@
+     };
+     let mut app = App::open_with(home.path(), options.clone())?;
+     let mut verified_heights = Vec::new();
+-    for exchange in load_exchanges("upgrade/v12-main-upgrade")? {
++    for exchange in load_exchanges(&std::env::var("CELESTIA_V12_CAPTURE")?)? {
+         match (exchange.request.value, exchange.response.value) {
+             (Some(request::Value::InitChain(req)), Some(response::Value::InitChain(go))) => {
+                 let rust = app.init_chain(req)?;
+@@ -58,7 +58,7 @@
+             exchange => anyhow::bail!("unexpected ABCI exchange {exchange:?}"),
+         }
+     }
+-    assert_eq!(verified_heights, (1..=7).collect::<Vec<_>>());
++    assert_eq!(verified_heights, (1..=1005).collect::<Vec<_>>());
+     assert!(!home.path().join("data/upgrade-info.json").exists());
+     let expected = app.info();
+     assert_eq!(expected.app_version, 12);
+--- a/conformance/fixtures/devnet/upgrade/v12-main-upgrade/capture_test.go
++++ b/conformance/fixtures/devnet/upgrade/v12-main-upgrade/capture_test.go
+@@ -114,8 +114,9 @@
+ 		require.NoError(t, err)
+ 		require.Equal(t, "v12", pending.Name)
+ 		require.Equal(t, int64(6), pending.Height)
+-		block(6, nil)
+-		block(7, nil)
++		for h := int64(6); h <= 1005; h++ {
++			block(h, nil)
++		}
+ 	}
+ }
+ func seedLegacyFibre(a *app.App, genesis app.GenesisState, signer string) {

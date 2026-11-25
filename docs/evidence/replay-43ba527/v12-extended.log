@@ -1,0 +1,10 @@
+   Compiling devnet-conformance v0.0.1 (/private/tmp/replay302-43ba527/v12-lab/crates/devnet-conformance)
+    Finished `release` profile [optimized] target(s) in 0.69s
+     Running tests/v12_upgrade.rs (/private/tmp/replay302-43ba527/target/release/deps/v12_upgrade-28679ddfac85faa0)
+
+running 2 tests
+test v12_upgrade_without_restart ... ok
+test v12_upgrade_reopens_at_boundary ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+

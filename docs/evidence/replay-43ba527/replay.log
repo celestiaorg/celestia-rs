@@ -1,0 +1,20 @@
+/private/tmp/replay302-43ba527/home/config/genesis.json: OK
+2026-11-25T01:27:52.305699Z  INFO celestia_rs::follow: following over RPC chain_id="mocha-5" primary=https://rpc.celestia-mocha.com tip=2930287 earliest=1
+2026-11-25T01:27:52.965250Z  INFO nodestore::handshake: ABCI Handshake App Info height=0 hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 protocol_version=0
+2026-11-25T01:27:52.965317Z  INFO nodestore::handshake: ABCI Replay Blocks app_height=0 store_height=0 state_height=0
+2026-11-25T01:27:55.559664Z  INFO nodestore::handshake: Completed ABCI Handshake - CometBFT and App are synced app_height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855
+2026-11-25T01:27:55.559741Z  INFO celestia_rs::follow: resuming height=0 app_hash=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855
+2026-11-25T01:30:43.807746Z  INFO celestia_rs::follow: followed height=100 tip=2930344 blocks_per_sec="0.60" txs_per_sec="0.0" exec_secs=7 wait_secs=160 tx_mib=0 app_hash=5233A68B6A96EC636491C81B65B22F1D656ED6C54655A518680AD7684CCA66F9
+2026-11-25T01:32:27.985964Z  INFO celestia_rs::follow: followed height=200 tip=2930381 blocks_per_sec="0.96" txs_per_sec="0.0" exec_secs=9 wait_secs=262 tx_mib=0 app_hash=72AA27D13AF0E25003821504E3B022BE6DCB6D0645C517D137A05F69425239CF
+2026-11-25T01:33:32.160238Z  WARN celestia_rs::follow: status of the primary failed error=post failed: Client.Timeout exceeded while awaiting headers (curl: (28) Connection timed out after 30006 milliseconds)
+2026-11-25T01:35:37.072837Z  INFO celestia_rs::follow: followed height=300 tip=2930447 blocks_per_sec="0.53" txs_per_sec="0.0" exec_secs=11 wait_secs=449 tx_mib=0 app_hash=1C5E29979291AF29EC883E2CBE7EEF6698C658409494DEE8BFE387FBD27EFD19
+2026-11-25T01:38:48.344860Z  INFO celestia_rs::follow: followed height=400 tip=2930512 blocks_per_sec="0.52" txs_per_sec="0.0" exec_secs=13 wait_secs=638 tx_mib=0 app_hash=CB52B789D63857B2FB9D422486E62B2F1B2CCFA8ECE73DB06E6A0F2CF9815263
+2026-11-25T01:40:59.786229Z  INFO celestia_rs::follow: followed height=500 tip=2930561 blocks_per_sec="0.76" txs_per_sec="0.0" exec_secs=15 wait_secs=768 tx_mib=0 app_hash=94FCD4C6899A82BCEB730FFACC765BDE1C59B0E1E4236ED9AD52740A3D7B82CD
+2026-11-25T01:43:40.966695Z  INFO celestia_rs::follow: followed height=600 tip=2930616 blocks_per_sec="0.62" txs_per_sec="0.0" exec_secs=16 wait_secs=928 tx_mib=0 app_hash=2B5F15B742D7C7A261B4000573D2C77A75CF833C99ADD1D70D54A015FA936D23
+2026-11-25T01:44:56.665983Z  INFO celestia_rs::follow: followed height=700 tip=2930642 blocks_per_sec="1.32" txs_per_sec="0.0" exec_secs=18 wait_secs=1002 tx_mib=0 app_hash=A69A126D9E42DF422CC692E2B154858B42ACAB99F9B321E00C98B4FE7F4FB6CC
+2026-11-25T01:47:38.627633Z  INFO celestia_rs::follow: followed height=800 tip=2930702 blocks_per_sec="0.62" txs_per_sec="0.0" exec_secs=49 wait_secs=1133 tx_mib=0 app_hash=E8942C0FADCFF5E8DFCE711BBA7579D6238DD0D24070BFC94BFA3BB02875840B
+2026-11-25T01:49:24.485867Z  INFO celestia_rs::follow: followed height=900 tip=2930739 blocks_per_sec="0.94" txs_per_sec="0.0" exec_secs=50 wait_secs=1238 tx_mib=0 app_hash=7DA0129A71417D9D8D26C2A7222129DD796C5334B529DE9237E64E1E5E33D4DC
+2026-11-25T01:51:38.477253Z  INFO celestia_rs::follow: followed height=1000 tip=2930783 blocks_per_sec="0.75" txs_per_sec="0.0" exec_secs=80 wait_secs=1341 tx_mib=0 app_hash=EBE697B9D18C5474ECF6A6160730A8ED001A096E4B5D035498AAAA87DBB6A757
+2026-11-25T01:51:38.478035Z  INFO celestia_rs::follow: stop height reached height=1000 verified_header_height=1001
+2026-11-25T01:51:48.623254Z  INFO celestia_rs::follow: follow finished first=1 last=1000 blocks=1000 txs=0 secs=1432
+/private/tmp/replay302-43ba527/home/config/genesis.json: OK
