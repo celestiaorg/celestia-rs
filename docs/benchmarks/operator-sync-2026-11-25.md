@@ -1,6 +1,6 @@
 # Operator sync runs, 2026-11-25
 
-These are the first cloud runs of the [operator comparison protocol](operator-sync.md). They give three state-sync observations for each implementation. Run 2 is one observation for each side from a pair that restored different snapshots. Run 3 is two valid pairs. The [summary](#summary-of-the-valid-pairs) compares the two valid pairs.
+These are the first cloud runs of the [operator comparison protocol](operator-sync.md). They give three state-sync observations for each implementation. Run 2 is one observation for each side from a pair that restored different snapshots. Run 3 is two valid pairs. Run 4 adds the DA bridge. The [summary](#summary-of-the-valid-pairs) compares the two valid pairs.
 
 Go is celestia-app `v11.0.0` (commit `58be8ae90d00518800df5506b3a1e988f009c1c6`) built with the multiplexer. Each VM is `n2-standard-8` (8 vCPU, 32 GB) in `us-central1-a` with Ubuntu 24.04, kernel `7.0.0-1017-gcp`, an empty 200 GB `pd-balanced` data disk, BBR, and egress capped at 4 Mbit/s. Both nodes ran with pruning `custom` (100 versions, interval 10), 3000 retained blocks, snapshots off and no transaction index. DA bridge services were off.
 
@@ -70,6 +70,46 @@ The celestia-rs logs give the phases. In pair 1 the node started discovery at 08
 
 The polls of this run are not in the artifact. Guest attributes kept only the first two raw chunks for each VM, and the archive put the node log first. The table uses the summaries, which hold the peaks and the last poll. The script now limits the raw data to two chunks.
 
+## Run 4: integrated DA bridge against celestia-app plus a celestia-node bridge
+
+celestia-rs ran with its integrated bridge (`--bridge-rpc-listen 127.0.0.1:26658 --bridge-p2p-listen /ip4/0.0.0.0/tcp/2121`). The Go VM ran celestia-app `v11.0.0` and a celestia-node `v0.36.0` bridge (commit `d5dfb21a0885622828e30e8e2daf50e5d1bb72b2`) as a second service, started when celestia-app was at tip. Both state-synced first. The measured window is 60 minutes from the first verified tip, under live mainnet traffic only. No client workload ran.
+
+**The two sides did not do the same work in the window.** The celestia-node bridge started its local head near 16,071,000 and filled in about 133,000 to 149,000 older heights during the window; it wrote 33 to 49 GB. The celestia-rs bridge had its local head at the consensus height from the first probe and stored only the heights after its snapshot. So this run compares a celestia-node bridge in catch-up with a celestia-rs bridge that serves from its snapshot height. It does not compare equal DA retention, and it is not a steady-state figure for either side.
+
+### Attempt A: celestia-rs failed
+
+Provisioning run [45598700560](https://github.com/celestiaorg/celestia-rs/actions/runs/45598700560) at 10:50 UTC, celestia-rs `bd37709ad3b54b120f2ff7952c67c01db518519c`, trust height 16,214,000.
+
+celestia-rs ended `failed` with reason `stalled`: no height for 60 minutes. Its log excerpt shows:
+
+- 11:01:08: `Discovering snapshots discovery_time=15s`.
+- 11:01:57: `Discovered new snapshot height=11643500 format=3`. This is 4,570,500 heights below the trust height. It is the only snapshot the node discovered.
+- No state sync line for the next 59 minutes.
+- 12:01:05, when the script stopped the node: `failed to fetch and verify app hash ... no witnesses connected`, then `Snapshot rejected height=11643500 format=3`.
+- In the same hour: 3,075 `Stopping peer for error ... err="EOF"` lines and 92 `Added peer` lines.
+
+Go ended `ok` (snapshot 16,216,500, tip at 1,805.7 s, block ID match). Its figures are in the table below.
+
+### Attempt B: both sides completed
+
+Provisioning run [45612622177](https://github.com/celestiaorg/celestia-rs/actions/runs/45612622177) at 12:19 UTC, the same celestia-rs commit (executable SHA-256 `27fb2f21…5ea1e8`), trust height 16,216,000. Both ended `ok` with a block ID match at tip. The state-sync snapshots differ (16,216,500 on Go, 16,218,000 on celestia-rs), so the pair verdict is `discard:different_snapshots`.
+
+| Measure | Go app + celestia-node bridge, attempt A | Go app + celestia-node bridge, attempt B | celestia-rs with bridge, attempt B |
+| --- | ---: | ---: | ---: |
+| First verified tip | 1,805.7 s | 1,190.2 s | 358.2 s |
+| Peak cgroup memory, all services | 30,468,751,360 B | 27,747,430,400 B | 6,049,558,528 B |
+| Peak cgroup memory by service | app 12.94 GB, bridge 22.14 GB | app 12.90 GB, bridge 20.86 GB | one process |
+| RSS in the window, median / maximum | 8.75 / 12.64 GiB | 8.41 / 10.25 GiB | 1.41 / 1.48 GiB |
+| cgroup memory in the window, median / maximum | 23.32 / 28.30 GiB | 20.90 / 25.79 GiB | 3.07 / 3.78 GiB |
+| CPU time in the window | 7,400 s | 5,334 s | 990 s |
+| Node home after shutdown | 5,192,212,480 B | 5,363,036,160 B | 1,881,800,704 B |
+| Bridge store after shutdown | 48,762,679,296 B | 33,034,764,288 B | inside the node home |
+| DA local head, first probe to last probe | 16,070,350 to tip | 16,071,046 to 16,204,358 | at the consensus height in every probe |
+
+In attempt B, celestia-rs with its bridge used 17% of the RSS (median), 22% of the peak cgroup memory and 19% of the CPU time of the Go pair of processes. Read these with the note above: the Go bridge was in catch-up and held far more DA history.
+
+The celestia-rs node in attempt B also logged 2,922 peer `EOF` lines against 93 `Added peer` lines in about an hour, so the peer disconnects are not specific to the failed attempt.
+
 ## Summary of the valid pairs
 
 The protocol discards run 2 as a paired comparison, so the comparison uses the two valid pairs of run 3. Two pairs do not give a median of three; a third valid pair is still to run.
@@ -85,9 +125,12 @@ The protocol discards run 2 as a paired comparison, so the comparison uses the t
 
 Run 2 stays on record as one observation for each side, outside this comparison. In it celestia-rs took 3,308.4 s to the tip and Go took 1,546.8 s. Its resource figures agree with the valid pairs.
 
-Snapshot discovery explains the difference between run 2 and run 3 on celestia-rs. It took 159 s and 186 s in run 3 and about 50 minutes in run 2, where Go started its restore in the first seconds from an older snapshot (16,210,500). The cause is not established. The run 3 logs show that both nodes found the snapshot in the same second, which points to a wait for peers to advertise a snapshot and not to slow work in the node. This is the first thing to examine: in one of three celestia-rs runs the time to tip was longer than Go's.
+Snapshot discovery explains the difference between run 2 and run 3 on celestia-rs. It took 159 s and 186 s in run 3 and about 50 minutes in run 2, where Go started its restore in the first seconds from an older snapshot (16,210,500). The run 3 logs show that both nodes found the snapshot in the same second.
+
+Run 4 attempt A shows what happens in a slow case: the node discovered one snapshot, 4.6 million heights old, worked on it for 59 minutes and found no newer one. Run 2 kept no log, but its wait fits the same pattern. The observed cause is that celestia-rs takes up a very old snapshot and does not give it up for a long time. The fault in the code is not yet located. Of the five celestia-rs state syncs in these runs, three found a recent snapshot in under 4 minutes, one waited about 50 minutes and one did not sync in 60 minutes. This is the first thing to fix before a time to tip is quoted.
 
 ## Not run yet
 
 - **Genesis prefix:** celestia-rs cannot run it. `InitChain` on the mainnet genesis stops at IBC, and there is no app version 1 state machine. See the [historical replay record](../../conformance/README.md#historical-mainnet-replay).
-- **DA bridge:** not run.
+- **DA bridge with equal retention:** run 4 does not hold the retained DA history equal on both sides. A like-for-like figure needs both bridges to cover the same height range, and a matched client workload.
+- **A third valid state-sync pair.**
