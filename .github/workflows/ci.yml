@@ -78,13 +78,14 @@ jobs:
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
-    needs: changes
+    needs: [changes, rust-tests, doctests]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
+        if: needs.changes.outputs.docs_only == 'true'
         with:
-          fetch-depth: ${{ needs.changes.outputs.docs_only == 'true' && '2' || '0' }}
+          fetch-depth: 2
       - name: Validate documentation changes
         if: needs.changes.outputs.docs_only == 'true'
         env:
@@ -94,39 +95,58 @@ jobs:
           if [[ -f docs/site/copy.js ]]; then
             node --check docs/site/copy.js
           fi
+      - name: Require both Linux test suites
+        if: needs.changes.outputs.docs_only != 'true'
+        env:
+          RUST_TESTS: ${{ needs.rust-tests.result }}
+          DOCTESTS: ${{ needs.doctests.result }}
+        run: |
+          printf 'Unit and integration tests: %s\nDoctests: %s\n' "$RUST_TESTS" "$DOCTESTS"
+          [[ "$RUST_TESTS" == success && "$DOCTESTS" == success ]]
+
+  rust-tests:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
-        if: needs.changes.outputs.docs_only != 'true'
       - uses: Swatinem/rust-cache@v2
-        if: needs.changes.outputs.docs_only != 'true'
+        with:
+          shared-key: test
       - name: Fuzz evidence accounting
-        if: needs.changes.outputs.docs_only != 'true'
         run: python3 -m unittest discover -s crates/fuzz-diff/tests -p '*_test.py' -v
       - name: Quality evidence accounting
-        if: needs.changes.outputs.docs_only != 'true'
         run: python3 -m unittest discover -s scripts/quality -p 'test_*.py' -v
       - name: Transaction-result receipt failure paths
-        if: needs.changes.outputs.docs_only != 'true'
         run: bash packaging/test-compare-block-results.sh
       - name: Mixed devnet crash-boundary checks
-        if: needs.changes.outputs.docs_only != 'true'
         run: python3 -m unittest discover -s conformance/devnet/tests -v
       - name: gRPC limit evidence integrity
-        if: needs.changes.outputs.docs_only != 'true'
         run: python3 conformance/grpc-limits/verify.py
       - name: gRPC lifecycle evidence integrity
-        if: needs.changes.outputs.docs_only != 'true'
         run: |
           python3 -m unittest -v conformance/grpc-lifecycle/test_verify.py
           python3 conformance/grpc-lifecycle/verify.py conformance/grpc-lifecycle/v10.5.0
       - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
-        if: needs.changes.outputs.docs_only != 'true'
         with:
           tool: cargo-nextest@0.9.152
       - name: Linux unit and integration tests
-        if: needs.changes.outputs.docs_only != 'true'
         run: cargo nextest run --locked --workspace --all-features --profile ci
+
+  doctests:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Linux doctests
-        if: needs.changes.outputs.docs_only != 'true'
         run: cargo test --locked --workspace --all-features --doc
 
   rpc-evidence:
