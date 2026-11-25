@@ -1,8 +1,8 @@
 # Operator sync runs, 2026-11-25
 
-These are the first cloud runs of the [operator comparison protocol](operator-sync.md). They give three state-sync observations for each implementation. Run 2 is one observation for each side from a pair that restored different snapshots. Run 3 is two valid pairs. Run 4 adds the DA bridge. The [summary](#summary-of-the-valid-pairs) compares the two valid pairs.
+These are the first cloud runs of the [operator comparison protocol](operator-sync.md). Run 2 is one state-sync observation for each side from a pair that restored different snapshots. Run 3 is two valid state-sync pairs. Run 4 is two attempts at the DA bridge comparison. The [summary](#summary-of-the-valid-pairs) compares the two valid pairs.
 
-Go is celestia-app `v11.0.0` (commit `58be8ae90d00518800df5506b3a1e988f009c1c6`) built with the multiplexer. Each VM is `n2-standard-8` (8 vCPU, 32 GB) in `us-central1-a` with Ubuntu 24.04, kernel `7.0.0-1017-gcp`, an empty 200 GB `pd-balanced` data disk, BBR, and egress capped at 4 Mbit/s. Both nodes ran with pruning `custom` (100 versions, interval 10), 3000 retained blocks, snapshots off and no transaction index. DA bridge services were off.
+Go is celestia-app `v11.0.0` (commit `58be8ae90d00518800df5506b3a1e988f009c1c6`) built with the multiplexer. Each VM is `n2-standard-8` (8 vCPU, 32 GB) in `us-central1-a` with Ubuntu 24.04, kernel `7.0.0-1017-gcp`, an empty 200 GB `pd-balanced` data disk, BBR, and egress capped at 4 Mbit/s. Both nodes ran with pruning `custom` (100 versions, interval 10), 3000 retained blocks, snapshots off and no transaction index. DA bridge services were off in runs 1 to 3 and on in run 4.
 
 ## Run 1: failed, no measurement
 
@@ -72,7 +72,7 @@ The polls of this run are not in the artifact. Guest attributes kept only the fi
 
 ## Run 4: integrated DA bridge against celestia-app plus a celestia-node bridge
 
-celestia-rs ran with its integrated bridge (`--bridge-rpc-listen 127.0.0.1:26658 --bridge-p2p-listen /ip4/0.0.0.0/tcp/2121`). The Go VM ran celestia-app `v11.0.0` and a celestia-node `v0.36.0` bridge (commit `d5dfb21a0885622828e30e8e2daf50e5d1bb72b2`) as a second service, started when celestia-app was at tip. Both state-synced first. The measured window is 60 minutes from the first verified tip, under live mainnet traffic only. No client workload ran.
+celestia-rs ran with its integrated bridge (`--bridge-rpc-listen 127.0.0.1:26658 --bridge-p2p-listen /ip4/0.0.0.0/tcp/2121`). The Go VM ran celestia-app `v11.0.0` and a celestia-node `v0.36.0` bridge (commit `d5dfb21a0885622828e30e8e2daf50e5d1bb72b2`) as a second service, started when celestia-app was at tip. Both sides were set to state-sync first. The measured window is 60 minutes from the first verified tip, under live mainnet traffic only. No client workload ran.
 
 **The two sides did not do the same work in the window.** The celestia-node bridge started its local head near 16,071,000 and filled in about 133,000 to 149,000 older heights during the window; it wrote 33 to 49 GB. The celestia-rs bridge had its local head at the consensus height from the first probe and stored only the heights after its snapshot. So this run compares a celestia-node bridge in catch-up with a celestia-rs bridge that serves from its snapshot height. It does not compare equal DA retention, and it is not a steady-state figure for either side.
 
