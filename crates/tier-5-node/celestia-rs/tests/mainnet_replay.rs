@@ -24,6 +24,38 @@ const WINDOW_SIZE: usize = 10;
 const BINARY: &str = env!("CARGO_BIN_EXE_celestia-rs");
 const FIXTURE: &str = include_str!("../../../../conformance/fixtures/mainnet/replay-windows.json");
 const ARCHIVE: &[u8] = include_bytes!("../../../../conformance/fixtures/mainnet/blocks.jsonl.gz");
+const V1_ORACLE: &str =
+    include_str!("../../../../conformance/fixtures/mainnet/v1-oracle/store-roots.json");
+const V1_ORACLE_KV_MODULES: &[u8] = include_bytes!(
+    "../../../../conformance/fixtures/mainnet/v1-oracle/kv-height-0-modules.jsonl.gz"
+);
+const V1_ORACLE_KV_DIFFS: &[u8] =
+    include_bytes!("../../../../conformance/fixtures/mainnet/v1-oracle/kv-diffs.jsonl.gz");
+/// Commit info entries of app version 1 (celestia-app v3.13.0, Cosmos SDK
+/// v0.46): 17 IAVL stores and the memory store `mem_capability`.
+const V1_STORES: [&str; 18] = [
+    "acc",
+    "authz",
+    "bank",
+    "blob",
+    "capability",
+    "distribution",
+    "evidence",
+    "feegrant",
+    "gov",
+    "ibc",
+    "mem_capability",
+    "mint",
+    "params",
+    "qgb",
+    "slashing",
+    "staking",
+    "transfer",
+    "upgrade",
+];
+/// Stores left out of the committed height-0 KV dump (genesis accounts
+/// and balances, about 25 MB compressed).
+const V1_BULK_STORES: [&str; 2] = ["acc", "bank"];
 
 #[derive(Deserialize)]
 struct Fixtures {
@@ -93,6 +125,45 @@ const EXPECTED_BLOCKERS: [(u64, &[&str]); 8] = [
     (9, &[]),
     (10, &[]),
 ];
+
+/// Store roots from the Go v1 oracle (`conformance/v1-oracle`).
+#[derive(Deserialize)]
+struct V1Oracle {
+    chain_id: String,
+    genesis_sha256: String,
+    init_chain_app_hash: String,
+    heights: Vec<OracleHeight>,
+    /// Uncompressed SHA-256 of each KV dump file.
+    kv: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct OracleHeight {
+    height: i64,
+    app_hash: String,
+    stores: BTreeMap<String, String>,
+    keys: BTreeMap<String, usize>,
+}
+
+/// Hex key to hex value, by store.
+type OracleState = BTreeMap<String, BTreeMap<String, String>>;
+
+/// One store of the height-0 KV dump.
+#[derive(Deserialize)]
+struct OracleStoreDump {
+    store: String,
+    root: String,
+    kv: Vec<[String; 2]>,
+}
+
+/// The keys one block set or deleted in one store.
+#[derive(Deserialize)]
+struct OracleKvDiff {
+    height: i64,
+    store: String,
+    set: Vec<[String; 2]>,
+    delete: Vec<String>,
+}
 
 #[derive(Deserialize)]
 struct ReferenceBlock {
@@ -398,16 +469,11 @@ fn compare_replay(home: &Path, window: &Window, archive: &ArchivedBlocks) -> any
     Ok(())
 }
 
-/// Checks the pinned pre-state against the window's first header app hash,
-/// then lists what stops celestia-rs from replaying the window from it.
-fn replay_blockers(window: &Window) -> anyhow::Result<Vec<String>> {
-    let height = window.start_height - 1;
-    let Some(pre) = &window.pre_state else {
-        return Ok(vec![format!("no public pre-state at height {height}")]);
-    };
-    ensure!(pre.height == height, "pre-state must be at height {height}");
+/// Cosmos SDK commit info hash (the app hash) of store name to root hash.
+/// An empty root is an SDK v0.46 memory store, hashed as `sha256("")`.
+fn commit_info_hash(stores: &BTreeMap<String, String>) -> anyhow::Result<Vec<u8>> {
     let mut leaves = Vec::new();
-    for (name, root) in &pre.stores {
+    for (name, root) in stores {
         let name_len = u8::try_from(name.len()).ok().filter(|len| *len < 0x80);
         let name_len = name_len.context("store name too long")?;
         let mut leaf = vec![name_len];
@@ -416,10 +482,21 @@ fn replay_blockers(window: &Window) -> anyhow::Result<Vec<String>> {
         leaf.extend_from_slice(&hash::sha256(&hex::decode(root)?));
         leaves.push(leaf);
     }
+    Ok(merkle::root_from_byte_slices(&leaves).to_vec())
+}
+
+/// Checks the pinned pre-state against the window's first header app hash,
+/// then lists what stops celestia-rs from replaying the window from it.
+fn replay_blockers(window: &Window) -> anyhow::Result<Vec<String>> {
+    let height = window.start_height - 1;
+    let Some(pre) = &window.pre_state else {
+        return Ok(vec![format!("no public pre-state at height {height}")]);
+    };
+    ensure!(pre.height == height, "pre-state must be at height {height}");
     compare_hash(
         "pre-state commit info",
         height,
-        &merkle::root_from_byte_slices(&leaves),
+        &commit_info_hash(&pre.stores)?,
         &window.blocks[0].app_hash,
     )?;
 
@@ -475,6 +552,190 @@ fn historical_replay_blockers_match_record() -> anyhow::Result<()> {
             "app v{version} replay blockers changed: {blockers:#?}"
         );
     }
+    Ok(())
+}
+
+fn gunzip_checked(label: &str, bytes: &[u8], sha256: Option<&String>) -> anyhow::Result<String> {
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut GzDecoder::new(bytes), &mut text)?;
+    let expected = sha256.with_context(|| format!("no SHA-256 recorded for {label}"))?;
+    ensure!(
+        hex::encode(hash::sha256(text.as_bytes())) == *expected,
+        "{label} does not match its recorded SHA-256"
+    );
+    Ok(text)
+}
+
+/// The Go v1 oracle's store roots rebuild its app hashes, which equal the
+/// pinned mainnet app hashes of window 1, and its KV dumps agree with them.
+#[test]
+fn v1_oracle_store_roots_match_record() -> anyhow::Result<()> {
+    let fixtures = read_fixtures()?;
+    let window = &fixtures.windows[0];
+    ensure!(
+        window.app_version == 1 && window.start_height == 1,
+        "window 1 must start at genesis"
+    );
+    let oracle: V1Oracle = serde_json::from_str(V1_ORACLE)?;
+    ensure!(oracle.chain_id == CHAIN, "v1 oracle is for another chain");
+    ensure!(
+        Some(oracle.genesis_sha256.as_str()) == networks::MAINNET.genesis_sha256,
+        "v1 oracle ran on a different genesis"
+    );
+    ensure!(
+        oracle.init_chain_app_hash == window.blocks[0].app_hash,
+        "v1 oracle InitChain app hash {} differs from header 1",
+        oracle.init_chain_app_hash
+    );
+    ensure!(
+        oracle
+            .heights
+            .iter()
+            .map(|h| h.height)
+            .eq(0..=i64::try_from(WINDOW_SIZE)?),
+        "v1 oracle must cover heights 0 to {WINDOW_SIZE}"
+    );
+    for h in &oracle.heights {
+        ensure!(
+            h.stores.keys().map(String::as_str).eq(V1_STORES),
+            "v1 oracle stores at {}: {:?}",
+            h.height,
+            h.stores.keys()
+        );
+        for (name, root) in &h.stores {
+            let len = if name == "mem_capability" { 0 } else { 64 };
+            ensure!(
+                root.len() == len && root.to_uppercase() == *root,
+                "v1 oracle root of {name} at {}",
+                h.height
+            );
+        }
+        compare_hash(
+            "v1 oracle commit info",
+            h.height,
+            &commit_info_hash(&h.stores)?,
+            &h.app_hash,
+        )?;
+        if let Some(block) = usize::try_from(h.height - 1)
+            .ok()
+            .and_then(|i| window.blocks.get(i))
+        {
+            ensure!(
+                h.app_hash == block.post_app_hash,
+                "v1 oracle app hash at {} is {}, mainnet {}",
+                h.height,
+                h.app_hash,
+                block.post_app_hash
+            );
+        }
+    }
+
+    let state = read_oracle_height_0(&oracle)?;
+    check_oracle_diffs(&oracle, state)
+}
+
+/// Height-0 KV pairs of every store except the bulk ones, by store.
+fn read_oracle_height_0(oracle: &V1Oracle) -> anyhow::Result<OracleState> {
+    let h0 = &oracle.heights[0];
+    let modules = gunzip_checked(
+        "kv-height-0-modules.jsonl",
+        V1_ORACLE_KV_MODULES,
+        oracle.kv.get("kv-height-0-modules.jsonl"),
+    )?;
+    let mut state = OracleState::new();
+    for line in modules.lines() {
+        let dump: OracleStoreDump = serde_json::from_str(line)?;
+        ensure!(
+            h0.stores.get(&dump.store) == Some(&dump.root),
+            "height-0 dump root of {}",
+            dump.store
+        );
+        ensure!(
+            dump.kv.windows(2).all(|p| p[0][0] < p[1][0]),
+            "height-0 dump of {} is not sorted",
+            dump.store
+        );
+        ensure!(
+            h0.keys.get(&dump.store) == Some(&dump.kv.len()),
+            "height-0 key count of {}",
+            dump.store
+        );
+        let kv: BTreeMap<String, String> = dump.kv.into_iter().map(|[k, v]| (k, v)).collect();
+        state.insert(dump.store, kv);
+    }
+    let dumped: Vec<&str> = V1_STORES
+        .into_iter()
+        .filter(|s| *s != "mem_capability" && !V1_BULK_STORES.contains(s))
+        .collect();
+    ensure!(
+        state.keys().map(String::as_str).eq(dumped.iter().copied()),
+        "height-0 dump stores: {:?}",
+        state.keys()
+    );
+    Ok(state)
+}
+
+/// Applies each block's KV diff to the height-0 dump: a store whose keys
+/// change must change its root, block 1 keeps the height-0 root of every
+/// store it leaves alone, and the dumped stores keep the recorded key
+/// counts.
+fn check_oracle_diffs(oracle: &V1Oracle, mut state: OracleState) -> anyhow::Result<()> {
+    let diffs = gunzip_checked(
+        "kv-diffs.jsonl",
+        V1_ORACLE_KV_DIFFS,
+        oracle.kv.get("kv-diffs.jsonl"),
+    )?;
+    let mut changed: BTreeMap<i64, Vec<OracleKvDiff>> = BTreeMap::new();
+    for line in diffs.lines() {
+        let diff: OracleKvDiff = serde_json::from_str(line)?;
+        ensure!(
+            !diff.set.is_empty() || !diff.delete.is_empty(),
+            "empty diff for {} at {}",
+            diff.store,
+            diff.height
+        );
+        changed.entry(diff.height).or_default().push(diff);
+    }
+    for pair in oracle.heights.windows(2) {
+        let (before, after) = (&pair[0], &pair[1]);
+        let mut touched = BTreeSet::new();
+        for diff in changed.remove(&after.height).unwrap_or_default() {
+            ensure!(
+                touched.insert(diff.store.clone()),
+                "duplicate diff for {} at {}",
+                diff.store,
+                after.height
+            );
+            if let Some(kv) = state.get_mut(&diff.store) {
+                for [k, v] in diff.set {
+                    kv.insert(k, v);
+                }
+                for k in diff.delete {
+                    ensure!(kv.remove(&k).is_some(), "deleted key absent: {k}");
+                }
+            }
+        }
+        for name in V1_STORES {
+            let same_root = before.stores[name] == after.stores[name];
+            ensure!(
+                !(touched.contains(name) && same_root),
+                "{name} changed keys but kept its root at {}",
+                after.height
+            );
+            ensure!(
+                after.height != 1 || touched.contains(name) || same_root,
+                "{name} root differs between heights 0 and 1 without a KV change"
+            );
+        }
+        for (name, kv) in &state {
+            ensure!(
+                after.keys.get(name) == Some(&kv.len()),
+                "{name} key count at {}",
+                after.height
+            );
+        }
+    }
+    ensure!(changed.is_empty(), "diffs for unknown heights");
     Ok(())
 }
 
