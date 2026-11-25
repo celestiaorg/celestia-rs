@@ -104,6 +104,9 @@ updates:
         patterns: ["*"]
 
   # Go conformance modules: test-only generators and oracles, never shipped.
+  # Every conformance/**/go.mod must be listed here or in the frozen entry
+  # below (xtask/tests/dependabot.rs); an unlisted module falls back to the
+  # repository defaults, which ignore none of the pinned modules.
   # No version updates (limit 0): several reproduce celestia-app v10.4.0 /
   # v9.0.8 / v6.4.10 and celestia-core module graphs exactly, and their
   # outputs are committed fixtures. Security updates still open (grouped
@@ -123,12 +126,23 @@ updates:
       - /conformance/fixturegen
       - /conformance/fuzzoracle/v9
       - /conformance/fuzzoracle/v10
+      - /conformance/grpc-lifecycle/recorder
+      - /conformance/grpc-limits/recorder
+      - /conformance/grpc-reflection
       - /conformance/lightvectors
+      - /conformance/mainnet-rpc/module-closure/proofcheck
       - /conformance/mathvectors
       - /conformance/mintvectors
       - /conformance/p2pvectors
+      - /conformance/pfm-fork
+      - /conformance/provider-client
+      - /conformance/rpc-relay
       - /conformance/rpccorpus/recorder
+      - /conformance/strict-txdecode
       - /conformance/txdecode
+      - /conformance/v1-oracle
+      - /conformance/v11-frozen
+      - /conformance/websocket-lifecycle
     schedule:
       interval: weekly
       day: monday
@@ -149,3 +163,20 @@ updates:
       - dependency-name: "github.com/cosmos/iavl"
       - dependency-name: "github.com/cosmos/cosmos-db"
       - dependency-name: "github.com/bcp-innovations/hyperlane-cosmos"
+
+  # Frozen evidence: byte-exact copies of module sources recorded with a
+  # capture. They must never change, so every dependency is ignored (alerts
+  # still show; no pull requests).
+  - package-ecosystem: gomod
+    directories:
+      - /conformance/grpc-lifecycle/v10.5.0/capture-source/snapshot/conformance/grpc-lifecycle/recorder
+      - /conformance/mainnet-rpc/persistence/closure-evidence/batch-indexed/sources/conformance/rpccorpus/recorder
+      - /conformance/mainnet-rpc/persistence/closure-evidence/batch-null/sources/conformance/rpccorpus/recorder
+      - /conformance/mainnet-rpc/persistence/ordered-evidence/dump-sources
+      - /conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/capture-sources/conformance/provider-client
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "*"
