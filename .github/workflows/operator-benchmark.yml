@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       peer_wait_trial:
-        description: Single existing-VM trial (wait in ms, expected pool.rs Git blob, reference seconds)
+        description: Block pool trial (wait ms, floor-N or control; expected pool.rs blob; reference seconds)
         type: string
         required: false
       calibrate_existing:
@@ -213,7 +213,7 @@ jobs:
         env:
           TRIAL: ${{ inputs.peer_wait_trial }}
         run: |
-          [[ "$TRIAL" =~ ^([0-9]{4}),([0-9a-f]{40}),([0-9]{1,3}\.[0-9]{1,3})$ ]]
+          [[ "$TRIAL" =~ ^([0-9]{4}|floor-[2-8]|control),([0-9a-f]{40}),([0-9]{1,3}\.[0-9]{1,3})$ ]]
           ssh -F "$RUNNER_TEMP/bench-config" campaign \
             "bash -s -- ${BASH_REMATCH[1]} ${BASH_REMATCH[2]} ${BASH_REMATCH[3]}" < conformance/bench/cloud/calibrate-genesis.sh
       - name: Compare calibration runs
