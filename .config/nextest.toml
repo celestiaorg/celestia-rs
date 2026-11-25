@@ -1,0 +1,8 @@
+[test-groups.node-integration]
+max-threads = 2
+
+[[profile.ci.overrides]]
+# Bound concurrent node, replay, and RPC integration tests that need CPU,
+# local sockets, or temporary databases. Unit tests use the remaining slots.
+filter = 'kind(test) & (package(celestia-rs) | package(devnet-conformance) | package(rpc))'
+test-group = 'node-integration'

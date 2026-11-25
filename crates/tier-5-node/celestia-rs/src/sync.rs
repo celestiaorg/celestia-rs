@@ -48,6 +48,15 @@ pub fn open_evidence_pool(
     state: &State,
 ) -> anyhow::Result<evidence::Pool> {
     let db = crate::node::open_db(&home.join("data"), "evidence")?;
+    evidence_pool_with_db(db, ss, bs, state)
+}
+
+pub(crate) fn evidence_pool_with_db(
+    db: Arc<dyn kvdb::KvBackend>,
+    ss: &StateStore,
+    bs: &BlockStore,
+    state: &State,
+) -> anyhow::Result<evidence::Pool> {
     let st = match ss.load().map_err(|e| anyhow!("{e}"))? {
         Some(s) => s,
         None => state.clone(),
