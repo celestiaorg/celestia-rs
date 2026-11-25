@@ -134,6 +134,71 @@ cargo test --locked -p celestia-rs --test mainnet_replay \
   historical_replay_blockers_match_record
 ```
 
+#### Go oracle for app version 1
+
+[`v1-oracle`](v1-oracle/main.go) runs the Go state machine for app
+version 1 over the canonical mainnet genesis and blocks 1 to 10. It
+builds celestia-app v3.13.0 in process. The Go multiplexer runs that
+release for app versions 1 to 3. The program drives the app as
+Tendermint v0.34 does: Info, InitChain, then BeginBlock, DeliverTx,
+EndBlock and Commit for each block. It takes the blocks from
+`blocks.jsonl.gz` and the expected app hashes from window 1 of
+`replay-windows.json`.
+
+[`fixtures/mainnet/v1-oracle/store-roots.json`](fixtures/mainnet/v1-oracle/store-roots.json)
+records the commit info for heights 0 to 10: each store root, the app
+hash, the key count of each IAVL store, and each DeliverTx `[code,
+gas_wanted, gas_used]`. Height 0 is the genesis state alone. A separate
+app runs InitChain and then Commit with no block, so the genesis state
+becomes IAVL version 1. Mainnet never committed this state. InitChain
+returns `sha256("")`, and block 1 runs on the uncommitted genesis state.
+Heights 1 to 10 are the states after each block's Commit.
+
+The oracle writes no output if any check fails. It checks that:
+
+- Each block header hashes to its archived block ID.
+- The validator set, tracked from the InitChain and EndBlock updates,
+  hashes to each header's `validators_hash` and `next_validators_hash`.
+- The InitChain app hash equals the app hash in header 1.
+- Each Commit app hash equals the pinned `post_app_hash` and the app
+  hash of the next header.
+- The DeliverTx results hash equals the next header's
+  `last_results_hash`.
+- The commit info hash rebuilt from the dumped roots equals the Commit
+  app hash.
+
+The KV dumps hold hex keys and values, with stores sorted by name and
+keys sorted by bytes. `kv-diffs.jsonl.gz` holds the keys that each block
+sets or deletes. `kv-height-0-modules.jsonl.gz` holds every key at
+height 0 except those of `acc` and `bank`. The full height-0 dump
+(`kv-height-0.jsonl.gz`, about 25 MB) is not committed.
+`store-roots.json` records the SHA-256 of each uncompressed dump.
+
+The offline test `v1_oracle_store_roots_match_record` checks the
+fixture. It rebuilds each app hash from the store roots and compares it
+with mainnet. It also applies the KV diffs to the height-0 dump and
+checks the roots and key counts:
+
+```sh
+cargo test --locked -p celestia-rs --test mainnet_replay \
+  v1_oracle_store_roots_match_record
+```
+
+To regenerate the fixture, run the oracle. It takes about two minutes
+and 4 GB of memory. Download the genesis from the URL in
+`crates/tier-5-node/celestia-rs/src/networks.rs`, and check that its
+SHA-256 is `9727aac9…7793`:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -genesis <genesis.json> \
+  -blocks ../fixtures/mainnet/blocks.jsonl.gz \
+  -windows ../fixtures/mainnet/replay-windows.json \
+  -heights 10 -kv -out "$OUT"
+cp "$OUT"/store-roots.json "$OUT"/kv-diffs.jsonl.gz \
+  "$OUT"/kv-height-0-modules.jsonl.gz ../fixtures/mainnet/v1-oracle/
+```
+
 #### Where checkpoints come from
 
 The QubeLabs archive (`celestia_2026-11-03.tar`, ETag
@@ -156,6 +221,69 @@ height before it, H−1:
    each with the pinned anchor and the commit hash with the signed header.
 4. Add the snapshot root, H−1 and the block hash at H−1 under key `N` in
    `checkpoints`.
+
+##### Go checkpoint campaign
+
+The `checkpoints` job of
+[`operator-benchmark.yml`](../.github/workflows/operator-benchmark.yml)
+does these steps unattended on one `n2-standard-8` VM in `us-central1-a`.
+Dispatch it from `main`. [`checkpoints-vm.sh`](../scripts/bench/checkpoints-vm.sh)
+builds celestia-app `v11.0.0` with the multiplexer and block-syncs mainnet
+from the verified genesis. Its peers are two archive nodes, 20 peers of
+Polkachu's archive RPC node, the `peers` input and the seeds. For each
+planned height H it does these steps:
+
+1. It sets `halt-height = H+1`. The multiplexer refuses to finalize a block
+   at or above `halt-height`, so the node commits H and then stops.
+2. It runs `celestia-appd passthrough vN snapshots export --height H`, where
+   N is the app version of H. N is 3 for app versions 1 to 3, because
+   v3.13.0 runs those versions.
+3. It runs `verify-replay-checkpoint.py` on the snapshot. If a window starts
+   at H+1, the script uses the pinned fixture. If not, it uses `--app-hash`
+   with the app hash of header H+1. Both archive RPCs must agree on that
+   hash.
+4. It writes `checkpoint.json` with the height, app version, block hash,
+   snapshot format, the size and SHA-256 of each chunk, and the binary
+   versions and checksums. Then it resumes the sync.
+
+A failed verification stops the campaign. The metadata is then kept as
+`failed.json`, not `checkpoint.json`, so a resumed run exports that height
+again and does not go past it. The default plan is the state
+before each window after v1, plus 2,371,489 (five v1 blocks before the
+v1 to v2 upgrade).
+
+| Action | Inputs | Result |
+| --- | --- | --- |
+| `preflight` | `checkpoints=preflight` | Lists the required and optional Compute permissions |
+| `provision` | `checkpoints=provision checkpoint_name=mainnet-1`, optional `checkpoint_heights`, `checkpoint_disk_gb` (default 1000), `checkpoint_hours` (default 168), `peers` | Creates the VM. If the campaign's disks already exist, the VM resumes from them |
+| `status` | `checkpoints=status checkpoint_name=mainnet-1` | Writes the progress line (height, next checkpoint, blocks/s over the last hour, ETA) and one row per checkpoint to the job summary |
+| `collect` | `checkpoints=collect checkpoint_name=mainnet-1` | Does the same as `status`, and uploads the metadata, polls and log excerpt as an artifact |
+| `delete` | `checkpoints=delete checkpoint_name=mainnet-1 checkpoint_delete_disks=none\|data\|all` | Deletes the VM and, if requested, its disks |
+
+The node stops 30 minutes before the VM deletes itself. The VM and its
+guest attributes are then deleted. Two disks remain:
+
+- `ckpt-<name>-data` (pd-balanced, default 1000 GB) holds the node home and
+  the multiplexer binary. A later `provision` with the same name resumes
+  from this disk, not from genesis.
+- `ckpt-<name>-out` (pd-balanced, 50 GB) holds `<height>/<format>/<chunk>`
+  and `<height>/checkpoint.json`. This is the snapshot root for `replay.json`.
+  Later VMs, such as a replay VM for app versions 4 to 8 or the end-to-end
+  genesis follow, attach this disk read-only.
+
+The retained disks cost $0.10 per GB-month: $105 a month for both at the
+defaults, and $5 a month for the checkpoint disk alone. Delete the data disk
+when the plan is done. The service account is not known to have
+`compute.disks.delete`. If `delete` cannot remove a disk, it prints the
+`gcloud compute disks delete` command for an owner. You cannot download
+chunks without a VM. Copying them to a Cloud Storage bucket needs an owner
+to create the bucket and a VM service account that can write to it.
+
+Sampled mainnet blocks hold about 80 KB of transactions in v1, 270 KB in
+v2, 0.9 MB in v3, 0.2 to 0.3 MB in v4 to v8 and 0.1 MB in v9. That is
+about 3.8 TB of block data to 6,680,339 and 5.7 TB to 15,105,000. Plan
+the first 168-hour run for the v1 to v2 and v2 to v3 checkpoints. It
+continues toward 6,680,339 until its deadline. Later runs resume.
 
 To replay the v10 window, download the Go SDK checkpoint at height
 15,558,000. The [checkpoint fetcher](mainnet-rpc/fetch-replay-checkpoint.py)
