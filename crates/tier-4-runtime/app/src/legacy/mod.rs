@@ -296,6 +296,17 @@ impl<M: Modules> Driver<M> {
                 req.height
             )));
         }
+        // A driver opened on committed state had no InitChain: the first
+        // block header gives its chain ID. Every later header must agree.
+        if self.chain_id.is_empty() {
+            self.chain_id.clone_from(&full.chain_id);
+        }
+        if self.chain_id.is_empty() || full.chain_id != self.chain_id {
+            return Err(sdk::error::sdk::logic(format!(
+                "invalid chain ID in block header: {}; expected: {}",
+                full.chain_id, self.chain_id
+            )));
+        }
         if self.app_version == 0 {
             self.app_version = app_version(ms);
         }

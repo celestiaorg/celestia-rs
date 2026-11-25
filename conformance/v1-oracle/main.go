@@ -27,14 +27,17 @@
 //     Commit app hash;
 //   - the DeliverTx results hash equals last_results_hash of the next header.
 //
-// Outputs in -out: store-roots.json, and with -kv also
+// Outputs in -out: store-roots.json; tx-results.jsonl.gz, the full ABCI
+// responses of each block (BeginBlock events, each DeliverTx with its data,
+// log and events, EndBlock events and updates); and with -kv also
 //   - kv-height-0.jsonl.gz: every key and value at height 0 (about 25 MB);
 //   - kv-height-0-modules.jsonl.gz: the same without the acc and bank
 //     stores, which hold the genesis accounts and balances;
 //   - kv-diffs.jsonl.gz: the keys that each block sets or deletes.
 //
 // Keys and values are hex; stores are sorted by name and keys by bytes.
-// store-roots.json records the SHA-256 of each uncompressed dump.
+// store-roots.json records the SHA-256 of each uncompressed dump and of
+// tx-results.jsonl.
 package main
 
 import (
@@ -148,6 +151,8 @@ type Fixture struct {
 	Height0          string   `json:"height_0"`
 	Heights          []Height `json:"heights"`
 	KV               *KVFiles `json:"kv,omitempty"`
+	// TxResultsSHA256 is the SHA-256 of the uncompressed tx-results.jsonl.
+	TxResultsSHA256 string `json:"tx_results_sha256"`
 }
 
 // Height is the committed state at one height.
@@ -162,6 +167,90 @@ type Height struct {
 	Keys map[string]int `json:"keys"`
 	// TxResults holds [code, gas_wanted, gas_used] per DeliverTx.
 	TxResults [][3]int64 `json:"tx_results"`
+	// TxData holds the hex DeliverTx data, parallel to TxResults.
+	TxData []string `json:"tx_data"`
+}
+
+// BlockResults is one line of tx-results.jsonl: the ABCI responses of one
+// block as the app returned them.
+type BlockResults struct {
+	Height                int64             `json:"height"`
+	BeginBlockEvents      []Event           `json:"begin_block_events"`
+	Txs                   []TxResult        `json:"txs"`
+	EndBlockEvents        []Event           `json:"end_block_events"`
+	ValidatorUpdates      []ValidatorUpdate `json:"validator_updates"`
+	ConsensusParamUpdates *ConsensusParams  `json:"consensus_param_updates"`
+	Timeouts              Timeouts          `json:"timeouts"`
+}
+
+// TxResult is one ResponseDeliverTx. Hash is the upper-case hex SHA-256 of
+// the raw tx; Data is hex.
+type TxResult struct {
+	Index     int     `json:"index"`
+	Hash      string  `json:"hash"`
+	Code      uint32  `json:"code"`
+	Codespace string  `json:"codespace"`
+	GasWanted int64   `json:"gas_wanted"`
+	GasUsed   int64   `json:"gas_used"`
+	Data      string  `json:"data"`
+	Log       string  `json:"log"`
+	Info      string  `json:"info"`
+	Events    []Event `json:"events"`
+}
+
+// Event is an ABCI event with its attributes in order.
+type Event struct {
+	Type       string      `json:"type"`
+	Attributes []Attribute `json:"attributes"`
+}
+
+// Attribute is an ABCI event attribute with its index flag.
+type Attribute struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+	Index bool   `json:"index"`
+}
+
+// ValidatorUpdate is one EndBlock validator update. Address and PubKey are
+// upper-case hex.
+type ValidatorUpdate struct {
+	Address    string `json:"address"`
+	PubKeyType string `json:"pub_key_type"`
+	PubKey     string `json:"pub_key"`
+	Power      int64  `json:"power"`
+}
+
+// ConsensusParams are the EndBlock consensus parameter updates.
+type ConsensusParams struct {
+	Block     *BlockParams     `json:"block"`
+	Evidence  *EvidenceParams  `json:"evidence"`
+	Validator *ValidatorParams `json:"validator"`
+	Version   *VersionParams   `json:"version"`
+}
+
+type BlockParams struct {
+	MaxBytes int64 `json:"max_bytes"`
+	MaxGas   int64 `json:"max_gas"`
+}
+
+type EvidenceParams struct {
+	MaxAgeNumBlocks  int64 `json:"max_age_num_blocks"`
+	MaxAgeDurationNs int64 `json:"max_age_duration_ns"`
+	MaxBytes         int64 `json:"max_bytes"`
+}
+
+type ValidatorParams struct {
+	PubKeyTypes []string `json:"pub_key_types"`
+}
+
+type VersionParams struct {
+	AppVersion uint64 `json:"app_version"`
+}
+
+// Timeouts are the celestia-core EndBlock timeouts, in nanoseconds.
+type Timeouts struct {
+	TimeoutProposeNs int64 `json:"timeout_propose_ns"`
+	TimeoutCommitNs  int64 `json:"timeout_commit_ns"`
 }
 
 // KVFiles records the SHA-256 of each uncompressed KV dump.
@@ -280,7 +369,7 @@ func run() error {
 		genDoc.InitialHeight + 1: tmtypes.NewValidatorSet(initVals),
 	}
 
-	var diffs bytes.Buffer
+	var diffs, txResultsJSONL bytes.Buffer
 	for height := int64(1); height <= *heights; height++ {
 		block := blocks[height]
 		header, err := protoHeader(block)
@@ -302,14 +391,16 @@ func run() error {
 			return err
 		}
 
-		replayApp.BeginBlock(abci.RequestBeginBlock{
+		begin := replayApp.BeginBlock(abci.RequestBeginBlock{
 			Hash:           blockHash,
 			Header:         *header,
 			LastCommitInfo: lastCommit,
 		})
 		var results []*abci.ResponseDeliverTx
 		txResults := [][3]int64{}
-		for _, encoded := range block.Block.Data.Txs {
+		txData := []string{}
+		txs := []TxResult{}
+		for i, encoded := range block.Block.Data.Txs {
 			tx, err := base64.StdEncoding.DecodeString(encoded)
 			if err != nil {
 				return err
@@ -317,6 +408,20 @@ func run() error {
 			r := replayApp.DeliverTx(abci.RequestDeliverTx{Tx: tx})
 			results = append(results, &r)
 			txResults = append(txResults, [3]int64{int64(r.Code), r.GasWanted, r.GasUsed})
+			txData = append(txData, hex.EncodeToString(r.Data))
+			sum := sha256.Sum256(tx)
+			txs = append(txs, TxResult{
+				Index:     i,
+				Hash:      upper(sum[:]),
+				Code:      r.Code,
+				Codespace: r.Codespace,
+				GasWanted: r.GasWanted,
+				GasUsed:   r.GasUsed,
+				Data:      hex.EncodeToString(r.Data),
+				Log:       r.Log,
+				Info:      r.Info,
+				Events:    events(r.Events),
+			})
 		}
 		end := replayApp.EndBlock(abci.RequestEndBlock{Height: height})
 		commit := replayApp.Commit()
@@ -338,6 +443,7 @@ func run() error {
 			return fmt.Errorf("height %d: commit %s, commit info %s", height, got, dumped.AppHash)
 		}
 		dumped.TxResults = txResults
+		dumped.TxData = txData
 		fixture.Heights = append(fixture.Heights, dumped)
 		if *withKV {
 			if err := writeDiff(&diffs, height, prev, cur); err != nil {
@@ -358,6 +464,23 @@ func run() error {
 			}
 		}
 		vals[height+2] = nextVals
+
+		line, err := json.Marshal(BlockResults{
+			Height:                height,
+			BeginBlockEvents:      events(begin.Events),
+			Txs:                   txs,
+			EndBlockEvents:        events(end.Events),
+			ValidatorUpdates:      validatorUpdates(updates),
+			ConsensusParamUpdates: consensusParams(end.ConsensusParamUpdates),
+			Timeouts: Timeouts{
+				TimeoutProposeNs: end.Timeouts.TimeoutPropose.Nanoseconds(),
+				TimeoutCommitNs:  end.Timeouts.TimeoutCommit.Nanoseconds(),
+			},
+		})
+		if err != nil {
+			return err
+		}
+		txResultsJSONL.Write(append(line, '\n'))
 		fmt.Fprintf(os.Stderr, "height %d: %s (%d txs, %d validator updates)\n", height, got, len(results), len(updates))
 	}
 
@@ -383,6 +506,14 @@ func run() error {
 				return err
 			}
 		}
+	}
+	fixture.TxResultsSHA256 = sha256Hex(txResultsJSONL.Bytes())
+	compressed, err := gzipBytes(txResultsJSONL.Bytes())
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(*out, "tx-results.jsonl.gz"), compressed, 0o644); err != nil {
+		return err
 	}
 	encoded, err := json.MarshalIndent(fixture, "", "  ")
 	if err != nil {
@@ -443,7 +574,7 @@ func dumpState(a *app.App, version int64, withKV bool) (Height, kvState, error) 
 		return Height{}, nil, err
 	}
 	keys := rs.StoreKeysByName()
-	h := Height{Height: version, Stores: map[string]string{}, Keys: map[string]int{}, TxResults: [][3]int64{}}
+	h := Height{Height: version, Stores: map[string]string{}, Keys: map[string]int{}, TxResults: [][3]int64{}, TxData: []string{}}
 	state := kvState{}
 	var leaves [][]byte
 	names := make([]string, 0, len(info.StoreInfos))
@@ -503,6 +634,55 @@ func dumpState(a *app.App, version int64, withKV bool) (Height, kvState, error) 
 		return Height{}, nil, fmt.Errorf("version %d: SDK commit info hash %s, rebuilt %s", version, sdk, h.AppHash)
 	}
 	return h, state, nil
+}
+
+func events(in []abci.Event) []Event {
+	out := make([]Event, len(in))
+	for i, e := range in {
+		attrs := make([]Attribute, len(e.Attributes))
+		for j, a := range e.Attributes {
+			attrs[j] = Attribute{Key: a.Key, Value: a.Value, Index: a.Index}
+		}
+		out[i] = Event{Type: e.Type, Attributes: attrs}
+	}
+	return out
+}
+
+func validatorUpdates(in []*tmtypes.Validator) []ValidatorUpdate {
+	out := make([]ValidatorUpdate, len(in))
+	for i, v := range in {
+		out[i] = ValidatorUpdate{
+			Address:    upper(v.Address),
+			PubKeyType: v.PubKey.Type(),
+			PubKey:     upper(v.PubKey.Bytes()),
+			Power:      v.VotingPower,
+		}
+	}
+	return out
+}
+
+func consensusParams(in *abci.ConsensusParams) *ConsensusParams {
+	if in == nil {
+		return nil
+	}
+	out := &ConsensusParams{}
+	if in.Block != nil {
+		out.Block = &BlockParams{MaxBytes: in.Block.MaxBytes, MaxGas: in.Block.MaxGas}
+	}
+	if in.Evidence != nil {
+		out.Evidence = &EvidenceParams{
+			MaxAgeNumBlocks:  in.Evidence.MaxAgeNumBlocks,
+			MaxAgeDurationNs: in.Evidence.MaxAgeDuration.Nanoseconds(),
+			MaxBytes:         in.Evidence.MaxBytes,
+		}
+	}
+	if in.Validator != nil {
+		out.Validator = &ValidatorParams{PubKeyTypes: append([]string{}, in.Validator.PubKeyTypes...)}
+	}
+	if in.Version != nil {
+		out.Version = &VersionParams{AppVersion: in.Version.AppVersion}
+	}
+	return out
 }
 
 func protoHeader(b rpcBlock) (*tmproto.Header, error) {
