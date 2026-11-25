@@ -19,9 +19,9 @@
   },
   {
     "type_url": "/cosmos.feegrant.v1beta1.MsgRevokeAllowance",
-    "codespace": "feegrant",
-    "code": 5,
-    "log_contains": "no allowance"
+    "codespace": "sdk",
+    "code": 38,
+    "log_contains": "fee-grant not found"
   },
   {
     "type_url": "/cosmos.feegrant.v1beta1.MsgRevokeAllowance",
