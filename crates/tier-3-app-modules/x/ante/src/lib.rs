@@ -69,6 +69,7 @@ pub mod setup;
 pub mod signing;
 pub mod sigverify;
 pub mod txview;
+pub mod v046;
 
 use sdk::{Context, ExecMode, SdkError};
 
@@ -235,10 +236,9 @@ pub fn ante_handle_in_place(
 /// `app/ante/ante.go` at v3.13.0) on `tx`, with [`ante_handle`]'s store
 /// branch, panic and out-of-gas handling.
 ///
-/// Decorators that only celestia-app v1 to v3 have are not ported yet:
-/// `MsgVersioningGateKeeper`, `MaxTxSize` (a no-op below v3),
-/// `MaxTotalBlobSize` and `GovProposal`; the fee checker has no network
-/// minimum (app version 2 adds it).
+/// `MsgVersioningGateKeeper` is the caller's (the legacy driver's), and
+/// the CheckTx-only `MaxTotalBlobSize` of app version 1 and `MaxTxSize`
+/// (a no-op below v3) are not ported ([`run_chain_v046`]).
 ///
 /// Fails without running when cosmos-sdk v0.46 semantics are not active
 /// ([`Context::is_sdk_v046`]).
@@ -402,8 +402,13 @@ pub fn is_v12(ctx: &Context<'_>) -> bool {
     sdk::version::is_v12(sdk::version::executing(v))
 }
 
-/// celestia-app v3.13.0 `NewAnteHandler` in order, with the decorators
-/// listed at [`ante_handle_v046`] left out.
+/// celestia-app v3.13.0 `NewAnteHandler` in order. `HandlePanicDecorator`
+/// is [`run_ante_with`]'s panic handling; `MsgVersioningGateKeeper` (before
+/// `SetUpContextDecorator`, it neither reads state nor uses gas) is the
+/// caller's; `MaxTxSizeDecorator` is a no-op below app version 3 and
+/// `MaxTotalBlobSizeDecorator` acts in CheckTx at app version 1 only, so
+/// neither is ported yet: the chain only runs in DeliverTx at app
+/// version 1.
 fn run_chain_v046<D: AnteDeps>(
     ctx: &mut Context<'_>,
     tx: &sdk::tx::Tx,
@@ -415,16 +420,17 @@ fn run_chain_v046<D: AnteDeps>(
     basic::extension_options(tx)?;
     basic::validate_basic(ctx, tx)?;
     basic::timeout_height(ctx, tx)?;
-    basic::validate_memo(ctx, tx)?;
-    basic::consume_tx_size_gas(ctx, tx, simulate)?;
+    v046::validate_memo(ctx, tx)?;
+    v046::consume_tx_size_gas(ctx, tx, simulate)?;
     let priority = fee::deduct_fee_v046(ctx, tx, simulate, deps)?;
     sigverify::set_pub_key(ctx, tx, simulate, deps)?;
     sigverify::validate_sig_count(ctx, tx)?;
     sigverify::sig_gas_consume(ctx, tx, simulate)?;
     sigverify::sig_verification(ctx, tx, simulate, deps)?;
-    celestia::msg_exec_v9(tx)?;
-    celestia::min_gas_pfb(ctx, tx)?;
-    celestia::blob_share(ctx, tx, deps)?;
+    v046::msg_exec(ctx, tx)?;
+    v046::min_gas_pfb(ctx, tx)?;
+    v046::blob_share(ctx, tx, deps)?;
+    v046::gov_proposal(tx)?;
     sigverify::increment_sequence(ctx, tx)?;
     celestia::redundant_relay(ctx, tx, simulate, deps)?;
     Ok(priority)

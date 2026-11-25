@@ -10,7 +10,7 @@ use sdk::event::event;
 use sdk::{Context, Result};
 
 use crate::delegation::{complete_redelegation, complete_unbonding};
-use crate::store::{self, get_params};
+use crate::store;
 use crate::validator::{apply_and_return_validator_set_updates, unbond_all_mature_validators};
 use crate::{STORE_KEY, keys};
 
@@ -44,7 +44,7 @@ pub fn track_historical_info(ctx: &mut Context<'_>) -> Result<()> {
 
 /// `TrackHistoricalInfo` with the given block header.
 fn track_historical_info_with(ctx: &mut Context<'_>, header: Header) -> Result<()> {
-    let entries = i64::from(get_params(ctx)?.historical_entries);
+    let entries = i64::from(store::historical_entries(ctx)?);
     let mut i = ctx.header.height - entries;
     while i >= 0 {
         if store::get_historical_info(ctx, i)?.is_none() {

@@ -107,7 +107,7 @@ pub fn update_validator_commission(
     let mut c = v.commission.clone();
     let block_time = ctx.header.time;
     c.validate_new_rate(new_rate, &block_time)?;
-    let min = get_params(ctx)?.min_commission_rate;
+    let min = store::min_commission_rate(ctx)?;
     if *new_rate < min {
         return Err(sdk::error::internal(format!(
             "cannot set validator commission to less than minimum rate of {min}"

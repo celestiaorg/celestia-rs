@@ -333,7 +333,11 @@ pub fn get_client_connection_paths(
 }
 
 /// `addConnectionToClient`.
-fn add_connection_to_client(ctx: &mut Context<'_>, client_id: &str, conn_id: &str) -> Result<()> {
+pub fn add_connection_to_client(
+    ctx: &mut Context<'_>,
+    client_id: &str,
+    conn_id: &str,
+) -> Result<()> {
     if client::get_client_state(ctx, client_id)?.is_none() {
         return Err(clerr::client_not_found(client_id));
     }
