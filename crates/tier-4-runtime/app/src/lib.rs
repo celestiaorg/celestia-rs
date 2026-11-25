@@ -1940,6 +1940,80 @@ mod node_options_tests {
         );
     }
 
+    /// The main app runs genesis app versions 1 to 3 as v9: the shared
+    /// modules keep their v0.50 params and layout (cosmos-sdk v0.46
+    /// semantics belong to the legacy driver only).
+    #[test]
+    fn main_app_runs_sdk_v046_app_versions_as_v9() {
+        let mut genesis: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../conformance/fixtures/devnet/empty/genesis.json"
+        ))
+        .unwrap();
+        // x/gov reads a cosmos-sdk v0.46 gov genesis at app versions 1 to 3
+        // (as the mainnet genesis has it).
+        genesis["app_state"]["gov"] = serde_json::json!({
+            "starting_proposal_id": "1",
+            "deposits": [],
+            "votes": [],
+            "proposals": [],
+            "deposit_params": {
+                "min_deposit": [{"denom": "utia", "amount": "10000000000"}],
+                "max_deposit_period": "604800s"
+            },
+            "voting_params": {"voting_period": "604800s"},
+            "tally_params": {
+                "quorum": "0.334000000000000000",
+                "threshold": "0.500000000000000000",
+                "veto_threshold": "0.334000000000000000"
+            }
+        });
+        for version in 1..=3 {
+            let home = tempfile::tempdir().unwrap();
+            let mut app = App::open(home.path()).unwrap();
+            app.init_chain(abci::RequestInitChain {
+                chain_id: genesis["chain_id"].as_str().unwrap().into(),
+                consensus_params: Some(ConsensusParams {
+                    version: Some(VersionParams { app: version }),
+                    ..Default::default()
+                }),
+                app_state_bytes: serde_json::to_vec(&genesis["app_state"]).unwrap(),
+                ..Default::default()
+            })
+            .unwrap();
+            app.finalize_block(abci::RequestFinalizeBlock {
+                height: 1,
+                ..Default::default()
+            })
+            .unwrap();
+            app.commit().unwrap();
+            let mut ctx = Context::new(&mut app.ms, Header::default(), ExecMode::Finalize);
+            ctx.consensus_params.version = Some(VersionParams { app: version });
+            assert!(!ctx.is_sdk_v046(), "v{version}");
+            for (store, key) in [
+                (x_auth::STORE_KEY, &[0x00u8]),
+                (x_bank::STORE_KEY, &[0x05]),
+                (x_staking::STORE_KEY, &[0x51]),
+                (x_slashing::STORE_KEY, &[0x00]),
+                (x_distribution::STORE_KEY, &[0x09]),
+            ] {
+                assert!(
+                    ctx.get(store, key).unwrap().is_some(),
+                    "{store} params at v{version}"
+                );
+            }
+            assert_eq!(
+                x_staking::store::get_params(&mut ctx)
+                    .unwrap()
+                    .max_validators,
+                100
+            );
+            x_auth::get_params(&mut ctx).unwrap();
+            x_bank::get_params(&mut ctx).unwrap();
+            x_slashing::get_params(&mut ctx).unwrap();
+            x_distribution::store::get_params(&mut ctx).unwrap();
+        }
+    }
+
     #[test]
     fn explicit_genesis_restores_release_and_check_header() {
         let genesis: serde_json::Value = serde_json::from_str(include_str!(

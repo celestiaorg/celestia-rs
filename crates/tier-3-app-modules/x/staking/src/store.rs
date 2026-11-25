@@ -37,6 +37,24 @@ pub(crate) fn collect_prefix(
 
 /// `GetParams` (zero params when unset).
 pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
+    // cosmos-sdk v0.46 (app versions 1 to 3) keeps the params in the
+    // x/params subspace `staking`, which only its InitGenesis writes.
+    if ctx.is_sdk_v046() {
+        use x_params::v046::{get_dec, get_i64, get_string, get_u32};
+        let unbonding = get_i64(ctx, "staking", "UnbondingTime")?;
+        return Ok(Params {
+            unbonding_time: pbjson_types::Duration {
+                seconds: unbonding / 1_000_000_000,
+                nanos: i32::try_from(unbonding % 1_000_000_000)
+                    .map_err(|e| errs::logic(e.to_string()))?,
+            },
+            max_validators: get_u32(ctx, "staking", "MaxValidators")?,
+            max_entries: get_u32(ctx, "staking", "MaxEntries")?,
+            historical_entries: get_u32(ctx, "staking", "HistoricalEntries")?,
+            bond_denom: get_string(ctx, "staking", "BondDenom")?,
+            min_commission_rate: get_dec(ctx, "staking", "MinCommissionRate")?,
+        });
+    }
     match ctx.get(STORE_KEY, keys::PARAMS)? {
         Some(b) => Params::from_proto(&decode::<pb::Params>(&b)?, Repr::Wire),
         None => Ok(Params::default()),
@@ -45,6 +63,10 @@ pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
 
 /// `SetParams`.
 pub fn set_params(ctx: &mut Context<'_>, p: &Params) -> Result<()> {
+    if ctx.is_sdk_v046() {
+        // Subspace `staking` (written by the v0.46 InitGenesis).
+        return Ok(());
+    }
     ctx.set(
         STORE_KEY,
         keys::PARAMS.to_vec(),
@@ -300,6 +322,10 @@ pub fn set_delegation(ctx: &mut Context<'_>, d: &Delegation) -> Result<()> {
     let del = crate::addr::acc_from_string(&d.delegator_address)?;
     let val = crate::addr::val_from_string(&d.validator_address)?;
     ctx.set(STORE_KEY, keys::delegation(&del, &val), d.encode())?;
+    if ctx.is_sdk_v046() {
+        // cosmos-sdk v0.46 has no delegations-by-validator index.
+        return Ok(());
+    }
     ctx.set(STORE_KEY, keys::delegation_by_val(&val, &del), Vec::new())
 }
 
@@ -309,6 +335,9 @@ pub fn remove_delegation(ctx: &mut Context<'_>, d: &Delegation) -> Result<()> {
     let val = crate::addr::val_from_string(&d.validator_address)?;
     hooks::hooks().before_delegation_removed(ctx, &del, &val)?;
     ctx.delete(STORE_KEY, &keys::delegation(&del, &val))?;
+    if ctx.is_sdk_v046() {
+        return Ok(());
+    }
     ctx.delete(STORE_KEY, &keys::delegation_by_val(&val, &del))
 }
 
@@ -322,6 +351,16 @@ pub fn get_all_delegations(ctx: &mut Context<'_>) -> Result<Vec<Delegation>> {
 
 /// `GetValidatorDelegations`.
 pub fn get_validator_delegations(ctx: &mut Context<'_>, val: &[u8]) -> Result<Vec<Delegation>> {
+    if ctx.is_sdk_v046() {
+        // cosmos-sdk v0.46 scans every delegation.
+        let mut out = Vec::new();
+        for d in get_all_delegations(ctx)? {
+            if crate::addr::val_from_string(&d.validator_address)? == val {
+                out.push(d);
+            }
+        }
+        return Ok(out);
+    }
     let mut it = ctx.prefix_iter(STORE_KEY, &keys::delegations_by_val(val))?;
     let mut out = Vec::new();
     while let Some((k, _)) = it.next(ctx)? {
@@ -632,6 +671,10 @@ pub fn get_historical_info(
 
 /// `SetValidatorUpdates`.
 pub fn set_validator_updates(ctx: &mut Context<'_>, updates: &[ValidatorUpdate]) -> Result<()> {
+    if ctx.is_sdk_v046() {
+        // cosmos-sdk v0.46 returns the updates without storing them.
+        return Ok(());
+    }
     let v = pb::ValidatorUpdates {
         updates: updates.to_vec(),
     }

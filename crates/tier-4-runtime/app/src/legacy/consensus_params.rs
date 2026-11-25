@@ -9,46 +9,57 @@ use celestia_proto::celestia_core_proto::tendermint::types::{
 };
 use sdk::{Context, Result};
 
-/// The subspace (`baseapp.Paramspace`).
-pub const SUBSPACE: &str = "baseapp";
-const BLOCK: &[u8] = b"BlockParams";
-const EVIDENCE: &[u8] = b"EvidenceParams";
-const VALIDATOR: &[u8] = b"ValidatorParams";
+use x_params::v046::{Kind, Object, Subspace, Value, int64, param, validate};
+
+const BLOCK: &str = "BlockParams";
+const EVIDENCE: &str = "EvidenceParams";
+const VALIDATOR: &str = "ValidatorParams";
 /// Key of `VersionParams` in [`SUBSPACE`].
-pub const VERSION: &[u8] = b"VersionParams";
+pub const VERSION: &str = "VersionParams";
+
+/// The subspace (`baseapp.Paramspace`) with its key table
+/// (`ConsensusParamsKeyTable`). BaseApp writes it with `Set`, which
+/// validates nothing.
+pub const SUBSPACE: Subspace = Subspace {
+    name: "baseapp",
+    table: &[
+        param(BLOCK, Kind::Struct("abci.BlockParams"), validate::any),
+        param(
+            EVIDENCE,
+            Kind::Struct("types.EvidenceParams"),
+            validate::any,
+        ),
+        param(
+            VALIDATOR,
+            Kind::Struct("types.ValidatorParams"),
+            validate::any,
+        ),
+        param(VERSION, Kind::Struct("types.VersionParams"), validate::any),
+    ],
+};
 
 fn bad(what: &str) -> sdk::SdkError {
     sdk::error::sdk::json_unmarshal(format!("subspace baseapp: malformed {what}"))
 }
 
-fn object(fields: Vec<(&str, String)>) -> Vec<u8> {
-    let body: Vec<String> = fields
-        .into_iter()
-        .map(|(k, v)| format!("\"{k}\":{v}"))
-        .collect();
-    format!("{{{}}}", body.join(",")).into_bytes()
-}
-
 /// An `omitempty` amino-JSON integer (quoted, as amino writes 64-bit ints).
-fn int(fields: &mut Vec<(&str, String)>, name: &'static str, v: i64) {
-    if v != 0 {
-        fields.push((name, format!("\"{v}\"")));
-    }
+fn int(v: i64) -> Option<String> {
+    (v != 0).then(|| int64(v))
 }
 
-fn block_json(p: Option<&BlockParams>) -> Vec<u8> {
+fn block_json(p: Option<&BlockParams>) -> String {
     let Some(p) = p else {
-        return b"null".to_vec();
+        return "null".to_owned();
     };
-    let mut f = Vec::new();
-    int(&mut f, "max_bytes", p.max_bytes);
-    int(&mut f, "max_gas", p.max_gas);
-    object(f)
+    Object::new()
+        .omitempty("max_bytes", int(p.max_bytes))
+        .omitempty("max_gas", int(p.max_gas))
+        .finish()
 }
 
-fn evidence_json(p: Option<&EvidenceParams>) -> Result<Vec<u8>> {
+fn evidence_json(p: Option<&EvidenceParams>) -> Result<String> {
     let Some(p) = p else {
-        return Ok(b"null".to_vec());
+        return Ok("null".to_owned());
     };
     let nanos = match &p.max_age_duration {
         None => 0,
@@ -58,59 +69,40 @@ fn evidence_json(p: Option<&EvidenceParams>) -> Result<Vec<u8>> {
             .and_then(|n| n.checked_add(i64::from(d.nanos)))
             .ok_or_else(|| bad("evidence max_age_duration"))?,
     };
-    let mut f = Vec::new();
-    int(&mut f, "max_age_num_blocks", p.max_age_num_blocks);
-    f.push(("max_age_duration", format!("\"{nanos}\"")));
-    int(&mut f, "max_bytes", p.max_bytes);
-    Ok(object(f))
+    Ok(Object::new()
+        .omitempty("max_age_num_blocks", int(p.max_age_num_blocks))
+        .field("max_age_duration", int64(nanos))
+        .omitempty("max_bytes", int(p.max_bytes))
+        .finish())
 }
 
-fn validator_json(p: Option<&ValidatorParams>) -> Vec<u8> {
+fn validator_json(p: Option<&ValidatorParams>) -> String {
     let Some(p) = p else {
-        return b"null".to_vec();
+        return "null".to_owned();
     };
-    let mut f = Vec::new();
-    if !p.pub_key_types.is_empty() {
-        let mut list = String::from("[");
-        for (i, t) in p.pub_key_types.iter().enumerate() {
-            if i > 0 {
-                list.push(',');
-            }
-            x_ante::aminojson::json_string(&mut list, t);
-        }
-        list.push(']');
-        f.push(("pub_key_types", list));
-    }
-    object(f)
+    let types = (!p.pub_key_types.is_empty())
+        .then(|| Value::Strings(Some(p.pub_key_types.clone())).amino_json());
+    Object::new().omitempty("pub_key_types", types).finish()
 }
 
-fn version_json(app: u64) -> Vec<u8> {
-    let mut f = Vec::new();
-    if app != 0 {
-        f.push(("app_version", format!("\"{app}\"")));
-    }
-    object(f)
+fn version_json(app: u64) -> Value {
+    let app = (app != 0).then(|| x_params::v046::uint64(app));
+    Value::Struct(Object::new().omitempty("app_version", app).finish())
+}
+
+fn set(ctx: &mut Context<'_>, key: &str, json: String) -> Result<()> {
+    SUBSPACE.set(ctx, key, &Value::Struct(json))
 }
 
 /// `BaseApp.StoreConsensusParams`: block, evidence and validator params;
 /// version params only when the subspace already has them.
 pub fn store(ctx: &mut Context<'_>, cp: &ConsensusParams) -> Result<()> {
-    x_params::set_raw(ctx, SUBSPACE, BLOCK, block_json(cp.block.as_ref()))?;
-    x_params::set_raw(
-        ctx,
-        SUBSPACE,
-        EVIDENCE,
-        evidence_json(cp.evidence.as_ref())?,
-    )?;
-    x_params::set_raw(
-        ctx,
-        SUBSPACE,
-        VALIDATOR,
-        validator_json(cp.validator.as_ref()),
-    )?;
-    if x_params::has(ctx, SUBSPACE, VERSION)? {
+    set(ctx, BLOCK, block_json(cp.block.as_ref()))?;
+    set(ctx, EVIDENCE, evidence_json(cp.evidence.as_ref())?)?;
+    set(ctx, VALIDATOR, validator_json(cp.validator.as_ref()))?;
+    if x_params::has(ctx, SUBSPACE.name, VERSION.as_bytes())? {
         let app = cp.version.as_ref().map_or(0, |v| v.app);
-        x_params::set_raw(ctx, SUBSPACE, VERSION, version_json(app))?;
+        SUBSPACE.set(ctx, VERSION, &version_json(app))?;
     }
     Ok(())
 }
@@ -118,10 +110,10 @@ pub fn store(ctx: &mut Context<'_>, cp: &ConsensusParams) -> Result<()> {
 /// `BaseApp.SetInitialAppVersionInConsensusParams`: writes `VersionParams`
 /// unless present.
 pub fn set_initial_app_version(ctx: &mut Context<'_>, app: u64) -> Result<()> {
-    if x_params::has(ctx, SUBSPACE, VERSION)? {
+    if x_params::has(ctx, SUBSPACE.name, VERSION.as_bytes())? {
         return Ok(());
     }
-    x_params::set_raw(ctx, SUBSPACE, VERSION, version_json(app))
+    SUBSPACE.set(ctx, VERSION, &version_json(app))
 }
 
 /// An amino-JSON 64-bit integer field (a quoted decimal; absent is 0).
@@ -159,14 +151,14 @@ pub fn decode_app_version(raw: &[u8]) -> Result<u64> {
 /// none (app version 1).
 pub fn load(ctx: &mut Context<'_>, app_version: u64) -> Result<ConsensusParams> {
     let mut cp = ConsensusParams::default();
-    if let Some(raw) = x_params::get_raw(ctx, SUBSPACE, BLOCK)? {
+    if let Some(raw) = x_params::get_raw(ctx, SUBSPACE.name, BLOCK.as_bytes())? {
         let v = parse(&raw, "BlockParams")?.unwrap_or_default();
         cp.block = Some(BlockParams {
             max_bytes: field_i64(&v, "max_bytes", "BlockParams")?,
             max_gas: field_i64(&v, "max_gas", "BlockParams")?,
         });
     }
-    if let Some(raw) = x_params::get_raw(ctx, SUBSPACE, EVIDENCE)? {
+    if let Some(raw) = x_params::get_raw(ctx, SUBSPACE.name, EVIDENCE.as_bytes())? {
         let v = parse(&raw, "EvidenceParams")?.unwrap_or_default();
         let nanos = field_i64(&v, "max_age_duration", "EvidenceParams")?;
         cp.evidence = Some(EvidenceParams {
@@ -179,7 +171,7 @@ pub fn load(ctx: &mut Context<'_>, app_version: u64) -> Result<ConsensusParams> 
             max_bytes: field_i64(&v, "max_bytes", "EvidenceParams")?,
         });
     }
-    if let Some(raw) = x_params::get_raw(ctx, SUBSPACE, VALIDATOR)? {
+    if let Some(raw) = x_params::get_raw(ctx, SUBSPACE.name, VALIDATOR.as_bytes())? {
         let v = parse(&raw, "ValidatorParams")?.unwrap_or_default();
         let types = match &v["pub_key_types"] {
             serde_json::Value::Null => Vec::new(),
@@ -197,7 +189,7 @@ pub fn load(ctx: &mut Context<'_>, app_version: u64) -> Result<ConsensusParams> 
             pub_key_types: types,
         });
     }
-    let stored = x_params::get_raw(ctx, SUBSPACE, VERSION)?;
+    let stored = x_params::get_raw(ctx, SUBSPACE.name, VERSION.as_bytes())?;
     let app = match stored {
         Some(raw) => Some(decode_app_version(&raw)?),
         None => (app_version != 0).then_some(app_version),
