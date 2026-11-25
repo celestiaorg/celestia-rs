@@ -70,9 +70,13 @@ pub struct Hooks;
 
 impl x_staking::StakingHooks for Hooks {
     /// `AfterValidatorCreated`: at app version 1, store the default EVM
-    /// address unless another validator has it. A no-op where the `qgb`
-    /// store is not mounted (every release but v1) or at a later version.
+    /// address unless another validator has it. A no-op (no store access,
+    /// no gas) outside the legacy driver's v0.46 scope, where the `qgb`
+    /// store is not mounted (every release but v1), or at a later version.
     fn after_validator_created(&self, ctx: &mut Context<'_>, val: &[u8]) -> Result<()> {
+        if !ctx.is_sdk_v046() {
+            return Ok(());
+        }
         let app = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
         if app != 1 || !ctx.multistore().is_mounted(STORE_KEY) {
             return Ok(());

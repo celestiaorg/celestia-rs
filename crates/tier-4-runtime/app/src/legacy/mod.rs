@@ -6,7 +6,11 @@
 //!
 //! The driver owns only baseapp behavior. Module behavior plugs in through
 //! [`Modules`]: InitGenesis, begin and end blockers, and the ante handler
-//! with message execution. Nothing reaches this layer until a
+//! with message execution. Each driver call runs inside an
+//! [`sdk::version::SdkV046Scope`] at the block's app version: the only
+//! place shared modules take their v0.46 paths (`Context::is_sdk_v046`),
+//! and the thread's previous state is restored when the call returns.
+//! Nothing reaches this layer until a
 //! [`SdkLine::V046`] release runs as itself ([`executes`]); app versions 1
 //! to 3 still run as v9 and app versions 4 and later never come here.
 //!
@@ -309,7 +313,7 @@ impl<M: Modules> Driver<M> {
             version.app = 1;
         }
         let app_version = version.app;
-        sdk::version::set_app_version(app_version);
+        let _v046 = sdk::version::SdkV046Scope::enter(app_version);
         self.chain_id.clone_from(&req.chain_id);
         let header = Header {
             chain_id: req.chain_id.clone(),
@@ -363,7 +367,7 @@ impl<M: Modules> Driver<M> {
         if self.app_version == 0 {
             self.app_version = app_version(ms);
         }
-        sdk::version::set_app_version(self.app_version);
+        let _v046 = sdk::version::SdkV046Scope::enter(self.app_version);
         let tm_header = begin_block_header(&self.chain_id, self.app_version, req, full);
         let header = Header {
             chain_id: self.chain_id.clone(),
@@ -412,6 +416,7 @@ impl<M: Modules> Driver<M> {
 
     /// `Commit`: commits the finalized block's writes as the next version.
     pub fn commit(&mut self, ms: &mut MultiStore) -> Result<CommitId> {
+        let _v046 = sdk::version::SdkV046Scope::enter(self.app_version);
         if self.finalized.take().is_none() {
             return Err(sdk::error::sdk::logic("commit without finalized block"));
         }

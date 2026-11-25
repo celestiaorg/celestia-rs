@@ -579,6 +579,7 @@ fn genesis_validators_must_match_the_request() {
 fn qgb_hook_writes_default_evm_addresses_at_v1() {
     use x_staking::StakingHooks as _;
     let val = [7u8; 20];
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = v1_store();
     let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
     ctx.consensus_params.version = Some(VersionParams { app: 1 });
@@ -629,6 +630,7 @@ fn v1_init_chainer_rejects_invalid_genesis() {
         json!({"crisis": {"constant_fee": {"denom": "utia"}}}),
         json!({}),
     ];
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     for (i, state) in cases.iter().enumerate() {
         let mut ms = v1_store();
         let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
@@ -645,6 +647,7 @@ fn v1_init_chainer_rejects_invalid_genesis() {
 #[test]
 fn shared_modules_use_the_v046_layout_at_v1() {
     let g: serde_json::Value = serde_json::from_str(MAINNET_GENESIS_PARAMS).unwrap();
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     params_ctx(|ctx| {
         ctx.consensus_params.version = Some(VersionParams { app: 1 });
         params::set_auth(ctx, &g["auth"]["params"]).unwrap();
@@ -677,4 +680,165 @@ fn shared_modules_use_the_v046_layout_at_v1() {
         x_staking::store::set_validator_updates(ctx, &[]).unwrap();
         assert_eq!(ctx.get(x_staking::STORE_KEY, &[0x61]).unwrap(), None);
     });
+}
+
+/// Outside the legacy driver's scope, the raw app version 1 (as the main
+/// app sets it) does not turn the blobstream hook on: it neither reads
+/// nor writes `qgb` and consumes no gas.
+#[test]
+fn qgb_hook_is_inert_without_the_legacy_scope() {
+    use x_staking::StakingHooks as _;
+    sdk::version::set_app_version(1);
+    let mut ms = v1_store();
+    let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    for _ in 0..2 {
+        qgb::Hooks
+            .after_validator_created(&mut ctx, &[7; 20])
+            .unwrap();
+    }
+    assert_eq!(ctx.gas.consumed(), 0);
+    assert_eq!(
+        ctx.get(
+            qgb::STORE_KEY,
+            &[b"EVMAddress".as_slice(), &[7; 20]].concat()
+        )
+        .unwrap(),
+        None
+    );
+    drop(ctx);
+    sdk::version::set_app_version(0);
+}
+
+/// Without the legacy scope, shared modules keep the v0.50 layout at app
+/// versions 1 to 3 (the main app runs them as v9), and the v1 ante
+/// handler refuses to run.
+#[test]
+fn shared_modules_keep_the_v050_layout_without_the_legacy_scope() {
+    for v in 1..=3 {
+        sdk::version::set_app_version(v);
+        params_ctx(|ctx| {
+            ctx.consensus_params.version = Some(VersionParams { app: v });
+            assert!(!ctx.is_sdk_v046());
+            let p = x_staking::store::get_params(ctx).unwrap();
+            x_staking::store::set_params(ctx, &p).unwrap();
+            assert!(ctx.get(x_staking::STORE_KEY, &[0x51]).unwrap().is_some());
+            assert_eq!(x_auth::next_account_number(ctx).unwrap(), 0);
+            assert_eq!(
+                ctx.get(x_auth::STORE_KEY, b"globalAccountNumber").unwrap(),
+                None
+            );
+            let addr = [3u8; 20];
+            x_bank::set_balance(ctx, &addr, &sdk::coins::Coin::new("utia", 5)).unwrap();
+            let mut index = vec![0x03];
+            index.extend_from_slice(b"utia\x00\x14");
+            index.extend_from_slice(&addr);
+            assert_eq!(ctx.get(x_bank::STORE_KEY, &index).unwrap(), Some(vec![]));
+            x_staking::store::set_validator_updates(ctx, &[]).unwrap();
+            assert!(ctx.get(x_staking::STORE_KEY, &[0x61]).unwrap().is_some());
+            let (e, _) = crate::txpipe::ante_v046(ctx, &sdk::tx::Tx::default(), false).unwrap_err();
+            assert!(e.log.contains("only on the legacy driver"), "{}", e.log);
+        });
+    }
+    sdk::version::set_app_version(0);
+}
+
+/// Records whether cosmos-sdk v0.46 semantics are active in each phase and
+/// fails the phase named by `fail`.
+#[derive(Default)]
+struct Probe {
+    seen: Vec<(&'static str, bool, u64)>,
+    fail: Option<&'static str>,
+}
+
+impl Probe {
+    fn phase(&mut self, ctx: &sdk::Context<'_>, name: &'static str) -> Result<()> {
+        self.seen
+            .push((name, ctx.is_sdk_v046(), sdk::version::app_version()));
+        if self.fail == Some(name) {
+            return Err(sdk::error::sdk::logic(name));
+        }
+        Ok(())
+    }
+}
+
+impl Modules for Probe {
+    fn init_genesis(&mut self, ctx: &mut Context<'_>, _: &[u8]) -> Result<Vec<ValidatorUpdate>> {
+        self.phase(ctx, "init_genesis").map(|()| Vec::new())
+    }
+
+    fn begin_block(&mut self, ctx: &mut Context<'_>, _: &TmHeader) -> Result<()> {
+        self.phase(ctx, "begin_block")
+    }
+
+    fn deliver_tx(&mut self, ctx: &mut Context<'_>, _: &[u8]) -> TxOutcome {
+        let result = self.phase(ctx, "deliver_tx").map(|()| TxSuccess::default());
+        TxOutcome {
+            gas_wanted: 0,
+            gas_used: 0,
+            events: Vec::new(),
+            result,
+        }
+    }
+
+    fn end_block(&mut self, ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
+        self.phase(ctx, "end_block").map(|()| Vec::new())
+    }
+}
+
+/// The driver turns cosmos-sdk v0.46 semantics on for its modules at the
+/// block's app version, and restores the thread's previous state when each
+/// call returns, on success and on error.
+#[test]
+fn driver_scopes_sdk_v046_semantics_to_its_calls() {
+    let restored = || {
+        assert_eq!(sdk::version::app_version(), 7);
+        assert!(!sdk::version::sdk_v046_active());
+        assert!(!sdk::version::is_sdk_v046(1));
+    };
+    sdk::version::set_app_version(7);
+
+    let mut ms = v1_store();
+    let mut driver = Driver::new(Probe::default());
+    let mut req = init_request();
+    req.consensus_params.as_mut().unwrap().version = Some(VersionParams { app: 2 });
+    driver.init_chain(&mut ms, &req).unwrap();
+    restored();
+    let mut block = finalize_request(1);
+    block.txs = vec![vec![1]];
+    driver.finalize_block(&mut ms, &block).unwrap();
+    restored();
+    driver.commit(&mut ms).unwrap();
+    restored();
+    assert!(driver.commit(&mut ms).is_err());
+    restored();
+    let seen: Vec<_> = driver
+        .modules
+        .seen
+        .iter()
+        .map(|(_, on, v)| (*on, *v))
+        .collect();
+    assert_eq!(seen, vec![(true, 2); 4]);
+
+    for fail in ["init_genesis", "begin_block", "end_block"] {
+        let mut ms = v1_store();
+        let mut driver = Driver::new(Probe {
+            fail: Some(fail),
+            ..Probe::default()
+        });
+        let res = driver.init_chain(&mut ms, &init_request());
+        restored();
+        if fail == "init_genesis" {
+            assert!(res.is_err());
+            continue;
+        }
+        res.unwrap();
+        assert!(
+            driver
+                .finalize_block(&mut ms, &finalize_request(1))
+                .is_err()
+        );
+        restored();
+    }
+    sdk::version::set_app_version(0);
 }

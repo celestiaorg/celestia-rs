@@ -115,8 +115,9 @@ impl<'a> Context<'a> {
         self.header.height
     }
 
-    /// Whether the context executes a cosmos-sdk v0.46 app version
-    /// ([`crate::version::is_sdk_v046`] of the consensus app version).
+    /// Whether shared modules take their cosmos-sdk v0.46 paths
+    /// ([`crate::version::is_sdk_v046`] of the consensus app version):
+    /// only inside the legacy driver's [`crate::version::SdkV046Scope`].
     #[must_use]
     pub fn is_sdk_v046(&self) -> bool {
         crate::version::is_sdk_v046(self.consensus_params.version.as_ref().map_or(0, |v| v.app))

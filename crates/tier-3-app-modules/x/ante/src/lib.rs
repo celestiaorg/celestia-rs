@@ -239,12 +239,23 @@ pub fn ante_handle_in_place(
 /// `MsgVersioningGateKeeper`, `MaxTxSize` (a no-op below v3),
 /// `MaxTotalBlobSize` and `GovProposal`; the fee checker has no network
 /// minimum (app version 2 adds it).
+///
+/// Fails without running when cosmos-sdk v0.46 semantics are not active
+/// ([`Context::is_sdk_v046`]).
 pub fn ante_handle_v046(
     ctx: &mut Context<'_>,
     tx: &sdk::tx::Tx,
     simulate: bool,
     deps: &impl AnteDeps,
 ) -> Result<AnteOutcome, AnteError> {
+    if !ctx.is_sdk_v046() {
+        return Err(AnteError {
+            error: sdk::error::sdk::logic("the v0.46 ante handler runs only on the legacy driver"),
+            gas_wanted: 0,
+            panicked: false,
+            zero_ctx: false,
+        });
+    }
     run_ante_with(ctx, tx, simulate, deps, false, None, run_chain_v046)
 }
 

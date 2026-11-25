@@ -55,8 +55,9 @@ pub fn get_permissions(ctx: &mut Context<'_>, addr: &[u8]) -> Result<Option<Perm
 /// `IsAllowed`: false when `msg_url` is in the disable list.
 pub fn is_allowed(ctx: &mut Context<'_>, msg_url: &str) -> Result<bool> {
     // celestia-app v1 to v3 (cosmos-sdk v0.46) have no x/circuit: the
-    // store is mounted from v4 on.
-    if !ctx.multistore().is_mounted(STORE_KEY) {
+    // store is mounted from v4 on. Elsewhere a missing store stays an
+    // error.
+    if ctx.is_sdk_v046() && !ctx.multistore().is_mounted(STORE_KEY) {
         return Ok(true);
     }
     Ok(!ctx.has(STORE_KEY, &disable_key(msg_url))?)
@@ -295,6 +296,29 @@ mod tests {
         let mut ms = MultiStore::new();
         ms.mount(STORE_KEY, Kind::Iavl).unwrap_or_default();
         ms
+    }
+
+    /// Without its store, `IsAllowed` fails as it always has, unless
+    /// cosmos-sdk v0.46 semantics are active (v0.46 has no x/circuit).
+    #[test]
+    fn missing_store_allows_only_under_sdk_v046() {
+        let mut ms = MultiStore::new();
+        for v in [0, 1, 2, 3, 4, 10] {
+            sdk::version::set_app_version(v);
+            let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+            assert!(
+                is_allowed(&mut ctx, "/cosmos.bank.v1beta1.MsgSend").is_err(),
+                "v{v}"
+            );
+        }
+        sdk::version::set_app_version(0);
+        {
+            let _v046 = sdk::version::SdkV046Scope::enter(1);
+            let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+            assert!(is_allowed(&mut ctx, "/cosmos.bank.v1beta1.MsgSend").unwrap());
+        }
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        assert!(is_allowed(&mut ctx, "/cosmos.bank.v1beta1.MsgSend").is_err());
     }
 
     #[test]
