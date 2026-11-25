@@ -106,3 +106,35 @@ the [first-hour record](evidence/validator-qualification-closeout-2026-11-13/fir
 covers mainnet heights **15,815,626–15,816,886** on November 12. Later
 collection failures are documented in the closeout. The continuous
 M13-to-M14 record and three-day candidate observation remain unqualified.
+
+## Per-version mainnet replay record on 2026-11-25
+
+The [historical replay test](../conformance/README.md#historical-mainnet-replay)
+has one ten-block window per deployed app version. Only the v10 window,
+15,558,001–15,558,010, executes. Its checkpoint is the complete Go
+snapshot at 15,558,000 from the QubeLabs archive. A script that does not use
+celestia-rs rebuilt its 27 IAVL roots and reproduced the signed app hash
+`75CAADBC12D83CC7D5031FFC1BE8D79FDBA0A733B9D57649A8D71AA238126D47`.
+All ten blocks then matched.
+
+No complete public checkpoint was found for windows 2 to 9. The other 191
+snapshot directories in that archive are incomplete. Public archive RPCs
+serve state proofs only from height 3,156,484, and proofs cannot rebuild a
+full IAVL state. The test therefore pins the store roots before windows 4
+to 10, which those proofs do give, and checks them against the signed
+headers. These anchors show that celestia-rs cannot restore the states
+before windows 4 to 8, and has no handler for the upgrade plans due at
+their first heights. The state before the v9 window has the same 25 stores
+that celestia-rs mounts and no pending plan. It is the one window from 2 to
+9 where a checkpoint would test execution parity.
+
+Consequences for operator-facing claims:
+
+- **Replay from genesis is not supported.** celestia-rs has no state
+  machine for app versions 1 to 8 and cannot cross their upgrades.
+- **Parity is tested for app v10 only** in this repository's retained
+  record. v9 parity rests on the historical M13 run above, which has no
+  retained receipts.
+- A node must start from a snapshot at or after 11,771,699, the first v9
+  height. The `v9` upgrade handler (v8 to v9) is registered but not
+  implemented, so celestia-rs cannot cross that boundary either.
