@@ -1,0 +1,56 @@
+{
+  "binary_sha256": {
+    "/private/tmp/replay302-43ba527/original-target/release/celestia-rs": "41c6d0677a446bacaab2ce625d13f3e0ace2eae771759d7aed081419c59c64d3"
+  },
+  "command": [
+    "sh",
+    "-ec",
+    "test ! -e /private/tmp/replay302-43ba527/target && cargo build --locked --offline --release --bin celestia-rs --target-dir /private/tmp/replay302-43ba527/target && shasum -a 256 /private/tmp/replay302-43ba527/target/release/celestia-rs && cmp /private/tmp/replay302-43ba527/target/release/celestia-rs /private/tmp/replay302-43ba527/original-target/release/celestia-rs"
+  ],
+  "exit_code": 0,
+  "finished_at_unix": 1795582675.982222,
+  "inputs_unchanged": true,
+  "log_sha256": "813a3758e57081b432408234b058312822432ddbb11d704f68de684728d4495a",
+  "machine": "arm64",
+  "platform": "Darwin-25.2.0-arm64-arm-64bit-Mach-O",
+  "protobuf_go_detrand": {
+    "/private/tmp/replay302-43ba527/original-target/release/celestia-rs": {
+      "seed_hex": "0x29d34346d16acbc9",
+      "separator": "nonbreaking-space",
+      "separator_utf8_hex": "c2a0"
+    }
+  },
+  "schema_version": 1,
+  "scope": "one check only; remaining F1 gates require separate evidence",
+  "source": {
+    "index_flags": [],
+    "revision": "43ba527cce4425c2aea63f1165eb5d3c086f78d3",
+    "status": "",
+    "tree": "5043a702ee58ce1c7f94b6d18f4875699a8dd007"
+  },
+  "source_after": {
+    "index_flags": [],
+    "revision": "43ba527cce4425c2aea63f1165eb5d3c086f78d3",
+    "status": "",
+    "tree": "5043a702ee58ce1c7f94b6d18f4875699a8dd007"
+  },
+  "started_at_unix": 1795582529.7023208,
+  "status": "passed",
+  "toolchains": {
+    "cargo": {
+      "error": "",
+      "exit_code": 0,
+      "output": "cargo 1.99.1 (5f94df478 2026-08-27)"
+    },
+    "go": {
+      "error": "",
+      "exit_code": 0,
+      "output": "go version go1.26.3 darwin/arm64"
+    },
+    "rustc": {
+      "error": "",
+      "exit_code": 0,
+      "output": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1"
+    }
+  }
+}

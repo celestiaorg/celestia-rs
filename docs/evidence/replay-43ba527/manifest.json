@@ -1,6 +1,5 @@
 {
   "source_commit": "43ba527cce4425c2aea63f1165eb5d3c086f78d3",
-  "source_clean_before_and_after": true,
   "binary_sha256": "41c6d0677a446bacaab2ce625d13f3e0ace2eae771759d7aed081419c59c64d3",
   "cargo_lock_sha256": "f7174f46623baf6aedc1ed8cca7c3c42cb9a738909d7f915028d89140fd1bcb3",
   "build": "cargo build --locked --release --bin celestia-rs",
@@ -19,6 +18,8 @@
     "audit-v10.json": "15efb0ed2f009ab2d93e87b57649d934fa3e245851858675ffe86e29cf9a935e",
     "audit-v11.json": "9f9a55149f8b86344c8741ccd5808768a7a0c18ce8ba2308e4c265d7e90c023a",
     "audit.json": "1803c19716bb35f90faf7a7ec957ed2b3855c032c1274ab757561c12563ec30f",
+    "build-qualification/check.log": "813a3758e57081b432408234b058312822432ddbb11d704f68de684728d4495a",
+    "build-qualification/evidence.json": "dca04c4397e00317e77c5c5ab92cc22fa84e012643b3049ce7ec2a20e31a0997",
     "build.log": "563429de08f8a28f18d8d62ef06d62cc8fa13351ed79da273a14a66a505876fe",
     "edge-headers.json": "5add0e053b43f21e2ff424955bb3c34a3bb8afacdb5aded6122c888ad3c81e1f",
     "heights-1-1000.jsonl.gz": "01aaed81b51a3ef2fddac44a87dbf5094c3d29e935c284e4dc6dd5a57265693d",
@@ -94,5 +95,6 @@
     "v12_source": "bb3a9e52d09620323b35b8305922f764b2df6a3e",
     "v12_go": "go1.26.11",
     "abci_recording_sha256": "4e9d17cf1a8da95aca03ea07f6a6af1d0d10d13b19c13dac26535bf2652696fc"
-  }
+  },
+  "build_qualification": "build-qualification/evidence.json"
 }

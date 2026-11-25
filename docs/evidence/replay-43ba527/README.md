@@ -16,7 +16,14 @@ ranges are inclusive.
 ## Historical replay
 
 The [manifest](manifest.json) identifies the binary, Rust toolchain, inputs,
-RPCs and SHA-256 digests. The comparison reference for each executed height H
+RPCs and SHA-256 digests. A [subsequent qualified rebuild](build-qualification/evidence.json)
+recorded the pinned Git revision, tree and clean worktree before and after
+compilation into an empty target directory. The [build transcript](build-qualification/check.log)
+records the rebuilt executable's SHA-256. A byte-for-byte comparison with
+the retained replay executable passed, and all three historical ledgers
+record that digest in their opening record.
+
+The comparison reference for each executed height H
 was the signed network header at H+1. The follower checked each app hash,
 validator set and transaction-result commitment. The retained ledgers include
 the consensus result fields (code, data and gas wanted/used). The offline
