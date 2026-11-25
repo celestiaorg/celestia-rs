@@ -7,6 +7,11 @@ development and CI.
 
 ## Budgets
 
+These budgets cover consensus validator operation. A bridge also stores a
+header index and preserves transaction data that consensus prunes inside
+the DA retention window. Size that storage for the retained block volume
+and pruning settings. [Bridge retention](operator-guide.md#bridge-retention)
+
 | Resource | Budget | Notes |
 |---|---|---|
 | Resident memory | ≤ 8 GB steady state, ≤ 12 GB peak | Leaves headroom for the OS and page cache. |
@@ -44,8 +49,8 @@ RocksDB keeps up to 512 SST files open: raise the macOS shell default
 
 ## Implications
 
-- Default pruning keeps only recent state and blocks inside the evidence /
-  unbonding window; archival mode is not a goal.
+- Default consensus pruning keeps recent state and blocks inside the
+  evidence and unbonding window.
 - Erasure coding, NMT hashing and signature verification must be
   multi-core-aware but must not assume more than 10 cores.
 - No dependency may require x86-only intrinsics; everything must build for
