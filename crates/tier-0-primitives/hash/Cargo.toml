@@ -14,7 +14,9 @@ workspace = true
 
 [dependencies]
 digest = "0.10"
-sha2 = "0.10"
+# `asm` selects the ARMv8 SHA-2 instructions on aarch64; without it sha2
+# 0.10 hashes in software there. x86-64 detects SHA-NI either way.
+sha2 = { version = "0.10", features = ["asm"] }
 ripemd = "0.1"
 
 [dev-dependencies]
