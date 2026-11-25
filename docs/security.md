@@ -111,11 +111,18 @@ from repository-level security updates):
   "Deferred majors" are ignored (migrated by hand).
 - **github-actions**: monthly with a seven-day version update cooldown
   and one group for version update pull requests.
-- **gomod** (all 16 `conformance/` modules in one entry): no version
+- **gomod** (every live `conformance/` module in one entry): no version
   updates (`open-pull-requests-limit: 0`); security updates grouped into
   one pull request; the pinned reference modules (`github.com/celestiaorg/*`,
   cosmos-sdk, `cosmossdk.io/*`, cometbft, tendermint, ibc-go, ibc-apps,
   gogoproto, iavl, cosmos-db, hyperlane-cosmos) are ignored.
+- **gomod** (frozen evidence: source snapshots kept under `capture-source*`,
+  `sources/` and `dump-sources`): every dependency is ignored, so these
+  byte-exact copies raise alerts but never pull requests.
+
+`xtask/tests/dependabot.rs` fails when a `conformance/**/go.mod` is in
+neither entry. An unlisted module falls back to the repository-level
+security updates, which are not grouped and ignore nothing.
 
 How `ignore` and security updates interact: `ignore` conditions apply to
 security updates too (an ignored dependency still gets an *alert*, but no
