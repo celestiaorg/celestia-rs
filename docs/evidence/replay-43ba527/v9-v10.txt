@@ -1,0 +1,5 @@
+     Running tests/replay_scenarios.rs (/private/tmp/replay302-43ba527/target/release/deps/replay_scenarios-d5b0132d40382e1c)
+test v9_upgrade_switch_state ... ok
+test v9_upgrade_parity ... ok
+test v9_upgrade_boundary_parity ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.08s

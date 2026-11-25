@@ -14,6 +14,10 @@ name: Operator benchmark
 on:
   workflow_dispatch:
     inputs:
+      calibrate_existing:
+        description: Compare genesis sync timings with shared and separate CPU sets
+        type: boolean
+        default: false
       prepare_existing:
         description: Build the pinned genesis sync benchmark and generate its chain on the existing VM
         type: boolean
@@ -58,7 +62,7 @@ jobs:
   preflight:
     if: github.ref == 'refs/heads/main' && inputs.action == 'none'
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.prepare_existing && 300 || 5 }}
+    timeout-minutes: ${{ (inputs.prepare_existing || inputs.calibrate_existing) && 300 || 5 }}
     permissions:
       id-token: write
       contents: read
@@ -121,7 +125,7 @@ jobs:
           [[ -z "$missing" ]]
 
       - name: Create the genesis sync VM
-        if: inputs.provision && !inputs.prepare_existing
+        if: inputs.provision && !inputs.prepare_existing && !inputs.calibrate_existing
         env:
           CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
           OPERATOR_KEY: ${{ inputs.ssh_public_key }}
@@ -150,11 +154,11 @@ jobs:
           done
 
       - uses: actions/checkout@v7.0.1
-        if: inputs.prepare_existing
+        if: inputs.prepare_existing || inputs.calibrate_existing
         with:
           persist-credentials: false
       - name: Connect to the existing VM
-        if: inputs.prepare_existing
+        if: inputs.prepare_existing || inputs.calibrate_existing
         env:
           CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
         run: bash conformance/bench/cloud/operator-ssh.sh
@@ -199,6 +203,26 @@ jobs:
           name: genesis-sync-setup
           path: setup-results/*.json
           if-no-files-found: ignore
+
+      - name: Compare calibration runs
+        if: inputs.calibrate_existing
+        run: |
+          ssh -F "$RUNNER_TEMP/bench-config" campaign 'bash -s' < conformance/bench/cloud/calibrate-genesis.sh
+      - name: Collect calibration results
+        if: inputs.calibrate_existing && always()
+        run: |
+          mkdir calibration
+          scp -F "$RUNNER_TEMP/bench-config" 'campaign:genesis-sync/latest-calibration/*' calibration/
+          for result in calibration/*.json; do
+            printf '%s ' "$(basename "$result")"
+            jq -c '{kind, heights, secs}' "$result"
+          done
+      - uses: actions/upload-artifact@v7
+        if: inputs.calibrate_existing && always()
+        with:
+          name: genesis-sync-calibration
+          path: calibration/
+          if-no-files-found: error
 
   bench:
     if: github.ref == 'refs/heads/main' && inputs.action != 'none'

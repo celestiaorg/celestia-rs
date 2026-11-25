@@ -14,7 +14,7 @@ F1's measurable acceptance criteria remain in force (ADR 0008).
 
 | # | Owner action | Current state |
 |---|---|---|
-| 10 | Authorize a new three-day mainnet observation window for the qualifying release candidate. | The November 20 audit found gaps in reference samples and failed comparisons at 45 mainnet heights. [Collector audit](docs/validator-observation-audit-2026-11-20.md). |
+| 10 | Authorize a new three-day mainnet observation window for the qualifying release candidate. | The November 20 audit found gaps in reference samples and failed comparison attempts at 45 mainnet heights. All 49 attempts at those heights failed with HTTP 429 from the reference RPC; none was a mismatch. On November 25, three public RPCs matched the local app hash and block hash at all 45 heights; the local result commitments for them are not retained in git. [Collector audit](docs/validator-observation-audit-2026-11-20.md), [recheck](docs/validator-track-record-2026-11-25.md#the-45-excluded-mainnet-heights). |
 | 11 | File the upstream `gogoproto/jsonpb` oneof report. | The report is drafted and Rust's policy is recorded under F1.11. [Draft report](docs/upstream/gogoproto-jsonpb-oneof.md). |
 
 ## Recorded decisions and resolutions

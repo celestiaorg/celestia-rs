@@ -1,0 +1,212 @@
+{
+ "config": {
+  "chain_id": "mocha-5",
+  "rpcs": [
+   "https://rpc-mocha.pops.one",
+   "https://rpc.celestia-mocha.com"
+  ],
+  "lcd": "https://api-mocha.pops.one",
+  "consensus_hex": "64910794C3B7404929AB3CF18063A6B8CD3032D7",
+  "valcons": "celestiavalcons1vjgs09xrkaqyj2dt8nccqcaxhrxnqvkhqwen2s",
+  "valoper": "celestiavaloper13v73gcz3k923ajt23alr5h3wuvsgqxu3jag0sd",
+  "account": "celestia13v73gcz3k923ajt23alr5h3wuvsgqxu3hz2kxt",
+  "as_of_height": 2931000,
+  "jail_height": 1856333,
+  "first_event_height": 1720899,
+  "commit_sample": 300,
+  "ranges": {
+   "before_create": [
+    1,
+    1720895
+   ],
+   "first_bonding_events": [
+    1720899,
+    1856333
+   ],
+   "jailed_gap": [
+    1856334,
+    1860318
+   ],
+   "second_bonding_events": [
+    1860319,
+    2931001
+   ],
+   "nov12_15_audit_events": [
+    2543076,
+    2633658
+   ],
+   "nov6_9_audit_events": [
+    2362384,
+    2452953
+   ]
+  }
+ },
+ "fetched_utc_start": "2026-11-25T02:06:17Z",
+ "as_of": {
+  "height": 2931000,
+  "time": "2026-11-25T02:01:44.5956795Z"
+ },
+ "signing_info": {
+  "val_signing_info": {
+   "address": "celestiavalcons1vjgs09xrkaqyj2dt8nccqcaxhrxnqvkhqwen2s",
+   "start_height": "1860316",
+   "index_offset": "1070682",
+   "jailed_until": "2026-10-20T11:06:44.728991637Z",
+   "tombstoned": false,
+   "missed_blocks_counter": "11"
+  }
+ },
+ "validator": {
+  "operator_address": "celestiavaloper13v73gcz3k923ajt23alr5h3wuvsgqxu3jag0sd",
+  "consensus_pubkey": {
+   "@type": "/cosmos.crypto.ed25519.PubKey",
+   "key": "vvzYCqLZwDArQ4OM5hGH1kxYQQssOc5Ku0dQYCrm/PM="
+  },
+  "jailed": false,
+  "status": "BOND_STATUS_BONDED",
+  "tokens": "1010001000000",
+  "delegator_shares": "1010001000000.000000000000000000",
+  "unbonding_height": "1856333",
+  "unbonding_time": "2026-11-03T12:05:44.728991637Z",
+  "commission": {
+   "commission_rates": {
+    "rate": "0.200000000000000000",
+    "max_rate": "0.300000000000000000",
+    "max_change_rate": "0.010000000000000000"
+   },
+   "update_time": "2026-10-15T23:19:26.843930415Z"
+  },
+  "min_self_delegation": "1",
+  "unbonding_on_hold_ref_count": "0",
+  "unbonding_ids": [
+   "32"
+  ]
+ },
+ "slashing_params": {
+  "signed_blocks_window": "10000",
+  "min_signed_per_window": "0.001000000000000000",
+  "downtime_jail_duration": "60s",
+  "slash_fraction_double_sign": "0.020000000000000000",
+  "slash_fraction_downtime": "0.000000000000000000"
+ },
+ "staking_pool": {
+  "not_bonded_tokens": "7403069131371",
+  "bonded_tokens": "361015346093522"
+ },
+ "operator_txs": [
+  {
+   "height": 1720896,
+   "hash": "90FF16DADA3D7EC805736B6C99532E4D0D417BD06F4B576633608A98095BBFA2",
+   "code": 0,
+   "actions": [
+    "/cosmos.staking.v1beta1.MsgCreateValidator"
+   ],
+   "time": "2026-10-15T23:19:26.843930415Z"
+  },
+  {
+   "height": 1728898,
+   "hash": "47DC4B3BEC775A9F7A859BFA1EB27FDE5AB8084D58645B5B4FCFE7F8CD2F836B",
+   "code": 11,
+   "actions": [],
+   "time": "2026-10-16T05:41:36.347873327Z"
+  },
+  {
+   "height": 1728952,
+   "hash": "2A57CDE42B03AB11B83A4FC870651BF7FBCFB63A7E3456DDC2AE93509772B752",
+   "code": 0,
+   "actions": [
+    "/cosmos.staking.v1beta1.MsgEditValidator"
+   ],
+   "time": "2026-10-16T05:44:10.35442215Z"
+  },
+  {
+   "height": 1740941,
+   "hash": "BDC0045F65F455EDF80209381F2FB3627593D8FE99D1625D5ED1B9F0913085EE",
+   "code": 0,
+   "actions": [
+    "/cosmos.staking.v1beta1.MsgEditValidator"
+   ],
+   "time": "2026-10-16T15:17:04.546951322Z"
+  },
+  {
+   "height": 1860316,
+   "hash": "35EE6A526334D75541CFEAE2ED4ADD5FAE68E1EF6D974E64B74941E52248F705",
+   "code": 0,
+   "actions": [
+    "/cosmos.slashing.v1beta1.MsgUnjail"
+   ],
+   "time": "2026-10-20T14:15:33.67081674Z"
+  },
+  {
+   "height": 2866549,
+   "hash": "C3CDB5DA6A62116B9EB8A3E2C2131E544F2500A489A1236AE5876E75477144E1",
+   "code": 0,
+   "actions": [
+    "/cosmos.bank.v1beta1.MsgSend"
+   ],
+   "time": "2026-11-22T22:45:28.857709893Z"
+  }
+ ],
+ "event_counts": {
+  "https://rpc-mocha.pops.one": {
+   "slash:all": 1,
+   "slash:before_create": 0,
+   "slash:first_bonding_events": 1,
+   "slash:jailed_gap": 0,
+   "slash:second_bonding_events": 0,
+   "slash:nov12_15_audit_events": 0,
+   "slash:nov6_9_audit_events": 0,
+   "liveness:all": 14239,
+   "liveness:before_create": 0,
+   "liveness:first_bonding_events": 10444,
+   "liveness:jailed_gap": 0,
+   "liveness:second_bonding_events": 3794,
+   "liveness:nov12_15_audit_events": 147,
+   "liveness:nov6_9_audit_events": 211
+  },
+  "https://rpc.celestia-mocha.com": {
+   "slash:all": 1,
+   "slash:before_create": 0,
+   "slash:first_bonding_events": 1,
+   "slash:jailed_gap": 0,
+   "slash:second_bonding_events": 0,
+   "slash:nov12_15_audit_events": 0,
+   "slash:nov6_9_audit_events": 0,
+   "liveness:all": 14239,
+   "liveness:before_create": 0,
+   "liveness:first_bonding_events": 10444,
+   "liveness:jailed_gap": 0,
+   "liveness:second_bonding_events": 3794,
+   "liveness:nov12_15_audit_events": 147,
+   "liveness:nov6_9_audit_events": 211
+  }
+ },
+ "jail_miss_run_event_heights": [
+  1846343,
+  1856333
+ ],
+ "jail_miss_run_time": [
+  "2026-10-20T03:07:14.311589186Z",
+  "2026-10-20T11:05:44.728991637Z"
+ ],
+ "commit_sample": {
+  "range": [
+   2930701,
+   2931000
+  ],
+  "signed": 299,
+  "absent": [],
+  "nil": [],
+  "not_in_commit": [
+   2930980
+  ],
+  "proposed": [
+   2930722
+  ],
+  "liveness_event_heights": [
+   2930981
+  ],
+  "liveness_total": 1
+ },
+ "fetched_utc_end": "2026-11-25T02:21:44Z"
+}
