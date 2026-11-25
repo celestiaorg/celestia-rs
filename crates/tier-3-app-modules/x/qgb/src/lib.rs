@@ -213,9 +213,7 @@ fn header_app_version(ctx: &Context<'_>) -> u64 {
 /// the v0.46 driver never runs a header below 1), with the `qgb` store
 /// mounted (it is only mounted for app version 1).
 fn hooks_active(ctx: &mut Context<'_>) -> bool {
-    ctx.is_sdk_v046()
-        && header_app_version(ctx) == 1
-        && ctx.multistore().is_mounted(STORE_KEY)
+    ctx.is_sdk_v046() && header_app_version(ctx) == 1 && ctx.multistore().is_mounted(STORE_KEY)
 }
 
 /// The blobstream staking hooks (`keeper.Hooks`).

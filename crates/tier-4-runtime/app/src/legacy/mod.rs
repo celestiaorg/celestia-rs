@@ -20,7 +20,9 @@
 pub mod blockers;
 pub mod consensus_params;
 pub mod genesis;
+pub mod msgs;
 pub mod params;
+pub mod tx;
 
 use celestia_proto::celestia_core_proto::abci::{
     self, ExecTxResult, ResponseFinalizeBlock, ResponseInitChain, TimeoutInfo, ValidatorUpdate,
@@ -28,6 +30,7 @@ use celestia_proto::celestia_core_proto::abci::{
 use celestia_proto::celestia_core_proto::tendermint::types::Header as TmHeader;
 use celestia_proto::celestia_core_proto::tendermint::version::Consensus;
 use celestia_proto::cosmos::base::abci::v1beta1::TxMsgData;
+use kvstore::GasMeter;
 use multistore::CommitId;
 use prost::Message as _;
 use sdk::version::{Release, SdkLine};
@@ -83,9 +86,15 @@ pub trait Modules {
     /// BeginBlocker, with the full v0.34 header (staking stores it in
     /// `HistoricalInfo`).
     fn begin_block(&mut self, ctx: &mut Context<'_>, header: &TmHeader) -> Result<()>;
-    /// DeliverTx: decode, ante handler and messages (`runTx`). The driver
-    /// shapes the result ([`deliver_tx_result`]).
-    fn deliver_tx(&mut self, ctx: &mut Context<'_>, tx: &[u8]) -> TxOutcome;
+    /// DeliverTx: decode, ante handler and messages (`runTx`), on the
+    /// block's gas meter (`ctx.BlockGasMeter()`). The driver shapes the
+    /// result ([`deliver_tx_result`]).
+    fn deliver_tx(
+        &mut self,
+        ctx: &mut Context<'_>,
+        block_gas: &mut GasMeter,
+        tx: &[u8],
+    ) -> TxOutcome;
     /// EndBlocker: module end blockers and celestia-app's app-version
     /// upgrade logic. Returns validator updates.
     fn end_block(&mut self, ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>>;
@@ -105,7 +114,7 @@ impl Modules for NoModules {
         Ok(())
     }
 
-    fn deliver_tx(&mut self, _: &mut Context<'_>, _: &[u8]) -> TxOutcome {
+    fn deliver_tx(&mut self, _: &mut Context<'_>, _: &mut GasMeter, _: &[u8]) -> TxOutcome {
         TxOutcome {
             gas_wanted: 0,
             gas_used: 0,
@@ -121,9 +130,9 @@ impl Modules for NoModules {
     }
 }
 
-/// The app version 1 module set: InitGenesis and the begin and end
-/// blockers. Transaction execution is not ported yet, so every
-/// transaction fails.
+/// The app version 1 module set: InitGenesis, the begin and end
+/// blockers, and transactions through the v0.46 `runTx` ([`tx`]) with
+/// the v1 ante handler and the ported message servers ([`msgs`]).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct V1Modules;
 
@@ -140,8 +149,13 @@ impl Modules for V1Modules {
         blockers::begin_block(ctx, header)
     }
 
-    fn deliver_tx(&mut self, ctx: &mut Context<'_>, tx: &[u8]) -> TxOutcome {
-        NoModules.deliver_tx(ctx, tx)
+    fn deliver_tx(
+        &mut self,
+        ctx: &mut Context<'_>,
+        block_gas: &mut GasMeter,
+        tx: &[u8],
+    ) -> TxOutcome {
+        tx::deliver_tx(ctx, block_gas, tx)
     }
 
     fn end_block(&mut self, ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
@@ -403,12 +417,13 @@ impl<M: Modules> Driver<M> {
             .map(|c| c.votes.clone())
             .unwrap_or_default();
         ctx.misbehavior.clone_from(&req.misbehavior);
+        let mut block_gas = tx::block_gas_meter(&ctx);
 
         self.modules.begin_block(&mut ctx, &tm_header)?;
         let mut events = ctx.events.take();
         let mut tx_results = Vec::with_capacity(req.txs.len());
         for tx in &req.txs {
-            let outcome = self.modules.deliver_tx(&mut ctx, tx);
+            let outcome = self.modules.deliver_tx(&mut ctx, &mut block_gas, tx);
             let result = deliver_tx_result(outcome);
             events.extend(result.events.iter().cloned());
             tx_results.push(result);

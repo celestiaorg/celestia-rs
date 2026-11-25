@@ -583,7 +583,9 @@ fn qgb_hook_writes_default_evm_addresses_at_v1() {
     let mut ms = v1_store();
     let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
     ctx.consensus_params.version = Some(VersionParams { app: 1 });
-    x_qgb::Hooks.after_validator_created(&mut ctx, &val).unwrap();
+    x_qgb::Hooks
+        .after_validator_created(&mut ctx, &val)
+        .unwrap();
     assert_eq!(
         ctx.get(x_qgb::STORE_KEY, &[b"EVMAddress".as_slice(), &val].concat())
             .unwrap(),
@@ -738,8 +740,8 @@ fn vote(cons: &[u8], signed: bool) -> abci::VoteInfo {
 /// validator proposed).
 #[test]
 fn v046_distribution_pays_the_proposer_reward() {
-    let _v046 = sdk::version::SdkV046Scope::enter(1);
     use x_distribution::store as ds;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = v1_store();
     let (mut ctx, cons) = v046_two_validators(&mut ms, 2);
     params::set_distribution(
@@ -875,8 +877,8 @@ fn v046_slashing_tracks_missed_blocks_per_index() {
 /// without an unbonding ID.
 #[test]
 fn v046_staking_layout() {
-    let _v046 = sdk::version::SdkV046Scope::enter(1);
     use x_staking::types::BondStatus;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = v1_store();
     let (mut ctx, _) = v046_two_validators(&mut ms, 7);
     let header = TmHeader {
@@ -1004,7 +1006,12 @@ impl Modules for Probe {
         self.phase(ctx, "begin_block")
     }
 
-    fn deliver_tx(&mut self, ctx: &mut Context<'_>, _: &[u8]) -> TxOutcome {
+    fn deliver_tx(
+        &mut self,
+        ctx: &mut Context<'_>,
+        _: &mut kvstore::GasMeter,
+        _: &[u8],
+    ) -> TxOutcome {
         let result = self.phase(ctx, "deliver_tx").map(|()| TxSuccess::default());
         TxOutcome {
             gas_wanted: 0,
@@ -1074,4 +1081,358 @@ fn driver_scopes_sdk_v046_semantics_to_its_calls() {
         restored();
     }
     sdk::version::set_app_version(0);
+}
+
+/// Mainnet block `height`'s transactions (`conformance/fixtures/mainnet/
+/// blocks.jsonl.gz`).
+fn mainnet_txs(height: i64) -> Vec<Vec<u8>> {
+    use base64::Engine as _;
+    use std::io::BufRead as _;
+    let f = std::fs::File::open(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../conformance/fixtures/mainnet/blocks.jsonl.gz"
+    ))
+    .unwrap();
+    for line in std::io::BufReader::new(GzDecoder::new(f)).lines() {
+        let d: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
+        if d["height"] == height {
+            return d["result"]["block"]["data"]["txs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|t| {
+                    base64::engine::general_purpose::STANDARD
+                        .decode(t.as_str().unwrap())
+                        .unwrap()
+                })
+                .collect();
+        }
+    }
+    panic!("no block {height}");
+}
+
+/// The Go oracle's result of transaction `index` of block `height`
+/// (`tx-results.jsonl.gz`).
+fn oracle_tx_result(height: i64, index: usize) -> serde_json::Value {
+    let mut text = String::new();
+    GzDecoder::new(
+        &include_bytes!(
+            "../../../../../conformance/fixtures/mainnet/v1-oracle/tx-results.jsonl.gz"
+        )[..],
+    )
+    .read_to_string(&mut text)
+    .unwrap();
+    text.lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .find(|d| d["height"] == height)
+        .unwrap()["txs"][index]
+        .clone()
+}
+
+/// `outcome` shaped as `DeliverTx` returns it, against the oracle's
+/// record: every field of the result and its events.
+fn assert_oracle_tx(outcome: TxOutcome, want: &serde_json::Value) {
+    let got = deliver_tx_result(outcome);
+    let events: Vec<serde_json::Value> = got
+        .events
+        .iter()
+        .map(|e| {
+            serde_json::json!({"type": e.r#type, "attributes": e.attributes.iter().map(|a| {
+                serde_json::json!({"key": a.key, "value": a.value, "index": a.index})
+            }).collect::<Vec<_>>()})
+        })
+        .collect();
+    let got = serde_json::json!({
+        "index": want["index"], "hash": want["hash"],
+        "code": got.code, "codespace": got.codespace,
+        "gas_wanted": got.gas_wanted, "gas_used": got.gas_used,
+        "data": hex::encode(&got.data), "log": got.log, "info": got.info,
+        "events": events,
+    });
+    assert_eq!(&got, want);
+}
+
+/// The ante handler, the bank `MsgSend` server and `runTx`'s gas, events,
+/// data and log reproduce mainnet transactions 2:0 (a `MsgSend` that sets
+/// the sender's public key) and 3:0 (the same sender's next `MsgSend`,
+/// failing with insufficient funds after its fee is paid) exactly as the
+/// Go oracle ran them, on the state those transactions read (taken from
+/// the oracle's store trace).
+#[test]
+fn v1_msg_send_matches_the_oracle() {
+    let h = |s: &str| hex::decode(s).unwrap();
+    let sender = "7d0a39bed044eb9f0c2a202a76075038804a2fe5";
+    let recipient = "4e7d04e898379e78298986470deda5ad4ff79670";
+    let fee_collector = "f1829676db577682e944fc3493d451b67ff3e29f";
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let txs2 = mainnet_txs(2);
+    let txs3 = mainnet_txs(3);
+    {
+        let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        ctx.consensus_params.version = Some(VersionParams { app: 1 });
+        write_mainnet_genesis_params(&mut ctx).unwrap();
+    }
+    let acc = |a: &str| [vec![0x01], h(a)].concat();
+    let balance = |a: &str| [vec![0x02, 0x14], h(a), b"utia".to_vec()].concat();
+    let index = |a: &str| [b"\x03utia\x00\x14".to_vec(), h(a)].concat();
+    ms.set(
+        x_auth::STORE_KEY,
+        acc(sender),
+        h("0a202f636f736d6f732e617574682e763162657461312e426173654163636f756e7412340a2f63656c657374696131303539726e306b73676e3465377270327971343876703673387a717935746c39303261786e6e18e406"),
+    )
+    .unwrap();
+    ms.set(
+        x_auth::STORE_KEY,
+        acc(fee_collector),
+        h("0a222f636f736d6f732e617574682e763162657461312e4d6f64756c654163636f756e7412460a350a2f63656c6573746961313778706676616b6d32616d67393632796c73366638347a336b656c6c3863356c706e6a73337318c5e00b120d6665655f636f6c6c6563746f72"),
+    )
+    .unwrap();
+    // The recipient exists (only `HasAccount` reads it).
+    let recipient_acc = x_auth::Account::Base(celestia_proto::cosmos::auth::v1beta1::BaseAccount {
+        address: x_auth::bech32(&h(recipient)).unwrap(),
+        pub_key: None,
+        account_number: 1,
+        sequence: 0,
+    });
+    ms.set(
+        x_auth::STORE_KEY,
+        acc(recipient),
+        prost::Message::encode_to_vec(&recipient_acc.to_any()),
+    )
+    .unwrap();
+    for a in [sender, recipient] {
+        ms.set(x_bank::STORE_KEY, balance(a), b"9030060000".to_vec())
+            .unwrap();
+        ms.set(x_bank::STORE_KEY, index(a), vec![0]).unwrap();
+    }
+
+    let run = |ms: &mut MultiStore, height: i64, tx: &[u8]| {
+        let header = sdk::Header {
+            chain_id: "celestia".into(),
+            height,
+            ..sdk::Header::default()
+        };
+        let mut ctx = sdk::Context::new(ms, header, sdk::ExecMode::Finalize);
+        ctx.consensus_params = consensus_params::load(&mut ctx, 1).unwrap();
+        let mut block_gas = tx::block_gas_meter(&ctx);
+        tx::deliver_tx(&mut ctx, &mut block_gas, tx)
+    };
+    assert_oracle_tx(run(&mut ms, 2, &txs2[0]), &oracle_tx_result(2, 0));
+    // Block 3 starts after the distribution BeginBlocker emptied the fee
+    // collector.
+    ms.delete(x_bank::STORE_KEY, &balance(fee_collector))
+        .unwrap();
+    ms.delete(x_bank::STORE_KEY, &index(fee_collector)).unwrap();
+    ms.set(x_bank::STORE_KEY, balance(sender), b"7500000".to_vec())
+        .unwrap();
+    let failed = run(&mut ms, 3, &txs3[0]);
+    assert_oracle_tx(failed, &oracle_tx_result(3, 0));
+    // The fee stays paid; the send is rolled back.
+    assert_eq!(
+        ms.get(x_bank::STORE_KEY, &balance(sender)).unwrap(),
+        Some(b"5000000".to_vec())
+    );
+    assert_eq!(
+        ms.get(x_bank::STORE_KEY, &balance(recipient)).unwrap(),
+        Some(b"18050120000".to_vec())
+    );
+}
+
+/// The `ABCIMessageLogs` JSON: events flattened by type (types sorted,
+/// attributes of a type concatenated), empty keys and values omitted and
+/// strings escaped as Go's `encoding/json` does.
+#[test]
+fn message_logs_are_go_amino_json() {
+    let ev = |t: &str, attrs: &[(&str, &str)]| sdk::event::event(t, attrs.iter().copied());
+    let logs = vec![
+        (
+            0,
+            vec![
+                ev("message", &[("action", "/a.Msg")]),
+                ev("transfer", &[("amount", "1utia")]),
+                ev("message", &[("module", "bank")]),
+                ev("coin_spent", &[("note", "<&>\u{2028}"), ("empty", "")]),
+            ],
+        ),
+        (1, vec![ev("x", &[])]),
+    ];
+    assert_eq!(
+        tx::message_logs(&logs),
+        concat!(
+            r#"[{"msg_index":0,"events":[{"type":"coin_spent","attributes":"#,
+            "[{\"key\":\"note\",\"value\":\"\\u003c\\u0026\\u003e\\u2028\"},{\"key\":\"empty\"}]},",
+            r#"{"type":"message","attributes":[{"key":"action","value":"/a.Msg"},"#,
+            r#"{"key":"module","value":"bank"}]},"#,
+            r#"{"type":"transfer","attributes":[{"key":"amount","value":"1utia"}]}]},"#,
+            r#"{"msg_index":1,"events":[{"type":"x","attributes":null}]}]"#
+        )
+    );
+}
+
+/// `MsgVersioningGateKeeper`'s accepted messages: blobstream at app
+/// version 1 only, x/signal from app version 2, nothing it does not know.
+#[test]
+fn gatekeeper_accepts_the_messages_of_each_app_version() {
+    let qgb = "/celestia.qgb.v1.MsgRegisterEVMAddress";
+    let signal = "/celestia.signal.v1.MsgSignalVersion";
+    let send = "/cosmos.bank.v1beta1.MsgSend";
+    assert_eq!(tx::gatekeeper_accepts(1, send), Some(true));
+    assert_eq!(tx::gatekeeper_accepts(1, qgb), Some(true));
+    assert_eq!(tx::gatekeeper_accepts(1, signal), Some(false));
+    for v in [2, 3] {
+        assert_eq!(tx::gatekeeper_accepts(v, qgb), Some(false));
+        assert_eq!(tx::gatekeeper_accepts(v, signal), Some(true));
+        assert_eq!(tx::gatekeeper_accepts(v, send), Some(true));
+    }
+    assert_eq!(
+        tx::gatekeeper_accepts(1, "/cosmos.bank.v1beta1.MsgUpdateParams"),
+        Some(false)
+    );
+    assert_eq!(tx::gatekeeper_accepts(4, send), None);
+}
+
+/// `ValidateBasic` of a `MsgMultiSend` whose input and output denoms
+/// differ panics in Go (`Coin.IsEqual`): `runTx` recovers it as
+/// `ErrPanic`. No messages, bad addresses and non-positive coins fail
+/// with their own errors.
+#[test]
+fn v046_validate_basic_fails_like_go() {
+    use celestia_proto::cosmos::bank::v1beta1 as bank;
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    let addr = x_auth::bech32(&[1; 20]).unwrap();
+    let coin = |d: &str, a: &str| Coin {
+        denom: d.into(),
+        amount: a.into(),
+    };
+    let multi = bank::MsgMultiSend {
+        inputs: vec![bank::Input {
+            address: addr.clone(),
+            coins: vec![coin("utia", "1")],
+        }],
+        outputs: vec![bank::Output {
+            address: addr.clone(),
+            coins: vec![coin("uatom", "1")],
+        }],
+    };
+    let e =
+        sdk::error::recover(|| msgs::validate_basic_tx_msgs(&[celestia_proto::Any::pack(&multi)]))
+            .unwrap_err();
+    assert_eq!((e.codespace, e.code), ("undefined", 111_222));
+    let e = msgs::validate_basic_tx_msgs(&[]).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18));
+    let send = |from: &str, amount: Vec<Coin>| {
+        celestia_proto::Any::pack(&bank::MsgSend {
+            from_address: from.into(),
+            to_address: addr.clone(),
+            amount,
+        })
+    };
+    let e = msgs::validate_basic(&send("cosmos1xyz", vec![coin("utia", "1")])).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 7));
+    let e = msgs::validate_basic(&send(&addr, vec![coin("utia", "0")])).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 10));
+    msgs::validate_basic(&send(&addr, vec![coin("utia", "1")])).unwrap();
+}
+
+/// `runTx` before the ante handler reports the block context's meter: an
+/// undecodable transaction uses the gas of every consensus-params read
+/// (`getContextForTx`) so far and wants none. A block whose gas meter is
+/// out of gas fails the next transaction without gas info.
+#[test]
+fn v046_run_tx_gas_before_the_ante_handler() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params = mainnet_consensus_params();
+    consensus_params::store(&mut ctx, &mainnet_consensus_params()).unwrap();
+    ctx.gas = kvstore::GasMeter::infinite();
+    let mut block_gas = tx::block_gas_meter(&ctx);
+    assert_eq!(block_gas.limit(), None);
+    let first = tx::deliver_tx(&mut ctx, &mut block_gas, b"\xff");
+    let per_tx = ctx.gas.consumed();
+    assert!(per_tx > 0);
+    assert_eq!((first.gas_wanted, first.gas_used), (0, per_tx));
+    assert_eq!(first.result.unwrap_err().code, 2);
+    let second = tx::deliver_tx(&mut ctx, &mut block_gas, b"\xff");
+    assert_eq!(second.gas_used, 2 * per_tx);
+    assert_eq!(block_gas.consumed(), 3 * per_tx);
+
+    let mut cp = mainnet_consensus_params();
+    cp.block.as_mut().unwrap().max_gas = 10;
+    ctx.consensus_params = cp;
+    let mut block_gas = tx::block_gas_meter(&ctx);
+    assert_eq!(block_gas.limit(), Some(10));
+    let over = tx::deliver_tx(&mut ctx, &mut block_gas, b"\xff");
+    let e = over.result.unwrap_err();
+    assert_eq!(e.code, 11, "{}", e.log);
+    assert!(e.log.starts_with("out of gas in location: block gas meter"));
+    let none = tx::deliver_tx(&mut ctx, &mut block_gas, b"\xff");
+    assert_eq!((none.gas_wanted, none.gas_used), (0, 0));
+    assert!(
+        none.result
+            .unwrap_err()
+            .log
+            .contains("no block gas left to run tx")
+    );
+}
+
+/// cosmos-sdk v0.46 `SetAccount` writes the account and its number's entry
+/// without reading the old value (so a stale number entry stays), and
+/// `setBalance` writes the balance before its index entry; zero removes
+/// both, the balance first. `subUnlockedCoins` names the spendable coin.
+#[test]
+fn v046_auth_and_bank_store_access() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    params_ctx(|ctx| {
+        ctx.consensus_params.version = Some(VersionParams { app: 1 });
+        let addr = [9u8; 20];
+        let mut acc = x_auth::new_account_with_address(ctx, &addr).unwrap();
+        acc.base_mut().account_number = 5;
+        ctx.gas = kvstore::GasMeter::infinite();
+        x_auth::set_account(ctx, &acc).unwrap();
+        let one_set = ctx.gas.consumed();
+        acc.base_mut().account_number = 77;
+        x_auth::set_account(ctx, &acc).unwrap();
+        // Two writes each time, no read.
+        assert_eq!(ctx.gas.consumed(), 2 * one_set);
+        let number = |n: u64| [b"accountNumber".as_slice(), &n.to_be_bytes()].concat();
+        assert!(ctx.get(x_auth::STORE_KEY, &number(5)).unwrap().is_some());
+        assert!(ctx.get(x_auth::STORE_KEY, &number(77)).unwrap().is_some());
+
+        let descriptors = |ctx: &mut sdk::Context<'_>| -> Vec<&'static str> {
+            ctx.gas.take_charges().into_iter().map(|(_, d)| d).collect()
+        };
+        ctx.gas.record_charges();
+        x_bank::set_balance(ctx, &addr, &sdk::coins::Coin::new("utia", 5)).unwrap();
+        assert_eq!(
+            descriptors(ctx),
+            [
+                "WriteFlat",
+                "WritePerByte",
+                "WritePerByte",
+                "Has",
+                "WriteFlat",
+                "WritePerByte",
+                "WritePerByte"
+            ]
+        );
+        let e = x_bank::sub_unlocked_coins(
+            ctx,
+            &addr,
+            &sdk::coins::Coins(vec![sdk::coins::Coin::new("utia", 6)]),
+        )
+        .unwrap_err();
+        assert_eq!(e.log, "5utia is smaller than 6utia: insufficient funds");
+        ctx.gas.record_charges();
+        x_bank::set_balance(ctx, &addr, &sdk::coins::Coin::new("utia", 0)).unwrap();
+        assert_eq!(descriptors(ctx), ["Delete", "Delete"]);
+        assert_eq!(
+            x_bank::get_balance(ctx, &addr, "utia")
+                .unwrap()
+                .amount
+                .to_string(),
+            "0"
+        );
+    });
 }

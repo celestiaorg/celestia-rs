@@ -8736,6 +8736,7 @@ dependencies = [
  "x-feegrant",
  "x-fibre",
  "x-minfee",
+ "x-params",
  "zstd",
 ]
 

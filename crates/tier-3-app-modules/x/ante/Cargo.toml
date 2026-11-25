@@ -34,6 +34,7 @@ x-auth = { path = "../auth" }
 x-bank = { path = "../bank" }
 x-blob = { path = "../blob" }
 x-minfee = { path = "../minfee" }
+x-params = { path = "../params" }
 x-feegrant = { path = "../feegrant" }
 x-distribution = { path = "../distribution" }
 x-fibre = { path = "../fibre" }

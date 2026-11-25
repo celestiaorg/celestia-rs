@@ -329,6 +329,12 @@ pub fn has_account(ctx: &mut Context<'_>, addr: &[u8]) -> Result<bool> {
 pub fn set_account(ctx: &mut Context<'_>, acc: &Account) -> Result<()> {
     let addr = acc.address()?;
     let pk = account_key(&addr);
+    if ctx.is_sdk_v046() {
+        // cosmos-sdk v0.46 (celestiaorg fork): the account, then its
+        // number's entry; no lookup of the old value.
+        ctx.set(STORE_KEY, pk, acc.to_any().encode_to_vec())?;
+        return ctx.set(STORE_KEY, number_key(acc.account_number()), addr);
+    }
     // Unique.Reference: lazily load the old value and drop its index entry.
     if let Some(old) = ctx.get(STORE_KEY, &pk)? {
         let old = Account::from_any(&decode::<Any>(&old)?)?;
@@ -349,6 +355,11 @@ pub fn set_account(ctx: &mut Context<'_>, acc: &Account) -> Result<()> {
 pub fn remove_account(ctx: &mut Context<'_>, acc: &Account) -> Result<()> {
     let addr = acc.address()?;
     let pk = account_key(&addr);
+    if ctx.is_sdk_v046() {
+        // cosmos-sdk v0.46: both keys of the given account.
+        ctx.delete(STORE_KEY, &pk)?;
+        return ctx.delete(STORE_KEY, &number_key(acc.account_number()));
+    }
     if let Some(old) = ctx.get(STORE_KEY, &pk)? {
         let old = Account::from_any(&decode::<Any>(&old)?)?;
         ctx.delete(STORE_KEY, &number_key(old.account_number()))?;

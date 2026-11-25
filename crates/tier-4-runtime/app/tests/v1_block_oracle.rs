@@ -1,11 +1,12 @@
 //! App version 1 blocks against the Go v1 oracle
 //! (`conformance/v1-oracle`).
 //!
-//! `v1_block_1_matches_the_oracle` runs InitChain on the canonical mainnet
-//! genesis and then mainnet block 1 (no transactions) through the v0.46
-//! driver, and requires the oracle's KV changes for every store, its
-//! store roots, the app hash and the block's events, validator updates,
-//! consensus params and timeouts:
+//! `v1_blocks_1_to_10_match_the_oracle` runs InitChain on the canonical
+//! mainnet genesis and then mainnet blocks 1 to 10 through the v0.46
+//! driver, and requires for each block the oracle's KV changes for every
+//! store, its store roots, the app hash, every transaction result (code,
+//! codespace, gas wanted and used, data, log, info, events) and the
+//! block's events, validator updates, consensus params and timeouts:
 //!
 //! ```sh
 //! CELESTIA_MAINNET_GENESIS=<genesis.json> cargo test -p app --test v1_block_oracle -- --ignored
@@ -160,9 +161,82 @@ fn check_response(res: &ResponseFinalizeBlock, result: &serde_json::Value) -> Ve
     failures
 }
 
+/// Each transaction result against the oracle's: every `ExecTxResult`
+/// field the v0.34 `ResponseDeliverTx` carries.
+fn check_tx_results(res: &ResponseFinalizeBlock, result: &serde_json::Value) -> Vec<String> {
+    let want = result["txs"].as_array().unwrap();
+    let mut failures = Vec::new();
+    if res.tx_results.len() != want.len() {
+        failures.push(format!(
+            "tx count rs {} go {}",
+            res.tx_results.len(),
+            want.len()
+        ));
+    }
+    for (i, (got, w)) in res.tx_results.iter().zip(want).enumerate() {
+        let mut fields = Vec::new();
+        let mut field = |name: &str, g: String, w: String| {
+            if g != w {
+                fields.push(format!("  {name}: rs {g}\n  {name}: go {w}"));
+            }
+        };
+        field("code", got.code.to_string(), w["code"].to_string());
+        field(
+            "codespace",
+            got.codespace.clone(),
+            w["codespace"].as_str().unwrap().to_owned(),
+        );
+        field(
+            "gas_wanted",
+            got.gas_wanted.to_string(),
+            w["gas_wanted"].to_string(),
+        );
+        field(
+            "gas_used",
+            got.gas_used.to_string(),
+            w["gas_used"].to_string(),
+        );
+        field(
+            "data",
+            hex::encode(&got.data),
+            w["data"].as_str().unwrap().to_owned(),
+        );
+        field(
+            "log",
+            got.log.clone(),
+            w["log"].as_str().unwrap().to_owned(),
+        );
+        field(
+            "info",
+            got.info.clone(),
+            w["info"].as_str().unwrap().to_owned(),
+        );
+        if let Some(d) = common::first_event_difference(&got.events, &common::events(&w["events"]))
+        {
+            fields.push(format!("  events: {d}"));
+        }
+        if !fields.is_empty() {
+            failures.push(format!("tx {i}:\n{}", fields.join("\n")));
+        }
+    }
+    failures
+}
+
+/// The validator set an EndBlock's updates lead to, as `(address,
+/// power)`.
+fn update_set(v: &[ValidatorUpdate]) -> Vec<(Vec<u8>, i64)> {
+    v.iter()
+        .map(|u| match u.pub_key.as_ref().and_then(|k| k.sum.as_ref()) {
+            Some(Sum::Ed25519(k)) => (hash::sha256(k)[..20].to_vec(), u.power),
+            _ => (Vec::new(), u.power),
+        })
+        .collect()
+}
+
 #[test]
 #[ignore = "needs the mainnet genesis: CELESTIA_MAINNET_GENESIS=<genesis.json>"]
-fn v1_block_1_matches_the_oracle() {
+#[allow(clippy::too_many_lines)]
+fn v1_blocks_1_to_10_match_the_oracle() {
     let genesis = common::mainnet_genesis();
     let archive = common::archive();
     let diffs = common::oracle_diffs();
@@ -177,72 +251,118 @@ fn v1_block_1_matches_the_oracle() {
         .unwrap();
     drop(genesis);
     assert_eq!(init.app_hash, hash::sha256(&[]).to_vec());
-    let before: BTreeMap<String, Kv> = stores
+    assert_eq!(roots["heights"][1]["app_hash"], BLOCK_1_APP_HASH);
+
+    // Validator sets by height, from the oracle's EndBlock updates (the
+    // requests' inputs): the genesis set signs heights 1 and 2, and each
+    // EndBlock(h)'s updates take effect at h + 2.
+    let mut vals: BTreeMap<i64, common::ValidatorSet> = BTreeMap::new();
+    let mut genesis_set = update_set(&init.validators);
+    common::sort_validators(&mut genesis_set);
+    vals.insert(1, genesis_set.clone());
+    vals.insert(2, genesis_set);
+    for h in 1..=9 {
+        let next = common::apply_updates(&vals[&(h + 1)], &common::oracle_updates(&results[&h]));
+        vals.insert(h + 2, next);
+    }
+
+    let mut before: BTreeMap<String, Kv> = stores
         .iter()
         .map(|s| (s.clone(), contents(&ms, s)))
         .collect();
-
-    let req = common::finalize_request(&archive[&1], &Vec::new());
-    let res = driver.finalize_block(&mut ms, &req).unwrap();
-    let id = driver.commit(&mut ms).unwrap();
-
-    let mut failures = Vec::new();
     let empty = BTreeMap::new();
-    let want_diffs = diffs.get(&1).unwrap_or(&empty);
-    let h1 = &roots["heights"][1];
-    assert_eq!(h1["height"], 1);
-    let info = ms.root().last_commit_info().unwrap().clone();
-    println!("store          kv diff  root");
-    for s in &stores {
-        let got = diff(&before[s], &contents(&ms, s));
-        let want = want_diffs.get(s).cloned().unwrap_or_default();
-        let kv_ok = got == want;
-        let root = info
-            .store_info(s)
-            .and_then(|si| si.commit_id.as_ref())
-            .map(|c| hex::encode_upper(c.hash))
-            .unwrap_or_default();
-        let root_ok = root == h1["stores"][s].as_str().unwrap();
-        println!(
-            "{s:<14} {:<8} {}",
-            if kv_ok { "match" } else { "DIFF" },
-            if root_ok { "match" } else { "DIFF" }
-        );
-        if !kv_ok {
-            failures.push(format!(
-                "{s}: kv diff\n  rs {}\n  go {}",
-                describe(&got),
-                describe(&want)
-            ));
-            for (k, v) in &got.set {
-                if let Some(w) = want.set.get(k)
-                    && w != v
-                {
-                    failures.push(format!(
-                        "  {s} {}: rs {} go {}",
-                        hex::encode(k),
-                        hex::encode(v),
-                        hex::encode(w)
-                    ));
+    println!("height app-hash roots kv txs events updates");
+    for height in 1..=10i64 {
+        let last = if height == 1 {
+            Vec::new()
+        } else {
+            vals[&(height - 1)].clone()
+        };
+        let req = common::finalize_request(&archive[&height], &last);
+        let res = driver.finalize_block(&mut ms, &req).unwrap();
+        let id = driver.commit(&mut ms).unwrap();
+
+        let mut failures = Vec::new();
+        let want_diffs = diffs.get(&height).unwrap_or(&empty);
+        let hr = &roots["heights"][usize::try_from(height).unwrap()];
+        assert_eq!(hr["height"], height);
+        let info = ms.root().last_commit_info().unwrap().clone();
+        let (mut kv_ok, mut roots_ok) = (true, true);
+        for s in &stores {
+            let after = contents(&ms, s);
+            let got = diff(&before[s], &after);
+            let want = want_diffs.get(s).cloned().unwrap_or_default();
+            if got != want {
+                kv_ok = false;
+                let only = |a: &Diff, b: &Diff| Diff {
+                    set: a
+                        .set
+                        .iter()
+                        .filter(|(k, v)| b.set.get(*k) != Some(v))
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect(),
+                    delete: a.delete.difference(&b.delete).cloned().collect(),
+                };
+                failures.push(format!(
+                    "{s}: kv diff\n  rs only {}\n  go only {}",
+                    describe(&only(&got, &want)),
+                    describe(&only(&want, &got))
+                ));
+                for (k, v) in &got.set {
+                    if let Some(w) = want.set.get(k)
+                        && w != v
+                    {
+                        failures.push(format!(
+                            "  {s} {}: rs {} go {}",
+                            hex::encode(k),
+                            hex::encode(v),
+                            hex::encode(w)
+                        ));
+                    }
                 }
             }
+            before.insert(s.clone(), after);
+            let root = info
+                .store_info(s)
+                .and_then(|si| si.commit_id.as_ref())
+                .map(|c| hex::encode_upper(c.hash))
+                .unwrap_or_default();
+            if root != hr["stores"][s].as_str().unwrap() {
+                roots_ok = false;
+                failures.push(format!("{s}: root {root}"));
+            }
         }
-        if !root_ok {
-            failures.push(format!("{s}: root {root}"));
+        let app_hash = hex::encode_upper(id.hash);
+        let app_ok = app_hash == hr["app_hash"].as_str().unwrap()
+            && hex::encode_upper(&res.app_hash) == app_hash;
+        if !app_ok {
+            failures.push(format!("app hash {app_hash}, want {}", hr["app_hash"]));
         }
+        let tx_failures = check_tx_results(&res, &results[&height]);
+        let tx_ok = tx_failures.is_empty();
+        failures.extend(tx_failures);
+        let response = check_response(&res, &results[&height]);
+        let events_ok = !response.iter().any(|f| f.starts_with("events"));
+        let updates_ok = !response.iter().any(|f| f.starts_with("validator updates"));
+        failures.extend(response);
+        let ok = |b: bool| if b { "match" } else { "DIFF" };
+        println!(
+            "{height:>6} {} {} {} {} ({} txs) {} {}",
+            ok(app_ok),
+            ok(roots_ok),
+            ok(kv_ok),
+            ok(tx_ok),
+            res.tx_results.len(),
+            ok(events_ok),
+            ok(updates_ok)
+        );
+        // Later blocks run on this block's state: stop at the first miss.
+        assert!(
+            failures.is_empty(),
+            "height {height}:\n{}",
+            failures.join("\n")
+        );
     }
-    let app_hash = hex::encode_upper(id.hash);
-    println!("app hash {app_hash}");
-    if app_hash != BLOCK_1_APP_HASH || h1["app_hash"] != BLOCK_1_APP_HASH {
-        failures.push(format!("app hash {app_hash}, want {BLOCK_1_APP_HASH}"));
-    }
-    if hex::encode_upper(&res.app_hash) != BLOCK_1_APP_HASH {
-        failures.push("FinalizeBlock app hash".into());
-    }
-
-    assert!(res.tx_results.is_empty());
-    failures.extend(check_response(&res, &results[&1]));
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 /// The oracle state at height 0 from the full dump, every IAVL store.

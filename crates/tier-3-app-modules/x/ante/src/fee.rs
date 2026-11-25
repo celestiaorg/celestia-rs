@@ -201,9 +201,9 @@ fn validate_tx_fee(
     Ok(priority)
 }
 
-/// celestia-app v3.13.0 `ValidateTxFee` at app version 1: the node
-/// minimum (if configured) in CheckTx only; the network minimum applies
-/// from app version 2 and is not ported yet.
+/// celestia-app v3.13.0 `ValidateTxFee`: the node minimum (if
+/// configured) in CheckTx only; from app version 2 the network minimum of
+/// the `minfee` subspace.
 fn validate_tx_fee_v046(
     ctx: &mut Context<'_>,
     coins: &[FeeCoin],
@@ -227,7 +227,23 @@ fn validate_tx_fee_v046(
     }
     let app = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
     if app > 1 {
-        return Err(errs::invalid_request("the v2 network minimum gas price is not ported").into());
+        // The `minfee` subspace: `Has`, then `Get` (a Go panic if the
+        // value does not decode).
+        let key = b"minfee/NetworkMinGasPrice";
+        if !ctx.has(x_params::STORE_KEY, key)? {
+            return Err(errs::key_not_found("NetworkMinGasPrice").into());
+        }
+        let min = x_params::v046::get_dec(ctx, "minfee", "NetworkMinGasPrice")?;
+        let min_fee = min
+            .checked_mul_int(&Int::from_u64(gas))
+            .and_then(|d| d.ceil())
+            .or_else(|e| panic(e.to_string()))?;
+        if fee < min_fee.truncate_int() {
+            return Err(errs::insufficient_fee(format!(
+                "insufficient gas price for the network; got: {fee} required at least: {min_fee}"
+            ))
+            .into());
+        }
     }
     get_tx_priority_v9(coins, gas)
 }
