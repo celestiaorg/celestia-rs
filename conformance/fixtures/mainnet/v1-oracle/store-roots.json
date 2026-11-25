@@ -48,7 +48,7 @@
         "transfer": 1,
         "upgrade": 19
       },
-      "tx_results": null
+      "tx_results": []
     },
     {
       "height": 1,
@@ -92,7 +92,7 @@
         "transfer": 1,
         "upgrade": 19
       },
-      "tx_results": null
+      "tx_results": []
     },
     {
       "height": 2,

@@ -308,7 +308,7 @@ func run() error {
 			LastCommitInfo: lastCommit,
 		})
 		var results []*abci.ResponseDeliverTx
-		var txResults [][3]int64
+		txResults := [][3]int64{}
 		for _, encoded := range block.Block.Data.Txs {
 			tx, err := base64.StdEncoding.DecodeString(encoded)
 			if err != nil {
@@ -443,7 +443,7 @@ func dumpState(a *app.App, version int64, withKV bool) (Height, kvState, error) 
 		return Height{}, nil, err
 	}
 	keys := rs.StoreKeysByName()
-	h := Height{Height: version, Stores: map[string]string{}, Keys: map[string]int{}}
+	h := Height{Height: version, Stores: map[string]string{}, Keys: map[string]int{}, TxResults: [][3]int64{}}
 	state := kvState{}
 	var leaves [][]byte
 	names := make([]string, 0, len(info.StoreInfos))
