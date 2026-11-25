@@ -180,6 +180,61 @@ fn finalize_block_rejects_missing_header_and_wrong_height() {
     assert!(driver.commit(&mut ms).is_err());
 }
 
+/// Modules that record the chain ID BeginBlock sees.
+#[derive(Default)]
+struct RecordChainId(Vec<String>);
+
+impl Modules for RecordChainId {
+    fn init_genesis(&mut self, _: &mut Context<'_>, _: &[u8]) -> Result<Vec<ValidatorUpdate>> {
+        Ok(Vec::new())
+    }
+
+    fn begin_block(&mut self, _: &mut Context<'_>, header: &TmHeader) -> Result<()> {
+        self.0.push(header.chain_id.clone());
+        Ok(())
+    }
+
+    fn deliver_tx(&mut self, ctx: &mut Context<'_>, tx: &[u8]) -> TxOutcome {
+        NoModules.deliver_tx(ctx, tx)
+    }
+
+    fn end_block(&mut self, _: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
+        Ok(Vec::new())
+    }
+}
+
+/// A driver opened on committed state gets no InitChain. It takes the
+/// chain ID from the first block header, and rejects a header of another
+/// chain.
+#[test]
+fn reopened_driver_takes_the_chain_id_from_the_header() {
+    let mut ms = v1_store();
+    let mut driver = Driver::new(NoModules);
+    driver.init_chain(&mut ms, &init_request()).unwrap();
+    driver
+        .finalize_block(&mut ms, &finalize_request(1))
+        .unwrap();
+    driver.commit(&mut ms).unwrap();
+
+    let mut reopened = Driver::new(RecordChainId::default());
+    reopened
+        .finalize_block(&mut ms, &finalize_request(2))
+        .unwrap();
+    reopened.commit(&mut ms).unwrap();
+    assert_eq!(reopened.modules.0, ["celestia"]);
+
+    let mut other = finalize_request(3);
+    other.header.as_mut().unwrap().chain_id = "mocha-4".to_owned();
+    assert!(reopened.finalize_block(&mut ms, &other).is_err());
+    let mut empty = finalize_request(3);
+    empty.header.as_mut().unwrap().chain_id = String::new();
+    assert!(
+        Driver::new(NoModules)
+            .finalize_block(&mut ms, &empty)
+            .is_err()
+    );
+}
+
 /// A transaction's result: success carries `TxMsgData` of the message
 /// responses; failure carries the error code and no data.
 #[test]
