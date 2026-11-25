@@ -1,8 +1,8 @@
 //! celestia-app v1 `x/blobstream` (store and module name `qgb`), as
 //! celestia-app v3.13.0 runs it at app version 1: the attestation store
 //! (validator sets and data commitments for the Blobstream EVM
-//! contracts), each validator's EVM address and the staking hooks. The
-//! module only exists at app version 1; its store is
+//! contracts), each validator's EVM address, the staking hooks and the
+//! EndBlocker. The module only exists at app version 1; its store is
 //! dropped at the v1 to v2 upgrade.
 //!
 //! Store layout (raw string prefixes, `types/keys.go`):
@@ -13,13 +13,19 @@
 //! parameter, `DataCommitmentWindow`, lives in the cosmos-sdk v0.46
 //! parameter subspace `qgb`.
 //!
-//! Reference: celestia-app v3.13.0 `x/blobstream/genesis.go`,
+//! Reference: celestia-app v3.13.0 `x/blobstream/{abci.go,genesis.go}`,
 //! `keeper/*.go`, `types/*.go`.
 
+pub mod abci;
 pub mod errors;
 pub mod msgs;
 pub mod types;
+pub mod valset;
 
+pub use abci::{
+    end_block, get_current_valset, get_latest_data_commitment, get_latest_valset,
+    has_data_commitment,
+};
 pub use msgs::register_evm_address;
 pub use types::{Attestation, DataCommitment, EvmAddress, Valset};
 

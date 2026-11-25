@@ -9063,10 +9063,13 @@ name = "x-qgb"
 version = "0.0.1"
 dependencies = [
  "celestia-proto 0.0.1",
+ "flate2",
+ "hex",
  "math",
  "pbjson-types",
  "prost 0.13.5",
  "sdk",
+ "serde_json",
  "sha3",
  "x-params",
  "x-staking",

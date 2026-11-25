@@ -22,3 +22,7 @@ sha3 = "0.10"
 x-params = { path = "../params" }
 x-staking = { path = "../staking" }
 
+[dev-dependencies]
+flate2 = { version = "=1.1.2", default-features = false, features = ["rust_backend"] }
+hex = "0.4"
+serde_json = "1"
