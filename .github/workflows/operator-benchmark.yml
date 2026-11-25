@@ -606,7 +606,8 @@ jobs:
             echo '| Height | App version | Format | Chunks | Bytes | Block hash | Verified |'
             echo '| ---: | ---: | ---: | ---: | ---: | --- | --- |'
             for f in "$out"/heights/*.json; do
-              [[ -e $f ]] && jq -r '"| \(.height) | \(.app_version) | \(.format) | \(.chunk_count) | \(.total_bytes) | `\(.block_hash)` | \(.verified) (\(.verified_against)) |"' "$f"
+              [[ -e $f ]] || continue # no checkpoint yet: the glob did not match
+              jq -r '"| \(.height) | \(.app_version) | \(.format) | \(.chunk_count) | \(.total_bytes) | `\(.block_hash)` | \(.verified) (\(.verified_against)) |"' "$f"
             done
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload the checkpoint metadata
