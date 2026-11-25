@@ -2120,3 +2120,51 @@ fn v046_edit_validator_validate_basic() {
     let e = sdk::error::recover(|| msgs::validate_basic(&any)).unwrap_err();
     assert_eq!((e.codespace, e.code), ("undefined", 111_222));
 }
+
+/// ibc-go v6 `ValidateBasic` of the connection handshake: a zero proof
+/// height fails `MsgConnectionOpenConfirm` (v8 no longer checks it),
+/// with the SDK's `ErrInvalidHeight`; a bad signer is the SDK's
+/// `ErrInvalidAddress`; a 09-localhost `MsgConnectionOpenInit` passes
+/// (v8 rejects it here).
+#[test]
+fn v6_connection_validate_basic() {
+    use celestia_proto::ibc::core::client::v1::Height;
+    use celestia_proto::ibc::core::commitment::v1::MerklePrefix;
+    use celestia_proto::ibc::core::connection::v1 as copb;
+    let signer = x_auth::bech32(&[1; 20]).unwrap();
+    let confirm = |h: u64, signer: &str| {
+        ibc::validate_basic(&celestia_proto::Any::pack(
+            &copb::MsgConnectionOpenConfirm {
+                connection_id: "connection-0".into(),
+                proof_ack: vec![1],
+                proof_height: Some(Height {
+                    revision_number: 0,
+                    revision_height: h,
+                }),
+                signer: signer.into(),
+            },
+        ))
+        .unwrap()
+    };
+    confirm(1, &signer).unwrap();
+    let e = confirm(0, &signer).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 26), "{}", e.log);
+    let e = confirm(1, "x").unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 7), "{}", e.log);
+    let init = copb::MsgConnectionOpenInit {
+        client_id: "09-localhost".into(),
+        counterparty: Some(copb::Counterparty {
+            client_id: "07-tendermint-0".into(),
+            connection_id: String::new(),
+            prefix: Some(MerklePrefix {
+                key_prefix: b"ibc".to_vec(),
+            }),
+        }),
+        version: None,
+        delay_period: 0,
+        signer,
+    };
+    ibc::validate_basic(&celestia_proto::Any::pack(&init))
+        .unwrap()
+        .unwrap();
+}
