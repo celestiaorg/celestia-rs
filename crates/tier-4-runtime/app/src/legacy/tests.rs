@@ -1436,3 +1436,61 @@ fn v046_auth_and_bank_store_access() {
         );
     });
 }
+
+/// v0.46 `CreateValidator` below the minimum commission rate reads the
+/// parameter twice (the check and the error message) and nothing else;
+/// staking's single-parameter getters read one subspace key.
+#[test]
+#[allow(deprecated)]
+fn v046_create_validator_below_min_commission() {
+    use celestia_proto::cosmos::staking::v1beta1 as staking;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    write_mainnet_genesis_params(&mut ctx).unwrap();
+    let op = [4u8; 20];
+    let msg = staking::MsgCreateValidator {
+        description: Some(staking::Description {
+            moniker: "m".into(),
+            ..Default::default()
+        }),
+        commission: Some(staking::CommissionRates {
+            rate: "10000000000000000".into(),
+            max_rate: "200000000000000000".into(),
+            max_change_rate: "10000000000000000".into(),
+        }),
+        min_self_delegation: "1".into(),
+        delegator_address: x_auth::bech32(&op).unwrap(),
+        validator_address: x_staking::addr::val_to_string(&op).unwrap(),
+        pubkey: Some(celestia_proto::Any::pack(
+            &celestia_proto::cosmos::crypto::ed25519::PubKey { key: vec![5; 32] },
+        )),
+        value: Some(celestia_proto::cosmos::base::v1beta1::Coin {
+            denom: "utia".into(),
+            amount: "1000000".into(),
+        }),
+    };
+    let any = celestia_proto::Any::pack(&msg);
+    msgs::validate_basic(&any).unwrap();
+    ctx.gas = kvstore::GasMeter::new(1_000_000);
+    ctx.gas.record_charges();
+    let e = msgs::route(&mut ctx, &any).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("staking", 40));
+    assert_eq!(
+        e.log,
+        "cannot set validator commission to less than minimum rate of 0.050000000000000000: commission cannot be less than min rate"
+    );
+    let flats = ctx
+        .gas
+        .take_charges()
+        .iter()
+        .filter(|(_, d)| *d == "ReadFlat")
+        .count();
+    assert_eq!(flats, 2);
+    ctx.gas.record_charges();
+    assert_eq!(x_staking::store::bond_denom(&mut ctx).unwrap(), "utia");
+    assert_eq!(x_staking::store::max_entries(&mut ctx).unwrap(), 7);
+    let reads = ctx.gas.take_charges();
+    assert_eq!(reads.iter().filter(|(_, d)| *d == "ReadFlat").count(), 2);
+}

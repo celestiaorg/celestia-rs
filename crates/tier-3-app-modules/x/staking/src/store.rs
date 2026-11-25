@@ -4,7 +4,7 @@
 use celestia_proto::celestia_core_proto::abci::ValidatorUpdate;
 use celestia_proto::cosmos::base::v1beta1::IntProto;
 use celestia_proto::cosmos::staking::v1beta1 as pb;
-use math::Int;
+use math::{Int, LegacyDec};
 use pbjson_types::Timestamp;
 use prost::Message;
 use sdk::error::sdk as errs;
@@ -74,8 +74,76 @@ pub fn set_params(ctx: &mut Context<'_>, p: &Params) -> Result<()> {
     )
 }
 
+/// cosmos-sdk v0.46 single-parameter getters (`k.BondDenom(ctx)` and
+/// the like) read one key of subspace `staking`; later versions read the
+/// whole params.
+fn v046_param<T>(
+    ctx: &mut Context<'_>,
+    get: impl FnOnce(&mut Context<'_>) -> Result<T>,
+    field: impl FnOnce(Params) -> T,
+) -> Result<T> {
+    if ctx.is_sdk_v046() {
+        return get(ctx);
+    }
+    get_params(ctx).map(field)
+}
+
+/// `UnbondingTime`.
+pub fn unbonding_time(ctx: &mut Context<'_>) -> Result<pbjson_types::Duration> {
+    v046_param(
+        ctx,
+        |ctx| {
+            let ns = x_params::v046::get_i64(ctx, "staking", "UnbondingTime")?;
+            Ok(pbjson_types::Duration {
+                seconds: ns / 1_000_000_000,
+                nanos: i32::try_from(ns % 1_000_000_000).map_err(|e| errs::logic(e.to_string()))?,
+            })
+        },
+        |p| p.unbonding_time,
+    )
+}
+
+/// `MaxValidators`.
+pub fn max_validators(ctx: &mut Context<'_>) -> Result<u32> {
+    v046_param(
+        ctx,
+        |ctx| x_params::v046::get_u32(ctx, "staking", "MaxValidators"),
+        |p| p.max_validators,
+    )
+}
+
+/// `MaxEntries`.
+pub fn max_entries(ctx: &mut Context<'_>) -> Result<u32> {
+    v046_param(
+        ctx,
+        |ctx| x_params::v046::get_u32(ctx, "staking", "MaxEntries"),
+        |p| p.max_entries,
+    )
+}
+
+/// `HistoricalEntries`.
+pub fn historical_entries(ctx: &mut Context<'_>) -> Result<u32> {
+    v046_param(
+        ctx,
+        |ctx| x_params::v046::get_u32(ctx, "staking", "HistoricalEntries"),
+        |p| p.historical_entries,
+    )
+}
+
+/// `MinCommissionRate`.
+pub fn min_commission_rate(ctx: &mut Context<'_>) -> Result<LegacyDec> {
+    v046_param(
+        ctx,
+        |ctx| x_params::v046::get_dec(ctx, "staking", "MinCommissionRate"),
+        |p| p.min_commission_rate,
+    )
+}
+
 /// `BondDenom` (falls back to `sdk.DefaultBondDenom`, `utia` in celestia).
 pub fn bond_denom(ctx: &mut Context<'_>) -> Result<String> {
+    if ctx.is_sdk_v046() {
+        return x_params::v046::get_string(ctx, "staking", "BondDenom");
+    }
     let p = get_params(ctx)?;
     Ok(if p.bond_denom.is_empty() {
         crate::DEFAULT_BOND_DENOM.to_owned()
@@ -224,7 +292,7 @@ pub fn get_all_validators(ctx: &mut Context<'_>) -> Result<Vec<Validator>> {
 
 /// `GetLastValidators` (in operator-address order).
 pub fn get_last_validators(ctx: &mut Context<'_>) -> Result<Vec<Validator>> {
-    let max = get_params(ctx)?.max_validators as usize;
+    let max = max_validators(ctx)? as usize;
     let mut it = ctx.prefix_iter(STORE_KEY, &[keys::LAST_VALIDATOR_POWER])?;
     let mut out = Vec::new();
     while let Some((k, _)) = it.next(ctx)? {
@@ -240,7 +308,7 @@ pub fn get_last_validators(ctx: &mut Context<'_>) -> Result<Vec<Validator>> {
 
 /// `GetBondedValidatorsByPower`.
 pub fn get_bonded_validators_by_power(ctx: &mut Context<'_>) -> Result<Vec<Validator>> {
-    let max = get_params(ctx)?.max_validators as usize;
+    let max = max_validators(ctx)? as usize;
     let prefix = [keys::VALIDATORS_BY_POWER_INDEX];
     let end = sdk::context::prefix_end(&prefix);
     let mut it = ctx.reverse_iterator(STORE_KEY, Some(&prefix), end.as_deref())?;

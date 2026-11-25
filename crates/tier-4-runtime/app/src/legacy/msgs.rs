@@ -5,6 +5,7 @@
 
 use celestia_proto::Any;
 use celestia_proto::cosmos::bank::v1beta1 as bank;
+use celestia_proto::cosmos::staking::v1beta1 as staking;
 use prost::{Message, Name};
 use sdk::coins::Coins;
 use sdk::error::sdk as errs;
@@ -73,6 +74,63 @@ fn validate_inputs_outputs(inputs: &[bank::Input], outputs: &[bank::Output]) -> 
     Ok(())
 }
 
+/// `sdk.ValAddressFromBech32`, failing with `invalid <what> address`.
+fn val_address(s: &str, what: &str) -> Result<Vec<u8>> {
+    x_staking::addr::val_from_string(s)
+        .map_err(|e| errs::invalid_address(format!("invalid {what} address: {}", e.log)))
+}
+
+/// `!coin.IsValid() || !coin.Amount.IsPositive()` of a staking amount.
+fn valid_positive_coin(
+    c: Option<&celestia_proto::cosmos::base::v1beta1::Coin>,
+) -> Result<sdk::coins::Coin> {
+    let (coin, valid) = x_staking::msgs::parse_coin(c);
+    if !valid || !coin.amount.is_positive() {
+        return Err(errs::invalid_request("invalid delegation amount"));
+    }
+    Ok(coin)
+}
+
+/// staking `MsgCreateValidator.ValidateBasic` (v0.46): returns the
+/// validated commission rates (at a zero update time) and minimum self
+/// delegation. (v0.46 still uses the delegator address.)
+#[allow(deprecated)]
+fn validate_create_validator(
+    m: &staking::MsgCreateValidator,
+) -> Result<(x_staking::types::Commission, math::Int)> {
+    let del = acc_address(&m.delegator_address, "delegator")?;
+    let val = val_address(&m.validator_address, "validator")?;
+    if val != del {
+        return Err(errs::invalid_request("validator address is invalid"));
+    }
+    if m.pubkey.is_none() {
+        return Err(x_staking::errors::empty_validator_pub_key());
+    }
+    let value = valid_positive_coin(m.value.as_ref())?;
+    if m.description.clone().unwrap_or_default() == staking::Description::default() {
+        return Err(errs::invalid_request("empty description"));
+    }
+    let rates = m.commission.clone().unwrap_or_default();
+    if rates == staking::CommissionRates::default() {
+        return Err(errs::invalid_request("empty commission"));
+    }
+    let commission = x_staking::msgs::commission_rates(&rates, pbjson_types::Timestamp::default())?;
+    // A nil `MinSelfDelegation` panics in `IsPositive`.
+    if m.min_self_delegation.is_empty() {
+        return Err(x_staking::msgs::nil_deref());
+    }
+    let min_self = x_staking::msgs::wire_int(&m.min_self_delegation)?;
+    if !min_self.is_positive() {
+        return Err(errs::invalid_request(
+            "minimum self delegation must be a positive integer",
+        ));
+    }
+    if value.amount < min_self {
+        return Err(x_staking::errors::self_delegation_below_minimum());
+    }
+    Ok((commission, min_self))
+}
+
 /// `msg.ValidateBasic()` of a v0.46 message.
 pub fn validate_basic(msg: &Any) -> Result<()> {
     if msg.type_url == bank::MsgSend::type_url() {
@@ -89,6 +147,13 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
             return Err(x_bank::msgs::errors::no_outputs());
         }
         validate_inputs_outputs(&m.inputs, &m.outputs)?;
+    } else if msg.type_url == staking::MsgDelegate::type_url() {
+        let m: staking::MsgDelegate = decode(msg)?;
+        acc_address(&m.delegator_address, "delegator")?;
+        val_address(&m.validator_address, "validator")?;
+        valid_positive_coin(m.amount.as_ref())?;
+    } else if msg.type_url == staking::MsgCreateValidator::type_url() {
+        validate_create_validator(&decode(msg)?)?;
     }
     Ok(())
 }
@@ -109,6 +174,12 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
     }
     if msg.type_url == bank::MsgMultiSend::type_url() {
         return Ok(Any::pack(&multi_send(ctx, &decode(msg)?)?));
+    }
+    if msg.type_url == staking::MsgDelegate::type_url() {
+        return Ok(Any::pack(&delegate(ctx, &decode(msg)?)?));
+    }
+    if msg.type_url == staking::MsgCreateValidator::type_url() {
+        return Ok(Any::pack(&create_validator(ctx, &decode(msg)?)?));
     }
     Err(errs::unknown_request(format!(
         "the cosmos-sdk v0.46 handler of {} is not ported",
@@ -198,4 +269,128 @@ fn multi_send(
     }
     module_event(ctx, "bank");
     Ok(bank::MsgMultiSendResponse {})
+}
+
+fn staking_message_event(ctx: &mut Context<'_>, sender: &str) {
+    ctx.events.emit(event(
+        "message",
+        [("module", "staking"), ("sender", sender)],
+    ));
+}
+
+/// The bond denom check of the staking msg servers.
+fn check_bond_denom(ctx: &mut Context<'_>, denom: &str) -> Result<()> {
+    let bond_denom = x_staking::store::bond_denom(ctx)?;
+    if denom != bond_denom {
+        return Err(errs::invalid_request(format!(
+            "invalid coin denomination: got {denom}, expected {bond_denom}"
+        )));
+    }
+    Ok(())
+}
+
+/// staking `msgServer.Delegate` (v0.46).
+fn delegate(
+    ctx: &mut Context<'_>,
+    msg: &staking::MsgDelegate,
+) -> Result<staking::MsgDelegateResponse> {
+    let val = val_address(&msg.validator_address, "validator")?;
+    let v = x_staking::store::get_validator(ctx, &val)?
+        .ok_or_else(x_staking::errors::no_validator_found)?;
+    let del = acc_address(&msg.delegator_address, "delegator")?;
+    let amount = valid_positive_coin(msg.amount.as_ref())?;
+    check_bond_denom(ctx, &amount.denom)?;
+    let shares = x_staking::delegation::delegate(
+        ctx,
+        &del,
+        &amount.amount,
+        x_staking::types::BondStatus::Unbonded,
+        &v,
+        true,
+    )?;
+    ctx.events.emit(event(
+        "delegate",
+        [
+            ("validator", msg.validator_address.clone()),
+            ("amount", amount.to_string()),
+            ("new_shares", shares.to_string()),
+        ],
+    ));
+    staking_message_event(ctx, &msg.delegator_address);
+    Ok(staking::MsgDelegateResponse {})
+}
+
+/// staking `msgServer.CreateValidator` (v0.46).
+#[allow(deprecated)]
+fn create_validator(
+    ctx: &mut Context<'_>,
+    msg: &staking::MsgCreateValidator,
+) -> Result<staking::MsgCreateValidatorResponse> {
+    use x_staking::store;
+    let (mut commission, min_self) = validate_create_validator(msg)?;
+    let val = val_address(&msg.validator_address, "validator")?;
+    let min_rate = store::min_commission_rate(ctx)?;
+    if commission.rate < min_rate {
+        // The error message reads the parameter again.
+        let min_rate = store::min_commission_rate(ctx)?;
+        return Err(x_staking::errors::commission_lt_min_rate().wrap(format!(
+            "cannot set validator commission to less than minimum rate of {min_rate}"
+        )));
+    }
+    if store::get_validator(ctx, &val)?.is_some() {
+        return Err(x_staking::errors::validator_owner_exists());
+    }
+    let pk_any = msg
+        .pubkey
+        .as_ref()
+        .ok_or_else(x_staking::errors::empty_validator_pub_key)?;
+    let pk = x_staking::addr::PubKey::from_any(pk_any)?;
+    if store::get_validator_by_cons_addr(ctx, &pk.address()?)?.is_some() {
+        return Err(x_staking::errors::validator_pub_key_exists());
+    }
+    let value = valid_positive_coin(msg.value.as_ref())?;
+    check_bond_denom(ctx, &value.denom)?;
+    let description = msg.description.clone().unwrap_or_default();
+    x_staking::types::ensure_description_length(&description)?;
+    if let Some(vp) = ctx.consensus_params.validator.as_ref()
+        && !vp.pub_key_types.iter().any(|t| t == pk.type_str())
+    {
+        return Err(
+            x_staking::errors::validator_pub_key_type_not_supported().wrap(format!(
+                "got: {}, expected: [{}]",
+                pk.type_str(),
+                vp.pub_key_types.join(" ")
+            )),
+        );
+    }
+    let mut v = x_staking::types::Validator::new(
+        x_staking::addr::val_to_string(&val)?,
+        pk.to_any(),
+        description,
+    );
+    commission.update_time = ctx.header.time;
+    v.commission = commission;
+    let del = acc_address(&msg.delegator_address, "delegator")?;
+    v.min_self_delegation = min_self;
+    store::set_validator(ctx, &v)?;
+    store::set_validator_by_cons_addr(ctx, &v)?;
+    store::set_new_validator_by_power_index(ctx, &v)?;
+    x_staking::hooks::hooks().after_validator_created(ctx, &val)?;
+    x_staking::delegation::delegate(
+        ctx,
+        &del,
+        &value.amount,
+        x_staking::types::BondStatus::Unbonded,
+        &v,
+        true,
+    )?;
+    ctx.events.emit(event(
+        "create_validator",
+        [
+            ("validator", msg.validator_address.clone()),
+            ("amount", value.to_string()),
+        ],
+    ));
+    staking_message_event(ctx, &msg.delegator_address);
+    Ok(staking::MsgCreateValidatorResponse {})
 }

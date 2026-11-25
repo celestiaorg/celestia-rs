@@ -122,15 +122,7 @@ fn init_module(ctx: &mut Context<'_>, module: &str, g: &Json) -> Result<Vec<Vali
         "authz" => x_authz::init_genesis_json(ctx, g)?,
         // No genesis state.
         "vesting" | "params" => {}
-        "genutil" => {
-            return crate::genutil::init_genesis(
-                ctx,
-                g,
-                crate::txpipe::decode_tx,
-                crate::txpipe::ante_v046,
-                crate::txpipe::apply_validator_set,
-            );
-        }
+        "genutil" => return init_genutil(ctx, g),
         "auth" => init_auth(ctx, g)?,
         // The params go to their subspace first (as `SetParams` does at the
         // start of each v0.46 InitGenesis); the rest of the module's
@@ -153,6 +145,29 @@ fn init_module(ctx: &mut Context<'_>, module: &str, g: &Json) -> Result<Vec<Vali
         }
     }
     Ok(Vec::new())
+}
+
+/// cosmos-sdk v0.46 genutil `InitGenesis`: each gentx through `DeliverTx`
+/// (the v0.46 `runTx` on an infinite block gas meter; a failed gentx
+/// fails InitChain, where Go panics), then the validator set updates.
+fn init_genutil(ctx: &mut Context<'_>, g: &Json) -> Result<Vec<ValidatorUpdate>> {
+    let gen_txs = g
+        .get("gen_txs")
+        .and_then(Json::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if gen_txs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut block_gas = kvstore::GasMeter::infinite();
+    for json in &gen_txs {
+        let bytes = crate::genutil::gentx_bytes(json)?;
+        let events = std::mem::take(&mut ctx.events);
+        let out = super::tx::deliver_tx(ctx, &mut block_gas, &bytes);
+        ctx.events = events;
+        out.result.map_err(|e| e.wrap("failed to deliver gentx"))?;
+    }
+    crate::txpipe::apply_validator_set(ctx)
 }
 
 /// cosmos-sdk v0.46 auth `InitGenesis`: params into subspace `auth`, then

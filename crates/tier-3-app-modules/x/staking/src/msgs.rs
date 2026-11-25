@@ -15,7 +15,7 @@ use sdk::{Context, Result};
 use crate::addr::{PubKey, acc_from_string, val_from_string};
 use crate::delegation;
 use crate::errors;
-use crate::store::{self, get_params};
+use crate::store;
 use crate::types::{self, BondStatus, Commission, Params, Repr, Validator, math_err};
 use crate::validator::update_validator_commission;
 
@@ -30,7 +30,8 @@ fn invalid_addr(what: &str, e: &sdk::SdkError) -> sdk::SdkError {
 }
 
 /// A proto coin as `(coin, valid)` following `Coin.IsValid`.
-fn parse_coin(c: Option<&PbCoin>) -> (Coin, bool) {
+#[must_use]
+pub fn parse_coin(c: Option<&PbCoin>) -> (Coin, bool) {
     let Some(c) = c else {
         return (Coin::with_amount("", Int::zero()), false);
     };
@@ -46,7 +47,7 @@ fn parse_coin(c: Option<&PbCoin>) -> (Coin, bool) {
 /// `CommissionRates.Validate` of the decoded rates. An empty customtype
 /// field is a nil `LegacyDec` in Go, which `Validate` dereferences (panic)
 /// as soon as it reaches it, after any earlier failing check.
-fn commission_rates(
+pub fn commission_rates(
     rates: &pb::CommissionRates,
     update_time: pbjson_types::Timestamp,
 ) -> Result<Commission> {
@@ -84,7 +85,8 @@ fn commission_rates(
 
 /// Go's recovered nil-pointer panic (a method on a nil `math.Int` /
 /// `LegacyDec`): `sdkerrors.ErrPanic`.
-fn nil_deref() -> sdk::SdkError {
+#[must_use]
+pub fn nil_deref() -> sdk::SdkError {
     sdk::error::go_panic("runtime error: invalid memory address or nil pointer dereference")
 }
 
@@ -92,7 +94,8 @@ fn wire_dec(s: &str) -> Result<LegacyDec> {
     types::dec(s, Repr::Wire)
 }
 
-fn wire_int(s: &str) -> Result<Int> {
+/// A gogoproto `math.Int` customtype field as sent on the wire.
+pub fn wire_int(s: &str) -> Result<Int> {
     types::int(s, Repr::Wire)
 }
 
@@ -133,7 +136,7 @@ pub fn handle_create_validator(
         return Err(errors::self_delegation_below_minimum());
     }
 
-    let min_rate = get_params(ctx)?.min_commission_rate;
+    let min_rate = store::min_commission_rate(ctx)?;
     if commission.rate < min_rate {
         return Err(errors::commission_lt_min_rate().wrap(format!(
             "cannot set validator commission to less than minimum rate of {min_rate}"
@@ -302,7 +305,7 @@ fn edit_validator(
                 "commission rate must be between 0 and 1 (inclusive)",
             ));
         }
-        let min = get_params(ctx)?.min_commission_rate;
+        let min = store::min_commission_rate(ctx)?;
         if *r < min {
             return Err(errs::invalid_request(format!(
                 "commission rate cannot be less than the min commission rate {min}"
