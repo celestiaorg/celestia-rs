@@ -61,3 +61,34 @@ fn dependabot_lists_every_go_module() {
         "Go modules missing from .github/dependabot.yml: {missing:#?}"
     );
 }
+
+/// Every `interval:` value in the dependabot configuration.
+fn intervals(config: &str) -> Vec<String> {
+    config
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("interval:"))
+        .map(|value| value.trim().to_string())
+        .collect()
+}
+
+#[test]
+fn dependabot_runs_monthly() {
+    let root = workspace_root();
+    let config = fs::read_to_string(root.join(".github/dependabot.yml")).unwrap();
+    let intervals = intervals(&config);
+    assert!(!intervals.is_empty(), "no schedule intervals found");
+    assert!(
+        intervals.iter().all(|i| i == "monthly"),
+        "every dependabot entry must run monthly, found: {intervals:?}"
+    );
+}
+
+#[test]
+fn dependabot_groups_rust_majors() {
+    let root = workspace_root();
+    let config = fs::read_to_string(root.join(".github/dependabot.yml")).unwrap();
+    assert!(
+        config.contains("rust-major:") && config.contains("update-types: [major]"),
+        "cargo major version updates must share one group"
+    );
+}

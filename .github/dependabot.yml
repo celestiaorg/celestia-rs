@@ -11,7 +11,7 @@
 version: 2
 updates:
   # Rust workspace (the node binary). Minor / patch updates are grouped
-  # into one monthly pull request; majors arrive one per crate, except the
+  # into one monthly pull request and majors into a second one, except the
   # consensus-sensitive families below, which are migrated by hand
   # because a new major can change encoding, hashing or signatures
   # (every bump must keep the parity suite green).
@@ -26,6 +26,9 @@ updates:
       rust-minor-patch:
         applies-to: version-updates
         update-types: [minor, patch]
+      rust-major:
+        applies-to: version-updates
+        update-types: [major]
       rust-security:
         applies-to: security-updates
         patterns: ["*"]
@@ -144,8 +147,7 @@ updates:
       - /conformance/v11-frozen
       - /conformance/websocket-lifecycle
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
     open-pull-requests-limit: 0
     groups:
       go-security:
@@ -175,8 +177,7 @@ updates:
       - /conformance/mainnet-rpc/persistence/ordered-evidence/dump-sources
       - /conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/capture-sources/conformance/provider-client
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
     open-pull-requests-limit: 0
     ignore:
       - dependency-name: "*"
