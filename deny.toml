@@ -4,19 +4,13 @@ all-features = true
 # Advisories are checked in CI (cargo-deny >= 0.18 understands CVSS 4.0).
 # Every accepted advisory is listed here with its reason; see
 # docs/security.md for the full triage. Re-check every entry at each triage
-# (next: 2027-01-15) or when reed-solomon-erasure / ark-ff release.
+# (next: 2027-01-15) or when ark-ff releases.
 [advisories]
 yanked = "deny"
 ignore = [
     { id = "RUSTSEC-2026-0543", allow = ["pbjson-types@=0.7.0"], expiry = "2026-12-17", reason = "chrono is unmaintained; pbjson-types uses it for protobuf timestamps (upstream #162)" },
-    # lru 0.7.8, only via reed-solomon-erasure 6.0.0 (latest release; block
-    # propagation erasure coding). It calls only LruCache::get/put; the
-    # unsound pop() path is never reached.
-    { id = "RUSTSEC-2026-0253", reason = "lru 0.7 via reed-solomon-erasure: pop() unused" },
-    # Unmaintained, no safe upgrade: instant via parking_lot 0.11 (pulled by
-    # reed-solomon-erasure), paste (proc-macro, build time only) via
+    # Unmaintained, no safe upgrade: paste (proc-macro, build time only) via
     # ark-ff (x/zkism) and tendermint-proto.
-    { id = "RUSTSEC-2024-0384", reason = "instant unmaintained; via reed-solomon-erasure, no upgrade" },
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained; build-time proc macro via ark-ff / tendermint-proto" },
 ]
 
@@ -42,3 +36,17 @@ wildcards = "deny"
 # dependencies while still denying wildcard requirements on registry crates.
 allow-wildcard-paths = true
 deny = []
+
+# Every crate comes from crates.io, from this repository (`vendor/`,
+# workspace paths), or from one of the two git repositories below, which
+# the optional DA bridge features pin by commit (`rev`). A dependency from
+# another registry or git URL fails the check instead of entering the
+# lockfile unnoticed.
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    "https://github.com/celestiaorg/lumina",
+    "https://github.com/shiguredo/tobi-quic",
+]
