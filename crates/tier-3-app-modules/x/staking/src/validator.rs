@@ -107,7 +107,7 @@ pub fn update_validator_commission(
     let mut c = v.commission.clone();
     let block_time = ctx.header.time;
     c.validate_new_rate(new_rate, &block_time)?;
-    let min = get_params(ctx)?.min_commission_rate;
+    let min = store::min_commission_rate(ctx)?;
     if *new_rate < min {
         return Err(sdk::error::internal(format!(
             "cannot set validator commission to less than minimum rate of {min}"
@@ -204,11 +204,16 @@ pub fn begin_unbonding_validator(ctx: &mut Context<'_>, mut v: Validator) -> Res
             "should not already be unbonded or unbonding",
         ));
     }
-    let id = store::increment_unbonding_id(ctx)?;
+    // cosmos-sdk v0.46 has no unbonding IDs.
+    let id = if ctx.is_sdk_v046() {
+        None
+    } else {
+        Some(store::increment_unbonding_id(ctx)?)
+    };
     v.status = BondStatus::Unbonding;
     v.unbonding_time = sdk::time::add_duration(&ctx.header.time, &params.unbonding_time);
     v.unbonding_height = ctx.header.height;
-    v.unbonding_ids.push(id);
+    v.unbonding_ids.extend(id);
     store::set_validator(ctx, &v)?;
     store::set_validator_by_power_index(ctx, &v)?;
     store::insert_unbonding_validator_queue(ctx, &v)?;
@@ -216,8 +221,10 @@ pub fn begin_unbonding_validator(ctx: &mut Context<'_>, mut v: Validator) -> Res
     let op = v.operator()?;
     let h = hooks::hooks();
     h.after_validator_begin_unbonding(ctx, &cons, &op)?;
-    store::set_validator_by_unbonding_id(ctx, &v, id)?;
-    h.after_unbonding_initiated(ctx, id)?;
+    if let Some(id) = id {
+        store::set_validator_by_unbonding_id(ctx, &v, id)?;
+        h.after_unbonding_initiated(ctx, id)?;
+    }
     Ok(v)
 }
 

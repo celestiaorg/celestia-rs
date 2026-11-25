@@ -42,13 +42,35 @@ pub const ADDED_IN_V10: &[&str] = &["fibre", "valaddr"];
 /// (ADR 0004). App version 0 (unset) is treated as current.
 #[must_use]
 pub const fn is_v9(app_version: u64) -> bool {
-    app_version != 0 && app_version < 10
+    sdk::version::is_v9(app_version)
 }
 
-/// Whether module or store `name` exists at `app_version`.
+/// Whether module or store `name` exists in the state machine celestia-rs
+/// runs for `app_version` ([`sdk::version::Release::executing`]). Names
+/// that are not stores (most module names) always exist. App versions 1 to
+/// 8 run as 9, so this is the v9 store set for them, not their mainnet one
+/// ([`sdk::version::Release::stores`]).
 #[must_use]
 pub fn exists_at(name: &str, app_version: u64) -> bool {
-    !(is_v9(app_version) && ADDED_IN_V10.contains(&name))
+    !IAVL_STORES.contains(&name) || sdk::version::Release::executing(app_version).has_store(name)
+}
+
+/// Mounts the stores of `release` (its own commit info, unlike
+/// [`all`]): its IAVL stores, its cosmos-sdk v0.46 memory store entries,
+/// and the transient and memory stores modules use. For historical
+/// execution of a release as itself; the current app mounts [`all`].
+pub fn mount_release(
+    ms: &mut sdk::MultiStore,
+    release: &sdk::version::Release,
+) -> Result<(), sdk::StoreError> {
+    for name in release.stores {
+        ms.mount(name, Kind::Iavl)?;
+    }
+    for name in release.commit_memory_stores {
+        ms.mount_commit_memory(name)?;
+    }
+    ms.mount(TRANSIENT_PARAMS, Kind::Transient)?;
+    ms.mount(MEMORY_CAPABILITY, Kind::Memory)
 }
 
 /// Transient store of `x/params`.
@@ -62,4 +84,79 @@ pub fn all() -> impl Iterator<Item = (&'static str, Kind)> {
         (TRANSIENT_PARAMS, Kind::Transient),
         (MEMORY_CAPABILITY, Kind::Memory),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sdk::version::Release;
+    use std::collections::BTreeSet;
+
+    fn set(names: &[&'static str]) -> BTreeSet<&'static str> {
+        names.iter().copied().collect()
+    }
+
+    /// The mounted stores, the v10 additions and the release table agree.
+    #[test]
+    fn store_lists_match_the_release_table() {
+        let current = Release::executing(0);
+        assert_eq!(set(current.stores), set(IAVL_STORES));
+        let v9 = Release::executing(9);
+        let added: BTreeSet<_> = set(current.stores)
+            .difference(&set(v9.stores))
+            .copied()
+            .collect();
+        assert_eq!(added, set(ADDED_IN_V10));
+        for v in 10..=12 {
+            assert_eq!(set(Release::executing(v).stores), set(IAVL_STORES), "v{v}");
+        }
+    }
+
+    /// A release's stores mount as its commit info: app version 1 lists
+    /// the 17 v1 IAVL stores (with `params` and `qgb`) and
+    /// `mem_capability` with the empty commit ID; v0.50 releases list no
+    /// memory store.
+    #[test]
+    fn mount_release_lists_the_release_commit_info() {
+        for v in 1..=12 {
+            let release = Release::for_app_version(v).expect("known app version");
+            let mut ms = sdk::MultiStore::new();
+            mount_release(&mut ms, release).expect("mount");
+            ms.commit().expect("commit");
+            let info = ms.root().last_commit_info().expect("commit info");
+            let mut expected: Vec<&str> = release
+                .stores
+                .iter()
+                .chain(release.commit_memory_stores)
+                .copied()
+                .collect();
+            expected.sort_unstable();
+            let names: Vec<&str> = info.store_infos.iter().map(|s| s.name.as_str()).collect();
+            assert_eq!(names, expected, "v{v}");
+            for s in &info.store_infos {
+                let memory = release.commit_memory_stores.contains(&s.name.as_str());
+                assert_eq!(s.commit_id.is_none(), memory, "{} at v{v}", s.name);
+            }
+            assert!(ms.is_mounted(TRANSIENT_PARAMS) && ms.is_mounted(MEMORY_CAPABILITY));
+        }
+        let v1 = Release::for_app_version(1).expect("v1");
+        assert_eq!(v1.stores.len() + v1.commit_memory_stores.len(), 18);
+        assert!(v1.has_store("qgb") && v1.has_store("params"));
+    }
+
+    /// Before the release table, a name was missing only when a v9
+    /// executable ran it and v10 added it. Every app version keeps that.
+    #[test]
+    fn exists_at_is_unchanged_for_every_app_version() {
+        let names = IAVL_STORES
+            .iter()
+            .copied()
+            .chain(["auth", "genutil", "qgb"]);
+        for name in names {
+            for v in 0..=13 {
+                let before = !(v != 0 && v < 10 && ADDED_IN_V10.contains(&name));
+                assert_eq!(exists_at(name, v), before, "{name} at v{v}");
+            }
+        }
+    }
 }

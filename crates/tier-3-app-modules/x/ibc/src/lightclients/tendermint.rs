@@ -311,7 +311,7 @@ fn set_consensus_metadata_with_values(
 }
 
 /// `setConsensusMetadata`: self height and block time.
-fn set_consensus_metadata(ctx: &mut Context<'_>, client_id: &str, h: &Height) -> Result<()> {
+pub fn set_consensus_metadata(ctx: &mut Context<'_>, client_id: &str, h: &Height) -> Result<()> {
     let self_height = client::get_self_height(ctx)?;
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     let now = block_time(ctx) as u64;
@@ -330,7 +330,7 @@ fn delete_consensus_state_and_metadata(
 }
 
 /// `GetPreviousConsensusState`: highest consensus state below `h`.
-fn get_previous_consensus_state(
+pub fn get_previous_consensus_state(
     ctx: &mut Context<'_>,
     client_id: &str,
     h: &Height,
@@ -345,7 +345,7 @@ fn get_previous_consensus_state(
 }
 
 /// `GetNextConsensusState`: lowest consensus state above `h`.
-fn get_next_consensus_state(
+pub fn get_next_consensus_state(
     ctx: &mut Context<'_>,
     client_id: &str,
     h: &Height,
@@ -742,7 +742,7 @@ fn trust_level(cs: &ClientState) -> Fraction {
 }
 
 /// `verifyHeader`.
-fn verify_header(
+pub fn verify_header(
     ctx: &mut Context<'_>,
     client_id: &str,
     cs: &ClientState,
@@ -940,7 +940,7 @@ pub fn check_for_misbehaviour(
 }
 
 /// `pruneOldestConsensusState`.
-fn prune_oldest_consensus_state(
+pub fn prune_oldest_consensus_state(
     ctx: &mut Context<'_>,
     client_id: &str,
     cs: &ClientState,

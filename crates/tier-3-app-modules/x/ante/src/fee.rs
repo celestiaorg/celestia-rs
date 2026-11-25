@@ -201,8 +201,75 @@ fn validate_tx_fee(
     Ok(priority)
 }
 
+/// celestia-app v3.13.0 `ValidateTxFee`: the node minimum (if
+/// configured) in CheckTx only; from app version 2 the network minimum of
+/// the `minfee` subspace.
+fn validate_tx_fee_v046(
+    ctx: &mut Context<'_>,
+    coins: &[FeeCoin],
+    gas: u64,
+    deps: &impl AnteDeps,
+) -> R<i64> {
+    let fee = match find(coins, BOND_DENOM) {
+        Some(c) => c.amount()?.clone(),
+        None => Int::zero(),
+    };
+    if is_check_tx(ctx.mode)
+        && let Some(min) = deps.node_min_gas_price()
+        && !min.is_zero()
+    {
+        verify_min_fee(
+            &fee,
+            gas,
+            &min,
+            "insufficient minimum gas price for this node",
+        )?;
+    }
+    let app = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
+    if app > 1 {
+        // The `minfee` subspace: `Has`, then `Get` (a Go panic if the
+        // value does not decode).
+        let key = b"minfee/NetworkMinGasPrice";
+        if !ctx.has(x_params::STORE_KEY, key)? {
+            return Err(errs::key_not_found("NetworkMinGasPrice").into());
+        }
+        let min = x_params::v046::get_dec(ctx, "minfee", "NetworkMinGasPrice")?;
+        let min_fee = min
+            .checked_mul_int(&Int::from_u64(gas))
+            .and_then(|d| d.ceil())
+            .or_else(|e| panic(e.to_string()))?;
+        if fee < min_fee.truncate_int() {
+            return Err(errs::insufficient_fee(format!(
+                "insufficient gas price for the network; got: {fee} required at least: {min_fee}"
+            ))
+            .into());
+        }
+    }
+    get_tx_priority_v9(coins, gas)
+}
+
 /// `DeductFeeDecorator.AnteHandle`; returns the tx priority.
 pub fn deduct_fee(ctx: &mut Context<'_>, tx: &Tx, simulate: bool, deps: &impl AnteDeps) -> R<i64> {
+    deduct_fee_with(ctx, tx, simulate, deps, false)
+}
+
+/// [`deduct_fee`] with celestia-app v1's fee checker.
+pub fn deduct_fee_v046(
+    ctx: &mut Context<'_>,
+    tx: &Tx,
+    simulate: bool,
+    deps: &impl AnteDeps,
+) -> R<i64> {
+    deduct_fee_with(ctx, tx, simulate, deps, true)
+}
+
+fn deduct_fee_with(
+    ctx: &mut Context<'_>,
+    tx: &Tx,
+    simulate: bool,
+    deps: &impl AnteDeps,
+    v046: bool,
+) -> R<i64> {
     let gas = txview::gas(tx)?;
     if !simulate && ctx.height() > 0 && gas == 0 {
         return Err(errs::invalid_gas_limit("must provide positive gas").into());
@@ -210,7 +277,11 @@ pub fn deduct_fee(ctx: &mut Context<'_>, tx: &Tx, simulate: bool, deps: &impl An
     let coins = fee_coins(tx)?;
     let mut priority = 0;
     if !simulate {
-        priority = validate_tx_fee(ctx, &coins, gas, deps)?;
+        priority = if v046 {
+            validate_tx_fee_v046(ctx, &coins, gas, deps)?
+        } else {
+            validate_tx_fee(ctx, &coins, gas, deps)?
+        };
     }
     check_deduct_fee(ctx, tx, &coins, deps)?;
     Ok(priority)

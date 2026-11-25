@@ -30,8 +30,8 @@ pub use dah::{
     min_data_availability_header, new_data_availability_header,
 };
 pub use erasure::{
-    ErasureCodec, ExtendedDataSquare, LeoRsCodec, compute_extended_data_square, extend_shares,
-    import_extended_data_square,
+    ErasureCodec, ExtendedDataSquare, LeoRsCodec, RowAndColumnRoots, compute_extended_data_square,
+    extend_shares, import_extended_data_square,
 };
 pub use error::{Error, Result};
 pub use inclusion::{

@@ -4,9 +4,13 @@
 (validator or full node): the Rust state machine (celestia-app v10.4.0
 parity), Rust consensus, P2P, CAT mempool, block / state sync, CometBFT
 RPC, the app's gRPC + REST servers, and the operator CLI (`init`, `keys`,
-`genesis`, `tx`, `query`, `config`, `rollback`, `export`). It uses the
-same home directory layout and file formats as Go `celestia-appd`, so an
-operator can switch between the two binaries.
+`genesis`, `tx`, `query`, `config`, `rollback`, `export`, `migrate`). It
+uses the same home directory layout and file formats as Go `celestia-appd`,
+so an operator can switch between the two binaries.
+
+The same executable can serve DA from its consensus blockstore through an
+integrated bridge, or run a standalone DA light node that samples shares
+over DA P2P. See the [node architecture](../README.md#architecture).
 
 This guide targets the reference machine, a **Mac Mini M4 (16 GB RAM,
 512 GB SSD)** on macOS; Linux works the same way (systemd instead of
@@ -119,13 +123,16 @@ celestia-rs start --network mocha --home ~/.celestia-rs/mocha
 ### Experimental DA bridge on a private network
 
 Release binaries include the DA peer, authenticated JSON-RPC service and
-standalone DA light node. For a source build, use
+standalone DA light node starting with v0.1.0-rc.8. For a source build, use
 `cargo build --locked --release -p celestia-rs --features da-light`.
-DA listeners are disabled until configured. A private canary can exercise
-both on loopback.
+Use `target/release/celestia-rs` in place of `celestia-rs` below if you built
+from source. Either DA listener enables the bridge in the consensus process.
+A private canary can exercise both on loopback. Set `DA_HOME` to a fresh
+directory before starting. The examples assume the selected ports are
+available on the host.
 
 ```sh
-target/release/celestia-rs start --network local --home "$DA_HOME" \
+celestia-rs start --network local --home "$DA_HOME" \
   --bridge-rpc-listen 127.0.0.1:32658 --bridge-p2p-listen 127.0.0.1:32121
 ```
 
@@ -148,13 +155,12 @@ For native and browser WebTransport, build with Rust 1.95 or later and the optio
 
 Private IPv4 DA listeners can request port mappings from the local router using IGD or NAT-PMP. Use `--bridge-announce` and `--bridge-no-announce` on a bridge or `--announce` and `--no-announce` on a light node to control advertised addresses.
 
-Set `DA_HOME` to a fresh directory before starting the canary. The Rust
-node creates its own DA identity. In a second shell, mint a read token
-for the same home and compare the DA commit hash with the consensus
-block ID at the same height.
+The bridge creates its own DA peer identity. In a second shell, set the
+same `DA_HOME`, mint a read token and wait for height 3 to be indexed.
+Compare its DA commit hash with the consensus block ID at that height.
 
 ```sh
-token=$(target/release/celestia-rs da-auth read --home "$DA_HOME")
+token=$(celestia-rs da-auth read --home "$DA_HOME")
 curl -fsS http://127.0.0.1:32658 -H "Authorization: Bearer $token" \
   -d '{"jsonrpc":"2.0","id":1,"method":"header.GetByHeight","params":[3]}' \
   | jq -er '.result.commit.block_id.hash'
@@ -166,8 +172,9 @@ For a mixed-network trial, track advancing consensus and DA heights and
 verify a new paid blob through a separate Go light process. Keep the
 consensus-only executable built from the same revision and with the same
 database backend. To disable DA, stop the process, remove the bridge flags
-from the service and restart on the same Rust home. The consensus-only
-binary can also resume that home. Confirm that both DA sockets close, the
+from the service and remove any DA listeners from `config/app.toml`. Restart
+with the same Rust home. The consensus-only binary can also resume that home.
+Confirm that both DA sockets close, the
 previous block ID is still available and new consensus blocks commit.
 Preserve the validator signing state across every binary change.
 
@@ -175,30 +182,83 @@ The private acceptance run exercises this sequence on both supported
 database backends. [Go conformance probe](../conformance/da/README.md) ·
 [Rollout and rollback test](../conformance/da/test-bridge-rollback.sh)
 
-#### DA storage and role selection
+#### Bridge retention
 
-The bridge index in `data/da-bridge/index-v2.redb` stores verified headers. It reconstructs squares from the validator's blockstore whenever that block is present. Before consensus removes a block that is still in the DA window, the index saves its transaction data durably so it can reconstruct the same square after the prune. The bridge can defer pruning briefly while its background worker completes this handoff.
+The bridge index in `data/da-bridge/index-v2.redb` stores verified extended
+headers. The bridge reconstructs squares from the local consensus blockstore
+while their blocks are present. Before consensus prunes a block the bridge
+still needs, a background worker saves its transaction data so the bridge can
+reconstruct the same square. Consensus pruning can wait for that write.
 
-The default retention window is 169 hours of block time. Set `[da-bridge].retention-hours` in `app.toml`, or pass `--bridge-retention-hours`, to shorten it. A shorter window reduces availability for clients requesting older data. When the DA window fits inside the consensus blockstore window, the bridge only needs the header index. Set `--bridge-archival` on a fresh index to retain all indexed data. Check `header.Tail` and `header.LocalHead` for the available interval and compare the head with consensus to measure indexing lag.
+The default retention window is 169 hours of block time. Set
+`retention-hours` under `[da-bridge]` in `app.toml` or pass
+`--bridge-retention-hours` to control it. When the DA window fits inside the
+consensus blockstore window, the bridge can serve that range from the
+blockstore and header index. An index opened on a pruned consensus store
+starts at the earliest retained block. Use `--bridge-archival` with a fresh
+index to retain all indexed data. Query `header.Tail` and `header.LocalHead`
+for the available range, and compare the head with consensus to measure
+indexing lag.
 
 The first start with an older `index.redb` imports the retained headers and any required squares whose blocks are already gone. It leaves the legacy file available for rollback. After verifying the new index, remove the legacy file when it is no longer needed to reclaim its space. Redb reuses pages freed by normal pruning, so the allocated size can reflect a past peak.
 
-For a standalone light node, build the operator executable with `--features da-light`. Start `da-light` in its own home. Supply the chain ID (`mocha-5` or `celestia`), a trusted DA peer multiaddress, and a recent block hash independently obtained from the same chain. The following command uses a loopback RPC listener. Set the four environment variables to your light home and trust inputs.
+### Standalone DA light node
+
+Start `da-light` in a separate process with its own home. For an explicit
+checkpoint, supply the consensus chain ID (`mocha-5` for Mocha, `celestia`
+for Mainnet), a trusted DA peer multiaddress and a recent block hash from
+an independent trusted source on that chain. Repeat `--peer` to configure
+additional trusted peers. On Mainnet and Mocha, omitting `--peer` uses the
+built-in bootstrap peers. A fresh home without `--trusted-hash` selects a
+signed head from its trusted peers.
+
+To run against the local bridge above, set `LIGHT_HOME` to a fresh directory,
+`CHAIN_ID` to `celestia-rs-local`, and `BLOCK_HASH` to the height 3 consensus
+block ID. Set `TRUSTED_PEER` to `/ip4/127.0.0.1/tcp/32121/p2p/<peer-id>`,
+using the DA peer ID from the bridge startup log. You can also query
+`p2p.Info` with a bridge admin token and read the `ID` field.
+The light RPC uses a different port so both processes can run on one host.
 
 ```sh
-target/release/celestia-rs da-light --home "$LIGHT_HOME" --network "$CHAIN_ID" \
-  --peer "$TRUSTED_PEER" --trusted-hash "$BLOCK_HASH" --rpc-listen 127.0.0.1:32658
+celestia-rs da-light --home "$LIGHT_HOME" --network "$CHAIN_ID" \
+  --peer "$TRUSTED_PEER" --trusted-hash "$BLOCK_HASH" --rpc-listen 127.0.0.1:32659
 ```
 
-The light store in `da-light/light.redb` records sampled headers and pending sample coordinates. Restart with the same home and trust inputs to resume. Mint a read token with `da-auth read --home "$LIGHT_HOME"`. Use `das.SamplingStats` to observe the last sampled height and retries. Repeat `--p2p-listen` with TCP or QUIC v1 multiaddresses to accept inbound DA connections.
+The light node saves its random sample coordinates before requesting shares
+and verifies up to 16 distinct cells per height before publishing that
+header. The store in `da-light/light.redb` keeps pending coordinates and
+sampled headers. Restart with the same home and trust inputs to resume.
+Use `das.SamplingStats` to observe progress and retries.
+
+```sh
+token=$(celestia-rs da-auth read --home "$LIGHT_HOME")
+curl -fsS http://127.0.0.1:32659 -H "Authorization: Bearer $token" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"das.SamplingStats","params":[]}' | jq -e '.result'
+unset token
+```
+
+Repeat `--p2p-listen` with TCP, WebSocket or QUIC v1 multiaddresses to accept
+inbound DA connections. The light node serves retained sampled headers to
+peers through header exchange. See the bridge section above for optional
+WebRTC and WebTransport.
 
 After more than seven days offline, the last sampled header can fall outside the trusting period. The node uses its configured trusted peers to select a fresh signed head, including when the original home was initialized with an explicit block hash. Keep those peer identities current. While a fresh head is unavailable, the node waits and keeps its previous sampled head. Once it authenticates the new chain and completes sampling, check `header.Tail` and `header.LocalHead` for the new retained interval. Heights skipped outside the sampling window have no local availability receipt.
 
-To enable wallet reads and signing on a light node, configure its consensus gRPC endpoint with `--core.ip` and `--core.port`, then select a funded account with `--keyring.keyname` and `--keyring.backend`. Use `--core.tls` for TLS and `--core.xtoken.path` for a core that requires an authentication token. A bridge selects its local account with `--bridge-signer`. Give signing clients a write token. Fibre downloads and payment promises additionally require a build with `--features da-fibre` and registered storage providers on the chain. All three feature selections produce the same executable name.
+### DA wallet and Fibre
+
+For light wallet reads, configure the consensus gRPC endpoint with
+`--core.ip` and, if needed, `--core.port` (default 9090). Use `--core.tls`
+for TLS and `--core.xtoken.path` for a core that requires an authentication
+token. For signing, select a funded account with `--keyring.keyname` and
+`--keyring.backend`. A bridge selects a local account with
+`--bridge-signer`. Mint a write token for signing clients with
+`celestia-rs da-auth write --home <home>`. Fibre downloads and payment
+promises require a source build with `--features da-fibre` and registered
+storage providers on the chain.
 
 Repeat `--bridge-signer` or the light node's `--keyring.keyname` to authorize additional DA accounts. The first account supplies `state.AccountAddress` and signs requests with default transaction options. Go clients can select another authorized account using `WithKeyName` or `WithSignerAddress`. A supplied address takes precedence over the key name. A write token can spend funds from every account listed for that service. Keep unrelated operator accounts outside the list.
 
-#### Mocha 5 non-validating bridge canary
+### Mocha 5 non-validating bridge canary
 
 Use a fresh non-validator home on a separate host. Record the release
 commit, executable SHA-256, Cargo features, storage backend and genesis
@@ -312,16 +372,52 @@ the Go home (or a copy of it):
 
 Because the databases differ, the Rust node starts from an empty state:
 state-sync it (`[statesync]` in config.toml, as for a fresh Go node) or
-block-sync from genesis. Procedure:
+block-sync from genesis. `celestia-rs migrate` prepares the home:
+
+```sh
+celestia-rs migrate --home <home> --dry-run     # print the plan, change nothing
+celestia-rs migrate --home <home> --go-node-stopped --statesync-rpc <rpc1>,<rpc2>
+```
+
+It does steps 2 to 4 of the procedure below, and nothing more:
 
 1. Stop the Go node and **make sure it stays stopped** (disable the
-   systemd unit / launchd job, remove it from cosmovisor).
-2. Back up `config/` and `data/priv_validator_state.json`.
+   systemd unit / launchd job, remove it from cosmovisor). The command
+   cannot prove this, so it requires `--go-node-stopped`. It also refuses
+   while the config.toml RPC or P2P port is in use.
+2. Back up `config/` and `data/priv_validator_state.json` (the command
+   copies them to `<home>/migrate-backup-<UTC time>/`).
 3. Move the Go data away (`mv data data.go` and keep only
    `data/priv_validator_state.json`: `mkdir data && cp data.go/priv_validator_state.json data/`).
+   The command checks that the copy is byte-identical. If
+   `config/priv_validator_key.json` exists but the state file does not, it
+   stops, unless `--not-a-validator` says that the key never signs.
 4. Enable state sync in config.toml (`enable = true`, `rpc_servers`,
-   `trust_height`, `trust_hash`) or rely on block sync.
-5. `celestia-rs start --home <home>`.
+   `trust_height`, `trust_hash`) or rely on block sync. With
+   `--statesync-rpc`, the command sets these four keys: the trust height is
+   the tip minus 2000, and every server must report the genesis chain ID
+   and the same header hash. Comments and other keys stay. Without the
+   flag, config.toml does not change.
+5. `celestia-rs start --home <home>`. The command never starts the node.
+
+Key files and keyrings stay in place. `migrate` refuses a home without Go
+databases in `data/`, a second run changes nothing, and if a step fails it
+prints how to restore the Go layout (`rm -rf data && mv data.go data`).
+
+### Switch an existing Mocha node
+
+```sh
+H=~/.celestia-app
+sudo systemctl disable --now celestia-appd   # or the launchd job; `ps` must not show it
+celestia-rs migrate --home $H --dry-run
+celestia-rs migrate --home $H --go-node-stopped \
+  --statesync-rpc https://rpc-mocha.pops.one:443
+celestia-rs start --home $H                  # under systemd/launchd: section 8
+celestia-rs status --home $H                 # synced when catching_up is false
+```
+
+For a validator, read the rules below first and consider
+`double_sign_check_height` (section 8) for the first start.
 
 ### priv_validator_state.json safety rules (avoid double signing)
 

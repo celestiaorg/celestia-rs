@@ -3,7 +3,7 @@
 
 #![allow(clippy::print_stdout)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead as _, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -16,6 +16,7 @@ use flate2::read::GzDecoder;
 use light::{RpcClient, http};
 use prost::Message as _;
 use serde::Deserialize;
+use x_upgrade::UpgradeHandlers as _;
 
 const CHAIN: &str = "celestia";
 const VERSIONS: [u64; 9] = [1, 2, 3, 4, 5, 6, 8, 9, 10];
@@ -23,6 +24,40 @@ const WINDOW_SIZE: usize = 10;
 const BINARY: &str = env!("CARGO_BIN_EXE_celestia-rs");
 const FIXTURE: &str = include_str!("../../../../conformance/fixtures/mainnet/replay-windows.json");
 const ARCHIVE: &[u8] = include_bytes!("../../../../conformance/fixtures/mainnet/blocks.jsonl.gz");
+const V1_ORACLE: &str =
+    include_str!("../../../../conformance/fixtures/mainnet/v1-oracle/store-roots.json");
+const V1_ORACLE_KV_MODULES: &[u8] = include_bytes!(
+    "../../../../conformance/fixtures/mainnet/v1-oracle/kv-height-0-modules.jsonl.gz"
+);
+const V1_ORACLE_KV_DIFFS: &[u8] =
+    include_bytes!("../../../../conformance/fixtures/mainnet/v1-oracle/kv-diffs.jsonl.gz");
+const V1_ORACLE_TX_RESULTS: &[u8] =
+    include_bytes!("../../../../conformance/fixtures/mainnet/v1-oracle/tx-results.jsonl.gz");
+/// Commit info entries of app version 1 (celestia-app v3.13.0, Cosmos SDK
+/// v0.46): 17 IAVL stores and the memory store `mem_capability`.
+const V1_STORES: [&str; 18] = [
+    "acc",
+    "authz",
+    "bank",
+    "blob",
+    "capability",
+    "distribution",
+    "evidence",
+    "feegrant",
+    "gov",
+    "ibc",
+    "mem_capability",
+    "mint",
+    "params",
+    "qgb",
+    "slashing",
+    "staking",
+    "transfer",
+    "upgrade",
+];
+/// Stores left out of the committed height-0 KV dump (genesis accounts
+/// and balances, about 25 MB compressed).
+const V1_BULK_STORES: [&str; 2] = ["acc", "bank"];
 
 #[derive(Deserialize)]
 struct Fixtures {
@@ -35,7 +70,126 @@ struct Fixtures {
 struct Window {
     app_version: u64,
     start_height: i64,
+    #[serde(default)]
+    pre_state: Option<PreState>,
     blocks: Vec<ReferenceBlock>,
+}
+
+/// Commit info at the height before a window, from archive RPC proofs.
+#[derive(Deserialize)]
+struct PreState {
+    height: i64,
+    upgrade_plan: Option<UpgradePlan>,
+    /// Store name to root hash; empty for an SDK v0.46 memory store.
+    stores: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct UpgradePlan {
+    name: String,
+    height: i64,
+}
+
+/// Why a faithful Go checkpoint before each window cannot replay.
+/// Versions 9 and 10 have no structural blocker. App v1 starts at genesis.
+const EXPECTED_BLOCKERS: [(u64, &[&str]); 8] = [
+    (2, &["no public pre-state at height 2371494"]),
+    (3, &["no public pre-state at height 2993219"]),
+    (
+        4,
+        &[
+            "pre-state stores that celestia-rs does not mount: mem_capability",
+            "celestia-rs stores absent from the pre-state: circuit, consensus, hyperlane, minfee, warp, zkism",
+            "no celestia-rs handler for upgrade plan v4 at 6680340",
+        ],
+    ),
+    (
+        5,
+        &[
+            "celestia-rs stores absent from the pre-state: zkism",
+            "no celestia-rs handler for upgrade plan v5 at 6748822",
+        ],
+    ),
+    (
+        6,
+        &[
+            "celestia-rs stores absent from the pre-state: zkism",
+            "no celestia-rs handler for upgrade plan v6 at 8662013",
+        ],
+    ),
+    (
+        8,
+        &[
+            "celestia-rs stores absent from the pre-state: zkism",
+            "no celestia-rs handler for upgrade plan v8 at 10960600",
+        ],
+    ),
+    (9, &[]),
+    (10, &[]),
+];
+
+/// Store roots from the Go v1 oracle (`conformance/v1-oracle`).
+#[derive(Deserialize)]
+struct V1Oracle {
+    chain_id: String,
+    genesis_sha256: String,
+    init_chain_app_hash: String,
+    heights: Vec<OracleHeight>,
+    /// Uncompressed SHA-256 of each KV dump file.
+    kv: BTreeMap<String, String>,
+    /// Uncompressed SHA-256 of `tx-results.jsonl`.
+    tx_results_sha256: String,
+}
+
+#[derive(Deserialize)]
+struct OracleHeight {
+    height: i64,
+    app_hash: String,
+    stores: BTreeMap<String, String>,
+    keys: BTreeMap<String, usize>,
+    /// `[code, gas_wanted, gas_used]` of each DeliverTx.
+    tx_results: Vec<[i64; 3]>,
+    /// Hex `data` of each DeliverTx, parallel to `tx_results`.
+    tx_data: Vec<String>,
+}
+
+/// Hex key to hex value, by store.
+type OracleState = BTreeMap<String, BTreeMap<String, String>>;
+
+/// One store of the height-0 KV dump.
+#[derive(Deserialize)]
+struct OracleStoreDump {
+    store: String,
+    root: String,
+    kv: Vec<[String; 2]>,
+}
+
+/// The keys one block set or deleted in one store.
+#[derive(Deserialize)]
+struct OracleKvDiff {
+    height: i64,
+    store: String,
+    set: Vec<[String; 2]>,
+    delete: Vec<String>,
+}
+
+/// The ABCI responses of one block, from `tx-results.jsonl`.
+#[derive(Deserialize)]
+struct OracleBlockResults {
+    height: i64,
+    txs: Vec<OracleTxResult>,
+}
+
+/// One DeliverTx response. The fixture also holds `codespace`, `log`,
+/// `info` and `events`, which `LastResultsHash` leaves out.
+#[derive(Deserialize)]
+struct OracleTxResult {
+    index: usize,
+    hash: String,
+    code: u32,
+    gas_wanted: i64,
+    gas_used: i64,
+    data: String,
 }
 
 #[derive(Deserialize)]
@@ -279,8 +433,9 @@ fn replay_window(
         std::fs::write(home.path().join("config/genesis.json"), bytes)?;
     } else {
         return Err(anyhow!(
-            "missing Go SDK checkpoint before height {}",
-            window.start_height
+            "missing Go SDK checkpoint before height {}; recorded blockers: {:?}",
+            window.start_height,
+            replay_blockers(window)?
         ));
     }
 
@@ -338,6 +493,420 @@ fn compare_replay(home: &Path, window: &Window, archive: &ArchivedBlocks) -> any
         );
     }
 
+    Ok(())
+}
+
+/// Cosmos SDK commit info hash (the app hash) of store name to root hash,
+/// through the production multistore. An empty root is an SDK v0.46
+/// memory store (empty commit ID).
+fn commit_info_hash(stores: &BTreeMap<String, String>) -> anyhow::Result<Vec<u8>> {
+    let mut infos = Vec::with_capacity(stores.len());
+    for (name, root) in stores {
+        let commit_id = if root.is_empty() {
+            None
+        } else {
+            let hash = hex::decode(root)?;
+            Some(multistore::CommitId {
+                version: 1,
+                hash: hash.try_into().map_err(|_| anyhow!("root of {name}"))?,
+            })
+        };
+        infos.push(multistore::StoreInfo {
+            name: name.clone(),
+            commit_id,
+        });
+    }
+    Ok(multistore::commit_info_hash(&infos)?.to_vec())
+}
+
+/// Checks the pinned pre-state against the window's first header app hash,
+/// then lists what stops celestia-rs from replaying the window from it.
+fn replay_blockers(window: &Window) -> anyhow::Result<Vec<String>> {
+    let height = window.start_height - 1;
+    let Some(pre) = &window.pre_state else {
+        return Ok(vec![format!("no public pre-state at height {height}")]);
+    };
+    ensure!(pre.height == height, "pre-state must be at height {height}");
+    compare_hash(
+        "pre-state commit info",
+        height,
+        &commit_info_hash(&pre.stores)?,
+        &window.blocks[0].app_hash,
+    )?;
+
+    let go: BTreeSet<&str> = pre.stores.keys().map(String::as_str).collect();
+    let rust: BTreeSet<&str> = app::stores::IAVL_STORES
+        .iter()
+        .copied()
+        .filter(|name| app::stores::exists_at(name, window.app_version))
+        .collect();
+    let mut blockers = Vec::new();
+    for (label, names) in [
+        (
+            "pre-state stores that celestia-rs does not mount",
+            go.difference(&rust),
+        ),
+        (
+            "celestia-rs stores absent from the pre-state",
+            rust.difference(&go),
+        ),
+    ] {
+        let names: Vec<&str> = names.copied().collect();
+        if !names.is_empty() {
+            blockers.push(format!("{label}: {}", names.join(", ")));
+        }
+    }
+    if let Some(plan) = &pre.upgrade_plan {
+        ensure!(
+            plan.height == window.start_height,
+            "pre-state plan {} is not due at {}",
+            plan.name,
+            window.start_height
+        );
+        if !app::upgrades::Handlers::at(window.app_version).has_handler(&plan.name) {
+            blockers.push(format!(
+                "no celestia-rs handler for upgrade plan {} at {}",
+                plan.name, plan.height
+            ));
+        }
+    }
+    Ok(blockers)
+}
+
+#[test]
+fn historical_replay_blockers_match_record() -> anyhow::Result<()> {
+    let fixtures = read_fixtures()?;
+    let windows = fixtures.windows.iter().filter(|w| w.start_height > 1);
+    for (window, (version, expected)) in windows.zip(EXPECTED_BLOCKERS) {
+        ensure!(window.app_version == version, "blocker record order");
+        let blockers = replay_blockers(window)?;
+        println!("mainnet v{version}: {blockers:?}");
+        ensure!(
+            blockers == expected,
+            "app v{version} replay blockers changed: {blockers:#?}"
+        );
+    }
+    Ok(())
+}
+
+fn gunzip_checked(label: &str, bytes: &[u8], sha256: Option<&String>) -> anyhow::Result<String> {
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut GzDecoder::new(bytes), &mut text)?;
+    let expected = sha256.with_context(|| format!("no SHA-256 recorded for {label}"))?;
+    ensure!(
+        hex::encode(hash::sha256(text.as_bytes())) == *expected,
+        "{label} does not match its recorded SHA-256"
+    );
+    Ok(text)
+}
+
+/// The Go v1 oracle's store roots rebuild its app hashes, which equal the
+/// pinned mainnet app hashes of window 1, and its KV dumps agree with them.
+#[test]
+fn v1_oracle_store_roots_match_record() -> anyhow::Result<()> {
+    let fixtures = read_fixtures()?;
+    let window = &fixtures.windows[0];
+    ensure!(
+        window.app_version == 1 && window.start_height == 1,
+        "window 1 must start at genesis"
+    );
+    let oracle: V1Oracle = serde_json::from_str(V1_ORACLE)?;
+    ensure!(oracle.chain_id == CHAIN, "v1 oracle is for another chain");
+    ensure!(
+        Some(oracle.genesis_sha256.as_str()) == networks::MAINNET.genesis_sha256,
+        "v1 oracle ran on a different genesis"
+    );
+    ensure!(
+        oracle.init_chain_app_hash == window.blocks[0].app_hash,
+        "v1 oracle InitChain app hash {} differs from header 1",
+        oracle.init_chain_app_hash
+    );
+    ensure!(
+        oracle
+            .heights
+            .iter()
+            .map(|h| h.height)
+            .eq(0..=i64::try_from(WINDOW_SIZE)?),
+        "v1 oracle must cover heights 0 to {WINDOW_SIZE}"
+    );
+    for h in &oracle.heights {
+        ensure!(
+            h.stores.keys().map(String::as_str).eq(V1_STORES),
+            "v1 oracle stores at {}: {:?}",
+            h.height,
+            h.stores.keys()
+        );
+        for (name, root) in &h.stores {
+            let len = if name == "mem_capability" { 0 } else { 64 };
+            ensure!(
+                root.len() == len && root.to_uppercase() == *root,
+                "v1 oracle root of {name} at {}",
+                h.height
+            );
+        }
+        compare_hash(
+            "v1 oracle commit info",
+            h.height,
+            &commit_info_hash(&h.stores)?,
+            &h.app_hash,
+        )?;
+        if let Some(block) = usize::try_from(h.height - 1)
+            .ok()
+            .and_then(|i| window.blocks.get(i))
+        {
+            ensure!(
+                h.app_hash == block.post_app_hash,
+                "v1 oracle app hash at {} is {}, mainnet {}",
+                h.height,
+                h.app_hash,
+                block.post_app_hash
+            );
+        }
+    }
+
+    let state = read_oracle_height_0(&oracle)?;
+    check_oracle_diffs(&oracle, state)
+}
+
+/// Height-0 KV pairs of every store except the bulk ones, by store.
+fn read_oracle_height_0(oracle: &V1Oracle) -> anyhow::Result<OracleState> {
+    let h0 = &oracle.heights[0];
+    let modules = gunzip_checked(
+        "kv-height-0-modules.jsonl",
+        V1_ORACLE_KV_MODULES,
+        oracle.kv.get("kv-height-0-modules.jsonl"),
+    )?;
+    let mut state = OracleState::new();
+    for line in modules.lines() {
+        let dump: OracleStoreDump = serde_json::from_str(line)?;
+        ensure!(
+            h0.stores.get(&dump.store) == Some(&dump.root),
+            "height-0 dump root of {}",
+            dump.store
+        );
+        ensure!(
+            dump.kv.windows(2).all(|p| p[0][0] < p[1][0]),
+            "height-0 dump of {} is not sorted",
+            dump.store
+        );
+        ensure!(
+            h0.keys.get(&dump.store) == Some(&dump.kv.len()),
+            "height-0 key count of {}",
+            dump.store
+        );
+        let kv: BTreeMap<String, String> = dump.kv.into_iter().map(|[k, v]| (k, v)).collect();
+        state.insert(dump.store, kv);
+    }
+    let dumped: Vec<&str> = V1_STORES
+        .into_iter()
+        .filter(|s| *s != "mem_capability" && !V1_BULK_STORES.contains(s))
+        .collect();
+    ensure!(
+        state.keys().map(String::as_str).eq(dumped.iter().copied()),
+        "height-0 dump stores: {:?}",
+        state.keys()
+    );
+    Ok(state)
+}
+
+/// Applies each block's KV diff to the height-0 dump: a store whose keys
+/// change must change its root, a store with no diff at a height keeps
+/// its root, and the dumped stores keep the recorded key counts.
+fn check_oracle_diffs(oracle: &V1Oracle, mut state: OracleState) -> anyhow::Result<()> {
+    let diffs = gunzip_checked(
+        "kv-diffs.jsonl",
+        V1_ORACLE_KV_DIFFS,
+        oracle.kv.get("kv-diffs.jsonl"),
+    )?;
+    let mut changed: BTreeMap<i64, Vec<OracleKvDiff>> = BTreeMap::new();
+    for line in diffs.lines() {
+        let diff: OracleKvDiff = serde_json::from_str(line)?;
+        ensure!(
+            !diff.set.is_empty() || !diff.delete.is_empty(),
+            "empty diff for {} at {}",
+            diff.store,
+            diff.height
+        );
+        changed.entry(diff.height).or_default().push(diff);
+    }
+    for pair in oracle.heights.windows(2) {
+        let (before, after) = (&pair[0], &pair[1]);
+        let mut touched = BTreeSet::new();
+        for diff in changed.remove(&after.height).unwrap_or_default() {
+            ensure!(
+                touched.insert(diff.store.clone()),
+                "duplicate diff for {} at {}",
+                diff.store,
+                after.height
+            );
+            if let Some(kv) = state.get_mut(&diff.store) {
+                for [k, v] in diff.set {
+                    kv.insert(k, v);
+                }
+                for k in diff.delete {
+                    ensure!(kv.remove(&k).is_some(), "deleted key absent: {k}");
+                }
+            }
+        }
+        for name in V1_STORES {
+            let same_root = before.stores[name] == after.stores[name];
+            ensure!(
+                !(touched.contains(name) && same_root),
+                "{name} changed keys but kept its root at {}",
+                after.height
+            );
+            ensure!(
+                touched.contains(name) || same_root,
+                "{name} root changed at {} without a KV change",
+                after.height
+            );
+        }
+        for (name, kv) in &state {
+            ensure!(
+                after.keys.get(name) == Some(&kv.len()),
+                "{name} key count at {}",
+                after.height
+            );
+        }
+    }
+    ensure!(changed.is_empty(), "diffs for unknown heights");
+    Ok(())
+}
+
+/// Messages of mainnet blocks 2 to 10 (v1). Each has an empty
+/// `Msg...Response` in cosmos-sdk v0.46 and ibc-go v6, so a successful
+/// tx's v0.46 `TxMsgData` follows from its message types alone.
+const V1_EMPTY_RESPONSE_MSGS: [&str; 7] = [
+    "/cosmos.bank.v1beta1.MsgSend",
+    "/cosmos.bank.v1beta1.MsgMultiSend",
+    "/cosmos.staking.v1beta1.MsgDelegate",
+    "/cosmos.staking.v1beta1.MsgCreateValidator",
+    "/ibc.core.client.v1.MsgCreateClient",
+    "/ibc.core.client.v1.MsgUpdateClient",
+    "/ibc.core.connection.v1.MsgConnectionOpenTry",
+];
+
+/// The oracle's DeliverTx results of blocks 1 to 10, shaped by the
+/// legacy driver, hash to the `LastResultsHash` of the next mainnet
+/// header (Tendermint v0.34: code, data, gas wanted, gas used).
+#[test]
+fn v1_oracle_tx_results_rebuild_last_results_hash() -> anyhow::Result<()> {
+    use celestia_proto::cosmos::tx::v1beta1::{TxBody, TxRaw};
+
+    let oracle: V1Oracle = serde_json::from_str(V1_ORACLE)?;
+    let archive = read_archive()?;
+    for h in oracle.heights.iter().filter(|h| h.height >= 1) {
+        let (_, block) = archived_block(&archive, h.height)?;
+        let (_, next) = archived_block(&archive, h.height + 1)?;
+        ensure!(
+            block.data.txs.len() == h.tx_results.len(),
+            "v1 oracle tx results at {}",
+            h.height
+        );
+        let mut results = Vec::with_capacity(h.tx_results.len());
+        for (tx, [code, gas_wanted, gas_used]) in block.data.txs.iter().zip(&h.tx_results) {
+            let result = if *code == 0 {
+                let body = TxBody::decode(TxRaw::decode(tx.0.as_slice())?.body_bytes.as_slice())?;
+                let mut msg_responses = Vec::new();
+                for msg in &body.messages {
+                    ensure!(
+                        V1_EMPTY_RESPONSE_MSGS.contains(&msg.type_url.as_str()),
+                        "unexpected v1 message {}",
+                        msg.type_url
+                    );
+                    msg_responses.push(celestia_proto::Any {
+                        type_url: format!("{}Response", msg.type_url),
+                        value: Vec::new(),
+                    });
+                }
+                Ok(app::legacy::TxSuccess {
+                    msg_responses,
+                    log: String::new(),
+                })
+            } else {
+                Err(sdk::SdkError::new("sdk", u32::try_from(*code)?, ""))
+            };
+            results.push(app::legacy::deliver_tx_result(app::legacy::TxOutcome {
+                gas_wanted: u64::try_from(*gas_wanted)?,
+                gas_used: u64::try_from(*gas_used)?,
+                events: Vec::new(),
+                result,
+            }));
+        }
+        compare_hash(
+            "v1 last results hash",
+            h.height,
+            &ctypes::results_hash(&results),
+            &hex::encode_upper(&next.header.last_results_hash),
+        )?;
+    }
+    Ok(())
+}
+
+/// The Go v1 oracle's DeliverTx results hash to the `last_results_hash`
+/// of each next mainnet header, and agree with `store-roots.json`.
+#[test]
+fn v1_oracle_tx_results_match_last_results_hash() -> anyhow::Result<()> {
+    let oracle: V1Oracle = serde_json::from_str(V1_ORACLE)?;
+    let text = gunzip_checked(
+        "tx-results.jsonl",
+        V1_ORACLE_TX_RESULTS,
+        Some(&oracle.tx_results_sha256),
+    )?;
+    let archive = read_archive()?;
+    let mut heights = Vec::new();
+    for line in text.lines() {
+        let block: OracleBlockResults = serde_json::from_str(line)?;
+        let height = block.height;
+        heights.push(height);
+        let (id, mut archived) = archived_block(&archive, height)?;
+        verify_reference_id(height, &id, &mut archived)?;
+        let (next_id, mut next) = archived_block(&archive, height + 1)?;
+        verify_reference_id(height + 1, &next_id, &mut next)?;
+        ensure!(
+            block.txs.len() == archived.data.txs.len(),
+            "v1 oracle has {} tx results at {height}, block has {} txs",
+            block.txs.len(),
+            archived.data.txs.len()
+        );
+        let recorded = oracle
+            .heights
+            .iter()
+            .find(|h| h.height == height)
+            .with_context(|| format!("no store roots at {height}"))?;
+        ensure!(
+            recorded.tx_results.len() == block.txs.len()
+                && recorded.tx_data.len() == block.txs.len(),
+            "store-roots tx results at {height}"
+        );
+        let mut results = Vec::new();
+        for (i, (tx, archived_tx)) in block.txs.iter().zip(&archived.data.txs).enumerate() {
+            ensure!(tx.index == i, "tx index {} at {height}:{i}", tx.index);
+            compare_hash("tx hash", height, &hash::sha256(&archived_tx.0), &tx.hash)?;
+            ensure!(
+                recorded.tx_results[i] == [i64::from(tx.code), tx.gas_wanted, tx.gas_used]
+                    && recorded.tx_data[i] == tx.data,
+                "tx {height}:{i} differs from store-roots.json"
+            );
+            results.push(ctypes::proto::abci::ExecTxResult {
+                code: tx.code,
+                data: hex::decode(&tx.data)?,
+                gas_wanted: tx.gas_wanted,
+                gas_used: tx.gas_used,
+                ..Default::default()
+            });
+        }
+        compare_hash(
+            "v1 oracle results hash",
+            height,
+            &ctypes::results_hash(&results),
+            &hex::encode_upper(&next.header.last_results_hash),
+        )?;
+    }
+    ensure!(
+        heights.iter().copied().eq(1..=i64::try_from(WINDOW_SIZE)?),
+        "v1 oracle tx results must cover heights 1 to {WINDOW_SIZE}: {heights:?}"
+    );
     Ok(())
 }
 

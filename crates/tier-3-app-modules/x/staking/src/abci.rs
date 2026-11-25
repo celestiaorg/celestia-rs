@@ -10,7 +10,7 @@ use sdk::event::event;
 use sdk::{Context, Result};
 
 use crate::delegation::{complete_redelegation, complete_unbonding};
-use crate::store::{self, get_params};
+use crate::store;
 use crate::validator::{apply_and_return_validator_set_updates, unbond_all_mature_validators};
 use crate::{STORE_KEY, keys};
 
@@ -35,15 +35,23 @@ pub fn cmt_header(ctx: &Context<'_>) -> Header {
     }
 }
 
-/// `TrackHistoricalInfo`.
+/// `TrackHistoricalInfo`, storing the header baseapp sets in
+/// `FinalizeBlock`.
 pub fn track_historical_info(ctx: &mut Context<'_>) -> Result<()> {
-    let entries = i64::from(get_params(ctx)?.historical_entries);
+    let header = cmt_header(ctx);
+    track_historical_info_with(ctx, header)
+}
+
+/// `TrackHistoricalInfo` with the given block header.
+fn track_historical_info_with(ctx: &mut Context<'_>, header: Header) -> Result<()> {
+    let entries = i64::from(store::historical_entries(ctx)?);
     let mut i = ctx.header.height - entries;
     while i >= 0 {
         if store::get_historical_info(ctx, i)?.is_none() {
             break;
         }
-        ctx.delete(STORE_KEY, &keys::historical_info(i))?;
+        let key = store::historical_info_key(ctx, i);
+        ctx.delete(STORE_KEY, &key)?;
         i -= 1;
     }
     if entries == 0 {
@@ -59,11 +67,12 @@ pub fn track_historical_info(ctx: &mut Context<'_>) -> Result<()> {
     }
     keyed.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let hi = pb::HistoricalInfo {
-        header: Some(cmt_header(ctx)),
+        header: Some(header),
         valset: keyed.into_iter().map(|(_, _, v)| v.to_proto()).collect(),
     };
     let h = ctx.header.height;
-    ctx.set(STORE_KEY, keys::historical_info(h), hi.encode_to_vec())
+    let key = store::historical_info_key(ctx, h);
+    ctx.set(STORE_KEY, key, hi.encode_to_vec())
 }
 
 /// `BeginBlocker`.
@@ -82,6 +91,12 @@ pub fn begin_block(ctx: &mut Context<'_>) -> Result<()> {
         ));
     }
     track_historical_info(ctx)
+}
+
+/// cosmos-sdk v0.46 `BeginBlocker`: `TrackHistoricalInfo` with the full
+/// Tendermint v0.34 BeginBlock header (celestia-app v1 to v3).
+pub fn begin_block_v046(ctx: &mut Context<'_>, header: &Header) -> Result<()> {
+    track_historical_info_with(ctx, header.clone())
 }
 
 /// `EndBlocker` (`BlockValidatorUpdates`).

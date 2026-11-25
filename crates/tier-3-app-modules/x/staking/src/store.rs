@@ -4,7 +4,7 @@
 use celestia_proto::celestia_core_proto::abci::ValidatorUpdate;
 use celestia_proto::cosmos::base::v1beta1::IntProto;
 use celestia_proto::cosmos::staking::v1beta1 as pb;
-use math::Int;
+use math::{Int, LegacyDec};
 use pbjson_types::Timestamp;
 use prost::Message;
 use sdk::error::sdk as errs;
@@ -37,6 +37,24 @@ pub(crate) fn collect_prefix(
 
 /// `GetParams` (zero params when unset).
 pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
+    // cosmos-sdk v0.46 (app versions 1 to 3) keeps the params in the
+    // x/params subspace `staking`, which only its InitGenesis writes.
+    if ctx.is_sdk_v046() {
+        use x_params::v046::{get_dec, get_i64, get_string, get_u32};
+        let unbonding = get_i64(ctx, "staking", "UnbondingTime")?;
+        return Ok(Params {
+            unbonding_time: pbjson_types::Duration {
+                seconds: unbonding / 1_000_000_000,
+                nanos: i32::try_from(unbonding % 1_000_000_000)
+                    .map_err(|e| errs::logic(e.to_string()))?,
+            },
+            max_validators: get_u32(ctx, "staking", "MaxValidators")?,
+            max_entries: get_u32(ctx, "staking", "MaxEntries")?,
+            historical_entries: get_u32(ctx, "staking", "HistoricalEntries")?,
+            bond_denom: get_string(ctx, "staking", "BondDenom")?,
+            min_commission_rate: get_dec(ctx, "staking", "MinCommissionRate")?,
+        });
+    }
     match ctx.get(STORE_KEY, keys::PARAMS)? {
         Some(b) => Params::from_proto(&decode::<pb::Params>(&b)?, Repr::Wire),
         None => Ok(Params::default()),
@@ -45,6 +63,10 @@ pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
 
 /// `SetParams`.
 pub fn set_params(ctx: &mut Context<'_>, p: &Params) -> Result<()> {
+    if ctx.is_sdk_v046() {
+        // Subspace `staking` (written by the v0.46 InitGenesis).
+        return Ok(());
+    }
     ctx.set(
         STORE_KEY,
         keys::PARAMS.to_vec(),
@@ -52,8 +74,76 @@ pub fn set_params(ctx: &mut Context<'_>, p: &Params) -> Result<()> {
     )
 }
 
+/// cosmos-sdk v0.46 single-parameter getters (`k.BondDenom(ctx)` and
+/// the like) read one key of subspace `staking`; later versions read the
+/// whole params.
+fn v046_param<T>(
+    ctx: &mut Context<'_>,
+    get: impl FnOnce(&mut Context<'_>) -> Result<T>,
+    field: impl FnOnce(Params) -> T,
+) -> Result<T> {
+    if ctx.is_sdk_v046() {
+        return get(ctx);
+    }
+    get_params(ctx).map(field)
+}
+
+/// `UnbondingTime`.
+pub fn unbonding_time(ctx: &mut Context<'_>) -> Result<pbjson_types::Duration> {
+    v046_param(
+        ctx,
+        |ctx| {
+            let ns = x_params::v046::get_i64(ctx, "staking", "UnbondingTime")?;
+            Ok(pbjson_types::Duration {
+                seconds: ns / 1_000_000_000,
+                nanos: i32::try_from(ns % 1_000_000_000).map_err(|e| errs::logic(e.to_string()))?,
+            })
+        },
+        |p| p.unbonding_time,
+    )
+}
+
+/// `MaxValidators`.
+pub fn max_validators(ctx: &mut Context<'_>) -> Result<u32> {
+    v046_param(
+        ctx,
+        |ctx| x_params::v046::get_u32(ctx, "staking", "MaxValidators"),
+        |p| p.max_validators,
+    )
+}
+
+/// `MaxEntries`.
+pub fn max_entries(ctx: &mut Context<'_>) -> Result<u32> {
+    v046_param(
+        ctx,
+        |ctx| x_params::v046::get_u32(ctx, "staking", "MaxEntries"),
+        |p| p.max_entries,
+    )
+}
+
+/// `HistoricalEntries`.
+pub fn historical_entries(ctx: &mut Context<'_>) -> Result<u32> {
+    v046_param(
+        ctx,
+        |ctx| x_params::v046::get_u32(ctx, "staking", "HistoricalEntries"),
+        |p| p.historical_entries,
+    )
+}
+
+/// `MinCommissionRate`.
+pub fn min_commission_rate(ctx: &mut Context<'_>) -> Result<LegacyDec> {
+    v046_param(
+        ctx,
+        |ctx| x_params::v046::get_dec(ctx, "staking", "MinCommissionRate"),
+        |p| p.min_commission_rate,
+    )
+}
+
 /// `BondDenom` (falls back to `sdk.DefaultBondDenom`, `utia` in celestia).
 pub fn bond_denom(ctx: &mut Context<'_>) -> Result<String> {
+    if ctx.is_sdk_v046() {
+        return x_params::v046::get_string(ctx, "staking", "BondDenom");
+    }
     let p = get_params(ctx)?;
     Ok(if p.bond_denom.is_empty() {
         crate::DEFAULT_BOND_DENOM.to_owned()
@@ -202,7 +292,7 @@ pub fn get_all_validators(ctx: &mut Context<'_>) -> Result<Vec<Validator>> {
 
 /// `GetLastValidators` (in operator-address order).
 pub fn get_last_validators(ctx: &mut Context<'_>) -> Result<Vec<Validator>> {
-    let max = get_params(ctx)?.max_validators as usize;
+    let max = max_validators(ctx)? as usize;
     let mut it = ctx.prefix_iter(STORE_KEY, &[keys::LAST_VALIDATOR_POWER])?;
     let mut out = Vec::new();
     while let Some((k, _)) = it.next(ctx)? {
@@ -218,7 +308,7 @@ pub fn get_last_validators(ctx: &mut Context<'_>) -> Result<Vec<Validator>> {
 
 /// `GetBondedValidatorsByPower`.
 pub fn get_bonded_validators_by_power(ctx: &mut Context<'_>) -> Result<Vec<Validator>> {
-    let max = get_params(ctx)?.max_validators as usize;
+    let max = max_validators(ctx)? as usize;
     let prefix = [keys::VALIDATORS_BY_POWER_INDEX];
     let end = sdk::context::prefix_end(&prefix);
     let mut it = ctx.reverse_iterator(STORE_KEY, Some(&prefix), end.as_deref())?;
@@ -300,6 +390,10 @@ pub fn set_delegation(ctx: &mut Context<'_>, d: &Delegation) -> Result<()> {
     let del = crate::addr::acc_from_string(&d.delegator_address)?;
     let val = crate::addr::val_from_string(&d.validator_address)?;
     ctx.set(STORE_KEY, keys::delegation(&del, &val), d.encode())?;
+    if ctx.is_sdk_v046() {
+        // cosmos-sdk v0.46 has no delegations-by-validator index.
+        return Ok(());
+    }
     ctx.set(STORE_KEY, keys::delegation_by_val(&val, &del), Vec::new())
 }
 
@@ -309,6 +403,9 @@ pub fn remove_delegation(ctx: &mut Context<'_>, d: &Delegation) -> Result<()> {
     let val = crate::addr::val_from_string(&d.validator_address)?;
     hooks::hooks().before_delegation_removed(ctx, &del, &val)?;
     ctx.delete(STORE_KEY, &keys::delegation(&del, &val))?;
+    if ctx.is_sdk_v046() {
+        return Ok(());
+    }
     ctx.delete(STORE_KEY, &keys::delegation_by_val(&val, &del))
 }
 
@@ -322,6 +419,16 @@ pub fn get_all_delegations(ctx: &mut Context<'_>) -> Result<Vec<Delegation>> {
 
 /// `GetValidatorDelegations`.
 pub fn get_validator_delegations(ctx: &mut Context<'_>, val: &[u8]) -> Result<Vec<Delegation>> {
+    if ctx.is_sdk_v046() {
+        // cosmos-sdk v0.46 scans every delegation.
+        let mut out = Vec::new();
+        for d in get_all_delegations(ctx)? {
+            if crate::addr::val_from_string(&d.validator_address)? == val {
+                out.push(d);
+            }
+        }
+        return Ok(out);
+    }
     let mut it = ctx.prefix_iter(STORE_KEY, &keys::delegations_by_val(val))?;
     let mut out = Vec::new();
     while let Some((k, _)) = it.next(ctx)? {
@@ -625,13 +732,27 @@ pub fn get_historical_info(
     ctx: &mut Context<'_>,
     height: i64,
 ) -> Result<Option<pb::HistoricalInfo>> {
-    ctx.get(STORE_KEY, &keys::historical_info(height))?
+    ctx.get(STORE_KEY, &historical_info_key(ctx, height))?
         .map(|b| decode(&b))
         .transpose()
 }
 
+/// The `HistoricalInfo` key of `height` in the executing SDK's layout.
+#[must_use]
+pub fn historical_info_key(ctx: &Context<'_>, height: i64) -> Vec<u8> {
+    if ctx.is_sdk_v046() {
+        keys::historical_info_v046(height)
+    } else {
+        keys::historical_info(height)
+    }
+}
+
 /// `SetValidatorUpdates`.
 pub fn set_validator_updates(ctx: &mut Context<'_>, updates: &[ValidatorUpdate]) -> Result<()> {
+    if ctx.is_sdk_v046() {
+        // cosmos-sdk v0.46 returns the updates without storing them.
+        return Ok(());
+    }
     let v = pb::ValidatorUpdates {
         updates: updates.to_vec(),
     }

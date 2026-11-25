@@ -276,6 +276,11 @@ pub fn sig_verification(
                         "signature verification failed; please verify account number ({acc_num}), sequence ({}) and chain-id ({chain_id})",
                         acc.sequence()
                     )
+                } else if ctx.is_sdk_v046() {
+                    // cosmos-sdk v0.46 does not append the cause.
+                    format!(
+                        "signature verification failed; please verify account number ({acc_num}) and chain-id ({chain_id})"
+                    )
                 } else {
                     format!(
                         "signature verification failed; please verify account number ({acc_num}) and chain-id ({chain_id}): ({err})"

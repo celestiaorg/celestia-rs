@@ -202,16 +202,52 @@ pub(crate) fn namespaced_merkle_root_of<'a, F>(len: usize, leaf: F) -> Result<[u
 where
     F: Fn(usize) -> (&'a [u8], &'a [u8]),
 {
-    fn root<'a, F>(start: usize, end: usize, leaf: &F) -> Result<NamespacedRoot>
-    where
-        F: Fn(usize) -> (&'a [u8], &'a [u8]),
-    {
+    nmt_root_of(len, &|i| {
+        let (namespace, data) = leaf(i);
+        NamespacedRoot::leaf_parts(namespace, data)
+    })
+}
+
+/// The SHA-256 digest of the NMT leaf `namespace || data` (the digest
+/// [`namespaced_merkle_root_of`] computes for that leaf).
+pub(crate) fn nmt_leaf_digest(namespace: &[u8], data: &[u8]) -> Result<[u8; COMMITMENT_HASH_SIZE]> {
+    Ok(NamespacedRoot::leaf_parts(namespace, data)?.digest)
+}
+
+/// [`namespaced_merkle_root_of`] over leaves already hashed by
+/// [`nmt_leaf_digest`]: `leaf(i)` is leaf `i`'s namespace and digest. Same
+/// tree, same node hashing, same checks.
+pub(crate) fn namespaced_merkle_root_of_digests<'a, F>(
+    len: usize,
+    leaf: F,
+) -> Result<[u8; NMT_NODE_SIZE]>
+where
+    F: Fn(usize) -> (&'a [u8], &'a [u8; COMMITMENT_HASH_SIZE]),
+{
+    nmt_root_of(len, &|i| {
+        let (namespace, digest) = leaf(i);
+        let namespace = Namespace::from_slice(namespace)?;
+        Ok(NamespacedRoot {
+            min_namespace: namespace,
+            max_namespace: namespace,
+            digest: *digest,
+        })
+    })
+}
+
+/// The NMT root of `len` leaves, leaf `i` being the node `leaf(i)`.
+fn nmt_root_of(
+    len: usize,
+    leaf: &dyn Fn(usize) -> Result<NamespacedRoot>,
+) -> Result<[u8; NMT_NODE_SIZE]> {
+    fn root(
+        start: usize,
+        end: usize,
+        leaf: &dyn Fn(usize) -> Result<NamespacedRoot>,
+    ) -> Result<NamespacedRoot> {
         match end - start {
             0 => Err(Error::InvalidNamespacedMerkleTree("empty tree")),
-            1 => {
-                let (namespace, data) = leaf(start);
-                NamespacedRoot::leaf_parts(namespace, data)
-            }
+            1 => leaf(start),
             len => {
                 let split = start + nmt_split_point(len)?;
                 let left = root(start, split, leaf)?;
@@ -220,7 +256,7 @@ where
             }
         }
     }
-    Ok(root(0, len, &leaf)?.to_bytes())
+    Ok(root(0, len, leaf)?.to_bytes())
 }
 
 fn nmt_split_point(len: usize) -> Result<usize> {

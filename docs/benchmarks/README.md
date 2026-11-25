@@ -77,10 +77,11 @@ hw.memsize` and keep the machine otherwise idle.
 ## Application-state disk comparison
 
 The B1 reference replay below measured 487 MB of application state for Rust
-and 456 MB for Go. The compact IAVL encoding removes one 32-byte hash and
-two sets of child height/size fields from every newly written inner node.
-It applies to ordinary commits, snapshot restore and both Rust storage
-backends. The application RocksDB now uses 16 MiB write buffers, which let
+and 456 MB for Go, with `fb42fd2`, before this change. A Linux rerun of the
+full replay after it is in "B1 phase A rerun" at the end. The compact IAVL
+encoding removes one 32-byte hash and two sets of child height/size fields
+from every newly written inner node. It applies to ordinary commits,
+snapshot restore and both Rust storage backends. The application RocksDB now uses 16 MiB write buffers, which let
 pruning tombstones reach disk and compaction sooner.
 
 To isolate the storage changes, replay the same account writes through both
@@ -146,10 +147,15 @@ and `run.sh` took 48 minutes together.
 | CheckTx (new txs) | 6391 tx/s | 13178 tx/s | 2.1x faster |
 | CheckTx (recheck) | 17257 tx/s | 17224 tx/s | 1.00x |
 | app RSS at end (peak) | 2896 MB (2897) | 1338 MB (1702) | 0.46x |
-| app state on disk at end | 456 MB | 487 MB | 1.07x |
+| app state on disk at end (`fb42fd2`, before `4d84c7c`) | 456 MB | 487 MB | 1.07x |
 | app hash mismatches vs the recording | 0 / 511 | 0 / 511 | |
 
 Go's p99 is again IAVL pruning in Commit (keep 100, every 10 heights).
+
+The disk row was measured before the compact IAVL inner nodes of `4d84c7c`
+(2026-11-23). The Mac was not re-run after that change. A Linux rerun of
+phase A on 2026-11-25 measured Rust at 0.69-0.73x Go's application state
+("B1 phase A rerun" at the end). That ratio is from a different machine.
 
 ### B-D. Full nodes
 
@@ -169,7 +175,8 @@ Against the budgets in `docs/hardware.md`: the Rust app peaked at 1.7 GB
 blocks stayed under 0.5 s at p99 (mainnet block time ~6 s). The one row
 where Rust is still slower is PrepareProposal on max-size squares (1.03x
 at p50; 1.09x in the first Linux run). App state on disk is 1.07x Go
-(1.67x in the first Linux run, before the RocksDB tuning below), and
+(1.67x in the first Linux run, before the RocksDB tuning below; both
+before `4d84c7c`), and
 restart is no longer slower than Go (RPC up after 0.09 s vs 0.38 s).
 
 The Mac's SSD is 256 GB, not the 512 GB of `docs/hardware.md`; the disk
@@ -437,3 +444,106 @@ pruning by tree diff) is designed in
 [ADR 0006](../adr/0006-compact-iavl-storage.md). It is not implemented:
 it changes every existing home and needs a migration that is tested on a
 real home first.
+
+## PrepareProposal on max-size squares (2026-11-25, Linux shared VM)
+
+Machine: 4 vCPU Intel Xeon @ 2.10GHz cloud VM (SHA-NI, AVX-512), 15.7 GiB,
+Linux 6.18, rustc 1.100.0. The VM was shared: load average 2.3-3.7 during
+the runs, from another agent's build. Base is `8aec12b`. Go was not run
+here, so the Go ratio of the Mac table above is not re-measured.
+
+**Where the time goes.** Timers in a 256x256-square PrepareProposal of
+`proposal_bench`, before this change, at about 450-480 ms in total:
+
+| step | ms |
+|---|---|
+| DAH: 2 x 512 NMT roots of the extended square | 190-225 |
+| erasure extension (GF(2^16), parallel) | 65-90 |
+| fill: ante handlers of ~780 txs (signatures cached) | 47-90 |
+| fill: blob commitment checks | 12-65 |
+| fill: tx decoding and separation | 12-38 |
+| square export (blob shares) | 19-68 |
+
+Two changes:
+
+- **DAH: hash each cell once.** A cell's NMT leaf is the same in its row
+  tree and in its column tree. A Q0 cell keeps its namespace in both trees,
+  and every other cell gets the parity namespace in both. The leaf digests
+  are now computed once, in parallel by row, and the row and column trees
+  are built over them. Leaf hashing was about 75% of the SHA-256 work. If
+  any tree fails, the per-axis computation runs again and returns its own
+  error, so results and errors stay the same. The extra memory is 32 bytes
+  per cell (8 MiB for a 256x256 square). This also applies to
+  ProcessProposal of blocks that other validators propose.
+- **PrepareProposal uses the CheckTx blob cache.** A blob tx that a
+  successful CheckTx admitted at the same app version is not checked
+  again for share commitments. This matches Go v10.5.0's
+  `ValidateBlobTxWithCache` and this node's own ProcessProposal. The cache
+  key is the full BlobTx wire bytes. ProcessProposal does not trust the
+  proposer: a node without the cache entry checks the commitments again.
+
+The roots digests of `eds_bench` (32x32 to 256x256) are unchanged. These
+also pass: the square Go vectors, the rsmt2d and DAH fixtures,
+`replay_scenarios`, `proposal_v105`, `replay_empty` and
+`persistent_replay`. A new test replays the `blob`, `v105-closure-blob`
+and `v9-blob` recordings, also with invalid txs mixed in. It checks that
+every PrepareProposal response is the same with a full and an empty blob
+cache, and is the same as Go's.
+
+**Extend + DAH** (`eds_bench 5`, median of 5, two interleaved rounds):
+
+| original width | DAH before | DAH after | extend + DAH before | after |
+|---|---|---|---|---|
+| 128 | 55-56 ms | 33-37 ms | 74-75 ms | 48-53 ms |
+| 256 | 185-215 ms | 116-130 ms | 242-283 ms | 179-190 ms |
+
+**Proposal pipeline** (`proposal_bench --heights 10 --big-every 2 --reps 3`,
+10 runs of each build, interleaved). Each run gives 5 max-size heights
+(256x256 squares, 8-30 MB) and 4 light heights (780 txs). A sample is
+the median of 3 repetitions at one height. "Run medians" is the range of
+the per-run medians:
+
+| | before p50 / p99 | after p50 / p99 | run medians before / after | after / before (p50) |
+|---|---|---|---|---|
+| PrepareProposal, max-size (n = 50) | 427 / 619 ms | 359 / 485 ms | 367-501 / 334-403 ms | 0.84x |
+| ProcessProposal, max-size (n = 50) | 149 / 262 ms | 136 / 249 ms | 125-158 / 121-155 ms | ~0.9x (noise) |
+| FinalizeBlock, max-size (n = 50) | 217 / 319 ms | 224 / 329 ms | 179-254 / 199-250 ms | ~1.0x (noise) |
+| PrepareProposal, light (n = 40) | 75.6 / 109 ms | 75.7 / 115 ms | 67-79 / 70-88 ms | 1.0x |
+| ProcessProposal, light (n = 40) | 73.7 / 109 ms | 74.1 / 110 ms | 68-86 / 70-92 ms | 1.0x |
+
+PrepareProposal on max-size squares was faster in all 10 run pairs. A
+permutation test on the per-run medians gives p = 0.0005. None of the
+other rows changed significantly (p >= 0.14). ProcessProposal of a
+node's own proposal already reused the proposer's data root, so the DAH
+change does not show in it here.
+
+## B1 phase A rerun (2026-11-25, Linux shared VM)
+
+This rerun checks the disk row of the Mac table after `4d84c7c`. It is not
+a re-run of the Mac table. Same 4 vCPU Intel Xeon @ 2.10GHz VM as the
+section above (Linux 6.18, rustc 1.100.0), load average 1.6-2.7. Go
+celestia-appd v10.4.0 and celestia-core v0.42.3 were built by
+`APP_VERSION=v10.4.0 conformance/devnet/build-bins.sh` with go1.26.9.
+`gen-chain.sh` used its defaults: 511 heights, 358,120 txs, 43 blocks over
+2 MiB (up to 21.1 MiB), a 3.6 GB recording. Then `BENCH_PHASES=A run.sh`
+replayed it through Go, through celestia-rs `c9d0c30` and, as
+`CELESTIA_RS_ALT`, through `8aec12b` (current `main`, without the
+PrepareProposal change above). The three replays ran one after the other,
+not interleaved. Every app matched all 511 recorded app hashes. Disk is
+`du` of each app's home after SIGTERM, as in the Mac run.
+
+| metric | Go | Rust `c9d0c30` | Rust `8aec12b` | Rust/Go (`c9d0c30` / `8aec12b`) |
+|---|---|---|---|---|
+| app state on disk at end | 431 MB | 296 MB | 316 MB | 0.69x / 0.73x |
+| PrepareProposal, max-size squares p50 / p99 (n = 430) | 328 / 690 ms | 242 / 482 ms | 294 / 618 ms | 0.74x / 0.90x (p50) |
+| ProcessProposal, max-size squares p50 / p99 | 357 / 765 ms | 135 / 295 ms | 148 / 344 ms | 0.38x / 0.41x (p50) |
+| PrepareProposal, light blocks p50 / p99 (n = 1,404) | 220 / 332 ms | 67 / 110 ms | 72 / 115 ms | 0.31x / 0.33x (p50) |
+| FinalizeBlock+Commit p50 / p99 | 727 / 10,278 ms | 355 / 938 ms | 366 / 974 ms | 0.49x / 0.50x (p50) |
+| app RSS at end (peak) | 2127 MB (3405) | 1527 MB (1872) | 1519 MB (1863) | 0.72x / 0.71x |
+
+Both Rust builds have the same storage code, so their 296 MB and 316 MB
+show the run-to-run spread of background compaction. On this machine Rust
+application state is now smaller than Go's. In the first Linux run, before
+the RocksDB tuning and `4d84c7c`, it was 1.67x. On this machine,
+PrepareProposal on max-size squares was already faster than Go before the
+change (0.90x at p50). The Mac's 1.03x is not re-measured.

@@ -130,7 +130,8 @@ pub fn data_availability_header_from_proto(bytes: &[u8]) -> Result<DataAvailabil
 
 /// Construct a data availability header from an extended data square.
 pub fn new_data_availability_header(eds: &ExtendedDataSquare) -> Result<DataAvailabilityHeader> {
-    DataAvailabilityHeader::new(eds.row_roots()?, eds.column_roots()?)
+    let (rows, columns) = eds.row_and_column_roots()?;
+    DataAvailabilityHeader::new(rows, columns)
 }
 
 /// Return the minimum valid data availability header.

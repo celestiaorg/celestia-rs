@@ -52,8 +52,19 @@ impl CommitId {
 pub struct StoreInfo {
     /// Mounted store name.
     pub name: String,
-    /// Commit ID for this store.
-    pub commit_id: CommitId,
+    /// Commit ID for this store. `None` is the empty commit ID (version 0,
+    /// no hash) that a cosmos-sdk v0.46 memory store commits: it hashes as
+    /// an empty root.
+    pub commit_id: Option<CommitId>,
+}
+
+impl StoreInfo {
+    /// The root hash this entry contributes to the app hash (empty for a
+    /// memory store).
+    #[must_use]
+    pub fn hash(&self) -> &[u8] {
+        self.commit_id.as_ref().map_or(&[], |id| &id.hash)
+    }
 }
 
 /// Multi-store commit information for one app height.
@@ -147,6 +158,10 @@ impl CommitInfo {
 pub enum StoreKind {
     /// IAVL-backed persistent key/value store.
     Iavl,
+    /// A cosmos-sdk v0.46 memory store (celestia-app v1 to v3): listed in
+    /// every commit info with the empty commit ID. Its data is not kept
+    /// here.
+    Memory,
 }
 
 /// When committed versions are deleted (Cosmos SDK pruning semantics).
@@ -268,6 +283,8 @@ pub struct Store {
     initial_version: Version,
     version: Version,
     stores: BTreeMap<String, KvStore>,
+    /// Mounted [`StoreKind::Memory`] stores.
+    memory_stores: BTreeSet<String>,
     last_commit_info: Option<CommitInfo>,
     history: BTreeMap<Version, CommitInfo>,
     db: Option<Arc<dyn KvBackend>>,
@@ -320,6 +337,7 @@ impl Store {
             initial_version: 1,
             version: 0,
             stores: BTreeMap::new(),
+            memory_stores: BTreeSet::new(),
             last_commit_info: None,
             history: BTreeMap::new(),
             db: None,
@@ -396,13 +414,16 @@ impl Store {
     pub fn mount_store(&mut self, name: impl Into<String>, kind: StoreKind) -> Result<()> {
         let name = name.into();
         validate_store_name(&name)?;
-        if self.stores.contains_key(&name) {
+        if self.stores.contains_key(&name) || self.memory_stores.contains(&name) {
             return Err(Error::DuplicateStoreName(name));
         }
         match kind {
             StoreKind::Iavl => {
                 let store = self.new_kv_store(&name)?;
                 self.stores.insert(name, store);
+            }
+            StoreKind::Memory => {
+                self.memory_stores.insert(name);
             }
         }
         Ok(())
@@ -428,6 +449,9 @@ impl Store {
     /// Unmount a store that holds no committed version (e.g. one the
     /// state's app version does not have yet).
     pub fn unmount_store(&mut self, name: &str) -> Result<()> {
+        if self.memory_stores.remove(name) {
+            return Ok(());
+        }
         let Some(store) = self.stores.get(name) else {
             return Err(Error::UnknownStore(name.to_owned()));
         };
@@ -473,7 +497,7 @@ impl Store {
             let tree = store.tree_mut();
             if let Some(store_info) = info.store_info(name) {
                 tree.load_version(latest)?;
-                if tree.root_hash() != store_info.commit_id.hash {
+                if store_info.commit_id.map(|id| id.hash) != Some(tree.root_hash()) {
                     return Err(Error::Corrupted(format!(
                         "store {name} root does not match commit info at {latest}"
                     )));
@@ -488,7 +512,11 @@ impl Store {
             }
         }
         for store_info in &info.store_infos {
-            if !self.stores.contains_key(&store_info.name) {
+            let mounted = match store_info.commit_id {
+                Some(_) => self.stores.contains_key(&store_info.name),
+                None => self.memory_stores.contains(&store_info.name),
+            };
+            if !mounted {
                 return Err(Error::UnknownStore(store_info.name.clone()));
             }
         }
@@ -512,13 +540,14 @@ impl Store {
         CommitInfo::from_proto_bytes(&raw)
     }
 
-    /// Return true when a store is mounted under `name`.
+    /// Return true when a store is mounted under `name`, as an IAVL store
+    /// or as a memory store.
     #[must_use]
     pub fn has_store(&self, name: &str) -> bool {
-        self.stores.contains_key(name)
+        self.stores.contains_key(name) || self.memory_stores.contains(name)
     }
 
-    /// Return mounted store names in lexicographic order.
+    /// Return mounted IAVL store names in lexicographic order.
     #[must_use]
     pub fn store_names(&self) -> Vec<&str> {
         self.stores.keys().map(String::as_str).collect()
@@ -596,15 +625,15 @@ impl Store {
         }
 
         let mut batch = WriteBatch::new();
-        let mut store_infos = Vec::with_capacity(self.stores.len());
+        let mut store_infos = self.memory_store_infos();
         for (name, store) in &mut self.stores {
             let commit = store.tree_mut().save_version_to(&mut batch)?;
             store_infos.push(StoreInfo {
                 name: name.clone(),
-                commit_id: CommitId {
+                commit_id: Some(CommitId {
                     version: next_version,
                     hash: commit.root_hash,
-                },
+                }),
             });
         }
 
@@ -760,6 +789,7 @@ impl Store {
             initial_version: self.initial_version,
             version,
             stores,
+            memory_stores: self.memory_stores.clone(),
             last_commit_info: Some(info),
             history: BTreeMap::new(),
             db: self.db.clone(),
@@ -854,14 +884,23 @@ impl Store {
     }
 
     fn working_store_infos(&self) -> Vec<StoreInfo> {
-        self.stores
+        let mut infos = self.memory_store_infos();
+        infos.extend(self.stores.iter().map(|(name, store)| StoreInfo {
+            name: name.clone(),
+            commit_id: Some(CommitId {
+                version: store.version(),
+                hash: store.root_hash(),
+            }),
+        }));
+        infos
+    }
+
+    fn memory_store_infos(&self) -> Vec<StoreInfo> {
+        self.memory_stores
             .iter()
-            .map(|(name, store)| StoreInfo {
+            .map(|name| StoreInfo {
                 name: name.clone(),
-                commit_id: CommitId {
-                    version: store.version(),
-                    hash: store.root_hash(),
-                },
+                commit_id: None,
             })
             .collect()
     }
@@ -921,7 +960,7 @@ impl Restorer<'_> {
     /// Writes roots + commit info atomically and loads the restored version.
     pub fn finish(mut self) -> Result<CommitId> {
         self.finish_current()?;
-        let mut store_infos = Vec::new();
+        let mut store_infos = self.store.memory_store_infos();
         for name in self.store.stores.keys() {
             let tree = self
                 .imported
@@ -929,10 +968,10 @@ impl Restorer<'_> {
                 .ok_or_else(|| Error::UnknownStore(name.clone()))?;
             store_infos.push(StoreInfo {
                 name: name.clone(),
-                commit_id: CommitId {
+                commit_id: Some(CommitId {
                     version: self.version,
                     hash: tree.root_hash(),
-                },
+                }),
             });
         }
         let info = CommitInfo::new(self.version, store_infos)?;
@@ -1131,7 +1170,7 @@ pub fn proof_op_from_store_infos(
     let commitment_proof = ics23::CommitmentProof {
         proof: Some(RawCommitmentProof::Exist(ExistenceProof {
             key: store_info.name.as_bytes().to_vec(),
-            value: store_info.commit_id.hash.to_vec(),
+            value: store_info.hash().to_vec(),
             leaf: Some(LeafOp {
                 hash: HashOp::Sha256.into(),
                 prehash_key: HashOp::NoHash.into(),
@@ -1164,9 +1203,11 @@ fn sorted_store_infos(mut store_infos: Vec<StoreInfo>) -> Result<Vec<StoreInfo>>
 fn sorted_committed_store_infos(store_infos: Vec<StoreInfo>) -> Result<Vec<StoreInfo>> {
     let store_infos = sorted_store_infos(store_infos)?;
     for store_info in &store_infos {
-        if store_info.commit_id.version <= 0 {
+        if let Some(id) = store_info.commit_id
+            && id.version <= 0
+        {
             return Err(Error::InvalidVersion {
-                version: store_info.commit_id.version,
+                version: id.version,
             });
         }
     }
@@ -1191,10 +1232,7 @@ fn simple_map_leaves(store_infos: &[StoreInfo]) -> Vec<Vec<u8>> {
     store_infos
         .iter()
         .map(|store_info| {
-            kv_pair_bytes(
-                store_info.name.as_bytes(),
-                &hash::sha256(&store_info.commit_id.hash),
-            )
+            kv_pair_bytes(store_info.name.as_bytes(), &hash::sha256(store_info.hash()))
         })
         .collect()
 }
@@ -1288,7 +1326,12 @@ impl From<StoreInfo> for RawStoreInfo {
     fn from(value: StoreInfo) -> Self {
         Self {
             name: value.name,
-            commit_id: Some(RawCommitId::from(value.commit_id)),
+            // Go encodes the empty commit ID as an empty message.
+            commit_id: Some(
+                value
+                    .commit_id
+                    .map_or_else(RawCommitId::default, RawCommitId::from),
+            ),
         }
     }
 }
@@ -1297,13 +1340,17 @@ impl TryFrom<RawStoreInfo> for StoreInfo {
     type Error = Error;
 
     fn try_from(value: RawStoreInfo) -> Result<Self> {
+        let raw = value
+            .commit_id
+            .ok_or(Error::InvalidCommitInfo("missing store commit ID"))?;
+        let commit_id = if raw == RawCommitId::default() {
+            None
+        } else {
+            Some(CommitId::try_from(raw)?)
+        };
         Ok(Self {
             name: value.name,
-            commit_id: CommitId::try_from(
-                value
-                    .commit_id
-                    .ok_or(Error::InvalidCommitInfo("missing store commit ID"))?,
-            )?,
+            commit_id,
         })
     }
 }
@@ -1355,10 +1402,10 @@ mod tests {
     fn store_info_lookup_cache_helpers_and_defaults_work() {
         let store_info = StoreInfo {
             name: "auth".to_owned(),
-            commit_id: CommitId {
+            commit_id: Some(CommitId {
                 version: 1,
                 hash: hash::sha256(b"auth"),
-            },
+            }),
         };
         let info = CommitInfo::new(1, vec![store_info]).expect("commit info");
         assert!(info.store_info("auth").is_some());
@@ -1402,7 +1449,10 @@ mod tests {
         assert_eq!(custom_commit.version, 7);
 
         let custom_info = custom.last_commit_info().expect("custom commit info");
-        assert_eq!(custom_info.store_infos[0].commit_id.version, 7);
+        assert_eq!(
+            custom_info.store_infos[0].commit_id.map(|id| id.version),
+            Some(7)
+        );
 
         let mut default = Store::new();
         default
@@ -1417,8 +1467,8 @@ mod tests {
         assert_eq!(default_commit.version, 1);
         let default_info = default.last_commit_info().expect("default commit info");
         assert_ne!(
-            custom_info.store_infos[0].commit_id.hash,
-            default_info.store_infos[0].commit_id.hash
+            custom_info.store_infos[0].hash(),
+            default_info.store_infos[0].hash()
         );
     }
 
@@ -1507,17 +1557,17 @@ mod tests {
         let store_infos = vec![
             StoreInfo {
                 name: "bank".to_owned(),
-                commit_id: CommitId {
+                commit_id: Some(CommitId {
                     version: 1,
                     hash: bank_hash,
-                },
+                }),
             },
             StoreInfo {
                 name: "auth".to_owned(),
-                commit_id: CommitId {
+                commit_id: Some(CommitId {
                     version: 1,
                     hash: auth_hash,
-                },
+                }),
             },
         ];
         let root = commit_info_hash(&store_infos).expect("commit info hash");

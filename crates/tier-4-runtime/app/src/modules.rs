@@ -199,6 +199,8 @@ pub fn install_staking_hooks() {
     x_staking::set_hooks(std::sync::Arc::new(x_staking::MultiStakingHooks(vec![
         Box::new(x_distribution::Hooks),
         Box::new(x_slashing::Hooks),
+        // celestia-app v1 only: a no-op unless the `qgb` store is mounted.
+        Box::new(x_qgb::Hooks),
     ])));
 }
 

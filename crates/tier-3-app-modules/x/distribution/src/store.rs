@@ -245,6 +245,17 @@ mod params_tests {
 
 /// `Params.Get` (collections: missing is an error).
 pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
+    // cosmos-sdk v0.46 (app versions 1 to 3) keeps the params in the
+    // x/params subspace `distribution`, which only its InitGenesis writes.
+    if ctx.is_sdk_v046() {
+        use x_params::v046::{get_bool, get_dec};
+        return Ok(Params {
+            community_tax: get_dec(ctx, "distribution", "communitytax")?,
+            base_proposer_reward: Some(get_dec(ctx, "distribution", "baseproposerreward")?),
+            bonus_proposer_reward: Some(get_dec(ctx, "distribution", "bonusproposerreward")?),
+            withdraw_addr_enabled: get_bool(ctx, "distribution", "withdrawaddrenabled")?,
+        });
+    }
     let b = ctx
         .get(STORE_KEY, PARAMS)?
         .ok_or_else(|| sdk::error::internal("collections: not found: params"))?;
@@ -253,6 +264,10 @@ pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
 
 /// `Params.Set`.
 pub fn set_params(ctx: &mut Context<'_>, p: &Params) -> Result<()> {
+    if ctx.is_sdk_v046() {
+        // Subspace `distribution` (written by the v0.46 InitGenesis).
+        return Ok(());
+    }
     ctx.set(STORE_KEY, PARAMS.to_vec(), p.encode())
 }
 
@@ -292,6 +307,15 @@ pub fn set_previous_proposer(ctx: &mut Context<'_>, cons: &[u8]) -> Result<()> {
         prost::encoding::bytes::encode(1, &cons.to_vec(), &mut v);
     }
     ctx.set(STORE_KEY, PROPOSER.to_vec(), v)
+}
+
+/// cosmos-sdk v0.46 `GetPreviousProposerConsAddr`: the stored
+/// `gogotypes.BytesValue` (Go panics when it is unset).
+pub fn get_previous_proposer(ctx: &mut Context<'_>) -> Result<Vec<u8>> {
+    let b = ctx
+        .get(STORE_KEY, PROPOSER)?
+        .ok_or_else(|| sdk::error::sdk::logic("previous proposer not set"))?;
+    Ok(decode::<pbjson_types::BytesValue>(&b)?.value.to_vec())
 }
 
 /// `DelegatorStartingInfo`.

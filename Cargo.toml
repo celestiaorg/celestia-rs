@@ -58,6 +58,7 @@ members = [
     "crates/tier-3-app-modules/x/signal",
     "crates/tier-3-app-modules/x/zkism",
     "crates/tier-3-app-modules/x/forwarding",
+    "crates/tier-3-app-modules/x/qgb",
     "crates/tier-4-runtime/abci-server",
     "crates/tier-4-runtime/api-server",
     "crates/tier-4-runtime/app",
@@ -123,7 +124,9 @@ unnecessary_wraps = "allow"
 
 [workspace.dependencies]
 anyhow = "1"
-clap = { version = "4", features = ["derive"] }
+# No `color` feature: it only styles help and error text, and costs six
+# crates (anstream and its helpers) in the node binary.
+clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
 
 # Keep build directories small: several agent worktrees build concurrently
 # inside one fixed disk allowance.
@@ -139,7 +142,7 @@ debug = false
 
 # Erasure coding of block parts runs on every proposal; keep it fast in
 # the debug builds the devnets use.
-[profile.dev.package.reed-solomon-erasure]
+[profile.dev.package.propagation]
 opt-level = 3
 
 [profile.dev.package.reed-solomon-simd]

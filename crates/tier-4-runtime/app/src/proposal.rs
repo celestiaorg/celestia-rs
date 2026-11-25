@@ -505,10 +505,13 @@ impl App {
         );
         let mut proposed = std::mem::take(&mut self.proposed);
         proposed.0 = None;
+        let blob_tx_cache = std::mem::take(&mut self.blob_tx_cache);
+        let version = self.execution_version();
         let res = self.with_proposal_ctx(header, ExecMode::PrepareProposal, |ctx, deps| {
-            prepare(ctx, deps, req, &mut proposed)
+            prepare(ctx, deps, req, &mut proposed, &blob_tx_cache, version)
         });
         self.proposed = proposed;
+        self.blob_tx_cache = blob_tx_cache;
         Ok(res.unwrap_or_else(|_| ResponsePrepareProposal {
             txs: req.txs.clone(),
             ..ResponsePrepareProposal::default()
@@ -624,6 +627,8 @@ fn prepare(
     deps: &x_ante::StoreDeps,
     req: &RequestPrepareProposal,
     proposed: &mut ProposedSquare,
+    blob_tx_cache: &crate::blob_cache::BlobTxCache,
+    version: u64,
 ) -> Result<ResponsePrepareProposal, Abort> {
     let max_square_size = max_effective_square_size(ctx)?;
     let mut builder = Builder::new(max_square_size, SUBTREE_ROOT_THRESHOLD)?;
@@ -631,7 +636,8 @@ fn prepare(
         fill_v9(ctx, deps, &mut builder, &req.txs, req.max_tx_bytes)?
     } else {
         x_fibre::begin_block(ctx)?;
-        fill(ctx, deps, &mut builder, &req.txs, req.max_tx_bytes)?
+        let cache = |raw: &[u8]| blob_tx_cache.contains(version, raw);
+        fill(ctx, deps, &mut builder, &req.txs, req.max_tx_bytes, &cache)?
     };
     let square = builder.export()?;
     let (width, root) = data_root(&square)?;
@@ -643,13 +649,16 @@ fn prepare(
     })
 }
 
-/// `FilteredSquareBuilder.Fill`.
+/// `FilteredSquareBuilder.Fill`. `verified(raw)`: whether a successful
+/// CheckTx already verified blob tx `raw`'s share commitments at this app
+/// version (v10.5.0 `ValidateBlobTxWithCache`, as in ProcessProposal).
 fn fill(
     ctx: &mut Context<'_>,
     deps: &x_ante::StoreDeps,
     builder: &mut Builder,
     txs: &[Vec<u8>],
     max_tx_bytes: i64,
+    verified: &dyn Fn(&[u8]) -> bool,
 ) -> Result<Vec<Vec<u8>>, Abort> {
     let mut within_bytes: Vec<&[u8]> = Vec::with_capacity(txs.len());
     let mut current = 0i64;
@@ -707,7 +716,7 @@ fn fill(
         if blob_msgs + tx.msgs().len() > MAX_PFB_MESSAGES {
             continue;
         }
-        if validate_blob_tx(&tx, u).is_err() {
+        if validate_blob_tx_with_commitments(&tx, u, !verified(raw)).is_err() {
             continue;
         }
         let Ok(btx) = to_square_blob_tx(u) else {
@@ -1229,6 +1238,156 @@ mod tests {
         let s = separate(std::iter::once(raw.as_slice()));
         assert!(s.normal.is_empty() && s.pff.is_empty());
         assert!(fill_decode(txdecode::decode(b"\x01")).is_none());
+    }
+
+    type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+
+    /// `raw` with the first byte of its first non-empty blob flipped: the
+    /// signed SDK tx is unchanged, the share commitment no longer matches.
+    fn tampered_blob_tx(raw: &[u8]) -> Option<Vec<u8>> {
+        let mut u = txdecode::unmarshal_blob_tx(raw)?.ok()?;
+        let blob = u.blobs.iter_mut().find(|b| !b.data.is_empty())?;
+        blob.data[0] ^= 1;
+        Some(txdecode::marshal_blob_tx(&u.tx, &u.blobs))
+    }
+
+    /// `prepare_proposal` with `cache` in place of the app's blob cache.
+    fn prepare_with_cache(
+        app: &mut App,
+        cache: crate::blob_cache::BlobTxCache,
+        req: &RequestPrepareProposal,
+    ) -> TestResult<ResponsePrepareProposal> {
+        let saved = std::mem::replace(&mut app.blob_tx_cache, cache);
+        let res = app.prepare_proposal(req);
+        app.blob_tx_cache = saved;
+        Ok(res?)
+    }
+
+    /// Replays recorded devnets (Go v10.4 / v10.5 / v9 validators, every
+    /// CheckTx before each proposal) and checks, for every recorded
+    /// PrepareProposal and for the same request with invalid txs mixed in
+    /// (a blob tx whose commitment no longer matches, a malformed blob tx,
+    /// garbage bytes, a duplicate), that the response with the blob cache
+    /// CheckTx filled is the response with an empty cache, and that the
+    /// former is the recorded Go response.
+    #[test]
+    fn prepare_proposal_output_does_not_depend_on_the_blob_cache() -> TestResult {
+        use crate::blob_cache::BlobTxCache;
+        use abci_server::Application;
+        use celestia_proto::celestia_core_proto::abci::{request, response};
+        for fixture in ["blob", "v105-closure-blob", "v9-blob"] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../conformance/fixtures/devnet")
+                .join(fixture)
+                .join("abci.rec");
+            let records = abci_server::record::parse(&std::fs::read(path)?)?;
+            let adapter = crate::AbciApp::new(App::new());
+            let shared = adapter.shared();
+            shared.lock().map_err(|e| e.to_string())?.blob_tx_cache =
+                BlobTxCache::with_capacity(10_000);
+            let (mut compared, mut warm_hits) = (0, 0);
+            for exchange in abci_server::record::exchanges(&records)? {
+                let Some(req) = exchange.request.value else {
+                    continue;
+                };
+                if let (
+                    request::Value::PrepareProposal(r),
+                    Some(response::Value::PrepareProposal(go)),
+                ) = (&req, &exchange.response.value)
+                {
+                    let mut app = shared.lock().map_err(|e| e.to_string())?;
+                    let version = app.execution_version();
+                    warm_hits += r
+                        .txs
+                        .iter()
+                        .filter(|t| app.blob_tx_cache.contains(version, t))
+                        .count();
+                    let mut mixed = r.clone();
+                    if let Some(bad) = r.txs.iter().find_map(|t| tampered_blob_tx(t)) {
+                        mixed.txs.insert(0, bad);
+                    }
+                    if let Some(first) = r.txs.first() {
+                        mixed.txs.push(first.clone());
+                    }
+                    mixed.txs.push(vec![0xff; 40]);
+                    mixed.txs.push(b"\x0a\x01".to_vec());
+                    for req in [r, &mixed] {
+                        let warm = app.prepare_proposal(req)?;
+                        let cold =
+                            prepare_with_cache(&mut app, BlobTxCache::with_capacity(0), req)?;
+                        assert_eq!(warm, cold, "{fixture} h={}", req.height);
+                        compared += 1;
+                    }
+                    let ours = app.prepare_proposal(r)?;
+                    assert_eq!(&ours, go, "{fixture} h={}", r.height);
+                }
+                adapter.handle(req);
+            }
+            assert!(
+                compared > 0 && warm_hits > 0,
+                "{fixture}: {compared} {warm_hits}"
+            );
+        }
+        Ok(())
+    }
+
+    /// PrepareProposal skips the commitment check of a blob tx that a
+    /// successful CheckTx admitted to the blob cache (Go v10.5.0's
+    /// `ValidateBlobTxWithCache`), as ProcessProposal does. A cache entry
+    /// for a tx whose commitment does not match (impossible through
+    /// CheckTx; inserted here) shows which path ran. ProcessProposal on a
+    /// node whose cache lacks the tx still recomputes the commitment and
+    /// rejects the block.
+    #[test]
+    fn prepare_proposal_uses_the_check_tx_blob_cache() -> TestResult {
+        use crate::blob_cache::BlobTxCache;
+        use abci_server::Application;
+        use celestia_proto::celestia_core_proto::abci::request;
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../conformance/fixtures/devnet/blob/abci.rec");
+        let records = abci_server::record::parse(&std::fs::read(path)?)?;
+        let adapter = crate::AbciApp::new(App::new());
+        let shared = adapter.shared();
+        for exchange in abci_server::record::exchanges(&records)? {
+            let Some(req) = exchange.request.value else {
+                continue;
+            };
+            if let request::Value::PrepareProposal(r) = &req
+                && let Some((i, bad)) = r
+                    .txs
+                    .iter()
+                    .enumerate()
+                    .find_map(|(i, t)| tampered_blob_tx(t).map(|b| (i, b)))
+            {
+                let mut app = shared.lock().map_err(|e| e.to_string())?;
+                let version = app.execution_version();
+                let mut req = r.clone();
+                req.txs[i] = bad.clone();
+                let cold = prepare_with_cache(&mut app, BlobTxCache::with_capacity(0), &req)?;
+                assert!(!cold.txs.contains(&bad));
+                let mut cache = BlobTxCache::with_capacity(1);
+                cache.remember(version, &bad);
+                let warm = prepare_with_cache(&mut app, cache, &req)?;
+                assert!(warm.txs.contains(&bad));
+                app.blob_tx_cache = BlobTxCache::with_capacity(0);
+                let status = app
+                    .process_proposal(&RequestProcessProposal {
+                        txs: warm.txs.clone(),
+                        square_size: warm.square_size,
+                        data_root_hash: warm.data_root_hash.clone(),
+                        height: req.height,
+                        time: req.time,
+                        proposer_address: req.proposer_address.clone(),
+                        next_validators_hash: req.next_validators_hash.clone(),
+                        ..RequestProcessProposal::default()
+                    })?
+                    .status;
+                assert_eq!(status, ProposalStatus::Reject as i32);
+                return Ok(());
+            }
+            adapter.handle(req);
+        }
+        Err("no proposal with a blob tx".into())
     }
 
     #[test]

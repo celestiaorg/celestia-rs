@@ -41,10 +41,10 @@ fn commit_info_hash_matches_go_app_hash() -> anyhow::Result<()> {
             .map(|s| -> anyhow::Result<_> {
                 Ok(multistore::StoreInfo {
                     name: s.name.clone(),
-                    commit_id: multistore::CommitId {
+                    commit_id: Some(multistore::CommitId {
                         version: height,
                         hash: s.hash.as_slice().try_into()?,
-                    },
+                    }),
                 })
             })
             .collect::<anyhow::Result<_>>()?;

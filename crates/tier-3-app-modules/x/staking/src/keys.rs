@@ -265,6 +265,12 @@ pub fn historical_info(height: i64) -> Vec<u8> {
     cat(HISTORICAL_INFO, &[&h])
 }
 
+/// cosmos-sdk v0.46 `GetHistoricalInfoKey`: the height in decimal.
+#[must_use]
+pub fn historical_info_v046(height: i64) -> Vec<u8> {
+    cat(HISTORICAL_INFO, &[height.to_string().as_bytes()])
+}
+
 /// `GetUnbondingIndexKey`.
 #[must_use]
 pub fn unbonding_index(id: u64) -> Vec<u8> {

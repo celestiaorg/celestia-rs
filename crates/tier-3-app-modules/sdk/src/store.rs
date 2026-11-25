@@ -164,6 +164,14 @@ impl MultiStore {
         Ok(())
     }
 
+    /// Lists `name` in every commit info with the empty commit ID: a
+    /// cosmos-sdk v0.46 memory store as rootmulti commits it (e.g.
+    /// `mem_capability`, celestia-app v1 to v3). It holds no data; the
+    /// module's memory data lives in a [`Kind::Memory`] store.
+    pub fn mount_commit_memory(&mut self, name: &str) -> Result<(), StoreError> {
+        Ok(self.root.mount_store(name, StoreKind::Memory)?)
+    }
+
     /// Mounts a new IAVL store whose first commit is `initial_version` (a
     /// store upgrade's `Added` store).
     pub fn mount_iavl_at(&mut self, name: &str, initial_version: i64) -> Result<(), StoreError> {

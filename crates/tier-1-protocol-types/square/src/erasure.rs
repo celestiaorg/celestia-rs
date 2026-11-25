@@ -4,11 +4,17 @@ use shares::{NAMESPACE_SIZE, PARITY_SHARES_NAMESPACE, SHARE_SIZE, Share};
 
 use std::cell::RefCell;
 
-use crate::commitment::namespaced_merkle_root_of;
+use crate::commitment::{
+    COMMITMENT_HASH_SIZE, namespaced_merkle_root_of, namespaced_merkle_root_of_digests,
+    nmt_leaf_digest,
+};
 use crate::dah::DAH_ROOT_SIZE;
 use crate::inclusion::{ceil_sqrt, is_power_of_two};
 use crate::square::validate_square_shares;
 use crate::{Error, Result, par};
+
+/// Row roots and column roots of an extended data square.
+pub type RowAndColumnRoots = (Vec<[u8; DAH_ROOT_SIZE]>, Vec<[u8; DAH_ROOT_SIZE]>);
 
 /// Rows / columns per worker thread below which a pass stays serial.
 const MIN_AXES_PER_THREAD: usize = 8;
@@ -332,34 +338,85 @@ impl ExtendedDataSquare {
 
     /// Compute all row roots.
     pub fn row_roots(&self) -> Result<Vec<[u8; DAH_ROOT_SIZE]>> {
-        self.axis_roots(Some(Axis::Row))
+        self.axis_roots(Axis::Row)
     }
 
     /// Compute all column roots.
     pub fn column_roots(&self) -> Result<Vec<[u8; DAH_ROOT_SIZE]>> {
-        self.axis_roots(Some(Axis::Column))
+        self.axis_roots(Axis::Column)
     }
 
     /// Compute row roots followed by column roots.
     pub fn roots(&self) -> Result<Vec<[u8; DAH_ROOT_SIZE]>> {
-        self.axis_roots(None)
+        let (mut rows, columns) = self.row_and_column_roots()?;
+        rows.extend(columns);
+        Ok(rows)
     }
 
-    /// The roots of every row (`Some(Row)`), every column (`Some(Column)`)
-    /// or both, rows first (`None`), computed in parallel.
-    fn axis_roots(&self, axis: Option<Axis>) -> Result<Vec<[u8; DAH_ROOT_SIZE]>> {
-        let count = if axis.is_some() {
-            self.width
-        } else {
-            2 * self.width
-        };
-        let mut roots = vec![[0u8; DAH_ROOT_SIZE]; count];
+    /// The row roots and the column roots: [`Self::row_roots`] and
+    /// [`Self::column_roots`] (their error, if either fails), hashing every
+    /// cell once. A cell's NMT leaf is the same in its row tree and its
+    /// column tree (a Q0 cell keeps its namespace in both, every other cell
+    /// gets the parity namespace in both), so the leaf digests are computed
+    /// once, in parallel by row, and the 2 x width trees are built over them.
+    pub fn row_and_column_roots(&self) -> Result<RowAndColumnRoots> {
+        match self.roots_over_leaf_digests() {
+            Ok(roots) => Ok(roots),
+            // Any failure here is a failure of the per-axis computation
+            // (same leaves, same trees); rerun it for its exact error.
+            Err(_) => Ok((self.row_roots()?, self.column_roots()?)),
+        }
+    }
+
+    fn roots_over_leaf_digests(&self) -> Result<RowAndColumnRoots> {
+        let width = self.width;
+        let mut leaves = vec![[0u8; COMMITMENT_HASH_SIZE]; width * width];
+        let mut rows: Vec<&mut [[u8; COMMITMENT_HASH_SIZE]]> = leaves.chunks_mut(width).collect();
+        par::for_each_mut(&mut rows, MIN_AXES_PER_THREAD, |row, digests| {
+            for (column, digest) in digests.iter_mut().enumerate() {
+                *digest =
+                    nmt_leaf_digest(self.leaf_namespace(row, column), self.cell(row, column))?;
+            }
+            Ok(())
+        })?;
+        drop(rows);
+        let leaves: &[[u8; COMMITMENT_HASH_SIZE]] = &leaves;
+        let mut roots = vec![[0u8; DAH_ROOT_SIZE]; 2 * width];
         par::for_each_mut(&mut roots, MIN_AXES_PER_THREAD, |i, root| {
-            *root = match axis {
-                Some(axis) => self.axis_root(i, axis)?,
-                None if i < self.width => self.axis_root(i, Axis::Row)?,
-                None => self.axis_root(i - self.width, Axis::Column)?,
+            *root = if i < width {
+                namespaced_merkle_root_of_digests(width, |column| {
+                    (self.leaf_namespace(i, column), &leaves[i * width + column])
+                })?
+            } else {
+                let column = i - width;
+                namespaced_merkle_root_of_digests(width, |row| {
+                    (
+                        self.leaf_namespace(row, column),
+                        &leaves[row * width + column],
+                    )
+                })?
             };
+            Ok(())
+        })?;
+        let columns = roots.split_off(width);
+        Ok((roots, columns))
+    }
+
+    /// The namespace of cell (`row`, `column`)'s NMT leaf in both its row
+    /// and its column tree (see [`Self::axis_root`]).
+    fn leaf_namespace(&self, row: usize, column: usize) -> &[u8] {
+        if row < self.original_width && column < self.original_width {
+            &self.cell(row, column)[..NAMESPACE_SIZE]
+        } else {
+            PARITY_SHARES_NAMESPACE.as_bytes()
+        }
+    }
+
+    /// The roots of every row or every column, computed in parallel.
+    fn axis_roots(&self, axis: Axis) -> Result<Vec<[u8; DAH_ROOT_SIZE]>> {
+        let mut roots = vec![[0u8; DAH_ROOT_SIZE]; self.width];
+        par::for_each_mut(&mut roots, MIN_AXES_PER_THREAD, |i, root| {
+            *root = self.axis_root(i, axis)?;
             Ok(())
         })?;
         Ok(roots)

@@ -1,0 +1,1717 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
+use std::collections::BTreeMap;
+use std::io::Read as _;
+
+use celestia_proto::celestia_core_proto::abci;
+use celestia_proto::celestia_core_proto::tendermint::types::{
+    BlockParams, ConsensusParams, EvidenceParams, Header as TmHeader, ValidatorParams,
+    VersionParams,
+};
+use flate2::read::GzDecoder;
+use sdk::MultiStore;
+use sdk::version::Release;
+
+use super::*;
+
+const V1_ORACLE_KV_MODULES: &[u8] = include_bytes!(
+    "../../../../../conformance/fixtures/mainnet/v1-oracle/kv-height-0-modules.jsonl.gz"
+);
+
+/// Mainnet genesis consensus params (`celestia/genesis.json`).
+fn mainnet_consensus_params() -> ConsensusParams {
+    ConsensusParams {
+        block: Some(BlockParams {
+            max_bytes: 1_974_272,
+            max_gas: -1,
+        }),
+        evidence: Some(EvidenceParams {
+            max_age_num_blocks: 120_961,
+            max_age_duration: Some(pbjson_types::Duration {
+                seconds: 1_814_400,
+                nanos: 0,
+            }),
+            max_bytes: 1_048_576,
+        }),
+        validator: Some(ValidatorParams {
+            pub_key_types: vec!["ed25519".to_owned()],
+        }),
+        version: Some(VersionParams { app: 1 }),
+        ..ConsensusParams::default()
+    }
+}
+
+fn v1_store() -> MultiStore {
+    let mut ms = MultiStore::new();
+    let v1 = Release::for_app_version(1).expect("v1");
+    crate::stores::mount_release(&mut ms, v1).expect("mount v1");
+    ms
+}
+
+fn init_request() -> abci::RequestInitChain {
+    abci::RequestInitChain {
+        chain_id: "celestia".to_owned(),
+        initial_height: 1,
+        consensus_params: Some(mainnet_consensus_params()),
+        app_state_bytes: b"{}".to_vec(),
+        ..abci::RequestInitChain::default()
+    }
+}
+
+/// The oracle's height-0 `params` entries of subspace `baseapp`.
+fn oracle_baseapp_params() -> BTreeMap<Vec<u8>, Vec<u8>> {
+    let mut text = String::new();
+    GzDecoder::new(V1_ORACLE_KV_MODULES)
+        .read_to_string(&mut text)
+        .unwrap();
+    let dump: serde_json::Value = text
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .find(|d| d["store"] == "params")
+        .unwrap();
+    dump["kv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|kv| {
+            let hex = |i: usize| hex::decode(kv[i].as_str().unwrap()).unwrap();
+            (hex(0), hex(1))
+        })
+        .filter(|(k, _)| k.starts_with(b"baseapp/"))
+        .collect()
+}
+
+/// InitChain stores the consensus params in subspace `baseapp` exactly as
+/// Go v0.46 does on mainnet (amino JSON, no `VersionParams`), does not
+/// commit, and returns `sha256("")`.
+#[test]
+fn init_chain_writes_the_mainnet_baseapp_params() {
+    let mut ms = v1_store();
+    let mut driver = Driver::new(NoModules);
+    let res = driver.init_chain(&mut ms, &init_request()).unwrap();
+    assert_eq!(res.app_hash, hash::sha256(&[]).to_vec());
+    assert_eq!(ms.version(), 0);
+
+    let written: BTreeMap<Vec<u8>, Vec<u8>> = ms
+        .range(
+            x_params::STORE_KEY,
+            Some(b"baseapp/"),
+            Some(b"baseapp0"),
+            false,
+        )
+        .unwrap()
+        .into_iter()
+        .collect();
+    let expected = oracle_baseapp_params();
+    assert_eq!(expected.len(), 3);
+    assert_eq!(written, expected);
+}
+
+/// InitChain rejects a request without consensus params (Go panics).
+#[test]
+fn init_chain_requires_consensus_params() {
+    let mut ms = v1_store();
+    let mut driver = Driver::new(NoModules);
+    let mut req = init_request();
+    req.consensus_params = None;
+    assert!(driver.init_chain(&mut ms, &req).is_err());
+}
+
+fn finalize_request(height: i64) -> abci::RequestFinalizeBlock {
+    abci::RequestFinalizeBlock {
+        height,
+        hash: vec![7; 32],
+        header: Some(TmHeader {
+            chain_id: "celestia".to_owned(),
+            height,
+            app_hash: hash::sha256(&[]).to_vec(),
+            ..TmHeader::default()
+        }),
+        ..abci::RequestFinalizeBlock::default()
+    }
+}
+
+/// An empty block on an empty module set commits the 18-entry v1 commit
+/// info (17 IAVL stores and `mem_capability` with the empty commit ID)
+/// and returns the full v0.46 consensus params, with the in-memory app
+/// version standing in for the absent `VersionParams`.
+#[test]
+fn empty_block_commits_the_v1_commit_info() {
+    let mut ms = v1_store();
+    let mut driver = Driver::new(NoModules);
+    driver.init_chain(&mut ms, &init_request()).unwrap();
+    let res = driver
+        .finalize_block(&mut ms, &finalize_request(1))
+        .unwrap();
+    assert!(res.tx_results.is_empty());
+    let mut cp = mainnet_consensus_params();
+    cp.version = Some(VersionParams { app: 1 });
+    assert_eq!(res.consensus_param_updates, Some(cp));
+    let id = driver.commit(&mut ms).unwrap();
+    assert_eq!(id.version, 1);
+    assert_eq!(id.hash.to_vec(), res.app_hash);
+
+    let info = ms.root().last_commit_info().unwrap();
+    let names: Vec<&str> = info.store_infos.iter().map(|s| s.name.as_str()).collect();
+    let v1 = Release::for_app_version(1).unwrap();
+    let mut expected: Vec<&str> = v1.stores.to_vec();
+    expected.push("mem_capability");
+    expected.sort_unstable();
+    assert_eq!(names, expected);
+    assert_eq!(info.store_info("mem_capability").unwrap().commit_id, None);
+    assert_eq!(app_version(&ms), 1);
+}
+
+/// FinalizeBlock needs the full header (v0.46 BeginBlock) at the next
+/// height; it rejects anything else with an error.
+#[test]
+fn finalize_block_rejects_missing_header_and_wrong_height() {
+    let mut ms = v1_store();
+    let mut driver = Driver::new(NoModules);
+    driver.init_chain(&mut ms, &init_request()).unwrap();
+    let mut req = finalize_request(1);
+    req.header = None;
+    assert!(driver.finalize_block(&mut ms, &req).is_err());
+    assert!(
+        driver
+            .finalize_block(&mut ms, &finalize_request(2))
+            .is_err()
+    );
+    assert!(driver.commit(&mut ms).is_err());
+}
+
+/// Modules that record the chain ID BeginBlock sees.
+#[derive(Default)]
+struct RecordChainId(Vec<String>);
+
+impl Modules for RecordChainId {
+    fn init_genesis(&mut self, _: &mut Context<'_>, _: &[u8]) -> Result<Vec<ValidatorUpdate>> {
+        Ok(Vec::new())
+    }
+
+    fn begin_block(&mut self, _: &mut Context<'_>, header: &TmHeader) -> Result<()> {
+        self.0.push(header.chain_id.clone());
+        Ok(())
+    }
+
+    fn deliver_tx(
+        &mut self,
+        ctx: &mut Context<'_>,
+        block_gas: &mut kvstore::GasMeter,
+        tx: &[u8],
+    ) -> TxOutcome {
+        NoModules.deliver_tx(ctx, block_gas, tx)
+    }
+
+    fn end_block(&mut self, _: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
+        Ok(Vec::new())
+    }
+}
+
+/// A driver opened on committed state gets no InitChain. It takes the
+/// chain ID from the first block header, and rejects a header of another
+/// chain.
+#[test]
+fn reopened_driver_takes_the_chain_id_from_the_header() {
+    let mut ms = v1_store();
+    let mut driver = Driver::new(NoModules);
+    driver.init_chain(&mut ms, &init_request()).unwrap();
+    driver
+        .finalize_block(&mut ms, &finalize_request(1))
+        .unwrap();
+    driver.commit(&mut ms).unwrap();
+
+    let mut reopened = Driver::new(RecordChainId::default());
+    reopened
+        .finalize_block(&mut ms, &finalize_request(2))
+        .unwrap();
+    reopened.commit(&mut ms).unwrap();
+    assert_eq!(reopened.modules.0, ["celestia"]);
+
+    let mut other = finalize_request(3);
+    other.header.as_mut().unwrap().chain_id = "mocha-4".to_owned();
+    assert!(reopened.finalize_block(&mut ms, &other).is_err());
+    let mut empty = finalize_request(3);
+    empty.header.as_mut().unwrap().chain_id = String::new();
+    assert!(
+        Driver::new(NoModules)
+            .finalize_block(&mut ms, &empty)
+            .is_err()
+    );
+}
+
+/// A transaction's result: success carries `TxMsgData` of the message
+/// responses; failure carries the error code and no data.
+#[test]
+fn deliver_tx_results_are_shaped_like_v046() {
+    let any = celestia_proto::Any {
+        type_url: "/cosmos.bank.v1beta1.MsgSendResponse".to_owned(),
+        value: Vec::new(),
+    };
+    let ok = deliver_tx_result(TxOutcome {
+        gas_wanted: 210_000,
+        gas_used: 86_351,
+        events: Vec::new(),
+        result: Ok(TxSuccess {
+            msg_responses: vec![any],
+            log: String::new(),
+        }),
+    });
+    // TxMsgData { msg_responses: [Any { type_url }] }
+    let mut data = vec![0x12, 38, 0x0a, 36];
+    data.extend_from_slice(b"/cosmos.bank.v1beta1.MsgSendResponse");
+    assert_eq!(
+        (ok.code, ok.data, ok.gas_wanted, ok.gas_used),
+        (0, data, 210_000, 86_351)
+    );
+    let failed = deliver_tx_result(TxOutcome {
+        gas_wanted: 210_000,
+        gas_used: 66_079,
+        events: Vec::new(),
+        result: Err(sdk::SdkError::new("sdk", 5, "insufficient funds")),
+    });
+    assert_eq!(
+        (failed.code, failed.codespace.as_str(), failed.data.len()),
+        (5, "sdk", 0)
+    );
+}
+
+/// The app version of a v0.46 state: `VersionParams` of subspace
+/// `baseapp` once written (v2 and later), else 1 (Go `App.Info`).
+#[test]
+fn app_version_reads_subspace_baseapp() {
+    let mut ms = v1_store();
+    let mut driver = Driver::new(NoModules);
+    let mut req = init_request();
+    req.consensus_params.as_mut().unwrap().version = Some(VersionParams { app: 2 });
+    driver.init_chain(&mut ms, &req).unwrap();
+    driver
+        .finalize_block(&mut ms, &finalize_request(1))
+        .unwrap();
+    driver.commit(&mut ms).unwrap();
+    assert_eq!(app_version(&ms), 2);
+    assert_eq!(
+        ms.root()
+            .get_store(x_params::STORE_KEY)
+            .unwrap()
+            .get(b"baseapp/VersionParams")
+            .unwrap(),
+        Some(br#"{"app_version":"2"}"#.to_vec())
+    );
+}
+
+/// Nothing executes on the legacy driver while app versions 1 to 3 run
+/// as v9: the driver stays unreachable from the current app.
+#[test]
+fn legacy_driver_is_inert_until_v046_runs_as_itself() {
+    for v in 0..=13 {
+        assert!(!executes(v), "v{v}");
+    }
+}
+
+/// `App::info` reports the app version of a v0.46 state from subspace
+/// `baseapp` (the state has no `x/consensus` store).
+#[test]
+fn app_info_reports_the_legacy_app_version() {
+    let mut ms = v1_store();
+    let mut driver = Driver::new(NoModules);
+    driver.init_chain(&mut ms, &init_request()).unwrap();
+    driver
+        .finalize_block(&mut ms, &finalize_request(1))
+        .unwrap();
+    driver.commit(&mut ms).unwrap();
+    let mut app = crate::App::from_multistore(ms);
+    app.last_height = 1;
+    assert_eq!(app.info().app_version, 1);
+}
+
+const V1_ORACLE_ROOTS: &str =
+    include_str!("../../../../../conformance/fixtures/mainnet/v1-oracle/store-roots.json");
+
+/// The oracle's height-0 entries of `store` (hex-decoded, sorted).
+fn oracle_kv(store: &str) -> BTreeMap<Vec<u8>, Vec<u8>> {
+    let mut text = String::new();
+    GzDecoder::new(V1_ORACLE_KV_MODULES)
+        .read_to_string(&mut text)
+        .unwrap();
+    let dump: serde_json::Value = text
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .find(|d| d["store"] == store)
+        .unwrap();
+    dump["kv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|kv| {
+            let hex = |i: usize| hex::decode(kv[i].as_str().unwrap()).unwrap();
+            (hex(0), hex(1))
+        })
+        .collect()
+}
+
+/// The oracle's height-0 IAVL root of `store`.
+fn oracle_root(store: &str) -> Vec<u8> {
+    let roots: serde_json::Value = serde_json::from_str(V1_ORACLE_ROOTS).unwrap();
+    let h0 = &roots["heights"][0];
+    assert_eq!(h0["height"], 0);
+    hex::decode(h0["stores"][store].as_str().unwrap()).unwrap()
+}
+
+/// The parameter sections of the canonical mainnet genesis (`celestia`,
+/// SHA-256 `9727aac9…7793`), copied verbatim.
+const MAINNET_GENESIS_PARAMS: &str = r#"{
+ "auth": {"params": {"max_memo_characters": "256", "tx_sig_limit": "7",
+   "tx_size_cost_per_byte": "10", "sig_verify_cost_ed25519": "590",
+   "sig_verify_cost_secp256k1": "1000"}},
+ "bank": {"params": {"send_enabled": [], "default_send_enabled": true}},
+ "staking": {"params": {"unbonding_time": "1814400s", "max_validators": 100,
+   "max_entries": 7, "historical_entries": 10000, "bond_denom": "utia",
+   "min_commission_rate": "0.050000000000000000"}},
+ "distribution": {"params": {"community_tax": "0.020000000000000000",
+   "base_proposer_reward": "0.000000000000000000",
+   "bonus_proposer_reward": "0.000000000000000000", "withdraw_addr_enabled": true}},
+ "slashing": {"params": {"signed_blocks_window": "5000",
+   "min_signed_per_window": "0.750000000000000000", "downtime_jail_duration": "60s",
+   "slash_fraction_double_sign": "0.020000000000000000",
+   "slash_fraction_downtime": "0.000000000000000000"}},
+ "gov": {"deposit_params": {"min_deposit": [{"denom": "utia", "amount": "10000000000"}],
+   "max_deposit_period": "604800s"}, "voting_params": {"voting_period": "604800s"},
+   "tally_params": {"quorum": "0.334000000000000000", "threshold": "0.500000000000000000",
+   "veto_threshold": "0.334000000000000000"}},
+ "crisis": {"constant_fee": {"denom": "utia", "amount": "1000"}},
+ "ibc": {"client_genesis": {"params": {"allowed_clients": ["06-solomachine", "07-tendermint"]}},
+   "connection_genesis": {"params": {"max_expected_time_per_block": "75000000000"}}},
+ "transfer": {"params": {"send_enabled": true, "receive_enabled": true}},
+ "blob": {"params": {"gas_per_blob_byte": 8, "gov_max_square_size": "64"}},
+ "qgb": {"params": {"data_commitment_window": "400"}}
+}"#;
+
+/// Writes every v1 subspace from the mainnet genesis values, in v1
+/// InitGenesis order (`app/modules.go` `SetOrderInitGenesis`), after the
+/// consensus params of InitChain.
+fn write_mainnet_genesis_params(ctx: &mut sdk::Context<'_>) -> sdk::Result<()> {
+    let g: serde_json::Value = serde_json::from_str(MAINNET_GENESIS_PARAMS).unwrap();
+    consensus_params::store(ctx, &mainnet_consensus_params())?;
+    params::set_auth(ctx, &g["auth"]["params"])?;
+    params::set_bank(ctx, &g["bank"]["params"])?;
+    params::set_distribution(ctx, &g["distribution"]["params"])?;
+    params::set_staking(ctx, &g["staking"]["params"])?;
+    params::set_slashing(ctx, &g["slashing"]["params"])?;
+    let gov = &g["gov"];
+    x_gov::set_v046_params(
+        ctx,
+        &serde_json::from_value(gov["deposit_params"].clone()).unwrap(),
+        &serde_json::from_value(gov["voting_params"].clone()).unwrap(),
+        &serde_json::from_value(gov["tally_params"].clone()).unwrap(),
+    )?;
+    params::set_crisis(ctx, &g["crisis"]["constant_fee"])?;
+    params::set_ibc_client(ctx, &g["ibc"]["client_genesis"]["params"])?;
+    params::set_ibc_connection(ctx, &g["ibc"]["connection_genesis"]["params"])?;
+    params::set_transfer(ctx, &g["transfer"]["params"])?;
+    params::set_blob(ctx, &g["blob"]["params"])?;
+    params::set_qgb(ctx, &g["qgb"]["params"])
+}
+
+/// From the mainnet genesis values, the v1 subspaces hold exactly the
+/// oracle's 36 height-0 `params` entries, and the committed `params`
+/// root is the oracle's. cosmos-sdk v0.46 writes the genesis state to
+/// IAVL from the sorted cache (`cachekv.Store.Write`), so the tree is
+/// built in key order, as the multistore's flush does.
+#[test]
+fn genesis_params_match_the_v1_oracle() {
+    let mut ms = v1_store();
+    let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    write_mainnet_genesis_params(&mut ctx).unwrap();
+    drop(ctx);
+    ms.flush().unwrap();
+    ms.commit().unwrap();
+
+    let written: BTreeMap<Vec<u8>, Vec<u8>> = ms
+        .range(x_params::STORE_KEY, None, None, false)
+        .unwrap()
+        .into_iter()
+        .collect();
+    let expected = oracle_kv("params");
+    assert_eq!(expected.len(), 36);
+    let show = |m: &BTreeMap<Vec<u8>, Vec<u8>>| -> Vec<String> {
+        m.iter()
+            .map(|(k, v)| {
+                format!(
+                    "{}={}",
+                    String::from_utf8_lossy(k),
+                    String::from_utf8_lossy(v)
+                )
+            })
+            .collect()
+    };
+    assert_eq!(show(&written), show(&expected));
+    let info = ms.root().last_commit_info().unwrap();
+    let root = info.store_info("params").unwrap().commit_id.unwrap().hash;
+    assert_eq!(root.to_vec(), oracle_root("params"));
+}
+
+/// Each v1 key table registers every key once.
+#[test]
+fn v1_key_tables_have_unique_keys() {
+    for s in params::V1_SUBSPACES {
+        let keys: std::collections::BTreeSet<&str> = s.table.iter().map(|p| p.key).collect();
+        assert_eq!(keys.len(), s.table.len(), "{}", s.name);
+    }
+}
+
+fn params_ctx(f: impl FnOnce(&mut sdk::Context<'_>)) {
+    let mut ms = v1_store();
+    let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    f(&mut ctx);
+}
+
+type Setter = fn(&mut sdk::Context<'_>, &serde_json::Value) -> sdk::Result<()>;
+
+/// Genesis params that Go rejects, by setter.
+fn invalid_param_cases() -> Vec<(&'static str, Setter, serde_json::Value)> {
+    use serde_json::json;
+    vec![
+        ("auth zero", params::set_auth, json!({})),
+        (
+            "auth unknown field",
+            params::set_auth,
+            json!({"max_memo_characters": "1",
+            "tx_sig_limit": "1", "tx_size_cost_per_byte": "1", "sig_verify_cost_ed25519": "1",
+            "sig_verify_cost_secp256k1": "1", "extra": 1}),
+        ),
+        (
+            "auth not a number",
+            params::set_auth,
+            json!({"max_memo_characters": "x"}),
+        ),
+        (
+            "auth negative",
+            params::set_auth,
+            json!({"max_memo_characters": "-1"}),
+        ),
+        (
+            "auth float",
+            params::set_auth,
+            json!({"max_memo_characters": 1.5}),
+        ),
+        (
+            "bank duplicate",
+            params::set_bank,
+            json!({"send_enabled": [
+            {"denom": "utia", "enabled": true}, {"denom": "utia"}]}),
+        ),
+        (
+            "bank bad denom",
+            params::set_bank,
+            json!({"send_enabled": [{"denom": "u"}]}),
+        ),
+        (
+            "staking no dec",
+            params::set_staking,
+            json!({"unbonding_time": "1s",
+            "max_validators": 1, "max_entries": 1, "bond_denom": "utia"}),
+        ),
+        (
+            "staking bad duration",
+            params::set_staking,
+            json!({"unbonding_time": "1 s"}),
+        ),
+        (
+            "staking overflow",
+            params::set_staking,
+            json!({"unbonding_time": "1s",
+            "max_validators": 4_294_967_296_u64}),
+        ),
+        (
+            "distribution > 1",
+            params::set_distribution,
+            json!({"community_tax": "1.1",
+            "base_proposer_reward": "0", "bonus_proposer_reward": "0"}),
+        ),
+        (
+            "slashing negative",
+            params::set_slashing,
+            json!({"signed_blocks_window": "1",
+            "min_signed_per_window": "-0.1", "downtime_jail_duration": "1s",
+            "slash_fraction_double_sign": "0", "slash_fraction_downtime": "0"}),
+        ),
+        (
+            "crisis nil amount",
+            params::set_crisis,
+            json!({"denom": "utia"}),
+        ),
+        (
+            "ibc blank client",
+            params::set_ibc_client,
+            json!({"allowed_clients": [" "]}),
+        ),
+        (
+            "transfer type",
+            params::set_transfer,
+            json!({"send_enabled": "true"}),
+        ),
+        (
+            "blob not a power of two",
+            params::set_blob,
+            json!({"gas_per_blob_byte": 8,
+            "gov_max_square_size": "48"}),
+        ),
+        ("qgb nil", params::set_qgb, serde_json::Value::Null),
+        (
+            "qgb small",
+            params::set_qgb,
+            json!({"data_commitment_window": "99"}),
+        ),
+        (
+            "qgb large",
+            params::set_qgb,
+            json!({"data_commitment_window": "1001"}),
+        ),
+        ("not an object", params::set_transfer, json!([])),
+    ]
+}
+
+/// Malformed or invalid genesis params are errors (Go: a jsonpb error or
+/// a `SetParamSet` panic), never a Rust panic.
+#[test]
+fn invalid_genesis_params_are_errors() {
+    let cases = invalid_param_cases();
+    for (name, set, value) in &cases {
+        params_ctx(|ctx| assert!(set(ctx, value).is_err(), "{name}"));
+    }
+}
+
+/// jsonpb's decoding rules: JSON names, quoted 32-bit integers, `null` as
+/// the zero value, and a nil list written as amino `null`.
+#[test]
+fn genesis_params_decode_like_jsonpb() {
+    use serde_json::json;
+    params_ctx(|ctx| {
+        params::set_blob(
+            ctx,
+            &json!({"gasPerBlobByte": "8", "gov_max_square_size": 64}),
+        )
+        .unwrap();
+        params::set_bank(ctx, &json!({"send_enabled": null})).unwrap();
+        params::set_ibc_client(ctx, &json!(null)).unwrap();
+        params::set_transfer(ctx, &json!(null)).unwrap();
+        params::set_crisis(ctx, &json!({"denom": "u", "amount": "-5"})).unwrap();
+        let get = |ctx: &mut sdk::Context<'_>, s: &str, k: &[u8]| {
+            String::from_utf8(x_params::get_raw(ctx, s, k).unwrap().unwrap()).unwrap()
+        };
+        assert_eq!(get(ctx, "blob", b"GasPerBlobByte"), "8");
+        assert_eq!(get(ctx, "blob", b"GovMaxSquareSize"), "\"64\"");
+        assert_eq!(get(ctx, "bank", b"SendEnabled"), "null");
+        assert_eq!(get(ctx, "bank", b"DefaultSendEnabled"), "false");
+        assert_eq!(get(ctx, "ibc", b"AllowedClients"), "null");
+        assert_eq!(get(ctx, "transfer", b"SendEnabled"), "false");
+        // crisis uses `Set`: no validation.
+        assert_eq!(
+            get(ctx, "crisis", b"ConstantFee"),
+            r#"{"denom":"u","amount":"-5"}"#
+        );
+    });
+}
+
+/// InitChain's genesis validator check: a non-empty request must list the
+/// validators InitGenesis returns.
+#[test]
+fn genesis_validators_must_match_the_request() {
+    use celestia_proto::celestia_core_proto::tendermint::crypto::{PublicKey, public_key::Sum};
+    let v = |k: u8, power: i64| abci::ValidatorUpdate {
+        pub_key: Some(PublicKey {
+            sum: Some(Sum::Ed25519(vec![k; 32])),
+        }),
+        power,
+    };
+    assert!(check_genesis_validators(&[], &[v(1, 1)]).is_ok());
+    assert!(check_genesis_validators(&[v(2, 1), v(1, 1)], &[v(1, 1), v(2, 1)]).is_ok());
+    assert!(check_genesis_validators(&[v(1, 1)], &[v(1, 2)]).is_err());
+    assert!(check_genesis_validators(&[v(1, 1)], &[v(1, 1), v(2, 1)]).is_err());
+}
+
+/// The blobstream hook stores the default EVM address of a new validator
+/// at app version 1, rejects a second validator with the same address,
+/// and does nothing where `qgb` is not mounted.
+#[test]
+fn qgb_hook_writes_default_evm_addresses_at_v1() {
+    use x_staking::StakingHooks as _;
+    let val = [7u8; 20];
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    x_qgb::Hooks
+        .after_validator_created(&mut ctx, &val)
+        .unwrap();
+    assert_eq!(
+        ctx.get(x_qgb::STORE_KEY, &[b"EVMAddress".as_slice(), &val].concat())
+            .unwrap(),
+        Some(val.to_vec())
+    );
+    let e = x_qgb::Hooks
+        .after_validator_created(&mut ctx, &val)
+        .unwrap_err();
+    assert_eq!((e.codespace, e.code), ("qgb", 37));
+    ctx.consensus_params.version = Some(VersionParams { app: 2 });
+    assert!(
+        x_qgb::Hooks
+            .after_validator_created(&mut ctx, &[8; 20])
+            .is_ok()
+    );
+    drop(ctx);
+
+    let mut ms = MultiStore::new();
+    ms.mount("staking", sdk::Kind::Iavl).unwrap();
+    let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    assert!(x_qgb::Hooks.after_validator_created(&mut ctx, &val).is_ok());
+}
+
+/// The v1 InitChainer rejects what ibc-go v6 or the module manager
+/// reject: a v8 channel params field, genesis light clients, unknown
+/// fields, and a genesis with no validators.
+#[test]
+fn v1_init_chainer_rejects_invalid_genesis() {
+    use serde_json::json;
+    let ibc = |channel: serde_json::Value, client: serde_json::Value| {
+        json!({"ibc": {"client_genesis": client, "connection_genesis": {},
+            "channel_genesis": channel}})
+    };
+    let cases = [
+        ibc(json!({"params": {}}), json!({})),
+        ibc(
+            json!({}),
+            json!({"clients": [{"client_id": "07-tendermint-0"}]}),
+        ),
+        ibc(json!({}), json!({"bogus": 1})),
+        json!({"mint": {"bond_denom": "utia", "x": 1}}),
+        json!({"qgb": {"params": null}}),
+        json!({"crisis": {"constant_fee": {"denom": "utia"}}}),
+        json!({}),
+    ];
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    for (i, state) in cases.iter().enumerate() {
+        let mut ms = v1_store();
+        let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        ctx.consensus_params.version = Some(VersionParams { app: 1 });
+        let bytes = serde_json::to_vec(state).unwrap();
+        assert!(genesis::init_chainer(&mut ctx, &bytes).is_err(), "case {i}");
+    }
+}
+
+/// At app versions 1 to 3 the shared modules use the cosmos-sdk v0.46
+/// layout: params from their subspace, the `globalAccountNumber`
+/// `UInt64Value`, the bank `0x00` index sentinel, and no staking
+/// delegations-by-validator index or stored validator updates.
+#[test]
+fn shared_modules_use_the_v046_layout_at_v1() {
+    let g: serde_json::Value = serde_json::from_str(MAINNET_GENESIS_PARAMS).unwrap();
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    params_ctx(|ctx| {
+        ctx.consensus_params.version = Some(VersionParams { app: 1 });
+        params::set_auth(ctx, &g["auth"]["params"]).unwrap();
+        params::set_staking(ctx, &g["staking"]["params"]).unwrap();
+        assert_eq!(x_auth::get_params(ctx).unwrap().tx_sig_limit, 7);
+        assert_eq!(
+            x_staking::store::get_params(ctx).unwrap().max_validators,
+            100
+        );
+        assert_eq!(x_staking::store::bond_denom(ctx).unwrap(), "utia");
+        let p = x_staking::store::get_params(ctx).unwrap();
+        x_staking::store::set_params(ctx, &p).unwrap();
+        assert_eq!(ctx.get(x_staking::STORE_KEY, &[0x51]).unwrap(), None);
+
+        assert_eq!(x_auth::next_account_number(ctx).unwrap(), 0);
+        assert_eq!(x_auth::next_account_number(ctx).unwrap(), 1);
+        assert_eq!(
+            ctx.get(x_auth::STORE_KEY, b"globalAccountNumber").unwrap(),
+            Some(vec![0x08, 0x02])
+        );
+
+        let addr = [3u8; 20];
+        let coin = sdk::coins::Coin::new("utia", 5);
+        x_bank::set_balance(ctx, &addr, &coin).unwrap();
+        let mut index = vec![0x03];
+        index.extend_from_slice(b"utia\x00\x14");
+        index.extend_from_slice(&addr);
+        assert_eq!(ctx.get(x_bank::STORE_KEY, &index).unwrap(), Some(vec![0]));
+
+        x_staking::store::set_validator_updates(ctx, &[]).unwrap();
+        assert_eq!(ctx.get(x_staking::STORE_KEY, &[0x61]).unwrap(), None);
+    });
+}
+
+/// A v1 context at `height` with the mainnet params, and two bonded
+/// validators with 50 % and no commission, 100 power each (the setup of
+/// cosmos-sdk v0.46 `TestAllocateTokensToManyValidators`).
+fn v046_two_validators(ms: &mut MultiStore, height: i64) -> (sdk::Context<'_>, [Vec<u8>; 2]) {
+    use x_staking::types::{BondStatus, Validator};
+    let header = sdk::Header {
+        chain_id: "celestia".into(),
+        height,
+        ..sdk::Header::default()
+    };
+    let mut ctx = sdk::Context::new(ms, header, sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    write_mainnet_genesis_params(&mut ctx).unwrap();
+    let mut cons = [Vec::new(), Vec::new()];
+    for (i, rate) in [(1u8, 5), (2, 0)] {
+        let pk = celestia_proto::Any::pack(&celestia_proto::cosmos::crypto::ed25519::PubKey {
+            key: vec![i; 32],
+        });
+        let op = x_staking::addr::val_to_string(&[i; 20]).unwrap();
+        let mut v = Validator::new(
+            op,
+            pk,
+            celestia_proto::cosmos::staking::v1beta1::Description::default(),
+        );
+        v.status = BondStatus::Bonded;
+        v.tokens = math::Int::from_u64(100_000_000);
+        v.delegator_shares = math::LegacyDec::new(100_000_000);
+        v.commission.rate = math::LegacyDec::new_with_prec(rate, 1).unwrap();
+        x_staking::store::set_validator(&mut ctx, &v).unwrap();
+        x_staking::store::set_validator_by_cons_addr(&mut ctx, &v).unwrap();
+        x_staking::store::set_validator_by_power_index(&mut ctx, &v).unwrap();
+        x_staking::store::set_last_validator_power(&mut ctx, &[i; 20], 100).unwrap();
+        x_distribution::keeper::initialize_validator(&mut ctx, &[i; 20]).unwrap();
+        x_slashing::add_pubkey(&mut ctx, &v.pubkey().unwrap()).unwrap();
+        cons[usize::from(i - 1)] = v.cons_addr().unwrap();
+    }
+    (ctx, cons)
+}
+
+fn vote(cons: &[u8], signed: bool) -> abci::VoteInfo {
+    abci::VoteInfo {
+        validator: Some(abci::Validator {
+            address: cons.to_vec(),
+            power: 100,
+        }),
+        block_id_flag: if signed { 2 } else { 1 },
+    }
+}
+
+/// cosmos-sdk v0.46 distribution pays the previous proposer
+/// `base + bonus * signed fraction` before the voters' shares: the
+/// expectations of v0.46 `TestAllocateTokensToManyValidators` (community
+/// tax 2 %, base 1 %, bonus 4 %, 100 utia of fees, both signed, the second
+/// validator proposed).
+#[test]
+fn v046_distribution_pays_the_proposer_reward() {
+    use x_distribution::store as ds;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let (mut ctx, cons) = v046_two_validators(&mut ms, 2);
+    params::set_distribution(
+        &mut ctx,
+        &serde_json::json!({"community_tax": "0.02", "base_proposer_reward": "0.01",
+            "bonus_proposer_reward": "0.04", "withdraw_addr_enabled": true}),
+    )
+    .unwrap();
+    x_distribution::store::set_fee_pool(&mut ctx, &sdk::dec_coins::DecCoins::new()).unwrap();
+    x_distribution::store::set_previous_proposer(&mut ctx, &cons[1]).unwrap();
+    let fc = x_auth::get_module_account(&mut ctx, x_auth::FEE_COLLECTOR)
+        .unwrap()
+        .unwrap();
+    let fc = x_auth::Account::Module(fc).address().unwrap();
+    x_bank::set_balance(&mut ctx, &fc, &sdk::coins::Coin::new("utia", 100)).unwrap();
+    ctx.vote_infos = vec![vote(&cons[0], true), vote(&cons[1], true)];
+    ctx.header.proposer_address = cons[0].clone();
+    x_distribution::begin_block(&mut ctx).unwrap();
+
+    let dec = |v: &sdk::dec_coins::DecCoins| v.to_string();
+    let s = |n: &str| format!("{n}utia");
+    let (a, b) = ([1u8; 20], [2u8; 20]);
+    assert_eq!(
+        dec(&ds::get_outstanding(&mut ctx, &a).unwrap()),
+        s("46.500000000000000000")
+    );
+    assert_eq!(
+        dec(&ds::get_outstanding(&mut ctx, &b).unwrap()),
+        s("51.500000000000000000")
+    );
+    assert_eq!(
+        dec(&ds::get_fee_pool(&mut ctx).unwrap()),
+        s("2.000000000000000000")
+    );
+    assert_eq!(
+        dec(&ds::get_commission(&mut ctx, &a).unwrap()),
+        s("23.250000000000000000")
+    );
+    assert!(ds::get_commission(&mut ctx, &b).unwrap().is_empty());
+    assert_eq!(
+        dec(&ds::get_current(&mut ctx, &a).unwrap().rewards),
+        s("23.250000000000000000")
+    );
+    assert_eq!(
+        dec(&ds::get_current(&mut ctx, &b).unwrap().rewards),
+        s("51.500000000000000000")
+    );
+    let reward = ctx
+        .events
+        .events()
+        .iter()
+        .find(|e| e.r#type == "proposer_reward")
+        .unwrap();
+    assert_eq!(reward.attributes[0].value, s("5.000000000000000000"));
+    assert_eq!(ds::get_previous_proposer(&mut ctx).unwrap(), cons[0]);
+}
+
+/// cosmos-sdk v0.46 slashing stores one `BoolValue` key per missed index
+/// (an empty value once signed again), counts a jailed validator, and
+/// does not port downtime jailing.
+#[test]
+fn v046_slashing_tracks_missed_blocks_per_index() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let (mut ctx, cons) = v046_two_validators(&mut ms, 1);
+    params::set_slashing(
+        &mut ctx,
+        &serde_json::json!({"signed_blocks_window": "2", "min_signed_per_window": "0.5",
+            "downtime_jail_duration": "60s", "slash_fraction_double_sign": "0.02",
+            "slash_fraction_downtime": "0"}),
+    )
+    .unwrap();
+    for c in &cons {
+        let info = x_slashing::SigningInfo {
+            address: x_staking::addr::cons_to_string(c).unwrap(),
+            start_height: 0,
+            index_offset: 0,
+            jailed_until: sdk::time::unix_epoch(),
+            tombstoned: false,
+            missed_blocks_counter: 0,
+        };
+        x_slashing::set_signing_info(&mut ctx, c, &info).unwrap();
+    }
+    let key = |i| x_slashing::v046_missed_block_key(&cons[0], i);
+    let counter = |ctx: &mut sdk::Context<'_>| {
+        x_slashing::get_signing_info(ctx, &cons[0])
+            .unwrap()
+            .unwrap()
+            .missed_blocks_counter
+    };
+    // Height 1, index 0: missed.
+    ctx.vote_infos = vec![vote(&cons[0], false), vote(&cons[1], true)];
+    x_slashing::begin_block(&mut ctx).unwrap();
+    assert_eq!(
+        ctx.get(x_slashing::STORE_KEY, &key(0)).unwrap(),
+        Some(vec![0x08, 0x01])
+    );
+    assert_eq!(ctx.get(x_slashing::STORE_KEY, &key(1)).unwrap(), None);
+    assert_eq!(counter(&mut ctx), 1);
+    let liveness = ctx.events.take();
+    assert_eq!(liveness.len(), 1);
+    assert_eq!(liveness[0].r#type, "liveness");
+    // Height 2, index 1: signed, by a jailed validator (still counted).
+    let mut v = x_staking::store::validator(&mut ctx, &[1; 20]).unwrap();
+    v.jailed = true;
+    x_staking::store::set_validator(&mut ctx, &v).unwrap();
+    ctx.header.height = 2;
+    ctx.vote_infos = vec![vote(&cons[0], true), vote(&cons[1], true)];
+    x_slashing::begin_block(&mut ctx).unwrap();
+    assert_eq!(ctx.get(x_slashing::STORE_KEY, &key(1)).unwrap(), None);
+    // Height 3, index 0 again: signed, so the bit is cleared.
+    ctx.header.height = 3;
+    x_slashing::begin_block(&mut ctx).unwrap();
+    assert_eq!(
+        ctx.get(x_slashing::STORE_KEY, &key(0)).unwrap(),
+        Some(Vec::new())
+    );
+    assert_eq!(counter(&mut ctx), 0);
+    // Past the first window, two misses in a row exceed the one allowed:
+    // downtime jailing is not ported.
+    v.jailed = false;
+    x_staking::store::set_validator(&mut ctx, &v).unwrap();
+    for h in [4, 5] {
+        ctx.header.height = h;
+        ctx.vote_infos = vec![vote(&cons[0], false)];
+        let r = x_slashing::begin_block(&mut ctx);
+        assert_eq!(r.is_err(), h == 5, "height {h}");
+    }
+}
+
+/// cosmos-sdk v0.46 staking stores `HistoricalInfo` under the decimal
+/// height with the given header, and begins unbonding a validator
+/// without an unbonding ID.
+#[test]
+fn v046_staking_layout() {
+    use x_staking::types::BondStatus;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let (mut ctx, _) = v046_two_validators(&mut ms, 7);
+    let header = TmHeader {
+        chain_id: "celestia".into(),
+        height: 7,
+        data_hash: vec![9; 32],
+        ..TmHeader::default()
+    };
+    x_staking::abci::begin_block_v046(&mut ctx, &header).unwrap();
+    let hi = ctx.get(x_staking::STORE_KEY, b"P7").unwrap().unwrap();
+    let hi = <celestia_proto::cosmos::staking::v1beta1::HistoricalInfo as prost::Message>::decode(
+        hi.as_slice(),
+    )
+    .unwrap();
+    assert_eq!(hi.header, Some(header));
+    assert_eq!(hi.valset.len(), 2);
+
+    let v = x_staking::store::validator(&mut ctx, &[1; 20]).unwrap();
+    let v = x_staking::validator::begin_unbonding_validator(&mut ctx, v).unwrap();
+    assert_eq!(v.status, BondStatus::Unbonding);
+    assert!(v.unbonding_ids.is_empty());
+    let stored = x_staking::store::validator(&mut ctx, &[1; 20]).unwrap();
+    assert!(stored.unbonding_ids.is_empty());
+    for prefix in [0x37u8, 0x38, 0x39] {
+        let n = ctx
+            .multistore()
+            .range(
+                x_staking::STORE_KEY,
+                Some(&[prefix]),
+                Some(&[prefix + 1]),
+                false,
+            )
+            .unwrap()
+            .len();
+        assert_eq!(n, 0, "prefix {prefix:#x}");
+    }
+}
+
+/// Outside the legacy driver's scope, the raw app version 1 (as the main
+/// app sets it) does not turn the blobstream hook on: it neither reads
+/// nor writes `qgb` and consumes no gas.
+#[test]
+fn qgb_hook_is_inert_without_the_legacy_scope() {
+    use x_staking::StakingHooks as _;
+    sdk::version::set_app_version(1);
+    let mut ms = v1_store();
+    let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    for _ in 0..2 {
+        x_qgb::Hooks
+            .after_validator_created(&mut ctx, &[7; 20])
+            .unwrap();
+    }
+    assert_eq!(ctx.gas.consumed(), 0);
+    assert_eq!(
+        ctx.get(
+            x_qgb::STORE_KEY,
+            &[b"EVMAddress".as_slice(), &[7; 20]].concat()
+        )
+        .unwrap(),
+        None
+    );
+    drop(ctx);
+    sdk::version::set_app_version(0);
+}
+
+/// Without the legacy scope, shared modules keep the v0.50 layout at app
+/// versions 1 to 3 (the main app runs them as v9), and the v1 ante
+/// handler refuses to run.
+#[test]
+fn shared_modules_keep_the_v050_layout_without_the_legacy_scope() {
+    for v in 1..=3 {
+        sdk::version::set_app_version(v);
+        params_ctx(|ctx| {
+            ctx.consensus_params.version = Some(VersionParams { app: v });
+            assert!(!ctx.is_sdk_v046());
+            let p = x_staking::store::get_params(ctx).unwrap();
+            x_staking::store::set_params(ctx, &p).unwrap();
+            assert!(ctx.get(x_staking::STORE_KEY, &[0x51]).unwrap().is_some());
+            assert_eq!(x_auth::next_account_number(ctx).unwrap(), 0);
+            assert_eq!(
+                ctx.get(x_auth::STORE_KEY, b"globalAccountNumber").unwrap(),
+                None
+            );
+            let addr = [3u8; 20];
+            x_bank::set_balance(ctx, &addr, &sdk::coins::Coin::new("utia", 5)).unwrap();
+            let mut index = vec![0x03];
+            index.extend_from_slice(b"utia\x00\x14");
+            index.extend_from_slice(&addr);
+            assert_eq!(ctx.get(x_bank::STORE_KEY, &index).unwrap(), Some(vec![]));
+            x_staking::store::set_validator_updates(ctx, &[]).unwrap();
+            assert!(ctx.get(x_staking::STORE_KEY, &[0x61]).unwrap().is_some());
+            let (e, _) = crate::txpipe::ante_v046(ctx, &sdk::tx::Tx::default(), false).unwrap_err();
+            assert!(e.log.contains("only on the legacy driver"), "{}", e.log);
+        });
+    }
+    sdk::version::set_app_version(0);
+}
+
+/// Records whether cosmos-sdk v0.46 semantics are active in each phase and
+/// fails the phase named by `fail`.
+#[derive(Default)]
+struct Probe {
+    seen: Vec<(&'static str, bool, u64)>,
+    fail: Option<&'static str>,
+}
+
+impl Probe {
+    fn phase(&mut self, ctx: &sdk::Context<'_>, name: &'static str) -> Result<()> {
+        self.seen
+            .push((name, ctx.is_sdk_v046(), sdk::version::app_version()));
+        if self.fail == Some(name) {
+            return Err(sdk::error::sdk::logic(name));
+        }
+        Ok(())
+    }
+}
+
+impl Modules for Probe {
+    fn init_genesis(&mut self, ctx: &mut Context<'_>, _: &[u8]) -> Result<Vec<ValidatorUpdate>> {
+        self.phase(ctx, "init_genesis").map(|()| Vec::new())
+    }
+
+    fn begin_block(&mut self, ctx: &mut Context<'_>, _: &TmHeader) -> Result<()> {
+        self.phase(ctx, "begin_block")
+    }
+
+    fn deliver_tx(
+        &mut self,
+        ctx: &mut Context<'_>,
+        _: &mut kvstore::GasMeter,
+        _: &[u8],
+    ) -> TxOutcome {
+        let result = self.phase(ctx, "deliver_tx").map(|()| TxSuccess::default());
+        TxOutcome {
+            gas_wanted: 0,
+            gas_used: 0,
+            events: Vec::new(),
+            result,
+        }
+    }
+
+    fn end_block(&mut self, ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
+        self.phase(ctx, "end_block").map(|()| Vec::new())
+    }
+}
+
+/// The driver turns cosmos-sdk v0.46 semantics on for its modules at the
+/// block's app version, and restores the thread's previous state when each
+/// call returns, on success and on error.
+#[test]
+fn driver_scopes_sdk_v046_semantics_to_its_calls() {
+    let restored = || {
+        assert_eq!(sdk::version::app_version(), 7);
+        assert!(!sdk::version::sdk_v046_active());
+        assert!(!sdk::version::is_sdk_v046(1));
+    };
+    sdk::version::set_app_version(7);
+
+    let mut ms = v1_store();
+    let mut driver = Driver::new(Probe::default());
+    let mut req = init_request();
+    req.consensus_params.as_mut().unwrap().version = Some(VersionParams { app: 2 });
+    driver.init_chain(&mut ms, &req).unwrap();
+    restored();
+    let mut block = finalize_request(1);
+    block.txs = vec![vec![1]];
+    driver.finalize_block(&mut ms, &block).unwrap();
+    restored();
+    driver.commit(&mut ms).unwrap();
+    restored();
+    assert!(driver.commit(&mut ms).is_err());
+    restored();
+    let seen: Vec<_> = driver
+        .modules
+        .seen
+        .iter()
+        .map(|(_, on, v)| (*on, *v))
+        .collect();
+    assert_eq!(seen, vec![(true, 2); 4]);
+
+    for fail in ["init_genesis", "begin_block", "end_block"] {
+        let mut ms = v1_store();
+        let mut driver = Driver::new(Probe {
+            fail: Some(fail),
+            ..Probe::default()
+        });
+        let res = driver.init_chain(&mut ms, &init_request());
+        restored();
+        if fail == "init_genesis" {
+            assert!(res.is_err());
+            continue;
+        }
+        res.unwrap();
+        assert!(
+            driver
+                .finalize_block(&mut ms, &finalize_request(1))
+                .is_err()
+        );
+        restored();
+    }
+    sdk::version::set_app_version(0);
+}
+
+/// Mainnet block `height`'s transactions (`conformance/fixtures/mainnet/
+/// blocks.jsonl.gz`).
+fn mainnet_txs(height: i64) -> Vec<Vec<u8>> {
+    use base64::Engine as _;
+    use std::io::BufRead as _;
+    let f = std::fs::File::open(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../conformance/fixtures/mainnet/blocks.jsonl.gz"
+    ))
+    .unwrap();
+    for line in std::io::BufReader::new(GzDecoder::new(f)).lines() {
+        let d: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
+        if d["height"] == height {
+            return d["result"]["block"]["data"]["txs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|t| {
+                    base64::engine::general_purpose::STANDARD
+                        .decode(t.as_str().unwrap())
+                        .unwrap()
+                })
+                .collect();
+        }
+    }
+    panic!("no block {height}");
+}
+
+/// The Go oracle's result of transaction `index` of block `height`
+/// (`tx-results.jsonl.gz`).
+fn oracle_tx_result(height: i64, index: usize) -> serde_json::Value {
+    let mut text = String::new();
+    GzDecoder::new(
+        &include_bytes!(
+            "../../../../../conformance/fixtures/mainnet/v1-oracle/tx-results.jsonl.gz"
+        )[..],
+    )
+    .read_to_string(&mut text)
+    .unwrap();
+    text.lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .find(|d| d["height"] == height)
+        .unwrap()["txs"][index]
+        .clone()
+}
+
+/// `outcome` shaped as `DeliverTx` returns it, against the oracle's
+/// record: every field of the result and its events.
+fn assert_oracle_tx(outcome: TxOutcome, want: &serde_json::Value) {
+    let got = deliver_tx_result(outcome);
+    let events: Vec<serde_json::Value> = got
+        .events
+        .iter()
+        .map(|e| {
+            serde_json::json!({"type": e.r#type, "attributes": e.attributes.iter().map(|a| {
+                serde_json::json!({"key": a.key, "value": a.value, "index": a.index})
+            }).collect::<Vec<_>>()})
+        })
+        .collect();
+    let got = serde_json::json!({
+        "index": want["index"], "hash": want["hash"],
+        "code": got.code, "codespace": got.codespace,
+        "gas_wanted": got.gas_wanted, "gas_used": got.gas_used,
+        "data": hex::encode(&got.data), "log": got.log, "info": got.info,
+        "events": events,
+    });
+    assert_eq!(&got, want);
+}
+
+/// The ante handler, the bank `MsgSend` server and `runTx`'s gas, events,
+/// data and log reproduce mainnet transactions 2:0 (a `MsgSend` that sets
+/// the sender's public key) and 3:0 (the same sender's next `MsgSend`,
+/// failing with insufficient funds after its fee is paid) exactly as the
+/// Go oracle ran them, on the state those transactions read (taken from
+/// the oracle's store trace).
+#[test]
+fn v1_msg_send_matches_the_oracle() {
+    let h = |s: &str| hex::decode(s).unwrap();
+    let sender = "7d0a39bed044eb9f0c2a202a76075038804a2fe5";
+    let recipient = "4e7d04e898379e78298986470deda5ad4ff79670";
+    let fee_collector = "f1829676db577682e944fc3493d451b67ff3e29f";
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let txs2 = mainnet_txs(2);
+    let txs3 = mainnet_txs(3);
+    {
+        let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        ctx.consensus_params.version = Some(VersionParams { app: 1 });
+        write_mainnet_genesis_params(&mut ctx).unwrap();
+    }
+    let acc = |a: &str| [vec![0x01], h(a)].concat();
+    let balance = |a: &str| [vec![0x02, 0x14], h(a), b"utia".to_vec()].concat();
+    let index = |a: &str| [b"\x03utia\x00\x14".to_vec(), h(a)].concat();
+    ms.set(
+        x_auth::STORE_KEY,
+        acc(sender),
+        h("0a202f636f736d6f732e617574682e763162657461312e426173654163636f756e7412340a2f63656c657374696131303539726e306b73676e3465377270327971343876703673387a717935746c39303261786e6e18e406"),
+    )
+    .unwrap();
+    ms.set(
+        x_auth::STORE_KEY,
+        acc(fee_collector),
+        h("0a222f636f736d6f732e617574682e763162657461312e4d6f64756c654163636f756e7412460a350a2f63656c6573746961313778706676616b6d32616d67393632796c73366638347a336b656c6c3863356c706e6a73337318c5e00b120d6665655f636f6c6c6563746f72"),
+    )
+    .unwrap();
+    // The recipient exists (only `HasAccount` reads it).
+    let recipient_acc = x_auth::Account::Base(celestia_proto::cosmos::auth::v1beta1::BaseAccount {
+        address: x_auth::bech32(&h(recipient)).unwrap(),
+        pub_key: None,
+        account_number: 1,
+        sequence: 0,
+    });
+    ms.set(
+        x_auth::STORE_KEY,
+        acc(recipient),
+        prost::Message::encode_to_vec(&recipient_acc.to_any()),
+    )
+    .unwrap();
+    for a in [sender, recipient] {
+        ms.set(x_bank::STORE_KEY, balance(a), b"9030060000".to_vec())
+            .unwrap();
+        ms.set(x_bank::STORE_KEY, index(a), vec![0]).unwrap();
+    }
+
+    let run = |ms: &mut MultiStore, height: i64, tx: &[u8]| {
+        let header = sdk::Header {
+            chain_id: "celestia".into(),
+            height,
+            ..sdk::Header::default()
+        };
+        let mut ctx = sdk::Context::new(ms, header, sdk::ExecMode::Finalize);
+        ctx.consensus_params = consensus_params::load(&mut ctx, 1).unwrap();
+        let mut block_gas = tx::block_gas_meter(&ctx);
+        tx::deliver_tx(&mut ctx, &mut block_gas, tx)
+    };
+    assert_oracle_tx(run(&mut ms, 2, &txs2[0]), &oracle_tx_result(2, 0));
+    // Block 3 starts after the distribution BeginBlocker emptied the fee
+    // collector.
+    ms.delete(x_bank::STORE_KEY, &balance(fee_collector))
+        .unwrap();
+    ms.delete(x_bank::STORE_KEY, &index(fee_collector)).unwrap();
+    ms.set(x_bank::STORE_KEY, balance(sender), b"7500000".to_vec())
+        .unwrap();
+    let failed = run(&mut ms, 3, &txs3[0]);
+    assert_oracle_tx(failed, &oracle_tx_result(3, 0));
+    // The fee stays paid; the send is rolled back.
+    assert_eq!(
+        ms.get(x_bank::STORE_KEY, &balance(sender)).unwrap(),
+        Some(b"5000000".to_vec())
+    );
+    assert_eq!(
+        ms.get(x_bank::STORE_KEY, &balance(recipient)).unwrap(),
+        Some(b"18050120000".to_vec())
+    );
+}
+
+/// The `ABCIMessageLogs` JSON: events flattened by type (types sorted,
+/// attributes of a type concatenated), empty keys and values omitted and
+/// strings escaped as Go's `encoding/json` does.
+#[test]
+fn message_logs_are_go_amino_json() {
+    let ev = |t: &str, attrs: &[(&str, &str)]| sdk::event::event(t, attrs.iter().copied());
+    let logs = vec![
+        (
+            0,
+            vec![
+                ev("message", &[("action", "/a.Msg")]),
+                ev("transfer", &[("amount", "1utia")]),
+                ev("message", &[("module", "bank")]),
+                ev("coin_spent", &[("note", "<&>\u{2028}"), ("empty", "")]),
+            ],
+        ),
+        (1, vec![ev("x", &[])]),
+    ];
+    assert_eq!(
+        tx::message_logs(&logs),
+        concat!(
+            r#"[{"msg_index":0,"events":[{"type":"coin_spent","attributes":"#,
+            "[{\"key\":\"note\",\"value\":\"\\u003c\\u0026\\u003e\\u2028\"},{\"key\":\"empty\"}]},",
+            r#"{"type":"message","attributes":[{"key":"action","value":"/a.Msg"},"#,
+            r#"{"key":"module","value":"bank"}]},"#,
+            r#"{"type":"transfer","attributes":[{"key":"amount","value":"1utia"}]}]},"#,
+            r#"{"msg_index":1,"events":[{"type":"x","attributes":null}]}]"#
+        )
+    );
+}
+
+/// `MsgVersioningGateKeeper`'s accepted messages: blobstream at app
+/// version 1 only, x/signal from app version 2, nothing it does not know.
+#[test]
+fn gatekeeper_accepts_the_messages_of_each_app_version() {
+    let qgb = "/celestia.qgb.v1.MsgRegisterEVMAddress";
+    let signal = "/celestia.signal.v1.MsgSignalVersion";
+    let send = "/cosmos.bank.v1beta1.MsgSend";
+    assert_eq!(tx::gatekeeper_accepts(1, send), Some(true));
+    assert_eq!(tx::gatekeeper_accepts(1, qgb), Some(true));
+    assert_eq!(tx::gatekeeper_accepts(1, signal), Some(false));
+    for v in [2, 3] {
+        assert_eq!(tx::gatekeeper_accepts(v, qgb), Some(false));
+        assert_eq!(tx::gatekeeper_accepts(v, signal), Some(true));
+        assert_eq!(tx::gatekeeper_accepts(v, send), Some(true));
+    }
+    assert_eq!(
+        tx::gatekeeper_accepts(1, "/cosmos.bank.v1beta1.MsgUpdateParams"),
+        Some(false)
+    );
+    assert_eq!(tx::gatekeeper_accepts(4, send), None);
+}
+
+/// `ValidateBasic` of a `MsgMultiSend` whose input and output denoms
+/// differ panics in Go (`Coin.IsEqual`): `runTx` recovers it as
+/// `ErrPanic`. No messages, bad addresses and non-positive coins fail
+/// with their own errors.
+#[test]
+fn v046_validate_basic_fails_like_go() {
+    use celestia_proto::cosmos::bank::v1beta1 as bank;
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    let addr = x_auth::bech32(&[1; 20]).unwrap();
+    let coin = |d: &str, a: &str| Coin {
+        denom: d.into(),
+        amount: a.into(),
+    };
+    let multi = bank::MsgMultiSend {
+        inputs: vec![bank::Input {
+            address: addr.clone(),
+            coins: vec![coin("utia", "1")],
+        }],
+        outputs: vec![bank::Output {
+            address: addr.clone(),
+            coins: vec![coin("uatom", "1")],
+        }],
+    };
+    let e =
+        sdk::error::recover(|| msgs::validate_basic_tx_msgs(&[celestia_proto::Any::pack(&multi)]))
+            .unwrap_err();
+    assert_eq!((e.codespace, e.code), ("undefined", 111_222));
+    let e = msgs::validate_basic_tx_msgs(&[]).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18));
+    let send = |from: &str, amount: Vec<Coin>| {
+        celestia_proto::Any::pack(&bank::MsgSend {
+            from_address: from.into(),
+            to_address: addr.clone(),
+            amount,
+        })
+    };
+    let e = msgs::validate_basic(&send("cosmos1xyz", vec![coin("utia", "1")])).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 7));
+    let e = msgs::validate_basic(&send(&addr, vec![coin("utia", "0")])).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 10));
+    msgs::validate_basic(&send(&addr, vec![coin("utia", "1")])).unwrap();
+}
+
+/// `runTx` before the ante handler reports the block context's meter: an
+/// undecodable transaction uses the gas of every consensus-params read
+/// (`getContextForTx`) so far and wants none. A block whose gas meter is
+/// out of gas fails the next transaction without gas info.
+#[test]
+fn v046_run_tx_gas_before_the_ante_handler() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params = mainnet_consensus_params();
+    consensus_params::store(&mut ctx, &mainnet_consensus_params()).unwrap();
+    ctx.gas = kvstore::GasMeter::infinite();
+    let mut block_gas = tx::block_gas_meter(&ctx);
+    assert_eq!(block_gas.limit(), None);
+    let first = tx::deliver_tx(&mut ctx, &mut block_gas, b"\xff");
+    let per_tx = ctx.gas.consumed();
+    assert!(per_tx > 0);
+    assert_eq!((first.gas_wanted, first.gas_used), (0, per_tx));
+    assert_eq!(first.result.unwrap_err().code, 2);
+    let second = tx::deliver_tx(&mut ctx, &mut block_gas, b"\xff");
+    assert_eq!(second.gas_used, 2 * per_tx);
+    assert_eq!(block_gas.consumed(), 3 * per_tx);
+
+    let mut cp = mainnet_consensus_params();
+    cp.block.as_mut().unwrap().max_gas = 10;
+    ctx.consensus_params = cp;
+    let mut block_gas = tx::block_gas_meter(&ctx);
+    assert_eq!(block_gas.limit(), Some(10));
+    let over = tx::deliver_tx(&mut ctx, &mut block_gas, b"\xff");
+    let e = over.result.unwrap_err();
+    assert_eq!(e.code, 11, "{}", e.log);
+    assert!(e.log.starts_with("out of gas in location: block gas meter"));
+    let none = tx::deliver_tx(&mut ctx, &mut block_gas, b"\xff");
+    assert_eq!((none.gas_wanted, none.gas_used), (0, 0));
+    assert!(
+        none.result
+            .unwrap_err()
+            .log
+            .contains("no block gas left to run tx")
+    );
+}
+
+/// cosmos-sdk v0.46 `SetAccount` writes the account and its number's entry
+/// without reading the old value (so a stale number entry stays), and
+/// `setBalance` writes the balance before its index entry; zero removes
+/// both, the balance first. `subUnlockedCoins` names the spendable coin.
+#[test]
+fn v046_auth_and_bank_store_access() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    params_ctx(|ctx| {
+        ctx.consensus_params.version = Some(VersionParams { app: 1 });
+        let addr = [9u8; 20];
+        let mut acc = x_auth::new_account_with_address(ctx, &addr).unwrap();
+        acc.base_mut().account_number = 5;
+        ctx.gas = kvstore::GasMeter::infinite();
+        x_auth::set_account(ctx, &acc).unwrap();
+        let one_set = ctx.gas.consumed();
+        acc.base_mut().account_number = 77;
+        x_auth::set_account(ctx, &acc).unwrap();
+        // Two writes each time, no read.
+        assert_eq!(ctx.gas.consumed(), 2 * one_set);
+        let number = |n: u64| [b"accountNumber".as_slice(), &n.to_be_bytes()].concat();
+        assert!(ctx.get(x_auth::STORE_KEY, &number(5)).unwrap().is_some());
+        assert!(ctx.get(x_auth::STORE_KEY, &number(77)).unwrap().is_some());
+
+        let descriptors = |ctx: &mut sdk::Context<'_>| -> Vec<&'static str> {
+            ctx.gas.take_charges().into_iter().map(|(_, d)| d).collect()
+        };
+        ctx.gas.record_charges();
+        x_bank::set_balance(ctx, &addr, &sdk::coins::Coin::new("utia", 5)).unwrap();
+        assert_eq!(
+            descriptors(ctx),
+            [
+                "WriteFlat",
+                "WritePerByte",
+                "WritePerByte",
+                "Has",
+                "WriteFlat",
+                "WritePerByte",
+                "WritePerByte"
+            ]
+        );
+        let e = x_bank::sub_unlocked_coins(
+            ctx,
+            &addr,
+            &sdk::coins::Coins(vec![sdk::coins::Coin::new("utia", 6)]),
+        )
+        .unwrap_err();
+        assert_eq!(e.log, "5utia is smaller than 6utia: insufficient funds");
+        ctx.gas.record_charges();
+        x_bank::set_balance(ctx, &addr, &sdk::coins::Coin::new("utia", 0)).unwrap();
+        assert_eq!(descriptors(ctx), ["Delete", "Delete"]);
+        assert_eq!(
+            x_bank::get_balance(ctx, &addr, "utia")
+                .unwrap()
+                .amount
+                .to_string(),
+            "0"
+        );
+    });
+}
+
+/// v0.46 `CreateValidator` below the minimum commission rate reads the
+/// parameter twice (the check and the error message) and nothing else;
+/// staking's single-parameter getters read one subspace key.
+#[test]
+#[allow(deprecated)]
+fn v046_create_validator_below_min_commission() {
+    use celestia_proto::cosmos::staking::v1beta1 as staking;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    write_mainnet_genesis_params(&mut ctx).unwrap();
+    let op = [4u8; 20];
+    let msg = staking::MsgCreateValidator {
+        description: Some(staking::Description {
+            moniker: "m".into(),
+            ..Default::default()
+        }),
+        commission: Some(staking::CommissionRates {
+            rate: "10000000000000000".into(),
+            max_rate: "200000000000000000".into(),
+            max_change_rate: "10000000000000000".into(),
+        }),
+        min_self_delegation: "1".into(),
+        delegator_address: x_auth::bech32(&op).unwrap(),
+        validator_address: x_staking::addr::val_to_string(&op).unwrap(),
+        pubkey: Some(celestia_proto::Any::pack(
+            &celestia_proto::cosmos::crypto::ed25519::PubKey { key: vec![5; 32] },
+        )),
+        value: Some(celestia_proto::cosmos::base::v1beta1::Coin {
+            denom: "utia".into(),
+            amount: "1000000".into(),
+        }),
+    };
+    let any = celestia_proto::Any::pack(&msg);
+    msgs::validate_basic(&any).unwrap();
+    ctx.gas = kvstore::GasMeter::new(1_000_000);
+    ctx.gas.record_charges();
+    let e = msgs::route(&mut ctx, &any).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("staking", 40));
+    assert_eq!(
+        e.log,
+        "cannot set validator commission to less than minimum rate of 0.050000000000000000: commission cannot be less than min rate"
+    );
+    let flats = ctx
+        .gas
+        .take_charges()
+        .iter()
+        .filter(|(_, d)| *d == "ReadFlat")
+        .count();
+    assert_eq!(flats, 2);
+    ctx.gas.record_charges();
+    assert_eq!(x_staking::store::bond_denom(&mut ctx).unwrap(), "utia");
+    assert_eq!(x_staking::store::max_entries(&mut ctx).unwrap(), 7);
+    let reads = ctx.gas.take_charges();
+    assert_eq!(reads.iter().filter(|(_, d)| *d == "ReadFlat").count(), 2);
+}
+
+/// The oracle's KV diff of block `height` in `store`
+/// (`kv-diffs.jsonl.gz`): the keys set, with their values.
+fn oracle_kv_set(height: i64, store: &str) -> BTreeMap<Vec<u8>, Vec<u8>> {
+    let mut text = String::new();
+    GzDecoder::new(
+        &include_bytes!("../../../../../conformance/fixtures/mainnet/v1-oracle/kv-diffs.jsonl.gz")
+            [..],
+    )
+    .read_to_string(&mut text)
+    .unwrap();
+    let d = text
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .find(|d| d["height"] == height && d["store"] == store)
+        .unwrap();
+    d["set"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            (
+                hex::decode(p[0].as_str().unwrap()).unwrap(),
+                hex::decode(p[1].as_str().unwrap()).unwrap(),
+            )
+        })
+        .collect()
+}
+
+/// ibc-go v6 `MsgCreateClient` of mainnet transaction 2:3 writes the
+/// keys and values the Go oracle's block 2 wrote for `07-tendermint-0`
+/// (client state, consensus state and its metadata), in v6's order of
+/// store accesses, and emits v6's events.
+#[test]
+fn v6_create_client_matches_the_oracle() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let tx = crate::txpipe::decode_tx(&mainnet_txs(2)[3]).unwrap();
+    let msg = tx.msgs()[0].clone();
+    assert_eq!(msg.type_url, "/ibc.core.client.v1.MsgCreateClient");
+    let mut ms = v1_store();
+    let header = sdk::Header {
+        chain_id: "celestia".into(),
+        height: 2,
+        // Block 2's time.
+        time: pbjson_types::Timestamp {
+            seconds: 1_698_760_802,
+            nanos: 814_598_743,
+        },
+        ..sdk::Header::default()
+    };
+    let mut ctx = sdk::Context::new(&mut ms, header, sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    params::set_ibc_client(
+        &mut ctx,
+        &serde_json::json!({"allowed_clients": ["06-solomachine", "07-tendermint"]}),
+    )
+    .unwrap();
+    x_ibc::client::set_next_client_sequence(&mut ctx, 0).unwrap();
+    msgs::validate_basic(&msg).unwrap();
+    ctx.gas = kvstore::GasMeter::new(1_000_000);
+    ctx.gas.record_charges();
+    msgs::route(&mut ctx, &msg).unwrap();
+    let descriptors: Vec<_> = ctx
+        .gas
+        .take_charges()
+        .into_iter()
+        .filter(|(_, d)| d.ends_with("Flat"))
+        .map(|(_, d)| d)
+        .collect();
+    // AllowedClients, the client sequence, then five writes.
+    assert_eq!(
+        descriptors,
+        [
+            "ReadFlat",
+            "ReadFlat",
+            "WriteFlat",
+            "WriteFlat",
+            "WriteFlat",
+            "WriteFlat",
+            "WriteFlat",
+            "WriteFlat"
+        ]
+    );
+    let events: Vec<String> = ctx
+        .events
+        .events()
+        .iter()
+        .map(|e| {
+            format!(
+                "{}{:?}",
+                e.r#type,
+                e.attributes
+                    .iter()
+                    .map(|a| (&a.key, &a.value))
+                    .collect::<Vec<_>>()
+            )
+        })
+        .collect();
+    assert_eq!(
+        events,
+        [
+            r#"create_client[("client_id", "07-tendermint-0"), ("client_type", "07-tendermint"), ("consensus_height", "1-6122811")]"#,
+            r#"message[("module", "ibc_client")]"#,
+        ]
+    );
+    drop(ctx);
+    let want = oracle_kv_set(2, x_ibc::STORE_KEY);
+    for (k, v) in want
+        .iter()
+        .filter(|(k, _)| k.starts_with(b"clients/07-tendermint-0/"))
+    {
+        // The oracle's block also ran four more clients and its begin
+        // blocker; client 0's processed time is block 2's time.
+        assert_eq!(
+            ms.get(x_ibc::STORE_KEY, k).unwrap().as_ref(),
+            Some(v),
+            "{}",
+            String::from_utf8_lossy(k)
+        );
+    }
+}
+
+/// jsonpb unquotes a quoted integer and decodes the contents as JSON:
+/// JSON whitespace is allowed, `null` is the zero value, and a leading
+/// `+` or a leading zero is not a JSON number.
+#[test]
+fn quoted_integers_decode_as_json() {
+    use serde_json::json;
+    params_ctx(|ctx| {
+        params::set_blob(
+            ctx,
+            &json!({"gas_per_blob_byte": " 8\n", "gov_max_square_size": "\t64 "}),
+        )
+        .unwrap();
+        let get = |ctx: &mut sdk::Context<'_>, k: &[u8]| {
+            String::from_utf8(x_params::get_raw(ctx, "blob", k).unwrap().unwrap()).unwrap()
+        };
+        assert_eq!(get(ctx, b"GasPerBlobByte"), "8");
+        assert_eq!(get(ctx, b"GovMaxSquareSize"), "\"64\"");
+    });
+    let set = |gas: &str| {
+        let mut out = None;
+        params_ctx(|ctx| {
+            let v = json!({"gas_per_blob_byte": gas, "gov_max_square_size": 64});
+            out = Some(params::set_blob(ctx, &v).map_err(|e| e.to_string()));
+        });
+        out.unwrap()
+    };
+    let mut unquoted_null = None;
+    params_ctx(|ctx| {
+        let v = json!({"gas_per_blob_byte": null, "gov_max_square_size": 64});
+        unquoted_null = Some(params::set_blob(ctx, &v).map_err(|e| e.to_string()));
+    });
+    assert_eq!(set("null"), unquoted_null.unwrap());
+    for bad in [
+        "+8", "08", "8 8", "", " ", "1e1", "8.0", "-8", "nul", "\u{a0}8",
+    ] {
+        assert!(set(bad).is_err(), "{bad:?}");
+    }
+    assert_eq!(set("0").is_err(), set("null").is_err());
+}

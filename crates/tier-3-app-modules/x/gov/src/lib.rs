@@ -157,16 +157,144 @@ pub fn set_proposal(ctx: &mut Context<'_>, p: &Proposal) -> Result<()> {
     ctx.set(STORE_KEY, k, p.encode_to_vec())
 }
 
+/// Whether `app_version` runs on cosmos-sdk v0.46 (celestia-app v1 to v3),
+/// whose gov keeps its parameters in the `x/params` subspace `gov`.
+#[must_use]
+pub const fn is_sdk_v046(app_version: u64) -> bool {
+    matches!(app_version, 1..=3)
+}
+
+/// A proto duration as Go's `time.Duration` (gogoproto `stdduration`),
+/// which rejects values outside the `int64` nanosecond range.
+fn go_duration_nanos(d: &pbjson_types::Duration) -> Result<i64> {
+    d.seconds
+        .checked_mul(1_000_000_000)
+        .and_then(|n| n.checked_add(i64::from(d.nanos)))
+        .ok_or_else(|| {
+            sdkerr::json_unmarshal(format!(
+                "duration {}s {}ns is out of range for time.Duration",
+                d.seconds, d.nanos
+            ))
+        })
+}
+
+/// Key of `v1.DepositParams` in the v0.46 subspace `gov`.
+pub const V046_KEY_DEPOSIT_PARAMS: &str = "depositparams";
+/// Key of `v1.VotingParams` in the v0.46 subspace `gov`.
+pub const V046_KEY_VOTING_PARAMS: &str = "votingparams";
+/// Key of `v1.TallyParams` in the v0.46 subspace `gov`.
+pub const V046_KEY_TALLY_PARAMS: &str = "tallyparams";
+
+/// The cosmos-sdk v0.46 subspace `gov` and its key table
+/// (`v1.ParamKeyTable`). Genesis writes it with `Set`, which validates
+/// nothing; the validators matter only for parameter-change proposals.
+pub const V046_SUBSPACE: x_params::v046::Subspace = x_params::v046::Subspace {
+    name: MODULE_NAME,
+    table: &[
+        x_params::v046::param(
+            V046_KEY_DEPOSIT_PARAMS,
+            x_params::v046::Kind::Struct("v1.DepositParams"),
+            x_params::v046::validate::any,
+        ),
+        x_params::v046::param(
+            V046_KEY_VOTING_PARAMS,
+            x_params::v046::Kind::Struct("v1.VotingParams"),
+            x_params::v046::validate::any,
+        ),
+        x_params::v046::param(
+            V046_KEY_TALLY_PARAMS,
+            x_params::v046::Kind::Struct("v1.TallyParams"),
+            x_params::v046::validate::any,
+        ),
+    ],
+};
+
+/// Amino JSON of the v0.46 `v1.DepositParams`, `v1.VotingParams` and
+/// `v1.TallyParams` (struct field order, `omitempty`, durations as
+/// nanosecond strings, `sdk.Int` as a decimal string).
+fn legacy_params_amino_json(
+    d: &celestia_proto::cosmos::gov::v1::DepositParams,
+    v: &celestia_proto::cosmos::gov::v1::VotingParams,
+    t: &celestia_proto::cosmos::gov::v1::TallyParams,
+) -> Result<[(&'static str, x_params::v046::Value); 3]> {
+    use x_params::v046::{Object, Value, coin, int64, nonempty_string};
+    fn duration(d: Option<&pbjson_types::Duration>) -> Result<Option<String>> {
+        d.map(|d| go_duration_nanos(d).map(int64)).transpose()
+    }
+
+    let mut deposit = Object::new();
+    if !d.min_deposit.is_empty() {
+        let mut coins = Vec::with_capacity(d.min_deposit.len());
+        for c in &d.min_deposit {
+            let amount = sdk::coins::Coin::from_proto(c)
+                .map_err(|e| sdkerr::json_unmarshal(e.log))?
+                .amount;
+            coins.push(coin(&c.denom, &amount));
+        }
+        deposit.field("min_deposit", format!("[{}]", coins.join(",")));
+    }
+    deposit.omitempty(
+        "max_deposit_period",
+        duration(d.max_deposit_period.as_ref())?,
+    );
+    let mut voting = Object::new();
+    voting.omitempty("voting_period", duration(v.voting_period.as_ref())?);
+    let mut tally = Object::new();
+    tally
+        .omitempty("quorum", nonempty_string(&t.quorum))
+        .omitempty("threshold", nonempty_string(&t.threshold))
+        .omitempty("veto_threshold", nonempty_string(&t.veto_threshold));
+    Ok([
+        (V046_KEY_DEPOSIT_PARAMS, Value::Struct(deposit.finish())),
+        (V046_KEY_VOTING_PARAMS, Value::Struct(voting.finish())),
+        (V046_KEY_TALLY_PARAMS, Value::Struct(tally.finish())),
+    ])
+}
+
+/// cosmos-sdk v0.46 gov `InitGenesis` parameters: `SetDepositParams`,
+/// `SetVotingParams` and `SetTallyParams` into subspace `gov`.
+pub fn set_v046_params(
+    ctx: &mut Context<'_>,
+    d: &celestia_proto::cosmos::gov::v1::DepositParams,
+    v: &celestia_proto::cosmos::gov::v1::VotingParams,
+    t: &celestia_proto::cosmos::gov::v1::TallyParams,
+) -> Result<()> {
+    for (key, value) in legacy_params_amino_json(d, v, t)? {
+        V046_SUBSPACE.set(ctx, key, &value)?;
+    }
+    Ok(())
+}
+
 /// `InitGenesis`.
+///
+/// From app version 4 (cosmos-sdk v0.50+) the combined `params` are
+/// required. On cosmos-sdk v0.46 (app versions 1 to 3, e.g. the mainnet
+/// genesis) the three deprecated `deposit_params`, `voting_params` and
+/// `tally_params` are required and stored in the `x/params` subspace
+/// `gov`, as v0.46's `SetDepositParams` / `SetVotingParams` /
+/// `SetTallyParams` do; there is no constitution and no voting-period index.
 pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
+    let app_version =
+        sdk::version::executing(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app));
+    let legacy = is_sdk_v046(app_version);
     set_proposal_id(ctx, gs.starting_proposal_id)?;
-    // Go dereferences `*data.Params` (panics when nil).
-    let params = gs
-        .params
-        .clone()
-        .ok_or_else(|| sdkerr::logic("gov genesis params are nil"))?;
-    set_params(ctx, &params)?;
-    set_constitution(ctx, &gs.constitution)?;
+    if legacy {
+        // v0.46 dereferences `*data.DepositParams` etc. (panics when nil).
+        #[allow(deprecated)]
+        let (Some(d), Some(v), Some(t)) = (&gs.deposit_params, &gs.voting_params, &gs.tally_params)
+        else {
+            return Err(sdkerr::logic("gov genesis legacy params are nil"));
+        };
+        set_v046_params(ctx, d, v, t)?;
+    } else {
+        // Go dereferences `*data.Params` (panics when nil).
+        let params = gs
+            .params
+            .clone()
+            .ok_or_else(|| sdkerr::logic("gov genesis params are nil"))?;
+        set_params(ctx, &params)?;
+        set_constitution(ctx, &gs.constitution)?;
+    }
 
     let module_acc = x_auth::get_module_account(ctx, MODULE_NAME)?
         .ok_or_else(|| sdkerr::logic(format!("{MODULE_NAME} module account has not been set")))?;
@@ -191,7 +319,14 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
                 .ok_or_else(|| sdkerr::logic("proposal voting end time is nil"))?;
             insert_queue(ctx, ACTIVE_QUEUE_PREFIX, &end, p.id)?;
         }
-        set_proposal(ctx, p)?;
+        if legacy {
+            // v0.46 `SetProposal` has no voting-period index.
+            let mut k = vec![PROPOSALS_PREFIX];
+            k.extend_from_slice(&u64_key(p.id));
+            ctx.set(STORE_KEY, k, p.encode_to_vec())?;
+        } else {
+            set_proposal(ctx, p)?;
+        }
     }
 
     let acc = x_auth::Account::Module(module_acc);
@@ -236,6 +371,19 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
 
 /// `InitGenesis` from the module's genesis JSON.
 pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> Result<()> {
+    let app_version =
+        sdk::version::executing(ctx.consensus_params.version.as_ref().map_or(0, |v| v.app));
+    if is_sdk_v046(app_version) {
+        // v0.46's `v1.GenesisState` has neither field; its jsonpb rejects
+        // unknown fields.
+        for field in ["params", "constitution"] {
+            if genesis.get(field).is_some() {
+                return Err(sdkerr::json_unmarshal(format!(
+                    "unknown field \"{field}\" in v1.GenesisState"
+                )));
+            }
+        }
+    }
     let gs: GenesisState = serde_json::from_value(genesis.clone())
         .map_err(|e| sdkerr::json_unmarshal(e.to_string()))?;
     init_genesis(ctx, &gs)
@@ -291,9 +439,12 @@ mod tests {
             x_auth::STORE_KEY,
             x_bank::STORE_KEY,
             x_staking::STORE_KEY,
+            x_params::STORE_KEY,
         ] {
             ms.mount(s, Kind::Iavl).unwrap_or_default();
         }
+        ms.mount(x_params::TSTORE_KEY, Kind::Transient)
+            .unwrap_or_default();
         ms
     }
 
@@ -340,6 +491,128 @@ mod tests {
         assert_eq!(get_params(&mut ctx)?.quorum, "0.334000000000000000");
         end_block(&mut ctx, &NoRouter)?;
         Ok(())
+    }
+
+    /// The `gov` section of the canonical mainnet genesis (`celestia`,
+    /// SHA-256 `9727aac9…7793`): cosmos-sdk v0.46 form.
+    fn mainnet_v1_genesis() -> serde_json::Value {
+        serde_json::json!({"starting_proposal_id": "1", "deposits": [], "votes": [],
+            "proposals": [],
+            "deposit_params": {"min_deposit": [{"denom": "utia", "amount": "10000000000"}],
+                "max_deposit_period": "604800s"},
+            "voting_params": {"voting_period": "604800s"},
+            "tally_params": {"quorum": "0.334000000000000000",
+                "threshold": "0.500000000000000000",
+                "veto_threshold": "0.334000000000000000"}})
+    }
+
+    fn v1_ctx(ms: &mut MultiStore) -> Context<'_> {
+        let mut ctx = Context::new(ms, Header::default(), ExecMode::Finalize);
+        ctx.consensus_params.version =
+            Some(celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app: 1 });
+        ctx
+    }
+
+    #[test]
+    fn legacy_genesis_writes_v046_param_subspace() -> Result<()> {
+        let mut ms = ms();
+        let mut ctx = v1_ctx(&mut ms);
+        init_genesis_json(&mut ctx, &mainnet_v1_genesis())?;
+        assert_eq!(peek_proposal_id(&mut ctx)?, 1);
+        // Values read back from mainnet's params store (still holding the
+        // v1 to v3 subspace entries).
+        for (key, value) in [
+            (
+                &b"depositparams"[..],
+                &br#"{"min_deposit":[{"denom":"utia","amount":"10000000000"}],"max_deposit_period":"604800000000000"}"#[..],
+            ),
+            (b"votingparams", br#"{"voting_period":"604800000000000"}"#),
+            (
+                b"tallyparams",
+                br#"{"quorum":"0.334000000000000000","threshold":"0.500000000000000000","veto_threshold":"0.334000000000000000"}"#,
+            ),
+        ] {
+            assert_eq!(x_params::get_raw(&mut ctx, "gov", key)?.as_deref(), Some(value));
+            assert!(x_params::modified(&mut ctx, "gov", key)?);
+        }
+        // v0.46 has neither the collections params nor a constitution.
+        assert_eq!(ctx.get(STORE_KEY, &[PARAMS_KEY])?, None);
+        assert_eq!(ctx.get(STORE_KEY, &[CONSTITUTION_KEY])?, None);
+        assert!(x_auth::get_account(&mut ctx, &x_auth::module_address(MODULE_NAME))?.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_genesis_omits_empty_fields_and_escapes_like_go() -> Result<()> {
+        let mut ms = ms();
+        let mut ctx = v1_ctx(&mut ms);
+        let mut g = mainnet_v1_genesis();
+        g["deposit_params"] = serde_json::json!({"min_deposit": [
+            {"denom": "", "amount": "0x10"}, {"denom": "a<&>\u{8}\u{2028}\"", "amount": "-1"}]});
+        g["voting_params"] = serde_json::json!({"voting_period": "-1.5s"});
+        g["tally_params"] = serde_json::json!({"quorum": "", "threshold": "x"});
+        init_genesis_json(&mut ctx, &g)?;
+        assert_eq!(
+            x_params::get_raw(&mut ctx, "gov", b"depositparams")?.as_deref(),
+            Some(&br#"{"min_deposit":[{"amount":"16"},{"denom":"a\u003c\u0026\u003e\b\u2028\"","amount":"-1"}]}"#[..])
+        );
+        assert_eq!(
+            x_params::get_raw(&mut ctx, "gov", b"votingparams")?.as_deref(),
+            Some(&br#"{"voting_period":"-1500000000"}"#[..])
+        );
+        assert_eq!(
+            x_params::get_raw(&mut ctx, "gov", b"tallyparams")?.as_deref(),
+            Some(&br#"{"threshold":"x"}"#[..])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_legacy_genesis_errors() {
+        let cases: [(&str, serde_json::Value); 6] = [
+            ("tally_params", serde_json::Value::Null),
+            ("voting_params", serde_json::Value::Null),
+            ("deposit_params", serde_json::Value::Null),
+            (
+                "voting_params",
+                serde_json::json!({"voting_period": "9223372037s"}),
+            ),
+            (
+                "deposit_params",
+                serde_json::json!({"min_deposit": [{"denom": "utia", "amount": "1.5"}]}),
+            ),
+            // cosmos-sdk v0.46 jsonpb rejects the v0.47+ fields as unknown.
+            ("params", devnet_genesis()["params"].clone()),
+        ];
+        for (field, value) in cases {
+            let mut ms = ms();
+            let mut ctx = v1_ctx(&mut ms);
+            let mut g = mainnet_v1_genesis();
+            g[field] = value;
+            assert!(init_genesis_json(&mut ctx, &g).is_err(), "{field}");
+        }
+        let mut ms = ms();
+        let mut ctx = v1_ctx(&mut ms);
+        let mut g = mainnet_v1_genesis();
+        g["constitution"] = serde_json::json!("");
+        assert!(init_genesis_json(&mut ctx, &g).is_err());
+    }
+
+    #[test]
+    fn legacy_genesis_rejected_after_sdk_v046() {
+        // cosmos-sdk v0.50+ (app version 4 on) dereferences the nil params.
+        for app in [0, 4, 10] {
+            let mut ms = ms();
+            let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+            ctx.consensus_params.version =
+                Some(celestia_proto::celestia_core_proto::tendermint::types::VersionParams { app });
+            let err = init_genesis_json(&mut ctx, &mainnet_v1_genesis()).err();
+            assert_eq!(
+                err.map(|e| e.log).as_deref(),
+                Some("gov genesis params are nil: internal logic error"),
+                "{app}"
+            );
+        }
     }
 
     #[test]

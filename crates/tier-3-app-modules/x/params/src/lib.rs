@@ -7,6 +7,8 @@
 
 use sdk::{Context, Result};
 
+pub mod v046;
+
 /// Store key.
 pub const STORE_KEY: &str = "params";
 /// Transient store key.

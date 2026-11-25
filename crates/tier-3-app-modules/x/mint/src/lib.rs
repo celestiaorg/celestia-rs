@@ -152,14 +152,53 @@ pub fn years_since_genesis(genesis: &Timestamp, current: &Timestamp) -> i64 {
 
 /// `Minter.CalculateInflationRate` (independent of the minter's state).
 pub fn calculate_inflation_rate(genesis: &Timestamp, block_time: &Timestamp) -> Result<LegacyDec> {
+    schedule_rate(
+        &initial_inflation_rate(),
+        &disinflation_rate(),
+        genesis,
+        block_time,
+    )
+}
+
+/// celestia-app v1 to v3 `InitialInflationRateAsDec` (0.08).
+#[must_use]
+pub fn v1_initial_inflation_rate() -> LegacyDec {
+    LegacyDec::new_with_prec(80, 3).unwrap_or_default()
+}
+
+/// celestia-app v1 to v3 `DisinflationRateAsDec` (0.1).
+#[must_use]
+pub fn v1_disinflation_rate() -> LegacyDec {
+    LegacyDec::new_with_prec(100, 3).unwrap_or_default()
+}
+
+/// celestia-app v1 to v3 `CalculateInflationRate`: `0.08 * 0.9^years`,
+/// floored at 0.015.
+pub fn v1_calculate_inflation_rate(
+    genesis: &Timestamp,
+    block_time: &Timestamp,
+) -> Result<LegacyDec> {
+    schedule_rate(
+        &v1_initial_inflation_rate(),
+        &v1_disinflation_rate(),
+        genesis,
+        block_time,
+    )
+}
+
+/// `initial * (1 - disinflation)^years`, floored at the target rate.
+fn schedule_rate(
+    initial: &LegacyDec,
+    disinflation: &LegacyDec,
+    genesis: &Timestamp,
+    block_time: &Timestamp,
+) -> Result<LegacyDec> {
     let years = years_since_genesis(genesis, block_time);
     let factor = LegacyDec::one()
-        .checked_sub(&disinflation_rate())
+        .checked_sub(disinflation)
         .and_then(|d| d.checked_power(years.unsigned_abs()))
         .map_err(math_err)?;
-    let rate = initial_inflation_rate()
-        .checked_mul(&factor)
-        .map_err(math_err)?;
+    let rate = initial.checked_mul(&factor).map_err(math_err)?;
     let target = target_inflation_rate();
     Ok(if rate < target { target } else { rate })
 }
@@ -225,7 +264,12 @@ fn maybe_update_minter(ctx: &mut Context<'_>) -> Result<()> {
     let mut minter = get_minter(ctx)?;
     let genesis = get_genesis_time(ctx)?;
     let block_time = ctx.header.time;
-    let rate = calculate_inflation_rate(&genesis, &block_time)?;
+    // celestia-app v1 to v3 (cosmos-sdk v0.46) use the original schedule.
+    let rate = if ctx.is_sdk_v046() {
+        v1_calculate_inflation_rate(&genesis, &block_time)?
+    } else {
+        calculate_inflation_rate(&genesis, &block_time)?
+    };
     if rate == minter.inflation_rate && !minter.annual_provisions.is_zero() {
         return Ok(());
     }
@@ -294,6 +338,28 @@ mod tests {
             s
         });
         assert_eq!(got, want);
+        Ok(())
+    }
+
+    /// The v1 schedule (celestia-app v3.13.0 `x/mint/types/minter_test.go`).
+    #[test]
+    fn v1_schedule_floors_at_target() -> Result<()> {
+        let g = ts(0, 0);
+        let year = NANOSECONDS_PER_YEAR / 1_000_000_000;
+        for (years, want) in [
+            (0, "0.080000000000000000"),
+            (1, "0.072000000000000000"),
+            (2, "0.064800000000000000"),
+            (15, "0.016471290567571920"),
+            (16, "0.015000000000000000"),
+            (100, "0.015000000000000000"),
+        ] {
+            assert_eq!(
+                v1_calculate_inflation_rate(&g, &ts(years * year, 0))?.to_string(),
+                want,
+                "{years} years"
+            );
+        }
         Ok(())
     }
 

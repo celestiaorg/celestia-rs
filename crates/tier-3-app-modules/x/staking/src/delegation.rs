@@ -6,7 +6,7 @@ use sdk::coins::{Coin, Coins};
 use sdk::error::sdk as errs;
 use sdk::{Context, Result};
 
-use crate::store::{self, get_params};
+use crate::store;
 use crate::types::{
     BondStatus, Delegation, RedEntry, Redelegation, UbdEntry, UnbondingDelegation, Validator,
     math_err,
@@ -118,7 +118,7 @@ pub fn unbond(ctx: &mut Context<'_>, del: &[u8], val: &[u8], shares: &LegacyDec)
 /// `HasMaxUnbondingDelegationEntries`.
 fn has_max_ubd_entries(ctx: &mut Context<'_>, del: &[u8], val: &[u8]) -> Result<bool> {
     let n = store::get_ubd(ctx, del, val)?.map_or(0, |u| u.entries.len());
-    let max = get_params(ctx)?.max_entries as usize;
+    let max = store::max_entries(ctx)? as usize;
     Ok(n >= max)
 }
 
@@ -174,7 +174,7 @@ pub fn undelegate(
     if v.is_bonded() {
         bonded_tokens_to_not_bonded(ctx, &amount)?;
     }
-    let unbonding_time = get_params(ctx)?.unbonding_time;
+    let unbonding_time = store::unbonding_time(ctx)?;
     let completion = sdk::time::add_duration(&ctx.header.time, &unbonding_time);
     let height = ctx.header.height;
     let ubd = set_ubd_entry(ctx, del, val, height, completion, &amount)?;
@@ -223,7 +223,7 @@ fn get_begin_info(ctx: &mut Context<'_>, src: &[u8]) -> Result<(Timestamp, i64, 
     // has just removed the source validator (unbonded, no shares left), so
     // the redelegation fails.
     let v = store::get_validator(ctx, src)?.ok_or_else(errors::no_validator_found)?;
-    let unbonding_time = get_params(ctx)?.unbonding_time;
+    let unbonding_time = store::unbonding_time(ctx)?;
     match v.status {
         BondStatus::Bonded => Ok((
             sdk::time::add_duration(&ctx.header.time, &unbonding_time),
@@ -294,7 +294,7 @@ pub fn begin_redelegation(
     }
     // HasMaxRedelegationEntries
     if let Some(r) = store::get_red(ctx, del, src, dst)? {
-        let max = get_params(ctx)?.max_entries as usize;
+        let max = store::max_entries(ctx)? as usize;
         if r.entries.len() >= max {
             return Err(errors::max_redelegation_entries());
         }

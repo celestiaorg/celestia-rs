@@ -91,7 +91,6 @@ alert → Dismiss):
 | antereplay, antevectors, mintvectors, txdecode, fuzzoracle/v9, fuzzoracle/v10 | github.com/cosmos/cosmos-sdk v0.50.13 | GHSA-p22h-3m2v-cmgh | Vulnerable code is not actually used | `replace`d by the celestiaorg/cosmos-sdk fork the parity target ships (v0.52.12 for v10.4.0, v0.52.8 for v9.0.8, v0.51.8 for v6.4.10); upstream v0.50.13 is not in the build. |
 | antereplay, consensusvectors, ctypesvectors, evidencevectors, lightvectors, rpccorpus/recorder | github.com/cometbft/cometbft v0.38.17 | GHSA-c32p-wcqj-j677, GHSA-hrhf-2vcr-ghch | Vulnerable code is not actually used | `replace`d by celestia-core (v0.42.3 / v0.39.23); upstream cometbft is not in the build. |
 | fuzzoracle/v9 | github.com/tendermint/tendermint v0.0.0-00010101000000-000000000000 | GHSA-3fm3-m23v-5r46, GHSA-6jqj-f58p-mrw3, GHSA-v24h-pjjv-mcp6 | Vulnerable code is not actually used | Placeholder `require` of celestia-app v9.0.8's go.mod, `replace`d by celestia-core v1.55.0-tm-v0.34.35; no tendermint code at that version exists. |
-| Cargo.lock (only if GitHub lists it) | lru 0.7.8 | RUSTSEC-2026-0253 | Vulnerable code is not actually used | Only via reed-solomon-erasure 6.0.0 (latest), which calls `get` / `put`, never the unsound `pop()`; accepted in deny.toml. |
 
 Any other alert still open after this commit is new and needs triage.
 GitHub also offers auto-triage rules (Settings → Code security →
@@ -104,18 +103,28 @@ Dependabot rules) that can auto-dismiss alerts by package name for the
 from repository-level security updates):
 
 - **cargo** (root): monthly with a seven-day version update cooldown.
-  Minor / patch version updates and security updates each have their own
-  pull request group.
+  Minor / patch version updates, major version updates and security
+  updates each have their own pull request group, so version updates
+  arrive as at most two pull requests a month.
   `flate2`, `blst` and `axum` (pinned with `=`) are ignored, and new
   *major* versions of the consensus-sensitive families listed under
   "Deferred majors" are ignored (migrated by hand).
 - **github-actions**: monthly with a seven-day version update cooldown
   and one group for version update pull requests.
-- **gomod** (all 16 `conformance/` modules in one entry): no version
+- **gomod** (every live `conformance/` module in one entry): monthly; no version
   updates (`open-pull-requests-limit: 0`); security updates grouped into
   one pull request; the pinned reference modules (`github.com/celestiaorg/*`,
   cosmos-sdk, `cosmossdk.io/*`, cometbft, tendermint, ibc-go, ibc-apps,
   gogoproto, iavl, cosmos-db, hyperlane-cosmos) are ignored.
+- **gomod** (frozen evidence: source snapshots kept under `capture-source*`,
+  `sources/` and `dump-sources`): every dependency is ignored, so these
+  byte-exact copies raise alerts but never pull requests.
+
+`xtask/tests/dependabot.rs` fails when a `conformance/**/go.mod` is in
+neither entry, when an entry is not monthly, or when cargo majors lose
+their group. Security updates ignore the schedule: they open when an
+advisory is published, grouped per ecosystem. An unlisted module falls back to the repository-level
+security updates, which are not grouped and ignore nothing.
 
 How `ignore` and security updates interact: `ignore` conditions apply to
 security updates too (an ignored dependency still gets an *alert*, but no
@@ -137,14 +146,18 @@ parses CVSS 4.0 advisories, which crashed older versions).
 | RUSTSEC-2026-0190 (unsound `downcast_mut`) | anyhow 1.0.102 | upgraded to 1.0.104 |
 | RUSTSEC-2026-0009 (DoS, stack exhaustion) | time 0.3.36 | upgraded to 0.3.55 (needs rustc 1.88: workspace `rust-version` / clippy MSRV raised from 1.85 to 1.88; the toolchain is `stable`) |
 | RUSTSEC-2026-0002, RUSTSEC-2026-0253 (unsound `IterMut`, `pop`) | lru 0.12.5 (iavl node cache) | upgraded to lru 0.18.5 |
-| RUSTSEC-2026-0253 | lru 0.7.8 via reed-solomon-erasure 6.0.0 (block propagation, latest release) | **accepted**: reed-solomon-erasure only calls `LruCache::get` / `put`; the unsound `pop()` path is never reached |
-| RUSTSEC-2024-0384 (unmaintained) | instant 0.1.13 via parking_lot 0.11 via reed-solomon-erasure | **accepted**: no maintained release of reed-solomon-erasure |
+| RUSTSEC-2026-0253 | lru 0.7.8 via reed-solomon-erasure 6.0.0 (block propagation) | **removed** (2026-11-25): the GF(2^8) code is now `propagation::gf8`, so reed-solomon-erasure and lru 0.7 left the lockfile |
+| RUSTSEC-2024-0384 (unmaintained) | instant 0.1.13 via parking_lot 0.11 via reed-solomon-erasure | **removed** (2026-11-25) with reed-solomon-erasure |
 | RUSTSEC-2024-0436 (unmaintained) | paste 1.0.15 (proc macro) via ark-ff (x/zkism) and tendermint-proto | **accepted**: build-time only |
 
 The accepted ones are the `ignore` list of `deny.toml`, each with its
 reason; re-check them at every triage (next: 2027-01-15, or when
-reed-solomon-erasure / ark-ff release). On 2026-10-15 `cargo audit`
-reported no vulnerability, only these three warnings.
+ark-ff releases). On 2026-10-15 `cargo audit` reported no vulnerability,
+only three warnings; two of them left with reed-solomon-erasure.
+
+`cargo deny check sources` also fails for a crate from a registry other
+than crates.io, or from a git URL other than the two the DA bridge
+features pin by commit (`[sources]` in `deny.toml`).
 
 ### Chrono maintenance advisory (2026-11-17)
 
@@ -923,6 +936,19 @@ needs.
 rustup toolchain install nightly --profile minimal && cargo install cargo-fuzz
 cargo +nightly fuzz run --sanitizer none txdecode /tmp/corpus fuzz/corpus/txdecode -- -max_total_time=600
 cargo +nightly fuzz run --sanitizer none --features net mconn_recv /tmp/c fuzz/corpus/mconn_recv -- -max_total_time=600
+```
+
+The separate [AddressSanitizer workflow](../.github/workflows/fuzz-address-sanitizer.yml)
+runs the square target with address instrumentation, including the Leopard SIMD
+erasure codec reached by square extension. It uses the checked-in square seeds
+and writes new inputs to a temporary corpus. To run the same five-minute pilot
+locally on Linux:
+
+```bash
+cargo install cargo-fuzz --version 0.13.2 --locked
+mkdir -p /tmp/square-asan-corpus
+cargo +nightly fuzz run --sanitizer address square /tmp/square-asan-corpus fuzz/corpus/square -- \
+  -max_total_time=300 -rss_limit_mb=4096 -timeout=30 -print_final_stats=1
 ```
 
 Seed corpora (`fuzz/corpus/<target>`, < 1 MB) come from

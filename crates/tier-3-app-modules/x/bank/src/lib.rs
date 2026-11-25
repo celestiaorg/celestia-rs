@@ -62,6 +62,21 @@ fn parse_int(b: &[u8]) -> Result<Amount> {
 
 /// Params.
 pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
+    // cosmos-sdk v0.46 (app versions 1 to 3) keeps the params in the
+    // x/params subspace `bank`, which only its InitGenesis writes.
+    if ctx.is_sdk_v046() {
+        #[allow(deprecated)]
+        return Ok(Params {
+            send_enabled: x_params::v046::get_send_enabled(ctx, "bank", "SendEnabled")?
+                .into_iter()
+                .map(|e| celestia_proto::cosmos::bank::v1beta1::SendEnabled {
+                    denom: e.denom,
+                    enabled: e.enabled,
+                })
+                .collect(),
+            default_send_enabled: x_params::v046::get_bool(ctx, "bank", "DefaultSendEnabled")?,
+        });
+    }
     ctx.get(STORE_KEY, PARAMS)?
         .map(|b| Params::decode(b.as_slice()).map_err(|e| errs::unpack_any(e.to_string())))
         .transpose()
@@ -71,6 +86,10 @@ pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
 /// Sets params. Like Go's `SetParams`, the deprecated `send_enabled` list is
 /// moved into the dedicated send-enabled entries and cleared.
 pub fn set_params(ctx: &mut Context<'_>, mut p: Params) -> Result<()> {
+    if ctx.is_sdk_v046() {
+        // Subspace `bank` (written by the v0.46 InitGenesis).
+        return Ok(());
+    }
     #[allow(deprecated)]
     let legacy = std::mem::take(&mut p.send_enabled);
     for se in legacy {
@@ -112,10 +131,34 @@ pub fn get_all_balances(ctx: &mut Context<'_>, addr: &[u8]) -> Result<Coins> {
     Ok(Coins(out))
 }
 
+/// The denom-to-address index entry of a non-zero balance. cosmos-sdk
+/// v0.46 (app versions 1 to 3) writes a `0x00` sentinel when the entry is
+/// absent; v0.50 collections write an empty value.
+fn set_denom_index(ctx: &mut Context<'_>, addr: &[u8], denom: &str) -> Result<()> {
+    let key = reverse_key(addr, denom);
+    if ctx.is_sdk_v046() {
+        if !ctx.has(STORE_KEY, &key)? {
+            ctx.set(STORE_KEY, key, vec![0])?;
+        }
+        return Ok(());
+    }
+    ctx.set(STORE_KEY, key, Vec::new())
+}
+
 /// `setBalance`: zero balances are removed (with their index entry).
 pub fn set_balance(ctx: &mut Context<'_>, addr: &[u8], coin: &Coin) -> Result<()> {
     if !coin.is_valid() {
         return Err(errs::invalid_coins("").wrap(coin.to_string()));
+    }
+    if ctx.is_sdk_v046() {
+        // cosmos-sdk v0.46: the balance first, then its index entry.
+        let balance = balance_key(addr, &coin.denom);
+        if coin.is_zero() {
+            ctx.delete(STORE_KEY, &balance)?;
+            return ctx.delete(STORE_KEY, &reverse_key(addr, &coin.denom));
+        }
+        ctx.set(STORE_KEY, balance, coin.amount.to_string().into_bytes())?;
+        return set_denom_index(ctx, addr, &coin.denom);
     }
     if coin.is_zero() {
         // IndexedMap.Remove: unreference then remove.
@@ -123,7 +166,7 @@ pub fn set_balance(ctx: &mut Context<'_>, addr: &[u8], coin: &Coin) -> Result<()
         return ctx.delete(STORE_KEY, &balance_key(addr, &coin.denom));
     }
     // IndexedMap.Set: ReversePair.Reference then primary Set.
-    ctx.set(STORE_KEY, reverse_key(addr, &coin.denom), Vec::new())?;
+    set_denom_index(ctx, addr, &coin.denom)?;
     ctx.set(
         STORE_KEY,
         balance_key(addr, &coin.denom),
@@ -183,6 +226,9 @@ pub fn sub_unlocked_coins(ctx: &mut Context<'_>, addr: &[u8], amt: &Coins) -> Re
         return Err(errs::invalid_coins("").wrap(amt.to_string()));
     }
     let locked = locked_coins(ctx, addr)?;
+    if ctx.is_sdk_v046() {
+        return sub_unlocked_coins_v046(ctx, addr, amt, &locked);
+    }
     for coin in amt {
         let balance = get_balance(ctx, addr, &coin.denom)?;
         let locked_amt = locked.amount_of(&coin.denom);
@@ -198,6 +244,49 @@ pub fn sub_unlocked_coins(ctx: &mut Context<'_>, addr: &[u8], amt: &Coins) -> Re
             return Err(errs::insufficient_funds(format!(
                 "spendable balance {spendable}{} is smaller than {coin}",
                 coin.denom
+            )));
+        }
+        let new_balance = balance.amount.checked_sub(&coin.amount).map_err(math_err)?;
+        set_balance(
+            ctx,
+            addr,
+            &Coin::with_amount(coin.denom.clone(), new_balance),
+        )?;
+    }
+    ctx.events.emit(event(
+        "coin_spent",
+        [
+            ("spender", x_auth::bech32(addr)?),
+            ("amount", amt.to_string()),
+        ],
+    ));
+    Ok(())
+}
+
+/// cosmos-sdk v0.46 `subUnlockedCoins` after `LockedCoins`: the
+/// spendable coin is `balance.Sub(locked)` (a Go panic when negative) and
+/// the error names it.
+fn sub_unlocked_coins_v046(
+    ctx: &mut Context<'_>,
+    addr: &[u8],
+    amt: &Coins,
+    locked: &Coins,
+) -> Result<()> {
+    for coin in amt {
+        let balance = get_balance(ctx, addr, &coin.denom)?;
+        let spendable = balance
+            .amount
+            .checked_sub(&locked.amount_of(&coin.denom))
+            .map_err(math_err)?;
+        if spendable.is_negative() {
+            return Err(sdk::error::go_panic(format!(
+                "negative coin amount: {spendable}"
+            )));
+        }
+        if spendable < coin.amount {
+            return Err(errs::insufficient_funds(format!(
+                "{} is smaller than {coin}",
+                Coin::with_amount(coin.denom.clone(), spendable)
             )));
         }
         let new_balance = balance.amount.checked_sub(&coin.amount).map_err(math_err)?;
@@ -530,7 +619,7 @@ pub fn init_genesis(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> Resul
         let addr = x_auth::parse_bech32(&b.address)?;
         let coins = Coins::from_proto(&b.coins)?;
         for c in &coins {
-            ctx.set(STORE_KEY, reverse_key(&addr, &c.denom), Vec::new())?;
+            set_denom_index(ctx, &addr, &c.denom)?;
             ctx.set(
                 STORE_KEY,
                 balance_key(&addr, &c.denom),
