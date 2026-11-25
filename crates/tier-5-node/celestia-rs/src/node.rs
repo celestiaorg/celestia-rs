@@ -322,44 +322,30 @@ pub(crate) fn open_db(data: &Path, name: &str) -> anyhow::Result<Arc<dyn KvBacke
     let db = kvdb::open_backend(data, name, &options)
         .map_err(|e| anyhow!("open {name} in {}: {e}", data.display()))?;
     crate::memstats::register_db(name, &db);
-    register_for_flush(&db);
     Ok(db)
 }
 
-/// Databases flushed by [`flush_databases`] (weak: closing one is fine).
-static OPEN_DBS: std::sync::Mutex<Vec<std::sync::Weak<dyn KvBackend>>> =
-    std::sync::Mutex::new(Vec::new());
+/// Keeps this node's databases open until their write buffers are flushed
+/// on exit. A process-wide guard could hold another node's database lock
+/// past that node's shutdown.
+#[derive(Default)]
+struct FlushDatabasesOnExit(Vec<Arc<dyn KvBackend>>);
 
-/// Adds `db` to the databases written out at shutdown.
-pub(crate) fn register_for_flush(db: &Arc<dyn KvBackend>) {
-    if let Ok(mut dbs) = OPEN_DBS.lock() {
-        dbs.retain(|d| d.strong_count() > 0);
-        dbs.push(Arc::downgrade(db));
+impl FlushDatabasesOnExit {
+    fn open(&mut self, data: &Path, name: &str) -> anyhow::Result<Arc<dyn KvBackend>> {
+        let db = open_db(data, name)?;
+        self.0.push(db.clone());
+        Ok(db)
     }
 }
-
-/// Writes the in-memory buffers of every open database to its files
-/// (clean shutdown): RocksDB otherwise keeps them only in its WAL and the
-/// next start replays it before the node can serve (B1 phase C: ~2 s of
-/// a 2.1 s restart).
-pub(crate) fn flush_databases() {
-    let dbs: Vec<_> = OPEN_DBS
-        .lock()
-        .map(|dbs| dbs.iter().filter_map(std::sync::Weak::upgrade).collect())
-        .unwrap_or_default();
-    for db in dbs {
-        if let Err(e) = db.flush() {
-            tracing::warn!(error = %e, "flushing a database at shutdown");
-        }
-    }
-}
-
-/// Calls [`flush_databases`] when dropped (every return of `start`).
-struct FlushDatabasesOnExit;
 
 impl Drop for FlushDatabasesOnExit {
     fn drop(&mut self) {
-        flush_databases();
+        for db in &self.0 {
+            if let Err(e) = db.flush() {
+                tracing::warn!(error = %e, "flushing a database at shutdown");
+            }
+        }
     }
 }
 
@@ -390,10 +376,17 @@ pub fn apply_local_genesis(home: &Path, opts: &mut app::AppOptions) -> anyhow::R
 
 /// Opens the block and state stores of a home directory.
 pub fn open_stores(home: &Path) -> anyhow::Result<(BlockStore, StateStore)> {
+    open_stores_with(home, open_db)
+}
+
+fn open_stores_with(
+    home: &Path,
+    mut open: impl FnMut(&Path, &str) -> anyhow::Result<Arc<dyn KvBackend>>,
+) -> anyhow::Result<(BlockStore, StateStore)> {
     let data = home.join("data");
     let bs =
-        BlockStore::new(open_db(&data, "blockstore")?).map_err(|e| anyhow!("block store: {e}"))?;
-    let ss = StateStore::new(open_db(&data, "state")?);
+        BlockStore::new(open(&data, "blockstore")?).map_err(|e| anyhow!("block store: {e}"))?;
+    let ss = StateStore::new(open(&data, "state")?);
     Ok((bs, ss))
 }
 
@@ -440,17 +433,17 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     let mut app =
         app::App::open_with(home, app_opts).map_err(|e| anyhow!("open app state: {}", e.log))?;
     app.set_node_min_gas_price(opts.min_gas_price.clone());
+    let mut flush_on_exit = FlushDatabasesOnExit::default();
     if let Some(db) = app.multistore().root().backend() {
         crate::memstats::register_db("application", db);
-        register_for_flush(db);
+        flush_on_exit.0.push(db.clone());
     }
-    let _flush_on_exit = FlushDatabasesOnExit;
     {
         let nc = app.multistore().root().node_cache().clone();
         #[allow(clippy::cast_precision_loss)]
         crate::memstats::register_gauge("iavl_node_cache_nodes", move || nc.stats().len as f64);
     }
-    let (bs, mut ss) = open_stores(home)?;
+    let (bs, mut ss) = open_stores_with(home, |data, name| flush_on_exit.open(data, name))?;
     ss.discard_abci_responses = opts.discard_abci_responses;
     let state = ss
         .load_from_db_or_genesis(&genesis)
@@ -475,7 +468,8 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         .set_pending_sequencer(move |signer| {
             pending_pool.upgrade()?.highest_pending_sequence(signer)
         });
-    let evpool = crate::sync::open_evidence_pool(home, &ss, &bs, &state)?;
+    let evidence_db = flush_on_exit.open(&home.join("data"), "evidence")?;
+    let evpool = crate::sync::evidence_pool_with_db(evidence_db, &ss, &bs, &state)?;
     let mut exec = BlockExecutor::new(
         ss.clone(),
         bs.clone(),
