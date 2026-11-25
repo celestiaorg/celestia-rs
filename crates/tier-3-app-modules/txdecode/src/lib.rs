@@ -315,14 +315,15 @@ pub fn prost_compatible(any: &celestia_proto::Any) -> Option<celestia_proto::Any
     })
 }
 
-/// [`decode`] or [`decode_v9`] by app version.
+/// The decoder of the release that executes `app_version`
+/// ([`sdk::version::Release::executing`]): [`decode_v9`] for v9.0.8 (and
+/// app versions 1 to 8, which run as 9), else [`decode`].
 pub fn decode_for(app_version: u64, raw: &[u8]) -> sdk::Result<Tx> {
     let previous = sdk::version::app_version();
     sdk::version::set_app_version(app_version);
-    let result = if sdk::version::is_v9(app_version) {
-        decode_v9(raw)
-    } else {
-        decode(raw)
+    let result = match sdk::version::Release::executing(app_version).app_version {
+        9 => decode_v9(raw),
+        _ => decode(raw),
     };
     sdk::version::set_app_version(previous);
     result
