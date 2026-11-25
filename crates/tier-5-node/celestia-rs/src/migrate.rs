@@ -142,6 +142,8 @@ fn check_config(home: &Path) -> Result<()> {
         ("db_dir", "data"),
         ("priv_validator_key_file", key_file),
         ("priv_validator_state_file", &state_file),
+        ("genesis_file", "config/genesis.json"),
+        ("node_key_file", "config/node_key.json"),
     ] {
         let v = files.string(File::Config, key);
         anyhow::ensure!(
@@ -335,10 +337,23 @@ pub fn migrate(opts: &MigrateOptions, src: &dyn TrustSource) -> Result<String> {
         sync_dir(home);
         Ok(())
     };
-    steps().with_context(|| format!("migrate stopped; to run the Go node again: {restore}"))?;
+    steps().with_context(|| {
+        format!(
+            "migrate stopped; to run the Go node again: {}",
+            failure_hint(&data, &go, &backup)
+        )
+    })?;
     Ok(format!(
         "Migrated {h} for celestia-rs:\n{plan}\nTo go back to Go: {restore}"
     ))
+}
+
+/// What to do after a failed run. A failure can happen before the Go
+/// databases move, so this never deletes: it moves `data.go` back only
+/// when `data` is absent.
+fn failure_hint(data: &Path, go: &Path, backup: &Path) -> String {
+    let (d, g, b) = (data.display(), go.display(), backup.display());
+    format!("[ -e {d} ] || mv {g} {d}, and restore config/ from {b}/config if it was edited")
 }
 
 #[cfg(test)]
@@ -518,6 +533,21 @@ mod tests {
     }
 
     #[test]
+    fn failure_hint_never_deletes_go_data() {
+        let hint = failure_hint(
+            Path::new("/h/data"),
+            Path::new("/h/data.go"),
+            Path::new("/h/b"),
+        );
+        assert!(!hint.contains("rm "), "{hint}");
+        assert!(
+            hint.contains("[ -e /h/data ] || mv /h/data.go /h/data"),
+            "{hint}"
+        );
+        assert!(hint.contains("/h/b/config"), "{hint}");
+    }
+
+    #[test]
     fn refuses_unsafe_homes_without_changes() {
         let empty = tempfile::tempdir().unwrap();
         let e = empty.path();
@@ -543,6 +573,12 @@ mod tests {
         // A sign state path celestia-rs would not read.
         crate::config::set(h, File::Config, "priv_validator_state_file", "/x").unwrap();
         refuse(h, &opts(h), &NO_NET, "priv_validator_state_file");
+        // Other paths celestia-rs reads only at their defaults.
+        for key in ["genesis_file", "node_key_file"] {
+            let custom = go_home("tcp://127.0.0.1:0");
+            crate::config::set(custom.path(), File::Config, key, "/x").unwrap();
+            refuse(custom.path(), &opts(custom.path()), &NO_NET, key);
+        }
         // The home's RPC port is still in use.
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let busy = go_home(&format!("tcp://{}", l.local_addr().unwrap()));
