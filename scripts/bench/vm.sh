@@ -345,9 +345,22 @@ finish() {
     --arg poll_columns "$POLL_COLUMNS" --arg poll_interval_s "$poll_s" --arg timings "$(timings)" \
     --arg mem_peak_polled "$(bench_max "$STATE/polls.tsv" 10 2>/dev/null)" '$ARGS.named + {verify: $verify}' \
     >"$STATE/summary.json"
-  tar -C "$STATE" -cf "$STATE/raw.tar" --exclude=raw.tar --exclude=attrs --exclude='raw.*' . 2>/dev/null || true
-  local n i
-  n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 8) || { tail -c 1000000 "$STATE/polls.tsv" >"$STATE/raw.tar"; n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 8); }
+  # Publish everything if it fits. If not, publish log excerpts in place of
+  # the full node logs, and as the last resort the polls alone.
+  local n i f
+  for f in "$STATE"/bench-*.log; do
+    [[ -e $f ]] && bench_log_excerpt <"$f" >"${f%.log}.excerpt" || true
+  done
+  pack() { tar -C "$STATE" -cf "$STATE/raw.tar" --exclude=raw.tar --exclude=attrs --exclude='raw.*' "$@" . 2>/dev/null || true; }
+  pack --exclude='*.excerpt'
+  n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 8) || {
+    pack --exclude='bench-*.log'
+    n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 8)
+  } || {
+    tail -c 1000000 "$STATE/polls.tsv" >"$STATE/polls.tail.tsv"
+    tar -C "$STATE" -cf "$STATE/raw.tar" polls.tail.tsv summary.json
+    n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 8)
+  }
   put summary "$STATE/summary.json"
   for ((i = 0; i < n; i++)); do put "raw-$i" "$STATE/raw.$i"; done
   printf '%s' "$n" >"$STATE/raw-count" && put raw-count "$STATE/raw-count"

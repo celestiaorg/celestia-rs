@@ -76,6 +76,34 @@ eq     "chunk count"           5 "$n"   # 300000 bytes gzip-incompressible, base
 check  "chunk size bound"      test "$(wc -c <"$t/c.0")" -le 100000
 bench_unchunk "$n" "$t/c" >"$t/back"
 check  "chunk round trip"      cmp "$t/raw" "$t/back"
+
+# --- log excerpt: what explains a slow or failed sync, small enough to publish
+{
+  echo "t0 INFO starting node"
+  for i in $(seq 1 9000); do echo "t$i INFO p2p::switch: Added peer $i"; done
+  echo "t9001 INFO statesync::syncer: Discovering snapshots discovery_time=15s"
+  echo "t9002 ERROR light: verification failed"
+  echo "t9003 INFO Snapshot restored height=16212000"
+  for i in $(seq 1 9000); do echo "t$i INFO consensus: committed block"; done
+} >"$t/node.log"
+bench_log_excerpt <"$t/node.log" >"$t/excerpt"
+check  "excerpt keeps start"     grep -q 'starting node' "$t/excerpt"
+check  "excerpt keeps statesync" grep -q 'Discovering snapshots' "$t/excerpt"
+check  "excerpt keeps errors"    grep -q 'verification failed' "$t/excerpt"
+check  "excerpt keeps restore"   grep -q 'Snapshot restored height=16212000' "$t/excerpt"
+check  "excerpt is small"        test "$(wc -l <"$t/excerpt")" -le 4000
+# Many late matches must not evict the early ones that explain a long wait.
+{
+  for i in $(seq 1 300); do echo "t$i INFO p2p::switch: Added peer $i"; done
+  echo "t301 ERROR p2p::pex::reactor: Couldn't connect to any seeds"
+  for i in $(seq 1 9000); do echo "t$i INFO blocksync: applied block $i"; done
+  echo "t9999 ERROR last problem"
+} >"$t/node2.log"
+bench_log_excerpt <"$t/node2.log" >"$t/excerpt2"
+check  "excerpt keeps early match" grep -q "Couldn't connect to any seeds" "$t/excerpt2"
+check  "excerpt keeps last match"  grep -q 'last problem' "$t/excerpt2"
+check  "excerpt marks the gap"     grep -q 'matching lines omitted' "$t/excerpt2"
+check  "excerpt 2 is small"        test "$(wc -l <"$t/excerpt2")" -le 4000
 refute "chunk over limit"      bench_chunk "$t/raw" "$t/d" 100000 4
 check  "chunk alphabet"        grep -qvE '[^A-Za-z0-9+/=]' "$t/c.0"
 
