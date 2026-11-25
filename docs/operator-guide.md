@@ -4,9 +4,9 @@
 (validator or full node): the Rust state machine (celestia-app v10.4.0
 parity), Rust consensus, P2P, CAT mempool, block / state sync, CometBFT
 RPC, the app's gRPC + REST servers, and the operator CLI (`init`, `keys`,
-`genesis`, `tx`, `query`, `config`, `rollback`, `export`). It uses the
-same home directory layout and file formats as Go `celestia-appd`, so an
-operator can switch between the two binaries.
+`genesis`, `tx`, `query`, `config`, `rollback`, `export`, `migrate`). It
+uses the same home directory layout and file formats as Go `celestia-appd`,
+so an operator can switch between the two binaries.
 
 This guide targets the reference machine, a **Mac Mini M4 (16 GB RAM,
 512 GB SSD)** on macOS; Linux works the same way (systemd instead of
@@ -312,16 +312,52 @@ the Go home (or a copy of it):
 
 Because the databases differ, the Rust node starts from an empty state:
 state-sync it (`[statesync]` in config.toml, as for a fresh Go node) or
-block-sync from genesis. Procedure:
+block-sync from genesis. `celestia-rs migrate` prepares the home:
+
+```sh
+celestia-rs migrate --home <home> --dry-run     # print the plan, change nothing
+celestia-rs migrate --home <home> --go-node-stopped --statesync-rpc <rpc1>,<rpc2>
+```
+
+It does steps 2 to 4 of the procedure below, and nothing more:
 
 1. Stop the Go node and **make sure it stays stopped** (disable the
-   systemd unit / launchd job, remove it from cosmovisor).
-2. Back up `config/` and `data/priv_validator_state.json`.
+   systemd unit / launchd job, remove it from cosmovisor). The command
+   cannot prove this, so it requires `--go-node-stopped`. It also refuses
+   while the config.toml RPC or P2P port is in use.
+2. Back up `config/` and `data/priv_validator_state.json` (the command
+   copies them to `<home>/migrate-backup-<UTC time>/`).
 3. Move the Go data away (`mv data data.go` and keep only
    `data/priv_validator_state.json`: `mkdir data && cp data.go/priv_validator_state.json data/`).
+   The command checks that the copy is byte-identical. If
+   `config/priv_validator_key.json` exists but the state file does not, it
+   stops, unless `--not-a-validator` says that the key never signs.
 4. Enable state sync in config.toml (`enable = true`, `rpc_servers`,
-   `trust_height`, `trust_hash`) or rely on block sync.
-5. `celestia-rs start --home <home>`.
+   `trust_height`, `trust_hash`) or rely on block sync. With
+   `--statesync-rpc`, the command sets these four keys: the trust height is
+   the tip minus 2000, and every server must report the genesis chain ID
+   and the same header hash. Comments and other keys stay. Without the
+   flag, config.toml does not change.
+5. `celestia-rs start --home <home>`. The command never starts the node.
+
+Key files and keyrings stay in place. `migrate` refuses a home without Go
+databases in `data/`, a second run changes nothing, and if a step fails it
+prints how to restore the Go layout (`rm -rf data && mv data.go data`).
+
+### Switch an existing Mocha node
+
+```sh
+H=~/.celestia-app
+sudo systemctl disable --now celestia-appd   # or the launchd job; `ps` must not show it
+celestia-rs migrate --home $H --dry-run
+celestia-rs migrate --home $H --go-node-stopped \
+  --statesync-rpc https://rpc-mocha.pops.one:443
+celestia-rs start --home $H                  # under systemd/launchd: section 8
+celestia-rs status --home $H                 # synced when catching_up is false
+```
+
+For a validator, read the rules below first and consider
+`double_sign_check_height` (section 8) for the first start.
 
 ### priv_validator_state.json safety rules (avoid double signing)
 

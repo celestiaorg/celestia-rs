@@ -161,6 +161,10 @@ enum Cmd {
         #[arg(long)]
         force: bool,
     },
+    /// Prepare a stopped Go `celestia-appd` home for celestia-rs: back up
+    /// config/ and the sign state, move the Go databases to data.go/ and
+    /// start a fresh data/ with the same priv_validator_state.json.
+    Migrate(celestia_rs::migrate::MigrateOptions),
     /// Export the app state as a genesis file.
     Export {
         /// Height to export (default: latest).
@@ -1088,6 +1092,18 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
             ));
             Ok(())
         }
+        Cmd::Migrate(mut opts) => {
+            if cli.home.is_none() {
+                bail!("migrate needs --home <the Go celestia-appd home>");
+            }
+            opts.home = home;
+            let text = tokio::task::spawn_blocking(move || {
+                celestia_rs::migrate::migrate(&opts, &celestia_rs::migrate::RpcTrust)
+            })
+            .await??;
+            util::out(text);
+            Ok(())
+        }
         Cmd::Export {
             height,
             output_document,
@@ -1967,6 +1983,17 @@ mod cli_tests {
             let cli = Cli::try_parse_from(["celestia-rs", "start"]).unwrap();
             assert!(matches!(cli.command, Cmd::Start(args) if args.bridge_rpc_listen.is_none()));
         }
+    }
+
+    #[test]
+    fn migrate_flags() {
+        let args = "celestia-rs migrate --go-node-stopped --statesync-rpc https://a:443,https://b";
+        let cli = Cli::try_parse_from(args.split(' ')).unwrap();
+        let Cmd::Migrate(o) = cli.command else {
+            panic!("not migrate");
+        };
+        assert!(o.go_node_stopped && !o.dry_run && !o.not_a_validator);
+        assert_eq!(o.statesync_rpc, ["https://a:443", "https://b"]);
     }
 
     fn skip_heights(args: &[&str]) -> Vec<i64> {
