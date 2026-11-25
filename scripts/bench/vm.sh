@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Unattended VM-side run of one side of the operator sync comparison
-# (docs/benchmarks/operator-sync.md). The operator-campaigns workflow passes
+# (docs/benchmarks/operator-sync.md). The operator-benchmark workflow passes
 # lib.sh + this file as the startup script and the run inputs as bench-*
 # instance metadata. The instance name ends in -rs or -go. Progress, the
 # summary and compressed raw data go to guest attributes in namespace
@@ -253,7 +253,7 @@ run_state_sync() {
   start_unit node "${node_cmd[@]}" || { reason=start_failed; return 1; }
   [[ -z $DRY ]] || return 0
   poll_s=5; measure 5 3600 at_tip || return 1
-  phase=at-tip; verify_block_id
+  phase=at-tip; verify_block_id || { reason=tip_block_id_mismatch_or_unavailable; return 1; }
   window_end=$(($(now) + window_min * 60))
   measure 5 600 window_done || return 1
 }
@@ -265,7 +265,7 @@ run_bridge() {
   phase=sync; t0=$(mono)
   start_unit node "${node_cmd[@]}" || { reason=start_failed; return 1; }
   local net=(--p2p.network celestia --node.store "$DATA/bridge")
-  if [[ -z $DRY ]]; then poll_s=5; measure 5 3600 at_tip || return 1; verify_block_id; fi
+  if [[ -z $DRY ]]; then poll_s=5; measure 5 3600 at_tip || return 1; verify_block_id || { reason=tip_block_id_mismatch_or_unavailable; return 1; }; fi
   if [[ $role == go ]]; then
     as_bench celestia bridge init "${net[@]}" --core.ip 127.0.0.1 --core.port 9090 || { reason=bridge_init_failed; return 1; }
     start_unit bridge /usr/local/bin/celestia bridge start "${net[@]}" --core.ip 127.0.0.1 --core.port 9090 \
@@ -297,6 +297,7 @@ verify_block_id() { # chain ID and block ID at the local height against the refe
   theirs=$(rpc "${BENCH_REF_RPCS[0]}/block?height=$h" | jq -r '.result.block_id.hash // empty')
   jq -nc --arg c "$chain" --arg o "$ours" --arg t "$theirs" --arg h "$h" \
     '{height: $h, chain_id: $c, local_block_id: $o, reference_block_id: $t, match: ($c == "celestia" and $o != "" and $o == $t)}' >"$STATE/verify-tip.json"
+  jq -e .match "$STATE/verify-tip.json" >/dev/null
 }
 
 # --- results ----------------------------------------------------------------
