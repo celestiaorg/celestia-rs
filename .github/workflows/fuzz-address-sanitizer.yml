@@ -1,0 +1,45 @@
+name: fuzz (AddressSanitizer)
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/fuzz-address-sanitizer.yml
+      - Cargo.toml
+      - fuzz/**
+      - crates/tier-0-primitives/**
+      - crates/tier-1-protocol-types/**
+      - crates/tier-3-app-modules/txdecode/**
+  schedule:
+    - cron: '40 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  square:
+    name: Square construction (AddressSanitizer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+          key: square-address-sanitizer
+      - run: cargo install cargo-fuzz --version 0.13.2 --locked
+      - name: Fuzz square construction and erasure coding
+        run: |
+          mkdir -p "$RUNNER_TEMP/square-corpus"
+          cargo fuzz run --sanitizer address square \
+            "$RUNNER_TEMP/square-corpus" fuzz/corpus/square -- \
+            -max_total_time=300 -rss_limit_mb=4096 -timeout=30 -print_final_stats=1
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: square-address-sanitizer-findings
+          path: fuzz/artifacts/square
+          if-no-files-found: ignore
