@@ -1305,6 +1305,7 @@ dependencies = [
  "txdecode",
  "x-blob",
  "x-consensus",
+ "x-upgrade",
  "x509-parser 0.18.1",
 ]
 
