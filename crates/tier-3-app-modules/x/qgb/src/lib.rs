@@ -207,10 +207,15 @@ fn header_app_version(ctx: &Context<'_>) -> u64 {
     ctx.consensus_params.version.as_ref().map_or(0, |v| v.app)
 }
 
-/// Whether the hooks act: app version at most 1 and the `qgb` store
+/// Whether the hooks act: only inside the legacy driver's cosmos-sdk
+/// v0.46 scope ([`Context::is_sdk_v046`], checked first so that nothing
+/// else reads a store or uses gas), at app version 1 (Go: no-op above 1;
+/// the v0.46 driver never runs a header below 1), with the `qgb` store
 /// mounted (it is only mounted for app version 1).
 fn hooks_active(ctx: &mut Context<'_>) -> bool {
-    header_app_version(ctx) <= 1 && ctx.multistore().is_mounted(STORE_KEY)
+    ctx.is_sdk_v046()
+        && header_app_version(ctx) == 1
+        && ctx.multistore().is_mounted(STORE_KEY)
 }
 
 /// The blobstream staking hooks (`keeper.Hooks`).

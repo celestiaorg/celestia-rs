@@ -164,6 +164,7 @@ fn attestations_round_trip() {
 /// mounted; a second validator with the same default address fails.
 #[test]
 fn hooks_act_at_app_version_1() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     let val = [7u8; 20];
     let mut ms = store();
     let mut ctx = ctx_at(&mut ms, 12, 0);
@@ -195,6 +196,29 @@ fn hooks_act_at_app_version_1() {
         .unwrap();
 }
 
+/// Outside the legacy driver's v0.46 scope the hooks touch no store and
+/// use no gas, even at app version 1 with `qgb` mounted.
+#[test]
+fn hooks_are_inert_without_the_v046_scope() {
+    let val = [7u8; 20];
+    let mut ms = store();
+    for v in [0, 1] {
+        sdk::version::set_app_version(v);
+        let mut ctx = ctx_at(&mut ms, 12, 0);
+        Hooks.after_validator_created(&mut ctx, &val).unwrap();
+        Hooks.after_validator_created(&mut ctx, &val).unwrap();
+        Hooks
+            .after_validator_begin_unbonding(&mut ctx, &[], &val)
+            .unwrap();
+        assert_eq!(ctx.gas.consumed(), 0);
+    }
+    sdk::version::set_app_version(0);
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ctx = ctx_at(&mut ms, 12, 0);
+    assert_eq!(get_evm_address(&mut ctx, &val).unwrap(), None);
+    assert_eq!(latest_unbonding_block_height(&mut ctx).unwrap(), 0);
+}
+
 fn set_window(ctx: &mut Context<'_>, window: u64) {
     x_params::set_raw(
         ctx,
@@ -220,6 +244,7 @@ fn dc_ranges(ctx: &mut Context<'_>) -> Vec<(u64, u64, u64)> {
 /// catches up in one EndBlock.
 #[test]
 fn data_commitments_follow_the_window() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = store();
     let mut ctx = ctx_at(&mut ms, 399, 0);
     init_genesis(&mut ctx).unwrap();
@@ -269,6 +294,7 @@ fn store_attestation(ctx: &mut Context<'_>, nonce: u64, seconds: i64) {
 /// latest, and advances the earliest available nonce.
 #[test]
 fn pruning_keeps_three_weeks_and_the_latest() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     let week = 7 * 24 * 3600;
     let mut ms = store();
     let mut ctx = ctx_at(&mut ms, 10, 0);
@@ -297,6 +323,7 @@ fn pruning_keeps_three_weeks_and_the_latest() {
 /// deletions already made stay, as in Go.
 #[test]
 fn pruning_stops_at_a_missing_attestation() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = store();
     let mut ctx = ctx_at(&mut ms, 10, 0);
     init_genesis(&mut ctx).unwrap();
@@ -318,6 +345,7 @@ fn pruning_stops_at_a_missing_attestation() {
 /// overwritten.
 #[test]
 fn attestation_nonces_only_increment() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = store();
     let mut ctx = ctx_at(&mut ms, 10, 0);
     init_genesis(&mut ctx).unwrap();
@@ -344,6 +372,7 @@ fn attestation_nonces_only_increment() {
 /// exists.
 #[test]
 fn register_evm_address_validates() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     let val = x_staking::addr::val_to_string(&[7u8; 20]).unwrap();
     let ok = types::MsgRegisterEvmAddress {
         validator_address: val.clone(),

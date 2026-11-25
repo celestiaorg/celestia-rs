@@ -296,6 +296,8 @@ fn genesis_validators(staking: &Kv) -> common::ValidatorSet {
 #[test]
 #[ignore = "needs CELESTIA_V1_ORACLE_KV=<kv-height-0.jsonl.gz> from the oracle"]
 fn v1_begin_blockers_match_the_oracle_for_blocks_2_to_10() {
+    // Runs the blockers outside the driver: hold its v0.46 scope.
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     let path = std::env::var("CELESTIA_V1_ORACLE_KV")
         .expect("set CELESTIA_V1_ORACLE_KV to the oracle's kv-height-0.jsonl.gz");
     let archive = common::archive();

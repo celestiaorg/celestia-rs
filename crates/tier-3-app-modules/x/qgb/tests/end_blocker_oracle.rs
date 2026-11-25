@@ -126,6 +126,7 @@ fn oracle_events() -> BTreeMap<i64, Vec<Event>> {
 
 #[test]
 fn end_blocker_matches_the_oracle_for_blocks_1_to_10() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     let states = oracle_states();
     let times = block_times();
     let events = oracle_events();

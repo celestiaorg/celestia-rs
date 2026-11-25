@@ -13,6 +13,7 @@ use std::cell::Cell;
 
 std::thread_local! {
     static APP_VERSION: Cell<u64> = const { Cell::new(0) };
+    static SDK_V046: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Sets the app version of the calling thread's current ABCI call.
@@ -38,12 +39,58 @@ pub fn executing(context_version: u64) -> u64 {
     }
 }
 
-/// Whether the executing app version (see [`executing`]) is a cosmos-sdk
-/// v0.46 one (celestia-app v1 to v3), whose modules keep their parameters
-/// in `x/params` subspaces and their state in v0.46 layouts.
+/// Whether cosmos-sdk v0.46 semantics are active on the calling thread:
+/// an [`SdkV046Scope`] is alive.
+#[must_use]
+pub fn sdk_v046_active() -> bool {
+    SDK_V046.with(Cell::get)
+}
+
+/// Whether shared modules take their cosmos-sdk v0.46 (celestia-app v1 to
+/// v3) paths: parameters in `x/params` subspaces and v0.46 state layouts.
+///
+/// True only inside an [`SdkV046Scope`] (which the legacy block driver
+/// holds while it executes a v0.46 block) whose executing app version
+/// ([`executing`]) is 1 to 3. The app version alone never selects these
+/// paths: the main app runs app versions 1 to 8 as v9.
 #[must_use]
 pub fn is_sdk_v046(context_version: u64) -> bool {
-    matches!(executing(context_version), 1..=3)
+    sdk_v046_active() && matches!(executing(context_version), 1..=3)
+}
+
+/// Turns cosmos-sdk v0.46 semantics on for the calling thread at an app
+/// version until dropped, then restores the thread's previous app
+/// version and v0.46 state (also when unwinding). Only the legacy block
+/// driver (and tests of its modules) enters one: no block or genesis
+/// content can.
+#[derive(Debug)]
+#[must_use = "v0.46 semantics end when the scope is dropped"]
+pub struct SdkV046Scope {
+    prev_app_version: u64,
+    prev_active: bool,
+    // The thread-local state is restored on the thread that set it.
+    _not_send: std::marker::PhantomData<*const ()>,
+}
+
+impl SdkV046Scope {
+    /// Sets the thread's app version to `v` and turns v0.46 semantics on.
+    pub fn enter(v: u64) -> Self {
+        let scope = Self {
+            prev_app_version: app_version(),
+            prev_active: sdk_v046_active(),
+            _not_send: std::marker::PhantomData,
+        };
+        set_app_version(v);
+        SDK_V046.with(|c| c.set(true));
+        scope
+    }
+}
+
+impl Drop for SdkV046Scope {
+    fn drop(&mut self) {
+        set_app_version(self.prev_app_version);
+        SDK_V046.with(|c| c.set(self.prev_active));
+    }
 }
 
 /// The cosmos-sdk line a celestia-app release is built on.
@@ -422,6 +469,48 @@ mod tests {
         ] {
             assert_eq!(names(v), Some(&[name][..]));
         }
+    }
+
+    /// The main app sets the raw app version (1 to 8 run as v9): that
+    /// alone never selects cosmos-sdk v0.46 semantics.
+    #[test]
+    fn raw_app_versions_1_to_3_are_not_sdk_v046() {
+        let prev = app_version();
+        for v in 0..=13 {
+            set_app_version(v);
+            assert!(!is_sdk_v046(v), "v{v}");
+            assert!(!is_sdk_v046(0), "v{v}");
+        }
+        set_app_version(prev);
+    }
+
+    /// An [`SdkV046Scope`] selects v0.46 semantics at app versions 1 to 3
+    /// only, nests, and restores the previous thread state when dropped.
+    #[test]
+    fn sdk_v046_scope_is_explicit_and_restores() {
+        set_app_version(9);
+        {
+            let _outer = SdkV046Scope::enter(2);
+            assert!(sdk_v046_active());
+            assert_eq!(app_version(), 2);
+            assert!(is_sdk_v046(0) && is_sdk_v046(9));
+            {
+                let _inner = SdkV046Scope::enter(4);
+                assert!(sdk_v046_active() && !is_sdk_v046(1));
+            }
+            assert_eq!(app_version(), 2);
+            assert!(is_sdk_v046(0));
+        }
+        assert_eq!(app_version(), 9);
+        assert!(!sdk_v046_active() && !is_sdk_v046(1));
+        let unwound = std::panic::catch_unwind(|| {
+            let _scope = SdkV046Scope::enter(1);
+            panic!("unwind");
+        });
+        assert!(unwound.is_err());
+        assert_eq!(app_version(), 9);
+        assert!(!sdk_v046_active());
+        set_app_version(0);
     }
 
     /// Nothing below app version 9 is executed with its own rules yet:
