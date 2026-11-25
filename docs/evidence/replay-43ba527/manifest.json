@@ -1,0 +1,98 @@
+{
+  "source_commit": "43ba527cce4425c2aea63f1165eb5d3c086f78d3",
+  "source_clean_before_and_after": true,
+  "binary_sha256": "41c6d0677a446bacaab2ce625d13f3e0ace2eae771759d7aed081419c59c64d3",
+  "cargo_lock_sha256": "f7174f46623baf6aedc1ed8cca7c3c42cb9a738909d7f915028d89140fd1bcb3",
+  "build": "cargo build --locked --release --bin celestia-rs",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "genesis_url": "https://raw.githubusercontent.com/celestiaorg/networks/master/mocha-5/genesis.json",
+  "genesis_sha256": "82db3ac5ab8485e4784054bd10457533a64563f055c0d234a3134603a9c85d33",
+  "rpc": [
+    "https://rpc.celestia-mocha.com",
+    "https://rpc-mocha.pops.one"
+  ],
+  "go_binary_version": null,
+  "reference": "Historical network header commitments; producing Go patch version unknown",
+  "retained_sha256": {
+    "anchor-2929500.jsonl": "a2c8814ba7449634a52f7ac3c6fa9e16343928427480dd85f02f7637d742e84b",
+    "audit-v10.json": "15efb0ed2f009ab2d93e87b57649d934fa3e245851858675ffe86e29cf9a935e",
+    "audit-v11.json": "9f9a55149f8b86344c8741ccd5808768a7a0c18ce8ba2308e4c265d7e90c023a",
+    "audit.json": "1803c19716bb35f90faf7a7ec957ed2b3855c032c1274ab757561c12563ec30f",
+    "build.log": "563429de08f8a28f18d8d62ef06d62cc8fa13351ed79da273a14a66a505876fe",
+    "edge-headers.json": "5add0e053b43f21e2ff424955bb3c34a3bb8afacdb5aded6122c888ad3c81e1f",
+    "heights-1-1000.jsonl.gz": "01aaed81b51a3ef2fddac44a87dbf5094c3d29e935c284e4dc6dd5a57265693d",
+    "heights-15530001-15531000.jsonl.gz": "6fd3e3d2c9cf179d80c757896b799195b9cf1362b84ec4fbb2c5e54d5f4359ff",
+    "heights-2929501-2930500.jsonl.gz": "5e3aaa386bfe47c20f95c82ab9b53c130bc27ccacdb1a9398b67363be834f610",
+    "mainnet-boundary.jsonl": "44e1136ed3e58554a8cacdb7425ffed0f9be9bbea008f9f63928fd6fb70fbb26",
+    "mainnet-light.log": "7f9b7bdda7742dd116d8a07daa9f711b92ca799e8b46e0bc312b1f7afe42009b",
+    "mocha-boundary.jsonl": "b4746dd7b9de9614e3dfe268c9391e42abd84aeef34b15f264fbd5f83aa04e31",
+    "mocha-light.log": "fe7de3a7c5067714e1345dc46bf8c9069e4ac0b244721891da61872feace527c",
+    "replay.log": "27c09d0e1e842524857f5e96a346874da6e565cab029376c3c0c6ba989204e80",
+    "snapshot-15530000.json": "cee3b774a374d6af6c403b3ba2b2c600ef45d95937bf3bd747fb32344e3172c2",
+    "snapshot-2929500.json": "b23e5d4db35ae7578283ac17bd359e4ffaa37cfc5058f47e221c643040ebf512",
+    "v10-expired-anchor.jsonl": "e2235c9b4ef02b691d81c0db0376b1b0f54d5e56b8af64bf04ca030e93d45393",
+    "v10-expired-anchor.log": "23e83c28c3e5363b7f84244ddd689722b4dc0e3b12859743ece42366adfc8bea",
+    "v10-historical.log": "3ad3e223a5fd01f8821940876942353dc1ae330c5030fda3913b2f1d783a4d38",
+    "v11-replay.log": "6a688954c348a09bb7634ac238da8638cf8e0be4b942004b7dbf3d5c1ad85dae",
+    "v11-v12.txt": "bbf9c55ec61a4a216984cffc6453ed025b9adef327ccd9279cd90d807ff10992",
+    "v12-1000.patch": "3b1875d8d7d97b698cd7060f41a4db383cacb64ae7a1bc041c8b05108e489a2b",
+    "v12-abci.rec.gz": "3c94557bea60feaf453df1e88e5da2d282aed45ac6d44fafa91d5ec6fc917fc6",
+    "v12-extended.log": "e7902dfceee812535e440c74ef7c47d48b19e9e98108c635eebba66a9bfb47df",
+    "v12-go-bootstrap.log": "4647181bd47dbccb3ed6d5ca463c4c2721cbb3b27e39d09b8dbf3ea80ee60863",
+    "v12-go-capture.log": "22087d255812df729864a6f701c1982d695c788ba2adfddba3cb679d99f91d4d",
+    "v9-v10.txt": "9c9fb1771e8109d4ce32d287d9dad0659f3eeb2acba8e88be5236cc32c0b46bc"
+  },
+  "snapshot_runs": [
+    {
+      "chain_id": "celestia",
+      "app_version": 10,
+      "first": 15530001,
+      "last": 15531000,
+      "trust_period_hours": 720,
+      "trust_hash": "C5C8DCAE1B28BF293C552ADF51E2F0C0634363D241AFE6C455A53B8E78B983AE",
+      "rpc": [
+        "https://rpc.celestia.pops.one",
+        "https://celestia-archive-rpc.polkachu.com"
+      ],
+      "transactions": 4518,
+      "prefetch": 16,
+      "witness_interval": 100
+    },
+    {
+      "chain_id": "mocha-5",
+      "app_version": 11,
+      "first": 2929501,
+      "last": 2930500,
+      "trust_period_hours": 336,
+      "trust_hash": "3B9C53831DF894247E0CE4251D952C92AEEBD6E1EDB6189786AD2F0AF0E8C5CB",
+      "rpc": [
+        "https://celestia-testnet-rpc.polkachu.com",
+        "https://rpc.celestia-mocha.com"
+      ],
+      "transactions": 2876,
+      "prefetch": 16,
+      "witness_interval": 100
+    }
+  ],
+  "genesis_run": {
+    "chain_id": "mocha-5",
+    "first": 1,
+    "last": 1000,
+    "app_version": 9,
+    "trust_period_hours": 10000,
+    "prefetch": 8,
+    "witness_interval": 100
+  },
+  "synthetic_v12": {
+    "chain_id": "test",
+    "first": 6,
+    "last": 1005,
+    "transactions_after_upgrade": 0,
+    "bootstrap_source": "58be8ae90d00518800df5506b3a1e988f009c1c6",
+    "bootstrap_go": "go1.26.10",
+    "v12_source": "bb3a9e52d09620323b35b8305922f764b2df6a3e",
+    "v12_go": "go1.26.11",
+    "abci_recording_sha256": "4e9d17cf1a8da95aca03ea07f6a6af1d0d10d13b19c13dac26535bf2652696fc"
+  }
+}

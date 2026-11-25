@@ -1,0 +1,5 @@
+2026-11-25T01:37:34.447751Z  INFO celestia_rs::follow: following over RPC chain_id="celestia" primary=https://rpc.celestia.pops.one tip=16205647 earliest=1
+2026-11-25T01:37:36.983644Z  INFO celestia_rs::follow: bootstrapping from snapshot height=15530000 chunks=69 hash=8FC8E56A96E2668D6609ED253D033BDD5CDD983B219980F7EF305FB0CE5EB4DE
+2026-11-25T01:37:37.535854Z  INFO light::client: Downloading trusted light block using options
+2026-11-25T01:37:41.680779Z ERROR light::client: Can't verify err=verify from #15530000 to #15530001 failed: old header has expired at 2026-11-16 19:07:17.702851824 +0000 UTC (now: 2026-11-25 01:37:40.183987 +0000 UTC)
+Error: app hash at 15530000: verify from #15530000 to #15530001 failed: old header has expired at 2026-11-16 19:07:17.702851824 +0000 UTC (now: 2026-11-25 01:37:40.183987 +0000 UTC)

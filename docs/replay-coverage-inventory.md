@@ -1,9 +1,12 @@
 # F1.8 replay coverage inventory — updated 2026-11-24
 
-This inventory separates documented historical runs from artifacts retained
-in this repository. It does not certify a replay of the current candidate.
-Height ranges below are inclusive. A gap means there is no auditable
-exact-candidate receipt identified here, not that a block was never executed.
+[Pinned replay results](evidence/replay-43ba527/README.md) cover 1,000 blocks
+each on Mocha v9, mainnet v10 and Mocha v11, plus 1,000 synthetic v12 blocks
+on the November 24 candidate `43ba527cce4425c2aea63f1165eb5d3c086f78d3`.
+The historical mainnet v9 era and Mocha heights 1,001–1,082,620 still need
+execution receipts on that candidate. All ranges are inclusive.
+
+## Earlier runs
 
 | Chain | Documented run | Source snapshot | Recorded comparison | Retained run artifact and candidate identity |
 |---|---|---|---|---|

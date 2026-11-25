@@ -1,0 +1,23 @@
+{
+  "binary_sha256": "41c6d0677a446bacaab2ce625d13f3e0ace2eae771759d7aed081419c59c64d3",
+  "candidate_commit": "43ba527cce4425c2aea63f1165eb5d3c086f78d3",
+  "chain_id": "mocha-5",
+  "complete": true,
+  "covered_heights": 1000,
+  "covered_range": [
+    2929501,
+    2930500
+  ],
+  "input_uncompressed_sha256": "67dadc8a6576f7dc7e298bf9bb169e986c7ec1ec49fa9cb03cca10c1348e4ded",
+  "limitations": [
+    "The candidate is an operator claim; bind the measured binary to clean source separately.",
+    "Header authentication is reported by the producer; this audit has no independent signature proof.",
+    "Receipt integrity is not authenticity: fully fabricated records can be self-consistent.",
+    "This bounded ledger does not establish other historical eras, upgrades or continuous uptime."
+  ],
+  "network_signature_proof_verified": false,
+  "qualification_established": false,
+  "schema_version": 1,
+  "scope": "offline follower ledger self-consistency",
+  "transactions": 2876
+}

@@ -1,0 +1,39 @@
+2026-11-25T01:37:02.550024Z  INFO celestia_rs::follow: following over RPC chain_id="mocha-5" primary=https://celestia-testnet-rpc.polkachu.com tip=2930479 earliest=2920479
+2026-11-25T01:37:03.260716Z  INFO celestia_rs::follow: bootstrapping from snapshot height=2929500 chunks=18 hash=1D29C118B5A20543A37FDA16D734416FF289962173DD8D74ED016B3D54714CDA
+2026-11-25T01:37:03.773055Z  INFO light::client: Downloading trusted light block using options
+2026-11-25T01:37:10.982236Z  INFO celestia_rs::follow: applied snapshot chunk chunk=0 of=18
+2026-11-25T01:37:11.010498Z  INFO celestia_rs::follow: applied snapshot chunk chunk=1 of=18
+2026-11-25T01:37:11.031501Z  INFO celestia_rs::follow: applied snapshot chunk chunk=2 of=18
+2026-11-25T01:37:11.050006Z  INFO celestia_rs::follow: applied snapshot chunk chunk=3 of=18
+2026-11-25T01:37:11.068572Z  INFO celestia_rs::follow: applied snapshot chunk chunk=4 of=18
+2026-11-25T01:37:11.086765Z  INFO celestia_rs::follow: applied snapshot chunk chunk=5 of=18
+2026-11-25T01:37:11.104762Z  INFO celestia_rs::follow: applied snapshot chunk chunk=6 of=18
+2026-11-25T01:37:11.122782Z  INFO celestia_rs::follow: applied snapshot chunk chunk=7 of=18
+2026-11-25T01:37:11.140362Z  INFO celestia_rs::follow: applied snapshot chunk chunk=8 of=18
+2026-11-25T01:37:11.158016Z  INFO celestia_rs::follow: applied snapshot chunk chunk=9 of=18
+2026-11-25T01:37:11.175957Z  INFO celestia_rs::follow: applied snapshot chunk chunk=10 of=18
+2026-11-25T01:37:11.193912Z  INFO celestia_rs::follow: applied snapshot chunk chunk=11 of=18
+2026-11-25T01:37:11.211421Z  INFO celestia_rs::follow: applied snapshot chunk chunk=12 of=18
+2026-11-25T01:37:11.229004Z  INFO celestia_rs::follow: applied snapshot chunk chunk=13 of=18
+2026-11-25T01:37:11.246675Z  INFO celestia_rs::follow: applied snapshot chunk chunk=14 of=18
+2026-11-25T01:37:11.264191Z  INFO celestia_rs::follow: applied snapshot chunk chunk=15 of=18
+2026-11-25T01:37:11.281916Z  INFO celestia_rs::follow: applied snapshot chunk chunk=16 of=18
+2026-11-25T01:37:14.313915Z  INFO app: restored state-sync snapshot height=2929500
+2026-11-25T01:37:14.313992Z  INFO celestia_rs::follow: applied snapshot chunk chunk=17 of=18
+2026-11-25T01:37:14.313998Z  INFO celestia_rs::follow: snapshot restored; app hash matches the network height=2929500 app_hash=AD97B8CC38F1472932EE34C951CD813F8556540DC15ABD09942C1128BC0C7F87 app_version=11 secs=3
+2026-11-25T01:37:14.314289Z  INFO nodestore::handshake: ABCI Handshake App Info height=2929500 hash=AD97B8CC38F1472932EE34C951CD813F8556540DC15ABD09942C1128BC0C7F87 protocol_version=11
+2026-11-25T01:37:14.314298Z  INFO nodestore::handshake: ABCI Replay Blocks app_height=2929500 store_height=0 state_height=2929500
+2026-11-25T01:37:14.314303Z  INFO nodestore::handshake: Completed ABCI Handshake - CometBFT and App are synced app_height=2929500 app_hash=AD97B8CC38F1472932EE34C951CD813F8556540DC15ABD09942C1128BC0C7F87
+2026-11-25T01:37:14.314415Z  INFO celestia_rs::follow: resuming height=2929500 app_hash=AD97B8CC38F1472932EE34C951CD813F8556540DC15ABD09942C1128BC0C7F87
+2026-11-25T01:37:24.381530Z  INFO celestia_rs::follow: followed height=2929600 tip=2930483 blocks_per_sec="11.14" txs_per_sec="31.7" exec_secs=2 wait_secs=6 tx_mib=7 app_hash=7F16C8F36E36B42492914AA6024E14C02A46ABB18B870D29D528BD17073FA3C8
+2026-11-25T01:37:31.256069Z  INFO celestia_rs::follow: followed height=2929700 tip=2930487 blocks_per_sec="14.55" txs_per_sec="40.6" exec_secs=4 wait_secs=11 tx_mib=13 app_hash=06FCE0BBDA87E63543C77E5E2EE86144815F73BBF5E1119365EE8FE4DEBED291
+2026-11-25T01:37:38.028639Z  INFO celestia_rs::follow: followed height=2929800 tip=2930491 blocks_per_sec="14.77" txs_per_sec="44.3" exec_secs=7 wait_secs=15 tx_mib=20 app_hash=F7F5AC6E69B6C58538F7D99FE2E19545C0A6FE857B3C16A2DBA2AAA092A36AA8
+2026-11-25T01:37:44.982160Z  INFO celestia_rs::follow: followed height=2929900 tip=2930491 blocks_per_sec="14.38" txs_per_sec="41.6" exec_secs=9 wait_secs=20 tx_mib=26 app_hash=C20442BF3B2981B2DF9CB26CD065F535ACA61FB6DD98F7B072C6ECE353738F75
+2026-11-25T01:37:52.153580Z  INFO celestia_rs::follow: followed height=2930000 tip=2930494 blocks_per_sec="13.94" txs_per_sec="39.9" exec_secs=11 wait_secs=25 tx_mib=32 app_hash=E277A0E7AA78ECB5940FBA6F6FB0DA4035D8E6699040B64FBCA9876A6DEDD469
+2026-11-25T01:37:58.859663Z  INFO celestia_rs::follow: followed height=2930100 tip=2930498 blocks_per_sec="14.91" txs_per_sec="42.6" exec_secs=14 wait_secs=29 tx_mib=39 app_hash=954314E6C4EDD7592DF7624CE478B3C866DC0B39502B3A8F14DEC48260CD0D96
+2026-11-25T01:38:06.067344Z  INFO celestia_rs::follow: followed height=2930200 tip=2930498 blocks_per_sec="13.87" txs_per_sec="40.2" exec_secs=16 wait_secs=34 tx_mib=44 app_hash=3B4FC677CAA9B4D9761DAEE5927FC9E1F1B07E508CE555305DC810757182F754
+2026-11-25T01:38:12.932458Z  INFO celestia_rs::follow: followed height=2930300 tip=2930501 blocks_per_sec="14.57" txs_per_sec="41.5" exec_secs=18 wait_secs=38 tx_mib=51 app_hash=C5B49E025A6D4470BBDF2A227CA3D0F87C2E0561407A3E6D6B9951DFE18FC60F
+2026-11-25T01:38:19.983699Z  INFO celestia_rs::follow: followed height=2930400 tip=2930505 blocks_per_sec="14.18" txs_per_sec="40.8" exec_secs=21 wait_secs=43 tx_mib=56 app_hash=89DBFF4AA345610C5D19490F377ED8860851F815EF744FAD854925BCE3497877
+2026-11-25T01:38:30.042354Z  INFO celestia_rs::follow: followed height=2930500 tip=2930509 blocks_per_sec="9.94" txs_per_sec="28.6" exec_secs=24 wait_secs=50 tx_mib=62 app_hash=EFBFF052CCF2D45653BAEF5456C4CBBADA9427B5D1FA009783C7E8B21681B84E
+2026-11-25T01:38:30.043389Z  INFO celestia_rs::follow: stop height reached height=2930500 verified_header_height=2930501
+2026-11-25T01:38:37.664644Z  INFO celestia_rs::follow: follow finished first=2929501 last=2930500 blocks=1000 txs=2876 secs=82

@@ -1,0 +1,2 @@
+{"rpc": "https://celestia-testnet-rpc.polkachu.com", "chain": "mocha-5", "height": "2929500", "app_version": "11", "block_hash": "3B9C53831DF894247E0CE4251D952C92AEEBD6E1EDB6189786AD2F0AF0E8C5CB"}
+{"rpc": "https://rpc.celestia-mocha.com", "chain": "mocha-5", "height": "2929500", "app_version": "11", "block_hash": "3B9C53831DF894247E0CE4251D952C92AEEBD6E1EDB6189786AD2F0AF0E8C5CB"}
