@@ -540,10 +540,11 @@ impl Store {
         CommitInfo::from_proto_bytes(&raw)
     }
 
-    /// Return true when a store is mounted under `name`.
+    /// Return true when a store is mounted under `name`, as an IAVL store
+    /// or as a memory store.
     #[must_use]
     pub fn has_store(&self, name: &str) -> bool {
-        self.stores.contains_key(name)
+        self.stores.contains_key(name) || self.memory_stores.contains(name)
     }
 
     /// Return mounted IAVL store names in lexicographic order.
