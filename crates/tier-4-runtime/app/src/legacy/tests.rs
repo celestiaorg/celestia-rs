@@ -180,6 +180,61 @@ fn finalize_block_rejects_missing_header_and_wrong_height() {
     assert!(driver.commit(&mut ms).is_err());
 }
 
+/// Modules that record the chain ID BeginBlock sees.
+#[derive(Default)]
+struct RecordChainId(Vec<String>);
+
+impl Modules for RecordChainId {
+    fn init_genesis(&mut self, _: &mut Context<'_>, _: &[u8]) -> Result<Vec<ValidatorUpdate>> {
+        Ok(Vec::new())
+    }
+
+    fn begin_block(&mut self, _: &mut Context<'_>, header: &TmHeader) -> Result<()> {
+        self.0.push(header.chain_id.clone());
+        Ok(())
+    }
+
+    fn deliver_tx(&mut self, ctx: &mut Context<'_>, tx: &[u8]) -> TxOutcome {
+        NoModules.deliver_tx(ctx, tx)
+    }
+
+    fn end_block(&mut self, _: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
+        Ok(Vec::new())
+    }
+}
+
+/// A driver opened on committed state gets no InitChain. It takes the
+/// chain ID from the first block header, and rejects a header of another
+/// chain.
+#[test]
+fn reopened_driver_takes_the_chain_id_from_the_header() {
+    let mut ms = v1_store();
+    let mut driver = Driver::new(NoModules);
+    driver.init_chain(&mut ms, &init_request()).unwrap();
+    driver
+        .finalize_block(&mut ms, &finalize_request(1))
+        .unwrap();
+    driver.commit(&mut ms).unwrap();
+
+    let mut reopened = Driver::new(RecordChainId::default());
+    reopened
+        .finalize_block(&mut ms, &finalize_request(2))
+        .unwrap();
+    reopened.commit(&mut ms).unwrap();
+    assert_eq!(reopened.modules.0, ["celestia"]);
+
+    let mut other = finalize_request(3);
+    other.header.as_mut().unwrap().chain_id = "mocha-4".to_owned();
+    assert!(reopened.finalize_block(&mut ms, &other).is_err());
+    let mut empty = finalize_request(3);
+    empty.header.as_mut().unwrap().chain_id = String::new();
+    assert!(
+        Driver::new(NoModules)
+            .finalize_block(&mut ms, &empty)
+            .is_err()
+    );
+}
+
 /// A transaction's result: success carries `TxMsgData` of the message
 /// responses; failure carries the error code and no data.
 #[test]
@@ -583,7 +638,9 @@ fn qgb_hook_writes_default_evm_addresses_at_v1() {
     let mut ms = v1_store();
     let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
     ctx.consensus_params.version = Some(VersionParams { app: 1 });
-    x_qgb::Hooks.after_validator_created(&mut ctx, &val).unwrap();
+    x_qgb::Hooks
+        .after_validator_created(&mut ctx, &val)
+        .unwrap();
     assert_eq!(
         ctx.get(x_qgb::STORE_KEY, &[b"EVMAddress".as_slice(), &val].concat())
             .unwrap(),
@@ -738,8 +795,8 @@ fn vote(cons: &[u8], signed: bool) -> abci::VoteInfo {
 /// validator proposed).
 #[test]
 fn v046_distribution_pays_the_proposer_reward() {
-    let _v046 = sdk::version::SdkV046Scope::enter(1);
     use x_distribution::store as ds;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = v1_store();
     let (mut ctx, cons) = v046_two_validators(&mut ms, 2);
     params::set_distribution(
@@ -875,8 +932,8 @@ fn v046_slashing_tracks_missed_blocks_per_index() {
 /// without an unbonding ID.
 #[test]
 fn v046_staking_layout() {
-    let _v046 = sdk::version::SdkV046Scope::enter(1);
     use x_staking::types::BondStatus;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = v1_store();
     let (mut ctx, _) = v046_two_validators(&mut ms, 7);
     let header = TmHeader {
@@ -1074,4 +1131,44 @@ fn driver_scopes_sdk_v046_semantics_to_its_calls() {
         restored();
     }
     sdk::version::set_app_version(0);
+}
+
+/// jsonpb unquotes a quoted integer and decodes the contents as JSON:
+/// JSON whitespace is allowed, `null` is the zero value, and a leading
+/// `+` or a leading zero is not a JSON number.
+#[test]
+fn quoted_integers_decode_as_json() {
+    use serde_json::json;
+    params_ctx(|ctx| {
+        params::set_blob(
+            ctx,
+            &json!({"gas_per_blob_byte": " 8\n", "gov_max_square_size": "\t64 "}),
+        )
+        .unwrap();
+        let get = |ctx: &mut sdk::Context<'_>, k: &[u8]| {
+            String::from_utf8(x_params::get_raw(ctx, "blob", k).unwrap().unwrap()).unwrap()
+        };
+        assert_eq!(get(ctx, b"GasPerBlobByte"), "8");
+        assert_eq!(get(ctx, b"GovMaxSquareSize"), "\"64\"");
+    });
+    let set = |gas: &str| {
+        let mut out = None;
+        params_ctx(|ctx| {
+            let v = json!({"gas_per_blob_byte": gas, "gov_max_square_size": 64});
+            out = Some(params::set_blob(ctx, &v).map_err(|e| e.to_string()));
+        });
+        out.unwrap()
+    };
+    let mut unquoted_null = None;
+    params_ctx(|ctx| {
+        let v = json!({"gas_per_blob_byte": null, "gov_max_square_size": 64});
+        unquoted_null = Some(params::set_blob(ctx, &v).map_err(|e| e.to_string()));
+    });
+    assert_eq!(set("null"), unquoted_null.unwrap());
+    for bad in [
+        "+8", "08", "8 8", "", " ", "1e1", "8.0", "-8", "nul", "\u{a0}8",
+    ] {
+        assert!(set(bad).is_err(), "{bad:?}");
+    }
+    assert_eq!(set("0").is_err(), set("null").is_err());
 }

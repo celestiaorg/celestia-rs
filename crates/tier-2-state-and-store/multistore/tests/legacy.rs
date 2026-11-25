@@ -139,6 +139,8 @@ fn memory_store_commits_an_empty_commit_id() {
     store
         .mount_store("mem_capability", StoreKind::Memory)
         .unwrap();
+    assert!(store.has_store("gov") && store.has_store("mem_capability"));
+    assert!(!store.has_store("bank"));
     store.load_latest_version().unwrap();
     store
         .get_store_mut("gov")

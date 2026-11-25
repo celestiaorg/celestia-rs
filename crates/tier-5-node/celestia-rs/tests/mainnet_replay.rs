@@ -31,6 +31,8 @@ const V1_ORACLE_KV_MODULES: &[u8] = include_bytes!(
 );
 const V1_ORACLE_KV_DIFFS: &[u8] =
     include_bytes!("../../../../conformance/fixtures/mainnet/v1-oracle/kv-diffs.jsonl.gz");
+const V1_ORACLE_TX_RESULTS: &[u8] =
+    include_bytes!("../../../../conformance/fixtures/mainnet/v1-oracle/tx-results.jsonl.gz");
 /// Commit info entries of app version 1 (celestia-app v3.13.0, Cosmos SDK
 /// v0.46): 17 IAVL stores and the memory store `mem_capability`.
 const V1_STORES: [&str; 18] = [
@@ -135,6 +137,8 @@ struct V1Oracle {
     heights: Vec<OracleHeight>,
     /// Uncompressed SHA-256 of each KV dump file.
     kv: BTreeMap<String, String>,
+    /// Uncompressed SHA-256 of `tx-results.jsonl`.
+    tx_results_sha256: String,
 }
 
 #[derive(Deserialize)]
@@ -143,8 +147,10 @@ struct OracleHeight {
     app_hash: String,
     stores: BTreeMap<String, String>,
     keys: BTreeMap<String, usize>,
-    /// `[code, gas_wanted, gas_used]` of each DeliverTx, in block order.
+    /// `[code, gas_wanted, gas_used]` of each DeliverTx.
     tx_results: Vec<[i64; 3]>,
+    /// Hex `data` of each DeliverTx, parallel to `tx_results`.
+    tx_data: Vec<String>,
 }
 
 /// Hex key to hex value, by store.
@@ -165,6 +171,25 @@ struct OracleKvDiff {
     store: String,
     set: Vec<[String; 2]>,
     delete: Vec<String>,
+}
+
+/// The ABCI responses of one block, from `tx-results.jsonl`.
+#[derive(Deserialize)]
+struct OracleBlockResults {
+    height: i64,
+    txs: Vec<OracleTxResult>,
+}
+
+/// One DeliverTx response. The fixture also holds `codespace`, `log`,
+/// `info` and `events`, which `LastResultsHash` leaves out.
+#[derive(Deserialize)]
+struct OracleTxResult {
+    index: usize,
+    hash: String,
+    code: u32,
+    gas_wanted: i64,
+    gas_used: i64,
+    data: String,
 }
 
 #[derive(Deserialize)]
@@ -685,9 +710,8 @@ fn read_oracle_height_0(oracle: &V1Oracle) -> anyhow::Result<OracleState> {
 }
 
 /// Applies each block's KV diff to the height-0 dump: a store whose keys
-/// change must change its root, block 1 keeps the height-0 root of every
-/// store it leaves alone, and the dumped stores keep the recorded key
-/// counts.
+/// change must change its root, a store with no diff at a height keeps
+/// its root, and the dumped stores keep the recorded key counts.
 fn check_oracle_diffs(oracle: &V1Oracle, mut state: OracleState) -> anyhow::Result<()> {
     let diffs = gunzip_checked(
         "kv-diffs.jsonl",
@@ -732,8 +756,9 @@ fn check_oracle_diffs(oracle: &V1Oracle, mut state: OracleState) -> anyhow::Resu
                 after.height
             );
             ensure!(
-                after.height != 1 || touched.contains(name) || same_root,
-                "{name} root differs between heights 0 and 1 without a KV change"
+                touched.contains(name) || same_root,
+                "{name} root changed at {} without a KV change",
+                after.height
             );
         }
         for (name, kv) in &state {
@@ -815,6 +840,73 @@ fn v1_oracle_tx_results_rebuild_last_results_hash() -> anyhow::Result<()> {
             &hex::encode_upper(&next.header.last_results_hash),
         )?;
     }
+    Ok(())
+}
+
+/// The Go v1 oracle's DeliverTx results hash to the `last_results_hash`
+/// of each next mainnet header, and agree with `store-roots.json`.
+#[test]
+fn v1_oracle_tx_results_match_last_results_hash() -> anyhow::Result<()> {
+    let oracle: V1Oracle = serde_json::from_str(V1_ORACLE)?;
+    let text = gunzip_checked(
+        "tx-results.jsonl",
+        V1_ORACLE_TX_RESULTS,
+        Some(&oracle.tx_results_sha256),
+    )?;
+    let archive = read_archive()?;
+    let mut heights = Vec::new();
+    for line in text.lines() {
+        let block: OracleBlockResults = serde_json::from_str(line)?;
+        let height = block.height;
+        heights.push(height);
+        let (id, mut archived) = archived_block(&archive, height)?;
+        verify_reference_id(height, &id, &mut archived)?;
+        let (next_id, mut next) = archived_block(&archive, height + 1)?;
+        verify_reference_id(height + 1, &next_id, &mut next)?;
+        ensure!(
+            block.txs.len() == archived.data.txs.len(),
+            "v1 oracle has {} tx results at {height}, block has {} txs",
+            block.txs.len(),
+            archived.data.txs.len()
+        );
+        let recorded = oracle
+            .heights
+            .iter()
+            .find(|h| h.height == height)
+            .with_context(|| format!("no store roots at {height}"))?;
+        ensure!(
+            recorded.tx_results.len() == block.txs.len()
+                && recorded.tx_data.len() == block.txs.len(),
+            "store-roots tx results at {height}"
+        );
+        let mut results = Vec::new();
+        for (i, (tx, archived_tx)) in block.txs.iter().zip(&archived.data.txs).enumerate() {
+            ensure!(tx.index == i, "tx index {} at {height}:{i}", tx.index);
+            compare_hash("tx hash", height, &hash::sha256(&archived_tx.0), &tx.hash)?;
+            ensure!(
+                recorded.tx_results[i] == [i64::from(tx.code), tx.gas_wanted, tx.gas_used]
+                    && recorded.tx_data[i] == tx.data,
+                "tx {height}:{i} differs from store-roots.json"
+            );
+            results.push(ctypes::proto::abci::ExecTxResult {
+                code: tx.code,
+                data: hex::decode(&tx.data)?,
+                gas_wanted: tx.gas_wanted,
+                gas_used: tx.gas_used,
+                ..Default::default()
+            });
+        }
+        compare_hash(
+            "v1 oracle results hash",
+            height,
+            &ctypes::results_hash(&results),
+            &hex::encode_upper(&next.header.last_results_hash),
+        )?;
+    }
+    ensure!(
+        heights.iter().copied().eq(1..=i64::try_from(WINDOW_SIZE)?),
+        "v1 oracle tx results must cover heights 1 to {WINDOW_SIZE}: {heights:?}"
+    );
     Ok(())
 }
 
