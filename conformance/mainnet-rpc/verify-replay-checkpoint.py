@@ -5,7 +5,8 @@ Pass the `<snapshot root>/<height>/<format>` chunk directory. The script
 rebuilds every IAVL root from the snapshot stream, hashes the commit info and
 compares it with the first header app hash of the window that starts at
 `height + 1`. When the fixture pins that window's pre-state, it also names each
-store whose root differs. The snapshot must be complete: a truncated stream
+store whose root differs. For a height where no window starts, pass the app
+hash of the signed header at `height + 1` with `--app-hash`. The snapshot must be complete: a truncated stream
 fails. This checks a checkpoint independently of celestia-rs.
 """
 
@@ -142,29 +143,41 @@ def commit_hash(roots):
     return merkle_root(leaves).hex().upper()
 
 
-def main():
+def app_hash(value):
+    if len(value) != 64 or any(c not in "0123456789abcdefABCDEF" for c in value):
+        raise argparse.ArgumentTypeError("expected 64 hex digits")
+    return value.upper()
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("chunks", type=Path, help="<snapshot root>/<height>/<format> directory")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--app-hash",
+        type=app_hash,
+        help="app hash of the signed header at height + 1, for a height where no replay window starts",
+    )
+    args = parser.parse_args(argv)
     directory = args.chunks.resolve()
     height, snapshot_format = int(directory.parent.name), int(directory.name)
     windows = json.loads(FIXTURE.read_text())["windows"]
     window = next((w for w in windows if w["start_height"] == height + 1), None)
-    if window is None:
+    if window is None and args.app_hash is None:
         raise SystemExit(f"no replay window starts at {height + 1}")
 
     roots = store_roots(directory)
     if snapshot_format == 2:
         roots.update({name: "" for name in FORMAT_2_MEMORY_STORES})
-    pinned = (window["pre_state"] or {}).get("stores", {})
+    pinned = ((window or {}).get("pre_state") or {}).get("stores", {})
     for name in sorted(set(roots) | set(pinned)):
         if pinned and roots.get(name) != pinned.get(name):
             print(f"store {name}: snapshot {roots.get(name)}, mainnet {pinned.get(name)}")
-    expected = window["blocks"][0]["app_hash"]
+    expected = args.app_hash or window["blocks"][0]["app_hash"]
     actual = commit_hash(roots)
     if actual != expected:
         raise SystemExit(f"app hash at {height}: snapshot {actual}, signed header {expected}")
-    print(f"Verified app v{window['app_version']} checkpoint at {height}: app hash {actual}")
+    version = f"app v{window['app_version']}" if window else f"format {snapshot_format}"
+    print(f"Verified {version} checkpoint at {height}: app hash {actual}")
 
 
 if __name__ == "__main__":
