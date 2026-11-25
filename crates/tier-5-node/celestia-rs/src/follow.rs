@@ -693,7 +693,7 @@ fn write_diagnostics(
             .map(|ci| {
                 ci.store_infos
                     .iter()
-                    .map(|s| (s.name.clone(), hex::encode_upper(s.commit_id.hash)))
+                    .map(|s| (s.name.clone(), hex::encode_upper(s.hash())))
                     .collect()
             })
             .unwrap_or_default()

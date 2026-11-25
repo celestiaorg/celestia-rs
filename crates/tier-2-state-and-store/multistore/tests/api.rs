@@ -9,10 +9,10 @@ use multistore::{
 fn store_info(name: &str, seed: &[u8], version: i64) -> StoreInfo {
     StoreInfo {
         name: name.to_owned(),
-        commit_id: CommitId {
+        commit_id: Some(CommitId {
             version,
             hash: hash::sha256(seed),
-        },
+        }),
     }
 }
 
@@ -41,7 +41,7 @@ fn commit_info_hash_sorts_names_and_proof_op_verifies() -> Result<(), Box<dyn st
     assert_eq!(op.key, b"bank");
 
     let commitment = CommitmentOp::from_proof_op(op)?;
-    let roots = commitment.run(&[&bank.commit_id.hash])?;
+    let roots = commitment.run(&[bank.hash()])?;
     assert_eq!(roots, vec![root]);
 
     assert_eq!(

@@ -469,20 +469,27 @@ fn compare_replay(home: &Path, window: &Window, archive: &ArchivedBlocks) -> any
     Ok(())
 }
 
-/// Cosmos SDK commit info hash (the app hash) of store name to root hash.
-/// An empty root is an SDK v0.46 memory store, hashed as `sha256("")`.
+/// Cosmos SDK commit info hash (the app hash) of store name to root hash,
+/// through the production multistore. An empty root is an SDK v0.46
+/// memory store (empty commit ID).
 fn commit_info_hash(stores: &BTreeMap<String, String>) -> anyhow::Result<Vec<u8>> {
-    let mut leaves = Vec::new();
+    let mut infos = Vec::with_capacity(stores.len());
     for (name, root) in stores {
-        let name_len = u8::try_from(name.len()).ok().filter(|len| *len < 0x80);
-        let name_len = name_len.context("store name too long")?;
-        let mut leaf = vec![name_len];
-        leaf.extend_from_slice(name.as_bytes());
-        leaf.push(32);
-        leaf.extend_from_slice(&hash::sha256(&hex::decode(root)?));
-        leaves.push(leaf);
+        let commit_id = if root.is_empty() {
+            None
+        } else {
+            let hash = hex::decode(root)?;
+            Some(multistore::CommitId {
+                version: 1,
+                hash: hash.try_into().map_err(|_| anyhow!("root of {name}"))?,
+            })
+        };
+        infos.push(multistore::StoreInfo {
+            name: name.clone(),
+            commit_id,
+        });
     }
-    Ok(merkle::root_from_byte_slices(&leaves).to_vec())
+    Ok(multistore::commit_info_hash(&infos)?.to_vec())
 }
 
 /// Checks the pinned pre-state against the window's first header app hash,

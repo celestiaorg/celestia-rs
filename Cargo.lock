@@ -4717,6 +4717,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "encoding",
+ "flate2",
  "hash",
  "hex",
  "iavl",
