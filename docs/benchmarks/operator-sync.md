@@ -1,6 +1,6 @@
 # Operator sync comparison
 
-The Go reference is [celestia-app v11.0.0](https://github.com/celestiaorg/celestia-app/releases/tag/v11.0.0), commit `58be8ae90d00518800df5506b3a1e988f009c1c6`. Record the Rust commit and both executable checksums. The [2026-11-25 runs](operator-sync-2026-11-25.md) are the first v11 cloud measurements: three state-sync observations for each implementation, two of them as valid pairs. The [October Mac Mini measurements](README.md#results-mac-mini-m4-2026-10-20-b1-reference) remain a separate v10.4.0 series.
+The Go reference is [celestia-app v11.0.0](https://github.com/celestiaorg/celestia-app/releases/tag/v11.0.0), commit `58be8ae90d00518800df5506b3a1e988f009c1c6`. Record the Rust commit and both executable checksums. The [2026-11-25 runs](operator-sync-2026-11-25.md) are the first v11 cloud measurements: two valid state-sync pairs and one discarded pair. The [October Mac Mini measurements](README.md#results-mac-mini-m4-2026-10-20-b1-reference) remain a separate v10.4.0 series.
 
 ## What to time
 

@@ -1,6 +1,6 @@
 # Operator sync runs, 2026-11-25
 
-These are the first cloud runs of the [operator comparison protocol](operator-sync.md). They give three state-sync observations for each implementation. Run 2 is one observation for each side from a pair that restored different snapshots. Run 3 is two valid pairs. The [last section](#the-three-observations-together) has the medians.
+These are the first cloud runs of the [operator comparison protocol](operator-sync.md). They give three state-sync observations for each implementation. Run 2 is one observation for each side from a pair that restored different snapshots. Run 3 is two valid pairs. The [summary](#summary-of-the-valid-pairs) compares the two valid pairs.
 
 Go is celestia-app `v11.0.0` (commit `58be8ae90d00518800df5506b3a1e988f009c1c6`) built with the multiplexer. Each VM is `n2-standard-8` (8 vCPU, 32 GB) in `us-central1-a` with Ubuntu 24.04, kernel `7.0.0-1017-gcp`, an empty 200 GB `pd-balanced` data disk, BBR, and egress capped at 4 Mbit/s. Both nodes ran with pruning `custom` (100 versions, interval 10), 3000 retained blocks, snapshots off and no transaction index. DA bridge services were off.
 
@@ -70,20 +70,22 @@ The celestia-rs logs give the phases. In pair 1 the node started discovery at 08
 
 The polls of this run are not in the artifact. Guest attributes kept only the first two raw chunks for each VM, and the archive put the node log first. The table uses the summaries, which hold the peaks and the last poll. The script now limits the raw data to two chunks.
 
-## The three observations together
+## Summary of the valid pairs
 
-| Measure | Go v11.0.0, median of 3 | celestia-rs, median of 3 | celestia-rs / Go |
+The protocol discards run 2 as a paired comparison, so the comparison uses the two valid pairs of run 3. Two pairs do not give a median of three; a third valid pair is still to run.
+
+| Measure | Go v11.0.0, pair 1 / pair 2 | celestia-rs, pair 1 / pair 2 | celestia-rs / Go, pair 1 / pair 2 |
 | --- | ---: | ---: | ---: |
-| First verified tip | 1,546.8 s | 520.2 s | 0.34 |
-| Peak cgroup memory | 12,493,234,176 B | 6,020,755,456 B | 0.48 |
-| Peak sampled RSS | 8,312,244 KiB | 2,325,792 KiB | 0.28 |
-| RSS after 30 minutes at tip | 5.77 GiB | 1.32 GiB | 0.23 |
-| Node home after shutdown | 5,199,388,672 B | 1,813,573,632 B | 0.35 |
-| CPU time, whole run | 2,448 s | 942 s | 0.38 |
+| First verified tip | 1,534.9 / 2,051.9 s | 481.6 / 520.2 s | 0.31 / 0.25 |
+| Peak cgroup memory | 11.73 / 12.49 GB | 6.02 / 5.96 GB | 0.51 / 0.48 |
+| Peak sampled RSS | 7.25 / 7.93 GiB | 2.14 / 2.22 GiB | 0.30 / 0.28 |
+| RSS after 30 minutes at tip (last poll) | 5.77 / 5.52 GiB | 1.32 / 1.31 GiB | 0.23 / 0.24 |
+| Node home after shutdown | 5.18 / 5.20 GB | 1.81 / 1.78 GB | 0.35 / 0.34 |
+| CPU time, whole run | 2,403 / 2,448 s | 882 / 942 s | 0.37 / 0.39 |
 
-The median uses run 2 and both pairs of run 3. Run 2 is not a valid pair, so the medians are over single observations for each side, with two of the three taken as valid pairs. For run 2 the RSS at tip is the median of the last 5 minutes; for run 3 it is the last poll.
+Run 2 stays on record as one observation for each side, outside this comparison. In it celestia-rs took 3,308.4 s to the tip and Go took 1,546.8 s. Its resource figures agree with the valid pairs.
 
-The range of the time to tip is 1,534.9 to 2,051.9 s for Go and 481.6 to 3,308.4 s for celestia-rs. The celestia-rs range is wide because of snapshot discovery: it took 159 s and 186 s in run 3 and about 50 minutes in run 2, where Go started its restore in the first seconds from an older snapshot (16,210,500). The cause is not established. The run 3 logs show that both nodes found the snapshot in the same second, which points to a wait for peers to advertise a snapshot and not to slow work in the node. This is the first thing to examine, because one run in three took longer than Go.
+Snapshot discovery explains the difference between run 2 and run 3 on celestia-rs. It took 159 s and 186 s in run 3 and about 50 minutes in run 2, where Go started its restore in the first seconds from an older snapshot (16,210,500). The cause is not established. The run 3 logs show that both nodes found the snapshot in the same second, which points to a wait for peers to advertise a snapshot and not to slow work in the node. This is the first thing to examine: in one of three celestia-rs runs the time to tip was longer than Go's.
 
 ## Not run yet
 
