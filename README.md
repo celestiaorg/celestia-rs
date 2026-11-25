@@ -110,7 +110,7 @@ configuration, data retention and trust inputs.
 ## Performance vs Go
 
 The current operator benchmark target is [celestia-app v11.0.0](https://github.com/celestiaorg/celestia-app/releases/tag/v11.0.0).
-The [operator comparison protocol](docs/benchmarks/operator-sync.md) covers snapshot and genesis sync to tip, RAM and disk usage. The [first cloud runs](docs/benchmarks/operator-sync-2026-11-25.md) give one state-sync observation for each implementation; the median of three pairs is pending.
+The [operator comparison protocol](docs/benchmarks/operator-sync.md) covers snapshot and genesis sync to tip, RAM and disk usage. The [first cloud runs](docs/benchmarks/operator-sync-2026-11-25.md) give three mainnet state-sync observations for each implementation, two of them as valid pairs. At the median celestia-rs reached the tip in 520 s against 1,547 s for Go v11.0.0, with 48% of the peak memory and 35% of the disk. One celestia-rs run took 3,308 s because snapshot discovery took about 50 minutes; the cause is not established.
 
 ### Historical Mac Mini M4 results
 
