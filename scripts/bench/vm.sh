@@ -345,6 +345,9 @@ finish() {
     --arg poll_columns "$POLL_COLUMNS" --arg poll_interval_s "$poll_s" --arg timings "$(timings)" \
     --arg mem_peak_polled "$(bench_max "$STATE/polls.tsv" 10 2>/dev/null)" '$ARGS.named + {verify: $verify}' \
     >"$STATE/summary.json"
+  # Guest attributes kept only about 500 KB for each VM in the 2026-11-25
+  # runs: chunks after the second were dropped. Two chunks is the budget.
+  local RAW_MAX_CHUNKS=2
   # Publish everything if it fits. If not, publish log excerpts in place of
   # the full node logs, and as the last resort the polls alone.
   local n i f
@@ -353,13 +356,13 @@ finish() {
   done
   pack() { tar -C "$STATE" -cf "$STATE/raw.tar" --exclude=raw.tar --exclude=attrs --exclude='raw.*' "$@" . 2>/dev/null || true; }
   pack --exclude='*.excerpt'
-  n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 8) || {
+  n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 "$RAW_MAX_CHUNKS") || {
     pack --exclude='bench-*.log'
-    n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 8)
+    n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 "$RAW_MAX_CHUNKS")
   } || {
     tail -c 1000000 "$STATE/polls.tsv" >"$STATE/polls.tail.tsv"
     tar -C "$STATE" -cf "$STATE/raw.tar" polls.tail.tsv summary.json
-    n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 8)
+    n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 "$RAW_MAX_CHUNKS")
   }
   put summary "$STATE/summary.json"
   for ((i = 0; i < n; i++)); do put "raw-$i" "$STATE/raw.$i"; done

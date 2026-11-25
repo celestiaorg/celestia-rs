@@ -1,6 +1,6 @@
 # Operator sync runs, 2026-11-25
 
-These are the first cloud runs of the [operator comparison protocol](operator-sync.md). They give one state-sync observation for each implementation. The pair restored different snapshots, so the protocol discards it as a paired comparison. The numbers below are single observations, not a median.
+These are the first cloud runs of the [operator comparison protocol](operator-sync.md). They give three state-sync observations for each implementation. Run 2 is one observation for each side from a pair that restored different snapshots. Run 3 is two valid pairs. The [summary](#summary-of-the-valid-pairs) compares the two valid pairs.
 
 Go is celestia-app `v11.0.0` (commit `58be8ae90d00518800df5506b3a1e988f009c1c6`) built with the multiplexer. Each VM is `n2-standard-8` (8 vCPU, 32 GB) in `us-central1-a` with Ubuntu 24.04, kernel `7.0.0-1017-gcp`, an empty 200 GB `pd-balanced` data disk, BBR, and egress capped at 4 Mbit/s. Both nodes ran with pruning `custom` (100 versions, interval 10), 3000 retained blocks, snapshots off and no transaction index. DA bridge services were off.
 
@@ -46,7 +46,46 @@ What this run shows:
 - **Disk:** the celestia-rs home was 35% of Go's after shutdown. The retained heights differ by 1,500 because the snapshots differ.
 - **CPU:** celestia-rs used 40% of Go's CPU time, over a run that was 29 minutes longer.
 
-Limits: one observation for each side, live mainnet peers, different snapshots, and a 4 Mbit/s egress cap on both. Three cold pairs and their median are still to run. The VMs were deleted after collection at 08:22 UTC.
+Limits: one observation for each side, live mainnet peers, different snapshots, and a 4 Mbit/s egress cap on both. The VMs were deleted after collection at 08:22 UTC.
+
+## Run 3: state sync to tip, two valid pairs
+
+Provisioning run [45579019615](https://github.com/celestiaorg/celestia-rs/actions/runs/45579019615) at 08:45 UTC, celestia-rs `4e6d139cb1317e20a065c38600537a67b3b7339b` (executable SHA-256 `337698e8…769f4a`). Two cold pairs ran at the same time. Trust height 16,211,000 on all four VMs. All four runs ended `ok` and restored snapshot 16,213,500, so both pairs are `valid`.
+
+| Measure | Go, pair 1 | celestia-rs, pair 1 | Go, pair 2 | celestia-rs, pair 2 |
+| --- | ---: | ---: | ---: | ---: |
+| First height served after restore | 1,422.7 s | 349.1 s | 1,930.1 s | 376.4 s |
+| First verified tip | 1,534.9 s | 481.6 s | 2,051.9 s | 520.2 s |
+| Block ID check at tip | match at 16,215,315 | match at 16,215,091 | match at 16,215,498 | match at 16,215,095 |
+| Peak cgroup memory | 11,733,966,848 B | 6,020,755,456 B | 12,493,234,176 B | 5,961,822,208 B |
+| Peak sampled RSS | 7,597,960 KiB | 2,243,168 KiB | 8,312,244 KiB | 2,325,792 KiB |
+| RSS, last poll after 30 minutes at tip | 5.77 GiB | 1.32 GiB | 5.52 GiB | 1.31 GiB |
+| Node home after shutdown | 5,177,733,120 B | 1,813,573,632 B | 5,199,388,672 B | 1,780,957,184 B |
+| Filesystem high-water mark | 5,395,742,720 B | 3,586,715,648 B | 5,422,297,088 B | 3,316,350,976 B |
+| CPU time, whole run | 2,403 s | 882 s | 2,448 s | 942 s |
+
+celestia-rs reached the tip 3.2 times as fast as Go in pair 1 and 3.9 times as fast in pair 2.
+
+The celestia-rs logs give the phases. In pair 1 the node started discovery at 08:57:22, found the snapshot at 09:00:01 (159 s), started the restore at 09:00:12 and completed it at 09:02:59 (167 s for 69 chunks). Pair 2 found the same snapshot at 09:00:01 after 186 s and restored in 161 s. Both nodes found the snapshot in the same second, although they started 27 s apart.
+
+The polls of this run are not in the artifact. Guest attributes kept only the first two raw chunks for each VM, and the archive put the node log first. The table uses the summaries, which hold the peaks and the last poll. The script now limits the raw data to two chunks.
+
+## Summary of the valid pairs
+
+The protocol discards run 2 as a paired comparison, so the comparison uses the two valid pairs of run 3. Two pairs do not give a median of three; a third valid pair is still to run.
+
+| Measure | Go v11.0.0, pair 1 / pair 2 | celestia-rs, pair 1 / pair 2 | celestia-rs / Go, pair 1 / pair 2 |
+| --- | ---: | ---: | ---: |
+| First verified tip | 1,534.9 / 2,051.9 s | 481.6 / 520.2 s | 0.31 / 0.25 |
+| Peak cgroup memory | 11.73 / 12.49 GB | 6.02 / 5.96 GB | 0.51 / 0.48 |
+| Peak sampled RSS | 7.25 / 7.93 GiB | 2.14 / 2.22 GiB | 0.30 / 0.28 |
+| RSS after 30 minutes at tip (last poll) | 5.77 / 5.52 GiB | 1.32 / 1.31 GiB | 0.23 / 0.24 |
+| Node home after shutdown | 5.18 / 5.20 GB | 1.81 / 1.78 GB | 0.35 / 0.34 |
+| CPU time, whole run | 2,403 / 2,448 s | 882 / 942 s | 0.37 / 0.39 |
+
+Run 2 stays on record as one observation for each side, outside this comparison. In it celestia-rs took 3,308.4 s to the tip and Go took 1,546.8 s. Its resource figures agree with the valid pairs.
+
+Snapshot discovery explains the difference between run 2 and run 3 on celestia-rs. It took 159 s and 186 s in run 3 and about 50 minutes in run 2, where Go started its restore in the first seconds from an older snapshot (16,210,500). The cause is not established. The run 3 logs show that both nodes found the snapshot in the same second, which points to a wait for peers to advertise a snapshot and not to slow work in the node. This is the first thing to examine: in one of three celestia-rs runs the time to tip was longer than Go's.
 
 ## Not run yet
 
