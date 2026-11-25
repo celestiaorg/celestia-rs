@@ -1,4 +1,4 @@
-# F1.8 replay coverage inventory — updated 2026-11-10
+# F1.8 replay coverage inventory — updated 2026-11-24
 
 This inventory separates documented historical runs from artifacts retained
 in this repository. It does not certify a replay of the current candidate.
@@ -78,3 +78,28 @@ records an interval beginning 2026-11-06 05:43:12 UTC, with earliest possible
 completion 2026-11-09 05:43:12 UTC. Elapsed calendar time does not establish
 that the interval completed. The live receipt files and final monitoring,
 candidate, restart and signing evidence are not retained in this inventory.
+
+## Receipt review on 2026-11-24
+
+The [Mocha genesis replay manifest](evidence/follow-receipts-2026-11-12/manifest.json)
+binds candidate `1cb60aa695f9878871a01d431969c08b732dc1db` to the
+executable, pinned public genesis and compressed ledger. The offline
+[follower audit](follow-receipts.md) passed for `mocha-5` heights **1–100**
+inclusive, with header 101 checked and zero transactions. The reference
+was historical network headers. The manifest identifies no Go executable.
+For that binary the remaining required inclusive interval is
+**101–1,082,620**, including the first v10 block. For a different candidate
+the full **1–1,082,620** interval needs its own receipts. A longer run
+recorded height 112,904 but lacked a terminal receipt at
+[closeout](validator-qualification-closeout-2026-11-13.md#unfinished-work-remains-unqualified).
+
+The [mainnet archive catalog](evidence/validator-qualification-closeout-2026-11-13/snapshot-catalog/catalog.jsonl)
+was subsequently inspected. Neither cataloged snapshot supplies state at
+or before 11,771,698. Older chunk directories seen in the tar still lack
+a verified restore. The historical mainnet v9 gap remains **11,771,699–15,116,657**.
+
+For the [live observation](https://github.com/celestiaorg/celestia-rs/issues/299),
+the [first-hour record](evidence/validator-qualification-closeout-2026-11-13/first-hour/window.json)
+covers mainnet heights **15,815,626–15,816,886** on November 12. Later
+collection failures are documented in the closeout. The continuous
+M13-to-M14 record and three-day candidate observation remain unqualified.
