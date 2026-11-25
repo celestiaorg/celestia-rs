@@ -181,7 +181,9 @@ planned height H it does these steps:
    snapshot format, the size and SHA-256 of each chunk, and the binary
    versions and checksums. Then it resumes the sync.
 
-A failed verification stops the campaign. The default plan is the state
+A failed verification stops the campaign. The metadata is then kept as
+`failed.json`, not `checkpoint.json`, so a resumed run exports that height
+again and does not go past it. The default plan is the state
 before each window after v1, plus 2,371,489 (five v1 blocks before the
 v1 to v2 upgrade).
 

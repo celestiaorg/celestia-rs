@@ -160,6 +160,19 @@ rc=0; dry "$t/dry" 2371489,6748821,8662012 >/dev/null 2>&1 || rc=$?
 eq "dry resume exits ok" 0 "$rc"
 eq "dry resume exports once" 1 "$(grep -c 'snapshots export --height 2371489' "$t/dry/plan")"
 check "dry resume continues"       grep -q 'passthrough v5 snapshots export --height 8662012' "$t/dry/plan"
+# A checkpoint that fails verification is kept as failed.json, never as
+# checkpoint.json, so a resumed run does not skip it and move on.
+rc=0; CKPT_DRY_VERIFY_RC=1 dry "$t/dry-fail" 2371489,6748821 >/dev/null 2>&1 || rc=$?
+check "failed verify fails the run" test "$rc" -ne 0
+check "failed verify is not a checkpoint" test ! -e "$t/dry-fail/ckpt/2371489/checkpoint.json"
+check "failed verify keeps evidence" jq -e '.verified == "false" and .height == 2371489' "$t/dry-fail/ckpt/2371489/failed.json"
+check "failed verify stops the plan" bash -c "! grep -q 'snapshots export --height 6748821' '$t/dry-fail/plan'"
+rc=0; CKPT_DRY_VERIFY_RC=1 dry "$t/dry-fail" 2371489,6748821 >/dev/null 2>&1 || rc=$?
+check "resume retries the failed height" test "$rc" -ne 0
+check "resume still does not pass it" bash -c "! grep -q 'snapshots export --height 6748821' '$t/dry-fail/plan'"
+rc=0; dry "$t/dry-fail" 2371489,6748821 >/dev/null 2>&1 || rc=$?
+eq "resume after a good verify exits ok" 0 "$rc"
+check "good verify replaces the failure" bash -c "test -s '$t/dry-fail/ckpt/2371489/checkpoint.json' && test ! -e '$t/dry-fail/ckpt/2371489/failed.json'"
 rc=0
 env CKPT_DRY_RUN="$t/dry-bad" CKPT_META_name='x;reboot' bash "$here/checkpoints-vm.sh" >/dev/null 2>&1 || rc=$?
 check "dry run rejects bad metadata" test "$rc" -ne 0

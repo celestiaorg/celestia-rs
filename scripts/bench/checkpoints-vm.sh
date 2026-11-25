@@ -273,7 +273,7 @@ checkpoint() { # checkpoint H V
   verify_cmd=(python3 "$RS/conformance/mainnet-rpc/verify-replay-checkpoint.py" "$dst")
   [[ -n $window ]] || verify_cmd+=(--app-hash "$app_hash")
   status verify force
-  if [[ -n $DRY ]]; then run "${verify_cmd[@]}"; echo dry >"$CKPT/$h/verify.log"
+  if [[ -n $DRY ]]; then run "${verify_cmd[@]}"; echo dry >"$CKPT/$h/verify.log"; vrc=${CKPT_DRY_VERIFY_RC:-0}
   else "${verify_cmd[@]}" >"$CKPT/$h/verify.log" 2>&1 || vrc=$?; fi
 
   ckpt_metadata "$dst" app_version="$v" exporter="${cmd[*]}" embedded_tag="$tag" embedded_sha256="$emb_sha" \
@@ -283,12 +283,21 @@ checkpoint() { # checkpoint H V
     verified="$([[ $vrc == 0 ]] && echo true || echo false)" verify_output="$(tail -c 2000 "$CKPT/$h/verify.log")" \
     export_output="$out" campaign="$name" run_id="$run_id" exported_at="$(date -u +%FT%TZ)" >"$CKPT/$h/checkpoint.tmp"
   jq -e --argjson n "$chunks" '.chunk_count == $n' "$CKPT/$h/checkpoint.tmp" >/dev/null || { reason=chunk_count_mismatch; return 1; }
+  # A checkpoint that does not reproduce the signed app hash means the Go
+  # node diverged; later heights from the same node would be wrong too. Only
+  # a verified export becomes checkpoint.json, which a resumed run skips. A
+  # failed one stays as failed.json, so a resume exports this height again
+  # and cannot pass it.
+  if [[ $vrc != 0 ]]; then
+    mv "$CKPT/$h/checkpoint.tmp" "$CKPT/$h/failed.json"
+    sync
+    put "ckpt-$h" "$CKPT/$h/failed.json"
+    reason=checkpoint_verification_failed
+    return 1
+  fi
   mv "$CKPT/$h/checkpoint.tmp" "$CKPT/$h/checkpoint.json"
   sync
   put "ckpt-$h" "$CKPT/$h/checkpoint.json"
-  # A checkpoint that does not reproduce the signed app hash means the Go
-  # node diverged; later heights from the same node would be wrong too.
-  [[ $vrc == 0 ]] || { reason=checkpoint_verification_failed; return 1; }
 }
 
 run_campaign() {
