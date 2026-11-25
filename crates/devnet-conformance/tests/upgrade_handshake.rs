@@ -242,14 +242,20 @@ struct Calls {
     committed: Vec<i64>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Boundary {
+    BlockSaved,
+    BeforeAppCommit,
+    AfterAppCommit,
+}
+
 enum Interruption {
     Error(i64),
     #[cfg(unix)]
-    Kill(i64, std::path::PathBuf),
+    Kill(i64, Boundary, std::path::PathBuf),
 }
 
-/// Forward every request unchanged; interrupt AFTER the real Commit so
-/// the executor cannot save consensus state.
+/// Forward every request unchanged, with an optional interruption at Commit.
 struct Adapter {
     app: Arc<Mutex<App>>,
     expected: Arc<BTreeMap<i64, Expected>>,
@@ -312,6 +318,12 @@ impl AppConn for Adapter {
         Ok(response)
     }
     fn commit(&mut self) -> nodestore::Result<abci::ResponseCommit> {
+        #[cfg(unix)]
+        if let Some(Interruption::Kill(h, Boundary::BeforeAppCommit, marker)) = &self.interrupt
+            && *h == self.height
+        {
+            abrupt::kill(marker);
+        }
         let response = self
             .app
             .lock()
@@ -324,7 +336,9 @@ impl AppConn for Adapter {
                 return Err(nodestore::Error::new(INJECTED));
             }
             #[cfg(unix)]
-            Some(Interruption::Kill(h, marker)) if *h == self.height => abrupt::kill(marker),
+            Some(Interruption::Kill(h, Boundary::AfterAppCommit, marker)) if *h == self.height => {
+                abrupt::kill(marker);
+            }
             _ => {}
         }
         Ok(response)
@@ -518,15 +532,19 @@ fn recovery_matrix(hard_kill: bool) -> anyhow::Result<()> {
             fixture.upgrade,
             fixture.upgrade + 1,
         ];
+        let boundaries = if hard_kill {
+            &[
+                Boundary::BlockSaved,
+                Boundary::BeforeAppCommit,
+                Boundary::AfterAppCommit,
+            ][..]
+        } else {
+            &[Boundary::BlockSaved, Boundary::AfterAppCommit][..]
+        };
         for checkpoint in checkpoints {
-            for after_commit in [false, true] {
+            for &boundary in boundaries {
                 recover_case(
-                    &fixture,
-                    backend,
-                    &reference,
-                    checkpoint,
-                    after_commit,
-                    hard_kill,
+                    &fixture, backend, &reference, checkpoint, boundary, hard_kill,
                 )?;
             }
         }
@@ -1062,24 +1080,19 @@ fn recover_case(
     backend: BackendKind,
     reference: &Reference,
     checkpoint: i64,
-    after_commit: bool,
+    boundary: Boundary,
     hard_kill: bool,
 ) -> anyhow::Result<()> {
-    let case = format!("{backend} h={checkpoint} after_commit={after_commit}");
+    let case = format!("{backend} h={checkpoint} {boundary:?}");
+    let app_committed = boundary == Boundary::AfterAppCommit;
     let home = tempfile::tempdir()?;
     let index = usize::try_from(checkpoint - fixture.genesis.initial_height)?;
     if hard_kill {
         #[cfg(unix)]
-        abrupt::spawn(home.path(), backend, checkpoint, after_commit)?;
+        abrupt::spawn(home.path(), backend, checkpoint, boundary)?;
     } else {
-        let node = populate_interrupted(
-            home.path(),
-            fixture,
-            backend,
-            checkpoint,
-            after_commit,
-            false,
-        )?;
+        let node =
+            populate_interrupted(home.path(), fixture, backend, checkpoint, boundary, false)?;
         assert_eq!(node.exec.block_store.height(), checkpoint, "{case}");
         assert_eq!(
             node.exec.state_store.load()?.unwrap().last_block_height,
@@ -1088,7 +1101,7 @@ fn recover_case(
         );
         assert_eq!(
             node.app.lock().unwrap().info(),
-            reference.infos[index + usize::from(after_commit)],
+            reference.infos[index + usize::from(app_committed)],
             "{case}"
         );
         drop(node); // close App AND both node databases before opening any again
@@ -1099,9 +1112,17 @@ fn recover_case(
     assert_eq!(node.state.last_block_height, checkpoint - 1, "{case}");
     assert_eq!(
         node.app.lock().unwrap().info(),
-        reference.infos[index + usize::from(after_commit)],
+        reference.infos[index + usize::from(app_committed)],
         "{case}"
     );
+    if boundary == Boundary::BeforeAppCommit {
+        // The executor persists the response before entering AppConn::commit.
+        let pending = node
+            .exec
+            .state_store
+            .load_last_finalize_block_response(checkpoint)?;
+        assert_response(&pending, &fixture.expected[&checkpoint].response);
+    }
     assert_eq!(node.recover(&fixture.genesis)?, 1, "{case}");
     assert_eq!(node.state.bytes()?, reference.states[index + 1], "{case}");
     assert_eq!(
@@ -1115,7 +1136,7 @@ fn recover_case(
         "{case}"
     );
     assert_historical_state_records(&node, fixture, reference, checkpoint, &case)?;
-    let expected_calls = if after_commit {
+    let expected_calls = if app_committed {
         vec![]
     } else {
         vec![checkpoint]
@@ -1221,20 +1242,20 @@ fn populate_interrupted(
     fixture: &Fixture,
     backend: BackendKind,
     checkpoint: i64,
-    after_commit: bool,
+    boundary: Boundary,
     hard_kill: bool,
 ) -> anyhow::Result<Node> {
     #[cfg(not(unix))]
     assert!(!hard_kill, "SIGKILL requires Unix");
-    let case = format!("{backend} h={checkpoint} after_commit={after_commit}");
+    let case = format!("{backend} h={checkpoint} {boundary:?}");
     let mut node = Node::open(
         home,
         backend,
         fixture,
-        after_commit.then(|| {
+        (boundary != Boundary::BlockSaved).then(|| {
             #[cfg(unix)]
             if hard_kill {
-                return Interruption::Kill(checkpoint, home.join("injected-sigkill"));
+                return Interruption::Kill(checkpoint, boundary, home.join("injected-sigkill"));
             }
             Interruption::Error(checkpoint)
         }),
@@ -1245,7 +1266,7 @@ fn populate_interrupted(
         node.apply(frame)?;
     }
     let (mut block, id) = node.save(&fixture.blocks[index])?;
-    if after_commit {
+    if boundary != Boundary::BlockSaved {
         let error = node
             .exec
             .apply_block(&node.state, id, &mut block, now())
@@ -1269,7 +1290,7 @@ mod abrupt {
     const HOME: &str = "CELESTIA_TEST_UPGRADE_CRASH_HOME";
     const BACKEND: &str = "CELESTIA_TEST_UPGRADE_CRASH_BACKEND";
     const HEIGHT: &str = "CELESTIA_TEST_UPGRADE_CRASH_HEIGHT";
-    const AFTER_COMMIT: &str = "CELESTIA_TEST_UPGRADE_CRASH_AFTER_COMMIT";
+    const BOUNDARY: &str = "CELESTIA_TEST_UPGRADE_CRASH_BOUNDARY";
 
     struct ChildGuard(Child);
 
@@ -1297,7 +1318,7 @@ mod abrupt {
         home: &Path,
         backend: BackendKind,
         checkpoint: i64,
-        after_commit: bool,
+        boundary: Boundary,
     ) -> anyhow::Result<()> {
         let stdout_path = home.join("child.stdout");
         let stderr_path = home.join("child.stderr");
@@ -1307,7 +1328,7 @@ mod abrupt {
                 .env(HOME, home)
                 .env(BACKEND, backend.to_string())
                 .env(HEIGHT, checkpoint.to_string())
-                .env(AFTER_COMMIT, after_commit.to_string())
+                .env(BOUNDARY, format!("{boundary:?}"))
                 .stdout(std::fs::File::create(&stdout_path)?)
                 .stderr(std::fs::File::create(&stderr_path)?)
                 .spawn()?,
@@ -1328,11 +1349,11 @@ mod abrupt {
         let stderr = std::fs::read_to_string(stderr_path)?;
         anyhow::ensure!(
             !timed_out,
-            "{backend} H={checkpoint} after_commit={after_commit}: child timed out; stdout={stdout} stderr={stderr}"
+            "{backend} H={checkpoint} {boundary:?}: child timed out; stdout={stdout} stderr={stderr}"
         );
         anyhow::ensure!(
             status.signal() == Some(9),
-            "{backend} H={checkpoint} after_commit={after_commit}: child {status:?}\nstdout={stdout}\nstderr={stderr}"
+            "{backend} H={checkpoint} {boundary:?}: child {status:?}\nstdout={stdout}\nstderr={stderr}"
         );
         anyhow::ensure!(
             std::fs::read(home.join("injected-sigkill"))? == b"before SIGKILL",
@@ -1349,13 +1370,18 @@ mod abrupt {
         let fixture = Fixture::load()?;
         let backend = std::env::var(BACKEND)?.parse()?;
         let checkpoint = std::env::var(HEIGHT)?.parse()?;
-        let after_commit = std::env::var(AFTER_COMMIT)?.parse()?;
+        let boundary = match std::env::var(BOUNDARY)?.as_str() {
+            "BlockSaved" => Boundary::BlockSaved,
+            "BeforeAppCommit" => Boundary::BeforeAppCommit,
+            "AfterAppCommit" => Boundary::AfterAppCommit,
+            other => anyhow::bail!("unknown crash boundary: {other}"),
+        };
         let _node = populate_interrupted(
             Path::new(&home),
             &fixture,
             backend,
             checkpoint,
-            after_commit,
+            boundary,
             true,
         )?;
         anyhow::bail!("child returned without SIGKILL")
