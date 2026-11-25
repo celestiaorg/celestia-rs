@@ -683,9 +683,8 @@ fn read_oracle_height_0(oracle: &V1Oracle) -> anyhow::Result<OracleState> {
 }
 
 /// Applies each block's KV diff to the height-0 dump: a store whose keys
-/// change must change its root, block 1 keeps the height-0 root of every
-/// store it leaves alone, and the dumped stores keep the recorded key
-/// counts.
+/// change must change its root, a store with no diff at a height keeps
+/// its root, and the dumped stores keep the recorded key counts.
 fn check_oracle_diffs(oracle: &V1Oracle, mut state: OracleState) -> anyhow::Result<()> {
     let diffs = gunzip_checked(
         "kv-diffs.jsonl",
@@ -730,8 +729,9 @@ fn check_oracle_diffs(oracle: &V1Oracle, mut state: OracleState) -> anyhow::Resu
                 after.height
             );
             ensure!(
-                after.height != 1 || touched.contains(name) || same_root,
-                "{name} root differs between heights 0 and 1 without a KV change"
+                touched.contains(name) || same_root,
+                "{name} root changed at {} without a KV change",
+                after.height
             );
         }
         for (name, kv) in &state {
