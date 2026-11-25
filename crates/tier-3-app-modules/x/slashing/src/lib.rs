@@ -491,8 +491,129 @@ pub fn handle_validator_signature(
     set_signing_info(ctx, cons, &info)
 }
 
+// ---- cosmos-sdk v0.46 (app versions 1 to 3) ----
+
+/// cosmos-sdk v0.46 `ValidatorMissedBlockBitArrayKeyPrefix`.
+const V046_MISSED_BLOCK_BIT_ARRAY: u8 = 0x02;
+
+/// cosmos-sdk v0.46 `ValidatorMissedBlockBitArrayKey`: one key per index
+/// of the signed blocks window (index little-endian).
+#[must_use]
+pub fn v046_missed_block_key(cons: &[u8], index: i64) -> Vec<u8> {
+    let mut k = lp_key(V046_MISSED_BLOCK_BIT_ARRAY, cons);
+    #[allow(clippy::cast_sign_loss)]
+    k.extend_from_slice(&(index as u64).to_le_bytes());
+    k
+}
+
+/// cosmos-sdk v0.46 `GetValidatorMissedBlockBitArray` (a
+/// `gogotypes.BoolValue`; absent is not missed).
+fn v046_missed_block(ctx: &mut Context<'_>, cons: &[u8], index: i64) -> Result<bool> {
+    Ok(ctx
+        .get(STORE_KEY, &v046_missed_block_key(cons, index))?
+        .map(|b| decode::<pbjson_types::BoolValue>(&b))
+        .transpose()?
+        .is_some_and(|v| v.value))
+}
+
+/// cosmos-sdk v0.46 `SetValidatorMissedBlockBitArray` (`false` encodes
+/// as an empty value).
+fn v046_set_missed_block(
+    ctx: &mut Context<'_>,
+    cons: &[u8],
+    index: i64,
+    missed: bool,
+) -> Result<()> {
+    let v = pbjson_types::BoolValue { value: missed }.encode_to_vec();
+    ctx.set(STORE_KEY, v046_missed_block_key(cons, index), v)
+}
+
+/// cosmos-sdk v0.46 `HandleValidatorSignature`: unlike v0.50 it requires
+/// the validator's pubkey rather than the validator, does not skip a
+/// jailed validator, and stores one key per missed index. Jailing for
+/// downtime is not ported.
+fn v046_handle_validator_signature(
+    ctx: &mut Context<'_>,
+    cons: &[u8],
+    power: i64,
+    signed: bool,
+) -> Result<()> {
+    let height = ctx.header.height;
+    let cons_str = cons_to_string(cons)?;
+    if !ctx.has(STORE_KEY, &addr_pubkey_key(cons))? {
+        return Err(errs::logic(format!(
+            "Validator consensus-address {cons_str} not found"
+        )));
+    }
+    let mut info = get_signing_info(ctx, cons)?.ok_or_else(|| {
+        errs::logic(format!(
+            "Expected signing info for validator {cons_str} but not found"
+        ))
+    })?;
+    let params = get_params(ctx)?;
+    let window = params.signed_blocks_window;
+    if window == 0 {
+        return Err(errs::logic("integer divide by zero"));
+    }
+    let index = info.index_offset % window;
+    info.index_offset += 1;
+    let previous = v046_missed_block(ctx, cons, index)?;
+    let missed = !signed;
+    if !previous && missed {
+        v046_set_missed_block(ctx, cons, index, true)?;
+        info.missed_blocks_counter += 1;
+    } else if previous && !missed {
+        v046_set_missed_block(ctx, cons, index, false)?;
+        info.missed_blocks_counter -= 1;
+    }
+    let min_signed = params.min_signed_per_window_blocks()?;
+    if missed {
+        ctx.events.emit(event(
+            "liveness",
+            [
+                ("address", cons_str.clone()),
+                ("missed_blocks", info.missed_blocks_counter.to_string()),
+                ("height", height.to_string()),
+            ],
+        ));
+    }
+    let min_height = info.start_height + window;
+    let max_missed = window - min_signed;
+    if height > min_height && info.missed_blocks_counter > max_missed {
+        let v = x_staking::store::get_validator_by_cons_addr(ctx, cons)?;
+        // A missing or jailed validator is only logged in Go.
+        if v.is_some_and(|v| !v.jailed) {
+            return Err(errs::not_supported(format!(
+                "cosmos-sdk v0.46 downtime slashing and jailing of {cons_str} (power {power})"
+            )));
+        }
+    }
+    set_signing_info(ctx, cons, &info)
+}
+
+/// cosmos-sdk v0.46 `BeginBlocker`: every vote of the last commit, signed
+/// unless its flag is absent.
+fn v046_begin_block(ctx: &mut Context<'_>) -> Result<()> {
+    for vote in ctx.vote_infos.clone() {
+        let (addr, power) = vote
+            .validator
+            .as_ref()
+            .map_or((Vec::new(), 0), |v| (v.address.clone(), v.power));
+        v046_handle_validator_signature(
+            ctx,
+            &addr,
+            power,
+            vote.block_id_flag != BLOCK_ID_FLAG_ABSENT,
+        )?;
+    }
+    Ok(())
+}
+
 /// `BeginBlocker`.
 pub fn begin_block(ctx: &mut Context<'_>) -> Result<()> {
+    if ctx.is_sdk_v046() {
+        return v046_begin_block(ctx);
+    }
     for vote in ctx.vote_infos.clone() {
         let (addr, power) = vote
             .validator

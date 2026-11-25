@@ -664,9 +664,19 @@ pub fn get_historical_info(
     ctx: &mut Context<'_>,
     height: i64,
 ) -> Result<Option<pb::HistoricalInfo>> {
-    ctx.get(STORE_KEY, &keys::historical_info(height))?
+    ctx.get(STORE_KEY, &historical_info_key(ctx, height))?
         .map(|b| decode(&b))
         .transpose()
+}
+
+/// The `HistoricalInfo` key of `height` in the executing SDK's layout.
+#[must_use]
+pub fn historical_info_key(ctx: &Context<'_>, height: i64) -> Vec<u8> {
+    if ctx.is_sdk_v046() {
+        keys::historical_info_v046(height)
+    } else {
+        keys::historical_info(height)
+    }
 }
 
 /// `SetValidatorUpdates`.

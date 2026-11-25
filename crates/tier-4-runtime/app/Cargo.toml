@@ -65,6 +65,7 @@ x-evidence = { path = "../../tier-3-app-modules/x/evidence" }
 x-minfee = { path = "../../tier-3-app-modules/x/minfee" }
 x-mint = { path = "../../tier-3-app-modules/x/mint" }
 x-params = { path = "../../tier-3-app-modules/x/params" }
+x-qgb = { path = "../../tier-3-app-modules/x/qgb" }
 x-signal = { path = "../../tier-3-app-modules/x/signal" }
 x-hyperlane = { path = "../../tier-3-app-modules/x/hyperlane" }
 x-upgrade = { path = "../../tier-3-app-modules/x/upgrade" }

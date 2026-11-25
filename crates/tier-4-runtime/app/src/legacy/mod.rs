@@ -17,13 +17,13 @@
 //! Reference: cosmos-sdk `v1.31.2-sdk-v0.46.16` `baseapp/abci.go` and
 //! `baseapp/baseapp.go`, celestia-app v3.13.0 `app/app.go`.
 
+pub mod blockers;
 pub mod consensus_params;
 pub mod genesis;
 pub mod params;
-pub mod qgb;
 
 use celestia_proto::celestia_core_proto::abci::{
-    self, ExecTxResult, ResponseFinalizeBlock, ResponseInitChain, ValidatorUpdate,
+    self, ExecTxResult, ResponseFinalizeBlock, ResponseInitChain, TimeoutInfo, ValidatorUpdate,
 };
 use celestia_proto::celestia_core_proto::tendermint::types::Header as TmHeader;
 use celestia_proto::celestia_core_proto::tendermint::version::Consensus;
@@ -121,9 +121,9 @@ impl Modules for NoModules {
     }
 }
 
-/// The app version 1 module set. InitGenesis is complete; the begin and
-/// end blockers and transaction execution are not ported yet, so a block
-/// fails.
+/// The app version 1 module set: InitGenesis and the begin and end
+/// blockers. Transaction execution is not ported yet, so every
+/// transaction fails.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct V1Modules;
 
@@ -136,16 +136,16 @@ impl Modules for V1Modules {
         genesis::init_chainer(ctx, app_state)
     }
 
-    fn begin_block(&mut self, _: &mut Context<'_>, _: &TmHeader) -> Result<()> {
-        Err(sdk::error::sdk::not_supported("v1 begin blockers"))
+    fn begin_block(&mut self, ctx: &mut Context<'_>, header: &TmHeader) -> Result<()> {
+        blockers::begin_block(ctx, header)
     }
 
     fn deliver_tx(&mut self, ctx: &mut Context<'_>, tx: &[u8]) -> TxOutcome {
         NoModules.deliver_tx(ctx, tx)
     }
 
-    fn end_block(&mut self, _: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
-        Err(sdk::error::sdk::not_supported("v1 end blockers"))
+    fn end_block(&mut self, ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
+        blockers::end_block(ctx)
     }
 }
 
@@ -232,6 +232,23 @@ pub fn deliver_tx_result(o: TxOutcome) -> ExecTxResult {
             ..ExecTxResult::default()
         },
         Err(e) => crate::tx::error_result(&e, gas_wanted, gas_used, o.events),
+    }
+}
+
+/// celestia-app v3.13.0 EndBlock timeouts of `app_version` (with the
+/// default `timeout_commit` flag), as the multiplexer passes them on
+/// (`timeoutInfoV1ToV2`: propose and commit only).
+fn timeouts(app_version: u64) -> TimeoutInfo {
+    let d = |seconds, nanos| Some(pbjson_types::Duration { seconds, nanos });
+    let (propose, commit) = if app_version <= 2 {
+        (d(10, 0), d(11, 0))
+    } else {
+        (d(3, 500_000_000), d(4, 200_000_000))
+    };
+    TimeoutInfo {
+        timeout_propose: propose,
+        timeout_commit: commit,
+        ..TimeoutInfo::default()
     }
 }
 
@@ -421,7 +438,7 @@ impl<M: Modules> Driver<M> {
             validator_updates,
             consensus_param_updates: Some(cp),
             app_hash,
-            timeout_info: None,
+            timeout_info: Some(timeouts(self.app_version)),
         })
     }
 

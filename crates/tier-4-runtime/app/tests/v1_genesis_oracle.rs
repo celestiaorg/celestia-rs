@@ -17,14 +17,12 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::print_stdout)]
 
+mod common;
+
 use std::collections::BTreeMap;
 use std::io::{BufRead as _, BufReader, Read as _};
 
 use app::legacy::{Driver, V1Modules};
-use celestia_proto::celestia_core_proto::abci::RequestInitChain;
-use celestia_proto::celestia_core_proto::tendermint::types::{
-    BlockParams, ConsensusParams, EvidenceParams, ValidatorParams, VersionParams,
-};
 use flate2::read::GzDecoder;
 use sdk::MultiStore;
 
@@ -32,7 +30,6 @@ const FIXTURES: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../conformance/fixtures/mainnet/v1-oracle"
 );
-const GENESIS_SHA256: &str = "9727aac9bbfb021ce7fc695a92f901986421283a891b89e0af97bc9fad187793";
 
 /// The stores expected to match the oracle at height 0.
 const MATCHING: &[&str] = &[
@@ -54,55 +51,6 @@ const MATCHING: &[&str] = &[
     "transfer",
     "upgrade",
 ];
-
-fn int(v: &serde_json::Value) -> i64 {
-    v.as_str().unwrap().parse().unwrap()
-}
-
-/// `RequestInitChain` as Tendermint v0.34 builds it from the genesis.
-fn init_request(g: &serde_json::Value) -> RequestInitChain {
-    let cp = &g["consensus_params"];
-    let nanos = int(&cp["evidence"]["max_age_duration"]);
-    let (secs, frac) =
-        sdk::time::parse_rfc3339_nano(g["genesis_time"].as_str().unwrap().as_bytes())
-            .expect("genesis time");
-    RequestInitChain {
-        time: Some(pbjson_types::Timestamp {
-            seconds: secs,
-            nanos: frac,
-        }),
-        chain_id: g["chain_id"].as_str().unwrap().to_owned(),
-        consensus_params: Some(ConsensusParams {
-            block: Some(BlockParams {
-                max_bytes: int(&cp["block"]["max_bytes"]),
-                max_gas: int(&cp["block"]["max_gas"]),
-            }),
-            evidence: Some(EvidenceParams {
-                max_age_num_blocks: int(&cp["evidence"]["max_age_num_blocks"]),
-                max_age_duration: Some(pbjson_types::Duration {
-                    seconds: nanos / 1_000_000_000,
-                    nanos: i32::try_from(nanos % 1_000_000_000).unwrap(),
-                }),
-                max_bytes: int(&cp["evidence"]["max_bytes"]),
-            }),
-            validator: Some(ValidatorParams {
-                pub_key_types: cp["validator"]["pub_key_types"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|t| t.as_str().unwrap().to_owned())
-                    .collect(),
-            }),
-            version: Some(VersionParams {
-                app: u64::try_from(int(&cp["version"]["app_version"])).unwrap(),
-            }),
-            ..ConsensusParams::default()
-        }),
-        validators: Vec::new(),
-        app_state_bytes: serde_json::to_vec(&g["app_state"]).unwrap(),
-        initial_height: int(&g["initial_height"]),
-    }
-}
 
 struct Oracle {
     roots: BTreeMap<String, String>,
@@ -154,16 +102,12 @@ fn oracle() -> Oracle {
 
 /// InitChain plus a genesis-only Commit (the oracle's height 0).
 fn genesis_state() -> MultiStore {
-    let path = std::env::var("CELESTIA_MAINNET_GENESIS")
-        .expect("set CELESTIA_MAINNET_GENESIS to the mainnet genesis.json");
-    let bytes = std::fs::read(path).unwrap();
-    assert_eq!(hex::encode(hash::sha256(&bytes)), GENESIS_SHA256);
-    let g: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let g = common::mainnet_genesis();
     let mut ms = MultiStore::new();
     let v1 = sdk::version::Release::for_app_version(1).unwrap();
     app::stores::mount_release(&mut ms, v1).unwrap();
     let res = Driver::new(V1Modules)
-        .init_chain(&mut ms, &init_request(&g))
+        .init_chain(&mut ms, &common::init_request(&g))
         .unwrap();
     assert_eq!(res.app_hash, hash::sha256(&[]).to_vec());
     assert_eq!(res.validators.len(), 75);

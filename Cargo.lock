@@ -188,6 +188,7 @@ dependencies = [
  "x-mint",
  "x-packetforward",
  "x-params",
+ "x-qgb",
  "x-signal",
  "x-slashing",
  "x-staking",
@@ -8900,6 +8901,23 @@ dependencies = [
  "math",
  "sdk",
  "serde_json",
+]
+
+[[package]]
+name = "x-qgb"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto 0.0.1",
+ "flate2",
+ "hex",
+ "math",
+ "pbjson-types",
+ "prost 0.13.5",
+ "sdk",
+ "serde_json",
+ "sha3",
+ "x-params",
+ "x-staking",
 ]
 
 [[package]]
