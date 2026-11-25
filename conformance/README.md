@@ -134,6 +134,71 @@ cargo test --locked -p celestia-rs --test mainnet_replay \
   historical_replay_blockers_match_record
 ```
 
+#### Go oracle for app version 1
+
+[`v1-oracle`](v1-oracle/main.go) runs the Go state machine for app
+version 1 over the canonical mainnet genesis and blocks 1 to 10. It
+builds celestia-app v3.13.0 in process. The Go multiplexer runs that
+release for app versions 1 to 3. The program drives the app as
+Tendermint v0.34 does: Info, InitChain, then BeginBlock, DeliverTx,
+EndBlock and Commit for each block. It takes the blocks from
+`blocks.jsonl.gz` and the expected app hashes from window 1 of
+`replay-windows.json`.
+
+[`fixtures/mainnet/v1-oracle/store-roots.json`](fixtures/mainnet/v1-oracle/store-roots.json)
+records the commit info for heights 0 to 10: each store root, the app
+hash, the key count of each IAVL store, and each DeliverTx `[code,
+gas_wanted, gas_used]`. Height 0 is the genesis state alone. A separate
+app runs InitChain and then Commit with no block, so the genesis state
+becomes IAVL version 1. Mainnet never committed this state. InitChain
+returns `sha256("")`, and block 1 runs on the uncommitted genesis state.
+Heights 1 to 10 are the states after each block's Commit.
+
+The oracle writes no output if any check fails. It checks that:
+
+- Each block header hashes to its archived block ID.
+- The validator set, tracked from the InitChain and EndBlock updates,
+  hashes to each header's `validators_hash` and `next_validators_hash`.
+- The InitChain app hash equals the app hash in header 1.
+- Each Commit app hash equals the pinned `post_app_hash` and the app
+  hash of the next header.
+- The DeliverTx results hash equals the next header's
+  `last_results_hash`.
+- The commit info hash rebuilt from the dumped roots equals the Commit
+  app hash.
+
+The KV dumps hold hex keys and values, with stores sorted by name and
+keys sorted by bytes. `kv-diffs.jsonl.gz` holds the keys that each block
+sets or deletes. `kv-height-0-modules.jsonl.gz` holds every key at
+height 0 except those of `acc` and `bank`. The full height-0 dump
+(`kv-height-0.jsonl.gz`, about 25 MB) is not committed.
+`store-roots.json` records the SHA-256 of each uncompressed dump.
+
+The offline test `v1_oracle_store_roots_match_record` checks the
+fixture. It rebuilds each app hash from the store roots and compares it
+with mainnet. It also applies the KV diffs to the height-0 dump and
+checks the roots and key counts:
+
+```sh
+cargo test --locked -p celestia-rs --test mainnet_replay \
+  v1_oracle_store_roots_match_record
+```
+
+To regenerate the fixture, run the oracle. It takes about two minutes
+and 4 GB of memory. Download the genesis from the URL in
+`crates/tier-5-node/celestia-rs/src/networks.rs`, and check that its
+SHA-256 is `9727aac9…7793`:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -genesis <genesis.json> \
+  -blocks ../fixtures/mainnet/blocks.jsonl.gz \
+  -windows ../fixtures/mainnet/replay-windows.json \
+  -heights 10 -kv -out "$OUT"
+cp "$OUT"/store-roots.json "$OUT"/kv-diffs.jsonl.gz \
+  "$OUT"/kv-height-0-modules.jsonl.gz ../fixtures/mainnet/v1-oracle/
+```
+
 #### Where checkpoints come from
 
 The QubeLabs archive (`celestia_2026-11-03.tar`, ETag

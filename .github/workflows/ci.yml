@@ -318,6 +318,7 @@ jobs:
           - mainnet-rpc/module-closure/proofcheck
           - txdecode
           - strict-txdecode
+          - v1-oracle
           - v11-frozen
           - websocket-lifecycle
     env:
