@@ -1,0 +1,4 @@
+2026-11-25T01:27:52.577235Z  INFO light::client: Downloading trusted light block using options
+2026-11-25T01:28:01.531671Z  INFO celestia_rs::follow: verified header height=11771700 hash=63DA502BC1588EFCBB533CA1C0093ED070D20E608771C01721EC972F50C6684C headers_per_sec="0.44"
+2026-11-25T01:28:02.087678Z  INFO light::client: Downloading trusted light block using options
+2026-11-25T01:28:06.926092Z  INFO celestia_rs::follow: verified the tip (skipping verification) height=16205445 hash=2CE01B5F70055D64958DC98FC009A923EF0C6B01C97CFB6FEF123EABBF2867F9

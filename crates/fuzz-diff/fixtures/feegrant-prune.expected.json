@@ -1,0 +1,32 @@
+[
+  {
+    "type_url": "/cosmos.feegrant.v1beta1.MsgGrantAllowance",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.feegrant.v1beta1.MsgGrantAllowance",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.feegrant.v1beta1.MsgPruneAllowances",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.feegrant.v1beta1.MsgRevokeAllowance",
+    "codespace": "sdk",
+    "code": 38,
+    "log_contains": "fee-grant not found"
+  },
+  {
+    "type_url": "/cosmos.feegrant.v1beta1.MsgRevokeAllowance",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  }
+]

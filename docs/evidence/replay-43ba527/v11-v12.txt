@@ -1,0 +1,9 @@
+     Running tests/v11_tagged_upgrade.rs (/private/tmp/replay302-43ba527/target/release/deps/v11_tagged_upgrade-ab0e9acde0d3c0be)
+test embedded_v11_upgrade_reopens_at_boundary ... ok
+test embedded_v11_upgrade_without_restart ... ok
+test v11_tagged_upgrade ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running tests/v12_upgrade.rs (/private/tmp/replay302-43ba527/target/release/deps/v12_upgrade-28679ddfac85faa0)
+test v12_upgrade_without_restart ... ok
+test v12_upgrade_reopens_at_boundary ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
