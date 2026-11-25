@@ -47,7 +47,8 @@ impl CommitId {
 
 pub struct StoreInfo {
     pub name: String,
-    pub commit_id: CommitId,
+    /// `None`: the empty commit ID of a cosmos-sdk v0.46 memory store.
+    pub commit_id: Option<CommitId>,
 }
 
 pub struct CommitInfo {
@@ -69,6 +70,7 @@ impl CommitInfo {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StoreKind {
     Iavl,
+    Memory,
 }
 
 pub struct Store { /* opaque */ }
@@ -146,10 +148,13 @@ returns `Error::EmptyStoreName`; mounting the same name twice returns
 `Error::DuplicateStoreName`.
 
 **REQ-2.** `StoreKind::Iavl` mounts a fresh `kvstore::Store` backed by the local
-`iavl` crate. Transient, memory, trace, listen, and inter-block cache store
-kinds are out of scope for M2.
+`iavl` crate. `StoreKind::Memory` mounts a cosmos-sdk v0.46 memory store
+(celestia-app v1 to v3): it holds no data and is listed in every commit info
+with the empty commit ID (`commit_id: None`, encoded as an empty `CommitID`
+message, hashed as an empty root). Transient, trace, listen, and inter-block
+cache store kinds are out of scope for M2.
 
-**REQ-3.** `store_names` returns mounted store names in lexicographic order,
+**REQ-3.** `store_names` returns mounted IAVL store names in lexicographic order,
 matching Go `StoreKey.Name()` sorting.
 
 **REQ-4.** `get_store` and `get_store_mut` return `Error::UnknownStore` for
@@ -165,7 +170,7 @@ commit info exists.
 **REQ-7.** `commit` commits mounted IAVL stores in lexicographic name order and
 records `StoreInfo { name, commit_id }` for each mounted non-transient store.
 
-**REQ-8.** Every committed `StoreInfo.commit_id.version` equals the multi-store
+**REQ-8.** Every committed IAVL `StoreInfo.commit_id.version` equals the multi-store
 commit version for stores committed through this crate.
 
 **REQ-9.** `CommitInfo::new` validates positive versions, non-empty unique

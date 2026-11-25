@@ -242,14 +242,13 @@ fn pruning_keeps_recent_and_every_versions_with_exact_hashes() {
                     .get_immutable(v)
                     .unwrap();
                 assert_eq!(
-                    tree.root_hash(),
+                    &tree.root_hash()[..],
                     store
                         .get_commit_info(v)
                         .unwrap()
                         .store_info(name)
                         .unwrap()
-                        .commit_id
-                        .hash
+                        .hash()
                 );
             }
         } else {
@@ -333,5 +332,12 @@ fn store_added_after_restart_starts_at_next_version_on(kind: BackendKind) {
     let id = store.commit().unwrap();
     assert_eq!(id.version, 2);
     let info = store.last_commit_info().unwrap();
-    assert_eq!(info.store_info("newstore").unwrap().commit_id.version, 2);
+    assert_eq!(
+        info.store_info("newstore")
+            .unwrap()
+            .commit_id
+            .unwrap()
+            .version,
+        2
+    );
 }
