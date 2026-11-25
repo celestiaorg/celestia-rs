@@ -143,6 +143,8 @@ struct OracleHeight {
     app_hash: String,
     stores: BTreeMap<String, String>,
     keys: BTreeMap<String, usize>,
+    /// `[code, gas_wanted, gas_used]` of each DeliverTx, in block order.
+    tx_results: Vec<[i64; 3]>,
 }
 
 /// Hex key to hex value, by store.
@@ -743,6 +745,76 @@ fn check_oracle_diffs(oracle: &V1Oracle, mut state: OracleState) -> anyhow::Resu
         }
     }
     ensure!(changed.is_empty(), "diffs for unknown heights");
+    Ok(())
+}
+
+/// Messages of mainnet blocks 2 to 10 (v1). Each has an empty
+/// `Msg...Response` in cosmos-sdk v0.46 and ibc-go v6, so a successful
+/// tx's v0.46 `TxMsgData` follows from its message types alone.
+const V1_EMPTY_RESPONSE_MSGS: [&str; 7] = [
+    "/cosmos.bank.v1beta1.MsgSend",
+    "/cosmos.bank.v1beta1.MsgMultiSend",
+    "/cosmos.staking.v1beta1.MsgDelegate",
+    "/cosmos.staking.v1beta1.MsgCreateValidator",
+    "/ibc.core.client.v1.MsgCreateClient",
+    "/ibc.core.client.v1.MsgUpdateClient",
+    "/ibc.core.connection.v1.MsgConnectionOpenTry",
+];
+
+/// The oracle's DeliverTx results of blocks 1 to 10, shaped by the
+/// legacy driver, hash to the `LastResultsHash` of the next mainnet
+/// header (Tendermint v0.34: code, data, gas wanted, gas used).
+#[test]
+fn v1_oracle_tx_results_rebuild_last_results_hash() -> anyhow::Result<()> {
+    use celestia_proto::cosmos::tx::v1beta1::{TxBody, TxRaw};
+
+    let oracle: V1Oracle = serde_json::from_str(V1_ORACLE)?;
+    let archive = read_archive()?;
+    for h in oracle.heights.iter().filter(|h| h.height >= 1) {
+        let (_, block) = archived_block(&archive, h.height)?;
+        let (_, next) = archived_block(&archive, h.height + 1)?;
+        ensure!(
+            block.data.txs.len() == h.tx_results.len(),
+            "v1 oracle tx results at {}",
+            h.height
+        );
+        let mut results = Vec::with_capacity(h.tx_results.len());
+        for (tx, [code, gas_wanted, gas_used]) in block.data.txs.iter().zip(&h.tx_results) {
+            let result = if *code == 0 {
+                let body = TxBody::decode(TxRaw::decode(tx.0.as_slice())?.body_bytes.as_slice())?;
+                let mut msg_responses = Vec::new();
+                for msg in &body.messages {
+                    ensure!(
+                        V1_EMPTY_RESPONSE_MSGS.contains(&msg.type_url.as_str()),
+                        "unexpected v1 message {}",
+                        msg.type_url
+                    );
+                    msg_responses.push(celestia_proto::Any {
+                        type_url: format!("{}Response", msg.type_url),
+                        value: Vec::new(),
+                    });
+                }
+                Ok(app::legacy::TxSuccess {
+                    msg_responses,
+                    log: String::new(),
+                })
+            } else {
+                Err(sdk::SdkError::new("sdk", u32::try_from(*code)?, ""))
+            };
+            results.push(app::legacy::deliver_tx_result(app::legacy::TxOutcome {
+                gas_wanted: u64::try_from(*gas_wanted)?,
+                gas_used: u64::try_from(*gas_used)?,
+                events: Vec::new(),
+                result,
+            }));
+        }
+        compare_hash(
+            "v1 last results hash",
+            h.height,
+            &ctypes::results_hash(&results),
+            &hex::encode_upper(&next.header.last_results_hash),
+        )?;
+    }
     Ok(())
 }
 
