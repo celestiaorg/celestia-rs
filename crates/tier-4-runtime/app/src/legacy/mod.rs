@@ -10,13 +10,17 @@
 //! [`sdk::version::SdkV046Scope`] at the block's app version: the only
 //! place shared modules take their v0.46 paths (`Context::is_sdk_v046`),
 //! and the thread's previous state is restored when the call returns.
-//! Nothing reaches this layer until a
-//! [`SdkLine::V046`] release runs as itself ([`executes`]); app versions 1
-//! to 3 still run as v9 and app versions 4 and later never come here.
+//! [`crate::App`] routes InitChain, FinalizeBlock and Commit here for a
+//! cosmos-sdk v0.46 state ([`app`]); only releases that run as themselves
+//! execute ([`executes`]: app version 1). App versions 2 and 3 still run
+//! as v9 elsewhere and stop with an error on a v0.46 state; app versions
+//! 4 and later never come here.
 //!
 //! Reference: cosmos-sdk `v1.31.2-sdk-v0.46.16` `baseapp/abci.go` and
 //! `baseapp/baseapp.go`, celestia-app v3.13.0 `app/app.go`.
 
+mod app;
+pub(crate) use app::{AppDriver, AppModules, v1_modules};
 pub mod blockers;
 pub mod consensus_params;
 pub mod genesis;
@@ -37,15 +41,96 @@ use prost::Message as _;
 use sdk::version::{Release, SdkLine};
 use sdk::{Context, ExecMode, Header, MultiStore, Result, SdkError};
 
+std::thread_local! {
+    /// The first not-ported behavior a transaction reached
+    /// ([`not_ported`]), reset before each transaction.
+    static NOT_PORTED: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Records that the executing transaction reached a cosmos-sdk v0.46
+/// behavior that is not ported, and returns `e` (its error) unchanged.
+/// The driver aborts the block instead of committing the transaction's
+/// result: Go would have run the behavior, so any result here (and the
+/// fee and sequence the ante handler already took) would be wrong state.
+/// The record survives callers that swallow the error (e.g. IBC
+/// acknowledgements).
+pub(crate) fn not_ported(e: SdkError) -> SdkError {
+    NOT_PORTED.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.is_none() {
+            *c = Some(e.log.clone());
+        }
+    });
+    e
+}
+
+fn take_not_ported() -> Option<String> {
+    NOT_PORTED.with(|c| c.borrow_mut().take())
+}
+
+/// Text that no Go error carries: a transaction error with it reached a
+/// behavior that is not ported (also in shared crates, e.g. the ante
+/// handler's unported keepers).
+const NOT_PORTED_TEXT: &str = "not ported";
+
+/// The message type URLs of a raw block transaction (unwrapping a
+/// `BlobTx`), for diagnostics; empty when it does not decode.
+#[must_use]
+pub fn tx_type_urls(raw: &[u8]) -> Vec<String> {
+    use celestia_proto::celestia_core_proto::tendermint::types::BlobTx;
+    use celestia_proto::cosmos::tx::v1beta1::{TxBody, TxRaw};
+    let inner = match BlobTx::decode(raw) {
+        Ok(b) if b.type_id == "BLOB" => b.tx,
+        _ => raw.to_vec(),
+    };
+    TxRaw::decode(inner.as_slice())
+        .and_then(|t| TxBody::decode(t.body_bytes.as_slice()))
+        .map(|b| b.messages.into_iter().map(|m| m.type_url).collect())
+        .unwrap_or_default()
+}
+
 /// Tendermint v0.34 block protocol version (`version.BlockProtocol`), as
 /// the multiplexer sets it in the BeginBlock header.
 const BLOCK_PROTOCOL: u64 = 11;
 
 /// Whether app version `v` executes on this driver: its release is on
-/// cosmos-sdk v0.46 and runs as itself.
+/// cosmos-sdk v0.46 and runs as itself (app version 1).
 #[must_use]
 pub fn executes(v: u64) -> bool {
     Release::executing(v).sdk_line == SdkLine::V046
+}
+
+/// Whether app version `v` is a cosmos-sdk v0.46 release on mainnet (1 to
+/// 3), executable here or not.
+#[must_use]
+pub fn is_v046(v: u64) -> bool {
+    Release::for_app_version(v).is_some_and(|r| r.sdk_line == SdkLine::V046)
+}
+
+/// The cosmos-sdk v0.46 release whose commit info `info` is: its IAVL
+/// stores and memory store entries, exactly. `None` for any other store
+/// set (a v0.50 state).
+#[must_use]
+pub fn release_of(info: &multistore::CommitInfo) -> Option<&'static Release> {
+    let mut names: Vec<&str> = info.store_infos.iter().map(|s| s.name.as_str()).collect();
+    names.sort_unstable();
+    (1..=3)
+        .filter_map(Release::for_app_version)
+        .filter(|r| r.sdk_line == SdkLine::V046)
+        .find(|r| {
+            let mut want: Vec<&str> = r
+                .stores
+                .iter()
+                .chain(r.commit_memory_stores)
+                .copied()
+                .collect();
+            want.sort_unstable();
+            want == names
+                && info.store_infos.iter().all(|s| {
+                    s.commit_id.is_none() == r.commit_memory_stores.contains(&s.name.as_str())
+                })
+        })
 }
 
 /// The committed app version of a v0.46 state (celestia-app `App.Info`):
@@ -99,6 +184,33 @@ pub trait Modules {
     /// EndBlocker: module end blockers and celestia-app's app-version
     /// upgrade logic. Returns validator updates.
     fn end_block(&mut self, ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>>;
+}
+
+impl<M: Modules + ?Sized> Modules for Box<M> {
+    fn init_genesis(
+        &mut self,
+        ctx: &mut Context<'_>,
+        app_state: &[u8],
+    ) -> Result<Vec<ValidatorUpdate>> {
+        (**self).init_genesis(ctx, app_state)
+    }
+
+    fn begin_block(&mut self, ctx: &mut Context<'_>, header: &TmHeader) -> Result<()> {
+        (**self).begin_block(ctx, header)
+    }
+
+    fn deliver_tx(
+        &mut self,
+        ctx: &mut Context<'_>,
+        block_gas: &mut GasMeter,
+        tx: &[u8],
+    ) -> TxOutcome {
+        (**self).deliver_tx(ctx, block_gas, tx)
+    }
+
+    fn end_block(&mut self, ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
+        (**self).end_block(ctx)
+    }
 }
 
 /// The empty module set: every phase is a no-op and every transaction
@@ -253,7 +365,7 @@ pub fn deliver_tx_result(o: TxOutcome) -> ExecTxResult {
 /// celestia-app v3.13.0 EndBlock timeouts of `app_version` (with the
 /// default `timeout_commit` flag), as the multiplexer passes them on
 /// (`timeoutInfoV1ToV2`: propose and commit only).
-fn timeouts(app_version: u64) -> TimeoutInfo {
+pub(crate) fn timeouts(app_version: u64) -> TimeoutInfo {
     let d = |seconds, nanos| Some(pbjson_types::Duration { seconds, nanos });
     let (propose, commit) = if app_version <= 2 {
         (d(10, 0), d(11, 0))
@@ -299,7 +411,6 @@ fn begin_block_header(
 
 /// The v0.46 baseapp over a [`MultiStore`] mounted with a v0.46 release's
 /// stores ([`crate::stores::mount_release`]).
-#[derive(Debug)]
 pub struct Driver<M> {
     modules: M,
     chain_id: String,
@@ -307,6 +418,16 @@ pub struct Driver<M> {
     app_version: u64,
     /// Header of the block finalized and not yet committed.
     finalized: Option<Header>,
+}
+
+impl<M> std::fmt::Debug for Driver<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Driver")
+            .field("chain_id", &self.chain_id)
+            .field("app_version", &self.app_version)
+            .field("finalized", &self.finalized.as_ref().map(|h| h.height))
+            .finish_non_exhaustive()
+    }
 }
 
 impl<M: Modules> Driver<M> {
@@ -434,8 +555,25 @@ impl<M: Modules> Driver<M> {
         self.modules.begin_block(&mut ctx, &tm_header)?;
         let mut events = ctx.events.take();
         let mut tx_results = Vec::with_capacity(req.txs.len());
-        for tx in &req.txs {
+        for (i, tx) in req.txs.iter().enumerate() {
+            let _ = take_not_ported();
             let outcome = self.modules.deliver_tx(&mut ctx, &mut block_gas, tx);
+            let unported = take_not_ported().or_else(|| {
+                outcome
+                    .result
+                    .as_ref()
+                    .err()
+                    .filter(|e| e.log.contains(NOT_PORTED_TEXT))
+                    .map(|e| e.log.clone())
+            });
+            if let Some(what) = unported {
+                return Err(sdk::error::sdk::not_supported(format!(
+                    "app version {}: block {} not executed: tx {i} [{}] reached a behavior that is not ported: {what}",
+                    self.app_version,
+                    req.height,
+                    tx_type_urls(tx).join(", ")
+                )));
+            }
             let result = deliver_tx_result(outcome);
             events.extend(result.events.iter().cloned());
             tx_results.push(result);

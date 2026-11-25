@@ -47,9 +47,10 @@ pub const fn is_v9(app_version: u64) -> bool {
 
 /// Whether module or store `name` exists in the state machine celestia-rs
 /// runs for `app_version` ([`sdk::version::Release::executing`]). Names
-/// that are not stores (most module names) always exist. App versions 1 to
+/// that are not stores (most module names) always exist. App versions 2 to
 /// 8 run as 9, so this is the v9 store set for them, not their mainnet one
-/// ([`sdk::version::Release::stores`]).
+/// ([`sdk::version::Release::stores`]); app version 1 runs as itself (its
+/// own 17 stores, on the v0.46 driver).
 #[must_use]
 pub fn exists_at(name: &str, app_version: u64) -> bool {
     !IAVL_STORES.contains(&name) || sdk::version::Release::executing(app_version).has_store(name)
@@ -145,15 +146,22 @@ mod tests {
     }
 
     /// Before the release table, a name was missing only when a v9
-    /// executable ran it and v10 added it. Every app version keeps that.
+    /// executable ran it and v10 added it. Every app version but 1 keeps
+    /// that; app version 1 has its own store set.
     #[test]
     fn exists_at_is_unchanged_for_every_app_version() {
         let names = IAVL_STORES
             .iter()
             .copied()
             .chain(["auth", "genutil", "qgb"]);
+        let v1 = Release::for_app_version(1).expect("v1");
         for name in names {
-            for v in 0..=13 {
+            assert_eq!(
+                exists_at(name, 1),
+                !IAVL_STORES.contains(&name) || v1.has_store(name),
+                "{name} at v1"
+            );
+            for v in (0..=13).filter(|v| *v != 1) {
                 let before = !(v != 0 && v < 10 && ADDED_IN_V10.contains(&name));
                 assert_eq!(exists_at(name, v), before, "{name} at v{v}");
             }

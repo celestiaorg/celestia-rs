@@ -130,6 +130,9 @@ impl App {
 
     /// `CreateQueryContext(height, prove)`.
     pub fn create_query_context(&self, height: i64, prove: bool) -> Result<QueryState, SdkError> {
+        if let Some(e) = self.v046_unsupported("queries") {
+            return Err(e);
+        }
         if height < 0 {
             return Err(errs::invalid_request(
                 "cannot query with height < 0; please provide a valid height",
@@ -235,6 +238,9 @@ impl App {
     }
 
     fn query_present(&mut self, req: &RequestQuery) -> ResponseQuery {
+        if let Some(e) = self.v046_unsupported("queries") {
+            return query_result(&e);
+        }
         let version = self.execution_version();
         sdk::version::set_app_version(version);
         let mut req = req.clone();

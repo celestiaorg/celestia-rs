@@ -92,7 +92,7 @@ checkpoint: the complete Go state at the height before it.
 
 | App version | Window | Pre-state anchor | Replay result |
 |---|---|---|---|
-| 1 | 1–10 | Genesis | Fails: genesis initialization passes gov and stops at IBC with `invalid ibc channel genesis state parameters`; there is no app version 1 state machine |
+| 1 | 1–10 | Genesis | All ten blocks match (cosmos-sdk v0.46 driver; see below) |
 | 2 | 2,371,495–2,371,504 | None | Not executed: no checkpoint |
 | 3 | 2,993,220–2,993,229 | None | Not executed: no checkpoint |
 | 4 | 6,680,340–6,680,349 | 6,680,339, verified | Not executed: no checkpoint. Expected to fail at restore and at 6,680,340 |
@@ -102,10 +102,14 @@ checkpoint: the complete Go state at the height before it.
 | 9 | 15,105,001–15,105,010 | 15,105,000, verified | Not executed: no checkpoint. No structural blocker |
 | 10 | 15,558,001–15,558,010 | 15,558,000, verified | All ten blocks match |
 
-celestia-rs runs every app version below 10 with celestia-app v9.0.8
-semantics ([ADR 0004](../docs/adr/0004-app-version-9.md)). It mounts the
-same 25 stores for all of them and registers no upgrade handler for
-`v2` to `v8`. So a faithful checkpoint cannot replay windows 4 to 8:
+celestia-rs runs app version 1 from genesis on its cosmos-sdk v0.46
+driver (the v1 store set with `qgb` and `mem_capability`). It runs app
+versions 2 to 9 with celestia-app v9.0.8 semantics
+([ADR 0004](../docs/adr/0004-app-version-9.md)), except that a cosmos-sdk
+v0.46 state at app version 2 or 3 stops with a not-supported error. It
+mounts the same 25 stores for versions 4 to 9 and registers no upgrade
+handler for `v2` to `v8`. So a faithful checkpoint cannot replay windows
+4 to 8:
 
 - **Store set.** A restore must fill every store that celestia-rs mounts.
   The v3 state at 6,680,339 is Cosmos SDK v0.46 state. Its commit info
@@ -125,7 +129,9 @@ record. Each `pre_state` in [`replay-windows.json`](fixtures/mainnet/replay-wind
 holds the store roots from `abci_query` multistore proofs. The test hashes
 them and compares the result with the window's first header app hash. It
 then derives each blocker from the celestia-rs store set and upgrade
-handlers. It fails if a derived blocker differs from the recorded one.
+handlers. It fails if a derived blocker differs from the recorded one. Window 1
+starts at genesis: its record is empty while app version 1 executes on
+the v0.46 driver.
 Regenerate the anchors with
 [`fetch-replay-anchors.py`](mainnet-rpc/fetch-replay-anchors.py).
 
@@ -359,6 +365,32 @@ CELESTIA_MAINNET_REPLAY_CONFIG="$SDK_ROOT/replay.json" \
   cargo test --release --locked -p celestia-rs --test mainnet_replay \
   historical_mainnet_replay -- --ignored --nocapture
 ```
+
+Window 1 needs no checkpoint, only the canonical mainnet genesis and an
+archive RPC that serves `/block` from height 1:
+
+```sh
+cat > "$SDK_ROOT/replay-v1.json" <<EOF
+{
+  "rpc": ["https://celestia-archive-rpc.polkachu.com"],
+  "reference_rpc": "https://celestia-archive-rpc.polkachu.com",
+  "genesis": "/path/to/celestia/genesis.json"
+}
+EOF
+CELESTIA_MAINNET_REPLAY_CONFIG="$SDK_ROOT/replay-v1.json" \
+  CELESTIA_MAINNET_REPLAY_VERSION=1 \
+  cargo test --release --locked -p celestia-rs --test mainnet_replay \
+  historical_mainnet_replay -- --ignored --nocapture
+```
+
+On 2026-11-25 this replayed heights 1 to 10 through `celestia-rs follow`
+and matched every block and post-state app hash; the follower also
+checked each `last_results_hash`. The node's `App` runs the same blocks,
+closing and reopening its home after block 5, in the ignored test
+`v1_app_runs_blocks_1_to_10_across_a_reopen` (`cargo test -p app --test
+v1_block_oracle -- --ignored` with `CELESTIA_MAINNET_GENESIS` set). Both
+stay ignored: the replay reads blocks over RPC, and the 88 MB genesis
+is not in the repository.
 
 For the full run, add the path to the canonical mainnet genesis in the
 `genesis` field and provide Go SDK checkpoints for the other windows that

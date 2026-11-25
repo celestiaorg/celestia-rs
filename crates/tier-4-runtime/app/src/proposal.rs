@@ -492,6 +492,9 @@ impl App {
         &mut self,
         req: &RequestPrepareProposal,
     ) -> sdk::Result<ResponsePrepareProposal> {
+        if let Some(e) = self.v046_unsupported("PrepareProposal") {
+            return Err(e);
+        }
         if req.height < 1 {
             return Err(sdk::error::sdk::invalid_request(
                 "PrepareProposal called with invalid height",
@@ -550,6 +553,9 @@ impl App {
         &mut self,
         req: &RequestProcessProposal,
     ) -> sdk::Result<ResponseProcessProposal> {
+        if let Some(e) = self.v046_unsupported("ProcessProposal") {
+            return Err(e);
+        }
         if req.height < 1 {
             return Err(sdk::error::sdk::invalid_request(
                 "ProcessProposal called with invalid height",

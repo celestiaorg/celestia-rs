@@ -14,7 +14,8 @@
 //!    id (header hash and part set, so every tx) is the one 2/3+ of our
 //!    validator set signed (`ctypes::verify_commit`); then `ValidateBlock`
 //!    and the app's `ProcessProposal` (the network accepted the block, so
-//!    must we);
+//!    must we; app versions 1 to 3, whose `ProcessProposal` is not
+//!    ported, rebuild the committed data root from the transactions);
 //! 4. execute it (`ApplyVerifiedBlock`: FinalizeBlock with the txs,
 //!    misbehavior and DecidedLastCommit, Commit) through the same
 //!    `BlockExecutor` as `celestia-rs start`.
@@ -1169,7 +1170,18 @@ fn follow_inner(
                 .map_err(|e| anyhow!("commit of block {height}: {e}"))?;
             exec.validate_block(&state, &mut block, consensus::ticker::system_now())
                 .map_err(|e| anyhow!("block {height} is invalid against our state: {e}"))?;
-            if opts.verify_data {
+            if opts.verify_data && app::legacy::is_v046(block.header.version.app) {
+                // ProcessProposal of app versions 1 to 3 is not ported (the
+                // app rejects the call): check that the block's
+                // transactions rebuild its committed data root instead.
+                let txs: Vec<Vec<u8>> = block.data.txs.iter().map(|tx| tx.0.clone()).collect();
+                app::proposal::verified_block_eds(
+                    block.header.version.app,
+                    &txs,
+                    &block.header.data_hash,
+                )
+                .map_err(|e| anyhow!("data root of block {height}: {e}"))?;
+            } else if opts.verify_data {
                 let ok = exec
                     .process_proposal(&mut block, &state)
                     .map_err(|e| anyhow!("ProcessProposal of block {height}: {e}"))?;
