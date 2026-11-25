@@ -925,6 +925,19 @@ cargo +nightly fuzz run --sanitizer none txdecode /tmp/corpus fuzz/corpus/txdeco
 cargo +nightly fuzz run --sanitizer none --features net mconn_recv /tmp/c fuzz/corpus/mconn_recv -- -max_total_time=600
 ```
 
+The separate [AddressSanitizer workflow](../.github/workflows/fuzz-address-sanitizer.yml)
+runs the square target with address instrumentation, including the Leopard SIMD
+erasure codec reached by square extension. It uses the checked-in square seeds
+and writes new inputs to a temporary corpus. To run the same five-minute pilot
+locally on Linux:
+
+```bash
+cargo install cargo-fuzz --version 0.13.2 --locked
+mkdir -p /tmp/square-asan-corpus
+cargo +nightly fuzz run --sanitizer address square /tmp/square-asan-corpus fuzz/corpus/square -- \
+  -max_total_time=300 -rss_limit_mb=4096 -timeout=30 -print_final_stats=1
+```
+
 Seed corpora (`fuzz/corpus/<target>`, < 1 MB) come from
 `fuzz-diff seed-corpus fuzz/corpus` (devnet txs, amino vectors, blocks) and
 hand-written network messages.
