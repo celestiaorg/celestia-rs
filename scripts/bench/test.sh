@@ -131,5 +131,36 @@ env BENCH_DRY_RUN="$t/dry-bad" BENCH_META_campaign='state-sync;reboot' BENCH_MET
   bash "$here/vm.sh" >/dev/null 2>&1 || rc=$?
 check "dry run rejects bad metadata" test "$rc" -ne 0
 
+check "dry run enables bbr"     grep -q 'sysctl -w net.core.default_qdisc=fq net.ipv4.tcp_congestion_control=bbr' "$t/dry-state-sync-go/plan"
+check "dry run rs enables bbr"  grep -q 'tcp_congestion_control=bbr' "$t/dry-state-sync-rs/plan"
+
+# The ERR trap must not run in subshells: a failing command substitution or
+# process substitution (a poll before the RPC is up, a tip not yet reached)
+# once ran finish there and stopped the node.
+mkdir -p "$t/trap"
+rc=0
+# shellcheck disable=SC2016
+env BENCH_DRY_RUN="$t/trap" bash -c '
+  . "$1/vm.sh"
+  finish() { touch "$STATE/finish-ran"; }
+  units=() height="" phase=sync reason="" outcome=""
+  arm_err_trap
+  printf "1.0 - 100 -\n" >"$STATE/polls.tsv"
+  at_tip && exit 3
+  if st=$(rpc http://127.0.0.1:1/status); then exit 4; fi
+  exit 0' _ "$here" >/dev/null 2>&1 || rc=$?
+check "trap quiet in subshells" test "$rc" -eq 0
+check "trap did not run finish" test ! -e "$t/trap/finish-ran"
+rc=0
+# shellcheck disable=SC2016
+env BENCH_DRY_RUN="$t/trap" bash -c '
+  . "$1/vm.sh"
+  finish() { touch "$STATE/finish-main"; }
+  units=() height="" phase=sync reason="" outcome=""
+  arm_err_trap
+  false
+  exit 0' _ "$here" >/dev/null 2>&1 || rc=$?
+check "trap fires in main shell" test "$rc" -eq 1 -a -e "$t/trap/finish-main"
+
 [[ $fails == 0 ]] || { echo "$fails failed"; exit 1; }
 echo "all passed"

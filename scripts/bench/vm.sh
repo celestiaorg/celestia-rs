@@ -78,6 +78,9 @@ setup() {
   local dev_if
   dev_if=$(ip route show default 2>/dev/null | awk '{print $5; exit}' || true)
   run tc qdisc replace dev "${dev_if:-ens4}" root tbf rate "$EGRESS_CAP" burst 64kb latency 400ms
+  # celestia-app refuses to start without BBR. Both sides get it.
+  run modprobe tcp_bbr
+  run sysctl -w net.core.default_qdisc=fq net.ipv4.tcp_congestion_control=bbr
 }
 
 fetch_commit() { # fetch_commit URL COMMIT DIR
@@ -351,6 +354,14 @@ finish() {
   status "done-$outcome" force
 }
 
+# With set -E, subshells inherit the ERR trap. Only the main shell may act
+# on it: a failing command or process substitution (a poll before the RPC
+# is up, a tip not yet reached) must not run finish and stop the node.
+arm_err_trap() {
+  main_pid=$BASHPID
+  trap '[[ $BASHPID != "$main_pid" ]] || { reason=${reason:-"error in $phase at line $LINENO"}; outcome=failed; finish; exit 1; }' ERR
+}
+
 main() {
   mkdir -p "$STATE"
   if [[ -z $DRY && ${BENCH_DETACHED:-} != 1 ]]; then # the startup script re-runs on boot
@@ -361,7 +372,7 @@ main() {
   fi
   read_inputs
   units=() height='' phase=start poll_s=''
-  trap 'reason=${reason:-"error in $phase at line $LINENO"}; outcome=failed; finish; exit 1' ERR
+  arm_err_trap
   setup; build; configure
   if "run_${campaign//-/_}"; then outcome=${DRY:+dry_run}; outcome=${outcome:-ok}; else outcome=failed; fi
   finish
