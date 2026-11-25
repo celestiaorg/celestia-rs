@@ -609,3 +609,43 @@ fn genesis_params_decode_like_jsonpb() {
         );
     });
 }
+
+/// jsonpb unquotes a quoted integer and decodes the contents as JSON:
+/// JSON whitespace is allowed, `null` is the zero value, and a leading
+/// `+` or a leading zero is not a JSON number.
+#[test]
+fn quoted_integers_decode_as_json() {
+    use serde_json::json;
+    params_ctx(|ctx| {
+        params::set_blob(
+            ctx,
+            &json!({"gas_per_blob_byte": " 8\n", "gov_max_square_size": "\t64 "}),
+        )
+        .unwrap();
+        let get = |ctx: &mut sdk::Context<'_>, k: &[u8]| {
+            String::from_utf8(x_params::get_raw(ctx, "blob", k).unwrap().unwrap()).unwrap()
+        };
+        assert_eq!(get(ctx, b"GasPerBlobByte"), "8");
+        assert_eq!(get(ctx, b"GovMaxSquareSize"), "\"64\"");
+    });
+    let set = |gas: &str| {
+        let mut out = None;
+        params_ctx(|ctx| {
+            let v = json!({"gas_per_blob_byte": gas, "gov_max_square_size": 64});
+            out = Some(params::set_blob(ctx, &v).map_err(|e| e.to_string()));
+        });
+        out.unwrap()
+    };
+    let mut unquoted_null = None;
+    params_ctx(|ctx| {
+        let v = json!({"gas_per_blob_byte": null, "gov_max_square_size": 64});
+        unquoted_null = Some(params::set_blob(ctx, &v).map_err(|e| e.to_string()));
+    });
+    assert_eq!(set("null"), unquoted_null.unwrap());
+    for bad in [
+        "+8", "08", "8 8", "", " ", "1e1", "8.0", "-8", "nul", "\u{a0}8",
+    ] {
+        assert!(set(bad).is_err(), "{bad:?}");
+    }
+    assert_eq!(set("0").is_err(), set("null").is_err());
+}

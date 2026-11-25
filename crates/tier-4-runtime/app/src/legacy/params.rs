@@ -79,15 +79,26 @@ impl Fields {
 
     /// An integer field: a JSON number or a quoted one (`None` is 0).
     fn int<T: std::str::FromStr + Default>(&mut self, orig: &'static str) -> Result<T> {
-        let text = match self.take(orig) {
+        let quoted = match self.take(orig) {
             None => return Ok(T::default()),
             Some(Json::String(s)) => s,
             Some(Json::Number(n)) if n.is_i64() || n.is_u64() => n.to_string(),
             Some(_) => return Err(self.err(orig)),
         };
-        // `encoding/json` decimal integers only (no sign on unsigned, no
-        // exponent, no leading `+`).
-        if text.starts_with('+') || text.is_empty() {
+        // jsonpb removes the quotes and gives the contents to
+        // `encoding/json`: JSON whitespace around the value is allowed and
+        // `null` leaves the field at zero.
+        let text = quoted.trim_matches([' ', '\t', '\r', '\n']);
+        if text == "null" {
+            return Ok(T::default());
+        }
+        // A JSON integer: an optional `-`, then `0` or digits with no
+        // leading zero. No `+`, fraction or exponent.
+        let digits = text.strip_prefix('-').unwrap_or(text);
+        let json_integer = !digits.is_empty()
+            && digits.bytes().all(|b| b.is_ascii_digit())
+            && (digits == "0" || !digits.starts_with('0'));
+        if !json_integer {
             return Err(self.err(orig));
         }
         text.parse().map_err(|_| self.err(orig))
