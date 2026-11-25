@@ -44,7 +44,7 @@ run_sync() {
     find "$d/chain/home" -type f -print0 | LC_ALL=C sort -z | xargs -0 -r cat >/dev/null
     start=$(date +%s)
     status=0
-    BENCH_DIR="$d" BENCH_PHASES=B BENCH_KINDS=rs timeout 300 bash "$d/harness.sh" >"$d/run.log" 2>&1 || status=$?
+    BENCH_DIR="$d" BENCH_PHASES=B BENCH_KINDS=rs timeout "${run_timeout:-300}" bash "$d/harness.sh" >"$d/run.log" 2>&1 || status=$?
     cp "$d/run.log" "$out/results/$placement-$trial.log"
     if [[ -f "$d/work/full-rs.log" ]]; then
       tail -n 1000 "$d/work/full-rs.log" >"$out/results/$placement-$trial-node.log"
@@ -57,6 +57,38 @@ run_sync() {
     fi
     rm -rf "$d/chain/home" "$d/work/full-rs"
 }
+
+# A trial changes one numeric constant in an isolated copy of the pinned
+# source. Require the operator's independently computed Git blob before build.
+if (( $# )); then
+  [[ $# == 3 && "$1" =~ ^[2-9][0-9]{3}$ && "$2" =~ ^[0-9a-f]{40}$ && "$3" =~ ^[0-9]{1,3}\.[0-9]{1,3}$ ]]
+  (( 10#$1 > 2000 ))
+  wait_ms=$1
+  expected_blob=$2
+  reference=$3
+  trial_tree="$out/source"
+  git worktree add --quiet --detach "$trial_tree" 2da1bf7cc88a1afbe84f2c0ef04cfda11a3fc2d8
+  trap 'git worktree remove --force "$trial_tree"' EXIT
+  pool=crates/tier-4-runtime/blocksync/src/pool.rs
+  sed -i "s/^pub const PEER_CONN_WAIT: Duration = Duration::from_secs(3);$/pub const PEER_CONN_WAIT: Duration = Duration::from_millis($wait_ms);/" "$trial_tree/$pool"
+  [[ "$(git hash-object "$trial_tree/$pool")" == "$expected_blob" ]]
+  export PATH="$HOME/.cargo/bin:$PATH"
+  export CARGO_TARGET_DIR="$HOME/genesis-sync/trial-target"
+  (cd "$trial_tree" && cargo build --release -p celestia-rs) >"$out/build.log" 2>&1 || { tail -n 20 "$out/build.log"; exit 1; }
+  export CELESTIA_RS="$CARGO_TARGET_DIR/release/celestia-rs"
+  run_timeout=74
+  run_sync split candidate
+  if jq -e --argjson reference "$reference" '.secs < $reference' "$out/results/split-candidate.json" >/dev/null; then
+    if (cd "$trial_tree" && cargo test --workspace --all-features) >"$out/tests.log" 2>&1; then
+      echo pass > "$out/results/tests.txt"
+    else
+      tail -n 50 "$out/tests.log" > "$out/results/test-failure.log"
+      echo fail > "$out/results/tests.txt"
+      exit 1
+    fi
+  fi
+  exit 0
+fi
 
 for placement in shared split; do
   run_sync "$placement" 1
