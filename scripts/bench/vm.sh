@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Unattended VM-side run of one side of the operator sync comparison
-# (docs/benchmarks/operator-sync.md). The operator-benchmark workflow passes
+# (docs/benchmarks/operator-sync.md). The operator-campaigns workflow passes
 # lib.sh + this file as the startup script and the run inputs as bench-*
 # instance metadata. The instance name ends in -rs or -go. Progress, the
 # summary and compressed raw data go to guest attributes in namespace

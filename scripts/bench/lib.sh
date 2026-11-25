@@ -1,6 +1,6 @@
 # shellcheck shell=bash disable=SC2034 # constants are used by vm.sh and the workflow
 # Pure helpers for the operator sync comparison (docs/benchmarks/operator-sync.md).
-# Sourced by vm.sh (on the benchmark VM), by the operator-benchmark workflow
+# Sourced by vm.sh (on the benchmark VM), by the operator-campaigns workflow
 # and by test.sh. No function here touches the network or the cloud.
 
 # Fixed comparison inputs. Changing any of them starts a new series.
