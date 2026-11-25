@@ -134,6 +134,16 @@ The full run failed. Mainnet v1 genesis initialization returned
 `gov genesis params are nil`. The run lacked complete state checkpoints for
 v2–v6, v8 and v9.
 
+On 2026-11-25, `celestia-rs genesis validate` on the canonical mainnet
+genesis got past gov: the node now reads the Tendermint v0.34
+`app_version` field and stores the three legacy gov parameter objects in
+the `x/params` subspace `gov`, as cosmos-sdk v0.46 does. InitChain now
+fails at IBC with `invalid ibc channel genesis state parameters: upgrade
+timeout timestamp invalid: 0: upgrade timeout is invalid`. The node has no
+app version 1 state machine: it mounts the v9 store set instead of v1's
+(no `qgb` store), and it runs ibc-go v8 and the v9 ante handler. The v1
+window cannot match until that exists.
+
 The offline block reconstruction check uses retained archive RPC responses.
 It rebuilds the block IDs and data roots for all 90 fixture blocks and
 compares the app hashes carried by the headers. Application execution
