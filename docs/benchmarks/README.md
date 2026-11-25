@@ -437,3 +437,75 @@ pruning by tree diff) is designed in
 [ADR 0006](../adr/0006-compact-iavl-storage.md). It is not implemented:
 it changes every existing home and needs a migration that is tested on a
 real home first.
+
+## PrepareProposal on max-size squares (2026-11-25, Linux shared VM)
+
+Machine: 4 vCPU Intel Xeon @ 2.10GHz cloud VM (SHA-NI, AVX-512), 15.7 GiB,
+Linux 6.18, rustc 1.100.0. The VM was shared: load average 2.3-3.7 during
+the runs, from another agent's build. Base is `8aec12b`. Go was not run
+here, so the Go ratio of the Mac table above is not re-measured.
+
+**Where the time goes.** Timers in a 256x256-square PrepareProposal of
+`proposal_bench`, before this change, at about 450-480 ms in total:
+
+| step | ms |
+|---|---|
+| DAH: 2 x 512 NMT roots of the extended square | 190-225 |
+| erasure extension (GF(2^16), parallel) | 65-90 |
+| fill: ante handlers of ~780 txs (signatures cached) | 47-90 |
+| fill: blob commitment checks | 12-65 |
+| fill: tx decoding and separation | 12-38 |
+| square export (blob shares) | 19-68 |
+
+Two changes:
+
+- **DAH: hash each cell once.** A cell's NMT leaf is the same in its row
+  tree and in its column tree. A Q0 cell keeps its namespace in both trees,
+  and every other cell gets the parity namespace in both. The leaf digests
+  are now computed once, in parallel by row, and the row and column trees
+  are built over them. Leaf hashing was about 75% of the SHA-256 work. If
+  any tree fails, the per-axis computation runs again and returns its own
+  error, so results and errors stay the same. The extra memory is 32 bytes
+  per cell (8 MiB for a 256x256 square). This also applies to
+  ProcessProposal of blocks that other validators propose.
+- **PrepareProposal uses the CheckTx blob cache.** A blob tx that a
+  successful CheckTx admitted at the same app version is not checked
+  again for share commitments. This matches Go v10.5.0's
+  `ValidateBlobTxWithCache` and this node's own ProcessProposal. The cache
+  key is the full BlobTx wire bytes. ProcessProposal does not trust the
+  proposer: a node without the cache entry checks the commitments again.
+
+The roots digests of `eds_bench` (32x32 to 256x256) are unchanged. These
+also pass: the square Go vectors, the rsmt2d and DAH fixtures,
+`replay_scenarios`, `proposal_v105`, `replay_empty` and
+`persistent_replay`. A new test replays the `blob`, `v105-closure-blob`
+and `v9-blob` recordings, also with invalid txs mixed in. It checks that
+every PrepareProposal response is the same with a full and an empty blob
+cache, and is the same as Go's.
+
+**Extend + DAH** (`eds_bench 5`, median of 5, two interleaved rounds):
+
+| original width | DAH before | DAH after | extend + DAH before | after |
+|---|---|---|---|---|
+| 128 | 55-56 ms | 33-37 ms | 74-75 ms | 48-53 ms |
+| 256 | 185-215 ms | 116-130 ms | 242-283 ms | 179-190 ms |
+
+**Proposal pipeline** (`proposal_bench --heights 10 --big-every 2 --reps 3`,
+10 runs of each build, interleaved). Each run gives 5 max-size heights
+(256x256 squares, 8-30 MB) and 4 light heights (780 txs). A sample is
+the median of 3 repetitions at one height. "Run medians" is the range of
+the per-run medians:
+
+| | before p50 / p99 | after p50 / p99 | run medians before / after | after / before (p50) |
+|---|---|---|---|---|
+| PrepareProposal, max-size (n = 50) | 427 / 619 ms | 359 / 485 ms | 367-501 / 334-403 ms | 0.84x |
+| ProcessProposal, max-size (n = 50) | 149 / 262 ms | 136 / 249 ms | 125-158 / 121-155 ms | ~0.9x (noise) |
+| FinalizeBlock, max-size (n = 50) | 217 / 319 ms | 224 / 329 ms | 179-254 / 199-250 ms | ~1.0x (noise) |
+| PrepareProposal, light (n = 40) | 75.6 / 109 ms | 75.7 / 115 ms | 67-79 / 70-88 ms | 1.0x |
+| ProcessProposal, light (n = 40) | 73.7 / 109 ms | 74.1 / 110 ms | 68-86 / 70-92 ms | 1.0x |
+
+PrepareProposal on max-size squares was faster in all 10 run pairs. A
+permutation test on the per-run medians gives p = 0.0005. None of the
+other rows changed significantly (p >= 0.14). ProcessProposal of a
+node's own proposal already reused the proposer's data root, so the DAH
+change does not show in it here.
