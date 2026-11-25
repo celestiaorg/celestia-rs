@@ -92,7 +92,7 @@ checkpoint: the complete Go state at the height before it.
 
 | App version | Window | Pre-state anchor | Replay result |
 |---|---|---|---|
-| 1 | 1–10 | Genesis | Fails: genesis initialization returns `gov genesis params are nil` |
+| 1 | 1–10 | Genesis | Fails: genesis initialization passes gov and stops at IBC with `invalid ibc channel genesis state parameters`; there is no app version 1 state machine |
 | 2 | 2,371,495–2,371,504 | None | Not executed: no checkpoint |
 | 3 | 2,993,220–2,993,229 | None | Not executed: no checkpoint |
 | 4 | 6,680,340–6,680,349 | 6,680,339, verified | Not executed: no checkpoint. Expected to fail at restore and at 6,680,340 |
