@@ -76,6 +76,7 @@ x-distribution = { path = "../../tier-3-app-modules/x/distribution" }
 x-slashing = { path = "../../tier-3-app-modules/x/slashing" }
 
 [dev-dependencies]
+flate2 = { version = "=1.1.2", default-features = false, features = ["rust_backend"] }
 crypto = { path = "../../tier-0-primitives/crypto" }
 hex = "0.4"
 tempfile = "3"

@@ -161,10 +161,10 @@ mod tests {
             .map(|info| {
                 Ok(StoreInfo {
                     name: info.name.clone(),
-                    commit_id: CommitId {
+                    commit_id: Some(CommitId {
                         version: info.version,
                         hash: decode_hash(&info.hash_hex)?,
-                    },
+                    }),
                 })
             })
             .collect()

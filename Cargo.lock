@@ -199,6 +199,7 @@ dependencies = [
  "celestia-proto 0.0.1",
  "crypto",
  "encoding",
+ "flate2",
  "gojson",
  "gostr",
  "grpc-query",
@@ -4717,6 +4718,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "encoding",
+ "flate2",
  "hash",
  "hex",
  "iavl",
