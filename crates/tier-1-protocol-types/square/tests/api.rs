@@ -638,3 +638,94 @@ fn encode_test_dah(proto: &TestDahProto) -> Result<Vec<u8>, prost::EncodeError> 
 fn root_bytes(fill: u8) -> [u8; DAH_ROOT_SIZE] {
     [fill; DAH_ROOT_SIZE]
 }
+
+/// An imported extended data square of `width` x `width` pseudo-random
+/// cells whose Q0 cells carry v0 namespaces, ascending in row-major order.
+fn pseudo_random_eds(width: usize, seed: u64) -> Result<ExtendedDataSquare, Error> {
+    let mut state = seed | 1;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    let half = width / 2;
+    let cells = (0..width * width)
+        .map(|i| {
+            let mut cell: Vec<u8> = (0..SHARE_SIZE).map(|_| next().to_le_bytes()[0]).collect();
+            let (row, column) = (i / width, i % width);
+            if row < half && column < half {
+                let ordinal = u32::try_from(row * half + column).unwrap_or(u32::MAX);
+                let mut namespace = [0u8; 29];
+                namespace[19..23].copy_from_slice(&(ordinal / 3 + 1).to_be_bytes());
+                cell[..29].copy_from_slice(&namespace);
+            }
+            cell
+        })
+        .collect();
+    import_extended_data_square(cells, &LeoRsCodec::new())
+}
+
+/// The roots computed once per cell (`row_and_column_roots`, used by
+/// `new_data_availability_header` and `roots`) are the per-axis roots, and
+/// an invalid square fails with the per-axis computation's error: an
+/// invalid namespace version, namespaces out of order in a row only or in a
+/// column only.
+#[test]
+fn row_and_column_roots_match_the_per_axis_roots() -> Result<(), Box<dyn std::error::Error>> {
+    let per_axis = |eds: &ExtendedDataSquare| -> Result<_, Error> {
+        Ok((eds.row_roots()?, eds.column_roots()?))
+    };
+    for (width, seed) in [
+        (2, 1),
+        (4, 2),
+        (8, 3),
+        (16, 4),
+        (32, 5),
+        (64, 6),
+        (128, 7),
+        (256, 8),
+    ] {
+        let eds = pseudo_random_eds(width, seed)?;
+        let expected = per_axis(&eds)?;
+        assert_eq!(eds.row_and_column_roots()?, expected, "width {width}");
+        assert_eq!(
+            eds.roots()?,
+            [expected.0.clone(), expected.1.clone()].concat()
+        );
+        let dah = new_data_availability_header(&eds)?;
+        assert_eq!((dah.row_roots, dah.column_roots), expected);
+    }
+    let mut cells = pseudo_random_eds(16, 9)?.flattened();
+    let invalid_version = {
+        let mut c = cells.clone();
+        c[5 * 16 + 3][0] = 7;
+        c
+    };
+    // Row 1 descends (column 1 stays ascending); then column 2 descends
+    // between rows 3 and 4 while each row stays ascending.
+    let row_disorder = {
+        let mut c = cells.clone();
+        c[16 + 1][..29].copy_from_slice(&[0; 29]);
+        c
+    };
+    for row in 4..8 {
+        for column in 0..8 {
+            cells[row * 16 + column][..29].copy_from_slice(&[0; 29]);
+        }
+        cells[row * 16 + 7][28] = u8::try_from(row).unwrap_or(0);
+    }
+    let column_disorder = cells;
+    for bad in [invalid_version, row_disorder, column_disorder] {
+        let eds = import_extended_data_square(bad, &LeoRsCodec::new())?;
+        let expected = per_axis(&eds).map_err(|e| format!("{e:?}"));
+        assert!(expected.is_err());
+        let got = eds.row_and_column_roots().map_err(|e| format!("{e:?}"));
+        assert_eq!(got, expected);
+        let dah = new_data_availability_header(&eds)
+            .map(|_| ())
+            .map_err(|e| format!("{e:?}"));
+        assert_eq!(dah, expected.map(|_| ()));
+    }
+    Ok(())
+}
