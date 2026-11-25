@@ -14,6 +14,7 @@ pub mod genutil;
 pub mod hyperlane;
 pub mod ibc;
 pub mod inclusion_proof;
+pub mod legacy;
 pub mod modules;
 pub mod msg_count;
 pub mod node_services;
@@ -660,6 +661,11 @@ impl App {
     fn app_version(&self) -> u64 {
         if self.last_height == 0 {
             return INITIAL_APP_VERSION;
+        }
+        // A cosmos-sdk v0.46 state (app versions 1 to 3) has no x/consensus
+        // store; its version lives in the params subspace `baseapp`.
+        if !self.ms.is_mounted(x_consensus::STORE_KEY) {
+            return legacy::app_version(&self.ms);
         }
         let mut ms_view = self
             .ms
