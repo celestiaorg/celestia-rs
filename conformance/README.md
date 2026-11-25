@@ -147,8 +147,9 @@ EndBlock and Commit for each block. It takes the blocks from
 
 [`fixtures/mainnet/v1-oracle/store-roots.json`](fixtures/mainnet/v1-oracle/store-roots.json)
 records the commit info for heights 0 to 10: each store root, the app
-hash, the key count of each IAVL store, and each DeliverTx `[code,
-gas_wanted, gas_used]`. Height 0 is the genesis state alone. A separate
+hash, the key count of each IAVL store, each DeliverTx `[code,
+gas_wanted, gas_used]` in `tx_results`, and the hex DeliverTx `data` in
+the parallel list `tx_data`. Height 0 is the genesis state alone. A separate
 app runs InitChain and then Commit with no block, so the genesis state
 becomes IAVL version 1. Mainnet never committed this state. InitChain
 returns `sha256("")`, and block 1 runs on the uncommitted genesis state.
@@ -167,6 +168,25 @@ The oracle writes no output if any check fails. It checks that:
 - The commit info hash rebuilt from the dumped roots equals the Commit
   app hash.
 
+`tx-results.jsonl.gz` holds the ABCI responses of blocks 1 to 10 as
+the app returned them, one JSON line per block:
+
+- `height`, `begin_block_events`, `end_block_events`.
+- `txs`: per DeliverTx, `index`, `hash` (upper-case hex SHA-256 of the
+  raw tx), `code`, `codespace`, `gas_wanted`, `gas_used`, `data` (hex),
+  `log`, `info` and `events`.
+- `validator_updates`: per EndBlock update, `address` and `pub_key`
+  (upper-case hex), `pub_key_type` and `power`.
+- `consensus_param_updates`: `block` (`max_bytes`, `max_gas`),
+  `evidence` (`max_age_num_blocks`, `max_age_duration_ns`, `max_bytes`),
+  `validator` (`pub_key_types`) and `version` (`app_version`).
+- `timeouts`: `timeout_propose_ns` and `timeout_commit_ns`.
+
+Each event is `{"type", "attributes"}`, and each attribute is `{"key",
+"value", "index"}`, in the order the app emitted them.
+`tx_results_sha256` in `store-roots.json` records the SHA-256 of the
+uncompressed file.
+
 The KV dumps hold hex keys and values, with stores sorted by name and
 keys sorted by bytes. `kv-diffs.jsonl.gz` holds the keys that each block
 sets or deletes. `kv-height-0-modules.jsonl.gz` holds every key at
@@ -182,6 +202,16 @@ checks the roots and key counts:
 ```sh
 cargo test --locked -p celestia-rs --test mainnet_replay \
   v1_oracle_store_roots_match_record
+```
+
+The offline test `v1_oracle_tx_results_match_last_results_hash`
+rebuilds each block's `LastResultsHash` from the recorded code, data,
+gas wanted and gas used. It compares the hash with `last_results_hash`
+in the next archived header, and each tx hash with the archived block:
+
+```sh
+cargo test --locked -p celestia-rs --test mainnet_replay \
+  v1_oracle_tx_results_match_last_results_hash
 ```
 
 The ignored test `v1_init_genesis_matches_the_oracle` runs the Rust app
@@ -208,8 +238,9 @@ GOFLAGS=-mod=mod go run . -genesis <genesis.json> \
   -blocks ../fixtures/mainnet/blocks.jsonl.gz \
   -windows ../fixtures/mainnet/replay-windows.json \
   -heights 10 -kv -out "$OUT"
-cp "$OUT"/store-roots.json "$OUT"/kv-diffs.jsonl.gz \
-  "$OUT"/kv-height-0-modules.jsonl.gz ../fixtures/mainnet/v1-oracle/
+cp "$OUT"/store-roots.json "$OUT"/tx-results.jsonl.gz \
+  "$OUT"/kv-diffs.jsonl.gz "$OUT"/kv-height-0-modules.jsonl.gz \
+  ../fixtures/mainnet/v1-oracle/
 ```
 
 #### Where checkpoints come from

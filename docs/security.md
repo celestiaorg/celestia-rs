@@ -104,18 +104,28 @@ Dependabot rules) that can auto-dismiss alerts by package name for the
 from repository-level security updates):
 
 - **cargo** (root): monthly with a seven-day version update cooldown.
-  Minor / patch version updates and security updates each have their own
-  pull request group.
+  Minor / patch version updates, major version updates and security
+  updates each have their own pull request group, so version updates
+  arrive as at most two pull requests a month.
   `flate2`, `blst` and `axum` (pinned with `=`) are ignored, and new
   *major* versions of the consensus-sensitive families listed under
   "Deferred majors" are ignored (migrated by hand).
 - **github-actions**: monthly with a seven-day version update cooldown
   and one group for version update pull requests.
-- **gomod** (all 16 `conformance/` modules in one entry): no version
+- **gomod** (every live `conformance/` module in one entry): monthly; no version
   updates (`open-pull-requests-limit: 0`); security updates grouped into
   one pull request; the pinned reference modules (`github.com/celestiaorg/*`,
   cosmos-sdk, `cosmossdk.io/*`, cometbft, tendermint, ibc-go, ibc-apps,
   gogoproto, iavl, cosmos-db, hyperlane-cosmos) are ignored.
+- **gomod** (frozen evidence: source snapshots kept under `capture-source*`,
+  `sources/` and `dump-sources`): every dependency is ignored, so these
+  byte-exact copies raise alerts but never pull requests.
+
+`xtask/tests/dependabot.rs` fails when a `conformance/**/go.mod` is in
+neither entry, when an entry is not monthly, or when cargo majors lose
+their group. Security updates ignore the schedule: they open when an
+advisory is published, grouped per ecosystem. An unlisted module falls back to the repository-level
+security updates, which are not grouped and ignore nothing.
 
 How `ignore` and security updates interact: `ignore` conditions apply to
 security updates too (an ignored dependency still gets an *alert*, but no
