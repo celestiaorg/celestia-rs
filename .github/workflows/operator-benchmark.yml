@@ -21,7 +21,7 @@ on:
         default: preflight
       campaign:
         type: choice
-        options: [genesis-prefix, state-sync]
+        options: [genesis-prefix, state-sync, bridge]
         default: genesis-prefix
       height:
         description: genesis-prefix target height H

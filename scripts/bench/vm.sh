@@ -59,6 +59,7 @@ read_inputs() {
     echo "invalid trust inputs" >&2; return 1
   fi
   window_min=30
+  [[ $campaign != bridge ]] || window_min=60
   outcome=running reason='' height='' t0='' tip_t='' tip_h=''
 }
 
@@ -110,6 +111,13 @@ build() {
     run install -m 755 "$src/celestia-app/build/celestia-appd" /usr/local/bin/celestia-appd
     bin=/usr/local/bin/celestia-appd
     toolchain=$BENCH_GOLANG
+    if [[ $campaign == bridge ]]; then
+      fetch_tag https://github.com/celestiaorg/celestia-node "$BENCH_NODE_TAG" "$BENCH_NODE_COMMIT" "$src/celestia-node"
+      run make -C "$src/celestia-node" build
+      run install -m 755 "$src/celestia-node/build/celestia" /usr/local/bin/celestia
+      node_commit=$BENCH_NODE_COMMIT
+      node_sha=$(sha256sum /usr/local/bin/celestia 2>/dev/null | cut -d' ' -f1 || echo dry)
+    fi
   fi
   bin_sha=$(sha256sum "$bin" 2>/dev/null | cut -d' ' -f1 || echo dry)
   check_apphash=$src/celestia-rs/packaging/check-apphash.sh
@@ -138,6 +146,8 @@ configure() {
   bench_toml_set "$a" "" pruning-interval '"10"'
   bench_toml_set "$a" "" min-retain-blocks 3000
   bench_toml_set "$a" state-sync snapshot-interval 0
+  bench_toml_set "$a" grpc enable true # celestia-node reads blocks over gRPC
+  bench_toml_set "$a" grpc address '"127.0.0.1:9090"'
   rpcs="${BENCH_REF_RPCS[0]}:443,${BENCH_REF_RPCS[1]}:443"
   if [[ $campaign == genesis-prefix ]]; then
     bench_toml_set "$c" statesync enable false
@@ -152,6 +162,8 @@ configure() {
     node_cmd=(/usr/local/bin/celestia-rs start --home "$HOMEDIR")
     [[ $campaign == genesis-prefix ]] || node_cmd+=(--statesync-rpc-servers "$rpcs"
       --statesync-trust-height "$trust_height" --statesync-trust-hash "$trust_hash")
+    # The integrated bridge with its default 169 h retention, as celestia-node's.
+    [[ $campaign != bridge ]] || node_cmd+=(--bridge-rpc-listen 127.0.0.1:26658 --bridge-p2p-listen /ip4/0.0.0.0/tcp/2121)
   else
     node_cmd=(/usr/local/bin/celestia-appd start --home "$HOMEDIR")
   fi
@@ -246,6 +258,37 @@ run_state_sync() {
   measure 5 600 window_done || return 1
 }
 
+# Bridge: state sync to tip, then (Go) start celestia-node; measure the stack
+# for the window under live mainnet traffic, probing the local DA head each
+# minute. No client workload is generated.
+run_bridge() {
+  phase=sync; t0=$(mono)
+  start_unit node "${node_cmd[@]}" || { reason=start_failed; return 1; }
+  local net=(--p2p.network celestia --node.store "$DATA/bridge")
+  if [[ -z $DRY ]]; then poll_s=5; measure 5 3600 at_tip || return 1; verify_block_id; fi
+  if [[ $role == go ]]; then
+    as_bench celestia bridge init "${net[@]}" --core.ip 127.0.0.1 --core.port 9090 || { reason=bridge_init_failed; return 1; }
+    start_unit bridge /usr/local/bin/celestia bridge start "${net[@]}" --core.ip 127.0.0.1 --core.port 9090 \
+      --rpc.addr 127.0.0.1 --rpc.port 26658 || { reason=bridge_start_failed; return 1; }
+  fi
+  [[ -z $DRY ]] || return 0
+  phase=bridge-window; window_start_s=$(awk -v a="$(mono)" -v b="$t0" 'BEGIN{print a - b}')
+  window_end=$(($(now) + window_min * 60)) next_probe=0
+  measure 5 600 da_window_done || return 1
+}
+da_window_done() {
+  if (($(now) >= next_probe)); then next_probe=$(($(now) + 60)); da_probe; fi
+  window_done
+}
+da_probe() { # elapsed da_local_head consensus_height
+  local tok h
+  if [[ $role == rs ]]; then tok=$(runuser -u bench -- celestia-rs da-auth read --home "$HOMEDIR" 2>/dev/null)
+  else tok=$(runuser -u bench -- env HOME="$DATA/userhome" celestia bridge auth read --p2p.network celestia --node.store "$DATA/bridge" 2>/dev/null); fi
+  h=$(curl -fsS -m 10 http://127.0.0.1:26658 -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' \
+    -d '{"jsonrpc":"2.0","id":1,"method":"header.LocalHead","params":[]}' 2>/dev/null | jq -r '.result.header.height // "-"' 2>/dev/null)
+  echo "$(awk -v a="$(mono)" -v b="$t0" 'BEGIN{print a - b}') ${h:--} $height" >>"$STATE/da.tsv"
+}
+
 verify_block_id() { # chain ID and block ID at the local height against the reference
   local h ours theirs chain
   h=$(rpc "$LOCAL/status" | jq -r .result.sync_info.latest_block_height)
@@ -290,7 +333,8 @@ finish() {
     --arg slice_peak "$slice_peak" --argjson unit_peaks "$peak" --arg cpu_usec "$cpu" \
     --arg rss_peak "$(bench_max "$STATE/polls.tsv" 6 2>/dev/null)" --arg mem_max "$(bench_max "$STATE/polls.tsv" 5 2>/dev/null)" \
     --arg disk_hwm "$(bench_max "$STATE/polls.tsv" 7 2>/dev/null)" --arg end "$(tail -1 "$STATE/polls.tsv" 2>/dev/null)" \
-    --arg du "$(cat "$STATE/du.txt")" --arg window "${window_min:-}" \
+    --arg du "$(cat "$STATE/du.txt")" --arg window "${window_min:-}" --arg window_start_s "${window_start_s:-}" \
+    --arg workload "$([[ $campaign == bridge ]] && echo 'live mainnet traffic only')" --arg node_tag "$BENCH_NODE_TAG" \
     --arg machine "$(curl -fsS -m 5 -H Metadata-Flavor:Google "$MD/machine-type" 2>/dev/null | sed 's,.*/,,')" \
     --arg kernel "$(uname -r)" --arg cpus "$(nproc)" --arg mem "$(awk '/MemTotal/ {print $2}' /proc/meminfo)" \
     --slurpfile verify <(cat "$STATE"/verify-*.json 2>/dev/null) \
@@ -320,6 +364,7 @@ main() {
   setup; build; configure
   if "run_${campaign//-/_}"; then outcome=${DRY:+dry_run}; outcome=${outcome:-ok}; else outcome=failed; fi
   finish
+  [[ $outcome != failed ]]
 }
 # Run unless sourced (the guest agent may also run this through bash -c).
 if [[ -z ${BASH_SOURCE[0]:-} || ${BASH_SOURCE[0]} == "$0" ]]; then main "$@"; fi

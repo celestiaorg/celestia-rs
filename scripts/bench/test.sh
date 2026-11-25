@@ -104,7 +104,7 @@ eq "max column"     9 "$(bench_max "$t/p" 2)"
 eq "max empty"      "" "$(bench_max /dev/null 2)"
 
 # --- vm.sh dry run: validates metadata and writes the plan, no cloud calls ----
-for c in genesis-prefix state-sync; do
+for c in genesis-prefix state-sync bridge; do
   for r in rs go; do
     out=$(env BENCH_DRY_RUN="$t/dry-$c-$r" BENCH_META_campaign=$c BENCH_META_role=$r \
       BENCH_META_height=10 BENCH_META_rust_commit=58be8ae90d00518800df5506b3a1e988f009c1c6 \
@@ -121,6 +121,11 @@ check "dry run rs state sync"   grep -q -- '--statesync-trust-height 16200000' "
 check "dry run same config"     cmp "$t/dry-state-sync-rs/data/home/config/config.toml" "$t/dry-state-sync-go/data/home/config/config.toml"
 check "dry run cgroup slice"    grep -q -- '--slice=benchnode.slice' "$t/dry-state-sync-go/plan"
 check "dry run summary outcome" jq -e '.outcome == "dry_run" and .campaign == "state-sync"' "$t/dry-state-sync-go/attrs/summary"
+check "dry run rs bridge flags" grep -q -- '--bridge-rpc-listen 127.0.0.1:26658 --bridge-p2p-listen' "$t/dry-bridge-rs/plan"
+check "dry run node pinned"     grep -q 'clone -q --depth 1 --branch v0.36.0 .*celestia-node' "$t/dry-bridge-go/plan"
+check "dry run go bridge"       grep -q 'celestia bridge start .*--core.port 9090' "$t/dry-bridge-go/plan"
+check "dry run bridge workload" jq -e '.workload == "live mainnet traffic only" and .window == "60"' "$t/dry-bridge-go/attrs/summary"
+check "dry run no bridge on consensus runs" bash -c "! grep -q -- '--bridge-' '$t/dry-state-sync-rs/plan'"
 rc=0
 env BENCH_DRY_RUN="$t/dry-bad" BENCH_META_campaign='state-sync;reboot' BENCH_META_role=go \
   bash "$here/vm.sh" >/dev/null 2>&1 || rc=$?
