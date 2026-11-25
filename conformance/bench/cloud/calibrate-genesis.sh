@@ -61,16 +61,23 @@ run_sync() {
 # A trial changes one numeric constant in an isolated copy of the pinned
 # source. Require the operator's independently computed Git blob before build.
 if (( $# )); then
-  [[ $# == 3 && "$1" =~ ^[2-9][0-9]{3}$ && "$2" =~ ^[0-9a-f]{40}$ && "$3" =~ ^[0-9]{1,3}\.[0-9]{1,3}$ ]]
-  (( 10#$1 > 2000 ))
-  wait_ms=$1
+  [[ $# == 3 && "$2" =~ ^[0-9a-f]{40}$ && "$3" =~ ^[0-9]{1,3}\.[0-9]{1,3}$ ]]
   expected_blob=$2
   reference=$3
   trial_tree="$out/source"
   git worktree add --quiet --detach "$trial_tree" 2da1bf7cc88a1afbe84f2c0ef04cfda11a3fc2d8
   trap 'git worktree remove --force "$trial_tree"' EXIT
   pool=crates/tier-4-runtime/blocksync/src/pool.rs
-  sed -i "s/^pub const PEER_CONN_WAIT: Duration = Duration::from_secs(3);$/pub const PEER_CONN_WAIT: Duration = Duration::from_millis($wait_ms);/" "$trial_tree/$pool"
+  case "$1" in
+    floor-[2-8])
+      floor=${1#floor-}
+      sed -i "s/^pub const MIN_REQ_LIMIT: i64 = 2;$/pub const MIN_REQ_LIMIT: i64 = $floor;/" "$trial_tree/$pool" ;;
+    [2-9][0-9][0-9][0-9])
+      (( 10#$1 > 2000 ))
+      sed -i "s/^pub const PEER_CONN_WAIT: Duration = Duration::from_secs(3);$/pub const PEER_CONN_WAIT: Duration = Duration::from_millis($1);/" "$trial_tree/$pool" ;;
+    control) ;;
+    *) exit 2 ;;
+  esac
   [[ "$(git hash-object "$trial_tree/$pool")" == "$expected_blob" ]]
   export PATH="$HOME/.cargo/bin:$PATH"
   export CARGO_TARGET_DIR="$HOME/genesis-sync/trial-target"
@@ -78,7 +85,7 @@ if (( $# )); then
   export CELESTIA_RS="$CARGO_TARGET_DIR/release/celestia-rs"
   run_timeout=74
   run_sync split candidate
-  if jq -e --argjson reference "$reference" '.secs < $reference' "$out/results/split-candidate.json" >/dev/null; then
+  if [[ "$1" == control ]] || jq -e --argjson reference "$reference" '.secs < $reference' "$out/results/split-candidate.json" >/dev/null; then
     if (cd "$trial_tree" && cargo test --workspace --all-features) >"$out/tests.log" 2>&1; then
       echo pass > "$out/results/tests.txt"
     else
