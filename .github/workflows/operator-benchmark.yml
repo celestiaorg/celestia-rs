@@ -2,6 +2,10 @@ name: Operator benchmark
 on:
   workflow_dispatch:
     inputs:
+      prepare_existing:
+        description: Build the pinned genesis sync benchmark and generate its chain on the existing VM
+        type: boolean
+        default: false
       provision:
         description: Create the eight-hour genesis sync VM
         type: boolean
@@ -17,9 +21,10 @@ jobs:
   preflight:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: ${{ inputs.prepare_existing && 300 || 5 }}
     permissions:
       id-token: write
+      contents: read
     steps:
       - name: Exchange GitHub identity for a short-lived benchmark credential
         id: auth
@@ -79,7 +84,7 @@ jobs:
           [[ -z "$missing" ]]
 
       - name: Create the genesis sync VM
-        if: inputs.provision
+        if: inputs.provision && !inputs.prepare_existing
         env:
           CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
           OPERATOR_KEY: ${{ inputs.ssh_public_key }}
@@ -106,3 +111,54 @@ jobs:
             fi
             sleep 5
           done
+
+      - uses: actions/checkout@v7.0.1
+        if: inputs.prepare_existing
+        with:
+          persist-credentials: false
+      - name: Connect to the existing VM
+        if: inputs.prepare_existing
+        env:
+          CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: bash conformance/bench/cloud/operator-ssh.sh
+      - name: Prepare the recorded workload
+        if: inputs.prepare_existing
+        run: |
+          ssh -F "$RUNNER_TEMP/bench-config" campaign 'bash -s' < conformance/bench/cloud/prepare-genesis.sh
+      - name: Time two syncs from the same recording
+        if: inputs.prepare_existing
+        run: |
+          ssh -F "$RUNNER_TEMP/bench-config" campaign 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd "$HOME/genesis-sync/source"
+          exec 9>../setup.lock
+          flock -n 9
+          for run in 1 2; do
+            run_dir="$PWD/target/bench/setup-$run"
+            if [[ -s "$run_dir/complete" ]]; then continue; fi
+            mkdir -p "$run_dir/chain"
+            cp -a target/bench/chain/{meta.json,genesis.json} "$run_dir/chain/"
+            rm -rf "$run_dir/chain/home"
+            cp -a target/bench/chain/home "$run_dir/chain/"
+            BENCH_DIR="$run_dir" BENCH_PHASES=B BENCH_KINDS=rs taskset -c 0-7 \
+              conformance/bench/run.sh > "$run_dir/run.log" 2>&1
+            jq -er '.secs | select(. > 0)' "$run_dir/results/blocksync-rs.json" > "$run_dir/complete"
+          done
+          REMOTE
+      - name: Collect setup measurements
+        if: inputs.prepare_existing && always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/bench-config" ]]; then
+            mkdir -p setup-results
+            for run in 1 2; do
+              scp -F "$RUNNER_TEMP/bench-config" \
+                "campaign:genesis-sync/source/target/bench/setup-$run/results/blocksync-rs.json" \
+                "setup-results/blocksync-$run.json" || true
+            done
+          fi
+      - uses: actions/upload-artifact@v7
+        if: inputs.prepare_existing && always()
+        with:
+          name: genesis-sync-setup
+          path: setup-results/*.json
+          if-no-files-found: ignore
