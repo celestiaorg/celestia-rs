@@ -164,29 +164,6 @@ pub const fn is_sdk_v046(app_version: u64) -> bool {
     matches!(app_version, 1..=3)
 }
 
-/// Go `encoding/json` string encoding (with HTML escaping), as
-/// `legacyAmino.MarshalJSON` writes strings.
-fn go_json_string(s: &str, out: &mut String) {
-    use std::fmt::Write as _;
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{8}' => out.push_str("\\b"),
-            '\u{c}' => out.push_str("\\f"),
-            '<' | '>' | '&' | '\u{2028}' | '\u{2029}' | '\0'..='\u{1f}' => {
-                let _ = write!(out, "\\u{:04x}", u32::from(c));
-            }
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-}
-
 /// A proto duration as Go's `time.Duration` (gogoproto `stdduration`),
 /// which rejects values outside the `int64` nanosecond range.
 fn go_duration_nanos(d: &pbjson_types::Duration) -> Result<i64> {
@@ -201,6 +178,37 @@ fn go_duration_nanos(d: &pbjson_types::Duration) -> Result<i64> {
         })
 }
 
+/// Key of `v1.DepositParams` in the v0.46 subspace `gov`.
+pub const V046_KEY_DEPOSIT_PARAMS: &str = "depositparams";
+/// Key of `v1.VotingParams` in the v0.46 subspace `gov`.
+pub const V046_KEY_VOTING_PARAMS: &str = "votingparams";
+/// Key of `v1.TallyParams` in the v0.46 subspace `gov`.
+pub const V046_KEY_TALLY_PARAMS: &str = "tallyparams";
+
+/// The cosmos-sdk v0.46 subspace `gov` and its key table
+/// (`v1.ParamKeyTable`). Genesis writes it with `Set`, which validates
+/// nothing; the validators matter only for parameter-change proposals.
+pub const V046_SUBSPACE: x_params::v046::Subspace = x_params::v046::Subspace {
+    name: MODULE_NAME,
+    table: &[
+        x_params::v046::param(
+            V046_KEY_DEPOSIT_PARAMS,
+            x_params::v046::Kind::Struct("v1.DepositParams"),
+            x_params::v046::validate::any,
+        ),
+        x_params::v046::param(
+            V046_KEY_VOTING_PARAMS,
+            x_params::v046::Kind::Struct("v1.VotingParams"),
+            x_params::v046::validate::any,
+        ),
+        x_params::v046::param(
+            V046_KEY_TALLY_PARAMS,
+            x_params::v046::Kind::Struct("v1.TallyParams"),
+            x_params::v046::validate::any,
+        ),
+    ],
+};
+
 /// Amino JSON of the v0.46 `v1.DepositParams`, `v1.VotingParams` and
 /// `v1.TallyParams` (struct field order, `omitempty`, durations as
 /// nanosecond strings, `sdk.Int` as a decimal string).
@@ -208,61 +216,53 @@ fn legacy_params_amino_json(
     d: &celestia_proto::cosmos::gov::v1::DepositParams,
     v: &celestia_proto::cosmos::gov::v1::VotingParams,
     t: &celestia_proto::cosmos::gov::v1::TallyParams,
-) -> Result<[(&'static [u8], Vec<u8>); 3]> {
-    fn object(fields: Vec<(&str, String)>) -> String {
-        let body: Vec<String> = fields
-            .into_iter()
-            .map(|(k, v)| format!("\"{k}\":{v}"))
-            .collect();
-        format!("{{{}}}", body.join(","))
-    }
+) -> Result<[(&'static str, x_params::v046::Value); 3]> {
+    use x_params::v046::{Object, Value, coin, int64, nonempty_string};
     fn duration(d: Option<&pbjson_types::Duration>) -> Result<Option<String>> {
-        d.map(|d| go_duration_nanos(d).map(|n| format!("\"{n}\"")))
-            .transpose()
-    }
-    fn string(s: &str) -> Option<String> {
-        (!s.is_empty()).then(|| {
-            let mut out = String::new();
-            go_json_string(s, &mut out);
-            out
-        })
+        d.map(|d| go_duration_nanos(d).map(int64)).transpose()
     }
 
-    let mut deposit = Vec::new();
+    let mut deposit = Object::new();
     if !d.min_deposit.is_empty() {
         let mut coins = Vec::with_capacity(d.min_deposit.len());
         for c in &d.min_deposit {
             let amount = sdk::coins::Coin::from_proto(c)
                 .map_err(|e| sdkerr::json_unmarshal(e.log))?
                 .amount;
-            let mut fields = Vec::new();
-            if let Some(denom) = string(&c.denom) {
-                fields.push(("denom", denom));
-            }
-            fields.push(("amount", format!("\"{amount}\"")));
-            coins.push(object(fields));
+            coins.push(coin(&c.denom, &amount));
         }
-        deposit.push(("min_deposit", format!("[{}]", coins.join(","))));
+        deposit.field("min_deposit", format!("[{}]", coins.join(",")));
     }
-    if let Some(p) = duration(d.max_deposit_period.as_ref())? {
-        deposit.push(("max_deposit_period", p));
-    }
-    let voting = duration(v.voting_period.as_ref())?
-        .map(|p| vec![("voting_period", p)])
-        .unwrap_or_default();
-    let tally = [
-        ("quorum", &t.quorum),
-        ("threshold", &t.threshold),
-        ("veto_threshold", &t.veto_threshold),
-    ]
-    .into_iter()
-    .filter_map(|(k, s)| string(s).map(|s| (k, s)))
-    .collect();
+    deposit.omitempty(
+        "max_deposit_period",
+        duration(d.max_deposit_period.as_ref())?,
+    );
+    let mut voting = Object::new();
+    voting.omitempty("voting_period", duration(v.voting_period.as_ref())?);
+    let mut tally = Object::new();
+    tally
+        .omitempty("quorum", nonempty_string(&t.quorum))
+        .omitempty("threshold", nonempty_string(&t.threshold))
+        .omitempty("veto_threshold", nonempty_string(&t.veto_threshold));
     Ok([
-        (b"depositparams", object(deposit).into_bytes()),
-        (b"votingparams", object(voting).into_bytes()),
-        (b"tallyparams", object(tally).into_bytes()),
+        (V046_KEY_DEPOSIT_PARAMS, Value::Struct(deposit.finish())),
+        (V046_KEY_VOTING_PARAMS, Value::Struct(voting.finish())),
+        (V046_KEY_TALLY_PARAMS, Value::Struct(tally.finish())),
     ])
+}
+
+/// cosmos-sdk v0.46 gov `InitGenesis` parameters: `SetDepositParams`,
+/// `SetVotingParams` and `SetTallyParams` into subspace `gov`.
+pub fn set_v046_params(
+    ctx: &mut Context<'_>,
+    d: &celestia_proto::cosmos::gov::v1::DepositParams,
+    v: &celestia_proto::cosmos::gov::v1::VotingParams,
+    t: &celestia_proto::cosmos::gov::v1::TallyParams,
+) -> Result<()> {
+    for (key, value) in legacy_params_amino_json(d, v, t)? {
+        V046_SUBSPACE.set(ctx, key, &value)?;
+    }
+    Ok(())
 }
 
 /// `InitGenesis`.
@@ -285,9 +285,7 @@ pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
         else {
             return Err(sdkerr::logic("gov genesis legacy params are nil"));
         };
-        for (key, value) in legacy_params_amino_json(d, v, t)? {
-            x_params::set_raw(ctx, MODULE_NAME, key, value)?;
-        }
+        set_v046_params(ctx, d, v, t)?;
     } else {
         // Go dereferences `*data.Params` (panics when nil).
         let params = gs
