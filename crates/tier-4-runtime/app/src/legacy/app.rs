@@ -62,15 +62,22 @@ impl App {
     pub(crate) fn set_legacy_modules(&mut self, modules: fn() -> AppModules) {
         self.legacy_modules = modules;
         if self.legacy.is_some() {
-            self.legacy = Some(Driver::new(modules()));
+            self.legacy = Some(self.new_legacy_driver());
         }
     }
 
-    /// A fresh driver after the state was reopened or rolled back: it
-    /// takes the chain ID from the next block header.
+    /// A driver for the committed v0.46 state: it expects the stored chain
+    /// ID, or takes it from the next block header when none is stored.
+    pub(crate) fn new_legacy_driver(&self) -> AppDriver {
+        let mut d = Driver::new((self.legacy_modules)());
+        d.expect_chain_id(&self.chain_id);
+        d
+    }
+
+    /// A fresh driver after the state was reopened or rolled back.
     pub(crate) fn reset_legacy_driver(&mut self) {
         if self.legacy.is_some() {
-            self.legacy = Some(Driver::new((self.legacy_modules)()));
+            self.legacy = Some(self.new_legacy_driver());
         }
     }
 
@@ -93,7 +100,8 @@ impl App {
         }
         let release = Release::for_app_version(app_version)
             .ok_or_else(|| sdk::error::sdk::logic("unknown app version"))?;
-        if self.legacy.is_none() {
+        let remounted = self.legacy.is_none();
+        if remounted {
             for name in stores::IAVL_STORES {
                 if self.ms.is_mounted(name) {
                     self.ms.unmount_iavl(name).map_err(store_err)?;
@@ -101,12 +109,22 @@ impl App {
             }
             stores::mount_release(&mut self.ms, release).map_err(store_err)?;
         }
+        let mut driver = Driver::new((self.legacy_modules)());
+        // A failed InitChain leaves no writes (the driver discards them)
+        // and, on a fresh app, the v0.50 stores mounted again.
+        let res = match driver.init_chain(&mut self.ms, req) {
+            Ok(res) => res,
+            Err(e) => {
+                if remounted {
+                    self.restore_v050_mounts(release)?;
+                }
+                return Err(e);
+            }
+        };
         self.chain_id.clone_from(&req.chain_id);
         self.ms
             .root_mut()
             .set_metadata(CHAIN_ID_KEY, req.chain_id.clone().into_bytes());
-        let mut driver = Driver::new((self.legacy_modules)());
-        let res = driver.init_chain(&mut self.ms, req)?;
         self.legacy = Some(driver);
         self.check_header = Header {
             chain_id: req.chain_id.clone(),
@@ -114,6 +132,18 @@ impl App {
             ..Header::default()
         };
         Ok(res)
+    }
+
+    /// Undoes [`Self::legacy_init_chain`]'s mounts: `release`'s stores
+    /// out, the v0.50 stores in (none holds a committed version).
+    fn restore_v050_mounts(&mut self, release: &Release) -> Result<()> {
+        for name in release.stores.iter().chain(release.commit_memory_stores) {
+            self.ms.unmount_iavl(name).map_err(store_err)?;
+        }
+        for (name, kind) in stores::all() {
+            self.ms.mount(name, kind).map_err(store_err)?;
+        }
+        Ok(())
     }
 
     /// FinalizeBlock on a v0.46 state.

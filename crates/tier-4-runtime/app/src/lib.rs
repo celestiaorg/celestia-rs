@@ -417,10 +417,19 @@ impl App {
             ms.unmount_iavl(name).map_err(store_err)?;
         }
         let mut app = Self::from_multistore(ms);
-        if v046.is_some() {
-            app.legacy = Some(legacy::AppDriver::new((app.legacy_modules)()));
-        }
         app.load_committed_state()?;
+        if v046.is_some() {
+            app.legacy = Some(app.new_legacy_driver());
+        } else if app.last_height > 0 && legacy::executes(app.app_version()) {
+            // Releases before the v0.46 driver ran app version 1 as app
+            // version 9 on the v0.50 stores; app version 1 now selects the
+            // v0.46 release's modules and handlers, so such a state would
+            // continue under different rules.
+            return Err(sdk::error::sdk::not_supported(format!(
+                "a cosmos-sdk v0.50 store set at app version {}: app version 1 runs only on a cosmos-sdk v0.46 state; this database was written by a release that ran it as app version 9, sync it again from genesis",
+                app.app_version()
+            )));
+        }
         if app.chain_id.is_empty()
             && let Some(chain_id) = &options.chain_id
         {
@@ -2015,16 +2024,16 @@ mod node_options_tests {
                 app_state_bytes: serde_json::to_vec(&genesis["app_state"]).unwrap(),
                 ..Default::default()
             });
+            let e = res.unwrap_err();
             if version == 1 {
-                // The v1 store set replaced the v0.50 one before the v1
-                // InitChainer ran (which rejects this v0.50 genesis).
-                assert!(app.ms.is_mounted("qgb"), "v1");
-                assert!(!app.ms.is_mounted(x_consensus::STORE_KEY), "v1");
+                // The v1 InitChainer ran on the v1 store set and rejected
+                // this v0.50 genesis; the v0.50 stores are mounted again.
+                assert!(!app.is_sdk_v046_state(), "v1");
+                assert!(!app.ms.is_mounted("qgb"), "v1");
             } else {
-                let e = res.unwrap_err();
                 assert!(e.log.contains("not supported"), "v{version}: {}", e.log);
-                assert!(app.ms.is_mounted(x_consensus::STORE_KEY), "v{version}");
             }
+            assert!(app.ms.is_mounted(x_consensus::STORE_KEY), "v{version}");
         }
     }
 

@@ -48,13 +48,14 @@ std::thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
-/// Records that the executing transaction reached a cosmos-sdk v0.46
-/// behavior that is not ported, and returns `e` (its error) unchanged.
-/// The driver aborts the block instead of committing the transaction's
-/// result: Go would have run the behavior, so any result here (and the
-/// fee and sequence the ante handler already took) would be wrong state.
-/// The record survives callers that swallow the error (e.g. IBC
-/// acknowledgements).
+/// Records that the executing call reached a cosmos-sdk v0.46 behavior
+/// that is not ported, and returns `e` (its error) unchanged. The driver
+/// aborts the block (or InitChain) instead of committing a result: Go
+/// would have run the behavior, so any result here (and the fee and
+/// sequence the ante handler already took) would be wrong state. The
+/// record survives callers that swallow the error (e.g. IBC
+/// acknowledgements). It is the only signal: error text alone never
+/// aborts, since it can echo transaction input.
 pub(crate) fn not_ported(e: SdkError) -> SdkError {
     NOT_PORTED.with(|c| {
         let mut c = c.borrow_mut();
@@ -65,14 +66,36 @@ pub(crate) fn not_ported(e: SdkError) -> SdkError {
     e
 }
 
+/// [`not_ported`] for an error a shared crate reports (e.g. the ante
+/// handler's unported keepers, [`tx::ante_deps`]).
+pub(crate) fn record_not_ported(e: &SdkError) {
+    let _ = not_ported(e.clone());
+}
+
 fn take_not_ported() -> Option<String> {
     NOT_PORTED.with(|c| c.borrow_mut().take())
 }
 
-/// Text that no Go error carries: a transaction error with it reached a
-/// behavior that is not ported (also in shared crates, e.g. the ante
-/// handler's unported keepers).
-const NOT_PORTED_TEXT: &str = "not ported";
+/// Runs `f` on a store branch of the block stack: kept when `f`
+/// succeeds, discarded with everything it branched when it fails, so an
+/// aborted call leaves no writes behind.
+fn on_branch<T>(ms: &mut MultiStore, f: impl FnOnce(&mut MultiStore) -> Result<T>) -> Result<T> {
+    ms.select(sdk::store::Stack::Finalize);
+    let base = ms.depth();
+    ms.branch();
+    let r = f(ms);
+    ms.select(sdk::store::Stack::Finalize);
+    if r.is_ok() {
+        while ms.depth() > base {
+            ms.write_branch();
+        }
+    } else {
+        while ms.depth() > base {
+            ms.discard_branch();
+        }
+    }
+    r
+}
 
 /// The message type URLs of a raw block transaction (unwrapping a
 /// `BlobTx`), for diagnostics; empty when it does not decode.
@@ -441,11 +464,28 @@ impl<M: Modules> Driver<M> {
         }
     }
 
+    /// The chain ID a driver opened on committed state requires of every
+    /// block header (empty: the first header's).
+    pub fn expect_chain_id(&mut self, chain_id: &str) {
+        chain_id.clone_into(&mut self.chain_id);
+    }
+
     /// `InitChain` (celestia-app `App.InitChain` and `BaseApp.InitChain`):
     /// stores the consensus params, runs the InitChainer and returns the
     /// last commit hash, `sha256("")` on a new chain. Nothing is
     /// committed; block 1 starts from these writes.
     pub fn init_chain(
+        &mut self,
+        ms: &mut MultiStore,
+        req: &abci::RequestInitChain,
+    ) -> Result<ResponseInitChain> {
+        let _ = take_not_ported();
+        let r = on_branch(ms, |ms| self.init_chain_on(ms, req));
+        let _ = take_not_ported();
+        r
+    }
+
+    fn init_chain_on(
         &mut self,
         ms: &mut MultiStore,
         req: &abci::RequestInitChain,
@@ -479,6 +519,11 @@ impl<M: Modules> Driver<M> {
         self.app_version = app_version;
         ctx.consensus_params = cp;
         let validators = self.modules.init_genesis(&mut ctx, &req.app_state_bytes)?;
+        if let Some(what) = take_not_ported() {
+            return Err(sdk::error::sdk::not_supported(format!(
+                "app version {app_version}: InitChain not executed: InitGenesis reached a behavior that is not ported: {what}"
+            )));
+        }
         check_genesis_validators(&req.validators, &validators)?;
         if app_version != 1 {
             consensus_params::set_initial_app_version(&mut ctx, app_version)?;
@@ -502,7 +547,32 @@ impl<M: Modules> Driver<M> {
     /// BeginBlock with the full header, DeliverTx for each transaction,
     /// EndBlock. Events are BeginBlock's, each transaction's, then
     /// EndBlock's; the consensus params are the full stored set.
+    ///
+    /// A block that fails (also one that reaches a behavior that is not
+    /// ported, [`not_ported`]) leaves no writes behind.
     pub fn finalize_block(
+        &mut self,
+        ms: &mut MultiStore,
+        req: &abci::RequestFinalizeBlock,
+    ) -> Result<ResponseFinalizeBlock> {
+        let _ = take_not_ported();
+        let r = on_branch(ms, |ms| self.finalize_block_on(ms, req));
+        let _ = take_not_ported();
+        r
+    }
+
+    /// The error of a block phase that reached a not-ported behavior.
+    fn phase_not_ported(&self, height: i64, phase: &str) -> Result<()> {
+        match take_not_ported() {
+            Some(what) => Err(sdk::error::sdk::not_supported(format!(
+                "app version {}: block {height} not executed: {phase} reached a behavior that is not ported: {what}",
+                self.app_version
+            ))),
+            None => Ok(()),
+        }
+    }
+
+    fn finalize_block_on(
         &mut self,
         ms: &mut MultiStore,
         req: &abci::RequestFinalizeBlock,
@@ -553,20 +623,13 @@ impl<M: Modules> Driver<M> {
         let mut block_gas = tx::block_gas_meter(&ctx);
 
         self.modules.begin_block(&mut ctx, &tm_header)?;
+        self.phase_not_ported(req.height, "BeginBlock")?;
         let mut events = ctx.events.take();
         let mut tx_results = Vec::with_capacity(req.txs.len());
         for (i, tx) in req.txs.iter().enumerate() {
             let _ = take_not_ported();
             let outcome = self.modules.deliver_tx(&mut ctx, &mut block_gas, tx);
-            let unported = take_not_ported().or_else(|| {
-                outcome
-                    .result
-                    .as_ref()
-                    .err()
-                    .filter(|e| e.log.contains(NOT_PORTED_TEXT))
-                    .map(|e| e.log.clone())
-            });
-            if let Some(what) = unported {
+            if let Some(what) = take_not_ported() {
                 return Err(sdk::error::sdk::not_supported(format!(
                     "app version {}: block {} not executed: tx {i} [{}] reached a behavior that is not ported: {what}",
                     self.app_version,
@@ -579,6 +642,7 @@ impl<M: Modules> Driver<M> {
             tx_results.push(result);
         }
         let validator_updates = self.modules.end_block(&mut ctx)?;
+        self.phase_not_ported(req.height, "EndBlock")?;
         events.extend(ctx.events.take());
         let cp = consensus_params::load(&mut ctx, self.app_version)?;
         drop(ctx);

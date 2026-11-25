@@ -1816,7 +1816,7 @@ fn not_ported_transactions_abort_the_block() {
         type_url: "/cosmos.staking.v1beta1.MsgUndelegate".to_owned(),
         value: Vec::new(),
     };
-    for (flag, swallow) in [(true, false), (false, false), (true, true)] {
+    for (flag, swallow) in [(true, false), (true, true)] {
         let mut ms = v1_store();
         let mut driver = Driver::new(Unported { flag, swallow });
         driver.init_chain(&mut ms, &init_request()).unwrap();
@@ -1832,6 +1832,191 @@ fn not_ported_transactions_abort_the_block() {
         assert!(e.log.contains("handler of X is not ported"), "{}", e.log);
         assert!(driver.commit(&mut ms).is_err(), "nothing to commit");
     }
+}
+
+/// An error that only says "not ported" (no record) is an ordinary
+/// failed transaction: error text can echo user input.
+#[test]
+fn unrecorded_not_ported_text_fails_only_the_tx() {
+    let mut ms = v1_store();
+    let mut driver = Driver::new(Unported {
+        flag: false,
+        swallow: false,
+    });
+    driver.init_chain(&mut ms, &init_request()).unwrap();
+    let mut req = finalize_request(1);
+    req.txs = vec![b"ok".to_vec(), b"x".to_vec()];
+    let res = driver.finalize_block(&mut ms, &req).unwrap();
+    assert_eq!(res.tx_results[0].code, 0);
+    assert_ne!(res.tx_results[1].code, 0);
+    assert!(res.tx_results[1].log.contains("not ported"));
+    driver.commit(&mut ms).unwrap();
+}
+
+/// Only the ported v1 transaction path: InitGenesis, BeginBlock and
+/// EndBlock do nothing.
+struct TxOnly;
+
+impl Modules for TxOnly {
+    fn init_genesis(&mut self, _: &mut Context<'_>, _: &[u8]) -> Result<Vec<ValidatorUpdate>> {
+        Ok(Vec::new())
+    }
+
+    fn begin_block(&mut self, _: &mut Context<'_>, _: &TmHeader) -> Result<()> {
+        Ok(())
+    }
+
+    fn deliver_tx(
+        &mut self,
+        ctx: &mut Context<'_>,
+        block_gas: &mut kvstore::GasMeter,
+        tx: &[u8],
+    ) -> TxOutcome {
+        tx::deliver_tx(ctx, block_gas, tx)
+    }
+
+    fn end_block(&mut self, _: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
+        Ok(Vec::new())
+    }
+}
+
+/// A v1 `MsgSend` whose denom is the text "not ported" fails its
+/// `ValidateBasic` like any invalid coin (Go just fails the tx); the
+/// block is not aborted.
+#[test]
+fn user_input_saying_not_ported_does_not_abort_the_block() {
+    use celestia_proto::cosmos::bank::v1beta1 as bank;
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    let addr = x_auth::bech32(&[1; 20]).unwrap();
+    let send = celestia_proto::Any::pack(&bank::MsgSend {
+        from_address: addr.clone(),
+        to_address: addr,
+        amount: vec![Coin {
+            denom: "not ported".into(),
+            amount: "1".into(),
+        }],
+    });
+    let mut ms = v1_store();
+    let mut driver = Driver::new(TxOnly);
+    driver.init_chain(&mut ms, &init_request()).unwrap();
+    let mut req = finalize_request(1);
+    req.txs = vec![raw_tx(vec![send])];
+    let res = driver
+        .finalize_block(&mut ms, &req)
+        .unwrap_or_else(|e| panic!("aborted: {}", e.log));
+    let r = &res.tx_results[0];
+    assert_eq!((r.codespace.as_str(), r.code), ("sdk", 10), "{}", r.log);
+    assert!(r.log.contains("not ported"), "{}", r.log);
+    driver.commit(&mut ms).unwrap();
+}
+
+/// The ante keepers' not-ported paths (shared crate `x-ante`) record
+/// the not-ported behavior when the legacy driver supplies them.
+#[test]
+fn legacy_ante_deps_record_not_ported_paths() {
+    use x_ante::AnteDeps as _;
+    let update =
+        celestia_proto::Any::pack(&celestia_proto::ibc::core::client::v1::MsgUpdateClient {
+            client_id: "07-tendermint-0".into(),
+            client_message: Some(celestia_proto::Any {
+                type_url: "/x".into(),
+                value: Vec::new(),
+            }),
+            signer: String::new(),
+        });
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Check);
+    let deps = tx::ante_deps();
+    let _ = take_not_ported();
+    assert!(
+        deps.ibc_update_client_check(&mut ctx, &update, false)
+            .is_err()
+    );
+    assert!(take_not_ported().is_some_and(|w| w.contains("IBC update client check")));
+    assert!(
+        deps.ibc_packet_is_noop(&mut ctx, x_ante::IbcPacketMsg::RecvPacket, &update, false)
+            .is_err()
+    );
+    assert!(take_not_ported().is_some());
+    // The main app's deps do not record.
+    let main = crate::txpipe::ante_deps(None);
+    assert!(
+        main.ibc_update_client_check(&mut ctx, &update, false)
+            .is_err()
+    );
+    assert!(take_not_ported().is_none());
+}
+
+/// Records a not-ported behavior and swallows it in one phase.
+struct SwallowIn(&'static str);
+
+impl SwallowIn {
+    fn phase(&self, name: &str) {
+        if self.0 == name {
+            let _ = not_ported(sdk::error::sdk::not_supported(format!("{name} behavior")));
+        }
+    }
+}
+
+impl Modules for SwallowIn {
+    fn init_genesis(&mut self, _: &mut Context<'_>, _: &[u8]) -> Result<Vec<ValidatorUpdate>> {
+        self.phase("init_genesis");
+        Ok(Vec::new())
+    }
+
+    fn begin_block(&mut self, _: &mut Context<'_>, _: &TmHeader) -> Result<()> {
+        self.phase("begin_block");
+        Ok(())
+    }
+
+    fn deliver_tx(
+        &mut self,
+        _: &mut Context<'_>,
+        _: &mut kvstore::GasMeter,
+        _: &[u8],
+    ) -> TxOutcome {
+        TxOutcome {
+            gas_wanted: 1,
+            gas_used: 1,
+            events: Vec::new(),
+            result: Ok(TxSuccess::default()),
+        }
+    }
+
+    fn end_block(&mut self, _: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
+        self.phase("end_block");
+        Ok(Vec::new())
+    }
+}
+
+/// A not-ported behavior that InitGenesis, BeginBlock or EndBlock
+/// swallowed still fails the call; a stale record from before the block
+/// does not.
+#[test]
+fn not_ported_in_genesis_and_blockers_is_not_lost() {
+    let mut ms = v1_store();
+    let e = Driver::new(SwallowIn("init_genesis"))
+        .init_chain(&mut ms, &init_request())
+        .unwrap_err();
+    assert!(e.log.contains("init_genesis behavior"), "{}", e.log);
+    for phase in ["begin_block", "end_block"] {
+        let mut ms = v1_store();
+        let mut driver = Driver::new(SwallowIn(phase));
+        driver.init_chain(&mut ms, &init_request()).unwrap();
+        let e = driver
+            .finalize_block(&mut ms, &finalize_request(1))
+            .unwrap_err();
+        assert!(e.log.contains(&format!("{phase} behavior")), "{}", e.log);
+        assert!(e.log.contains("block 1 not executed"), "{}", e.log);
+    }
+    let mut ms = v1_store();
+    let mut driver = Driver::new(SwallowIn(""));
+    driver.init_chain(&mut ms, &init_request()).unwrap();
+    let _ = not_ported(sdk::error::sdk::not_supported("stale"));
+    driver
+        .finalize_block(&mut ms, &finalize_request(1))
+        .unwrap();
+    driver.commit(&mut ms).unwrap();
 }
 
 /// The v1 runTx aborts (records a not-ported behavior) for a transaction

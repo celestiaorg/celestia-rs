@@ -259,6 +259,10 @@ pub struct StoreDeps {
     pub ibc: Option<IbcHooks>,
     /// State-independent SDK message counter supplied by the app.
     pub sdk_message_counter: Option<fn(&[Any]) -> usize>,
+    /// Sees every error of a keeper path that is not ported here, before
+    /// it is returned (the app's historical driver records it and aborts
+    /// the block rather than commit a result Go would not produce).
+    pub on_not_ported: Option<fn(&SdkError)>,
 }
 
 impl StoreDeps {
@@ -269,7 +273,18 @@ impl StoreDeps {
             node_min_gas_price,
             ibc: None,
             sdk_message_counter: None,
+            on_not_ported: None,
         }
+    }
+
+    /// The error of a keeper path that is not ported, passed to
+    /// [`Self::on_not_ported`].
+    fn not_ported(&self, what: &str) -> SdkError {
+        let e = not_supported(what);
+        if let Some(f) = self.on_not_ported {
+            f(&e);
+        }
+        e
     }
 
     /// Sets the app's IBC checks.
@@ -403,7 +418,7 @@ impl AnteDeps for StoreDeps {
         if let Some(h) = self.ibc {
             return (h.packet_is_noop)(ctx, kind, msg, recheck);
         }
-        Err(not_supported("IBC redundant relay check"))
+        Err(self.not_ported("IBC redundant relay check"))
     }
 
     fn ibc_update_client_check(
@@ -425,6 +440,6 @@ impl AnteDeps for StoreDeps {
                 "protobuf Any message cannot be nil: failed unpacking protobuf message from Any",
             ));
         }
-        Err(not_supported("IBC update client check"))
+        Err(self.not_ported("IBC update client check"))
     }
 }

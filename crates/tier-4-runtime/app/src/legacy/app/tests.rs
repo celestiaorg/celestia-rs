@@ -379,3 +379,227 @@ fn v046_state_takes_no_snapshot() {
     app.wait_for_snapshot();
     assert!(app.list_snapshots().snapshots.is_empty());
 }
+
+/// [`Counter`], whose transaction `b"unported"` reaches a not-ported
+/// behavior after BeginBlock wrote.
+#[derive(Debug, Default)]
+struct AbortOn;
+
+impl Modules for AbortOn {
+    fn init_genesis(
+        &mut self,
+        ctx: &mut Context<'_>,
+        app_state: &[u8],
+    ) -> sdk::Result<Vec<ValidatorUpdate>> {
+        Counter.init_genesis(ctx, app_state)
+    }
+
+    fn begin_block(&mut self, ctx: &mut Context<'_>, header: &TmHeader) -> sdk::Result<()> {
+        Counter.begin_block(ctx, header)
+    }
+
+    fn deliver_tx(
+        &mut self,
+        ctx: &mut Context<'_>,
+        gas: &mut kvstore::GasMeter,
+        tx: &[u8],
+    ) -> TxOutcome {
+        if tx == b"unported" {
+            return TxOutcome {
+                gas_wanted: 1,
+                gas_used: 1,
+                events: Vec::new(),
+                result: Err(super::super::not_ported(sdk::error::sdk::unknown_request(
+                    "the handler of X",
+                ))),
+            };
+        }
+        Counter.deliver_tx(ctx, gas, tx)
+    }
+
+    fn end_block(&mut self, ctx: &mut Context<'_>) -> sdk::Result<Vec<ValidatorUpdate>> {
+        Counter.end_block(ctx)
+    }
+}
+
+fn abort_on() -> AppModules {
+    Box::new(AbortOn)
+}
+
+/// A node that stops between FinalizeBlock and Commit on a persistent v1
+/// state reopens at the last commit, finalizes the same block again and
+/// reaches the app hashes of an uninterrupted run.
+#[test]
+fn v1_crash_between_finalize_and_commit_replays_the_block() {
+    let straight = tempfile::tempdir().unwrap();
+    let mut app = App::open_with(straight.path(), AppOptions::default()).unwrap();
+    app.set_legacy_modules(counter);
+    app.init_chain(init_request(1)).unwrap();
+    let want = run(&mut app, 1..=4);
+    drop(app);
+
+    let home = tempfile::tempdir().unwrap();
+    let mut app = App::open_with(home.path(), AppOptions::default()).unwrap();
+    app.set_legacy_modules(counter);
+    app.init_chain(init_request(1)).unwrap();
+    let mut got = run(&mut app, 1..=2);
+    let uncommitted = app.finalize_block(finalize_request(3)).unwrap();
+    assert_eq!(uncommitted.app_hash, want[2]);
+    drop(app);
+
+    let mut app = App::open_with(home.path(), AppOptions::default()).unwrap();
+    app.set_legacy_modules(counter);
+    assert_eq!(app.info().last_block_height, 2);
+    assert_eq!(app.info().last_block_app_hash, want[1]);
+    got.extend(run(&mut app, 3..=4));
+    assert_eq!(got, want);
+}
+
+/// A block that reaches a not-ported behavior aborts through [`App`]:
+/// nothing is committed, the same block aborts again in place and after
+/// a reopen with the same error, and the committed state is unchanged.
+#[test]
+fn v1_abort_keeps_the_committed_state_and_aborts_again() {
+    let home = tempfile::tempdir().unwrap();
+    let mut app = App::open_with(home.path(), AppOptions::default()).unwrap();
+    app.set_legacy_modules(abort_on);
+    app.init_chain(init_request(1)).unwrap();
+    let hashes = run(&mut app, 1..=2);
+    let mut req = finalize_request(3);
+    // A transaction whose write only the aborted block makes.
+    req.txs.push(b"leak".to_vec());
+    req.txs.push(b"unported".to_vec());
+    let first = app.finalize_block(req.clone()).unwrap_err();
+    assert!(
+        first.log.contains("block 3 not executed: tx 3"),
+        "{}",
+        first.log
+    );
+    assert!(app.commit().is_err(), "nothing to commit");
+    let again = app.finalize_block(req.clone()).unwrap_err();
+    assert_eq!(again.log, first.log);
+    assert_eq!(app.info().last_block_height, 2);
+    assert_eq!(app.info().last_block_app_hash, hashes[1]);
+    // The aborted blocks left no writes behind: block 3 without the
+    // unported transaction matches the same block after a reopen.
+    let in_place = app.finalize_block(finalize_request(3)).unwrap();
+    drop(app);
+
+    let mut app = App::open_with(home.path(), AppOptions::default()).unwrap();
+    app.set_legacy_modules(abort_on);
+    assert_eq!(app.info().last_block_height, 2);
+    assert_eq!(app.info().last_block_app_hash, hashes[1]);
+    let after = app.finalize_block(req).unwrap_err();
+    assert_eq!(after.log, first.log);
+    drop(app);
+    let mut app = App::open_with(home.path(), AppOptions::default()).unwrap();
+    app.set_legacy_modules(abort_on);
+    let clean = app.finalize_block(finalize_request(3)).unwrap();
+    assert_eq!(in_place.app_hash, clean.app_hash);
+    app.commit().unwrap();
+    assert_eq!(app.ms.get("bank", b"leak").unwrap(), None);
+}
+
+/// A database with a cosmos-sdk v0.50 store set whose app version is 1
+/// (written when app version 1 ran as v9) does not open: app version 1
+/// now selects the v0.46 release, whose modules and handlers differ.
+#[test]
+fn v050_state_at_app_version_1_does_not_open() {
+    use prost::Message as _;
+    let home = tempfile::tempdir().unwrap();
+    let mut app = App::open_with(home.path(), AppOptions::default()).unwrap();
+    assert!(!app.is_sdk_v046_state());
+    app.ms
+        .set(
+            x_consensus::STORE_KEY,
+            x_consensus::PARAMS_KEY.to_vec(),
+            consensus_params(1).encode_to_vec(),
+        )
+        .unwrap();
+    app.ms.flush().unwrap();
+    app.ms.commit().unwrap();
+    drop(app);
+    let Err(e) = App::open_with(home.path(), AppOptions::default()) else {
+        panic!("opened a v0.50 state at app version 1");
+    };
+    assert!(e.log.contains("app version 1"), "{}", e.log);
+    assert!(e.log.contains("cosmos-sdk v0.50 store set"), "{}", e.log);
+}
+
+/// Fails InitGenesis after writing.
+#[derive(Debug, Default)]
+struct FailGenesis;
+
+impl Modules for FailGenesis {
+    fn init_genesis(
+        &mut self,
+        ctx: &mut Context<'_>,
+        _: &[u8],
+    ) -> sdk::Result<Vec<ValidatorUpdate>> {
+        ctx.set("blob", b"partial".to_vec(), b"x".to_vec())?;
+        Err(sdk::error::sdk::logic("bad genesis"))
+    }
+
+    fn begin_block(&mut self, _: &mut Context<'_>, _: &TmHeader) -> sdk::Result<()> {
+        Ok(())
+    }
+
+    fn deliver_tx(
+        &mut self,
+        ctx: &mut Context<'_>,
+        gas: &mut kvstore::GasMeter,
+        tx: &[u8],
+    ) -> TxOutcome {
+        Counter.deliver_tx(ctx, gas, tx)
+    }
+
+    fn end_block(&mut self, _: &mut Context<'_>) -> sdk::Result<Vec<ValidatorUpdate>> {
+        Ok(Vec::new())
+    }
+}
+
+fn fail_genesis() -> AppModules {
+    Box::new(FailGenesis)
+}
+
+/// A failed v1 InitChain leaves the app as it was: the v0.50 stores
+/// mounted, no driver and none of the genesis writes, so a later
+/// InitChain runs as on a fresh app.
+#[test]
+fn failed_v1_init_chain_restores_the_app() {
+    let mut want = App::new();
+    want.set_legacy_modules(counter);
+    want.init_chain(init_request(1)).unwrap();
+    let want = run(&mut want, 1..=1);
+
+    let mut app = App::new();
+    app.set_legacy_modules(fail_genesis);
+    let e = app.init_chain(init_request(1)).unwrap_err();
+    assert!(e.log.contains("bad genesis"), "{}", e.log);
+    assert!(!app.is_sdk_v046_state());
+    assert!(app.multistore().is_mounted("consensus"));
+    assert!(!app.multistore().is_mounted("qgb"));
+    assert_eq!(app.chain_id(), "");
+    app.set_legacy_modules(counter);
+    app.init_chain(init_request(1)).unwrap();
+    assert_eq!(run(&mut app, 1..=1), want);
+}
+
+/// A reopened v1 state checks the block header's chain ID against the
+/// stored one.
+#[test]
+fn reopened_v1_state_rejects_another_chain_id() {
+    let home = tempfile::tempdir().unwrap();
+    let mut app = App::open_with(home.path(), AppOptions::default()).unwrap();
+    app.set_legacy_modules(counter);
+    app.init_chain(init_request(1)).unwrap();
+    run(&mut app, 1..=1);
+    drop(app);
+    let mut app = App::open_with(home.path(), AppOptions::default()).unwrap();
+    app.set_legacy_modules(counter);
+    let mut req = finalize_request(2);
+    req.header.as_mut().unwrap().chain_id = "mocha-4".to_owned();
+    let e = app.finalize_block(req).unwrap_err();
+    assert!(e.log.contains("invalid chain ID"), "{}", e.log);
+    run(&mut app, 2..=2);
+}

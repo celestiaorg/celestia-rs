@@ -169,6 +169,15 @@ fn registry_check(ctx: &Context<'_>, tx: &Tx) -> Result<(), SdkError> {
     Ok(())
 }
 
+/// The ante keepers of the v1 ante handler: a keeper path that is not
+/// ported records it ([`super::record_not_ported`]).
+pub(crate) fn ante_deps() -> x_ante::StoreDeps {
+    x_ante::StoreDeps {
+        on_not_ported: Some(super::record_not_ported),
+        ..crate::txpipe::ante_deps(None)
+    }
+}
+
 /// The block gas meter (`ctx.BlockGasMeter()`): finite for a positive
 /// consensus `max_gas`, infinite otherwise.
 #[must_use]
@@ -314,7 +323,7 @@ fn run(ctx: &mut Context<'_>, block_gas: &mut GasMeter, tx_bytes: &[u8]) -> Ran 
         return Ran::early(u64::MAX, e);
     }
     let events_before = std::mem::take(&mut ctx.events);
-    let deps = crate::txpipe::ante_deps(None);
+    let deps = ante_deps();
     let ante = x_ante::ante_handle_v046(ctx, &tx, false, &deps);
     let ante_events = std::mem::replace(&mut ctx.events, events_before).take();
     let gas_wanted = match ante {
