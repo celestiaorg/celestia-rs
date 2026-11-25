@@ -501,8 +501,101 @@ pub fn allocate_tokens(ctx: &mut Context<'_>, total_power: i64, votes: &[VoteInf
     store::set_fee_pool(ctx, &pool)
 }
 
+/// cosmos-sdk v0.46 `AllocateTokens`: the previous proposer first gets
+/// `base + bonus * signed fraction` of the fees, then every voter its
+/// power share of `1 - proposer share - community tax`, and the
+/// remainder goes to the community pool.
+fn allocate_tokens_v046(
+    ctx: &mut Context<'_>,
+    sum_precommit_power: i64,
+    total_power: i64,
+    proposer: &[u8],
+    votes: &[VoteInfo],
+) -> Result<()> {
+    let fee_collector = x_auth::get_module_account(ctx, x_auth::FEE_COLLECTOR)?
+        .ok_or_else(|| sdk::error::go_panic("fee collector not set"))?;
+    let fc_addr = x_auth::Account::Module(fee_collector).address()?;
+    let fees_int = x_bank::get_all_balances(ctx, &fc_addr)?;
+    let fees = DecCoins::from_coins(&fees_int)?;
+    x_bank::send_from_module_to_module(ctx, x_auth::FEE_COLLECTOR, MODULE_NAME, &fees_int)?;
+    let mut pool = store::get_fee_pool(ctx)?;
+    if total_power == 0 {
+        pool = pool.add(&fees)?;
+        return store::set_fee_pool(ctx, &pool);
+    }
+    let fraction =
+        m(LegacyDec::new(sum_precommit_power).checked_quo(&LegacyDec::new(total_power)))?;
+    let params = store::get_params(ctx)?;
+    let base = params.base_proposer_reward.unwrap_or_default();
+    let bonus = params.bonus_proposer_reward.unwrap_or_default();
+    let proposer_mult = m(bonus
+        .checked_mul_truncate(&fraction)
+        .and_then(|b| base.checked_add(&b)))?;
+    let proposer_reward = fees.mul_dec_truncate(&proposer_mult)?;
+    let mut remaining = fees.clone();
+    // A missing proposer is only logged in Go.
+    if let Some(v) = x_staking::store::get_validator_by_cons_addr(ctx, proposer)? {
+        ctx.events.emit(event(
+            "proposer_reward",
+            [
+                ("amount", proposer_reward.to_string()),
+                ("validator", v.operator_address.clone()),
+            ],
+        ));
+        allocate_tokens_to_validator(ctx, &v, &proposer_reward)?;
+        remaining = remaining.sub(&proposer_reward)?;
+    }
+    let vote_mult = m(LegacyDec::one()
+        .checked_sub(&proposer_mult)
+        .and_then(|d| d.checked_sub(&params.community_tax)))?;
+    let fee_mult = fees.mul_dec_truncate(&vote_mult)?;
+    for vote in votes {
+        let (addr, power) = vote
+            .validator
+            .as_ref()
+            .map_or((Vec::new(), 0), |v| (v.address.clone(), v.power));
+        // Go calls a method on the nil validator and panics.
+        let v = x_staking::store::get_validator_by_cons_addr(ctx, &addr)?
+            .ok_or_else(x_staking::errors::no_validator_found)?;
+        let share = m(LegacyDec::new(power).checked_quo_truncate(&LegacyDec::new(total_power)))?;
+        let reward = fee_mult.mul_dec_truncate(&share)?;
+        allocate_tokens_to_validator(ctx, &v, &reward)?;
+        remaining = remaining.sub(&reward)?;
+    }
+    pool = pool.add(&remaining)?;
+    store::set_fee_pool(ctx, &pool)
+}
+
+/// cosmos-sdk v0.46 `BeginBlocker`: from height 2, allocate the collected
+/// fees to the previous proposer and the voters of the last commit (a
+/// vote counts as signed unless its flag is absent), then record this
+/// block's proposer.
+fn begin_block_v046(ctx: &mut Context<'_>) -> Result<()> {
+    let votes = ctx.vote_infos.clone();
+    let (mut total, mut signed) = (0i64, 0i64);
+    for v in &votes {
+        let power = v.validator.as_ref().map_or(0, |v| v.power);
+        total = total.wrapping_add(power);
+        if v.block_id_flag != BLOCK_ID_FLAG_ABSENT {
+            signed = signed.wrapping_add(power);
+        }
+    }
+    if ctx.header.height > 1 {
+        let previous = store::get_previous_proposer(ctx)?;
+        allocate_tokens_v046(ctx, signed, total, &previous, &votes)?;
+    }
+    let proposer = ctx.header.proposer_address.clone();
+    store::set_previous_proposer(ctx, &proposer)
+}
+
+/// `BlockIDFlagAbsent`.
+const BLOCK_ID_FLAG_ABSENT: i32 = 1;
+
 /// `BeginBlocker`.
 pub fn begin_block(ctx: &mut Context<'_>) -> Result<()> {
+    if ctx.is_sdk_v046() {
+        return begin_block_v046(ctx);
+    }
     let votes = ctx.vote_infos.clone();
     let total: i64 = votes
         .iter()

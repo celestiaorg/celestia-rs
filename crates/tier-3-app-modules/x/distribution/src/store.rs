@@ -309,6 +309,15 @@ pub fn set_previous_proposer(ctx: &mut Context<'_>, cons: &[u8]) -> Result<()> {
     ctx.set(STORE_KEY, PROPOSER.to_vec(), v)
 }
 
+/// cosmos-sdk v0.46 `GetPreviousProposerConsAddr`: the stored
+/// `gogotypes.BytesValue` (Go panics when it is unset).
+pub fn get_previous_proposer(ctx: &mut Context<'_>) -> Result<Vec<u8>> {
+    let b = ctx
+        .get(STORE_KEY, PROPOSER)?
+        .ok_or_else(|| sdk::error::sdk::logic("previous proposer not set"))?;
+    Ok(decode::<pbjson_types::BytesValue>(&b)?.value.to_vec())
+}
+
 /// `DelegatorStartingInfo`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartingInfo {

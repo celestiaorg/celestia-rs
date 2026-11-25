@@ -643,3 +643,233 @@ fn shared_modules_use_the_v046_layout_at_v1() {
         assert_eq!(ctx.get(x_staking::STORE_KEY, &[0x61]).unwrap(), None);
     });
 }
+
+/// A v1 context at `height` with the mainnet params, and two bonded
+/// validators with 50 % and no commission, 100 power each (the setup of
+/// cosmos-sdk v0.46 `TestAllocateTokensToManyValidators`).
+fn v046_two_validators(ms: &mut MultiStore, height: i64) -> (sdk::Context<'_>, [Vec<u8>; 2]) {
+    use x_staking::types::{BondStatus, Validator};
+    let header = sdk::Header {
+        chain_id: "celestia".into(),
+        height,
+        ..sdk::Header::default()
+    };
+    let mut ctx = sdk::Context::new(ms, header, sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    write_mainnet_genesis_params(&mut ctx).unwrap();
+    let mut cons = [Vec::new(), Vec::new()];
+    for (i, rate) in [(1u8, 5), (2, 0)] {
+        let pk = celestia_proto::Any::pack(&celestia_proto::cosmos::crypto::ed25519::PubKey {
+            key: vec![i; 32],
+        });
+        let op = x_staking::addr::val_to_string(&[i; 20]).unwrap();
+        let mut v = Validator::new(
+            op,
+            pk,
+            celestia_proto::cosmos::staking::v1beta1::Description::default(),
+        );
+        v.status = BondStatus::Bonded;
+        v.tokens = math::Int::from_u64(100_000_000);
+        v.delegator_shares = math::LegacyDec::new(100_000_000);
+        v.commission.rate = math::LegacyDec::new_with_prec(rate, 1).unwrap();
+        x_staking::store::set_validator(&mut ctx, &v).unwrap();
+        x_staking::store::set_validator_by_cons_addr(&mut ctx, &v).unwrap();
+        x_staking::store::set_validator_by_power_index(&mut ctx, &v).unwrap();
+        x_staking::store::set_last_validator_power(&mut ctx, &[i; 20], 100).unwrap();
+        x_distribution::keeper::initialize_validator(&mut ctx, &[i; 20]).unwrap();
+        x_slashing::add_pubkey(&mut ctx, &v.pubkey().unwrap()).unwrap();
+        cons[usize::from(i - 1)] = v.cons_addr().unwrap();
+    }
+    (ctx, cons)
+}
+
+fn vote(cons: &[u8], signed: bool) -> abci::VoteInfo {
+    abci::VoteInfo {
+        validator: Some(abci::Validator {
+            address: cons.to_vec(),
+            power: 100,
+        }),
+        block_id_flag: if signed { 2 } else { 1 },
+    }
+}
+
+/// cosmos-sdk v0.46 distribution pays the previous proposer
+/// `base + bonus * signed fraction` before the voters' shares: the
+/// expectations of v0.46 `TestAllocateTokensToManyValidators` (community
+/// tax 2 %, base 1 %, bonus 4 %, 100 utia of fees, both signed, the second
+/// validator proposed).
+#[test]
+fn v046_distribution_pays_the_proposer_reward() {
+    use x_distribution::store as ds;
+    let mut ms = v1_store();
+    let (mut ctx, cons) = v046_two_validators(&mut ms, 2);
+    params::set_distribution(
+        &mut ctx,
+        &serde_json::json!({"community_tax": "0.02", "base_proposer_reward": "0.01",
+            "bonus_proposer_reward": "0.04", "withdraw_addr_enabled": true}),
+    )
+    .unwrap();
+    x_distribution::store::set_fee_pool(&mut ctx, &sdk::dec_coins::DecCoins::new()).unwrap();
+    x_distribution::store::set_previous_proposer(&mut ctx, &cons[1]).unwrap();
+    let fc = x_auth::get_module_account(&mut ctx, x_auth::FEE_COLLECTOR)
+        .unwrap()
+        .unwrap();
+    let fc = x_auth::Account::Module(fc).address().unwrap();
+    x_bank::set_balance(&mut ctx, &fc, &sdk::coins::Coin::new("utia", 100)).unwrap();
+    ctx.vote_infos = vec![vote(&cons[0], true), vote(&cons[1], true)];
+    ctx.header.proposer_address = cons[0].clone();
+    x_distribution::begin_block(&mut ctx).unwrap();
+
+    let dec = |v: &sdk::dec_coins::DecCoins| v.to_string();
+    let s = |n: &str| format!("{n}utia");
+    let (a, b) = ([1u8; 20], [2u8; 20]);
+    assert_eq!(
+        dec(&ds::get_outstanding(&mut ctx, &a).unwrap()),
+        s("46.500000000000000000")
+    );
+    assert_eq!(
+        dec(&ds::get_outstanding(&mut ctx, &b).unwrap()),
+        s("51.500000000000000000")
+    );
+    assert_eq!(
+        dec(&ds::get_fee_pool(&mut ctx).unwrap()),
+        s("2.000000000000000000")
+    );
+    assert_eq!(
+        dec(&ds::get_commission(&mut ctx, &a).unwrap()),
+        s("23.250000000000000000")
+    );
+    assert!(ds::get_commission(&mut ctx, &b).unwrap().is_empty());
+    assert_eq!(
+        dec(&ds::get_current(&mut ctx, &a).unwrap().rewards),
+        s("23.250000000000000000")
+    );
+    assert_eq!(
+        dec(&ds::get_current(&mut ctx, &b).unwrap().rewards),
+        s("51.500000000000000000")
+    );
+    let reward = ctx
+        .events
+        .events()
+        .iter()
+        .find(|e| e.r#type == "proposer_reward")
+        .unwrap();
+    assert_eq!(reward.attributes[0].value, s("5.000000000000000000"));
+    assert_eq!(ds::get_previous_proposer(&mut ctx).unwrap(), cons[0]);
+}
+
+/// cosmos-sdk v0.46 slashing stores one `BoolValue` key per missed index
+/// (an empty value once signed again), counts a jailed validator, and
+/// does not port downtime jailing.
+#[test]
+fn v046_slashing_tracks_missed_blocks_per_index() {
+    let mut ms = v1_store();
+    let (mut ctx, cons) = v046_two_validators(&mut ms, 1);
+    params::set_slashing(
+        &mut ctx,
+        &serde_json::json!({"signed_blocks_window": "2", "min_signed_per_window": "0.5",
+            "downtime_jail_duration": "60s", "slash_fraction_double_sign": "0.02",
+            "slash_fraction_downtime": "0"}),
+    )
+    .unwrap();
+    for c in &cons {
+        let info = x_slashing::SigningInfo {
+            address: x_staking::addr::cons_to_string(c).unwrap(),
+            start_height: 0,
+            index_offset: 0,
+            jailed_until: sdk::time::unix_epoch(),
+            tombstoned: false,
+            missed_blocks_counter: 0,
+        };
+        x_slashing::set_signing_info(&mut ctx, c, &info).unwrap();
+    }
+    let key = |i| x_slashing::v046_missed_block_key(&cons[0], i);
+    let counter = |ctx: &mut sdk::Context<'_>| {
+        x_slashing::get_signing_info(ctx, &cons[0])
+            .unwrap()
+            .unwrap()
+            .missed_blocks_counter
+    };
+    // Height 1, index 0: missed.
+    ctx.vote_infos = vec![vote(&cons[0], false), vote(&cons[1], true)];
+    x_slashing::begin_block(&mut ctx).unwrap();
+    assert_eq!(
+        ctx.get(x_slashing::STORE_KEY, &key(0)).unwrap(),
+        Some(vec![0x08, 0x01])
+    );
+    assert_eq!(ctx.get(x_slashing::STORE_KEY, &key(1)).unwrap(), None);
+    assert_eq!(counter(&mut ctx), 1);
+    let liveness = ctx.events.take();
+    assert_eq!(liveness.len(), 1);
+    assert_eq!(liveness[0].r#type, "liveness");
+    // Height 2, index 1: signed, by a jailed validator (still counted).
+    let mut v = x_staking::store::validator(&mut ctx, &[1; 20]).unwrap();
+    v.jailed = true;
+    x_staking::store::set_validator(&mut ctx, &v).unwrap();
+    ctx.header.height = 2;
+    ctx.vote_infos = vec![vote(&cons[0], true), vote(&cons[1], true)];
+    x_slashing::begin_block(&mut ctx).unwrap();
+    assert_eq!(ctx.get(x_slashing::STORE_KEY, &key(1)).unwrap(), None);
+    // Height 3, index 0 again: signed, so the bit is cleared.
+    ctx.header.height = 3;
+    x_slashing::begin_block(&mut ctx).unwrap();
+    assert_eq!(
+        ctx.get(x_slashing::STORE_KEY, &key(0)).unwrap(),
+        Some(Vec::new())
+    );
+    assert_eq!(counter(&mut ctx), 0);
+    // Past the first window, two misses in a row exceed the one allowed:
+    // downtime jailing is not ported.
+    v.jailed = false;
+    x_staking::store::set_validator(&mut ctx, &v).unwrap();
+    for h in [4, 5] {
+        ctx.header.height = h;
+        ctx.vote_infos = vec![vote(&cons[0], false)];
+        let r = x_slashing::begin_block(&mut ctx);
+        assert_eq!(r.is_err(), h == 5, "height {h}");
+    }
+}
+
+/// cosmos-sdk v0.46 staking stores `HistoricalInfo` under the decimal
+/// height with the given header, and begins unbonding a validator
+/// without an unbonding ID.
+#[test]
+fn v046_staking_layout() {
+    use x_staking::types::BondStatus;
+    let mut ms = v1_store();
+    let (mut ctx, _) = v046_two_validators(&mut ms, 7);
+    let header = TmHeader {
+        chain_id: "celestia".into(),
+        height: 7,
+        data_hash: vec![9; 32],
+        ..TmHeader::default()
+    };
+    x_staking::abci::begin_block_v046(&mut ctx, &header).unwrap();
+    let hi = ctx.get(x_staking::STORE_KEY, b"P7").unwrap().unwrap();
+    let hi = <celestia_proto::cosmos::staking::v1beta1::HistoricalInfo as prost::Message>::decode(
+        hi.as_slice(),
+    )
+    .unwrap();
+    assert_eq!(hi.header, Some(header));
+    assert_eq!(hi.valset.len(), 2);
+
+    let v = x_staking::store::validator(&mut ctx, &[1; 20]).unwrap();
+    let v = x_staking::validator::begin_unbonding_validator(&mut ctx, v).unwrap();
+    assert_eq!(v.status, BondStatus::Unbonding);
+    assert!(v.unbonding_ids.is_empty());
+    let stored = x_staking::store::validator(&mut ctx, &[1; 20]).unwrap();
+    assert!(stored.unbonding_ids.is_empty());
+    for prefix in [0x37u8, 0x38, 0x39] {
+        let n = ctx
+            .multistore()
+            .range(
+                x_staking::STORE_KEY,
+                Some(&[prefix]),
+                Some(&[prefix + 1]),
+                false,
+            )
+            .unwrap()
+            .len();
+        assert_eq!(n, 0, "prefix {prefix:#x}");
+    }
+}

@@ -204,8 +204,7 @@ fn init_mint(ctx: &mut Context<'_>, g: &Json) -> Result<()> {
     let bond_denom = f.string("bond_denom")?;
     f.finish()?;
     let minter = x_mint::Minter {
-        inflation_rate: math::LegacyDec::new_with_prec(80, 3)
-            .map_err(|e| sdk::error::sdk::logic(e.to_string()))?,
+        inflation_rate: x_mint::v1_initial_inflation_rate(),
         annual_provisions: math::LegacyDec::zero(),
         previous_block_time: None,
         bond_denom,
