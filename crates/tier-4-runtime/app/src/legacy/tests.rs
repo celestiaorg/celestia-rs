@@ -554,3 +554,86 @@ fn genesis_params_decode_like_jsonpb() {
         );
     });
 }
+
+/// InitChain's genesis validator check: a non-empty request must list the
+/// validators InitGenesis returns.
+#[test]
+fn genesis_validators_must_match_the_request() {
+    use celestia_proto::celestia_core_proto::tendermint::crypto::{PublicKey, public_key::Sum};
+    let v = |k: u8, power: i64| abci::ValidatorUpdate {
+        pub_key: Some(PublicKey {
+            sum: Some(Sum::Ed25519(vec![k; 32])),
+        }),
+        power,
+    };
+    assert!(check_genesis_validators(&[], &[v(1, 1)]).is_ok());
+    assert!(check_genesis_validators(&[v(2, 1), v(1, 1)], &[v(1, 1), v(2, 1)]).is_ok());
+    assert!(check_genesis_validators(&[v(1, 1)], &[v(1, 2)]).is_err());
+    assert!(check_genesis_validators(&[v(1, 1)], &[v(1, 1), v(2, 1)]).is_err());
+}
+
+/// The blobstream hook stores the default EVM address of a new validator
+/// at app version 1, rejects a second validator with the same address,
+/// and does nothing where `qgb` is not mounted.
+#[test]
+fn qgb_hook_writes_default_evm_addresses_at_v1() {
+    use x_staking::StakingHooks as _;
+    let val = [7u8; 20];
+    let mut ms = v1_store();
+    let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    qgb::Hooks.after_validator_created(&mut ctx, &val).unwrap();
+    assert_eq!(
+        ctx.get(qgb::STORE_KEY, &[b"EVMAddress".as_slice(), &val].concat())
+            .unwrap(),
+        Some(val.to_vec())
+    );
+    let e = qgb::Hooks
+        .after_validator_created(&mut ctx, &val)
+        .unwrap_err();
+    assert_eq!((e.codespace, e.code), ("blobstream", 37));
+    ctx.consensus_params.version = Some(VersionParams { app: 2 });
+    assert!(
+        qgb::Hooks
+            .after_validator_created(&mut ctx, &[8; 20])
+            .is_ok()
+    );
+    drop(ctx);
+
+    let mut ms = MultiStore::new();
+    ms.mount("staking", sdk::Kind::Iavl).unwrap();
+    let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    assert!(qgb::Hooks.after_validator_created(&mut ctx, &val).is_ok());
+}
+
+/// The v1 InitChainer rejects what ibc-go v6 or the module manager
+/// reject: a v8 channel params field, genesis light clients, unknown
+/// fields, and a genesis with no validators.
+#[test]
+fn v1_init_chainer_rejects_invalid_genesis() {
+    use serde_json::json;
+    let ibc = |channel: serde_json::Value, client: serde_json::Value| {
+        json!({"ibc": {"client_genesis": client, "connection_genesis": {},
+            "channel_genesis": channel}})
+    };
+    let cases = [
+        ibc(json!({"params": {}}), json!({})),
+        ibc(
+            json!({}),
+            json!({"clients": [{"client_id": "07-tendermint-0"}]}),
+        ),
+        ibc(json!({}), json!({"bogus": 1})),
+        json!({"mint": {"bond_denom": "utia", "x": 1}}),
+        json!({"qgb": {"params": null}}),
+        json!({"crisis": {"constant_fee": {"denom": "utia"}}}),
+        json!({}),
+    ];
+    for (i, state) in cases.iter().enumerate() {
+        let mut ms = v1_store();
+        let mut ctx = sdk::Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        ctx.consensus_params.version = Some(VersionParams { app: 1 });
+        let bytes = serde_json::to_vec(state).unwrap();
+        assert!(genesis::init_chainer(&mut ctx, &bytes).is_err(), "case {i}");
+    }
+}

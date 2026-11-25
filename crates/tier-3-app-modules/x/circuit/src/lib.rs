@@ -54,6 +54,11 @@ pub fn get_permissions(ctx: &mut Context<'_>, addr: &[u8]) -> Result<Option<Perm
 
 /// `IsAllowed`: false when `msg_url` is in the disable list.
 pub fn is_allowed(ctx: &mut Context<'_>, msg_url: &str) -> Result<bool> {
+    // celestia-app v1 to v3 (cosmos-sdk v0.46) have no x/circuit: the
+    // store is mounted from v4 on.
+    if !ctx.multistore().is_mounted(STORE_KEY) {
+        return Ok(true);
+    }
     Ok(!ctx.has(STORE_KEY, &disable_key(msg_url))?)
 }
 

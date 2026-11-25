@@ -231,6 +231,23 @@ pub fn ante_handle_in_place(
     run_ante(ctx, tx, simulate, deps, true, None)
 }
 
+/// The celestia-app v1 to v3 ante handler (cosmos-sdk v0.46,
+/// `app/ante/ante.go` at v3.13.0) on `tx`, with [`ante_handle`]'s store
+/// branch, panic and out-of-gas handling.
+///
+/// Decorators that only celestia-app v1 to v3 have are not ported yet:
+/// `MsgVersioningGateKeeper`, `MaxTxSize` (a no-op below v3),
+/// `MaxTotalBlobSize` and `GovProposal`; the fee checker has no network
+/// minimum (app version 2 adds it).
+pub fn ante_handle_v046(
+    ctx: &mut Context<'_>,
+    tx: &sdk::tx::Tx,
+    simulate: bool,
+    deps: &impl AnteDeps,
+) -> Result<AnteOutcome, AnteError> {
+    run_ante_with(ctx, tx, simulate, deps, false, None, run_chain_v046)
+}
+
 fn run_ante(
     ctx: &mut Context<'_>,
     tx: &sdk::tx::Tx,
@@ -239,15 +256,37 @@ fn run_ante(
     in_place: bool,
     pending_next_sequence: Option<&PendingNextSequence<'_>>,
 ) -> Result<AnteOutcome, AnteError> {
+    run_ante_with(
+        ctx,
+        tx,
+        simulate,
+        deps,
+        in_place,
+        pending_next_sequence,
+        run_chain,
+    )
+}
+
+type Chain<D> =
+    fn(&mut Context<'_>, &sdk::tx::Tx, bool, &D, Option<&PendingNextSequence<'_>>) -> R<i64>;
+
+fn run_ante_with<D: AnteDeps>(
+    ctx: &mut Context<'_>,
+    tx: &sdk::tx::Tx,
+    simulate: bool,
+    deps: &D,
+    in_place: bool,
+    pending_next_sequence: Option<&PendingNextSequence<'_>>,
+    chain: Chain<D>,
+) -> Result<AnteOutcome, AnteError> {
     let original_meter = ctx.gas.clone();
     let cp = ctx.branch();
     // runTx recovers a panic of any decorator (HandlePanicDecorator
     // re-panics it with the tx appended), also one raised in code the
     // decorators call (the IBC handlers of the redundant relay check) that
     // Rust turned into another error or ignored.
-    let res = match kvstore::unwind::scope(|| {
-        run_chain(ctx, tx, simulate, deps, pending_next_sequence)
-    }) {
+    let res = match kvstore::unwind::scope(|| chain(ctx, tx, simulate, deps, pending_next_sequence))
+    {
         (_, Some(kvstore::unwind::Unwind::OutOfGas)) => {
             // Go unwinds to SetUpContext even if a callback translated or
             // ignored the store failure. Keep its tx meter at the first panic.
@@ -352,11 +391,39 @@ pub fn is_v12(ctx: &Context<'_>) -> bool {
     sdk::version::is_v12(sdk::version::executing(v))
 }
 
-fn run_chain(
+/// celestia-app v3.13.0 `NewAnteHandler` in order, with the decorators
+/// listed at [`ante_handle_v046`] left out.
+fn run_chain_v046<D: AnteDeps>(
     ctx: &mut Context<'_>,
     tx: &sdk::tx::Tx,
     simulate: bool,
-    deps: &impl AnteDeps,
+    deps: &D,
+    _: Option<&PendingNextSequence<'_>>,
+) -> R<i64> {
+    setup::set_up_context(ctx, tx, simulate)?;
+    basic::extension_options(tx)?;
+    basic::validate_basic(ctx, tx)?;
+    basic::timeout_height(ctx, tx)?;
+    basic::validate_memo(ctx, tx)?;
+    basic::consume_tx_size_gas(ctx, tx, simulate)?;
+    let priority = fee::deduct_fee_v046(ctx, tx, simulate, deps)?;
+    sigverify::set_pub_key(ctx, tx, simulate, deps)?;
+    sigverify::validate_sig_count(ctx, tx)?;
+    sigverify::sig_gas_consume(ctx, tx, simulate)?;
+    sigverify::sig_verification(ctx, tx, simulate, deps)?;
+    celestia::msg_exec_v9(tx)?;
+    celestia::min_gas_pfb(ctx, tx)?;
+    celestia::blob_share(ctx, tx, deps)?;
+    sigverify::increment_sequence(ctx, tx)?;
+    celestia::redundant_relay(ctx, tx, simulate, deps)?;
+    Ok(priority)
+}
+
+fn run_chain<D: AnteDeps>(
+    ctx: &mut Context<'_>,
+    tx: &sdk::tx::Tx,
+    simulate: bool,
+    deps: &D,
     pending_next_sequence: Option<&PendingNextSequence<'_>>,
 ) -> R<i64> {
     setup::set_up_context(ctx, tx, simulate)?;

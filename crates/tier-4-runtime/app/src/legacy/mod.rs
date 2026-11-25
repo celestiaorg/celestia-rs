@@ -14,7 +14,9 @@
 //! `baseapp/baseapp.go`, celestia-app v3.13.0 `app/app.go`.
 
 pub mod consensus_params;
+pub mod genesis;
 pub mod params;
+pub mod qgb;
 
 use celestia_proto::celestia_core_proto::abci::{
     self, ExecTxResult, ResponseFinalizeBlock, ResponseInitChain, ValidatorUpdate,
@@ -113,6 +115,66 @@ impl Modules for NoModules {
     fn end_block(&mut self, _: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
         Ok(Vec::new())
     }
+}
+
+/// The app version 1 module set. InitGenesis is complete; the begin and
+/// end blockers and transaction execution are not ported yet, so a block
+/// fails.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct V1Modules;
+
+impl Modules for V1Modules {
+    fn init_genesis(
+        &mut self,
+        ctx: &mut Context<'_>,
+        app_state: &[u8],
+    ) -> Result<Vec<ValidatorUpdate>> {
+        genesis::init_chainer(ctx, app_state)
+    }
+
+    fn begin_block(&mut self, _: &mut Context<'_>, _: &TmHeader) -> Result<()> {
+        Err(sdk::error::sdk::not_supported("v1 begin blockers"))
+    }
+
+    fn deliver_tx(&mut self, ctx: &mut Context<'_>, tx: &[u8]) -> TxOutcome {
+        NoModules.deliver_tx(ctx, tx)
+    }
+
+    fn end_block(&mut self, _: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
+        Err(sdk::error::sdk::not_supported("v1 end blockers"))
+    }
+}
+
+/// `BaseApp.InitChain`'s check of the genesis validators: when the request
+/// lists validators, InitGenesis must return the same set (compared after
+/// sorting each by public key).
+pub(crate) fn check_genesis_validators(
+    requested: &[ValidatorUpdate],
+    returned: &[ValidatorUpdate],
+) -> Result<()> {
+    if requested.is_empty() {
+        return Ok(());
+    }
+    if requested.len() != returned.len() {
+        return Err(sdk::error::sdk::logic(format!(
+            "len(RequestInitChain.Validators) != len(GenesisValidators) ({} != {})",
+            requested.len(),
+            returned.len()
+        )));
+    }
+    let key = |v: &ValidatorUpdate| v.pub_key.as_ref().map(prost::Message::encode_to_vec);
+    let mut a: Vec<&ValidatorUpdate> = requested.iter().collect();
+    let mut b: Vec<&ValidatorUpdate> = returned.iter().collect();
+    a.sort_by_key(|v| key(v));
+    b.sort_by_key(|v| key(v));
+    for (i, (x, y)) in a.iter().zip(&b).enumerate() {
+        if x != y {
+            return Err(sdk::error::sdk::logic(format!(
+                "genesisValidators[{i}] != req.Validators[{i}]"
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// What `runTx` reports for one transaction.
@@ -247,6 +309,7 @@ impl<M: Modules> Driver<M> {
             version.app = 1;
         }
         let app_version = version.app;
+        sdk::version::set_app_version(app_version);
         self.chain_id.clone_from(&req.chain_id);
         let header = Header {
             chain_id: req.chain_id.clone(),
@@ -259,6 +322,7 @@ impl<M: Modules> Driver<M> {
         self.app_version = app_version;
         ctx.consensus_params = cp;
         let validators = self.modules.init_genesis(&mut ctx, &req.app_state_bytes)?;
+        check_genesis_validators(&req.validators, &validators)?;
         if app_version != 1 {
             consensus_params::set_initial_app_version(&mut ctx, app_version)?;
         }
@@ -299,6 +363,7 @@ impl<M: Modules> Driver<M> {
         if self.app_version == 0 {
             self.app_version = app_version(ms);
         }
+        sdk::version::set_app_version(self.app_version);
         let tm_header = begin_block_header(&self.chain_id, self.app_version, req, full);
         let header = Header {
             chain_id: self.chain_id.clone(),
