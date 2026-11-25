@@ -16,7 +16,6 @@
 pub mod consensus_params;
 pub mod genesis;
 pub mod params;
-pub mod qgb;
 
 use celestia_proto::celestia_core_proto::abci::{
     self, ExecTxResult, ResponseFinalizeBlock, ResponseInitChain, ValidatorUpdate,

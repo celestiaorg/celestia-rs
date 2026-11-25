@@ -116,7 +116,7 @@ fn init_module(ctx: &mut Context<'_>, module: &str, g: &Json) -> Result<Vec<Vali
             f.finish()?;
             params::set_blob(ctx, &p)?;
         }
-        "qgb" => super::qgb::init_genesis(ctx, g)?,
+        "qgb" => init_qgb(ctx, g)?,
         "evidence" => x_evidence::init_genesis_json(ctx, g)?,
         "feegrant" => x_feegrant::init_genesis_json(ctx, g)?,
         "authz" => x_authz::init_genesis_json(ctx, g)?,
@@ -215,6 +215,16 @@ fn init_mint(ctx: &mut Context<'_>, g: &Json) -> Result<()> {
     x_mint::set_genesis_time(ctx, &t)?;
     x_auth::get_module_account(ctx, x_mint::MODULE_NAME)?;
     Ok(())
+}
+
+/// blobstream `InitGenesis`: the attestation nonces, then the params
+/// (`genesis.params`, a pointer).
+fn init_qgb(ctx: &mut Context<'_>, g: &Json) -> Result<()> {
+    let mut f = Fields::new("blobstream GenesisState", g)?;
+    let p = f.take("params").unwrap_or_default();
+    f.finish()?;
+    x_qgb::init_genesis(ctx)?;
+    params::set_qgb(ctx, &p)
 }
 
 /// crisis `InitGenesis`: `SetConstantFee`. The genesis invariant check

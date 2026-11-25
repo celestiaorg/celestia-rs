@@ -200,7 +200,7 @@ pub fn install_staking_hooks() {
         Box::new(x_distribution::Hooks),
         Box::new(x_slashing::Hooks),
         // celestia-app v1 only: a no-op unless the `qgb` store is mounted.
-        Box::new(crate::legacy::qgb::Hooks),
+        Box::new(x_qgb::Hooks),
     ])));
 }
 
