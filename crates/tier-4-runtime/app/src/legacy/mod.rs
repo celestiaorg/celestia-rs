@@ -20,6 +20,7 @@
 pub mod blockers;
 pub mod consensus_params;
 pub mod genesis;
+pub mod ibc;
 pub mod msgs;
 pub mod params;
 pub mod tx;

@@ -1494,3 +1494,124 @@ fn v046_create_validator_below_min_commission() {
     let reads = ctx.gas.take_charges();
     assert_eq!(reads.iter().filter(|(_, d)| *d == "ReadFlat").count(), 2);
 }
+
+/// The oracle's KV diff of block `height` in `store`
+/// (`kv-diffs.jsonl.gz`): the keys set, with their values.
+fn oracle_kv_set(height: i64, store: &str) -> BTreeMap<Vec<u8>, Vec<u8>> {
+    let mut text = String::new();
+    GzDecoder::new(
+        &include_bytes!("../../../../../conformance/fixtures/mainnet/v1-oracle/kv-diffs.jsonl.gz")
+            [..],
+    )
+    .read_to_string(&mut text)
+    .unwrap();
+    let d = text
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .find(|d| d["height"] == height && d["store"] == store)
+        .unwrap();
+    d["set"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            (
+                hex::decode(p[0].as_str().unwrap()).unwrap(),
+                hex::decode(p[1].as_str().unwrap()).unwrap(),
+            )
+        })
+        .collect()
+}
+
+/// ibc-go v6 `MsgCreateClient` of mainnet transaction 2:3 writes the
+/// keys and values the Go oracle's block 2 wrote for `07-tendermint-0`
+/// (client state, consensus state and its metadata), in v6's order of
+/// store accesses, and emits v6's events.
+#[test]
+fn v6_create_client_matches_the_oracle() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let tx = crate::txpipe::decode_tx(&mainnet_txs(2)[3]).unwrap();
+    let msg = tx.msgs()[0].clone();
+    assert_eq!(msg.type_url, "/ibc.core.client.v1.MsgCreateClient");
+    let mut ms = v1_store();
+    let header = sdk::Header {
+        chain_id: "celestia".into(),
+        height: 2,
+        // Block 2's time.
+        time: pbjson_types::Timestamp {
+            seconds: 1_698_760_802,
+            nanos: 814_598_743,
+        },
+        ..sdk::Header::default()
+    };
+    let mut ctx = sdk::Context::new(&mut ms, header, sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    params::set_ibc_client(
+        &mut ctx,
+        &serde_json::json!({"allowed_clients": ["06-solomachine", "07-tendermint"]}),
+    )
+    .unwrap();
+    x_ibc::client::set_next_client_sequence(&mut ctx, 0).unwrap();
+    msgs::validate_basic(&msg).unwrap();
+    ctx.gas = kvstore::GasMeter::new(1_000_000);
+    ctx.gas.record_charges();
+    msgs::route(&mut ctx, &msg).unwrap();
+    let descriptors: Vec<_> = ctx
+        .gas
+        .take_charges()
+        .into_iter()
+        .filter(|(_, d)| d.ends_with("Flat"))
+        .map(|(_, d)| d)
+        .collect();
+    // AllowedClients, the client sequence, then five writes.
+    assert_eq!(
+        descriptors,
+        [
+            "ReadFlat",
+            "ReadFlat",
+            "WriteFlat",
+            "WriteFlat",
+            "WriteFlat",
+            "WriteFlat",
+            "WriteFlat",
+            "WriteFlat"
+        ]
+    );
+    let events: Vec<String> = ctx
+        .events
+        .events()
+        .iter()
+        .map(|e| {
+            format!(
+                "{}{:?}",
+                e.r#type,
+                e.attributes
+                    .iter()
+                    .map(|a| (&a.key, &a.value))
+                    .collect::<Vec<_>>()
+            )
+        })
+        .collect();
+    assert_eq!(
+        events,
+        [
+            r#"create_client[("client_id", "07-tendermint-0"), ("client_type", "07-tendermint"), ("consensus_height", "1-6122811")]"#,
+            r#"message[("module", "ibc_client")]"#,
+        ]
+    );
+    drop(ctx);
+    let want = oracle_kv_set(2, x_ibc::STORE_KEY);
+    for (k, v) in want
+        .iter()
+        .filter(|(k, _)| k.starts_with(b"clients/07-tendermint-0/"))
+    {
+        // The oracle's block also ran four more clients and its begin
+        // blocker; client 0's processed time is block 2's time.
+        assert_eq!(
+            ms.get(x_ibc::STORE_KEY, k).unwrap().as_ref(),
+            Some(v),
+            "{}",
+            String::from_utf8_lossy(k)
+        );
+    }
+}

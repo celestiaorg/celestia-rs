@@ -133,6 +133,9 @@ fn validate_create_validator(
 
 /// `msg.ValidateBasic()` of a v0.46 message.
 pub fn validate_basic(msg: &Any) -> Result<()> {
+    if let Some(r) = super::ibc::validate_basic(msg) {
+        return r;
+    }
     if msg.type_url == bank::MsgSend::type_url() {
         let m: bank::MsgSend = decode(msg)?;
         acc_address(&m.from_address, "from")?;
@@ -180,6 +183,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
     }
     if msg.type_url == staking::MsgCreateValidator::type_url() {
         return Ok(Any::pack(&create_validator(ctx, &decode(msg)?)?));
+    }
+    if let Some(r) = super::ibc::route(ctx, msg) {
+        return r;
     }
     Err(errs::unknown_request(format!(
         "the cosmos-sdk v0.46 handler of {} is not ported",
