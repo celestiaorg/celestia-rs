@@ -34,7 +34,7 @@ jobs:
       - name: Fuzz square construction and erasure coding
         run: |
           mkdir -p "$RUNNER_TEMP/square-corpus"
-          cargo fuzz run --sanitizer address square \
+          cargo +nightly fuzz run --sanitizer address square \
             "$RUNNER_TEMP/square-corpus" fuzz/corpus/square -- \
             -max_total_time=300 -rss_limit_mb=4096 -timeout=30 -print_final_stats=1
       - uses: actions/upload-artifact@v7
