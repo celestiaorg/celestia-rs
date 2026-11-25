@@ -14,6 +14,7 @@
 //! `baseapp/baseapp.go`, celestia-app v3.13.0 `app/app.go`.
 
 pub mod consensus_params;
+pub mod params;
 
 use celestia_proto::celestia_core_proto::abci::{
     self, ExecTxResult, ResponseFinalizeBlock, ResponseInitChain, ValidatorUpdate,
@@ -43,9 +44,9 @@ pub fn executes(v: u64) -> bool {
 #[must_use]
 pub fn app_version(ms: &MultiStore) -> u64 {
     let key = [
-        consensus_params::SUBSPACE.as_bytes(),
+        consensus_params::SUBSPACE.name.as_bytes(),
         b"/",
-        consensus_params::VERSION,
+        consensus_params::VERSION.as_bytes(),
     ]
     .concat();
     let stored = ms

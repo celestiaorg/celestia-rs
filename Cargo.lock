@@ -9048,6 +9048,8 @@ dependencies = [
 name = "x-params"
 version = "0.0.1"
 dependencies = [
+ "gostr",
+ "math",
  "sdk",
 ]
 
