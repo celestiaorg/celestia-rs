@@ -18,7 +18,7 @@ curve25519-dalek-ng = "4.1"
 ed25519-consensus = { version = "2.1", default-features = false }
 hash = { path = "../hash" }
 # libsecp256k1 (C, vendored): ~2.5x k256's verification speed (CheckTx).
-secp256k1 = "0.31"
+secp256k1 = "0.33"
 thiserror = "2"
 
 [dev-dependencies]
