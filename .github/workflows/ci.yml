@@ -16,7 +16,47 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          sparse-checkout: .github/workflows/ci.yml
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Classify the pull request
+        id: classify
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Classify both the PR diff and the merged result. Fall back to full
+          # CI if the merge ref doesn't match the event or either diff fails.
+          [[ $(git rev-parse --verify HEAD^1) == "$BASE_SHA" &&
+             $(git rev-parse --verify HEAD^2) == "$HEAD_SHA" ]] || exit 0
+          paths="$RUNNER_TEMP/ci-changed-paths"
+          git diff --no-renames --name-only -z "$BASE_SHA...$HEAD_SHA" -- > "$paths" || exit 0
+          [[ -s "$paths" ]] || exit 0
+          git diff --no-renames --name-only -z "$BASE_SHA" HEAD -- >> "$paths" || exit 0
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              README.md|docs/.nojekyll|docs/MODULES.md|docs/hardware.md|docs/operator-guide.md|\
+              docs/index.html|docs/site/copy.js|docs/site/square.webp|docs/site/style.css) ;;
+              *) exit 0 ;;
+            esac
+          done < "$paths"
+          echo 'docs_only=true' >> "$GITHUB_OUTPUT"
+
   fmt:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -26,6 +66,8 @@ jobs:
       - run: cargo fmt --all --check
 
   clippy:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -36,6 +78,35 @@ jobs:
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
+    needs: [changes, rust-tests, doctests]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        if: needs.changes.outputs.docs_only == 'true'
+        with:
+          fetch-depth: 2
+      - name: Validate documentation changes
+        if: needs.changes.outputs.docs_only == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git diff --check "$BASE_SHA" HEAD --
+          if [[ -f docs/site/copy.js ]]; then
+            node --check docs/site/copy.js
+          fi
+      - name: Require both Linux test suites
+        if: needs.changes.outputs.docs_only != 'true'
+        env:
+          RUST_TESTS: ${{ needs.rust-tests.result }}
+          DOCTESTS: ${{ needs.doctests.result }}
+        run: |
+          printf 'Unit and integration tests: %s\nDoctests: %s\n' "$RUST_TESTS" "$DOCTESTS"
+          [[ "$RUST_TESTS" == success && "$DOCTESTS" == success ]]
+
+  rust-tests:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -43,6 +114,8 @@ jobs:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: test
       - name: Fuzz evidence accounting
         run: python3 -m unittest discover -s crates/fuzz-diff/tests -p '*_test.py' -v
       - name: Quality evidence accounting
@@ -61,9 +134,28 @@ jobs:
         run: |
           python3 -m unittest -v conformance/grpc-lifecycle/test_verify.py
           python3 conformance/grpc-lifecycle/verify.py conformance/grpc-lifecycle/v10.5.0
-      - run: cargo test --workspace --all-features
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-nextest@0.9.152
+      - name: Linux unit and integration tests
+        run: cargo nextest run --locked --workspace --all-features --profile ci
+
+  doctests:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux doctests
+        run: cargo test --locked --workspace --all-features --doc
 
   rpc-evidence:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -104,6 +196,8 @@ jobs:
   # A small, deterministic budget protects the signer and socket boundary.
   # The complete per-crate report runs nightly, without a second PR workspace build.
   coverage-critical:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -141,6 +235,8 @@ jobs:
   # (unit tests of the core crates, one devnet-conformance replay, the CLI
   # on a fresh home). The full suite runs on Linux above.
   macos:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -174,6 +270,8 @@ jobs:
         run: cargo test --release --locked -p devnet-conformance --test replay_scenarios -- --exact staking_parity
 
   deny:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -188,6 +286,8 @@ jobs:
   # must keep building. Module downloads are retried: proxy.golang.org
   # has transient failures, and the module cache is restored between runs.
   go-modules:
+    needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -223,12 +323,18 @@ jobs:
       GOFLAGS: -mod=mod
       GOPROXY: https://proxy.golang.org,direct
     steps:
+      # Keep every required matrix check present on documentation-only PRs.
+      - if: needs.changes.outputs.docs_only == 'true'
+        run: echo 'Go conformance inputs unchanged.'
       - uses: actions/checkout@v7.0.1
+        if: needs.changes.outputs.docs_only != 'true'
       - uses: actions/setup-go@v7
+        if: needs.changes.outputs.docs_only != 'true'
         with:
           go-version-file: conformance/${{ matrix.module }}/go.mod
           cache-dependency-path: conformance/${{ matrix.module }}/go.sum
       - name: Download modules (with retries)
+        if: needs.changes.outputs.docs_only != 'true'
         working-directory: conformance/${{ matrix.module }}
         run: |
           for n in 1 2 3 4 5; do
@@ -238,13 +344,15 @@ jobs:
           done
           exit 1
       - name: Build
+        if: needs.changes.outputs.docs_only != 'true'
         working-directory: conformance/${{ matrix.module }}
         # Keep binaries out of the source tree checked by the evidence tests.
         run: go build -o "$(mktemp -d)/" ./...
       - name: Test
         if: >-
+          needs.changes.outputs.docs_only != 'true' && (
           matrix.module == 'fixturegen' || matrix.module == 'antereplay' ||
           matrix.module == 'fuzzoracle/v10' || matrix.module == 'pfm-fork' ||
-          matrix.module == 'websocket-lifecycle'
+          matrix.module == 'websocket-lifecycle')
         working-directory: conformance/${{ matrix.module }}
         run: go test ./...

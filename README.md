@@ -1,10 +1,13 @@
 # celestia-rs
 
-A Rust implementation of a Celestia consensus node, wire- and
-consensus-compatible with Go [celestia-app](https://github.com/celestiaorg/celestia-app)
-and [celestia-core](https://github.com/celestiaorg/celestia-core). One
-binary, `celestia-rs`, runs the state machine, Tendermint consensus, P2P,
-mempool, RPC and gRPC.
+`celestia-rs` runs a Celestia consensus node, an optional data availability
+(DA) bridge and a standalone DA light node from one Rust binary. Its consensus
+node is wire- and consensus-compatible with Go
+[celestia-app](https://github.com/celestiaorg/celestia-app) and
+[celestia-core](https://github.com/celestiaorg/celestia-core). The DA roles
+interoperate with Go [celestia-node](https://github.com/celestiaorg/celestia-node)
+over the DA peer and RPC protocols exercised by the
+[mixed-node conformance suite](conformance/da/README.md).
 
 [Operator website](https://celestiaorg.github.io/celestia-rs/) · Quickstart, DA bridge setup, performance charts and operator FAQ.
 
@@ -50,7 +53,7 @@ See the [milestones](MILESTONES.md) for qualification progress and the
 - **Full node and validator in Rust:** ABCI++ app, Tendermint BFT consensus
   (celestia-core semantics, incl. block propagation), P2P (secret
   connection, MConn, PEX), CAT mempool, block sync, state sync, evidence,
-  light client.
+  Tendermint light client for state sync.
 - **Interoperates with Go nodes:** peers, gossips blocks and txs, and reaches
   consensus in mixed Go + Rust validator sets.
 - **App-hash parity with Go**, checked by replaying a corpus of devnet
@@ -62,6 +65,47 @@ See the [milestones](MILESTONES.md) for qualification progress and the
   pruning, Prometheus metrics, double-sign protection.
 - **Built for a Mac Mini M4** (16 GB / 512 GB, [`docs/hardware.md`](docs/hardware.md)):
   release archives for macOS and Linux, launchd and systemd units.
+
+## Architecture
+
+| Role | Command | What it does |
+|---|---|---|
+| Consensus full node or validator | `celestia-rs start` | Executes blocks and maintains application state. A validator also participates in consensus voting. |
+| DA bridge | `celestia-rs start` with a bridge listener | Reads committed blocks from the local blockstore, indexes verified extended headers, and serves DA peer requests or authenticated DA JSON-RPC on the configured listeners. |
+| DA light node | `celestia-rs da-light` | Runs in a separate process and home. It follows signed headers from a trust anchor, verifies randomly selected shares and stores sampled headers. |
+
+```mermaid
+flowchart TB
+    consensusPeers["Rust or Go consensus peers"]
+    daPeers["Other DA peers, including Go celestia-node"]
+    clients["DA RPC clients"]
+
+    subgraph start["celestia-rs start"]
+        consensus["Tendermint consensus and app"]
+        blocks[("Consensus blockstore")]
+        bridge["Optional DA bridge"]
+        consensus -->|Committed blocks| blocks
+        blocks -->|Local reads| bridge
+    end
+
+    subgraph lightProcess["celestia-rs da-light"]
+        light["Header verification and share sampling"]
+        lightStore[("Sampled headers and pending coordinates")]
+        light --> lightStore
+    end
+
+    consensusPeers <-->|Consensus P2P| consensus
+    bridge -->|Extended headers, shares and proofs| light
+    bridge <-->|DA P2P| daPeers
+    daPeers <-->|DA P2P| light
+    bridge -->|Authenticated JSON-RPC| clients
+    light -->|Authenticated JSON-RPC| clients
+```
+
+The bridge-to-light connection uses DA libp2p. The light node can sample via
+DA peers independently of the bridge shown here. See the
+[operator guide](docs/operator-guide.md#3-quick-starts) for listener
+configuration, data retention and trust inputs.
 
 ## Performance vs Go
 
@@ -93,12 +137,18 @@ for the method and caveats.
 Install a release ([above](#install)), or build from source:
 
 ```
-cargo build --release -p celestia-rs
+cargo build --locked --release -p celestia-rs --features da-light
 ```
 
-The operator guide covers running a node and has validator runbooks for
-[Mocha](docs/operator-guide.md#11-running-a-mocha-validator-on-a-mac-m13) and
-[mainnet](docs/operator-guide.md#12-mainnet-validator-m14).
+Release builds from v0.1.0-rc.8 include both experimental DA roles. The
+`da-light` build feature includes the bridge, and `start` enables each DA
+listener only when configured.
+
+- [Run a consensus node](docs/operator-guide.md#3-quick-starts) or follow the
+  validator runbooks for [Mocha](docs/operator-guide.md#11-running-a-mocha-validator-on-a-mac-m13)
+  and [mainnet](docs/operator-guide.md#12-mainnet-validator-m14).
+- [Run an integrated DA bridge](docs/operator-guide.md#experimental-da-bridge-on-a-private-network).
+- [Run a standalone DA light node](docs/operator-guide.md#standalone-da-light-node).
 
 ## Development
 
