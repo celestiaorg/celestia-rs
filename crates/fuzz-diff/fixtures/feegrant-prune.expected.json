@@ -1,0 +1,32 @@
+[
+  {
+    "type_url": "/cosmos.feegrant.v1beta1.MsgGrantAllowance",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.feegrant.v1beta1.MsgGrantAllowance",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.feegrant.v1beta1.MsgPruneAllowances",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  },
+  {
+    "type_url": "/cosmos.feegrant.v1beta1.MsgRevokeAllowance",
+    "codespace": "feegrant",
+    "code": 5,
+    "log_contains": "no allowance"
+  },
+  {
+    "type_url": "/cosmos.feegrant.v1beta1.MsgRevokeAllowance",
+    "codespace": "",
+    "code": 0,
+    "log_contains": ""
+  }
+]

@@ -244,3 +244,7 @@ v9-authz-feegrant 80 0 17376 DELIVER_UPGRADE_SKIP_REQUIRE=1
 # must halt at H, restart persistently under v10 semantics, apply the handler,
 # restart again and commit a signed H+1 recovery without changing Info version.
 v9-authz-feegrant 82 0 17377 DELIVER_UPGRADE_RESTART_REQUIRE=1 GO_APPD_NEXT=v10
+# Require permissionless pruning to delete an expired fee allowance and
+# preserve a live allowance before automatic EndBlock cleanup.
+authz-feegrant 3 0 17386 DELIVER_TIME_JUMP_AT=2 DELIVER_TIME_JUMP_SECONDS=31536000 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/feegrant-prune.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/feegrant-prune.expected.json
+v9-authz-feegrant 3 0 17386 DELIVER_TIME_JUMP_AT=2 DELIVER_TIME_JUMP_SECONDS=31536000 DELIVER_SCRIPT=crates/fuzz-diff/fixtures/feegrant-prune.script DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/feegrant-prune.expected.json

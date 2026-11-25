@@ -119,6 +119,14 @@ for scen in gov v9-gov; do
 done
 for scen in authz-feegrant v9-authz-feegrant; do
   case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
+  run "feegrant-prune-$scen" GO_APPD="$A" \
+    DELIVER_TIME_JUMP_AT=2 DELIVER_TIME_JUMP_SECONDS=31536000 \
+    DELIVER_SCRIPT=crates/fuzz-diff/fixtures/feegrant-prune.script \
+    DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/feegrant-prune.expected.json -- \
+    crates/fuzz-diff/deliver-diff.sh "$scen" 3 0 17386
+done
+for scen in authz-feegrant v9-authz-feegrant; do
+  case $scen in v9-*) A=$V9 ;; *) A=$V10 ;; esac
   run "send-authz-$scen" GO_APPD="$A" \
     DELIVER_SCRIPT=crates/fuzz-diff/fixtures/authz-boundaries.script \
     DELIVER_SCRIPT_REQUIRE=crates/fuzz-diff/fixtures/authz-boundaries.expected.json -- \
