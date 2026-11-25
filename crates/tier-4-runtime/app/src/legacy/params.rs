@@ -27,7 +27,7 @@ fn bad(what: impl std::fmt::Display) -> SdkError {
 
 /// The members of one JSON object, consumed field by field; any member
 /// left over is an unknown field.
-struct Fields {
+pub(super) struct Fields {
     message: &'static str,
     members: Map<String, Json>,
 }
@@ -51,7 +51,7 @@ fn json_name(orig: &str) -> String {
 
 impl Fields {
     /// The members of `v`; `null` is the zero message.
-    fn new(message: &'static str, v: &Json) -> Result<Self> {
+    pub(super) fn new(message: &'static str, v: &Json) -> Result<Self> {
         let members = match v {
             Json::Null => Map::new(),
             Json::Object(m) => m.clone(),
@@ -62,7 +62,7 @@ impl Fields {
 
     /// The member for proto field `orig`, by JSON name or proto name (the
     /// JSON name wins when both are present). `None` when absent or `null`.
-    fn take(&mut self, orig: &'static str) -> Option<Json> {
+    pub(super) fn take(&mut self, orig: &'static str) -> Option<Json> {
         let by_orig = self.members.remove(orig);
         let camel = json_name(orig);
         let by_json = if camel == orig {
@@ -78,7 +78,7 @@ impl Fields {
     }
 
     /// An integer field: a JSON number or a quoted one (`None` is 0).
-    fn int<T: std::str::FromStr + Default>(&mut self, orig: &'static str) -> Result<T> {
+    pub(super) fn int<T: std::str::FromStr + Default>(&mut self, orig: &'static str) -> Result<T> {
         let quoted = match self.take(orig) {
             None => return Ok(T::default()),
             Some(Json::String(s)) => s,
@@ -112,7 +112,7 @@ impl Fields {
         }
     }
 
-    fn string(&mut self, orig: &'static str) -> Result<String> {
+    pub(super) fn string(&mut self, orig: &'static str) -> Result<String> {
         match self.take(orig) {
             None => Ok(String::new()),
             Some(Json::String(s)) => Ok(s),
@@ -142,7 +142,7 @@ impl Fields {
     }
 
     /// A repeated field: `None` when absent or `null` (a nil slice).
-    fn list(&mut self, orig: &'static str) -> Result<Option<Vec<Json>>> {
+    pub(super) fn list(&mut self, orig: &'static str) -> Result<Option<Vec<Json>>> {
         match self.take(orig) {
             None => Ok(None),
             Some(Json::Array(a)) => Ok(Some(a)),
@@ -151,7 +151,7 @@ impl Fields {
     }
 
     /// Rejects any member not consumed (`unknown field`).
-    fn finish(self) -> Result<()> {
+    pub(super) fn finish(self) -> Result<()> {
         match self.members.keys().next() {
             None => Ok(()),
             Some(k) => Err(bad(format!("unknown field \"{k}\" in {}", self.message))),

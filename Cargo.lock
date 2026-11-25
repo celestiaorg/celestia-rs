@@ -8750,6 +8750,7 @@ dependencies = [
  "prost 0.13.5",
  "sdk",
  "serde_json",
+ "x-params",
 ]
 
 [[package]]
@@ -8783,6 +8784,7 @@ dependencies = [
  "sdk",
  "serde_json",
  "x-auth",
+ "x-params",
 ]
 
 [[package]]
@@ -8846,6 +8848,7 @@ dependencies = [
  "serde_json",
  "x-auth",
  "x-bank",
+ "x-params",
  "x-staking",
 ]
 
@@ -9051,6 +9054,7 @@ dependencies = [
  "gostr",
  "math",
  "sdk",
+ "serde_json",
 ]
 
 [[package]]
@@ -9077,6 +9081,7 @@ dependencies = [
  "serde_json",
  "x-auth",
  "x-bank",
+ "x-params",
  "x-staking",
 ]
 
@@ -9095,6 +9100,7 @@ dependencies = [
  "serde_json",
  "x-auth",
  "x-bank",
+ "x-params",
 ]
 
 [[package]]

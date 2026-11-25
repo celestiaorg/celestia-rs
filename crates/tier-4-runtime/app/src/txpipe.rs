@@ -49,3 +49,15 @@ pub(crate) fn ante_deps(node_min_gas_price: Option<math::LegacyDec>) -> x_ante::
 pub fn apply_validator_set(ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
     x_staking::apply_and_return_validator_set_updates(ctx)
 }
+
+/// [`ante`] for celestia-app v1 to v3 ([`x_ante::ante_handle_v046`]).
+pub fn ante_v046(
+    ctx: &mut Context<'_>,
+    tx: &Tx,
+    simulate: bool,
+) -> core::result::Result<u64, (sdk::SdkError, u64)> {
+    let deps = ante_deps(None);
+    x_ante::ante_handle_v046(ctx, tx, simulate, &deps)
+        .map(|o| o.gas_wanted)
+        .map_err(|e| (e.error, e.gas_wanted))
+}

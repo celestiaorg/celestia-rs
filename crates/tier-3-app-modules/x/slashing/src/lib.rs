@@ -235,12 +235,33 @@ impl Params {
 
 /// `GetParams` (zero params when unset).
 pub fn get_params(ctx: &mut Context<'_>) -> Result<Params> {
+    // cosmos-sdk v0.46 (app versions 1 to 3) keeps the params in the
+    // x/params subspace `slashing`, which only its InitGenesis writes.
+    if ctx.is_sdk_v046() {
+        use x_params::v046::{get_dec, get_i64};
+        let jail = get_i64(ctx, "slashing", "DowntimeJailDuration")?;
+        return Ok(Params {
+            signed_blocks_window: get_i64(ctx, "slashing", "SignedBlocksWindow")?,
+            min_signed_per_window: get_dec(ctx, "slashing", "MinSignedPerWindow")?,
+            downtime_jail_duration: Duration {
+                seconds: jail / 1_000_000_000,
+                nanos: i32::try_from(jail % 1_000_000_000)
+                    .map_err(|e| errs::logic(e.to_string()))?,
+            },
+            slash_fraction_double_sign: get_dec(ctx, "slashing", "SlashFractionDoubleSign")?,
+            slash_fraction_downtime: get_dec(ctx, "slashing", "SlashFractionDowntime")?,
+        });
+    }
     let b = ctx.get(STORE_KEY, PARAMS)?.unwrap_or_default();
     Params::from_wire(&decode(&b)?)
 }
 
 /// `SetParams`.
 pub fn set_params(ctx: &mut Context<'_>, p: &Params) -> Result<()> {
+    if ctx.is_sdk_v046() {
+        // Subspace `slashing` (written by the v0.46 InitGenesis).
+        return Ok(());
+    }
     ctx.set(STORE_KEY, PARAMS.to_vec(), p.encode())
 }
 
