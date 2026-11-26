@@ -72,7 +72,12 @@ func openDB(dir string) (tmdb.DB, error) {
 	case "goleveldb":
 		if recoverDB {
 			// Rebuild the manifest of a crash-consistent copy (e.g. a disk
-			// snapshot of a running node); this rewrites the copy's manifest.
+			// snapshot of a running node); this rewrites the copy's manifest
+			// and deletes files goleveldb does not know, so never run it on
+			// a pebble database (pebble writes OPTIONS-* files).
+			if m, _ := filepath.Glob(filepath.Join(dir, "application.db", "OPTIONS-*")); len(m) > 0 {
+				return nil, fmt.Errorf("application.db is a pebble database; use -backend pebbledb")
+			}
 			ldb, err := leveldb.RecoverFile(filepath.Join(dir, "application.db"), nil)
 			if err != nil {
 				return nil, fmt.Errorf("recover: %w", err)
