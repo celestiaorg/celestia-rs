@@ -321,7 +321,7 @@ pub fn gogo_marshaled(any: &celestia_proto::Any) -> celestia_proto::Any {
     if enter_v1() {
         return with_v1(|| gogo_marshaled(any));
     }
-    if !v1() && !v9() && sdk::version::is_v9(sdk::version::app_version()) {
+    if !v1() && !v9() && sdk::version::release(0).v9_registry() {
         return with_v9(|| gogo_marshaled(any));
     }
     let name = any.type_url.rsplit('/').next().unwrap_or_default();
@@ -351,7 +351,7 @@ pub fn gogo_repack(any: &celestia_proto::Any) -> celestia_proto::Any {
     if enter_v1() {
         return with_v1(|| gogo_repack(any));
     }
-    if !v1() && !v9() && sdk::version::is_v9(sdk::version::app_version()) {
+    if !v1() && !v9() && sdk::version::release(0).v9_registry() {
         return with_v9(|| gogo_repack(any));
     }
     let name = any.type_url.rsplit('/').next().unwrap_or_default();
@@ -379,7 +379,7 @@ pub fn prost_compatible(any: &celestia_proto::Any) -> Option<celestia_proto::Any
         return with_v1(|| prost_compatible(any));
     }
     let name = any.type_url.rsplit('/').next().unwrap_or_default();
-    let v9 = !v1() && (v9() || sdk::version::is_v9(sdk::version::app_version()));
+    let v9 = !v1() && (v9() || sdk::version::release(0).v9_registry());
     let value = scoped_v9(v9, || gogo_unmarshal(name, &any.value)).ok()?;
     Some(celestia_proto::Any {
         type_url: any.type_url.clone(),
@@ -388,12 +388,12 @@ pub fn prost_compatible(any: &celestia_proto::Any) -> Option<celestia_proto::Any
 }
 
 /// The decoder of the release that executes `app_version`
-/// ([`sdk::version::is_v9`]): [`decode_v9`] for v9.0.8 (and app versions 1
-/// to 8), else [`decode`].
+/// ([`sdk::version::Release::v9_registry`]): [`decode_v9`] for v9.0.8 (and
+/// app versions 1 to 8), else [`decode`].
 pub fn decode_for(app_version: u64, raw: &[u8]) -> sdk::Result<Tx> {
     let previous = sdk::version::app_version();
     sdk::version::set_app_version(app_version);
-    let result = if sdk::version::is_v9(app_version) {
+    let result = if sdk::version::Release::executing(app_version).v9_registry() {
         decode_v9(raw)
     } else {
         decode(raw)
@@ -672,7 +672,7 @@ pub mod testing {
         body_bytes: &[u8],
         auth_info_bytes: &[u8],
     ) -> Option<CanonicalTx> {
-        if app_version != 0 && app_version < 10 {
+        if sdk::version::Release::executing(app_version).v9_registry() {
             crate::with_v9(|| canonical_tx(body_bytes, auth_info_bytes))
         } else {
             canonical_tx(body_bytes, auth_info_bytes)

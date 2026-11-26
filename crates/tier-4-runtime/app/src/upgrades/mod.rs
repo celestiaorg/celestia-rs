@@ -77,7 +77,7 @@ impl x_upgrade::UpgradeHandlers for Handlers {
 /// cross into v10 before pinning that release. v11 is selected by the loader.
 pub(crate) fn select_execution_version(selected: &mut Option<u64>, consensus: u64) -> u64 {
     let release = selected.unwrap_or(consensus);
-    if selected.is_none() && !crate::stores::is_v9(consensus) {
+    if selected.is_none() && !Release::executing(consensus).before_v10() {
         *selected = Some(if release == 0 { APP_VERSION } else { release });
     }
     release

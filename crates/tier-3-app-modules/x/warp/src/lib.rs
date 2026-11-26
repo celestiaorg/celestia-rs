@@ -224,7 +224,7 @@ pub fn enrolled_router(
     token: u64,
     domain: u32,
 ) -> Result<core::result::Result<RemoteRouter, String>> {
-    let v9 = is_v9(ctx);
+    let v9 = upstream(ctx);
     Ok(match ctx.get(STORE_KEY, &router_key(token, domain))? {
         None => Err(format!(
             "collections: not found: key '(\"{token}\", \"{domain}\")' of type github.com/cosmos/gogoproto/hyperlane.warp.v1.RemoteRouter"
@@ -382,7 +382,7 @@ impl HyperlaneApp for Warp {
         let token = get_token(ctx, message.recipient.internal_id())?
             .ok_or_else(|| not_found(message.recipient.internal_id()))?;
         // hyperlane-cosmos v1.1.0 (app version 9) accepts exactly 64 bytes.
-        if is_v9(ctx) && message.body.len() != 64 {
+        if upstream(ctx) && message.body.len() != 64 {
             return Err(internal("payload is invalid"));
         }
         let payload = WarpPayload::parse(&message.body).map_err(internal)?;
@@ -397,7 +397,7 @@ impl HyperlaneApp for Warp {
                 message.origin
             )));
         };
-        let matches = if is_v9(ctx) {
+        let matches = if upstream(ctx) {
             // v1.1.0: `message.Sender.String() !=
             // strings.ToLower(remoteRouter.ReceiverContract)`; no non-ASCII
             // char lowercases to `0x` + hex digits.
@@ -444,18 +444,17 @@ impl HyperlaneApp for Warp {
 /// version 9 (hyperlane-cosmos v1.1.0), the `HexAddress` customtype (in
 /// canonical form) at app version 10.
 fn msg_receiver_contract(ctx: &Context<'_>, s: &str) -> Result<String> {
-    if is_v9(ctx) {
+    if upstream(ctx) {
         Ok(s.to_owned())
     } else {
         Ok(addr(s)?.to_string())
     }
 }
 
-/// Whether the context executes app version 9 (upstream hyperlane-cosmos
-/// v1.1.0, ADR 0004).
-fn is_v9(ctx: &Context<'_>) -> bool {
-    let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    sdk::version::is_v9(sdk::version::executing(v))
+/// Whether the context executes upstream hyperlane-cosmos (v1.1.0 at app
+/// version 9, ADR 0004; [`sdk::version::Release::upstream_hyperlane`]).
+fn upstream(ctx: &Context<'_>) -> bool {
+    ctx.release().upstream_hyperlane()
 }
 
 /// `Keeper.RemoteReceiveCollateral`.
@@ -466,7 +465,7 @@ pub fn remote_receive_collateral(
     payload: &WarpPayload,
 ) -> Result<()> {
     // hyperlane-cosmos v1.1.0 (app version 9): always the last 20 bytes.
-    let account = if is_v9(ctx) {
+    let account = if upstream(ctx) {
         payload.recipient[12..32.min(payload.recipient.len())].to_vec()
     } else {
         payload.cosmos_account()
@@ -574,7 +573,7 @@ pub fn remote_transfer(
             args.destination_domain
         )));
     };
-    let receiver_contract = if is_v9(ctx) {
+    let receiver_contract = if upstream(ctx) {
         // v1.1.0 `util.DecodeHexAddress(remoteRouter.ReceiverContract)`.
         HexAddress::decode(&router.receiver_contract).map_err(|_| {
             internal(format!(
@@ -802,7 +801,7 @@ pub fn enroll_remote_router(
         return Err(internal("invalid remote router"));
     };
     // hyperlane-cosmos v1.1.0 (app version 9) only rejects an empty string.
-    if is_v9(ctx) && router.receiver_contract.is_empty() {
+    if upstream(ctx) && router.receiver_contract.is_empty() {
         return Err(internal("invalid receiver contract"));
     }
     set_enrolled_router(ctx, token_id.internal_id(), &router)?;

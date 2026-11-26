@@ -345,7 +345,7 @@ fn block_eds_with_max(
     txs: &[Vec<u8>],
     max_square_size: usize,
 ) -> Result<square::ExtendedDataSquare, String> {
-    let square = if crate::stores::is_v9(app_version) {
+    let square = if sdk::version::Release::executing(app_version).go_square_v4_rc4() {
         v4::construct_rc4(
             &classify_txs_v9(txs)?,
             max_square_size,
@@ -638,7 +638,7 @@ fn prepare(
 ) -> Result<ResponsePrepareProposal, Abort> {
     let max_square_size = max_effective_square_size(ctx)?;
     let mut builder = Builder::new(max_square_size, SUBTREE_ROOT_THRESHOLD)?;
-    let txs = if x_ante::is_v9(ctx) {
+    let txs = if ctx.release().v9_registry() {
         fill_v9(ctx, deps, &mut builder, &req.txs, req.max_tx_bytes)?
     } else {
         x_fibre::begin_block(ctx)?;
@@ -973,7 +973,7 @@ fn process(
     blob_tx_cache: &crate::blob_cache::BlobTxCache,
     version: u64,
 ) -> Result<bool, Abort> {
-    if x_ante::is_v9(ctx) {
+    if ctx.release().v9_registry() {
         return process_v9(ctx, deps, req, proposed, blob_tx_cache, version);
     }
     let max_square_size = max_effective_square_size(ctx)?;

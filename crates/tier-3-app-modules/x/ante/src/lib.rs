@@ -386,14 +386,6 @@ fn run_ante_with<D: AnteDeps>(
     }
 }
 
-/// Whether the context's app version runs celestia-app v9.0.8's ante
-/// handler (ADR 0004).
-#[must_use]
-pub fn is_v9(ctx: &Context<'_>) -> bool {
-    let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    sdk::version::is_v9(sdk::version::executing(v))
-}
-
 /// Whether the executing app version is 12 or later (0 = unset is current,
 /// app version 10).
 #[must_use]
@@ -466,7 +458,7 @@ fn run_chain<D: AnteDeps>(
     sigverify::sig_verification(ctx, tx, simulate, deps)?;
     // celestia-app v9.0.8 (ADR 0004): `MsgExecDecorator`, no fibre
     // decorators (fibre messages do not decode at app version 9).
-    let v9 = is_v9(ctx);
+    let v9 = ctx.release().before_v10();
     if v9 {
         celestia::msg_exec_v9(tx)?;
     } else {

@@ -56,7 +56,7 @@ impl App {
         }
         let version = self.execution_version();
         sdk::version::set_app_version(version);
-        if crate::stores::is_v9(version) {
+        if sdk::version::Release::executing(version).v9_registry() {
             return self.check_tx_v9(req);
         }
         let raw = &req.tx;
