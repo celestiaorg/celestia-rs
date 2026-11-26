@@ -2322,17 +2322,27 @@ name = "fibre-server"
 version = "0.0.1"
 dependencies = [
  "celestia-proto 0.0.1",
+ "chacha8rand",
+ "crypto",
+ "getrandom 0.3.4",
+ "hash",
  "hex",
  "pbjson-types",
  "prost 0.13.5",
  "redb",
+ "rsema1d",
  "rustix",
+ "rustls",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
  "tracing",
  "x-fibre",
+ "x509-parser 0.18.1",
+ "zstd",
 ]
 
 [[package]]

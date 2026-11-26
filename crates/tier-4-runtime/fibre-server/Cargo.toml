@@ -14,18 +14,32 @@ workspace = true
 
 [dependencies]
 celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }
+# Go math/rand/v2 ChaCha8 (dependency-free); seeds validator row assignment.
+chacha8rand = "0.1.2"
+crypto = { path = "../../tier-0-primitives/crypto" }
+# OS randomness for the ephemeral TLS key and certificate serial.
+getrandom = "0.3"
+hash = { path = "../../tier-0-primitives/hash" }
 hex = "0.4"
 prost = "0.13"
 # Shard metadata store: pure Rust, ACID, ordered (same pin as kvdb).
 redb = "=2.6.4"
+# rsema1d primitives (RLC extension, coefficient derivation, row RLCs) from
+# the lumina revision the node's Fibre client already pins.
+rsema1d = { version = "=1.3.0", git = "https://github.com/celestiaorg/lumina", rev = "ccdbed9dbcd23fe31c7fb4b7001648a45262bc33" }
 rustix = { version = "1", features = ["fs"] }
 thiserror = "2"
 tokio = { version = "1", features = ["sync"] }
 tokio-util = "0.7"
 tracing = "0.1"
 x-fibre = { path = "../../tier-3-app-modules/x/fibre" }
+x509-parser = "0.18"
 
 [dev-dependencies]
 pbjson-types = "0.7"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt", "sync", "test-util", "time"] }
+zstd = "0.14"
