@@ -238,6 +238,8 @@ func richTxs(b *txBuilder) error {
 }
 
 var chainSpecs = map[string]*chainSpec{
-	"v1-v3":   v1v3Spec,
-	"v3-rich": richSpec,
+	"v1-v3":         v1v3Spec,
+	"v3-rich":       richSpec,
+	"gov-v1-v3":     govSpec,
+	"staking-v1-v3": stakingSpec,
 }
