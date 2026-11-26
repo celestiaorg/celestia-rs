@@ -80,9 +80,11 @@ pub struct App {
     upgrade: x_upgrade::NodeState,
     /// State-sync snapshots (storage-backed apps only).
     snapshots: Option<snapshots::Manager>,
-    /// Whether the active restore may omit stores added by the v10
-    /// executable while retaining consensus app version 9.
-    snapshot_optional_v10_stores: bool,
+    /// The stores the active restore takes from the authenticated snapshot
+    /// stream: those added by the v10 executable while consensus app version
+    /// 9 is retained, and those the v8 store loader adds at the first v8
+    /// block (a v6.4.x snapshot at the handoff height has none).
+    snapshot_optional_stores: Vec<&'static str>,
     /// The cosmos-sdk v0.46 release whose stores the active restore of a
     /// format 2 snapshot (app versions 1 to 3) imports.
     snapshot_v046: Option<&'static Release>,
@@ -234,6 +236,14 @@ pub fn snapshot_dir(home: &Path) -> PathBuf {
     home.join("data").join("snapshots")
 }
 
+/// Whether `release` adds the stores it lists but has not committed through
+/// its upgrade store loader at the first block it executes: celestia-app
+/// v8.0.8 (`UpgradeStoreLoader(H+1, Added: zkism)`). The v10 loader is
+/// [`App::mount_upgrade_stores`]'s own path; v4.1.0 to v6.4.x add none.
+const fn adds_release_stores_on_upgrade(release: &Release) -> bool {
+    release.app_version == 8
+}
+
 fn store_err(e: impl std::fmt::Display) -> SdkError {
     sdk::error::sdk::logic(format!("store: {e}"))
 }
@@ -323,7 +333,7 @@ impl App {
             upgrade_store_height: None,
             upgrade: x_upgrade::NodeState::default(),
             snapshots: None,
-            snapshot_optional_v10_stores: false,
+            snapshot_optional_stores: Vec::new(),
             snapshot_v046: None,
             check_header: Header::default(),
             pending_sequencer: None,
@@ -534,10 +544,13 @@ impl App {
             return Ok(());
         };
         let release = Release::executing(self.app_version());
+        // celestia-app v8.0.8 adds the stores it lists but has not
+        // committed at the next height ([`Self::mount_upgrade_stores`]).
+        let loads_added = adds_release_stores_on_upgrade(release);
         let absent: Vec<&'static str> = stores::IAVL_STORES
             .iter()
             .copied()
-            .filter(|s| info.store_info(s).is_none() && !release.has_store(s))
+            .filter(|s| info.store_info(s).is_none() && (loads_added || !release.has_store(s)))
             .filter(|s| self.ms.is_mounted(s))
             .collect();
         for name in absent {
@@ -1079,6 +1092,21 @@ impl App {
     fn mount_upgrade_stores(&mut self) -> Result<()> {
         let consensus_version = self.app_version();
         let next_height = self.last_height.saturating_add(1);
+        // celestia-app v8.0.8's store loader (`UpgradeStoreLoader(H+1,
+        // Added: zkism)`) mounts each store it lists and has not committed
+        // at the next height.
+        let release = Release::executing(consensus_version);
+        if adds_release_stores_on_upgrade(release) {
+            for name in release.stores {
+                if !self.ms.is_mounted(name) {
+                    tracing::info!(store = name, height = next_height, "adding store");
+                    self.ms
+                        .mount_iavl_at(name, next_height)
+                        .map_err(store_err)?;
+                }
+            }
+            return Ok(());
+        }
         let signal_switch = !Release::executing(consensus_version).before_v10()
             && consensus_version != INITIAL_APP_VERSION;
         let governance_switch = self.upgrade_store_height == Some(next_height);
@@ -1239,22 +1267,39 @@ impl App {
                 .and_then(|snapshot| manager.begin_restore(snapshot))
                 {
                     Ok(()) => {
-                        let v10_stores = Release::executing(req.app_version).has_fibre();
-                        self.snapshot_optional_v10_stores = !v10_stores;
+                        let release = Release::executing(req.app_version);
+                        let v10_stores = release.has_fibre();
+                        let mut optional: Vec<&'static str> = Vec::new();
+                        if !v10_stores {
+                            optional.extend(stores::ADDED_IN_V10);
+                        }
+                        // Stores of the v8 store loader (`zkism`); app
+                        // versions 4 to 6 have none.
+                        let v8_stores = stores::ADDED_IN_V8
+                            .iter()
+                            .map(|name| (*name, release.has_store(name)));
+                        if adds_release_stores_on_upgrade(release) {
+                            optional.extend(stores::ADDED_IN_V8);
+                        }
+                        self.snapshot_optional_stores = optional;
                         // Only accepted offers select stores. A later offer
                         // may replace an abandoned restore of another version.
                         if self.last_height == 0 {
-                            for name in stores::ADDED_IN_V10 {
+                            let selection = stores::ADDED_IN_V10
+                                .iter()
+                                .map(|name| (*name, v10_stores))
+                                .chain(v8_stores);
+                            for (name, wanted) in selection {
                                 let mounted = self.ms.is_mounted(name);
-                                let result = if !v10_stores && mounted {
+                                let result = if !wanted && mounted {
                                     self.ms.unmount_iavl(name)
-                                } else if v10_stores && !mounted {
+                                } else if wanted && !mounted {
                                     self.ms.mount(name, sdk::Kind::Iavl)
                                 } else {
                                     Ok(())
                                 };
                                 if let Err(e) = result {
-                                    self.snapshot_optional_v10_stores = false;
+                                    self.snapshot_optional_stores.clear();
                                     if let Err(cleanup) = manager.abort_restore() {
                                         tracing::error!(error = %cleanup, "failed to abort snapshot restore");
                                     }
@@ -1301,15 +1346,11 @@ impl App {
         if self.snapshot_v046.is_some() {
             return self.legacy_apply_snapshot_chunk(req);
         }
-        let optional: &[&str] = if self.snapshot_optional_v10_stores {
-            stores::ADDED_IN_V10
-        } else {
-            &[]
-        };
-        match manager.restore_chunk_with_optional_iavl(self.ms.root_mut(), &req.chunk, optional) {
+        let optional = self.snapshot_optional_stores.clone();
+        match manager.restore_chunk_with_optional_iavl(self.ms.root_mut(), &req.chunk, &optional) {
             Ok(done) => {
                 if let Some(id) = done {
-                    self.snapshot_optional_v10_stores = false;
+                    self.snapshot_optional_stores.clear();
                     tracing::info!(height = id.version, "restored state-sync snapshot");
                     if let Err(e) = self.load_committed_state() {
                         tracing::error!(error = %e, "failed to load restored state");
@@ -1336,7 +1377,7 @@ impl App {
                 reject_senders: vec![req.sender],
             },
             Err(e) => {
-                self.snapshot_optional_v10_stores = false;
+                self.snapshot_optional_stores.clear();
                 if let Err(cleanup) = manager.abort_restore() {
                     tracing::error!(error = %cleanup, "failed to abort snapshot restore");
                 }
@@ -2471,6 +2512,92 @@ mod node_options_tests {
         assert_eq!(destination.info().app_version, 9);
         for name in stores::ADDED_IN_V10 {
             assert!(destination.ms.is_mounted(name), "{name} must be mounted");
+        }
+    }
+
+    /// A snapshot that a celestia-app v4.1.0 to v6.4.x node writes has no
+    /// `zkism` store, including v6.4.x's at the v6 -> v8 handoff height,
+    /// whose consensus app version is already 8. Its restore selects the
+    /// store set of the release: no `zkism` for 4 to 6, and for 8 the store
+    /// loader adds it at the next height.
+    #[test]
+    fn pre_v8_snapshots_restore_without_zkism() {
+        for app_version in [6, 8] {
+            let source_home = tempfile::tempdir().expect("source app home");
+            let mut source =
+                App::open_with(source_home.path(), AppOptions::default()).expect("open source");
+            for name in stores::ADDED_IN_V10.iter().chain(&["zkism"]) {
+                source.ms.unmount_iavl(name).expect("unmount store");
+            }
+            let header = Header {
+                height: 1,
+                ..Header::default()
+            };
+            let mut ctx = Context::new(&mut source.ms, header, ExecMode::Finalize);
+            x_consensus::set_params(
+                &mut ctx,
+                &ConsensusParams {
+                    version: Some(VersionParams { app: app_version }),
+                    ..Default::default()
+                },
+            )
+            .expect("set consensus version");
+            drop(ctx);
+            source.ms.flush().expect("flush");
+            source.ms.commit().expect("commit");
+            let snapshot_dir = tempfile::tempdir().expect("source snapshots");
+            let manager =
+                snapshots::Manager::new(snapshot_dir.path(), snapshots::SnapshotOptions::default())
+                    .expect("source snapshot manager");
+            let snapshot = manager
+                .create(source.ms.root(), 1)
+                .expect("create snapshot");
+
+            let destination_home = tempfile::tempdir().expect("destination app home");
+            let mut destination = App::open_with(
+                destination_home.path(),
+                v10_options(destination_home.path()),
+            )
+            .expect("open empty destination");
+            let offer = destination.offer_snapshot(abci::RequestOfferSnapshot {
+                snapshot: Some(abci::Snapshot {
+                    height: snapshot.height,
+                    format: snapshot.format,
+                    chunks: snapshot.chunks,
+                    hash: snapshot.hash.clone(),
+                    metadata: snapshot.metadata_bytes(),
+                }),
+                app_hash: Vec::new(),
+                app_version,
+            });
+            assert_eq!(
+                offer.result,
+                abci::response_offer_snapshot::Result::Accept as i32,
+                "v{app_version}"
+            );
+            for index in 0..snapshot.chunks {
+                let chunk = manager
+                    .load_chunk(snapshot.height, snapshot.format, index)
+                    .expect("load snapshot chunk")
+                    .expect("snapshot chunk exists");
+                let applied = destination.apply_snapshot_chunk(abci::RequestApplySnapshotChunk {
+                    index,
+                    chunk,
+                    sender: String::new(),
+                });
+                assert_eq!(
+                    applied.result,
+                    abci::response_apply_snapshot_chunk::Result::Accept as i32,
+                    "v{app_version}"
+                );
+            }
+            assert_eq!(destination.last_height, 1, "v{app_version}");
+            assert_eq!(destination.info().app_version, app_version);
+            assert_eq!(
+                destination.ms.is_mounted("zkism"),
+                app_version == 8,
+                "v{app_version}"
+            );
         }
     }
 
