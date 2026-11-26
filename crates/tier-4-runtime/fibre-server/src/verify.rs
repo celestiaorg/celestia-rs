@@ -211,6 +211,28 @@ impl ShardVerifier {
         rows: &[ShardRow<'_>],
         rlcs: &[u8],
     ) -> Result<(), ShardError> {
+        let rlcs = self.check_shape(upload_size, rows, rlcs)?;
+        verify_row_proofs(
+            self.original_rows,
+            self.parity_rows,
+            commitment,
+            rows,
+            &rlcs,
+            self.merkle_workers,
+        )?;
+        Ok(())
+    }
+
+    /// The checks Go's `verifyShard` runs before it takes a verifier from
+    /// its pool (`parseRowSize`, the size checks, `rlc.Unmarshal`,
+    /// `parseRow`). They are cheap, so callers run them before waiting for
+    /// a verification slot. Returns the decoded RLC values.
+    pub fn check_shape(
+        &self,
+        upload_size: u32,
+        rows: &[ShardRow<'_>],
+        rlcs: &[u8],
+    ) -> Result<Vec<GF128>, ShardError> {
         let row_size = parse_row_size(rows)?;
         if self.max_row_size > 0 && row_size > self.max_row_size {
             return Err(ShardError::RowTooLarge {
@@ -238,15 +260,7 @@ impl ShardVerifier {
         for row in rows {
             parse_row(row)?;
         }
-        verify_row_proofs(
-            self.original_rows,
-            self.parity_rows,
-            commitment,
-            rows,
-            &rlcs,
-            self.merkle_workers,
-        )?;
-        Ok(())
+        Ok(rlcs)
     }
 }
 
