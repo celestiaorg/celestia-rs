@@ -1,0 +1,361 @@
+#!/usr/bin/env bash
+# vmexec: run commands on a Compute Engine VM without SSH. See README.md
+# next to this file, or `vmexec help`.
+set -euo pipefail
+here=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
+# shellcheck source=scripts/vmexec/lib.sh
+. "$here/lib.sh"
+
+PROJECT=${VMX_PROJECT:-fibreda}
+ZONE=${VMX_ZONE:-us-central1-a}
+GCLOUD=${VMX_GCLOUD:-gcloud}
+OWNER_LABEL=owner=claude-genesis
+POLL_MAX_S=${VMX_POLL_MAX_S:-15}
+
+usage() {
+  cat <<'EOF'
+vmexec: run commands on a Compute Engine VM without SSH (metadata in,
+guest attributes out). Project/zone: $VMX_PROJECT (fibreda) / $VMX_ZONE
+(us-central1-a). Every VM gets labels owner=claude-genesis, purpose=...,
+vmexec=1 and a maximum run duration after which Compute Engine deletes it.
+
+  vmexec create NAME --purpose P [--machine-type e2-standard-4] [--hours 24]
+         [--boot-gb 50] [--data-gb N [--data-type pd-balanced] [--keep-data]]
+         [--attach-disk DISK] [--spot] [--no-wait]
+      Create the VM and wait until its agent reports. A data disk (new, or an
+      existing one with --attach-disk) is mounted at /data. --keep-data keeps
+      a new data disk when the VM is deleted.
+  vmexec exec NAME [--timeout S] [--detach] [-f SCRIPT|-] [-- COMMAND...]
+      Run a bash script (or COMMAND, as one shell line) as root in a fresh
+      directory. Prints the output's last ~180 KB and exits with the
+      script's status (124: timeout). The full output stays on the VM at the
+      path printed when truncated. --detach prints a request id instead.
+  vmexec result NAME ID          Wait for a detached request and print it.
+  vmexec push NAME LOCAL REMOTE  Copy a local file to the VM (~10 KB/s).
+  vmexec fetch NAME REMOTE LOCAL Copy a file from the VM (~10 KB/s; use
+                                 `exec ... tail` for logs).
+  vmexec ship NAME [--repo DIR] [--dest /opt/celestia-rs]
+      Check out the local repository's HEAD on the VM: the VM fetches pushed
+      commits from GitHub and the unpushed ones arrive as a git bundle.
+  vmexec build NAME [--dest /opt/celestia-rs] [--timeout 10800] [-- CARGO_ARGS...]
+      Install the Rust toolchain and build deps, then `cargo build --release
+      --locked -p celestia-rs` (or CARGO_ARGS) in --dest.
+  vmexec job NAME start JOB [--restart] [--interval S] [--status-cmd CMD] -- COMMAND...
+  vmexec job NAME stop|remove|logs JOB
+  vmexec job NAME status JOB     Published job state (no round trip to the VM).
+  vmexec status NAME             Agent heartbeat and job states.
+  vmexec serial NAME [PORT]      Serial console output (boot problems).
+  vmexec list                    vmexec VMs of this project.
+  vmexec delete NAME [--keep-disks]
+EOF
+}
+
+die() { echo "vmexec: $*" >&2; exit 1; }
+g() { "$GCLOUD" "$@" --project="$PROJECT"; }
+gi() { local verb=$1; shift; g compute instances "$verb" "$@" --zone="$ZONE"; }
+
+# ga_get NAME KEY OUT: guest attribute vmx/KEY into OUT; fails if absent.
+ga_get() {
+  local json
+  json=$(gi get-guest-attributes "$1" --query-path="vmx/$2" --format=json 2>/dev/null) || return 1
+  jq -er '.[0].value // empty' <<<"$json" >"$3" 2>/dev/null
+}
+
+# md_set NAME KEY FILE / md_del NAME KEY: retried, since concurrent metadata
+# writes fail on the fingerprint check.
+md_set() {
+  local i
+  for i in 1 2 3 4 5 6; do
+    gi add-metadata "$1" --metadata-from-file="$2=$3" >/dev/null 2>&1 && return 0
+    sleep $((i * 2))
+  done
+  gi add-metadata "$1" --metadata-from-file="$2=$3" >/dev/null
+}
+md_del() {
+  local i
+  for i in 1 2 3 4 5; do
+    gi remove-metadata "$1" --keys="$2" >/dev/null 2>&1 && return 0
+    sleep $((i * 2))
+  done
+  echo "vmexec: could not remove metadata key $2 (remove it with: gcloud compute instances remove-metadata $1 --keys=$2)" >&2
+}
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+# submit NAME TIMEOUT SCRIPT_FILE: send a request; prints its id.
+submit() {
+  local id
+  id=$(vmx_new_id)
+  vmx_encode_request "$2" <"$3" >"$tmp/req.$id" || return 1
+  md_set "$1" "vmx-req-$id" "$tmp/req.$id"
+  echo "$id"
+}
+
+# await NAME ID [quiet]: wait for the result, print the output, clean up,
+# return the script's exit status.
+await() {
+  local name=$1 id=$2 r=$tmp/res.$2 delay=2 state rc bytes
+  while :; do
+    if ga_get "$name" "$id" "$r"; then
+      state=$(vmx_result_field "$r" state)
+      [[ $state == done ]] && break
+    fi
+    sleep "$delay"
+    delay=$((delay * 2 > POLL_MAX_S ? POLL_MAX_S : delay * 2))
+  done
+  rc=$(vmx_result_field "$r" rc)
+  bytes=$(vmx_result_field "$r" bytes)
+  [[ ${3:-} == quiet ]] || vmx_result_output "$r"
+  if [[ $(vmx_result_field "$r" truncated) == 1 || $(vmx_result_output "$r" | wc -c) -lt $bytes ]]; then
+    echo "vmexec: output truncated ($bytes bytes); the whole output is $(vmx_result_field "$r" output) on the VM" >&2
+  fi
+  md_del "$name" "vmx-req-$id"
+  [[ $rc =~ ^[0-9]+$ ]] || rc=1
+  return "$rc"
+}
+
+cmd_create() {
+  local name=${1:-} mt=e2-standard-4 hours=24 boot=50 data_gb='' data_type=pd-balanced keep=yes attach='' spot=() wait=1 purpose=''
+  vmx_valid name "$name" || die "invalid VM name: $name"
+  shift
+  while (($#)); do
+    case $1 in
+      --purpose) purpose=$2; shift 2 ;;
+      --machine-type) mt=$2; shift 2 ;;
+      --hours) hours=$2; shift 2 ;;
+      --boot-gb) boot=$2; shift 2 ;;
+      --data-gb) data_gb=$2; shift 2 ;;
+      --data-type) data_type=$2; shift 2 ;;
+      --keep-data) keep=no; shift ;;
+      --attach-disk) attach=$2; shift 2 ;;
+      --spot) spot=(--provisioning-model=SPOT); shift ;;
+      --no-wait) wait=0; shift ;;
+      *) die "create: unknown option $1" ;;
+    esac
+  done
+  vmx_valid label "$purpose" || die "create: --purpose is required ([a-z][a-z0-9_-]*)"
+  [[ $hours =~ ^[1-9][0-9]{0,3}$ ]] || die "create: --hours must be a whole number"
+  local disk=() auto=yes
+  [[ $keep == no ]] && auto=no
+  if [[ -n $data_gb ]]; then
+    disk=(--create-disk="name=$name-data,size=${data_gb}GB,type=$data_type,device-name=data,auto-delete=$auto")
+  elif [[ -n $attach ]]; then
+    disk=(--disk="name=$attach,device-name=data,auto-delete=no")
+  fi
+  { echo '#!/usr/bin/env bash'; cat "$here/lib.sh" "$here/agent.sh"; } >"$tmp/startup.sh"
+  gi create "$name" --machine-type="$mt" \
+    --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
+    --boot-disk-size="${boot}GB" --boot-disk-type=pd-balanced "${disk[@]}" "${spot[@]}" \
+    --no-service-account --no-scopes \
+    --max-run-duration="${hours}h" --instance-termination-action=DELETE \
+    --metadata=enable-guest-attributes=TRUE,block-project-ssh-keys=TRUE \
+    --metadata-from-file="startup-script=$tmp/startup.sh" \
+    --labels="$OWNER_LABEL,purpose=$purpose,vmexec=1" >/dev/null
+  echo "created $name ($mt, deleted by Compute Engine after ${hours}h)" >&2
+  ((wait)) || return 0
+  cmd_wait "$name"
+}
+
+cmd_wait() {
+  local name=$1 deadline=$((SECONDS + ${2:-900}))
+  while ((SECONDS < deadline)); do
+    if ga_get "$name" agent "$tmp/hb"; then echo "agent up on $name" >&2; return 0; fi
+    sleep 10
+  done
+  die "no agent heartbeat from $name; see: vmexec serial $name"
+}
+
+cmd_exec() {
+  local name=${1:-} timeout=3600 detach=0 script=$tmp/script id
+  vmx_valid name "$name" || die "invalid VM name: $name"
+  shift
+  : >"$script"
+  while (($#)); do
+    case $1 in
+      --timeout) timeout=$2; shift 2 ;;
+      --detach) detach=1; shift ;;
+      -f) if [[ $2 == - ]]; then cat >"$script"; else cat "$2" >"$script"; fi; shift 2 ;;
+      --) shift; printf '%s\n' "$*" >>"$script"; break ;;
+      *) printf '%s\n' "$*" >>"$script"; break ;;
+    esac
+  done
+  [[ -s $script ]] || die "exec: nothing to run"
+  id=$(submit "$name" "$timeout" "$script")
+  if ((detach)); then echo "$id"; return 0; fi
+  await "$name" "$id"
+}
+
+cmd_result() { vmx_valid id "${2:-}" || die "invalid id"; await "$1" "$2"; }
+
+cmd_push() {
+  local name=$1 src=$2 dst=$3 n i sum
+  [[ -f $src ]] || die "push: no file $src"
+  sum=$(sha256sum "$src" | cut -d' ' -f1)
+  n=$(vmx_split_raw "$src" "$tmp/piece" 120000)
+  for ((i = 0; i < n; i++)); do
+    {
+      echo "set -e; f=$(printf '%q' "$dst").vmxpart"
+      if ((i == 0)); then echo 'mkdir -p "$(dirname "$f")"; : >"$f"'; fi
+      echo "base64 -d >>\"\$f\" <<'VMX_EOF'"
+      base64 -w76 "$tmp/piece.$i"
+      echo 'VMX_EOF'
+    } >"$tmp/push.sh"
+    await "$name" "$(submit "$name" 600 "$tmp/push.sh")" quiet || die "push: piece $i failed"
+    echo "pushed $((i + 1))/$n" >&2
+  done
+  printf 'set -e; f=%q\necho "%s  $f.vmxpart" | sha256sum -c --quiet\nmv "$f.vmxpart" "$f"\n' "$dst" "$sum" >"$tmp/push.sh"
+  await "$name" "$(submit "$name" 600 "$tmp/push.sh")" || die "push: checksum mismatch"
+}
+
+cmd_fetch() {
+  local name=$1 src=$2 dst=$3 info n sum i out
+  printf 'set -e; d=$VMX_RUN_DIR/fetch; mkdir -p "$d"\ngzip -6c %q | base64 -w0 | split -d -a 4 -b 90000 - "$d/p."\nls "$d" | wc -l; sha256sum %q | cut -d" " -f1\n' "$src" "$src" >"$tmp/f.sh"
+  local fid
+  fid=$(submit "$name" 3600 "$tmp/f.sh")
+  info=$(await "$name" "$fid") || die "fetch: cannot read $src"
+  n=$(sed -n 1p <<<"$info") sum=$(sed -n 2p <<<"$info")
+  : >"$tmp/fetch.b64"
+  for ((i = 0; i < n; i++)); do
+    printf 'cat "$VMX_RUN_DIR/../%s/fetch/p.%04d"\n' "$fid" "$i" >"$tmp/f.sh"
+    out=$(await "$name" "$(submit "$name" 600 "$tmp/f.sh")") || die "fetch: part $i failed"
+    printf '%s' "$out" >>"$tmp/fetch.b64"
+    echo "fetched $((i + 1))/$n" >&2
+  done
+  base64 -d "$tmp/fetch.b64" | gunzip >"$dst.vmxpart"
+  [[ $(sha256sum "$dst.vmxpart" | cut -d' ' -f1) == "$sum" ]] || die "fetch: checksum mismatch"
+  mv "$dst.vmxpart" "$dst"
+}
+
+cmd_ship() {
+  local name=$1 repo=. dest=/opt/celestia-rs remote=https://github.com/celestiaorg/celestia-rs head prereqs
+  shift
+  while (($#)); do
+    case $1 in
+      --repo) repo=$2; shift 2 ;;
+      --dest) dest=$2; shift 2 ;;
+      --remote) remote=$2; shift 2 ;;
+      *) die "ship: unknown option $1" ;;
+    esac
+  done
+  [[ -z $(git -C "$repo" status --porcelain --untracked-files=no) ]] || echo "vmexec: uncommitted changes are not shipped" >&2
+  mapfile -t prereqs < <(vmx_bundle "$repo" "$tmp/ship.bundle")
+  head=${prereqs[0]}
+  prereqs=("${prereqs[@]:1}")
+  if [[ -s $tmp/ship.bundle ]]; then
+    echo "shipping $(git -C "$repo" rev-list --count HEAD --not --remotes) unpushed commit(s), bundle $(stat -c %s "$tmp/ship.bundle") bytes" >&2
+    cmd_push "$name" "$tmp/ship.bundle" /var/lib/vmexec/ship.bundle >/dev/null
+  else
+    echo "HEAD $head is pushed; the VM fetches it from GitHub" >&2
+    prereqs=("$head")
+  fi
+  {
+    printf 'set -e\nd=%q; remote=%q; head=%s\n' "$dest" "$remote" "$head"
+    printf 'command -v git >/dev/null || { apt-get -o DPkg::Lock::Timeout=600 update -q && apt-get -o DPkg::Lock::Timeout=600 install -yq git; }\n'
+    printf '[ -d "$d/.git" ] || git init -q "$d"\n'
+    printf 'for c in %s; do git -C "$d" cat-file -e "$c^{commit}" 2>/dev/null || git -C "$d" fetch -q --depth=50 "$remote" "$c"; done\n' "${prereqs[*]}"
+    if [[ -s $tmp/ship.bundle ]]; then
+      printf 'git -C "$d" fetch -q /var/lib/vmexec/ship.bundle HEAD\n'
+    fi
+    printf 'git -C "$d" -c advice.detachedHead=false checkout -q --force "$head"\n'
+    printf 'git -C "$d" log -1 --format="checked out %%H %%s"\n'
+  } >"$tmp/ship.sh"
+  await "$name" "$(submit "$name" 1800 "$tmp/ship.sh")"
+}
+
+cmd_build() {
+  local name=$1 dest=/opt/celestia-rs timeout=10800 args=(build --release --locked -p celestia-rs)
+  shift
+  while (($#)); do
+    case $1 in
+      --dest) dest=$2; shift 2 ;;
+      --timeout) timeout=$2; shift 2 ;;
+      --) shift; args=("$@"); break ;;
+      *) die "build: unknown option $1" ;;
+    esac
+  done
+  {
+    printf 'set -e\ncd %q\n' "$dest"
+    cat <<'EOF'
+export DEBIAN_FRONTEND=noninteractive
+if ! command -v cc >/dev/null || ! command -v clang >/dev/null || ! command -v protoc >/dev/null; then
+  apt-get -o DPkg::Lock::Timeout=600 update -q >/dev/null
+  apt-get -o DPkg::Lock::Timeout=600 install -yq build-essential clang libclang-dev cmake pkg-config \
+    libssl-dev protobuf-compiler git jq python3 curl >/dev/null
+fi
+if [ ! -x /root/.cargo/bin/cargo ]; then
+  curl -fsSL https://sh.rustup.rs | sh -s -- -y -q --profile minimal --default-toolchain none >/dev/null
+fi
+export PATH=/root/.cargo/bin:$PATH
+rustup show active-toolchain >/dev/null 2>&1 || rustup toolchain install stable --profile minimal >/dev/null
+echo "rustc: $(rustc -V)"
+start=$(date +%s)
+EOF
+    printf 'cargo %s 2>&1 | grep -vE "^ +(Compiling|Downloaded|Downloading) " || exit ${PIPESTATUS[0]}\n' "$(vmx_shell_quote "${args[@]}")"
+    cat <<'EOF'
+rc=${PIPESTATUS[0]}
+echo "build took $(( $(date +%s) - start ))s"
+ls -la target/release/celestia-rs 2>/dev/null || true
+exit $rc
+EOF
+  } >"$tmp/build.sh"
+  await "$name" "$(submit "$name" "$timeout" "$tmp/build.sh")"
+}
+
+cmd_job() {
+  local name=$1 action=${2:-} job=${3:-}
+  vmx_valid job "$job" || die "job: invalid job name: $job"
+  case $action in
+    start)
+      shift 3
+      vmx_shell_quote vmx-job start "$job" "$@" >"$tmp/job.sh"
+      await "$name" "$(submit "$name" 300 "$tmp/job.sh")"
+      ;;
+    stop | remove | logs)
+      shift 3
+      vmx_shell_quote vmx-job "$action" "$job" "$@" >"$tmp/job.sh"
+      await "$name" "$(submit "$name" 300 "$tmp/job.sh")"
+      ;;
+    status)
+      ga_get "$name" "job-$job" "$tmp/js" || die "job $job has published no status yet"
+      cat "$tmp/js"
+      ;;
+    *) die "job: unknown action $action" ;;
+  esac
+}
+
+cmd_status() {
+  local name=$1 json
+  json=$(gi get-guest-attributes "$name" --query-path=vmx/ --format=json) || die "no guest attributes from $name"
+  jq -r '.[] | select(.key == "agent") | .value' <<<"$json"
+  jq -r '.[] | select(.key | startswith("job-")) | "\n[\(.key)]\n\(.value)"' <<<"$json"
+  jq -r '[.[] | select(.key | test("^[0-9a-z]{18}$")) | .key] | if length > 0 then "\npending results: \(join(" "))" else empty end' <<<"$json"
+}
+
+main() {
+  local cmd=${1:-help}
+  (($#)) && shift
+  case $cmd in
+    create) cmd_create "$@" ;;
+    wait) cmd_wait "$@" ;;
+    exec) cmd_exec "$@" ;;
+    result) cmd_result "$@" ;;
+    push) (($# == 3)) || die "usage: vmexec push NAME LOCAL REMOTE"; cmd_push "$@" ;;
+    fetch) (($# == 3)) || die "usage: vmexec fetch NAME REMOTE LOCAL"; cmd_fetch "$@" ;;
+    ship) cmd_ship "$@" ;;
+    build) cmd_build "$@" ;;
+    job) cmd_job "$@" ;;
+    status) cmd_status "$@" ;;
+    serial) gi get-serial-port-output "$1" --port="${2:-1}" 2>/dev/null | tail -n 200 ;;
+    list) g compute instances list --filter="labels.vmexec=1" \
+      --format="table(name,zone.basename(),status,machineType.basename(),labels.purpose,scheduling.maxRunDuration.seconds)" ;;
+    delete)
+      local keep=()
+      [[ ${2:-} == --keep-disks ]] && keep=(--keep-disks=data)
+      gi delete "$1" --quiet "${keep[@]}"
+      ;;
+    help | -h | --help) usage ;;
+    *) usage >&2; exit 2 ;;
+  esac
+}
+main "$@"
