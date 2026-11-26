@@ -15,6 +15,7 @@ use x_upgrade::VersionMap;
 mod v10;
 mod v11;
 mod v12;
+pub mod v4;
 mod v9;
 
 /// `appconsts.Version`.

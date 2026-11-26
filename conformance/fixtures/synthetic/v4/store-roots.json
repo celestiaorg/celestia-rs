@@ -538,6 +538,7 @@
   ],
   "kv": {
     "kv-handoff.jsonl": "cc7aa0cc40d8b169693e9bb6876ca8a7d99e3ee78a5a447e0a810c247972c6de",
+    "kv-upgrade.jsonl": "ee1ced74b471f3f7b50e97bffc9f2b54aa5c9be9475bacc8d80d81ecdf53e8ad",
     "kv-diffs.jsonl": "457a2000119c5b7fb4a75dab386d39ada95b937396194799706482ab26355ff5"
   },
   "tx_results_sha256": "83065f351a2747cc6219d8c7e42b9b611db785d4e856b98cfed7775e9761d83c",

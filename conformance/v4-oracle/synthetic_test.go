@@ -11,7 +11,7 @@ import (
 // fixtureFiles are the outputs that conformance/fixtures/synthetic/v4 holds.
 var fixtureFiles = []string{
 	"blocks.jsonl.gz", "store-roots.json", "tx-results.jsonl.gz",
-	"kv-handoff.jsonl.gz", "kv-diffs.jsonl.gz",
+	"kv-handoff.jsonl.gz", "kv-upgrade.jsonl.gz", "kv-diffs.jsonl.gz",
 }
 
 // TestSyntheticFixtureIsReproducible runs v1-oracle -synthetic -handoff,

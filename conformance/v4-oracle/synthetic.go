@@ -274,6 +274,11 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 	return out, nil
 }
 
+// blockTime is the time of block `height`, as v1-oracle sets it.
+func (s *synth) blockTime(height int64) time.Time {
+	return s.genesisTime.Add(time.Duration(height) * (15*time.Second + 123*time.Millisecond))
+}
+
 // block builds block `height` and appends it to blocks.jsonl.
 func (s *synth) block(height int64, txs [][]byte) (*cmttypes.Block, cmttypes.BlockID, error) {
 	cur, next := s.vals[height], s.vals[height+1]
@@ -288,7 +293,7 @@ func (s *synth) block(height int64, txs [][]byte) (*cmttypes.Block, cmttypes.Blo
 	block.Header.Populate(
 		cmtversion.Consensus{Block: cmtversionpkg.BlockProtocol, App: s.appVersion},
 		s.chainID,
-		s.genesisTime.Add(time.Duration(height)*(15*time.Second+123*time.Millisecond)),
+		s.blockTime(height),
 		s.lastBlockID,
 		cur.Hash(),
 		next.Hash(),

@@ -31,7 +31,9 @@
 // tx-results.jsonl.gz (the full FinalizeBlock responses),
 // kv-handoff.jsonl.gz (every key and value at the hand-off height) and
 // kv-diffs.jsonl.gz (the keys that each block sets or deletes, from the
-// hand-off state). Keys and values are hex; stores are sorted by name and
+// hand-off state) and kv-upgrade.jsonl.gz (the keys that the store loader
+// and the x/upgrade PreBlocker of the upgrade block alone set or delete,
+// from the hand-off state: upgrade.go). Keys and values are hex; stores are sorted by name and
 // keys by bytes. store-roots.json records the SHA-256 of each uncompressed
 // file.
 package main
@@ -156,6 +158,8 @@ type Timeouts struct {
 // KVFiles records the SHA-256 of each uncompressed KV dump.
 type KVFiles struct {
 	Handoff string `json:"kv-handoff.jsonl"`
+	// Upgrade is the PreBlocker of the upgrade block alone (upgrade.go).
+	Upgrade string `json:"kv-upgrade.jsonl"`
 	Diffs   string `json:"kv-diffs.jsonl"`
 }
 
@@ -203,6 +207,7 @@ func run() error {
 		return err
 	}
 	defer db.Close()
+	defer func() { app.NodeHome = *home }()
 	// The upgrade keeper reads data/upgrade-info.json from app.NodeHome.
 	app.NodeHome = *home
 	a := app.New(
@@ -240,6 +245,10 @@ func run() error {
 	fmt.Fprintf(os.Stderr, "height %d: %s (%d stores, hand-off)\n", ho.Height, h0.AppHash, len(h0.Stores))
 
 	s, err := newSynth(ho, genesis.GenesisTime)
+	if err != nil {
+		return err
+	}
+	kvUpgrade, err := upgradeOnly(*home, ho, s.blockTime(ho.Height+1), prev)
 	if err != nil {
 		return err
 	}
@@ -348,6 +357,7 @@ func run() error {
 	files := map[string][]byte{
 		"kv-handoff.jsonl": kvHandoff,
 		"kv-diffs.jsonl":   diffs.Bytes(),
+		"kv-upgrade.jsonl": kvUpgrade,
 		"tx-results.jsonl": txResultsJSONL.Bytes(),
 		"blocks.jsonl":     s.blocks.Bytes(),
 	}
@@ -360,7 +370,7 @@ func run() error {
 			return err
 		}
 	}
-	fixture.KV = KVFiles{Handoff: sha256Hex(kvHandoff), Diffs: sha256Hex(diffs.Bytes())}
+	fixture.KV = KVFiles{Handoff: sha256Hex(kvHandoff), Upgrade: sha256Hex(kvUpgrade), Diffs: sha256Hex(diffs.Bytes())}
 	fixture.TxResultsSHA256 = sha256Hex(txResultsJSONL.Bytes())
 	fixture.BlocksSHA256 = sha256Hex(s.blocks.Bytes())
 	encoded, err := json.MarshalIndent(fixture, "", "  ")
