@@ -356,7 +356,8 @@ version 3 (blocks 19 to 26):
 
 - community pool spends that pass (a delegator's authz `MsgExec` vote
   overrides its validator's), expire in the deposit period (deposit
-  burned), are vetoed (burned) or rejected (refunded);
+  refunded: the fork's EndBlocker refunds dropped proposals), are vetoed
+  (burned) or rejected (refunded);
 - parameter changes through celestia-app's param filter: slashing
   `SignedBlocksWindow`, baseapp `BlockParams` (the consensus params of
   blocks 7 and 23 change), blob `GovMaxSquareSize`, icahost

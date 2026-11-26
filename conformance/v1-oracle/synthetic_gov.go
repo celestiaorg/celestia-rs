@@ -8,7 +8,7 @@ package main
 //   - App version 1 (blocks 2 to 13): a community pool spend that passes
 //     although a delegator votes no through authz `MsgExec`, overriding
 //     its validator's yes; a proposal whose deposit stays below the
-//     minimum and expires; a v1 `MsgExecLegacyContent` changing slashing
+//     minimum and expires (refunded); a v1 `MsgExecLegacyContent` changing slashing
 //     `SignedBlocksWindow` that a second `MsgDeposit` activates, passed
 //     with weighted votes; baseapp `BlockParams` (a consensus param
 //     update) and blob `GovMaxSquareSize` changes; a change of staking
