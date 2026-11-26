@@ -22,8 +22,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use celestia_proto::celestia_core_proto::abci::ResponseFinalizeBlock;
-use common::check::{check_tx_results, contents, describe, diff};
 use common::Kv;
+use common::check::{check_tx_results, contents, describe, diff};
 use sdk::MultiStore;
 use sdk::version::Release;
 
