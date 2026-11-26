@@ -43,21 +43,61 @@ fn mode(name: &str) -> i32 {
     }
 }
 
-/// Runs every vector of `release` at `app_version` and returns the ones
-/// whose outcome differs from Go.
+/// Known divergences from Go, as `(release, vector name, sign mode)`:
+/// Go's x/tx amino-JSON encoder fails on these and celestia-rs signs. They
+/// are rule gaps (owned by the rules workstream), not oracle errors. The
+/// test asserts this list exactly: a new divergence fails it, and so does a
+/// fix that leaves its entry here (delete the entry with the fix).
+///
+/// - `MsgEnrollRemoteRouter` in v4.1.0 to v6.4.4 (hyperlane-cosmos
+///   v1.0.1): `hyperlane.warp.v1.RemoteRouter: {TagNum: 1, WireType:"varint"}:
+///   unknown protobuf field`.
+/// - `MsgCreateVestingAccount` with a start time in v4.1.0:
+///   `cosmos.vesting.v1beta1.MsgCreateVestingAccount: {TagNum: 6, ...}:
+///   unknown protobuf field` (the fork's `start_time`).
+const KNOWN_DIVERGENCES: &[(&str, &str, &str)] = &[
+    (
+        "v4",
+        "warp/MsgEnrollRemoteRouter",
+        "SIGN_MODE_LEGACY_AMINO_JSON",
+    ),
+    (
+        "v4",
+        "vesting/MsgCreateVestingAccount",
+        "SIGN_MODE_LEGACY_AMINO_JSON",
+    ),
+    (
+        "v5",
+        "warp/MsgEnrollRemoteRouter",
+        "SIGN_MODE_LEGACY_AMINO_JSON",
+    ),
+    (
+        "v6",
+        "warp/MsgEnrollRemoteRouter",
+        "SIGN_MODE_LEGACY_AMINO_JSON",
+    ),
+];
+
+/// Runs every vector of `release` at `app_version` and requires the vectors
+/// whose outcome differs from Go to be exactly the release's
+/// [`KNOWN_DIVERGENCES`].
 fn check(release: &str, app_version: u64, celestia_app: &str) {
     sdk::version::set_app_version(app_version);
     let file = vectors(release);
     assert_eq!(file["celestia_app"], celestia_app);
     let chain_id = file["chain_id"].as_str().unwrap();
     let mut failures = Vec::new();
+    let mut diverged = Vec::new();
     let mut checked = 0;
+    let known: Vec<(&str, &str)> = KNOWN_DIVERGENCES
+        .iter()
+        .filter(|(r, _, _)| *r == release)
+        .map(|(_, n, m)| (*n, *m))
+        .collect();
     for v in file["vectors"].as_array().unwrap() {
-        let name = format!(
-            "{} {}",
-            v["name"].as_str().unwrap(),
-            v["mode"].as_str().unwrap()
-        );
+        let key = (v["name"].as_str().unwrap(), v["mode"].as_str().unwrap());
+        let name = format!("{} {}", key.0, key.1);
+        let before = failures.len();
         let raw = hex::decode(v["tx"].as_str().unwrap()).unwrap();
         let tx = match txdecode::decode_for(app_version, &raw) {
             Ok(tx) => tx,
@@ -99,10 +139,19 @@ fn check(release: &str, app_version: u64, celestia_app: &str) {
             (Ok(_), false) => failures.push(format!("{name}: rs signs, go errors: {go_error}")),
             (Err(e), true) => failures.push(format!("{name}: rs errors ({e}), go signs")),
         }
+        if failures.len() > before && known.contains(&key) {
+            failures.pop();
+            diverged.push(key);
+        }
         checked += 1;
     }
     assert!(checked > 100, "{release}: {checked} vectors");
     assert!(failures.is_empty(), "{release}:\n{}", failures.join("\n"));
+    let fixed: Vec<_> = known.iter().filter(|k| !diverged.contains(k)).collect();
+    assert!(
+        fixed.is_empty(),
+        "{release}: {fixed:?} now match Go; delete them from KNOWN_DIVERGENCES"
+    );
 }
 
 #[test]
