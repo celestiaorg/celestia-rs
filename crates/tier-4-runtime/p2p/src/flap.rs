@@ -22,6 +22,8 @@ pub const FLAP_BACKOFF_MAX: Duration = Duration::from_secs(300);
 struct Entry {
     connected_at: Option<Instant>,
     flaps: u32,
+    /// Not to be dialed before this (set by a short connection).
+    retry_at: Option<Instant>,
 }
 
 /// Per-peer connection history of persistent peers.
@@ -47,10 +49,23 @@ impl FlapTracker {
             .map_or(Duration::ZERO, |t| now.saturating_duration_since(t));
         if lived >= STABLE_CONNECTION {
             e.flaps = 0;
+            e.retry_at = None;
             return Duration::ZERO;
         }
         e.flaps = e.flaps.saturating_add(1);
-        backoff(e.flaps, jitter)
+        let delay = backoff(e.flaps, jitter);
+        e.retry_at = Some(now + delay);
+        delay
+    }
+
+    /// Whether `id` dropped a short connection and its redial delay has not
+    /// passed at `now`: every dial path (PEX included) waits it out.
+    #[must_use]
+    pub fn backing_off(&self, id: &NodeId, now: Instant) -> bool {
+        self.peers
+            .get(id)
+            .and_then(|e| e.retry_at)
+            .is_some_and(|t| now < t)
     }
 }
 
@@ -113,6 +128,23 @@ mod tests {
         );
         t.connected(id(1), now);
         assert_eq!(t.disconnected(id(1), now, 0.5), Duration::from_secs(1));
+    }
+
+    /// Other dial paths (PEX) see the cooldown until the delay has passed.
+    #[test]
+    fn backing_off_until_the_delay_passes() {
+        let mut t = FlapTracker::default();
+        let now = Instant::now();
+        assert!(!t.backing_off(&id(1), now));
+        t.connected(id(1), now);
+        let d = t.disconnected(id(1), now, 0.5);
+        assert!(t.backing_off(&id(1), now));
+        assert!(t.backing_off(&id(1), now + d.saturating_sub(Duration::from_millis(1))));
+        assert!(!t.backing_off(&id(1), now + d));
+        // A stable connection clears it.
+        t.connected(id(1), now);
+        t.disconnected(id(1), now + STABLE_CONNECTION, 0.5);
+        assert!(!t.backing_off(&id(1), now + STABLE_CONNECTION));
     }
 
     #[test]

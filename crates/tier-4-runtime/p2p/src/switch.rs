@@ -656,6 +656,15 @@ impl Switch {
                     .any(|p| p.remote_ip() == addr.ip))
     }
 
+    /// Whether `addr` is a persistent peer that dropped a short connection
+    /// and is waiting out its redial delay (see [`crate::flap`]). PEX skips
+    /// such addresses so that only the delayed reconnect dials them.
+    #[must_use]
+    pub fn is_backing_off(&self, addr: &NetAddress) -> bool {
+        addr.id
+            .is_some_and(|id| lock(&self.inner.flaps).backing_off(&id, std::time::Instant::now()))
+    }
+
     /// Dial one address and add the peer (`DialPeerWithAddress`).
     pub async fn dial_peer_with_address(&self, addr: &NetAddress) -> Result<(), SwitchError> {
         if self.is_dialing_or_existing_address(addr) {
