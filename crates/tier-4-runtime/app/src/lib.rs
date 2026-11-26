@@ -255,9 +255,9 @@ pub fn timeout_info() -> TimeoutInfo {
 }
 
 fn timeout_info_at(version: u64) -> TimeoutInfo {
-    // celestia-app v4.1.0 sets only TimeoutPropose (3.5 s) and
-    // TimeoutCommit (4.2 s) (`pkg/appconsts/v4`).
-    if Release::executing(version).app_version == 4 {
+    // celestia-app v4.1.0 and v5.0.12 set only TimeoutPropose (3.5 s) and
+    // TimeoutCommit (4.2 s) (`pkg/appconsts`).
+    if matches!(Release::executing(version).app_version, 4 | 5) {
         return TimeoutInfo {
             timeout_propose: dur(3, 500_000_000),
             timeout_commit: dur(4, 200_000_000),
@@ -849,10 +849,8 @@ impl App {
         let genesis: serde_json::Value = serde_json::from_slice(&req.app_state_bytes)
             .map_err(|e| sdk::error::sdk::json_unmarshal(e.to_string()))?;
         let app_state = &genesis;
-        if release.app_version == 4 {
-            // celestia-app v4.1.0's module manager: no capability, ICA host
-            // or forwarding module.
-            x_upgrade::set_module_version_map(&mut ctx, upgrades::v4::VERSION_MAP.iter().copied())?;
+        if let Some(versions) = upgrades::release_version_map(release.app_version) {
+            x_upgrade::set_module_version_map(&mut ctx, versions)?;
         } else {
             x_upgrade::set_module_version_map(
                 &mut ctx,
@@ -1128,6 +1126,40 @@ impl App {
     pub fn wait_for_snapshot(&mut self) {
         if let Some(manager) = &mut self.snapshots {
             let _ = manager.wait_for_snapshot();
+        }
+    }
+
+    /// Waits for the background snapshot, then takes the snapshot of the
+    /// last committed height if that is a snapshot height without one
+    /// (its commit found the previous snapshot still being written, Go
+    /// `Manager.Create`'s conflict) and waits for it too. A replay that
+    /// stops at a height calls this before it exits, so its last
+    /// checkpoint exists.
+    pub fn finish_snapshots(&mut self) {
+        let format = if self.is_sdk_v046_state() {
+            snapshots::FORMAT_V046
+        } else {
+            snapshots::CURRENT_FORMAT
+        };
+        let Some(manager) = &mut self.snapshots else {
+            return;
+        };
+        let _ = manager.wait_for_snapshot();
+        let Ok(height) = u64::try_from(self.last_height) else {
+            return;
+        };
+        if !manager.should_snapshot(height)
+            || manager
+                .list()
+                .is_ok_and(|l| l.iter().any(|s| s.height == height))
+        {
+            return;
+        }
+        match manager.snapshot_in_background_with_format(self.ms.root(), height, format) {
+            Ok(()) => {
+                let _ = manager.wait_for_snapshot();
+            }
+            Err(e) => tracing::error!(height, error = %e, "failed to create state snapshot"),
         }
     }
 
@@ -2111,72 +2143,79 @@ mod node_options_tests {
         }
     }
 
-    /// A genesis at app version 4 commits celestia-app v4.1.0's store set
-    /// (no `zkism`) and its module version map (no `capability`, no
-    /// interchain accounts, no forwarding).
+    /// A genesis at app version 4 (5) commits celestia-app v4.1.0's
+    /// (v5.0.12's) store set (no `zkism`) and its module version map (no
+    /// interchain accounts or forwarding; `capability` only in v5).
     #[test]
     fn v4_genesis_commits_the_v4_store_set_and_version_map() {
         let genesis: serde_json::Value = serde_json::from_str(include_str!(
             "../../../../conformance/fixtures/devnet/empty/genesis.json"
         ))
         .unwrap();
-        let home = tempfile::tempdir().unwrap();
-        let mut app = App::open(home.path()).unwrap();
-        app.init_chain(abci::RequestInitChain {
-            chain_id: genesis["chain_id"].as_str().unwrap().into(),
-            consensus_params: Some(ConsensusParams {
-                version: Some(VersionParams { app: 4 }),
+        // celestia-app v5.0.12's module manager adds the capability module.
+        for version in [4, 5] {
+            let home = tempfile::tempdir().unwrap();
+            let mut app = App::open(home.path()).unwrap();
+            app.init_chain(abci::RequestInitChain {
+                chain_id: genesis["chain_id"].as_str().unwrap().into(),
+                consensus_params: Some(ConsensusParams {
+                    version: Some(VersionParams { app: version }),
+                    ..Default::default()
+                }),
+                app_state_bytes: serde_json::to_vec(&genesis["app_state"]).unwrap(),
                 ..Default::default()
-            }),
-            app_state_bytes: serde_json::to_vec(&genesis["app_state"]).unwrap(),
-            ..Default::default()
-        })
-        .unwrap();
-        app.finalize_block(abci::RequestFinalizeBlock {
-            height: 1,
-            time: Some(pbjson_types::Timestamp {
-                seconds: 1_700_000_000,
-                nanos: 0,
-            }),
-            ..Default::default()
-        })
-        .unwrap();
-        app.commit().unwrap();
-        let mut committed: Vec<String> = app
-            .ms
-            .root()
-            .last_commit_info()
-            .unwrap()
-            .store_infos
-            .iter()
-            .map(|s| s.name.clone())
-            .collect();
-        committed.sort();
-        let mut want: Vec<String> = Release::for_app_version(4)
-            .unwrap()
-            .stores
-            .iter()
-            .map(|s| (*s).to_owned())
-            .collect();
-        want.sort();
-        assert_eq!(committed, want);
-        let versions: Vec<(String, u64)> = app
-            .ms
-            .range(x_upgrade::STORE_KEY, Some(&[0x02]), Some(&[0x03]), false)
-            .unwrap()
-            .into_iter()
-            .map(|(k, v)| {
-                (
-                    String::from_utf8(k[1..].to_vec()).unwrap(),
-                    u64::from_be_bytes(v[..].try_into().unwrap()),
-                )
             })
-            .collect();
-        let want: Vec<(String, u64)> = upgrades::v4::VERSION_MAP
-            .iter()
-            .map(|(n, v)| ((*n).to_owned(), *v))
-            .collect();
-        assert_eq!(versions, want);
+            .unwrap();
+            app.finalize_block(abci::RequestFinalizeBlock {
+                height: 1,
+                time: Some(pbjson_types::Timestamp {
+                    seconds: 1_700_000_000,
+                    nanos: 0,
+                }),
+                ..Default::default()
+            })
+            .unwrap();
+            app.commit().unwrap();
+            let mut committed: Vec<String> = app
+                .ms
+                .root()
+                .last_commit_info()
+                .unwrap()
+                .store_infos
+                .iter()
+                .map(|s| s.name.clone())
+                .collect();
+            committed.sort();
+            let mut want: Vec<String> = Release::for_app_version(version)
+                .unwrap()
+                .stores
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect();
+            want.sort();
+            assert_eq!(committed, want, "v{version}");
+            let versions: Vec<(String, u64)> = app
+                .ms
+                .range(x_upgrade::STORE_KEY, Some(&[0x02]), Some(&[0x03]), false)
+                .unwrap()
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        String::from_utf8(k[1..].to_vec()).unwrap(),
+                        u64::from_be_bytes(v[..].try_into().unwrap()),
+                    )
+                })
+                .collect();
+            let mut want: Vec<(String, u64)> = upgrades::v4::VERSION_MAP
+                .iter()
+                .map(|(n, v)| ((*n).to_owned(), *v))
+                .collect();
+            if version == 5 {
+                want.push(("capability".to_owned(), 1));
+                want.sort();
+            }
+            assert_eq!(versions, want, "v{version}");
+        }
     }
 
     #[test]

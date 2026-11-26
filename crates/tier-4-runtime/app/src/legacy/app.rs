@@ -14,8 +14,9 @@
 //!
 //! celestia-rs replays committed v0.46 blocks only. CheckTx,
 //! PrepareProposal, ProcessProposal and queries fail with a
-//! not-supported error rather than running v0.50 code on v0.46 state, and
-//! no state-sync snapshot is taken of a v0.46 state. A fresh app restores
+//! not-supported error rather than running v0.50 code on v0.46 state.
+//! Commit writes format 2 state-sync snapshots of a v0.46 state, as Go
+//! v0.46 does ([`App::legacy_commit`]). A fresh app restores
 //! a Go v0.46 snapshot (format 2) of app version 1 to 3 into that
 //! release's store set ([`App::legacy_offer_snapshot`]) and continues on
 //! the driver from the snapshot height.
@@ -336,8 +337,9 @@ impl App {
         Ok(res)
     }
 
-    /// Commit on a v0.46 state. No state-sync snapshot is taken: the
-    /// snapshot format of a v0.46 state is not supported.
+    /// Commit on a v0.46 state; at the snapshot interval it writes a
+    /// format 2 state-sync snapshot of the committed height in the
+    /// background, as Go v0.46 does.
     pub(crate) fn legacy_commit(&mut self) -> Result<ResponseCommit> {
         let header = self
             .finalize_header
@@ -355,13 +357,14 @@ impl App {
         self.last_commit_hash = id.hash.to_vec();
         self.last_height = id.version;
         self.check_header = header;
-        if let (Some(m), Ok(h)) = (&self.snapshots, u64::try_from(id.version))
+        // Go v0.46 `SnapshotIfApplicable`: format 2, the same item stream
+        // as format 3 (celestia-app v1 to v3 register no extensions).
+        if let (Some(m), Ok(h)) = (&mut self.snapshots, u64::try_from(id.version))
             && m.should_snapshot(h)
+            && let Err(e) =
+                m.snapshot_in_background_with_format(self.ms.root(), h, snapshots::FORMAT_V046)
         {
-            tracing::debug!(
-                height = h,
-                "no state-sync snapshot of a cosmos-sdk v0.46 state"
-            );
+            tracing::error!(height = h, error = %e, "failed to create state snapshot");
         }
         Ok(ResponseCommit {
             retain_height: self.block_retention_height(id.version),

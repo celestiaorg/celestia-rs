@@ -10,5 +10,7 @@
 pub mod bls12381;
 /// `CometBFT` Ed25519 consensus signature helpers.
 pub mod ed25519;
+/// Order-preserving parallel checks for signature batches.
+pub mod parallel;
 /// Cosmos SDK secp256k1 account signature helpers.
 pub mod secp256k1;

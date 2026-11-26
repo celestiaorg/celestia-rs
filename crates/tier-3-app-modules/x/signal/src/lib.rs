@@ -428,8 +428,8 @@ mod tests {
 
     /// `appconsts.GetUpgradeHeightDelay` of each release: v4.1.0 waits one
     /// block (three on `test`); v5.0.12 to v8.0.8 wait 14,400 on
-    /// arabica-11, 28,800 on mocha-4 and 100,800 on mainnet. App version 4
-    /// runs as itself; 5 to 8 still run as 9.
+    /// arabica-11, 28,800 on mocha-4 and 100,800 on mainnet. App versions 4
+    /// and 5 run as themselves; 6 to 8 still run as 9.
     #[test]
     fn upgrade_height_delay_follows_the_release() {
         use sdk::version::Release;
@@ -452,6 +452,8 @@ mod tests {
             for v in (0..=14).chain([u64::MAX]) {
                 let want = if v == 4 {
                     upgrade_height_delay_v4(chain)
+                } else if v == 5 {
+                    upgrade_height_delay_v5(chain)
                 } else if (1..=9).contains(&v) {
                     upgrade_height_delay_v9(chain)
                 } else if v >= 12 {

@@ -122,6 +122,9 @@ type synth struct {
 	lastResultsHash []byte
 	appVersion      uint64
 	params          cmttypes.ConsensusParams
+	// ids are the IBC identifiers that the blocks created, by event type
+	// (to_v6.go).
+	ids map[string]string
 }
 
 func mustHex(s string) []byte {
@@ -155,6 +158,7 @@ func newSynth(ho *handoff, genesisTime time.Time) (*synth, error) {
 		chain:           ho.Chain,
 		accounts:        ho.Accounts,
 		vals:            map[int64]*cmttypes.ValidatorSet{},
+		ids:             map[string]string{},
 		appHash:         mustHex(ho.AppHash),
 		lastResultsHash: mustHex(ho.LastResultsHash),
 		appVersion:      ho.AppVersion,
@@ -259,6 +263,14 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 		return nil
 	}
 
+	txWith := func(msg sdk.Msg, opts ...user.TxOption) error {
+		bz, _, err := sg.CreateTx([]sdk.Msg{msg}, opts...)
+		if err != nil {
+			return err
+		}
+		out = append(out, bz)
+		return nil
+	}
 	var steps []func() error
 	switch height - s.handoffHeight - 1 {
 	case 0:
@@ -280,6 +292,12 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 		)
 	case 4:
 		steps = append(steps, func() error { return send("bob", "carol", 59) })
+	default:
+		more, err := s.toV6Steps(a, height-s.handoffHeight-1, addr, valAddr, txWith)
+		if err != nil {
+			return nil, err
+		}
+		steps = append(steps, more...)
 	}
 	for _, step := range steps {
 		if err := step(); err != nil {
@@ -383,6 +401,9 @@ func (s *synth) committed(id cmttypes.BlockID, res *abci.ResponseFinalizeBlock) 
 	s.lastBlockID = id
 	s.appHash = res.AppHash
 	s.lastResultsHash = cmttypes.NewResults(res.TxResults).Hash()
+	if err := s.recordIDs(res); err != nil {
+		return nil, err
+	}
 	if cp := res.ConsensusParamUpdates; cp != nil {
 		s.params = s.params.Update(cp)
 		if cp.Version != nil {

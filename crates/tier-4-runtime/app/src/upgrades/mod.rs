@@ -80,14 +80,14 @@ impl Handlers {
 
     /// Whether [`x_upgrade::UpgradeHandlers::apply`] runs plan `name` here.
     /// A release can register a plan (Go's `HasHandler`, which x/upgrade's
-    /// PreBlocker checks) before celestia-rs ports its handler (`v5` to
+    /// PreBlocker checks) before celestia-rs ports its handler (`v6` to
     /// `v8`).
     #[must_use]
     pub fn is_ported(&self, name: &str) -> bool {
         use x_upgrade::UpgradeHandlers as _;
         match name {
             "v9" => true,
-            "v4" | "v10" | "v11" | "v12" => self.has_handler(name),
+            "v4" | "v5" | "v10" | "v11" | "v12" => self.has_handler(name),
             _ => false,
         }
     }
@@ -100,6 +100,8 @@ impl x_upgrade::UpgradeHandlers for Handlers {
 
     fn apply(&self, ctx: &mut Context<'_>, plan: &Plan, from: VersionMap) -> Result<VersionMap> {
         match plan.name.as_str() {
+            // celestia-app v5.0.12's `v5` handler returns `fromVM`.
+            "v5" if self.has_handler("v5") => Ok(from),
             "v4" if self.has_handler("v4") => {
                 let versions = v4::handler(ctx, &from)?;
                 // celestiaorg x/upgrade v0.1.0 `ApplyUpgrade` (celestia-app
@@ -120,6 +122,23 @@ impl x_upgrade::UpgradeHandlers for Handlers {
             ))),
         }
     }
+}
+
+/// The module manager's version map of the release that runs as app
+/// version `app_version`, where celestia-rs does not derive it from
+/// [`crate::modules::VERSION_MAP`]: celestia-app v4.1.0 (no capability,
+/// ICA host or forwarding module) and v5.0.12 (v4.1.0's plus capability).
+#[must_use]
+pub fn release_version_map(app_version: u64) -> Option<Vec<(&'static str, u64)>> {
+    let mut versions: Vec<(&'static str, u64)> = match app_version {
+        4 | 5 => v4::VERSION_MAP.to_vec(),
+        _ => return None,
+    };
+    if app_version == 5 {
+        versions.push(("capability", 1));
+        versions.sort_unstable();
+    }
+    Some(versions)
 }
 
 /// A signal changes consensus params, not the executable already running.
@@ -150,7 +169,11 @@ pub fn set_app_version(ctx: &mut Context<'_>, version: u64) -> Result<()> {
 /// in v10 run `InitGenesis` when missing from the previous version map.
 fn run_migrations(ctx: &mut Context<'_>, from: &VersionMap, target: u64) -> Result<VersionMap> {
     let mut out = VersionMap::new();
-    for (name, to) in crate::modules::version_map(target) {
+    // The target release's module manager: v9.0.8 has no fibre or
+    // valaddr module.
+    for (name, to) in crate::modules::version_map(target)
+        .filter(|(name, _)| crate::stores::exists_at(name, target))
+    {
         match from.get(name).copied() {
             Some(v) if v == to => {}
             Some(2) if name == "blob" && to == 3 => x_blob::migrate_params(ctx)?,
@@ -231,10 +254,10 @@ mod tests {
         assert!(Handlers::of_release(5).has_handler("v5"));
         assert!(!Handlers::of_release(3).has_handler("v4"));
         assert!(!Handlers::of_release(13).has_handler("v4"));
-        // App version 4 runs as itself: its executing release knows `v4`;
-        // app version 5 still runs as 9.
+        // App versions 4 and 5 run as themselves; 6 still runs as 9.
         assert!(Handlers::at(4).has_handler("v4"));
-        assert!(!Handlers::at(5).has_handler("v4"));
+        assert!(Handlers::at(5).has_handler("v5"));
+        assert!(!Handlers::at(6).has_handler("v4"));
     }
 
     /// The release table keeps the handler sets of the hand-written table
@@ -242,12 +265,33 @@ mod tests {
     /// v11 and v12 for theirs, v10 otherwise (0 and unknown versions). App
     /// versions 1 and 4 run as themselves: celestia-app v3.13.0 registers
     /// none, v4.1.0 `v4`.
+    /// celestia-app v5.0.12 registers `v4` and `v5`; the `v5` handler
+    /// returns the version map it is given (no migrations).
+    #[test]
+    fn v5_handler_returns_the_version_map() {
+        let v5 = Handlers::at(5);
+        assert!(v5.has_handler("v5") && v5.has_handler("v4"));
+        assert!(v5.is_ported("v5"));
+        let mut ms = sdk::MultiStore::new();
+        let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        let from: VersionMap = [("bank".to_owned(), 4), ("blob".to_owned(), 3)]
+            .into_iter()
+            .collect();
+        let plan = Plan {
+            name: "v5".into(),
+            height: 7,
+            ..Default::default()
+        };
+        assert_eq!(v5.apply(&mut ctx, &plan, from.clone()).unwrap(), from);
+    }
+
     #[test]
     fn handler_names_are_unchanged_for_every_app_version() {
         for v in 0..=13 {
             let expected: &[&str] = match v {
                 1 => &[],
                 4 => &["v4"],
+                5 => &["v4", "v5"],
                 2..=9 => &["v9"],
                 11 => &["v11"],
                 12 => &["v12"],
