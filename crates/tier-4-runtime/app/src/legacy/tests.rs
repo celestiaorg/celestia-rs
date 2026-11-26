@@ -2256,3 +2256,38 @@ fn v6_transfer_validate_basic() {
     let e = transfer("1", " ".into()).unwrap_err();
     assert_eq!((e.codespace, e.code), ("sdk", 7), "{}", e.log);
 }
+
+/// ibc-go v6 `MsgAcknowledgement.ValidateBasic`: a zero proof height is
+/// the SDK's `ErrInvalidHeight`, empty ack bytes are
+/// `ErrInvalidAcknowledgement`.
+#[test]
+fn v6_acknowledgement_validate_basic() {
+    use celestia_proto::ibc::core::channel::v1 as chpb;
+    use celestia_proto::ibc::core::client::v1::Height;
+    let ack = |h: u64, ack: &[u8]| {
+        msgs::validate_basic(&celestia_proto::Any::pack(&chpb::MsgAcknowledgement {
+            packet: Some(chpb::Packet {
+                sequence: 1,
+                source_port: "transfer".into(),
+                source_channel: "channel-0".into(),
+                destination_port: "transfer".into(),
+                destination_channel: "channel-1".into(),
+                data: vec![1],
+                timeout_height: None,
+                timeout_timestamp: 1,
+            }),
+            acknowledgement: ack.to_vec(),
+            proof_acked: vec![1],
+            proof_height: Some(Height {
+                revision_number: 0,
+                revision_height: h,
+            }),
+            signer: x_auth::bech32(&[1; 20]).unwrap(),
+        }))
+    };
+    ack(1, b"{}").unwrap();
+    let e = ack(0, b"{}").unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 26), "{}", e.log);
+    let e = ack(1, b"").unwrap_err();
+    assert_eq!((e.codespace, e.code), ("channel", 16), "{}", e.log);
+}

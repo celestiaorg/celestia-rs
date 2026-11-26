@@ -984,7 +984,8 @@ impl IbcModule for TransferModule {
 }
 
 /// `Acknowledgement.String()` (gogoproto compact text format).
-fn ack_text(ack: &x_ibc::channel::AckResponse) -> String {
+#[must_use]
+pub fn ack_text(ack: &x_ibc::channel::AckResponse) -> String {
     match ack {
         x_ibc::channel::AckResponse::Empty => String::new(),
         x_ibc::channel::AckResponse::Result(r) => format!("result:{} ", proto_text_bytes(r)),

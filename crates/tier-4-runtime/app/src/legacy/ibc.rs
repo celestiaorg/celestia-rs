@@ -492,6 +492,108 @@ pub(super) fn verify(
     value: &[u8],
     wrap: &str,
 ) -> Result<()> {
+    verify_with_delay(ctx, conn, proof_height, proof, path, value, wrap, false)
+}
+
+/// A 07-tendermint client error (`tendermint-client` codespace).
+fn tm_client_err(code: u32, desc: &str, log: String) -> sdk::SdkError {
+    sdk::SdkError::new("tendermint-client", code, desc).wrap(log)
+}
+
+/// 03-connection `getBlockDelay`: the connection's delay period in
+/// blocks of the `ibc` subspace's `MaxExpectedTimePerBlock`, rounded up
+/// (Go divides as float64; exact here below 2^53).
+fn block_delay(ctx: &mut Context<'_>, conn: &ConnectionEnd) -> Result<u64> {
+    const EXACT: u64 = 1 << 53;
+    let raw = x_params::get_raw(ctx, "ibc", b"MaxExpectedTimePerBlock")?.unwrap_or_default();
+    let expected: u64 = serde_json::from_slice::<String>(&raw)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .ok_or_else(|| sdk::error::go_panic("subspace ibc: MaxExpectedTimePerBlock"))?;
+    if expected == 0 {
+        return Ok(0);
+    }
+    let delay = conn.delay_period;
+    if delay >= EXACT || expected >= EXACT {
+        return Err(super::not_ported(errs::not_supported(
+            "a connection delay or expected block time beyond 2^53 (float64 rounding) is not ported",
+        )));
+    }
+    Ok(delay.div_ceil(expected))
+}
+
+/// 07-tendermint `verifyDelayPeriodPassed` (v6).
+fn verify_delay_passed(
+    ctx: &mut Context<'_>,
+    client_id: &str,
+    proof_height: &Height,
+    time_delay: u64,
+    block_delay: u64,
+) -> Result<()> {
+    let processed_time =
+        tmc::get_processed_time(ctx, client_id, proof_height)?.ok_or_else(|| {
+            tm_client_err(
+                8,
+                "processed time not found",
+                format!(
+                    "processed time not found for height: {}",
+                    height::to_string(proof_height)
+                ),
+            )
+        })?;
+    let now = u64::try_from(sdk::time::to_nanos(&ctx.header.time)).unwrap_or(0);
+    let valid_time = processed_time.wrapping_add(time_delay);
+    if now < valid_time {
+        return Err(tm_client_err(
+            10,
+            "packet-specified delay period has not been reached",
+            format!("cannot verify packet until time: {valid_time}, current time: {now}"),
+        ));
+    }
+    let processed_height =
+        tmc::get_processed_height(ctx, client_id, proof_height)?.ok_or_else(|| {
+            tm_client_err(
+                9,
+                "processed height not found",
+                format!(
+                    "processed height not found for height: {}",
+                    height::to_string(proof_height)
+                ),
+            )
+        })?;
+    let current = client::get_self_height(ctx)?;
+    let valid = Height {
+        revision_number: processed_height.revision_number,
+        revision_height: processed_height.revision_height.wrapping_add(block_delay),
+    };
+    if height::lt(&current, &valid) {
+        return Err(tm_client_err(
+            10,
+            "packet-specified delay period has not been reached",
+            format!(
+                "cannot verify packet until height: {}, current height: {}",
+                height::to_string(&valid),
+                height::to_string(&current)
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// [`verify`]; `delay` adds the packet verifications' delay period
+/// checks (`getBlockDelay` before, `verifyDelayPeriodPassed` after the
+/// proving consensus state).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn verify_with_delay(
+    ctx: &mut Context<'_>,
+    conn: &ConnectionEnd,
+    proof_height: &Height,
+    proof: &[u8],
+    path: &[u8],
+    value: &[u8],
+    wrap: &str,
+    delay: bool,
+) -> Result<()> {
     let client_id = &conn.client_id;
     let cs = match client::client_state(ctx, client_id)? {
         Some(client::ClientState::Tendermint(cs)) => *cs,
@@ -509,6 +611,7 @@ pub(super) fn verify(
             status.as_str()
         )));
     }
+    let block_delay = if delay { block_delay(ctx, conn)? } else { 0 };
     let r = (|| {
         if height::lt(&cs.latest_height.unwrap_or_default(), proof_height) {
             return Err(errs::invalid_height(format!(
@@ -528,6 +631,9 @@ pub(super) fn verify(
                 "please ensure the proof was constructed against a height that exists on the client",
             )
         })?;
+        if delay {
+            verify_delay_passed(ctx, client_id, proof_height, conn.delay_period, block_delay)?;
+        }
         let path =
             commitment::apply_prefix(Some(prefix), &[gostr::from_go_bytes(path).into_owned()])?;
         let root = proving.root.unwrap_or_default().hash;
