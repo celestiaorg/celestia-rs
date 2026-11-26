@@ -2233,7 +2233,8 @@ fn not_ported_in_genesis_and_blockers_is_not_lost() {
 /// later release's bank `MsgUpdateParams`) fails the transaction as Go
 /// does (a decode error, no gas wanted, no record); blobstream's
 /// `MsgRegisterEVMAddress` decodes and fails its `ValidateBasic`; a
-/// registered message whose `ValidateBasic` is not ported (x/signal)
+/// registered message whose `ValidateBasic` is not ported (crisis
+/// `MsgVerifyInvariant`)
 /// aborts the block before any ante handler state change.
 #[test]
 fn v1_run_tx_decodes_with_the_v1_registry() {
@@ -2268,16 +2269,14 @@ fn v1_run_tx_decodes_with_the_v1_registry() {
     assert!(out.result.is_err());
     assert!(record.is_none());
 
-    let signal =
-        celestia_proto::Any::pack(&celestia_proto::celestia::signal::v1::MsgSignalVersion {
-            validator_address: "celestiavaloper1".to_owned(),
-            version: 2,
-        });
-    let (out, record) = run(signal);
+    let crisis = celestia_proto::Any::pack(
+        &celestia_proto::cosmos::crisis::v1beta1::MsgVerifyInvariant::default(),
+    );
+    let (out, record) = run(crisis);
     assert!(out.result.is_err());
     let what = record.expect("not recorded");
     assert!(
-        what.contains("ValidateBasic of /celestia.signal.v1.MsgSignalVersion"),
+        what.contains("ValidateBasic of /cosmos.crisis.v1beta1.MsgVerifyInvariant"),
         "{what}"
     );
 }

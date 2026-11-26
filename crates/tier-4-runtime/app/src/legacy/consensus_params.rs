@@ -146,19 +146,30 @@ pub fn decode_app_version(raw: &[u8]) -> Result<u64> {
     }
 }
 
+/// `paramStore.Has` then, when present, `paramStore.Get`: what each
+/// parameter of `GetConsensusParams` costs on the context's gas meter.
+fn get_if_has(ctx: &mut Context<'_>, key: &str) -> Result<Option<Vec<u8>>> {
+    if x_params::has(ctx, SUBSPACE.name, key.as_bytes())? {
+        x_params::get_raw(ctx, SUBSPACE.name, key.as_bytes())
+    } else {
+        Ok(None)
+    }
+}
+
 /// `BaseApp.GetConsensusParams` (celestia fork): the stored params; the
 /// version falls back to the in-memory `app_version` when the subspace has
-/// none (app version 1).
+/// none (app version 1). Each parameter is a `Has` and, when present, a
+/// `Get` on the context's gas meter, as in Go.
 pub fn load(ctx: &mut Context<'_>, app_version: u64) -> Result<ConsensusParams> {
     let mut cp = ConsensusParams::default();
-    if let Some(raw) = x_params::get_raw(ctx, SUBSPACE.name, BLOCK.as_bytes())? {
+    if let Some(raw) = get_if_has(ctx, BLOCK)? {
         let v = parse(&raw, "BlockParams")?.unwrap_or_default();
         cp.block = Some(BlockParams {
             max_bytes: field_i64(&v, "max_bytes", "BlockParams")?,
             max_gas: field_i64(&v, "max_gas", "BlockParams")?,
         });
     }
-    if let Some(raw) = x_params::get_raw(ctx, SUBSPACE.name, EVIDENCE.as_bytes())? {
+    if let Some(raw) = get_if_has(ctx, EVIDENCE)? {
         let v = parse(&raw, "EvidenceParams")?.unwrap_or_default();
         let nanos = field_i64(&v, "max_age_duration", "EvidenceParams")?;
         cp.evidence = Some(EvidenceParams {
@@ -171,7 +182,7 @@ pub fn load(ctx: &mut Context<'_>, app_version: u64) -> Result<ConsensusParams> 
             max_bytes: field_i64(&v, "max_bytes", "EvidenceParams")?,
         });
     }
-    if let Some(raw) = x_params::get_raw(ctx, SUBSPACE.name, VALIDATOR.as_bytes())? {
+    if let Some(raw) = get_if_has(ctx, VALIDATOR)? {
         let v = parse(&raw, "ValidatorParams")?.unwrap_or_default();
         let types = match &v["pub_key_types"] {
             serde_json::Value::Null => Vec::new(),
@@ -189,7 +200,7 @@ pub fn load(ctx: &mut Context<'_>, app_version: u64) -> Result<ConsensusParams> 
             pub_key_types: types,
         });
     }
-    let stored = x_params::get_raw(ctx, SUBSPACE.name, VERSION.as_bytes())?;
+    let stored = get_if_has(ctx, VERSION)?;
     let app = match stored {
         Some(raw) => Some(decode_app_version(&raw)?),
         None => (app_version != 0).then_some(app_version),

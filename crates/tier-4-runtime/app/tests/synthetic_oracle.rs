@@ -33,7 +33,7 @@ const FIXTURE: &str = concat!(
 /// does. Block 4 holds a `MsgSignalVersion` at app version 1, whose
 /// cosmos-sdk v0.46 `ValidateBasic` is not ported yet; block 5 runs the
 /// v1 to v2 upgrade.
-const MATCHED_THROUGH: i64 = 3;
+const MATCHED_THROUGH: i64 = 4;
 
 fn read(name: &str) -> Vec<u8> {
     std::fs::read(format!("{FIXTURE}/{name}")).unwrap()

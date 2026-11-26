@@ -232,12 +232,24 @@ pub fn initialize_capability(
 
 /// `IsInitialized`.
 pub fn is_initialized(ctx: &mut Context<'_>) -> Result<bool> {
+    // Go: `memStore.Get(KeyMemInitialized) != nil` (a read, not a `Has`,
+    // which costs gas differently where the meter is not replaced).
+    if ctx.is_sdk_v046() {
+        return Ok(ctx.get(MEM_STORE_KEY, KEY_MEM_INITIALIZED)?.is_some());
+    }
     ctx.has(MEM_STORE_KEY, KEY_MEM_INITIALIZED)
 }
 
 /// `InitMemStore`: rebuilds the memory store from persistent owners once.
 /// Runs with an infinite gas meter, like Go's `noGasCtx`.
+///
+/// cosmos-sdk v0.46's `noGasCtx` replaces only the block gas meter
+/// (`WithBlockGasMeter`): the check and any rebuild cost gas on the
+/// context's meter.
 pub fn init_mem_store(ctx: &mut Context<'_>) -> Result<()> {
+    if ctx.is_sdk_v046() {
+        return init_mem_store_inner(ctx);
+    }
     let saved = std::mem::replace(&mut ctx.gas, GasMeter::infinite());
     let res = init_mem_store_inner(ctx);
     ctx.gas = saved;

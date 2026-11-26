@@ -35,6 +35,7 @@ pub mod ibc_transfer;
 pub mod msgs;
 pub mod params;
 pub mod qgb;
+pub mod signal;
 pub mod tx;
 pub mod vesting;
 
@@ -629,6 +630,9 @@ impl<M: Modules> Driver<M> {
             next_validators_hash: req.next_validators_hash.clone(),
         };
         let mut ctx = Context::new(ms, header.clone(), ExecMode::Finalize);
+        // `BeginBlock` reads the consensus params twice on the block
+        // context's meter: `getMaximumBlockGas`, then `GetConsensusParams`.
+        consensus_params::load(&mut ctx, self.app_version)?;
         ctx.consensus_params = consensus_params::load(&mut ctx, self.app_version)?;
         ctx.vote_infos = req
             .decided_last_commit
