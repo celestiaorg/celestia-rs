@@ -80,14 +80,14 @@ impl Handlers {
 
     /// Whether [`x_upgrade::UpgradeHandlers::apply`] runs plan `name` here.
     /// A release can register a plan (Go's `HasHandler`, which x/upgrade's
-    /// PreBlocker checks) before celestia-rs ports its handler (`v4` to
+    /// PreBlocker checks) before celestia-rs ports its handler (`v5` to
     /// `v8`).
     #[must_use]
     pub fn is_ported(&self, name: &str) -> bool {
         use x_upgrade::UpgradeHandlers as _;
         match name {
             "v9" => true,
-            "v10" | "v11" | "v12" => self.has_handler(name),
+            "v4" | "v10" | "v11" | "v12" => self.has_handler(name),
             _ => false,
         }
     }
@@ -231,8 +231,10 @@ mod tests {
         assert!(Handlers::of_release(5).has_handler("v5"));
         assert!(!Handlers::of_release(3).has_handler("v4"));
         assert!(!Handlers::of_release(13).has_handler("v4"));
-        // The executing release's set is unchanged.
-        assert!(!Handlers::at(4).has_handler("v4"));
+        // App version 4 runs as itself: its executing release knows `v4`;
+        // app version 5 still runs as 9.
+        assert!(Handlers::at(4).has_handler("v4"));
+        assert!(!Handlers::at(5).has_handler("v4"));
     }
 
     /// The release table keeps the handler sets of the hand-written table

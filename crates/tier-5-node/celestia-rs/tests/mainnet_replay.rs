@@ -102,7 +102,6 @@ const EXPECTED_BLOCKERS: [(u64, &[&str]); 9] = [
         &[
             "pre-state stores that celestia-rs does not mount: mem_capability",
             "celestia-rs stores absent from the pre-state: circuit, consensus, hyperlane, minfee, warp",
-            "celestia-rs does not port the upgrade handler of plan v4 at 6680340",
         ],
     ),
     (
