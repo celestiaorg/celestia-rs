@@ -75,6 +75,44 @@ fn absent_at(app_version: u64, path: &str) -> bool {
             || path.starts_with("/cosmos.reflection.v1."))
 }
 
+/// A module gRPC query prepared under the app lock by
+/// [`App::detached_grpc_query`], run later without it.
+pub struct DetachedGrpcQuery {
+    state: QueryState,
+    version: u64,
+    handler: &'static grpc_query::Handler,
+    /// Keeps the view's version from being pruned while it is read.
+    _pin: multistore::VersionPin,
+}
+
+impl std::fmt::Debug for DetachedGrpcQuery {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DetachedGrpcQuery")
+            .field("height", &self.state.header.height)
+            .field("version", &self.version)
+            .finish_non_exhaustive()
+    }
+}
+
+impl DetachedGrpcQuery {
+    /// The height the query reads.
+    #[must_use]
+    pub fn height(&self) -> i64 {
+        self.state.header.height
+    }
+
+    /// Runs the handler on the view; sets the thread's app version (the
+    /// keepers read it) first.
+    pub fn run(mut self, data: &[u8]) -> Result<(Vec<u8>, i64), GrpcQueryError> {
+        sdk::version::set_app_version(self.version);
+        let h = self.state.header.height;
+        let mut ctx = self.state.context();
+        (self.handler)(&mut ctx, data)
+            .map(|v| (v, h))
+            .map_err(|error| GrpcQueryError::handler_at_height(error, h))
+    }
+}
+
 impl GrpcQueryError {
     /// Keeps the height only after a decoded request reaches its handler.
     pub(crate) fn handler_at_height(error: QueryError, height: i64) -> Self {
@@ -217,6 +255,42 @@ impl App {
         handler(&mut ctx, data)
             .map(|v| (v, h))
             .map_err(|error| GrpcQueryError::handler_at_height(error, h))
+    }
+
+    /// Prepares the module gRPC query `path` at the latest height so it can
+    /// run without the app lock: the app-version check, the query context
+    /// and a pin on its version are taken here (under the lock), and
+    /// [`DetachedGrpcQuery::run`] executes the handler later on a detached
+    /// read-only view, so a long handler never delays block execution.
+    /// Errors and results are those of [`Self::grpc_query`]. Only handlers
+    /// of the module router are detachable; the ones that need the app
+    /// itself (`cosmos.tx.v1beta1.Service`, node services) report
+    /// [`GrpcQueryError::Unimplemented`].
+    pub fn detached_grpc_query(&self, path: &str) -> Result<DetachedGrpcQuery, GrpcQueryError> {
+        let version = self.execution_version();
+        if absent_at(version, path) {
+            let svc = path
+                .trim_start_matches('/')
+                .split('/')
+                .next()
+                .unwrap_or_default();
+            return Err(GrpcQueryError::UnknownService(svc.to_owned()));
+        }
+        let handler = match crate::query_services::route(path) {
+            Some(_) => None,
+            None => grpc_query::router().route(path),
+        }
+        .ok_or_else(|| GrpcQueryError::Unimplemented(path.to_owned()))?;
+        let state = self
+            .create_query_context(0, false)
+            .map_err(GrpcQueryError::Context)?;
+        let pin = self.ms.root().pin_version(state.header.height);
+        Ok(DetachedGrpcQuery {
+            state,
+            version,
+            handler,
+            _pin: pin,
+        })
     }
 
     /// A concrete query response for in-process consumers. An absent Go Query
@@ -659,5 +733,43 @@ mod tests {
         assert_eq!(key.value, b"value");
         app.node.enable_subspace_queries = true;
         assert_eq!(app.query(&request), legacy);
+    }
+
+    #[test]
+    fn detached_grpc_query_matches_the_locked_path() {
+        let mut app = App::new();
+        let fibre = "/celestia.fibre.v1.Query/Params";
+        let bank = "/cosmos.bank.v1beta1.Query/Params";
+        // No committed block yet: the same context error.
+        app.execution_version = Some(11);
+        assert_eq!(
+            app.detached_grpc_query(bank).map(|_| ()).unwrap_err(),
+            app.grpc_query(bank, &[], 0).unwrap_err()
+        );
+        app.ms
+            .set("bank", b"k".to_vec(), b"v".to_vec())
+            .expect("set key");
+        app.ms.flush().expect("flush");
+        app.last_height = app.ms.commit().expect("commit").version;
+        for path in [fibre, bank] {
+            let detached = app
+                .detached_grpc_query(path)
+                .and_then(|q| q.run(&[]))
+                .map_err(|e| e.grpc_status());
+            let locked = app.grpc_query(path, &[], 0).map_err(|e| e.grpc_status());
+            assert_eq!(detached, locked, "{path}");
+        }
+        // Before the Fibre module exists: Go's `unknown service`.
+        app.execution_version = Some(9);
+        assert_eq!(
+            app.detached_grpc_query(fibre).map(|_| ()).unwrap_err(),
+            GrpcQueryError::UnknownService("celestia.fibre.v1.Query".into())
+        );
+        // Handlers that need the app itself are not detachable.
+        app.execution_version = Some(11);
+        assert!(matches!(
+            app.detached_grpc_query("/cosmos.base.node.v1beta1.Service/Status"),
+            Err(GrpcQueryError::Unimplemented(_))
+        ));
     }
 }
