@@ -302,31 +302,70 @@ func run() error {
 	if *registryOut != "" {
 		return writeRegistry(*registryOut)
 	}
-	upgradeHeightV2 := int64(appconsts.MainnetUpgradeHeightV2)
-	var syn *synth
+	cfg := runConfig{
+		genesisPath: *genesisPath, blocksPath: *blocksPath, windowsPath: *windowsPath,
+		from: *from, heights: *heights, out: *out, withKV: *withKV, keepRecent: *keepRecent,
+		upgradeHeightV2: appconsts.MainnetUpgradeHeightV2,
+	}
 	if *synthetic {
 		if *out == "" || *genesisPath != "" || *blocksPath != "" || *windowsPath != "" || *from != 1 {
 			flag.Usage()
 			return errors.New("-synthetic takes -out (and -kv) only")
 		}
-		*heights = syntheticHeights
-		upgradeHeightV2 = syntheticUpgradeHeightV2
-		var err error
-		if syn, err = newSynth(); err != nil {
+		syn, err := newSynth()
+		if err != nil {
 			return err
 		}
+		cfg.heights = syntheticHeights
+		cfg.upgradeHeightV2 = syntheticUpgradeHeightV2
+		cfg.src = syn
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			return err
 		}
-		*genesisPath = filepath.Join(*out, "genesis.json")
-		if err := syn.genDoc.SaveAs(*genesisPath); err != nil {
+		cfg.genesisPath = filepath.Join(*out, "genesis.json")
+		if err := syn.genDoc.SaveAs(cfg.genesisPath); err != nil {
 			return err
 		}
 	}
-	if *genesisPath == "" || (*blocksPath == "" && syn == nil) || *out == "" || *heights < 1 || *from < 1 || *from > *heights {
+	if cfg.genesisPath == "" || (cfg.blocksPath == "" && cfg.src == nil) || cfg.out == "" || cfg.heights < 1 || cfg.from < 1 || cfg.from > cfg.heights {
 		flag.Usage()
 		return errors.New("missing arguments")
 	}
+	return execute(cfg)
+}
+
+// runConfig is one oracle run: the mainnet archive, or a chain that a
+// blockSource builds block by block.
+type runConfig struct {
+	genesisPath, blocksPath, windowsPath, out string
+	from, heights                             int64
+	withKV                                    bool
+	keepRecent                                uint64
+	upgradeHeightV2                           int64
+	// src builds the blocks (nil: read blocksPath and check each block
+	// against the next archived header).
+	src blockSource
+}
+
+// blockSource builds a chain's blocks on the replaying app's state.
+type blockSource interface {
+	// start takes the InitChain app hash (the app hash of block 1).
+	start(appHash []byte)
+	// block returns block height, built on the committed state.
+	block(a *app.App, height int64, vals map[int64]*tmtypes.ValidatorSet) (rpcBlock, error)
+	// committed takes the result of block height.
+	committed(height int64, appHash []byte, results []*abci.ResponseDeliverTx, end abci.ResponseEndBlock) error
+	// unchecked: the blocks carry no real last commit or header chain
+	// (recorded from ibctesting), so neither is checked.
+	unchecked() bool
+	// blocksJSONL is blocks.jsonl as the oracle reads it.
+	blocksJSONL() []byte
+}
+
+func execute(cfg runConfig) error {
+	genesisPath, blocksPath, windowsPath, out := &cfg.genesisPath, &cfg.blocksPath, &cfg.windowsPath, &cfg.out
+	from, heights, withKV, keepRecent := &cfg.from, &cfg.heights, &cfg.withKV, &cfg.keepRecent
+	upgradeHeightV2, syn := cfg.upgradeHeightV2, cfg.src
 
 	genesisBytes, err := os.ReadFile(*genesisPath)
 	if err != nil {
@@ -437,12 +476,14 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("height %d: %w", height, err)
 		}
-		if err := checkHeader(header, block, vals); err != nil {
-			return fmt.Errorf("height %d: %w", height, err)
-		}
-		lastCommit, err := lastCommitInfo(block, height, genDoc.InitialHeight, vals)
-		if err != nil {
-			return fmt.Errorf("height %d: %w", height, err)
+		lastCommit := abci.LastCommitInfo{Votes: []abci.VoteInfo{}}
+		if syn == nil || !syn.unchecked() {
+			if err := checkHeader(header, block, vals); err != nil {
+				return fmt.Errorf("height %d: %w", height, err)
+			}
+			if lastCommit, err = lastCommitInfo(block, height, genDoc.InitialHeight, vals); err != nil {
+				return fmt.Errorf("height %d: %w", height, err)
+			}
 		}
 		if len(block.Block.Evidence.Evidence) != 0 {
 			return fmt.Errorf("height %d: evidence is not supported", height)
@@ -495,7 +536,9 @@ func run() error {
 
 		got := upper(commit.Data)
 		if syn != nil {
-			syn.committed(commit.Data, results, end)
+			if err := syn.committed(height, commit.Data, results, end); err != nil {
+				return fmt.Errorf("height %d: %w", height, err)
+			}
 		} else {
 			next := blocks[height+1].Block.Header
 			if pinned, ok := postAppHash[height]; got != next.AppHash || (ok && got != pinned) {
@@ -588,14 +631,15 @@ func run() error {
 		}
 	}
 	if syn != nil {
-		compressed, err := gzipBytes(syn.blocks.Bytes())
+		blocksJSONL := syn.blocksJSONL()
+		compressed, err := gzipBytes(blocksJSONL)
 		if err != nil {
 			return err
 		}
 		if err := os.WriteFile(filepath.Join(*out, "blocks.jsonl.gz"), compressed, 0o644); err != nil {
 			return err
 		}
-		fixture.BlocksSHA256 = sha256Hex(syn.blocks.Bytes())
+		fixture.BlocksSHA256 = sha256Hex(blocksJSONL)
 	}
 	fixture.TxResultsSHA256 = sha256Hex(txResultsJSONL.Bytes())
 	compressed, err := gzipBytes(txResultsJSONL.Bytes())
@@ -791,7 +835,8 @@ func protoHeader(b rpcBlock) (*tmproto.Header, error) {
 		return bz
 	}
 	parse := func(s string) uint64 {
-		if err != nil {
+		// An omitted zero (the recorded ibctesting headers' block version).
+		if err != nil || s == "" {
 			return 0
 		}
 		var v uint64
