@@ -541,9 +541,11 @@ fn allocate_tokens_v046(
     }
     let fraction =
         m(LegacyDec::new(sum_precommit_power).checked_quo(&LegacyDec::new(total_power)))?;
-    let params = store::get_params(ctx)?;
-    let base = params.base_proposer_reward.unwrap_or_default();
-    let bonus = params.bonus_proposer_reward.unwrap_or_default();
+    // Go reads each parameter where it uses it (`GetBaseProposerReward`,
+    // `GetBonusProposerReward`, later `GetCommunityTax`): the reads cost
+    // gas on the block context's meter in this order.
+    let base = x_params::v046::get_dec(ctx, "distribution", "baseproposerreward")?;
+    let bonus = x_params::v046::get_dec(ctx, "distribution", "bonusproposerreward")?;
     let proposer_mult = m(bonus
         .checked_mul_truncate(&fraction)
         .and_then(|b| base.checked_add(&b)))?;
@@ -561,9 +563,10 @@ fn allocate_tokens_v046(
         allocate_tokens_to_validator(ctx, &v, &proposer_reward)?;
         remaining = remaining.sub(&proposer_reward)?;
     }
+    let community_tax = x_params::v046::get_dec(ctx, "distribution", "communitytax")?;
     let vote_mult = m(LegacyDec::one()
         .checked_sub(&proposer_mult)
-        .and_then(|d| d.checked_sub(&params.community_tax)))?;
+        .and_then(|d| d.checked_sub(&community_tax)))?;
     let fee_mult = fees.mul_dec_truncate(&vote_mult)?;
     for vote in votes {
         let (addr, power) = vote

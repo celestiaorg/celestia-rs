@@ -104,6 +104,9 @@ pub struct App {
     legacy: Option<legacy::AppDriver>,
     /// The modules a v0.46 driver runs (app version 1's).
     legacy_modules: fn() -> legacy::AppModules,
+    /// celestia-app's `--v2-upgrade-height`; `None`: the chain's default
+    /// ([`legacy::upgrade::default_upgrade_height_v2`]).
+    v2_upgrade_height: Option<i64>,
 }
 
 /// Node-local settings that do not affect consensus state. Most come from
@@ -300,6 +303,18 @@ impl App {
             blob_tx_cache: blob_cache::BlobTxCache::default(),
             legacy: None,
             legacy_modules: legacy::v1_modules,
+            v2_upgrade_height: None,
+        }
+    }
+
+    /// Sets the v1 to v2 upgrade height of a cosmos-sdk v0.46 state (the
+    /// first app version 2 block), as celestia-app's `--v2-upgrade-height`
+    /// does, in place of the chain's default. Like the Go flag, a node
+    /// must set it again after a restart.
+    pub fn set_v2_upgrade_height(&mut self, height: i64) {
+        self.v2_upgrade_height = Some(height);
+        if let Some(d) = &mut self.legacy {
+            d.set_upgrade_height_v2(height);
         }
     }
 

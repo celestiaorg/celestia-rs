@@ -446,6 +446,33 @@ impl Store {
         Ok(())
     }
 
+    /// [`Self::mount_store_at`] for a store that cosmos-sdk v0.46 adds
+    /// (iavl v0.19): the nodes of its first commit carry version 1
+    /// ([`iavl::Tree::set_initial_version_v019`]).
+    pub fn mount_iavl_store_at_v019(
+        &mut self,
+        name: impl Into<String>,
+        initial_version: Version,
+    ) -> Result<()> {
+        let name = name.into();
+        self.mount_store(name.clone(), StoreKind::Iavl)?;
+        if let Some(store) = self.stores.get_mut(&name) {
+            store.tree_mut().set_initial_version_v019(initial_version)?;
+        }
+        Ok(())
+    }
+
+    /// Remove a store from the commit set, as a store upgrade's deleted
+    /// store (Go `StoreUpgrades.Deleted`): no later commit info lists it.
+    /// Its committed versions stay in storage, readable through the
+    /// commit infos that list it.
+    pub fn remove_store(&mut self, name: &str) -> Result<()> {
+        if self.stores.remove(name).is_none() {
+            return Err(Error::UnknownStore(name.to_owned()));
+        }
+        Ok(())
+    }
+
     /// Unmount a store that holds no committed version (e.g. one the
     /// state's app version does not have yet).
     pub fn unmount_store(&mut self, name: &str) -> Result<()> {
@@ -1453,6 +1480,41 @@ mod tests {
         assert_eq!(
             cache.write(parent_without_bank),
             Err(Error::UnknownStore("bank".to_owned()))
+        );
+    }
+
+    /// A store upgrade at version 2: `old` deleted, `new` added at
+    /// version 2. The commit info of version 2 lists `kept` and `new` only,
+    /// and the deleted store's version 1 stays in the history.
+    #[test]
+    fn store_upgrade_removes_and_adds_stores() {
+        let mut s = Store::new();
+        for name in ["kept", "old"] {
+            s.mount_store(name, StoreKind::Iavl).expect("mount");
+            s.get_store_mut(name)
+                .expect("store")
+                .set(b"k".to_vec(), b"v".to_vec())
+                .expect("set");
+        }
+        s.commit().expect("commit 1");
+        s.remove_store("old").expect("remove");
+        assert!(matches!(s.remove_store("old"), Err(Error::UnknownStore(_))));
+        s.mount_store_at("new", StoreKind::Iavl, s.version() + 1)
+            .expect("mount new");
+        s.get_store_mut("new")
+            .expect("new store")
+            .set(b"n".to_vec(), b"1".to_vec())
+            .expect("set new");
+        let id = s.commit().expect("commit 2");
+        assert_eq!(id.version, 2);
+        let info = s.last_commit_info().expect("info");
+        let names: Vec<&str> = info.store_infos.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, ["kept", "new"]);
+        assert_eq!(
+            info.store_info("new")
+                .and_then(|i| i.commit_id)
+                .map(|c| c.version),
+            Some(2)
         );
     }
 
