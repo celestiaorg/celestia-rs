@@ -418,6 +418,22 @@ const PLACEHOLDER_FIELDS: &[(&str, &str)] = &[
     ),
 ];
 
+/// Fields the executing release's descriptors do not have
+/// ([`sdk::version::Release::amino_vesting_start_time`]).
+fn absent_from_release(message: &str, num: u64) -> bool {
+    message == "cosmos.vesting.v1beta1.MsgCreateVestingAccount"
+        && num == 6
+        && !sdk::version::release(0).amino_vesting_start_time()
+}
+
+/// Message fields the executing release resolves as placeholders
+/// ([`sdk::version::Release::amino_remote_router_placeholder`]).
+fn release_placeholder(message: &str, field: &str) -> bool {
+    message == "hyperlane.warp.v1.MsgEnrollRemoteRouter"
+        && field == "remote_router"
+        && sdk::version::release(0).amino_remote_router_placeholder()
+}
+
 fn wire_type_name(wt: u8) -> String {
     match wt {
         0 => "varint".into(),
@@ -491,7 +507,7 @@ fn reject_unknown_in(
             return Err("invalid length".into());
         };
         let (num, wt) = (tag >> 3, (tag & 7) as u8);
-        let field = if placeholder {
+        let field = if placeholder || absent_from_release(desc.full_name(), num) {
             None
         } else {
             u32::try_from(num).ok().and_then(|n| desc.get_field(n))
@@ -548,7 +564,8 @@ fn reject_unknown_in(
         }
         let ph = PLACEHOLDER_FIELDS
             .iter()
-            .any(|(m, f)| *m == desc.full_name() && *f == field.name());
+            .any(|(m, f)| *m == desc.full_name() && *f == field.name())
+            || release_placeholder(desc.full_name(), field.name());
         reject_unknown_in(inner, &sub, ph, limit - 1)?;
     }
     Ok(())
@@ -1316,6 +1333,62 @@ pub fn json_string(w: &mut String, s: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn unknown_field_error(app_version: u64, name: &str, bz: &[u8]) -> Option<String> {
+        let prev = sdk::version::app_version();
+        sdk::version::set_app_version(app_version);
+        let desc = pool().get_message_by_name(name).expect("known message");
+        let r = reject_unknown_fields(bz, &desc, 100).err();
+        sdk::version::set_app_version(prev);
+        r
+    }
+
+    /// Go (D's per-release sign-bytes oracle): celestia-app v4.1.0 to
+    /// v6.4.x resolve `RemoteRouter` as a placeholder; v8.0.8 on sign.
+    #[test]
+    fn remote_router_is_a_placeholder_before_v8() {
+        use celestia_proto::hyperlane::warp::v1::{MsgEnrollRemoteRouter, RemoteRouter};
+        let bz = prost::Message::encode_to_vec(&MsgEnrollRemoteRouter {
+            owner: "o".into(),
+            token_id: "t".into(),
+            remote_router: Some(RemoteRouter {
+                receiver_domain: 2,
+                receiver_contract: "c".into(),
+                gas: "1".into(),
+            }),
+        });
+        let name = "hyperlane.warp.v1.MsgEnrollRemoteRouter";
+        let err = "hyperlane.warp.v1.RemoteRouter: {TagNum: 1, WireType:\"varint\"}: \
+                   unknown protobuf field";
+        for v in [4, 5, 6] {
+            assert_eq!(
+                unknown_field_error(v, name, &bz).as_deref(),
+                Some(err),
+                "v{v}"
+            );
+        }
+        for v in [8, 9, 10] {
+            assert_eq!(unknown_field_error(v, name, &bz), None, "v{v}");
+        }
+    }
+
+    /// Go: celestia-app v4.1.0's descriptors lack
+    /// `MsgCreateVestingAccount.start_time`; v5.0.12 on have it.
+    #[test]
+    fn vesting_start_time_is_unknown_at_v4() {
+        use celestia_proto::cosmos::vesting::v1beta1::MsgCreateVestingAccount;
+        let bz = prost::Message::encode_to_vec(&MsgCreateVestingAccount {
+            start_time: 5,
+            ..Default::default()
+        });
+        let name = "cosmos.vesting.v1beta1.MsgCreateVestingAccount";
+        let err = "cosmos.vesting.v1beta1.MsgCreateVestingAccount: \
+                   {TagNum: 6, WireType:\"varint\"}: unknown protobuf field";
+        assert_eq!(unknown_field_error(4, name, &bz).as_deref(), Some(err));
+        for v in [5, 6, 9, 10] {
+            assert_eq!(unknown_field_error(v, name, &bz), None, "v{v}");
+        }
+    }
 
     #[test]
     fn rfc3339() {
