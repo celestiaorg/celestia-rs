@@ -17,8 +17,9 @@
 //! ([`upgrade`]) and the migrations that `Commit` runs for it in Go
 //! ([`migrate`]) are part of the block here, before its app hash. App
 //! version 4 (scheduled by the last app version 3 block) runs on the
-//! cosmos-sdk v0.50 app; a v0.46 state at app version 4 stops with an
-//! error.
+//! cosmos-sdk v0.50 app, which takes over at the plan's block
+//! (`crate::handoff`); a v0.46 state at app version 4 without that plan
+//! stops with an error.
 //!
 //! Reference: cosmos-sdk `v1.31.2-sdk-v0.46.16` `baseapp/abci.go` and
 //! `baseapp/baseapp.go`, celestia-app v3.13.0 `app/app.go`.

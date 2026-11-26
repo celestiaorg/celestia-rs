@@ -11,6 +11,7 @@ pub mod comet;
 pub mod export;
 pub mod fibre_tx;
 pub mod genutil;
+mod handoff;
 pub mod hyperlane;
 pub mod ibc;
 pub mod inclusion_proof;
@@ -107,6 +108,8 @@ pub struct App {
     /// celestia-app's `--v2-upgrade-height`; `None`: the chain's default
     /// ([`legacy::upgrade::default_upgrade_height_v2`]).
     v2_upgrade_height: Option<i64>,
+    /// Whether the block being finalized is the v4 hand-off ([`handoff`]).
+    v4_handoff_block: bool,
 }
 
 /// Node-local settings that do not affect consensus state. Most come from
@@ -304,6 +307,7 @@ impl App {
             legacy: None,
             legacy_modules: legacy::v1_modules,
             v2_upgrade_height: None,
+            v4_handoff_block: false,
         }
     }
 
@@ -854,7 +858,7 @@ impl App {
         req: abci::RequestFinalizeBlock,
     ) -> Result<ResponseFinalizeBlock> {
         self.check_halt(&req)?;
-        if self.legacy.is_some() {
+        if self.legacy.is_some() && !self.start_v4_handoff(req.height)? {
             return self.legacy_finalize_block(&req);
         }
         let header = Header {
@@ -868,10 +872,8 @@ impl App {
         };
         let mut ctx = Context::new(&mut self.ms, header.clone(), ExecMode::Finalize);
         ctx.consensus_params = x_consensus::get_params(&mut ctx)?.unwrap_or_default();
-        let consensus_app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-        let execution_version =
-            upgrades::select_execution_version(&mut self.execution_version, consensus_app_version);
-        sdk::version::set_app_version(execution_version);
+        let (consensus_app_version, execution_version) =
+            handoff::block_versions(&ctx, &mut self.execution_version, self.v4_handoff_block);
         ctx.vote_infos = req
             .decided_last_commit
             .as_ref()
@@ -881,7 +883,7 @@ impl App {
 
         let mut params_changed = false;
         for module in modules::PRE_BLOCKERS {
-            match modules::pre_block(&mut ctx, module, execution_version, &mut self.upgrade) {
+            match handoff::pre_block(&mut ctx, module, execution_version, &mut self.upgrade) {
                 Ok(changed) => params_changed |= changed,
                 Err(e) => {
                     if is_upgrade_needed(&e.log) {
@@ -986,6 +988,7 @@ impl App {
         self.last_commit_hash = id.hash.to_vec();
         self.last_height = id.version;
         self.check_header = header;
+        self.v4_handoff_block = false;
         let consensus_version_changed = std::mem::take(&mut self.switch_on_commit);
         let release_changed = self.activate_bundled_upgrade_if_due()?;
         if consensus_version_changed || release_changed {
