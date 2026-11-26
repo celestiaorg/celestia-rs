@@ -64,9 +64,11 @@ type SignBytesVec struct {
 	Error         string `json:"error"`
 }
 
+// namedMsg is a corpus message and the key name of its (first) signer.
 type namedMsg struct {
-	name string
-	msg  sdk.Msg
+	name   string
+	msg    sdk.Msg
+	signer string
 }
 
 func sbKey(name string) *secp256k1.PrivKey {
@@ -133,46 +135,46 @@ func signBytesCorpus() ([]namedMsg, error) {
 	revoke := authz.NewMsgRevoke(alice, bob, sdk.MsgTypeURL(&banktypes.MsgSend{}))
 	recv := channeltypes.NewMsgRecvPacket(channeltypes.NewPacket([]byte(`{"amount":"1","denom":"uatom"}`), 3, "transfer", "channel-9", "transfer", "channel-2", clienttypes.NewHeight(4, 5), 0), []byte{1, 2}, clienttypes.NewHeight(4, 6), bob.String())
 	return []namedMsg{
-		{"bank/MsgSend", send},
-		{"bank/MsgMultiSend", banktypes.NewMsgMultiSend(banktypes.NewInput(alice, coins(2)), []banktypes.Output{banktypes.NewOutput(bob, coins(2))})},
-		{"staking/MsgDelegate", stakingtypes.NewMsgDelegate(alice.String(), val.String(), utia(5))},
-		{"staking/MsgUndelegate", stakingtypes.NewMsgUndelegate(alice.String(), val.String(), utia(6))},
-		{"staking/MsgBeginRedelegate", stakingtypes.NewMsgBeginRedelegate(alice.String(), val.String(), val.String(), utia(7))},
-		{"staking/MsgCancelUnbondingDelegation", stakingtypes.NewMsgCancelUnbondingDelegation(alice.String(), val.String(), 12, utia(8))},
-		{"staking/MsgCreateValidator", createVal},
-		{"staking/MsgEditValidator", editVal},
-		{"distribution/MsgWithdrawDelegatorReward", distrtypes.NewMsgWithdrawDelegatorReward(alice.String(), val.String())},
-		{"distribution/MsgWithdrawValidatorCommission", distrtypes.NewMsgWithdrawValidatorCommission(val.String())},
-		{"distribution/MsgSetWithdrawAddress", distrtypes.NewMsgSetWithdrawAddress(alice, bob)},
-		{"distribution/MsgFundCommunityPool", distrtypes.NewMsgFundCommunityPool(coins(11), alice.String())},
-		{"slashing/MsgUnjail", slashingtypes.NewMsgUnjail(val.String())},
-		{"gov.v1/MsgSubmitProposal", proposal},
-		{"gov.v1/MsgVote", govv1.NewMsgVote(alice, 3, govv1.OptionYes, "")},
-		{"gov.v1/MsgVoteWeighted", govv1.NewMsgVoteWeighted(alice, 3, govv1.WeightedVoteOptions{{Option: govv1.OptionYes, Weight: "0.7"}, {Option: govv1.OptionNo, Weight: "0.3"}}, "")},
-		{"gov.v1/MsgDeposit", govv1.NewMsgDeposit(alice, 3, coins(12))},
-		{"gov.v1beta1/MsgVote", govv1beta1.NewMsgVote(alice, 4, govv1beta1.OptionAbstain)},
-		{"gov.v1beta1/MsgDeposit", govv1beta1.NewMsgDeposit(alice, 4, coins(13))},
-		{"authz/MsgGrant(send)", grantSend},
-		{"authz/MsgGrant(generic)", grantGeneric},
-		{"authz/MsgExec(send)", &execSend},
-		{"authz/MsgExec(delegate)", &execDelegate},
-		{"authz/MsgExec(transfer)", &execTransfer},
-		{"authz/MsgRevoke", &revoke},
-		{"feegrant/MsgGrantAllowance", allowance},
-		{"feegrant/MsgRevokeAllowance", feegrantRevoke(alice, bob)},
-		{"vesting/MsgCreateVestingAccount", vestingtypes.NewMsgCreateVestingAccount(alice, bob, coins(14), 1_700_000_000, 1_800_000_000, false)},
-		{"blob/MsgPayForBlobs", pfb},
-		{"signal/MsgSignalVersion", signaltypes.NewMsgSignalVersion(val.String(), 6)},
-		{"signal/MsgTryUpgrade", signaltypes.NewMsgTryUpgrade(alice)},
-		{"transfer/MsgTransfer", transfer},
-		{"transfer/MsgTransfer(height,memo)", transferH},
-		{"ibc/MsgRecvPacket", recv},
-		{"warp/MsgRemoteTransfer", &warptypes.MsgRemoteTransfer{Sender: alice.String(), TokenId: hex32(1), DestinationDomain: 1, Recipient: hex32(2), Amount: math.NewInt(17), GasLimit: math.NewInt(200_000), MaxFee: utia(18)}},
-		{"warp/MsgCreateCollateralToken", &warptypes.MsgCreateCollateralToken{Owner: alice.String(), OriginMailbox: hex32(3), OriginDenom: "utia"}},
-		{"warp/MsgCreateSyntheticToken", &warptypes.MsgCreateSyntheticToken{Owner: alice.String(), OriginMailbox: hex32(3)}},
-		{"warp/MsgEnrollRemoteRouter", &warptypes.MsgEnrollRemoteRouter{Owner: alice.String(), TokenId: hex32(1), RemoteRouter: &warptypes.RemoteRouter{ReceiverDomain: 2, ReceiverContract: "0x0101", Gas: math.NewInt(50_000)}}},
-		{"core/MsgProcessMessage", &coretypes.MsgProcessMessage{MailboxId: hex32(3), Relayer: bob.String(), Metadata: "0x00", Message: "0x0102"}},
-		{"core/MsgCreateMailbox", &coretypes.MsgCreateMailbox{Owner: alice.String(), LocalDomain: 69420, DefaultIsm: hex32(4)}},
+		{"bank/MsgSend", send, "alice"},
+		{"bank/MsgMultiSend", banktypes.NewMsgMultiSend(banktypes.NewInput(alice, coins(2)), []banktypes.Output{banktypes.NewOutput(bob, coins(2))}), "alice"},
+		{"staking/MsgDelegate", stakingtypes.NewMsgDelegate(alice.String(), val.String(), utia(5)), "alice"},
+		{"staking/MsgUndelegate", stakingtypes.NewMsgUndelegate(alice.String(), val.String(), utia(6)), "alice"},
+		{"staking/MsgBeginRedelegate", stakingtypes.NewMsgBeginRedelegate(alice.String(), val.String(), val.String(), utia(7)), "alice"},
+		{"staking/MsgCancelUnbondingDelegation", stakingtypes.NewMsgCancelUnbondingDelegation(alice.String(), val.String(), 12, utia(8)), "alice"},
+		{"staking/MsgCreateValidator", createVal, "val"},
+		{"staking/MsgEditValidator", editVal, "val"},
+		{"distribution/MsgWithdrawDelegatorReward", distrtypes.NewMsgWithdrawDelegatorReward(alice.String(), val.String()), "alice"},
+		{"distribution/MsgWithdrawValidatorCommission", distrtypes.NewMsgWithdrawValidatorCommission(val.String()), "val"},
+		{"distribution/MsgSetWithdrawAddress", distrtypes.NewMsgSetWithdrawAddress(alice, bob), "alice"},
+		{"distribution/MsgFundCommunityPool", distrtypes.NewMsgFundCommunityPool(coins(11), alice.String()), "alice"},
+		{"slashing/MsgUnjail", slashingtypes.NewMsgUnjail(val.String()), "val"},
+		{"gov.v1/MsgSubmitProposal", proposal, "alice"},
+		{"gov.v1/MsgVote", govv1.NewMsgVote(alice, 3, govv1.OptionYes, ""), "alice"},
+		{"gov.v1/MsgVoteWeighted", govv1.NewMsgVoteWeighted(alice, 3, govv1.WeightedVoteOptions{{Option: govv1.OptionYes, Weight: "0.7"}, {Option: govv1.OptionNo, Weight: "0.3"}}, ""), "alice"},
+		{"gov.v1/MsgDeposit", govv1.NewMsgDeposit(alice, 3, coins(12)), "alice"},
+		{"gov.v1beta1/MsgVote", govv1beta1.NewMsgVote(alice, 4, govv1beta1.OptionAbstain), "alice"},
+		{"gov.v1beta1/MsgDeposit", govv1beta1.NewMsgDeposit(alice, 4, coins(13)), "alice"},
+		{"authz/MsgGrant(send)", grantSend, "alice"},
+		{"authz/MsgGrant(generic)", grantGeneric, "alice"},
+		{"authz/MsgExec(send)", &execSend, "bob"},
+		{"authz/MsgExec(delegate)", &execDelegate, "bob"},
+		{"authz/MsgExec(transfer)", &execTransfer, "bob"},
+		{"authz/MsgRevoke", &revoke, "alice"},
+		{"feegrant/MsgGrantAllowance", allowance, "alice"},
+		{"feegrant/MsgRevokeAllowance", feegrantRevoke(alice, bob), "alice"},
+		{"vesting/MsgCreateVestingAccount", vestingtypes.NewMsgCreateVestingAccount(alice, bob, coins(14), 1_700_000_000, 1_800_000_000, false), "alice"},
+		{"blob/MsgPayForBlobs", pfb, "alice"},
+		{"signal/MsgSignalVersion", signaltypes.NewMsgSignalVersion(val.String(), 6), "val"},
+		{"signal/MsgTryUpgrade", signaltypes.NewMsgTryUpgrade(alice), "alice"},
+		{"transfer/MsgTransfer", transfer, "alice"},
+		{"transfer/MsgTransfer(height,memo)", transferH, "alice"},
+		{"ibc/MsgRecvPacket", recv, "bob"},
+		{"warp/MsgRemoteTransfer", &warptypes.MsgRemoteTransfer{Sender: alice.String(), TokenId: hex32(1), DestinationDomain: 1, Recipient: hex32(2), Amount: math.NewInt(17), GasLimit: math.NewInt(200_000), MaxFee: utia(18)}, "alice"},
+		{"warp/MsgCreateCollateralToken", &warptypes.MsgCreateCollateralToken{Owner: alice.String(), OriginMailbox: hex32(3), OriginDenom: "utia"}, "alice"},
+		{"warp/MsgCreateSyntheticToken", &warptypes.MsgCreateSyntheticToken{Owner: alice.String(), OriginMailbox: hex32(3)}, "alice"},
+		{"warp/MsgEnrollRemoteRouter", &warptypes.MsgEnrollRemoteRouter{Owner: alice.String(), TokenId: hex32(1), RemoteRouter: &warptypes.RemoteRouter{ReceiverDomain: 2, ReceiverContract: "0x0101", Gas: math.NewInt(50_000)}}, "alice"},
+		{"core/MsgProcessMessage", &coretypes.MsgProcessMessage{MailboxId: hex32(3), Relayer: bob.String(), Metadata: "0x00", Message: "0x0102"}, "bob"},
+		{"core/MsgCreateMailbox", &coretypes.MsgCreateMailbox{Owner: alice.String(), LocalDomain: 69420, DefaultIsm: hex32(4)}, "alice"},
 	}, nil
 }
 
@@ -200,8 +202,8 @@ func writeSignBytes(path, release string) error {
 		mode     signing.SignMode
 		feePayer bool
 	}
-	// DIRECT_AUX also with bob as the explicit fee payer: the signer may
-	// sign in that mode only when it is not the fee payer.
+	// DIRECT_AUX also with another account as the explicit fee payer: the
+	// signer may sign in that mode only when it is not the fee payer.
 	modes := []modeCase{
 		{signing.SignMode_SIGN_MODE_LEGACY_AMINO_JSON, false},
 		{signing.SignMode_SIGN_MODE_DIRECT_AUX, false},
@@ -209,16 +211,21 @@ func writeSignBytes(path, release string) error {
 		{signing.SignMode_SIGN_MODE_TEXTUAL, false},
 	}
 	out := SignBytesFile{CelestiaApp: release, ChainID: "celestia"}
-	key := sbKey("alice")
-	pkAny, err := codectypes.NewAnyWithValue(key.PubKey())
-	if err != nil {
-		return err
-	}
-	pkBz, err := ecfg.Codec.Marshal(pkAny)
-	if err != nil {
-		return err
-	}
 	for i, m := range corpus {
+		key := sbKey(m.signer)
+		pkAny, err := codectypes.NewAnyWithValue(key.PubKey())
+		if err != nil {
+			return err
+		}
+		pkBz, err := ecfg.Codec.Marshal(pkAny)
+		if err != nil {
+			return err
+		}
+		// The explicit fee payer of the DIRECT_AUX variant: another account.
+		payer := "bob"
+		if m.signer == "bob" {
+			payer = "alice"
+		}
 		for _, mc := range modes {
 			mode := mc.mode
 			if mode == signing.SignMode_SIGN_MODE_TEXTUAL && i > 0 {
@@ -234,7 +241,7 @@ func writeSignBytes(path, release string) error {
 			b.SetTimeoutHeight(uint64(1_000 + i))
 			name := m.name
 			if mc.feePayer {
-				b.SetFeePayer(sbAddr("bob"))
+				b.SetFeePayer(sbAddr(payer))
 				name += "+fee_payer"
 			}
 			seq := uint64(7 + i)
@@ -246,7 +253,7 @@ func writeSignBytes(path, release string) error {
 			if err != nil {
 				return err
 			}
-			sd := authsigning.SignerData{Address: sbAddr("alice").String(), ChainID: out.ChainID, AccountNumber: uint64(40 + i), Sequence: seq, PubKey: key.PubKey()}
+			sd := authsigning.SignerData{Address: sbAddr(m.signer).String(), ChainID: out.ChainID, AccountNumber: uint64(40 + i), Sequence: seq, PubKey: key.PubKey()}
 			v := SignBytesVec{Name: name, Mode: mode.String(), Tx: hex.EncodeToString(txBz), Address: sd.Address, AccountNumber: sd.AccountNumber, Sequence: seq, PubKey: hex.EncodeToString(pkBz)}
 			bz, err := authsigning.GetSignBytesAdapter(context.Background(), ecfg.TxConfig.SignModeHandler(), mode, sd, tx)
 			if err != nil {
