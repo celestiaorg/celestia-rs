@@ -2291,3 +2291,36 @@ fn v6_acknowledgement_validate_basic() {
     let e = ack(1, b"").unwrap_err();
     assert_eq!((e.codespace, e.code), ("channel", 16), "{}", e.log);
 }
+
+/// ibc-go v6 `MsgRecvPacket.ValidateBasic`: a zero proof height is the
+/// SDK's `ErrInvalidHeight`; an empty proof is `ErrInvalidProof`.
+#[test]
+fn v6_recv_packet_validate_basic() {
+    use celestia_proto::ibc::core::channel::v1 as chpb;
+    use celestia_proto::ibc::core::client::v1::Height;
+    let recv = |h: u64, proof: Vec<u8>| {
+        msgs::validate_basic(&celestia_proto::Any::pack(&chpb::MsgRecvPacket {
+            packet: Some(chpb::Packet {
+                sequence: 1,
+                source_port: "transfer".into(),
+                source_channel: "channel-1".into(),
+                destination_port: "transfer".into(),
+                destination_channel: "channel-0".into(),
+                data: vec![1],
+                timeout_height: None,
+                timeout_timestamp: 1,
+            }),
+            proof_commitment: proof,
+            proof_height: Some(Height {
+                revision_number: 0,
+                revision_height: h,
+            }),
+            signer: x_auth::bech32(&[1; 20]).unwrap(),
+        }))
+    };
+    recv(1, vec![1]).unwrap();
+    let e = recv(0, vec![1]).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 26), "{}", e.log);
+    let e = recv(1, Vec::new()).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("commitment", 2), "{}", e.log);
+}

@@ -72,6 +72,22 @@ pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
     if msg.type_url == trpb::MsgTransfer::type_url() {
         return Some(decode(msg).and_then(|m| validate_transfer(&m)));
     }
+    if msg.type_url == chpb::MsgRecvPacket::type_url() {
+        return Some(decode(msg).and_then(|m: chpb::MsgRecvPacket| {
+            if m.proof_commitment.is_empty() {
+                return Err(x_ibc::errors::commitment::invalid_proof(
+                    "cannot submit an empty proof",
+                ));
+            }
+            if height::is_zero(&m.proof_height.unwrap_or_default()) {
+                return Err(errs::invalid_height("proof height must be non-zero"));
+            }
+            sdk::address::acc_from_bech32_go(&m.signer).map_err(|e| {
+                errs::invalid_address(format!("string could not be parsed as address: {e}"))
+            })?;
+            validate_packet(&m.packet.clone().unwrap_or_default())
+        }));
+    }
     if msg.type_url == chpb::MsgAcknowledgement::type_url() {
         return Some(decode(msg).and_then(|m: chpb::MsgAcknowledgement| {
             if m.proof_acked.is_empty() {
@@ -101,6 +117,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
     }
     if msg.type_url == chpb::MsgAcknowledgement::type_url() {
         return Some(decode(msg).and_then(|m| acknowledgement(ctx, &m)));
+    }
+    if msg.type_url == chpb::MsgRecvPacket::type_url() {
+        return Some(decode(msg).and_then(|m| recv_packet_msg(ctx, &m)));
     }
     None
 }
@@ -601,4 +620,385 @@ fn refund_packet_token(ctx: &mut Context<'_>, p: &Packet, data: &tr::PacketData)
     x_bank::send_coins(ctx, &escrow, &sender, &tr::coins(&token)).map_err(|e| {
         e.wrap("unable to unescrow tokens, this may be caused by a malicious counterparty module or a bug: please open an issue on counterparty module")
     })
+}
+
+/// A v6 packet event (`recv_packet`, `write_acknowledgement`): the packet
+/// data and fields, then `ack` (with its hex) or the channel ordering,
+/// then the connection; and the `ibc_channel` message event.
+fn emit_packet_data_event(
+    ctx: &mut Context<'_>,
+    ty: &str,
+    p: &Packet,
+    ch: &Channel,
+    ack: Option<&[u8]>,
+) {
+    let (ordering, hop) = ordering_and_hop(ch);
+    let mut attrs = vec![
+        ("packet_data", gostr::from_go_bytes(&p.data).into_owned()),
+        ("packet_data_hex", hex::encode(&p.data)),
+        (
+            "packet_timeout_height",
+            height::to_string(&p.timeout_height.unwrap_or_default()),
+        ),
+        ("packet_timeout_timestamp", p.timeout_timestamp.to_string()),
+        ("packet_sequence", p.sequence.to_string()),
+        ("packet_src_port", p.source_port.clone()),
+        ("packet_src_channel", p.source_channel.clone()),
+        ("packet_dst_port", p.destination_port.clone()),
+        ("packet_dst_channel", p.destination_channel.clone()),
+    ];
+    match ack {
+        Some(a) => {
+            attrs.push(("packet_ack", gostr::from_go_bytes(a).into_owned()));
+            attrs.push(("packet_ack_hex", hex::encode(a)));
+        }
+        None => attrs.push(("packet_channel_ordering", ordering)),
+    }
+    attrs.push(("packet_connection", hop));
+    ctx.events.emit(event(ty, attrs));
+    ctx.events
+        .emit(event("message", [("module", "ibc_channel")]));
+}
+
+/// 04-channel `RecvPacket` (v6).
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn recv_packet(
+    ctx: &mut Context<'_>,
+    cap: &celestia_proto::capability::v1::Capability,
+    p: &Packet,
+    proof: &[u8],
+    proof_height: &Height,
+) -> core::result::Result<(), AckFailure> {
+    let (port, chan) = (&p.destination_port, &p.destination_channel);
+    let ch =
+        channel::get_channel(ctx, port, chan)?.ok_or_else(|| cherr::channel_not_found(chan))?;
+    if ch.state != State::Open as i32 {
+        return Err(cherr::invalid_channel_state(format!(
+            "channel state is not OPEN (got {})",
+            channel::state_name(ch.state)
+        ))
+        .into());
+    }
+    let cap_name = host::channel_capability_path(port, chan);
+    if !x_ibc::port::SCOPED_KEEPER.authenticate_capability(ctx, cap, &cap_name)? {
+        return Err(cherr::invalid_channel_capability(format!(
+            "channel capability failed authentication for capability name {cap_name}"
+        ))
+        .into());
+    }
+    let cp = ch.counterparty.clone().unwrap_or_default();
+    if p.source_port != cp.port_id {
+        return Err(cherr::invalid_packet(format!(
+            "packet source port doesn't match the counterparty's port ({} \u{2260} {})",
+            p.source_port, cp.port_id
+        ))
+        .into());
+    }
+    if p.source_channel != cp.channel_id {
+        return Err(cherr::invalid_packet(format!(
+            "packet source channel doesn't match the counterparty's channel ({} \u{2260} {})",
+            p.source_channel, cp.channel_id
+        ))
+        .into());
+    }
+    let hop = ch.connection_hops.first().cloned().unwrap_or_default();
+    let conn = x_ibc::connection::get_connection(ctx, &hop)?
+        .ok_or_else(|| x_ibc::errors::connection::connection_not_found(&hop))?;
+    if conn.state != celestia_proto::ibc::core::connection::v1::State::Open as i32 {
+        return Err(x_ibc::errors::connection::invalid_connection_state(format!(
+            "connection state is not OPEN (got {})",
+            super::ibc::connection_state_name(conn.state)
+        ))
+        .into());
+    }
+    let self_height = x_ibc::client::get_self_height(ctx)?;
+    let timeout_height = p.timeout_height.unwrap_or_default();
+    if !height::is_zero(&timeout_height) && height::gte(&self_height, &timeout_height) {
+        return Err(cherr::packet_timeout(format!(
+            "block height >= packet timeout height ({} >= {})",
+            height::to_string(&self_height),
+            height::to_string(&timeout_height)
+        ))
+        .into());
+    }
+    let now = u64::try_from(sdk::time::to_nanos(&ctx.header.time)).unwrap_or(0);
+    if p.timeout_timestamp != 0 && now >= p.timeout_timestamp {
+        return Err(cherr::packet_timeout(format!(
+            "block timestamp >= packet timeout timestamp ({} >= {})",
+            sdk::time::go_time_string(&ctx.header.time),
+            unix_nanos_string(p.timeout_timestamp)
+        ))
+        .into());
+    }
+    let commitment = channel::commit_packet(p);
+    super::ibc::verify_with_delay(
+        ctx,
+        &conn,
+        proof_height,
+        proof,
+        &host::packet_commitment_key(&p.source_port, &p.source_channel, p.sequence),
+        &commitment,
+        "failed packet commitment verification for client",
+        true,
+    )
+    .map_err(|e| e.wrap("couldn't verify counterparty packet commitment"))?;
+    if ch.ordering == chpb::Order::Ordered as i32 {
+        let next = channel::get_next_sequence_recv(ctx, port, chan)?.ok_or_else(|| {
+            cherr::sequence_receive_not_found(format!(
+                "destination port: {port}, destination channel: {chan}"
+            ))
+        })?;
+        if p.sequence < next {
+            emit_packet_data_event(ctx, "recv_packet", p, &ch, None);
+            return Err(AckFailure::NoOp);
+        }
+        if p.sequence != next {
+            return Err(cherr::packet_sequence_out_of_order(format!(
+                "packet sequence \u{2260} next receive sequence ({} \u{2260} {next})",
+                p.sequence
+            ))
+            .into());
+        }
+        channel::set_next_sequence_recv(ctx, port, chan, next.wrapping_add(1))?;
+    } else {
+        if channel::has_packet_receipt(ctx, port, chan, p.sequence)? {
+            emit_packet_data_event(ctx, "recv_packet", p, &ch, None);
+            return Err(AckFailure::NoOp);
+        }
+        channel::set_packet_receipt(ctx, port, chan, p.sequence)?;
+    }
+    emit_packet_data_event(ctx, "recv_packet", p, &ch, None);
+    Ok(())
+}
+
+/// `NewErrorAcknowledgement` (v6): only the ABCI code of `e`.
+fn error_ack(e: &sdk::SdkError) -> channel::AckResponse {
+    channel::AckResponse::Error(format!(
+        "ABCI code: {}: error handling packet: see events for details",
+        e.code
+    ))
+}
+
+/// The transfer stack's `OnRecvPacket` at app version 1: celestia-app's
+/// token filter, then transfer (v6).
+fn on_recv_packet(ctx: &mut Context<'_>, p: &Packet) -> Result<channel::AckResponse> {
+    // Token filter: only a token returning to this chain passes.
+    if let Ok(data) = tr::PacketData::decode(&p.data)
+        && !tr::receiver_chain_is_source(&p.source_port, &p.source_channel, &data.denom)
+    {
+        let err = errs::invalid_type(format!(
+            "only native denom transfers accepted, got {}",
+            data.denom
+        ));
+        ctx.events.emit(event(
+            "fungible_token_packet",
+            [
+                ("module", "tokenfilter".to_owned()),
+                ("sender", data.sender.clone()),
+                ("receiver", data.receiver.clone()),
+                ("denom", data.denom.clone()),
+                ("amount", data.amount.clone()),
+                ("memo", data.memo.clone()),
+                ("success", "false".to_owned()),
+                ("error", err.log.clone()),
+            ],
+        ));
+        return Ok(error_ack(&err));
+    }
+    // transfer `IBCModule.OnRecvPacket`.
+    let decoded = tr::PacketData::decode(&p.data);
+    let (data, mut ack_err) = match decoded {
+        Ok(d) => (d, None),
+        Err(_) => (
+            tr::PacketData::default(),
+            Some(errs::invalid_type(
+                "cannot unmarshal ICS-20 transfer packet data",
+            )),
+        ),
+    };
+    if ack_err.is_none()
+        && let Err(e) = transfer_on_recv(ctx, p, &data)
+    {
+        // A not-ported path inside stays recorded and aborts the block.
+        ack_err = Some(e);
+    }
+    let ack = match &ack_err {
+        None => channel::AckResponse::Result(vec![1]),
+        Some(e) => error_ack(e),
+    };
+    let mut attrs = vec![
+        ("module", x_transfer::MODULE_NAME.to_owned()),
+        ("sender", data.sender.clone()),
+        ("receiver", data.receiver.clone()),
+        ("denom", data.denom.clone()),
+        ("amount", data.amount.clone()),
+        ("memo", data.memo.clone()),
+        ("success", ack.success().to_string()),
+    ];
+    if let Some(e) = &ack_err {
+        attrs.push(("error", e.log.clone()));
+    }
+    ctx.events.emit(event("fungible_token_packet", attrs));
+    Ok(ack)
+}
+
+/// transfer keeper `OnRecvPacket` (v6) for a token returning to this
+/// chain (the token filter passes no other).
+fn transfer_on_recv(ctx: &mut Context<'_>, p: &Packet, data: &tr::PacketData) -> Result<()> {
+    let amount = sdk::coins::Amount::parse(&data.amount).map_err(|_| {
+        tr::errors::invalid_amount(&format!(
+            "unable to parse transfer amount ({}) into math.Int",
+            data.amount
+        ))
+    })?;
+    if !amount.is_positive() {
+        return Err(tr::errors::invalid_amount(&format!(
+            "amount must be strictly positive: got {amount}"
+        )));
+    }
+    if data.sender.trim().is_empty() {
+        return Err(errs::invalid_address("sender address cannot be blank"));
+    }
+    if data.receiver.trim().is_empty() {
+        return Err(errs::invalid_address("receiver address cannot be blank"));
+    }
+    tr::validate_prefixed_denom(&data.denom)?;
+    let raw = x_params::get_raw(ctx, "transfer", b"ReceiveEnabled")?
+        .ok_or_else(|| sdk::error::go_panic("UnmarshalJSON: transfer ReceiveEnabled is not set"))?;
+    let enabled: bool = serde_json::from_slice(&raw)
+        .map_err(|e| sdk::error::go_panic(format!("subspace transfer: ReceiveEnabled: {e}")))?;
+    if !enabled {
+        return Err(tr::errors::receive_disabled(""));
+    }
+    let receiver = tr::acc_address(&data.receiver)?;
+    if !tr::receiver_chain_is_source(&p.source_port, &p.source_channel, &data.denom) {
+        return Err(super::not_ported(errs::not_supported(
+            "the ibc-go v6 receive of a foreign token (mint) is not ported",
+        )));
+    }
+    let prefix = format!("{}/{}/", p.source_port, p.source_channel);
+    let unprefixed = &data.denom[prefix.len()..];
+    let trace = tr::parse_denom_trace(unprefixed);
+    let denom = if trace.path.is_empty() {
+        unprefixed.to_owned()
+    } else {
+        x_transfer::ibc_denom(&trace)
+    };
+    let token = tr::new_coin(&denom, amount)?;
+    if x_bank::is_blocked(&receiver) {
+        return Err(errs::unauthorized(format!(
+            "{} is not allowed to receive funds",
+            data.receiver
+        )));
+    }
+    let escrow = x_transfer::escrow_address(&p.destination_port, &p.destination_channel);
+    x_bank::send_coins(ctx, &escrow, &receiver, &tr::coins(&token)).map_err(|e| {
+        e.wrap("unable to unescrow tokens, this may be caused by a malicious counterparty module or a bug: please open an issue on counterparty module")
+    })
+}
+
+/// core `msgServer.RecvPacket` (v6).
+fn recv_packet_msg(ctx: &mut Context<'_>, m: &chpb::MsgRecvPacket) -> Result<Any> {
+    let p = m.packet.clone().unwrap_or_default();
+    let (module, cap) =
+        channel::lookup_module_by_channel(ctx, &p.destination_port, &p.destination_channel)
+            .map_err(|e| e.wrap("could not retrieve module from port-id"))?;
+    if module != x_transfer::MODULE_NAME {
+        return Err(super::not_ported(errs::not_supported(format!(
+            "the ibc-go v6 packet callbacks of module {module} are not ported"
+        ))));
+    }
+    // First cache context: the core receive.
+    let outer = std::mem::take(&mut ctx.events);
+    let cp = ctx.branch();
+    let r = recv_packet(
+        ctx,
+        &cap,
+        &p,
+        &m.proof_commitment,
+        &m.proof_height.unwrap_or_default(),
+    );
+    let mut cached = std::mem::replace(&mut ctx.events, outer);
+    match r {
+        Ok(()) => {
+            ctx.write(cp);
+            ctx.events.emit_all(cached.take());
+        }
+        Err(AckFailure::NoOp) => {
+            ctx.multistore().discard_branch();
+            return Ok(Any::pack(&chpb::MsgRecvPacketResponse {
+                result: chpb::ResponseResultType::Noop as i32,
+            }));
+        }
+        Err(AckFailure::Err(e)) => {
+            ctx.multistore().discard_branch();
+            return Err(e.wrap("receive packet verification failed"));
+        }
+    }
+    // Second cache context: the application callback, kept only for a
+    // successful acknowledgement.
+    let outer = std::mem::take(&mut ctx.events);
+    let base = ctx.multistore().depth();
+    let cp = ctx.branch();
+    let ack = on_recv_packet(ctx, &p);
+    let mut cached = std::mem::replace(&mut ctx.events, outer);
+    let ack = match ack {
+        Ok(a) => a,
+        Err(e) => {
+            while ctx.multistore().depth() > base {
+                ctx.multistore().discard_branch();
+            }
+            return Err(e);
+        }
+    };
+    if ack.success() {
+        ctx.write(cp);
+        ctx.events.emit_all(cached.take());
+    } else {
+        while ctx.multistore().depth() > base {
+            ctx.multistore().discard_branch();
+        }
+    }
+    write_acknowledgement(ctx, &cap, &p, &ack)?;
+    Ok(Any::pack(&chpb::MsgRecvPacketResponse {
+        result: chpb::ResponseResultType::Success as i32,
+    }))
+}
+
+/// 04-channel `WriteAcknowledgement` (v6).
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn write_acknowledgement(
+    ctx: &mut Context<'_>,
+    cap: &celestia_proto::capability::v1::Capability,
+    p: &Packet,
+    ack: &channel::AckResponse,
+) -> Result<()> {
+    let (port, chan) = (&p.destination_port, &p.destination_channel);
+    let ch =
+        channel::get_channel(ctx, port, chan)?.ok_or_else(|| cherr::channel_not_found(chan))?;
+    if ch.state != State::Open as i32 {
+        return Err(cherr::invalid_channel_state(format!(
+            "channel state is not OPEN (got {})",
+            channel::state_name(ch.state)
+        )));
+    }
+    let cap_name = host::channel_capability_path(port, chan);
+    if !x_ibc::port::SCOPED_KEEPER.authenticate_capability(ctx, cap, &cap_name)? {
+        return Err(cherr::invalid_channel_capability(format!(
+            "channel capability failed authentication for capability name {cap_name}"
+        )));
+    }
+    if channel::has_packet_acknowledgement(ctx, port, chan, p.sequence)? {
+        return Err(cherr::acknowledgement_exists(""));
+    }
+    let bz = gostr::to_go_bytes(&ack.marshal()).into_owned();
+    channel::set_packet_acknowledgement(
+        ctx,
+        port,
+        chan,
+        p.sequence,
+        &channel::commit_acknowledgement(&bz),
+    )?;
+    emit_packet_data_event(ctx, "write_acknowledgement", p, &ch, Some(&bz));
+    Ok(())
 }
