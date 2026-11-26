@@ -2922,3 +2922,77 @@ fn v046_create_vesting_account() {
     let e = msgs::route(&mut ctx, &msg(0, 1_800_000_000)).unwrap_err();
     assert_eq!((e.codespace, e.code), ("sdk", 18), "{}", e.log);
 }
+
+/// cosmos-sdk v0.46 feegrant: granting creates the grantee account and
+/// queues the expiration; a duplicate fails; using the allowance stores
+/// it through `GrantAllowance` again (`set_feegrant`); revoking deletes
+/// only the grant, not its queue entry.
+#[test]
+fn v046_feegrant_grant_use_revoke() {
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::cosmos::feegrant::v1beta1::{
+        BasicAllowance, MsgGrantAllowance, MsgRevokeAllowance,
+    };
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.header.time = pbjson_types::Timestamp {
+        seconds: 1_000,
+        nanos: 0,
+    };
+    let (from, to) = ([1u8; 20], [2u8; 20]);
+    let exp = pbjson_types::Timestamp {
+        seconds: 5_000,
+        nanos: 0,
+    };
+    let grant = celestia_proto::Any::pack(&MsgGrantAllowance {
+        granter: x_auth::bech32(&from).unwrap(),
+        grantee: x_auth::bech32(&to).unwrap(),
+        allowance: Some(celestia_proto::Any::pack(&BasicAllowance {
+            spend_limit: vec![Coin {
+                denom: "utia".into(),
+                amount: "100".into(),
+            }],
+            expiration: Some(exp),
+        })),
+    });
+    msgs::validate_basic(&grant).unwrap();
+    msgs::route(&mut ctx, &grant).unwrap();
+    assert!(x_auth::get_account(&mut ctx, &to).unwrap().is_some());
+    let key = x_feegrant::allowance_key(&from, &to);
+    let queue = x_feegrant::queue_key(&exp, &key[1..]);
+    assert!(ctx.get(x_feegrant::STORE_KEY, &queue).unwrap().is_some());
+    let e = msgs::route(&mut ctx, &grant).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18), "{}", e.log);
+
+    ctx.events.take();
+    x_feegrant::use_granted_fees(
+        &mut ctx,
+        &from,
+        &to,
+        &sdk::coins::Coins::from_proto(&[Coin {
+            denom: "utia".into(),
+            amount: "40".into(),
+        }])
+        .unwrap(),
+        &[],
+    )
+    .unwrap();
+    let types: Vec<String> = ctx.events.take().into_iter().map(|e| e.r#type).collect();
+    assert_eq!(types, ["use_feegrant", "set_feegrant"]);
+    let left = x_feegrant::get_allowance(&mut ctx, &from, &to).unwrap();
+    let x_feegrant::Allowance::Basic(b) = left else {
+        panic!("not basic")
+    };
+    assert_eq!(b.spend_limit[0].amount, "60");
+
+    let revoke = celestia_proto::Any::pack(&MsgRevokeAllowance {
+        granter: x_auth::bech32(&from).unwrap(),
+        grantee: x_auth::bech32(&to).unwrap(),
+    });
+    msgs::route(&mut ctx, &revoke).unwrap();
+    assert!(ctx.get(x_feegrant::STORE_KEY, &key).unwrap().is_none());
+    assert!(ctx.get(x_feegrant::STORE_KEY, &queue).unwrap().is_some());
+    let e = msgs::route(&mut ctx, &revoke).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 38), "{}", e.log);
+}

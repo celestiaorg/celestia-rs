@@ -253,6 +253,9 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
     if let Some(r) = super::vesting::validate_basic(msg) {
         return r;
     }
+    if let Some(r) = super::feegrant::validate_basic(msg) {
+        return r;
+    }
     if let Some(r) = super::blob::validate_basic(msg) {
         return r;
     }
@@ -391,6 +394,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
         return r;
     }
     if let Some(r) = super::vesting::route(ctx, msg) {
+        return r;
+    }
+    if let Some(r) = super::feegrant::route(ctx, msg) {
         return r;
     }
     if let Some(r) = super::blob::route(ctx, msg) {
