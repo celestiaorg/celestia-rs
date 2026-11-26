@@ -300,43 +300,18 @@ fn verify_commit_batch(
     Ok(())
 }
 
-/// Below this many signatures, checking them on one thread is cheaper than
-/// starting threads.
-const PARALLEL_VERIFY_MIN: usize = 16;
-
 /// The commit index of the first entry of `batch` (in batch order) whose
-/// signature does not verify. Signature checks are independent and pure,
-/// so large batches are split into contiguous chunks checked on scoped
-/// threads; the first failure of the lowest chunk is the sequential
-/// answer.
+/// signature does not verify, checked in parallel for large batches
+/// ([`crypto::parallel::first_failure`]: the sequential answer).
 fn first_invalid_signature(
     commit: &Commit,
     batch: &[(usize, Validator, Vec<u8>)],
 ) -> Option<usize> {
-    let valid = |(idx, val, sign_bytes): &(usize, Validator, Vec<u8>)| {
+    crypto::parallel::first_failure(batch, |(idx, val, sign_bytes)| {
         val.pub_key
             .verify_signature(sign_bytes, &commit.signatures[*idx].signature)
-    };
-    let threads = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
-    if batch.len() < PARALLEL_VERIFY_MIN || threads < 2 {
-        return batch.iter().find(|e| !valid(e)).map(|e| e.0);
-    }
-    let chunk = batch
-        .len()
-        .div_ceil(threads.min(batch.len() / (PARALLEL_VERIFY_MIN / 2)).max(1));
-    std::thread::scope(|scope| {
-        let handles: Vec<_> = batch
-            .chunks(chunk)
-            .map(|part| scope.spawn(move || part.iter().find(|e| !valid(e)).map(|e| e.0)))
-            .collect();
-        // Join every thread; the earliest chunk with a failure wins.
-        let results: Vec<Option<usize>> = handles
-            .into_iter()
-            // A panic in a check is re-raised, never read as "valid".
-            .map(|h| h.join().unwrap_or_else(|p| std::panic::resume_unwind(p)))
-            .collect();
-        results.into_iter().flatten().next()
     })
+    .map(|i| batch[i].0)
 }
 
 #[allow(clippy::too_many_arguments)]
