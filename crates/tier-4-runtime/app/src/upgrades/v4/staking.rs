@@ -23,8 +23,8 @@ pub fn migrate_staking(ctx: &mut Context<'_>) -> Result<()> {
     let params = super::legacy(ctx, x_staking::store::get_params)?;
     x_staking::store::set_params(ctx, &params)?;
     merge_unbonding_entries(ctx)?;
-    index_delegations_by_validator(ctx)?;
-    migrate_historical_info_keys(ctx)
+    x_staking::migrations::index_delegations_by_validator(ctx, None, DELEGATION_INDEX_LIMIT)?;
+    x_staking::migrations::migrate_historical_info_keys(ctx, None, HISTORICAL_INFO_LIMIT)
 }
 
 fn prefixed(ctx: &mut Context<'_>, prefix: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
@@ -78,71 +78,4 @@ fn merge_unbonding_entries(ctx: &mut Context<'_>) -> Result<()> {
         )?;
     }
     Ok(())
-}
-
-/// `ParseDelegationKey`: `0x31 || len || delegator || len || validator`.
-fn parse_delegation_key(key: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
-    let bad = || internal(format!("invalid delegation key {}", hex::encode(key)));
-    let rest = key.get(1..).ok_or_else(bad)?;
-    let (&dl, rest) = rest.split_first().ok_or_else(bad)?;
-    let del = rest.get(..usize::from(dl)).ok_or_else(bad)?;
-    let rest = &rest[usize::from(dl)..];
-    let (&vl, rest) = rest.split_first().ok_or_else(bad)?;
-    let val = rest.get(..usize::from(vl)).ok_or_else(bad)?;
-    Ok((del.to_vec(), val.to_vec()))
-}
-
-/// `migrateDelegationsByValidatorIndex`: an empty entry at
-/// `GetDelegationsByValKey(validator, delegator)` per delegation; after the
-/// 1000th, its key without the prefix goes to 0x81 for the BeginBlocker.
-fn index_delegations_by_validator(ctx: &mut Context<'_>) -> Result<()> {
-    for (i, (key, _)) in prefixed(ctx, &[keys::DELEGATION])?.into_iter().enumerate() {
-        let (del, val) = parse_delegation_key(&key)?;
-        ctx.set(
-            x_staking::STORE_KEY,
-            keys::delegation_by_val(&val, &del),
-            Vec::new(),
-        )?;
-        if i + 1 >= DELEGATION_INDEX_LIMIT {
-            return ctx.set(
-                x_staking::STORE_KEY,
-                keys::NEXT_MIGRATE_DELEGATIONS_BY_VALIDATOR_INDEX.to_vec(),
-                key[1..].to_vec(),
-            );
-        }
-    }
-    Ok(())
-}
-
-/// `MigrateHistoricalInfoKeys(nil, 1000)`: each `0x50 || decimal height`
-/// key (in byte order) becomes `0x50 || big-endian height`; after 1000 the
-/// next old key (without the prefix) goes to 0x82, else 0x82 is deleted.
-fn migrate_historical_info_keys(ctx: &mut Context<'_>) -> Result<()> {
-    let entries = prefixed(ctx, &[keys::HISTORICAL_INFO])?;
-    for (i, (key, value)) in entries.iter().enumerate() {
-        let decimal = &key[1..];
-        if i >= HISTORICAL_INFO_LIMIT {
-            return ctx.set(
-                x_staking::STORE_KEY,
-                keys::NEXT_MIGRATE_HISTORICAL_INFO.to_vec(),
-                decimal.to_vec(),
-            );
-        }
-        let height: i64 = std::str::from_utf8(decimal)
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .ok_or_else(|| {
-                internal(format!(
-                    "can't parse height from key {:?} to int64",
-                    String::from_utf8_lossy(decimal)
-                ))
-            })?;
-        ctx.set(
-            x_staking::STORE_KEY,
-            keys::historical_info(height),
-            value.clone(),
-        )?;
-        ctx.delete(x_staking::STORE_KEY, key)?;
-    }
-    ctx.delete(x_staking::STORE_KEY, keys::NEXT_MIGRATE_HISTORICAL_INFO)
 }

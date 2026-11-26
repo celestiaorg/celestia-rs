@@ -314,3 +314,54 @@ fn v4_rich_chain_reaches_the_continuations() {
     assert!(d["staking"].set.contains_key([0x81].as_slice()));
     assert!(d["gov"].set.keys().any(|k| k[0] == 0x04));
 }
+
+/// The BeginBlockers of the upgrade block finish what the migrations left
+/// for later: staking indexes the remaining delegations and deletes its
+/// cursor, and slashing walks the remaining signing infos and deletes its
+/// cursor, as in Go's state after the upgrade block (rich chain).
+#[test]
+fn v4_begin_blockers_finish_the_continuations() {
+    use x_upgrade::UpgradeHandlers as _;
+    let f = fixtures().nth(1).unwrap();
+    let handlers = app::upgrades::Handlers::of_release(4);
+    assert!(handlers.has_handler("v4"));
+    let mut ms = handoff(f);
+    {
+        let mut c = ctx(f, &mut ms);
+        let plan = x_upgrade::get_upgrade_plan(&mut c).unwrap().unwrap();
+        x_upgrade::apply_upgrade(&mut c, &handlers, &plan).unwrap();
+        assert!(c.get("staking", &[0x81]).unwrap().is_some());
+        assert!(c.get("slashing", &[0xFF]).unwrap().is_some());
+        let cursor = c.get("staking", &[0x81]).unwrap().unwrap();
+        x_staking::migrations::index_delegations_by_validator(&mut c, Some(&cursor), 10_000)
+            .unwrap();
+        // No votes: only the cursor walk of the slashing BeginBlocker.
+        x_slashing::begin_block(&mut c).unwrap();
+    }
+    // Go's state after the upgrade block.
+    let mut want = handoff_state(f);
+    for (store, d) in &common::diffs_in(&format!("{}/kv-diffs.jsonl.gz", f.dir))[&f.upgrade] {
+        let kv = want.entry(store.clone()).or_default();
+        for k in &d.delete {
+            kv.remove(k);
+        }
+        kv.extend(d.set.clone());
+    }
+    let pick = |kv: &Kv, prefixes: &[u8]| -> Kv {
+        kv.iter()
+            .filter(|(k, _)| prefixes.contains(&k[0]))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    };
+    let got = pick(&contents(&ms, "staking"), &[0x71, 0x81]);
+    let w = pick(&want["staking"], &[0x71, 0x81]);
+    assert!(got.len() > 1_080, "index entries: {}", got.len());
+    assert!(got == w, "staking: rs vs go {}", describe(&diff(&w, &got)));
+    let got = pick(&contents(&ms, "slashing"), &[0xFF]);
+    let w = pick(&want["slashing"], &[0xFF]);
+    assert!(
+        got.is_empty() && got == w,
+        "slashing: rs vs go {}",
+        describe(&diff(&w, &got))
+    );
+}
