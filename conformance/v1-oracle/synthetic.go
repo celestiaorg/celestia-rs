@@ -89,8 +89,10 @@ type synth struct {
 	// blocks is blocks.jsonl as the oracle reads it: {"height", "result"}.
 	blocks bytes.Buffer
 
-	// gov builds the governance chain (synthetic_gov.go) instead.
-	gov bool
+	// scenario is "" for this chain, "gov" for the governance chain
+	// (synthetic_gov.go) and "staking" for the staking chain
+	// (synthetic_staking.go).
+	scenario string
 
 	lastBlockID     tmtypes.BlockID
 	lastCommit      *tmtypes.Commit
@@ -105,7 +107,7 @@ func keyMnemonic(name string) (string, error) {
 	return bip39.NewMnemonic(entropy[:])
 }
 
-func newSynth(gov bool) (*synth, error) {
+func newSynth(scenario string) (*synth, error) {
 	ecfg := encoding.MakeConfig(app.ModuleEncodingRegisters...)
 	kr := keyring.NewInMemory(ecfg.Codec)
 	params := app.DefaultConsensusParams()
@@ -115,8 +117,11 @@ func newSynth(gov bool) (*synth, error) {
 		WithGenesisTime(syntheticGenesisTime).
 		WithConsensusParams(params).
 		WithKeyring(kr)
-	if gov {
+	switch scenario {
+	case "gov":
 		g = g.WithModifiers(govGenesis(ecfg.Codec))
+	case "staking":
+		g = g.WithModifiers(stakingGenesis(ecfg.Codec))
 	}
 	addAccount := func(name string, balance int64) error {
 		mnemonic, err := keyMnemonic(name)
@@ -159,7 +164,19 @@ func newSynth(gov bool) (*synth, error) {
 	if err := genDoc.ValidateAndComplete(); err != nil {
 		return nil, err
 	}
-	return &synth{ecfg: ecfg, kr: kr, genDoc: genDoc, appVersion: 1, gov: gov}, nil
+	if scenario == "staking" {
+		// Accounts that a staking chain transaction creates: keys only.
+		for _, name := range stakingNewAccounts {
+			mnemonic, err := keyMnemonic(name)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := kr.NewAccount(name, mnemonic, "", sdk.FullFundraiserPath, hd.Secp256k1); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return &synth{ecfg: ecfg, kr: kr, genDoc: genDoc, appVersion: 1, scenario: scenario}, nil
 }
 
 // start records the InitChain app hash: the app hash of block 1.
@@ -189,7 +206,11 @@ func (s *synth) blocksJSONL() []byte { return s.blocks.Bytes() }
 func (s *synth) signer(a *app.App) (*user.Signer, error) {
 	ctx := a.NewContext(true, tmproto.Header{})
 	var accounts []*user.Account
-	for _, name := range append(append([]string{}, syntheticValidators...), syntheticUsers...) {
+	names := append(append([]string{}, syntheticValidators...), syntheticUsers...)
+	if s.scenario == "staking" {
+		names = append(names, stakingNewAccounts...)
+	}
+	for _, name := range names {
 		rec, err := s.kr.Key(name)
 		if err != nil {
 			return nil, err
@@ -200,6 +221,10 @@ func (s *synth) signer(a *app.App) (*user.Signer, error) {
 		}
 		acc := a.AccountKeeper.GetAccount(ctx, addr)
 		if acc == nil {
+			if s.scenario == "staking" && contains(stakingNewAccounts, name) {
+				// Not created yet.
+				continue
+			}
 			return nil, fmt.Errorf("no account %s", name)
 		}
 		accounts = append(accounts, user.NewAccount(name, acc.GetAccountNumber(), acc.GetSequence()))
@@ -214,8 +239,11 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 		// Nothing is committed yet: block 1 is empty.
 		return nil, nil
 	}
-	if s.gov {
+	switch s.scenario {
+	case "gov":
 		return s.govTxs(a, height)
+	case "staking":
+		return s.stakingTxs(a, height)
 	}
 	sg, err := s.signer(a)
 	if err != nil {
@@ -394,7 +422,7 @@ func (s *synth) block(a *app.App, height int64, vals map[int64]*tmtypes.Validato
 	// height.
 	sigs := make([]tmtypes.CommitSig, len(cur.Validators))
 	for i, v := range cur.Validators {
-		if i == len(cur.Validators)-1 && height%3 == 0 {
+		if s.absent(height, i, v, len(cur.Validators)) {
 			sigs[i] = tmtypes.NewCommitSigAbsent()
 			continue
 		}
@@ -408,4 +436,23 @@ func (s *synth) block(a *app.App, height int64, vals map[int64]*tmtypes.Validato
 	s.lastCommit = tmtypes.NewCommit(height, 0, id, sigs)
 	s.lastBlockID = id
 	return rb, nil
+}
+
+// absent reports whether validator v (index i of n) misses the commit of
+// block `height`: on this chain the fourth validator every third height,
+// on the staking chain val3 until it is jailed.
+func (s *synth) absent(height int64, i int, v *tmtypes.Validator, n int) bool {
+	if s.scenario == "staking" {
+		return stakingAbsent(height, v)
+	}
+	return i == n-1 && height%3 == 0
+}
+
+func contains(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }

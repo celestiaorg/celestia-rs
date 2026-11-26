@@ -37,7 +37,10 @@
 //! (block 125). Last, a proposal (block 127, the genesis has 40 second
 //! gov periods) narrows the host's `AllowMessages` to `MsgSend`; it
 //! passes in block 130, the account's delegation gets an error
-//! acknowledgement (block 132) and its send runs (block 135). The
+//! acknowledgement (block 132) and its send runs (block 135). Then utia
+//! goes to B through authz `MsgExec` with a GenericAuthorization (block
+//! 138) and an ibc-go TransferAuthorization (block 143), and a plain
+//! transfer (block 148) times out on B and is refunded (block 150). The
 //! fixture keeps its `ibc-v2` name.
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::print_stdout)]
@@ -51,7 +54,7 @@ fn fix() -> Fixture {
 }
 
 /// The last block that celestia-rs executes as Go does: every block.
-const MATCHED_THROUGH: i64 = 137;
+const MATCHED_THROUGH: i64 = 151;
 
 /// The fixture files are the ones the oracle wrote.
 #[test]
@@ -75,7 +78,7 @@ fn ibc_fixture_files_match_their_record() {
         r["kv"]["kv-diffs.jsonl"],
         sha(&f.gunzip("kv-diffs.jsonl.gz"))
     );
-    assert_eq!(f.last_height(), 137);
+    assert_eq!(f.last_height(), 151);
 }
 
 #[test]

@@ -353,6 +353,33 @@ cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
 `cargo test -p app --test gov_oracle` compares each block as for the
 synthetic chain.
 
+#### Staking chain for app versions 1 to 3
+
+`v1-oracle -synthetic -staking` (`synthetic_staking.go`) runs the
+synthetic chain's genesis with a 60 second unbonding time and a 10 block
+signing window (half of it signed, a 60 second downtime jail),
+`--v2-upgrade-height 20` and a signalled upgrade to app version 3 at
+block 24, so that the staking queues mature within the run:
+
+- app version 1 (blocks 2 to 19): a fee allowance, a transaction whose
+  fee the granter pays, and its revocation; authz StakeAuthorization
+  and SendAuthorization through one `MsgExec`, then `MsgRevoke`; an
+  undelegation and a redelegation that mature in the EndBlocker, and a
+  cancelled unbonding; a validator edit, commission and reward
+  withdrawals to a withdraw address; a continuous vesting account that
+  delegates locked coins and a delayed one; a multi-send; val3 misses
+  every commit until it is jailed for downtime (block 11), then
+  unjails (block 16);
+- app version 3 (blocks 25 to 32): a periodic fee allowance, an authz
+  undelegation, a cancelled unbonding, a redelegation and a vesting
+  account's undelegation, maturing in blocks 30 and 31.
+
+Blocks 14 and 32 check the jail and the queues against the plan.
+[`fixtures/synthetic/staking-v1-v3`](fixtures/synthetic/staking-v1-v3)
+holds heights 0 to 32 (regenerate it as the governance chain, with
+`-staking`). `cargo test -p app --test staking_oracle` compares each
+block.
+
 #### IBC chain for app version 2
 
 Mainnet's v2 and v3 eras carry interchain account host packets (27,031
@@ -387,7 +414,10 @@ ibc-go simapp chains as counterparties:
   executes a send and a multi-send over it. Last, a governance proposal
   narrows the host's `AllowMessages` to `MsgSend` (the chain's genesis
   has 40 second gov periods), after which the account's delegation gets
-  an error acknowledgement and its send runs. The fixture keeps its
+  an error acknowledgement and its send runs. Then utia goes to B
+  through authz `MsgExec` (a GenericAuthorization, and an ibc-go
+  TransferAuthorization whose spend limit it uses up), and a plain
+  transfer times out on B and is refunded on A. The fixture keeps its
   `ibc-v2` name.
 
 The test records A's genesis, each BeginBlock header and the
@@ -397,7 +427,7 @@ run's. Each block gets one BeginBlock at one time (ibctesting re-runs
 BeginBlock when its clock moves, which no consensus engine does), so
 the clients that A hosts allow an hour of clock drift. The blocks carry
 no last commit. [`fixtures/synthetic/ibc-v2`](fixtures/synthetic/ibc-v2)
-holds heights 0 to 137; the test requires it byte for byte. To
+holds heights 0 to 151; the test requires it byte for byte. To
 regenerate it:
 
 ```sh

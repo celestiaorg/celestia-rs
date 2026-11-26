@@ -9,14 +9,15 @@ import (
 )
 
 // syntheticFixtures are the synthetic chains and their committed fixture
-// directories: the version chain (synthetic.go) and the governance chain
-// (synthetic_gov.go).
+// directories: the version chain (synthetic.go), the governance chain
+// (synthetic_gov.go) and the staking chain (synthetic_staking.go).
 var syntheticFixtures = []struct {
 	name string
-	gov  bool
+	flag string
 }{
-	{"v1-v3", false},
-	{"gov-v1-v3", true},
+	{"v1-v3", ""},
+	{"gov-v1-v3", "-gov"},
+	{"staking-v1-v3", "-staking"},
 }
 
 // TestSyntheticFixtureIsReproducible rebuilds each synthetic chain and
@@ -27,9 +28,7 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 			out := t.TempDir()
 			cmd := exec.Command(os.Args[0], "-test.run=TestRunSynthetic", "-test.v")
 			cmd.Env = append(os.Environ(), "V1_ORACLE_SYNTHETIC_OUT="+out)
-			if f.gov {
-				cmd.Env = append(cmd.Env, "V1_ORACLE_SYNTHETIC_GOV=1")
-			}
+			cmd.Env = append(cmd.Env, "V1_ORACLE_SYNTHETIC_FLAG="+f.flag)
 			if bz, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("synthetic run: %v\n%s", err, bz)
 			}
@@ -62,8 +61,8 @@ func TestRunSynthetic(t *testing.T) {
 		t.Skip("run by TestSyntheticFixtureIsReproducible")
 	}
 	os.Args = []string{"v1-oracle", "-synthetic", "-kv", "-out", out}
-	if os.Getenv("V1_ORACLE_SYNTHETIC_GOV") != "" {
-		os.Args = append(os.Args, "-gov")
+	if f := os.Getenv("V1_ORACLE_SYNTHETIC_FLAG"); f != "" {
+		os.Args = append(os.Args, f)
 	}
 	if err := run(); err != nil {
 		t.Fatal(err)

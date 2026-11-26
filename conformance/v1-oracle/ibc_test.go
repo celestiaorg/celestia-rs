@@ -40,6 +40,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/store/rootmulti"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
@@ -660,6 +661,8 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 	}
 	sendICA(stakingtypes.NewMsgDelegate(icaAcc, val, sdk.NewInt64Coin(appconsts.BondDenom, 1_000)))
 	sendICA(banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 3))))
+
+	runTransferAuthzAndTimeout(t, coord, chainA, chainB, pathAB, timeout)
 	// A last empty block commits the last transaction's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc
@@ -959,4 +962,68 @@ func TestIBCFixture(t *testing.T) {
 			t.Errorf("%s differs from the committed fixture; regenerate it (conformance/README.md)", name)
 		}
 	}
+}
+
+// runTransferAuthzAndTimeout sends utia from A to B through authz MsgExec
+// (a GenericAuthorization, then an ibc-go TransferAuthorization whose
+// spend limit the transfer uses up), and a plain transfer that times out
+// on B, so that A refunds it on MsgTimeout.
+func runTransferAuthzAndTimeout(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB *ibctesting.TestChain,
+	pathAB *ibctesting.Path, timeout clienttypes.Height,
+) {
+	granter := chainA.SenderAccount.GetAddress()
+	utia := func(n int64) sdk.Coin { return sdk.NewInt64Coin(appconsts.BondDenom, n) }
+	transfer := func(amount int64, timeoutTimestamp uint64, h clienttypes.Height) *transfertypes.MsgTransfer {
+		return transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID, utia(amount),
+			granter.String(), chainB.SenderAccount.GetAddress().String(), h, timeoutTimestamp, "")
+	}
+	// asSender runs f with chain A's sender account i.
+	asSender := func(i int, f func()) {
+		sender, key := chainA.SenderAccount, chainA.SenderPrivKey
+		chainA.SenderAccount, chainA.SenderPrivKey = chainA.SenderAccounts[i].SenderAccount, chainA.SenderAccounts[i].SenderPrivKey
+		f()
+		chainA.SenderAccount, chainA.SenderPrivKey = sender, key
+	}
+	generic, err := authz.NewMsgGrant(granter, chainA.SenderAccounts[2].SenderAccount.GetAddress(),
+		authz.NewGenericAuthorization(sdk.MsgTypeURL(&transfertypes.MsgTransfer{})), nil)
+	must(t, err)
+	limited, err := authz.NewMsgGrant(granter, chainA.SenderAccounts[3].SenderAccount.GetAddress(),
+		transfertypes.NewTransferAuthorization(transfertypes.Allocation{
+			SourcePort: ibctesting.TransferPort, SourceChannel: pathAB.EndpointA.ChannelID,
+			SpendLimit: sdk.NewCoins(utia(7_000)),
+		}), nil)
+	must(t, err)
+	_, err = chainA.SendMsgs(generic, limited)
+	must(t, err)
+	for _, g := range []struct {
+		sender int
+		amount int64
+	}{{2, 4_000}, {3, 7_000}} {
+		var res *sdk.Result
+		asSender(g.sender, func() {
+			exec := authz.NewMsgExec(chainA.SenderAccount.GetAddress(), []sdk.Msg{transfer(g.amount, 0, timeout)})
+			res, err = chainA.SendMsgs(&exec)
+			must(t, err)
+		})
+		packet, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+		must(t, err)
+		must(t, pathAB.EndpointB.UpdateClient())
+		must(t, pathAB.RelayPacket(packet))
+	}
+
+	// A transfer that times out on B: one minute, never relayed.
+	res, err := chainA.SendMsgs(transfer(9_000, uint64(chainA.CurrentHeader.Time.Add(time.Minute).UnixNano()), clienttypes.ZeroHeight()))
+	must(t, err)
+	lost, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	coord.IncrementTimeBy(2 * time.Minute)
+	coord.CommitBlock(chainB)
+	must(t, pathAB.EndpointA.UpdateClient())
+	proof, proofHeight := chainB.QueryProof(host.PacketReceiptKey(lost.GetDestPort(), lost.GetDestChannel(), lost.GetSequence()))
+	next, found := chainB.App.GetIBCKeeper().ChannelKeeper.GetNextSequenceRecv(chainB.GetContext(), lost.GetDestPort(), lost.GetDestChannel())
+	if !found {
+		t.Fatal("no next sequence receive on B")
+	}
+	_, err = chainA.SendMsgs(channeltypes.NewMsgTimeout(lost, next, proof, proofHeight, granter.String()))
+	must(t, err)
 }
