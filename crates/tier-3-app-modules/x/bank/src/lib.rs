@@ -360,9 +360,30 @@ fn module_addr(name: &str) -> Result<Address> {
     Ok(x_auth::module_address(name))
 }
 
-/// `BlockedAddr`: all module accounts except gov.
+/// The module accounts of celestia-app v3.13.0 `maccPerms`, which runs
+/// app versions 1 to 3 (cosmos-sdk v0.46).
+const V046_MODULE_ACCOUNTS: [&str; 8] = [
+    x_auth::FEE_COLLECTOR,
+    "distribution",
+    "gov",
+    "mint",
+    "bonded_tokens_pool",
+    "not_bonded_tokens_pool",
+    "transfer",
+    "interchainaccounts",
+];
+
+/// `BlockedAddr`: all module accounts except gov. Under cosmos-sdk
+/// v0.46 (app versions 1 to 3) the bank keeper's blocked set is
+/// `app.ModuleAccountAddrs()`: every v3.13.0 module account, gov
+/// included.
 #[must_use]
 pub fn is_blocked(addr: &[u8]) -> bool {
+    if sdk::version::is_sdk_v046(0) {
+        return V046_MODULE_ACCOUNTS
+            .iter()
+            .any(|name| x_auth::module_address(name) == addr);
+    }
     x_auth::module_account_perms()
         .any(|(name, _)| *name != "gov" && x_auth::module_address(name) == addr)
 }
@@ -710,6 +731,38 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
 mod tests {
     use super::*;
     use sdk::{ExecMode, Header, Kind, MultiStore};
+
+    /// cosmos-sdk v0.46 (celestia-app v3.13.0 `app.ModuleAccountAddrs()`):
+    /// every `maccPerms` account is blocked, gov included; the accounts of
+    /// later releases are ordinary addresses. Outside the v0.46 scope the
+    /// set is unchanged (gov excluded).
+    #[test]
+    fn v046_blocks_every_v1_module_account_including_gov() {
+        let gov = x_auth::module_address("gov");
+        let v1 = [
+            "fee_collector",
+            "distribution",
+            "gov",
+            "mint",
+            "bonded_tokens_pool",
+            "not_bonded_tokens_pool",
+            "transfer",
+            "interchainaccounts",
+        ];
+        let later = ["hyperlane", "warp", "forwarding", "fibre"];
+        {
+            let _v046 = sdk::version::SdkV046Scope::enter(1);
+            for name in v1 {
+                assert!(is_blocked(&x_auth::module_address(name)), "{name}");
+            }
+            for name in later {
+                assert!(!is_blocked(&x_auth::module_address(name)), "{name}");
+            }
+            assert!(!is_blocked(&[7u8; 20]));
+        }
+        assert!(!is_blocked(&gov));
+        assert!(is_blocked(&x_auth::module_address("warp")));
+    }
 
     #[test]
     fn send_creates_account_and_moves_funds() -> Result<()> {
