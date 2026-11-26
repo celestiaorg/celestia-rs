@@ -398,7 +398,7 @@ fn open_stores_with(
 /// signer for the Fibre server over the same key.
 type Signers = (
     Box<dyn PrivValidator>,
-    Option<Arc<dyn fibre_server::Signer>>,
+    Option<Arc<crate::fibre::NodeSigner>>,
 );
 
 fn validator_signer(opts: &StartOptions, chain_id: &str) -> anyhow::Result<Signers> {
@@ -409,10 +409,10 @@ fn validator_signer(opts: &StartOptions, chain_id: &str) -> anyhow::Result<Signe
             crate::net::node_key(&opts.home)?,
         )
         .with_context(|| format!("priv_validator_laddr {}", opts.priv_validator_laddr))?;
-        let fibre = opts.fibre.as_ref().map(|_| {
-            Arc::new(crate::fibre::NodeSigner::Remote(signer.raw_bytes_signer()))
-                as Arc<dyn fibre_server::Signer>
-        });
+        let fibre = opts
+            .fibre
+            .as_ref()
+            .map(|_| Arc::new(crate::fibre::NodeSigner::Remote(signer.raw_bytes_signer())));
         return Ok((Box::new(signer), fibre));
     }
     let key_path = opts.home.join("config/priv_validator_key.json");
@@ -422,10 +422,9 @@ fn validator_signer(opts: &StartOptions, chain_id: &str) -> anyhow::Result<Signe
     let pv = FilePv::load(&key_path, &state_path)
         .map_err(|e| anyhow!("privval: {e}; refusing to reset signing state"))?;
     let fibre = match &opts.fibre {
-        Some(_) => Some(
-            Arc::new(crate::fibre::NodeSigner::from_key_file(&key_path)?)
-                as Arc<dyn fibre_server::Signer>,
-        ),
+        Some(_) => Some(Arc::new(crate::fibre::NodeSigner::from_key_file(
+            &key_path,
+        )?)),
         None => None,
     };
     Ok((Box::new(pv), fibre))
@@ -593,7 +592,12 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                 rpc.env.clone(),
             ));
             let validator = sdk::address::to_bech32(sdk::address::VALCONS_PREFIX, &local_addr);
-            let fibre = crate::fibre::Supervisor::start(cfg.clone(), state, signer, validator)?;
+            let fatal: crate::fibre::FatalCheck = {
+                let signer = Arc::clone(&signer);
+                Arc::new(move || signer.disabled())
+            };
+            let fibre =
+                crate::fibre::Supervisor::start(cfg.clone(), state, signer, validator, fatal)?;
             if let Some(m) = &metrics {
                 let slot = fibre.metrics();
                 m.append_section(move |labels| {

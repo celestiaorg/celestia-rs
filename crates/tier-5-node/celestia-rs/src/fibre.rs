@@ -491,10 +491,28 @@ impl NodeSigner {
     }
 }
 
+impl NodeSigner {
+    /// Why the signer cannot sign raw bytes until the node restarts (the
+    /// remote signer's raw-bytes path was disabled); `None` otherwise.
+    #[must_use]
+    pub fn disabled(&self) -> Option<String> {
+        match self {
+            Self::File(_) => None,
+            Self::Remote(r) => r.disabled(),
+        }
+    }
+}
+
 impl Signer for NodeSigner {
+    /// With the raw-bytes path disabled this fails, so the `signer` health
+    /// check reports it (`signer_unreachable`, with the reason).
     fn public_key(&self) -> BoxFuture<'_, Result<[u8; 32], SignerError>> {
         let res = match self {
             Self::File(s) => Ok(s.public_key()),
+            Self::Remote(r) if r.disabled().is_some() => Err(SignerError(format!(
+                "remote signer raw-bytes signing is disabled: {}",
+                r.disabled().unwrap_or_default()
+            ))),
             Self::Remote(r) => match r.pub_key() {
                 ctypes::PubKey::Ed25519(pk) => Ok(pk),
                 ctypes::PubKey::Secp256k1(_) => Err(SignerError(
@@ -536,6 +554,10 @@ impl Signer for NodeSigner {
 
 // ------------------------------------------------------------- supervisor
 
+/// Reports a failure that retrying cannot fix (the remote signer's
+/// raw-bytes path is disabled); the supervisor then stops retrying.
+pub type FatalCheck = Arc<dyn Fn() -> Option<String> + Send + Sync>;
+
 /// The current server's metrics, for the node's Prometheus endpoint.
 pub type MetricsSlot = Arc<Mutex<Option<Arc<ServerMetrics>>>>;
 
@@ -562,6 +584,7 @@ impl Supervisor {
         state: Arc<dyn ChainState>,
         signer: Arc<dyn Signer>,
         validator: String,
+        fatal: FatalCheck,
     ) -> anyhow::Result<Self> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -576,7 +599,9 @@ impl Supervisor {
             std::thread::Builder::new()
                 .name("fibre-supervisor".into())
                 .spawn(move || {
-                    runtime.block_on(supervise(cfg, state, signer, validator, stop, metrics));
+                    runtime.block_on(supervise(
+                        cfg, state, signer, validator, stop, metrics, fatal,
+                    ));
                     runtime.shutdown_timeout(Duration::from_secs(1));
                 })
                 .context("start the fibre supervisor thread")?
@@ -625,7 +650,18 @@ async fn supervise(
     validator: String,
     stop: CancellationToken,
     metrics: MetricsSlot,
+    fatal: FatalCheck,
 ) {
+    // A failure retrying cannot fix: log once, then wait for shutdown.
+    let give_up = |stop: CancellationToken, fatal: FatalCheck| async move {
+        let reason = fatal()?;
+        tracing::error!(
+            reason,
+            "the fibre server stays off until the node restarts; consensus is not affected"
+        );
+        stop.cancelled().await;
+        Some(())
+    };
     let mut backoff = MIN_BACKOFF;
     let retry = |backoff: &mut Duration| {
         let d = *backoff;
@@ -660,9 +696,12 @@ async fn supervise(
             Some(Err(e)) => {
                 // Closes a store the failed start opened.
                 let _ = server.stop(Duration::ZERO).await;
+                drop(server);
+                if give_up(stop.clone(), Arc::clone(&fatal)).await.is_some() {
+                    break;
+                }
                 let d = retry(&mut backoff);
                 tracing::error!(error = %e, retry_in = ?d, "fibre server failed to start; consensus is not affected");
-                drop(server);
                 if wait(&stop, d).await {
                     break;
                 }
@@ -694,8 +733,12 @@ async fn supervise(
             () = done.cancelled() => {
                 let reason = server.serve_error().unwrap_or_else(|| "unknown".into());
                 let _ = server.stop(Duration::ZERO).await;
+                tracing::error!(error = %reason, "fibre server stopped serving");
+                if give_up(stop.clone(), Arc::clone(&fatal)).await.is_some() {
+                    break;
+                }
                 let d = retry(&mut backoff);
-                tracing::error!(error = %reason, retry_in = ?d, "fibre server stopped serving; restarting");
+                tracing::error!(retry_in = ?d, "restarting the fibre server");
                 if wait(&stop, d).await {
                     break;
                 }
@@ -713,6 +756,94 @@ async fn supervise(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A chain the server never gets past: start fails at the TLS
+    /// certificate's signature first.
+    struct NoChain;
+
+    impl ChainState for NoChain {
+        fn chain_id(&self) -> String {
+            "c".into()
+        }
+        fn validator_set(&self, _: u64) -> BoxFuture<'_, Result<ValidatorSet, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn head_validator_set(&self) -> BoxFuture<'_, Result<ValidatorSet, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn verify_promise<'a>(
+            &'a self,
+            _: &'a PaymentPromise,
+        ) -> BoxFuture<'a, Result<VerifiedPromise, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn full_stake_storage_budget(&self) -> BoxFuture<'_, Result<i64, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn node_status(&self) -> BoxFuture<'_, Result<NodeStatus, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn provider_registration<'a>(
+            &'a self,
+            _: &'a [u8; 20],
+        ) -> BoxFuture<'a, Result<ProviderRegistration, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+    }
+
+    /// A signer whose raw-bytes path is broken; counts signing attempts.
+    #[derive(Default)]
+    struct BrokenSigner {
+        attempts: std::sync::atomic::AtomicUsize,
+    }
+
+    impl Signer for BrokenSigner {
+        fn public_key(&self) -> BoxFuture<'_, Result<[u8; 32], SignerError>> {
+            Box::pin(async { Ok([1; 32]) })
+        }
+        fn sign_raw_bytes<'a>(
+            &'a self,
+            _: &'a str,
+            _: &'a str,
+            _: &'a [u8],
+        ) -> BoxFuture<'a, Result<Vec<u8>, SignerError>> {
+            self.attempts
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Box::pin(async { Err(SignerError("remote signer connection: hung up".into())) })
+        }
+    }
+
+    /// Once the signer reports a permanent failure, the supervisor stops
+    /// retrying (each retry would cost another signer request).
+    #[test]
+    fn a_permanent_signer_failure_stops_the_retries() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = ServerConfig {
+            server_listen_address: "127.0.0.1:0".into(),
+            store: fibre_server::store::StoreConfig::new(dir.path().join("fibre")),
+            ..ServerConfig::default()
+        };
+        let signer = Arc::new(BrokenSigner::default());
+        let fatal: FatalCheck = {
+            let s = Arc::clone(&signer);
+            Arc::new(move || {
+                (s.attempts.load(std::sync::atomic::Ordering::SeqCst) > 0)
+                    .then(|| "the signer cannot sign raw bytes".to_owned())
+            })
+        };
+        let sup = Supervisor::start(
+            cfg,
+            Arc::new(NoChain),
+            Arc::clone(&signer) as Arc<dyn Signer>,
+            "v".into(),
+            fatal,
+        )
+        .unwrap();
+        // Without the check, the 1 s and 2 s backoffs would retry twice.
+        std::thread::sleep(Duration::from_millis(3500));
+        assert_eq!(signer.attempts.load(std::sync::atomic::Ordering::SeqCst), 1);
+        drop(sup);
+    }
 
     fn files(config: &str) -> (tempfile::TempDir, ConfigFiles) {
         let dir = tempfile::tempdir().unwrap();
