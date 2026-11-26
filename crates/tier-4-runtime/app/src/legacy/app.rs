@@ -9,8 +9,8 @@
 //! be at app version 1; blocks execute at app versions 1 to 3, through
 //! the v1 to v2 upgrade (`App::set_v2_upgrade_height`, or the chain's
 //! default) and the signalled upgrades. A state whose app version became
-//! 4 (the scheduled v4 upgrade) stops with an error: app version 4 runs
-//! on the cosmos-sdk v0.50 app.
+//! 4 hands off to the cosmos-sdk v0.50 app at the block of the scheduled
+//! `v4` plan (`crate::handoff`); without that plan it stops with an error.
 //!
 //! celestia-rs replays committed v0.46 blocks only. CheckTx,
 //! PrepareProposal, ProcessProposal and queries fail with a
