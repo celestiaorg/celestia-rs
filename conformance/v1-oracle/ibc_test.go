@@ -448,6 +448,7 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 	must(t, err)
 	must(t, pathAB.EndpointB.UpdateClient())
 	must(t, pathAB.EndpointB.AcknowledgePacket(inbound, inboundAck))
+	runPFMFailures(t, coord, chainA, chainB, chainC, pathAB, pathAC, voucher, timeout)
 
 	// Interchain accounts: B controls an account on A.
 	icaPath := ibctesting.NewPath(chainB, chainA)
@@ -510,6 +511,80 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 	// A last empty block commits the relayed acknowledgement's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc
+}
+
+// runPFMFailures forwards two more packets from B through A to C that
+// fail: one C rejects (an error acknowledgement, so A moves the escrowed
+// utia back to the A-B escrow), and one that times out on C twice (A
+// sends it again once, then gives up and acknowledges the inbound packet
+// with an error).
+func runPFMFailures(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB, chainC *ibctesting.TestChain,
+	pathAB, pathAC *ibctesting.Path, voucher string, timeout clienttypes.Height,
+) {
+	// sendBack sends voucher from B to A with memo; A receives it and
+	// forwards it to C.
+	sendBack := func(amount int64, memo string) (inbound, forwarded channeltypes.Packet) {
+		res, err := chainB.SendMsgs(transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointB.ChannelID,
+			sdk.NewInt64Coin(voucher, amount), chainB.SenderAccount.GetAddress().String(),
+			chainA.SenderAccount.GetAddress().String(), timeout, 0, memo))
+		must(t, err)
+		inbound, err = ibctesting.ParsePacketFromEvents(res.GetEvents())
+		must(t, err)
+		must(t, pathAB.EndpointA.UpdateClient())
+		res, err = pathAB.EndpointA.RecvPacketWithResult(inbound)
+		must(t, err)
+		forwarded, err = ibctesting.ParsePacketFromEvents(res.GetEvents())
+		must(t, err)
+		return inbound, forwarded
+	}
+	// ackInbound relays A's acknowledgement of inbound (in res) to B.
+	ackInbound := func(inbound channeltypes.Packet, res *sdk.Result) {
+		ack, err := ibctesting.ParseAckFromEvents(res.GetEvents())
+		must(t, err)
+		if string(ack) == `{"result":"AQ=="}` {
+			t.Fatalf("inbound packet %d acknowledged with success", inbound.Sequence)
+		}
+		must(t, pathAB.EndpointB.UpdateClient())
+		must(t, pathAB.EndpointB.AcknowledgePacket(inbound, ack))
+	}
+
+	// C rejects the forward (its receiver is not an address).
+	inbound, forwarded := sendBack(100_000, fmt.Sprintf(`{"forward":{"receiver":"not-an-address","port":"transfer","channel":"%s"}}`, pathAC.EndpointA.ChannelID))
+	must(t, pathAC.EndpointB.UpdateClient())
+	res, err := pathAC.EndpointB.RecvPacketWithResult(forwarded)
+	must(t, err)
+	ack, err := ibctesting.ParseAckFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAC.EndpointA.UpdateClient())
+	ackProof, ackProofHeight := chainC.QueryProof(host.PacketAcknowledgementKey(forwarded.GetDestPort(), forwarded.GetDestChannel(), forwarded.GetSequence()))
+	res, err = chainA.SendMsgs(channeltypes.NewMsgAcknowledgement(forwarded, ack, ackProof, ackProofHeight, chainA.SenderAccount.GetAddress().String()))
+	must(t, err)
+	ackInbound(inbound, res)
+
+	// The forward times out on C; with one retry A sends it again, then
+	// gives up.
+	inbound, forwarded = sendBack(50_000, fmt.Sprintf(`{"forward":{"receiver":"%s","port":"transfer","channel":"%s","timeout":"1m","retries":1}}`,
+		chainC.SenderAccount.GetAddress(), pathAC.EndpointA.ChannelID))
+	timeOut := func(p channeltypes.Packet) *sdk.Result {
+		coord.IncrementTimeBy(2 * time.Minute)
+		coord.CommitBlock(chainC)
+		must(t, pathAC.EndpointA.UpdateClient())
+		proof, proofHeight := chainC.QueryProof(host.PacketReceiptKey(p.GetDestPort(), p.GetDestChannel(), p.GetSequence()))
+		next, found := chainC.App.GetIBCKeeper().ChannelKeeper.GetNextSequenceRecv(chainC.GetContext(), p.GetDestPort(), p.GetDestChannel())
+		if !found {
+			t.Fatal("no next sequence receive on C")
+		}
+		res, err := chainA.SendMsgs(channeltypes.NewMsgTimeout(p, next, proof, proofHeight, chainA.SenderAccount.GetAddress().String()))
+		must(t, err)
+		return res
+	}
+	res = timeOut(forwarded)
+	retried, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	if retried.Sequence == forwarded.Sequence {
+		t.Fatal("the timed-out forward was not sent again")
+	}
+	ackInbound(inbound, timeOut(retried))
 }
 
 // recorded replays chain A's record as a blockSource.
