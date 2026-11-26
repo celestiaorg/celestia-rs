@@ -288,7 +288,12 @@ pub fn withdraw_delegation_rewards(
     let rewards = raw.intersect(&outstanding);
     let (mut final_rewards, remainder) = rewards.truncate_decimal()?;
 
-    if !final_rewards.is_empty() {
+    if !final_rewards.is_empty() && ctx.is_sdk_v046() {
+        // cosmos-sdk v0.46 (app versions 1 to 3): every withdrawal, also
+        // the hook's, sends the rewards to the withdraw address at once.
+        let withdraw_addr = store::get_withdraw_addr(ctx, &del)?;
+        x_bank::send_from_module_to_account(ctx, MODULE_NAME, &withdraw_addr, &final_rewards)?;
+    } else if !final_rewards.is_empty() {
         let user = store::get_user_outstanding(ctx, &del, &val)?.unwrap_or_default();
         if withdraw_now {
             let withdraw_addr = store::get_withdraw_addr(ctx, &del)?;

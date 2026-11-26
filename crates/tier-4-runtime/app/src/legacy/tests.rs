@@ -2048,3 +2048,179 @@ fn v1_run_tx_aborts_outside_the_v1_registry() {
         assert!(what.contains("not ported"), "{url}: {what}");
     }
 }
+
+/// v0.46 `Commission.String()` as mainnet's first `MsgEditValidator`
+/// (height 13) emitted it, and with a fractional update time.
+#[test]
+fn v046_commission_string_is_yaml() {
+    let dec = |s: &str| math::LegacyDec::from_str_go(s).unwrap();
+    let mut c = x_staking::types::Commission {
+        rate: dec("0.05"),
+        max_rate: dec("0.12"),
+        max_change_rate: dec("0.02"),
+        update_time: pbjson_types::Timestamp {
+            seconds: 1_698_760_800,
+            nanos: 0,
+        },
+    };
+    assert_eq!(
+        msgs::commission_yaml(&c),
+        "commission_rates:\n  max_change_rate: \"0.020000000000000000\"\n  max_rate: \"0.120000000000000000\"\n  rate: \"0.050000000000000000\"\nupdate_time: \"2023-10-31T14:00:00Z\"\n"
+    );
+    c.update_time.nanos = 500_000_000;
+    assert!(msgs::commission_yaml(&c).ends_with("update_time: \"2023-10-31T14:00:00.5Z\"\n"));
+}
+
+/// v0.46 `MsgEditValidator.ValidateBasic`: an empty description, a
+/// non-positive minimum self delegation and a rate outside [0, 1] fail;
+/// a present but empty decimal field panics (recovered as `ErrPanic`).
+#[test]
+fn v046_edit_validator_validate_basic() {
+    use celestia_proto::cosmos::staking::v1beta1 as staking;
+    let val = x_staking::addr::val_to_string(&[1; 20]).unwrap();
+    let edit = |f: &dyn Fn(&mut staking::MsgEditValidator)| {
+        let mut m = staking::MsgEditValidator {
+            description: Some(staking::Description {
+                moniker: "m".into(),
+                ..staking::Description::default()
+            }),
+            validator_address: val.clone(),
+            ..staking::MsgEditValidator::default()
+        };
+        f(&mut m);
+        sdk::error::recover(|| msgs::validate_basic(&celestia_proto::Any::pack(&m)))
+    };
+    edit(&|_| {}).unwrap();
+    let code = |f: &dyn Fn(&mut staking::MsgEditValidator)| {
+        let e = edit(f).unwrap_err();
+        (e.codespace, e.code)
+    };
+    assert_eq!(code(&|m| m.description = None), ("sdk", 18));
+    assert_eq!(code(&|m| m.validator_address = "x".into()), ("sdk", 7));
+    assert_eq!(code(&|m| m.min_self_delegation = "0".into()), ("sdk", 18));
+    assert_eq!(
+        code(&|m| m.commission_rate = "1000000000000000001".into()),
+        ("sdk", 18)
+    );
+    // Empty strings are not encoded: build a present-but-empty field.
+    let mut raw =
+        <staking::MsgEditValidator as prost::Message>::encode_to_vec(&staking::MsgEditValidator {
+            description: Some(staking::Description {
+                moniker: "m".into(),
+                ..staking::Description::default()
+            }),
+            validator_address: val.clone(),
+            ..staking::MsgEditValidator::default()
+        });
+    raw.extend([0x1a, 0x00]);
+    let any = celestia_proto::Any {
+        type_url: "/cosmos.staking.v1beta1.MsgEditValidator".into(),
+        value: raw,
+    };
+    let e = sdk::error::recover(|| msgs::validate_basic(&any)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("undefined", 111_222));
+}
+
+/// ibc-go v6 `ValidateBasic` of the connection handshake: a zero proof
+/// height fails `MsgConnectionOpenConfirm` (v8 no longer checks it),
+/// with the SDK's `ErrInvalidHeight`; a bad signer is the SDK's
+/// `ErrInvalidAddress`; a 09-localhost `MsgConnectionOpenInit` passes
+/// (v8 rejects it here).
+#[test]
+fn v6_connection_validate_basic() {
+    use celestia_proto::ibc::core::client::v1::Height;
+    use celestia_proto::ibc::core::commitment::v1::MerklePrefix;
+    use celestia_proto::ibc::core::connection::v1 as copb;
+    let signer = x_auth::bech32(&[1; 20]).unwrap();
+    let confirm = |h: u64, signer: &str| {
+        ibc::validate_basic(&celestia_proto::Any::pack(
+            &copb::MsgConnectionOpenConfirm {
+                connection_id: "connection-0".into(),
+                proof_ack: vec![1],
+                proof_height: Some(Height {
+                    revision_number: 0,
+                    revision_height: h,
+                }),
+                signer: signer.into(),
+            },
+        ))
+        .unwrap()
+    };
+    confirm(1, &signer).unwrap();
+    let e = confirm(0, &signer).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 26), "{}", e.log);
+    let e = confirm(1, "x").unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 7), "{}", e.log);
+    let init = copb::MsgConnectionOpenInit {
+        client_id: "09-localhost".into(),
+        counterparty: Some(copb::Counterparty {
+            client_id: "07-tendermint-0".into(),
+            connection_id: String::new(),
+            prefix: Some(MerklePrefix {
+                key_prefix: b"ibc".to_vec(),
+            }),
+        }),
+        version: None,
+        delay_period: 0,
+        signer,
+    };
+    ibc::validate_basic(&celestia_proto::Any::pack(&init))
+        .unwrap()
+        .unwrap();
+}
+
+/// ibc-go v6 `ValidateBasic` of the channel handshake: a zero proof
+/// height fails `MsgChannelOpenAck` with the SDK's `ErrInvalidHeight`
+/// (ibc-go v8 no longer checks it).
+#[test]
+fn v6_channel_validate_basic() {
+    use celestia_proto::ibc::core::channel::v1 as chpb;
+    use celestia_proto::ibc::core::client::v1::Height;
+    let ack = |h: u64| {
+        msgs::validate_basic(&celestia_proto::Any::pack(&chpb::MsgChannelOpenAck {
+            port_id: "transfer".into(),
+            channel_id: "channel-0".into(),
+            counterparty_channel_id: "channel-1".into(),
+            counterparty_version: "ics20-1".into(),
+            proof_try: vec![1],
+            proof_height: Some(Height {
+                revision_number: 0,
+                revision_height: h,
+            }),
+            signer: x_auth::bech32(&[1; 20]).unwrap(),
+        }))
+    };
+    ack(1).unwrap();
+    let e = ack(0).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 26), "{}", e.log);
+}
+
+/// The `update_client` event's header is the decoded header marshaled
+/// again as gogoproto does: an absent vote's missing timestamp becomes
+/// Go's zero time and missing non-nullable messages are written empty.
+#[test]
+fn v6_update_client_event_header_is_gogo_encoded() {
+    use celestia_proto::celestia_core_proto::tendermint::types::{
+        BlockIdFlag, Commit, CommitSig, SignedHeader,
+    };
+    use celestia_proto::ibc::lightclients::tendermint::v1 as tmpb;
+    let h = tmpb::Header {
+        signed_header: Some(SignedHeader {
+            header: None,
+            commit: Some(Commit {
+                height: 5,
+                signatures: vec![CommitSig {
+                    block_id_flag: BlockIdFlag::Absent as i32,
+                    ..CommitSig::default()
+                }],
+                ..Commit::default()
+            }),
+        }),
+        ..tmpb::Header::default()
+    };
+    let g = ibc::gogo_header(h);
+    let c = g.signed_header.unwrap().commit.unwrap();
+    assert_eq!(c.signatures[0].timestamp, Some(sdk::time::go_zero()));
+    assert!(c.block_id.unwrap().part_set_header.is_some());
+    assert!(g.trusted_height.is_some());
+}

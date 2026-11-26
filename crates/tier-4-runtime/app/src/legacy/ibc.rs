@@ -40,6 +40,9 @@ fn unpack_tm_client_state(any: Option<&Any>) -> Result<tmpb::ClientState> {
 /// fields v6 still checks on `MsgConnectionOpenTry`).
 #[must_use]
 pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
+    if let Some(r) = validate_basic_v6(msg) {
+        return Some(r);
+    }
     let r = crate::ibc::validate_basic(msg)?;
     if r.is_err() || msg.type_url != copb::MsgConnectionOpenTry::type_url() {
         return Some(r);
@@ -69,6 +72,93 @@ pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
     }))
 }
 
+/// v6 `sdk.AccAddressFromBech32(msg.Signer)` check of the IBC messages
+/// (`sdkerrors.ErrInvalidAddress`).
+fn check_signer_v6(signer: &str) -> Result<()> {
+    sdk::address::acc_from_bech32_go(signer)
+        .map(|_| ())
+        .map_err(|e| errs::invalid_address(format!("string could not be parsed as address: {e}")))
+}
+
+fn non_empty_proof(p: &[u8], log: &str) -> Result<()> {
+    if p.is_empty() {
+        return Err(commitment_err(log));
+    }
+    Ok(())
+}
+
+/// ibc-go v6 `ValidateBasic` of the messages whose v6 checks differ from
+/// ibc-go v8's (`None` for the others).
+fn validate_basic_v6(msg: &Any) -> Option<Result<()>> {
+    if msg.type_url == copb::MsgConnectionOpenInit::type_url() {
+        return Some(decode(msg).and_then(|m: copb::MsgConnectionOpenInit| {
+            host::client_identifier_validator(&m.client_id)
+                .map_err(|e| e.wrap("invalid client ID"))?;
+            let cp = m.counterparty.clone().unwrap_or_default();
+            if !cp.connection_id.is_empty() {
+                return Err(x_ibc::errors::connection::invalid_counterparty(
+                    "counterparty connection identifier must be empty",
+                ));
+            }
+            if let Some(v) = m.version.as_ref() {
+                connection::validate_version(Some(v))
+                    .map_err(|e| e.wrap("basic validation of the provided version failed"))?;
+            }
+            check_signer_v6(&m.signer)?;
+            connection::validate_counterparty(&cp)
+        }));
+    }
+    if msg.type_url == copb::MsgConnectionOpenAck::type_url() {
+        return Some(decode(msg).and_then(|m: copb::MsgConnectionOpenAck| {
+            if !connection::is_valid_connection_id(&m.connection_id) {
+                return Err(x_ibc::errors::connection::invalid_connection_identifier(""));
+            }
+            host::connection_identifier_validator(&m.counterparty_connection_id)
+                .map_err(|e| e.wrap("invalid counterparty connection ID"))?;
+            connection::validate_version(m.version.as_ref())?;
+            #[allow(deprecated)]
+            let (cs, proof_client, proof_consensus, consensus_height) = (
+                m.client_state.as_ref(),
+                &m.proof_client,
+                &m.proof_consensus,
+                m.consensus_height.unwrap_or_default(),
+            );
+            if cs.is_none() {
+                return Err(clerr::invalid_client("counterparty client is nil"));
+            }
+            let cs = unpack_tm_client_state(cs)
+                .map_err(|e| clerr::invalid_client(format!("unpack err: {}", e.log)))?;
+            tmc::validate(&cs).map_err(|e| e.wrap("counterparty client is invalid"))?;
+            non_empty_proof(&m.proof_try, "cannot submit an empty proof try")?;
+            non_empty_proof(proof_client, "cannot submit empty proof client")?;
+            non_empty_proof(
+                proof_consensus,
+                "cannot submit an empty proof of consensus state",
+            )?;
+            if height::is_zero(&m.proof_height.unwrap_or_default()) {
+                return Err(errs::invalid_height("proof height must be non-zero"));
+            }
+            if height::is_zero(&consensus_height) {
+                return Err(errs::invalid_height("consensus height must be non-zero"));
+            }
+            check_signer_v6(&m.signer)
+        }));
+    }
+    if msg.type_url == copb::MsgConnectionOpenConfirm::type_url() {
+        return Some(decode(msg).and_then(|m: copb::MsgConnectionOpenConfirm| {
+            if !connection::is_valid_connection_id(&m.connection_id) {
+                return Err(x_ibc::errors::connection::invalid_connection_identifier(""));
+            }
+            non_empty_proof(&m.proof_ack, "cannot submit an empty proof ack")?;
+            if height::is_zero(&m.proof_height.unwrap_or_default()) {
+                return Err(errs::invalid_height("proof height must be non-zero"));
+            }
+            check_signer_v6(&m.signer)
+        }));
+    }
+    None
+}
+
 fn commitment_err(log: &str) -> sdk::SdkError {
     x_ibc::errors::commitment::invalid_proof(log)
 }
@@ -83,6 +173,15 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
     }
     if msg.type_url == copb::MsgConnectionOpenTry::type_url() {
         return Some(decode(msg).and_then(|m| conn_open_try(ctx, &m)));
+    }
+    if msg.type_url == copb::MsgConnectionOpenInit::type_url() {
+        return Some(decode(msg).and_then(|m| conn_open_init(ctx, &m)));
+    }
+    if msg.type_url == copb::MsgConnectionOpenAck::type_url() {
+        return Some(decode(msg).and_then(|m| conn_open_ack(ctx, &m)));
+    }
+    if msg.type_url == copb::MsgConnectionOpenConfirm::type_url() {
+        return Some(decode(msg).and_then(|m| conn_open_confirm(ctx, &m)));
     }
     None
 }
@@ -134,6 +233,41 @@ fn create_client(ctx: &mut Context<'_>, m: &clpb::MsgCreateClient) -> Result<Any
     Ok(Any::pack(&clpb::MsgCreateClientResponse {}))
 }
 
+/// A 07-tendermint header as gogoproto marshals it after decoding: the
+/// non-nullable fields an encoder may leave out are present (empty
+/// messages; `stdtime` timestamps as Go's zero time).
+pub(super) fn gogo_header(mut h: tmpb::Header) -> tmpb::Header {
+    use celestia_proto::celestia_core_proto::tendermint::types::BlockId;
+    let fill_block_id = |b: &mut Option<BlockId>| {
+        b.get_or_insert_with(BlockId::default)
+            .part_set_header
+            .get_or_insert_with(Default::default);
+    };
+    if let Some(sh) = h.signed_header.as_mut() {
+        if let Some(hd) = sh.header.as_mut() {
+            hd.version.get_or_insert_with(Default::default);
+            hd.time.get_or_insert_with(sdk::time::go_zero);
+            fill_block_id(&mut hd.last_block_id);
+        }
+        if let Some(c) = sh.commit.as_mut() {
+            fill_block_id(&mut c.block_id);
+            for sig in &mut c.signatures {
+                sig.timestamp.get_or_insert_with(sdk::time::go_zero);
+            }
+        }
+    }
+    for vs in [h.validator_set.as_mut(), h.trusted_validators.as_mut()]
+        .into_iter()
+        .flatten()
+    {
+        for v in vs.validators.iter_mut().chain(vs.proposer.as_mut()) {
+            v.pub_key.get_or_insert_with(Default::default);
+        }
+    }
+    h.trusted_height.get_or_insert_with(Height::default);
+    h
+}
+
 /// `exported.Frozen` of a 07-tendermint client: `FrozenHeight` `0-1`.
 const FROZEN: Height = Height {
     revision_number: 0,
@@ -178,7 +312,9 @@ fn update_client(ctx: &mut Context<'_>, m: &clpb::MsgUpdateClient) -> Result<Any
     }
     let (new_cs, new_cons) = check_header_and_update_state(ctx, client_id, cs, &header)
         .map_err(|e| e.wrap(format!("cannot update client with ID {client_id}")))?;
-    let header_str = hex::encode(header_any.encode_to_vec());
+    // `MustMarshalClientMessage`: the decoded header marshaled again
+    // (gogoproto encodes non-nullable fields the input may have left out).
+    let header_str = hex::encode(Any::pack(&gogo_header(header.clone())).encode_to_vec());
     let consensus_height = tmc::header_height(&header)?;
     tmc::set_client_state(ctx, client_id, &new_cs)?;
     let frozen = !height::is_zero(&new_cs.frozen_height.unwrap_or_default());
@@ -347,7 +483,7 @@ fn get_self_consensus_state(ctx: &mut Context<'_>, h: &Height) -> Result<tmpb::C
 /// v6 connection keeper verification: the connection's client (active),
 /// then `produceVerificationArgs` and the membership proof of `value` at
 /// `path` under the counterparty prefix.
-fn verify(
+pub(super) fn verify(
     ctx: &mut Context<'_>,
     conn: &ConnectionEnd,
     proof_height: &Height,
@@ -499,4 +635,242 @@ fn conn_open_try(ctx: &mut Context<'_>, m: &copb::MsgConnectionOpenTry) -> Resul
     })();
     r.map_err(|e| e.wrap("connection handshake open try failed"))?;
     Ok(Any::pack(&copb::MsgConnectionOpenTryResponse {}))
+}
+
+/// The `connection_open_*` event and the `ibc_connection` message event.
+fn connection_events(
+    ctx: &mut Context<'_>,
+    ty: &str,
+    conn_id: &str,
+    client_id: &str,
+    counterparty: &Counterparty,
+) {
+    ctx.events.emit(event(
+        ty,
+        [
+            ("connection_id", conn_id.to_owned()),
+            ("client_id", client_id.to_owned()),
+            ("counterparty_client_id", counterparty.client_id.clone()),
+            (
+                "counterparty_connection_id",
+                counterparty.connection_id.clone(),
+            ),
+        ],
+    ));
+    ctx.events
+        .emit(event("message", [("module", "ibc_connection")]));
+}
+
+/// `MsgConnectionOpenInit` (03-connection keeper `ConnOpenInit`, v6).
+fn conn_open_init(ctx: &mut Context<'_>, m: &copb::MsgConnectionOpenInit) -> Result<Any> {
+    let counterparty = m.counterparty.clone().unwrap_or_default();
+    let r = (|| {
+        let versions = match &m.version {
+            Some(v) => {
+                if !connection::is_supported_version(&connection::get_compatible_versions(), v) {
+                    return Err(x_ibc::errors::connection::invalid_version(
+                        "version is not supported",
+                    ));
+                }
+                vec![v.clone()]
+            }
+            None => connection::get_compatible_versions(),
+        };
+        let conn_id = connection::generate_connection_identifier(ctx)?;
+        let end = ConnectionEnd {
+            client_id: m.client_id.clone(),
+            versions,
+            state: State::Init as i32,
+            counterparty: Some(counterparty.clone()),
+            delay_period: m.delay_period,
+        };
+        connection::set_connection(ctx, &conn_id, &end)?;
+        connection::add_connection_to_client(ctx, &m.client_id, &conn_id)?;
+        connection_events(
+            ctx,
+            "connection_open_init",
+            &conn_id,
+            &m.client_id,
+            &counterparty,
+        );
+        Ok(())
+    })();
+    r.map_err(|e| e.wrap("connection handshake open init failed"))?;
+    Ok(Any::pack(&copb::MsgConnectionOpenInitResponse {}))
+}
+
+/// `GetConnection`, failing with `ErrConnectionNotFound`.
+fn connection_end(ctx: &mut Context<'_>, conn_id: &str) -> Result<ConnectionEnd> {
+    connection::get_connection(ctx, conn_id)?
+        .ok_or_else(|| x_ibc::errors::connection::connection_not_found(conn_id))
+}
+
+/// The proto name of a connection state (`State.String()`).
+pub(super) fn connection_state_name(s: i32) -> String {
+    state_name(s)
+}
+
+fn state_name(s: i32) -> String {
+    State::try_from(s).map_or_else(|_| s.to_string(), |s| s.as_str_name().to_owned())
+}
+
+/// `MsgConnectionOpenAck` (03-connection keeper `ConnOpenAck`, v6).
+#[allow(deprecated)]
+fn conn_open_ack(ctx: &mut Context<'_>, m: &copb::MsgConnectionOpenAck) -> Result<Any> {
+    // `UnpackClientState` in the msg server, before the keeper.
+    let target = unpack_tm_client_state(m.client_state.as_ref())?;
+    let proof_height = m.proof_height.unwrap_or_default();
+    let consensus_height = m.consensus_height.unwrap_or_default();
+    let version = m.version.clone().unwrap_or_default();
+    let r = (|| {
+        let self_height = client::get_self_height(ctx)?;
+        if height::gte(&consensus_height, &self_height) {
+            return Err(errs::invalid_height(format!(
+                "consensus height is greater than or equal to the current block height ({} >= {})",
+                height::to_string(&consensus_height),
+                height::to_string(&self_height)
+            )));
+        }
+        let mut conn = connection_end(ctx, &m.connection_id)?;
+        if conn.state != State::Init as i32 {
+            return Err(x_ibc::errors::connection::invalid_connection_state(
+                format!(
+                    "connection state is not INIT (got {})",
+                    state_name(conn.state)
+                ),
+            ));
+        }
+        if !connection::is_supported_version(&conn.versions, &version) {
+            return Err(x_ibc::errors::connection::invalid_connection_state(
+                format!(
+                    "the counterparty selected version {} is not supported by versions selected on INIT",
+                    version_string(&version)
+                ),
+            ));
+        }
+        validate_self_client(ctx, &target)?;
+        let expected_cons = get_self_consensus_state(ctx, &consensus_height).map_err(|e| {
+            e.wrap(format!(
+                "self consensus state not found for height {}",
+                height::to_string(&consensus_height)
+            ))
+        })?;
+        let cp = conn.counterparty.clone().unwrap_or_default();
+        let expected = ConnectionEnd {
+            client_id: cp.client_id.clone(),
+            versions: vec![version.clone()],
+            state: State::Tryopen as i32,
+            counterparty: Some(Counterparty {
+                client_id: conn.client_id.clone(),
+                connection_id: m.connection_id.clone(),
+                prefix: Some(connection::commitment_prefix()),
+            }),
+            delay_period: conn.delay_period,
+        };
+        verify(
+            ctx,
+            &conn,
+            &proof_height,
+            &m.proof_try,
+            &host::connection_key(&m.counterparty_connection_id),
+            &connection::normalize_connection(expected).encode_to_vec(),
+            "failed connection state verification for client",
+        )?;
+        verify(
+            ctx,
+            &conn,
+            &proof_height,
+            &m.proof_client,
+            &host::full_client_state_key(&cp.client_id),
+            &tmc::client_state_any(&target).encode_to_vec(),
+            "failed client state verification for target client",
+        )?;
+        verify(
+            ctx,
+            &conn,
+            &proof_height,
+            &m.proof_consensus,
+            &host::full_consensus_state_key(&cp.client_id, &consensus_height),
+            &tmc::consensus_state_any(&expected_cons).encode_to_vec(),
+            "failed consensus state verification for client",
+        )?;
+        conn.state = State::Open as i32;
+        conn.versions = vec![version.clone()];
+        let mut cp = cp;
+        cp.connection_id.clone_from(&m.counterparty_connection_id);
+        conn.counterparty = Some(cp.clone());
+        connection::set_connection(ctx, &m.connection_id, &conn)?;
+        connection_events(
+            ctx,
+            "connection_open_ack",
+            &m.connection_id,
+            &conn.client_id,
+            &cp,
+        );
+        Ok(())
+    })();
+    r.map_err(|e| e.wrap("connection handshake open ack failed"))?;
+    Ok(Any::pack(&copb::MsgConnectionOpenAckResponse {}))
+}
+
+/// Go `%s` of a `*Version` (its gogoproto `String()`, compact text).
+fn version_string(v: &copb::Version) -> String {
+    use std::fmt::Write as _;
+    let mut s = String::new();
+    if !v.identifier.is_empty() {
+        let _ = write!(s, "identifier:{:?} ", v.identifier);
+    }
+    for f in &v.features {
+        let _ = write!(s, "features:{f:?} ");
+    }
+    s
+}
+
+/// `MsgConnectionOpenConfirm` (03-connection keeper `ConnOpenConfirm`, v6).
+fn conn_open_confirm(ctx: &mut Context<'_>, m: &copb::MsgConnectionOpenConfirm) -> Result<Any> {
+    let proof_height = m.proof_height.unwrap_or_default();
+    let r = (|| {
+        let mut conn = connection_end(ctx, &m.connection_id)?;
+        if conn.state != State::Tryopen as i32 {
+            return Err(x_ibc::errors::connection::invalid_connection_state(
+                format!(
+                    "connection state is not TRYOPEN (got {})",
+                    state_name(conn.state)
+                ),
+            ));
+        }
+        let cp = conn.counterparty.clone().unwrap_or_default();
+        let expected = ConnectionEnd {
+            client_id: cp.client_id.clone(),
+            versions: conn.versions.clone(),
+            state: State::Open as i32,
+            counterparty: Some(Counterparty {
+                client_id: conn.client_id.clone(),
+                connection_id: m.connection_id.clone(),
+                prefix: Some(connection::commitment_prefix()),
+            }),
+            delay_period: conn.delay_period,
+        };
+        verify(
+            ctx,
+            &conn,
+            &proof_height,
+            &m.proof_ack,
+            &host::connection_key(&cp.connection_id),
+            &connection::normalize_connection(expected).encode_to_vec(),
+            "failed connection state verification for client",
+        )?;
+        conn.state = State::Open as i32;
+        connection::set_connection(ctx, &m.connection_id, &conn)?;
+        connection_events(
+            ctx,
+            "connection_open_confirm",
+            &m.connection_id,
+            &conn.client_id,
+            &cp,
+        );
+        Ok(())
+    })();
+    r.map_err(|e| e.wrap("connection handshake open confirm failed"))?;
+    Ok(Any::pack(&copb::MsgConnectionOpenConfirmResponse {}))
 }
