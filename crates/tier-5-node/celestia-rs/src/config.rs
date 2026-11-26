@@ -436,6 +436,12 @@ fn set_in_doc(
     key: &str,
     value: &str,
 ) -> anyhow::Result<()> {
+    if f == File::Config
+        && lookup_item_mut(doc, key).is_none()
+        && let Some(fibre_key) = key.strip_prefix("fibre.")
+    {
+        return add_fibre_key(doc, fibre_key, value);
+    }
     let Some(target) = lookup_item_mut(doc, key) else {
         return Err(unknown_key(doc, f, key));
     };
@@ -477,6 +483,43 @@ fn set_in_doc(
     let mut new = new;
     *new.decor_mut() = decor;
     *target = toml_edit::Item::Value(new);
+    Ok(())
+}
+
+/// Adds a missing `[fibre]` key (the section is not in Go's template, so
+/// `config set` creates it and its `[fibre.health]` table).
+fn add_fibre_key(doc: &mut toml_edit::DocumentMut, key: &str, value: &str) -> anyhow::Result<()> {
+    use crate::fibre::{KEYS, KeyKind, key_kind};
+    let Some(kind) = key_kind(key) else {
+        let known: Vec<&str> = KEYS.iter().map(|(k, _)| *k).collect();
+        bail!(
+            "key \"fibre.{key}\" not found in config.toml; the [fibre] keys are: {}",
+            known.join(", ")
+        );
+    };
+    let new: toml_edit::Value = match kind {
+        KeyKind::Bool => value
+            .parse::<bool>()
+            .map_err(|_| anyhow!("fibre.{key}: expected true or false, got {value:?}"))?
+            .into(),
+        KeyKind::Int => value
+            .parse::<i64>()
+            .map_err(|_| anyhow!("fibre.{key}: expected an integer, got {value:?}"))?
+            .into(),
+        KeyKind::Str => value.into(),
+    };
+    let mut table = doc.as_table_mut();
+    let parts: Vec<&str> = std::iter::once("fibre").chain(key.split('.')).collect();
+    let (last, tables) = parts.split_last().ok_or_else(|| anyhow!("empty key"))?;
+    for t in tables {
+        let item = table
+            .entry(t)
+            .or_insert_with(|| toml_edit::Item::Table(toml_edit::Table::new()));
+        table = item
+            .as_table_mut()
+            .ok_or_else(|| anyhow!("{t:?} in config.toml is not a table"))?;
+    }
+    table.insert(last, toml_edit::Item::Value(new));
     Ok(())
 }
 
@@ -592,6 +635,74 @@ mod tests {
             s.contains("# Comma separated list of seed nodes to connect to\nseeds = \"a@b:1\"")
         );
         assert!(s.contains("moniker = \"x\""));
+    }
+
+    #[test]
+    fn set_creates_fibre_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+        std::fs::write(
+            dir.path().join("config/config.toml"),
+            CONFIG_TEMPLATE.replace("{{MONIKER}}", "m"),
+        )
+        .unwrap();
+        set(dir.path(), File::Config, "fibre.enable", "true").unwrap();
+        set(
+            dir.path(),
+            File::Config,
+            "fibre.server_listen_address",
+            "0.0.0.0:7981",
+        )
+        .unwrap();
+        set(
+            dir.path(),
+            File::Config,
+            "fibre.max_concurrent_streams",
+            "2",
+        )
+        .unwrap();
+        set(
+            dir.path(),
+            File::Config,
+            "fibre.health.check_interval",
+            "5s",
+        )
+        .unwrap();
+        // Existing keys keep their type.
+        set(dir.path(), File::Config, "fibre.enable", "false").unwrap();
+        assert!(set(dir.path(), File::Config, "fibre.enable", "maybe").is_err());
+        assert!(set(dir.path(), File::Config, "fibre.max_connections", "many").is_err());
+        assert_eq!(
+            set(dir.path(), File::Config, "fibre.enabel", "true")
+                .unwrap_err()
+                .to_string(),
+            "key \"fibre.enabel\" not found in config.toml; the [fibre] keys are: enable, server_listen_address, min_upload_size, max_connections, max_concurrent_streams, upload_verify_workers, unlimited_budget, storage_backend, store_path, health.check_interval, health.probe_timeout, health.max_block_age"
+        );
+        let files = ConfigFiles::load(dir.path()).unwrap();
+        assert!(!files.bool(File::Config, "fibre.enable"));
+        assert_eq!(files.int(File::Config, "fibre.max_concurrent_streams"), 2);
+        assert_eq!(
+            files.string(File::Config, "fibre.server_listen_address"),
+            "0.0.0.0:7981"
+        );
+        assert_eq!(
+            files.string(File::Config, "fibre.health.check_interval"),
+            "5s"
+        );
+        // The rest of the file is unchanged and the result parses as the
+        // Fibre options.
+        let s = view(dir.path(), File::Config).unwrap();
+        assert!(s.starts_with(&CONFIG_TEMPLATE.replace("{{MONIKER}}", "m")));
+        let cfg = crate::fibre::options(
+            &files,
+            &crate::fibre::FibreFlags {
+                enable: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(cfg.max_concurrent_streams, 2);
     }
 
     #[test]
