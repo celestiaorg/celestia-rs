@@ -7,31 +7,47 @@ pub const PARALLEL_MIN: usize = 16;
 /// The index of the first item of `items` (in order) for which `ok` is
 /// false. With [`PARALLEL_MIN`] or more items and more than one CPU, the
 /// items are split into contiguous chunks checked on scoped threads, and
-/// the first failure of the lowest failing chunk is returned: the same
-/// answer as a sequential scan, for a pure `ok`. A panic in a check is
-/// re-raised, never taken for success.
+/// the lowest failing index is returned: the same answer as a sequential
+/// scan, for a pure `ok`. Workers share the lowest failure found so far
+/// and stop before an item past it, so an early failure still ends the
+/// work promptly (at most one more check per thread), as a sequential scan
+/// does. A panic in a check is re-raised, never taken for success.
 pub fn first_failure<T: Sync>(items: &[T], ok: impl Fn(&T) -> bool + Sync) -> Option<usize> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
     let threads = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
     if items.len() < PARALLEL_MIN || threads < 2 {
         return items.iter().position(|item| !ok(item));
     }
     let chunks = threads.min(items.len() / (PARALLEL_MIN / 2)).max(1);
     let size = items.len().div_ceil(chunks);
-    let ok = &ok;
+    let first = AtomicUsize::new(usize::MAX);
+    let (ok, first) = (&ok, &first);
     std::thread::scope(|scope| {
         let handles: Vec<_> = items
             .chunks(size)
             .enumerate()
             .map(|(c, part)| {
-                scope.spawn(move || part.iter().position(|item| !ok(item)).map(|i| c * size + i))
+                scope.spawn(move || {
+                    for (i, item) in part.iter().enumerate() {
+                        let index = c * size + i;
+                        // A lower item already failed: nothing here can win.
+                        if index > first.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        if !ok(item) {
+                            first.fetch_min(index, Ordering::Relaxed);
+                            return;
+                        }
+                    }
+                })
             })
             .collect();
-        let found: Vec<Option<usize>> = handles
-            .into_iter()
-            .map(|h| h.join().unwrap_or_else(|p| std::panic::resume_unwind(p)))
-            .collect();
-        found.into_iter().flatten().next()
-    })
+        for h in handles {
+            h.join().unwrap_or_else(|p| std::panic::resume_unwind(p));
+        }
+    });
+    let found = first.load(Ordering::Relaxed);
+    (found != usize::MAX).then_some(found)
 }
 
 #[cfg(test)]
@@ -57,6 +73,27 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// An early failure stops the other workers: far fewer checks than
+    /// items, as with a sequential scan that stops at the failure.
+    #[test]
+    fn an_early_failure_stops_the_work() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let items: Vec<usize> = (0..10_000).collect();
+        let checks = AtomicUsize::new(0);
+        let found = first_failure(&items, |i| {
+            checks.fetch_add(1, Ordering::Relaxed);
+            // Slow enough that the other workers see the failure.
+            std::thread::sleep(std::time::Duration::from_micros(200));
+            *i != 0
+        });
+        assert_eq!(found, Some(0));
+        let threads = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
+        assert!(
+            checks.load(Ordering::Relaxed) <= 2 * threads + 2,
+            "{checks:?}"
+        );
     }
 
     #[test]
