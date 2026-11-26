@@ -8962,6 +8962,7 @@ dependencies = [
  "prost 0.13.5",
  "sdk",
  "serde_json",
+ "tracing",
  "x-auth",
  "x-bank",
  "x-params",

@@ -331,11 +331,16 @@ blocks 16 to 20 with FinalizeBlock and Commit.
 
 [`fixtures/synthetic/v4`](fixtures/synthetic/v4) holds the blocks it
 built, the store roots and IAVL versions of heights 15 to 20, the
-FinalizeBlock responses, every key at height 15 (`kv-handoff.jsonl.gz`)
-and the KV changes of each block. `go test` in `v4-oracle` builds
+FinalizeBlock responses, every key at height 15 (`kv-handoff.jsonl.gz`),
+the KV changes of each block, and the KV changes of the store loader and
+the x/upgrade PreBlocker of block 16 alone (`kv-upgrade.jsonl.gz`, run on
+a copy of the home), which is the target of the module migrations. `go test` in `v4-oracle` builds
 `v1-oracle`, makes the hand-off and requires the fixture byte for byte.
 `cargo test -p app --test synthetic_v4_oracle` checks the fixture and
 the facts of the upgrade block that the Rust hand-off must reproduce.
+`cargo test -p app --test upgrade_v4_oracle` runs each Rust migration of
+the `v4` handler, and the whole handler, on the height-15 state and
+requires Go's result in every store.
 To regenerate it:
 
 ```sh
@@ -344,6 +349,32 @@ GOFLAGS=-mod=mod go run . -synthetic -kv -out "$OUT/v1-v3" -handoff "$OUT/home"
 cd ../v4-oracle
 GOFLAGS=-mod=mod go run . -handoff "$OUT/home" \
   -genesis "$OUT/v1-v3/genesis.json" -out ../fixtures/synthetic/v4
+```
+
+#### Rich synthetic chain for the v3 to v4 migrations
+
+`v1-oracle -synthetic -chain v3-rich` builds a second chain (genesis at
+app version 3) with the state that the v4 migrations act on: 12
+validators with missed blocks, 1,080 delegations, two unbonding entries
+of one pair at one height, a redelegation, a vesting account, a gov
+proposal that ends before the upgrade and one still voting, authz and
+fee grants, and an IBC client, connection and `transfer` channel. Its
+EndBlocker of block 13 schedules plan `v4` at 14. With more than 10
+validators and 1,000 delegations, slashing's and staking's migrations
+stop early and record continuation keys, which the BeginBlockers of the
+upgrade block finish. [`fixtures/synthetic/v3-rich`](fixtures/synthetic/v3-rich)
+holds the v3 side and [`fixtures/synthetic/v3-rich-v4`](fixtures/synthetic/v3-rich-v4)
+the v4 side; both `go test`s rebuild them. `upgrade_v4_oracle` runs each
+migration on both chains. To regenerate:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -chain v3-rich -kv -out "$OUT/rich" -handoff "$OUT/rich-home"
+cp "$OUT"/rich/{genesis.json,blocks.jsonl.gz,store-roots.json,tx-results.jsonl.gz,kv-diffs.jsonl.gz,kv-height-0.jsonl.gz} \
+  ../fixtures/synthetic/v3-rich/
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/rich-home" \
+  -genesis "$OUT/rich/genesis.json" -out ../fixtures/synthetic/v3-rich-v4
 ```
 
 #### IBC chain for app version 2
