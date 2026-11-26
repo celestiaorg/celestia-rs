@@ -334,7 +334,9 @@ ibc-go simapp chains as counterparties:
   and writes an error acknowledgement), and the third times out twice
   (with one retry, A sends it again once, then gives up).
 - B registers an interchain account on A, funds it, and executes
-  delegate, send and withdraw-rewards through it. Then two of its
+  delegate, send and withdraw-rewards through it, then (in one
+  transaction) a withdraw address, an undelegation, a redelegation and
+  an IBC transfer to B. Then two of its
   transactions fail on A with error acknowledgements: a message signed
   by another account, and a send of more than the account holds (after
   a delegation that is rolled back with it).
@@ -346,7 +348,7 @@ run's. Each block gets one BeginBlock at one time (ibctesting re-runs
 BeginBlock when its clock moves, which no consensus engine does), so
 the clients that A hosts allow an hour of clock drift. The blocks carry
 no last commit. [`fixtures/synthetic/ibc-v2`](fixtures/synthetic/ibc-v2)
-holds heights 0 to 83; the test requires it byte for byte. To
+holds heights 0 to 90; the test requires it byte for byte. To
 regenerate it:
 
 ```sh

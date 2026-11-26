@@ -17,10 +17,12 @@
 //!
 //! Then it opens an interchain account channel for a controller on B
 //! (blocks 69 and 72, which create the account), executes the account's
-//! delegate, send and withdraw-rewards messages (block 75), and receives
-//! two transactions that fail with error acknowledgements: one signed by
-//! another account (block 78) and one whose send exceeds the balance
-//! (block 81, which rolls back its delegation too).
+//! delegate, send and withdraw-rewards messages (block 75), then a
+//! withdraw address, an undelegation, a redelegation and an IBC transfer
+//! to B (block 78; B's acknowledgement in block 83). Two transactions
+//! fail with error acknowledgements: one signed by another account
+//! (block 85) and one whose send exceeds the balance (block 88, which
+//! rolls back its delegation too).
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::print_stdout)]
 
@@ -33,7 +35,7 @@ fn fix() -> Fixture {
 }
 
 /// The last block that celestia-rs executes as Go does: every block.
-const MATCHED_THROUGH: i64 = 83;
+const MATCHED_THROUGH: i64 = 90;
 
 /// The fixture files are the ones the oracle wrote.
 #[test]
@@ -57,7 +59,7 @@ fn ibc_fixture_files_match_their_record() {
         r["kv"]["kv-diffs.jsonl"],
         sha(&f.gunzip("kv-diffs.jsonl.gz"))
     );
-    assert_eq!(f.last_height(), 83);
+    assert_eq!(f.last_height(), 90);
 }
 
 #[test]

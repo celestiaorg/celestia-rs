@@ -509,7 +509,41 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 	must(t, err)
 	must(t, icaPath.RelayPacket(icaPacket))
 
-	// Two transactions that fail on A, each with an error
+	// The other message types mainnet's interchain accounts sent, in one
+	// transaction: a withdraw address, an undelegation, a redelegation
+	// and an IBC transfer to B (relayed, and acknowledged on A).
+	val2 := sdk.ValAddress(chainA.Vals.Validators[1].Address)
+	data, err = icatypes.SerializeCosmosTx(chainA.App.AppCodec(), []proto.Message{
+		distrtypes.NewMsgSetWithdrawAddress(icaAcc, chainA.SenderAccount.GetAddress()),
+		stakingtypes.NewMsgUndelegate(icaAcc, val, sdk.NewInt64Coin(appconsts.BondDenom, 500_000)),
+		stakingtypes.NewMsgBeginRedelegate(icaAcc, val, val2, sdk.NewInt64Coin(appconsts.BondDenom, 500_000)),
+		transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+			sdk.NewInt64Coin(appconsts.BondDenom, 3_000), icaAddr,
+			chainB.SenderAccount.GetAddress().String(), timeout, 0, ""),
+	})
+	must(t, err)
+	res, err = chainB.SendMsgs(icacontrollertypes.NewMsgSendTx(owner, icaPath.EndpointA.ConnectionID, uint64(time.Hour), icatypes.InterchainAccountPacketData{
+		Type: icatypes.EXECUTE_TX,
+		Data: data,
+	}))
+	must(t, err)
+	icaPacket, err = ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, icaPath.EndpointB.UpdateClient())
+	res, err = icaPath.EndpointB.RecvPacketWithResult(icaPacket)
+	must(t, err)
+	icaTransfer, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	icaAck, err := ibctesting.ParseAckFromEvents(res.GetEvents())
+	must(t, err)
+	if string(icaAck) == "" || bytes.Contains(icaAck, []byte(`"error"`)) {
+		t.Fatalf("interchain account transaction failed: %s", icaAck)
+	}
+	must(t, icaPath.EndpointA.UpdateClient())
+	must(t, icaPath.EndpointA.AcknowledgePacket(icaPacket, icaAck))
+	must(t, pathAB.RelayPacket(icaTransfer))
+
+	// Then two transactions that fail on A, each with an error
 	// acknowledgement: a message signed by another account (rejected
 	// before execution), then a send of more than the account holds
 	// (after a delegation that is rolled back with it).

@@ -12,6 +12,13 @@
 //! aborting the block: a nonzero `FeePercentage` (community pool fee), a
 //! memo whose `forward` decodes to nil (a Go panic), and the refund of a
 //! forwarded voucher (burn or mint).
+//!
+//! The voucher refund cannot happen on a celestia-app v1 to v3 chain:
+//! the token filter in front of PFM rejects every received token that is
+//! not returning to this chain, so no voucher is ever minted here
+//! (mainnet's genesis holds only `utia` and no denom traces). A forward
+//! therefore always sends a native token, which the refund moves from
+//! escrow to escrow.
 
 use celestia_proto::ibc::core::channel::v1::Packet;
 use celestia_proto::packetforward::v1::InFlightPacket;
