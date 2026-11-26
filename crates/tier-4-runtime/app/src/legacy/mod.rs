@@ -738,6 +738,32 @@ impl<M: Modules> Driver<M> {
         })
     }
 
+    /// Rebuilds the capability memory store from the committed state, out
+    /// of any block, after the state was restored from a snapshot or
+    /// reopened. The memory store is empty then; Go rebuilds it in the
+    /// next block's BeginBlocker, whose reads (v0.46 `noGasCtx` keeps the
+    /// context's meter) a transaction rejected before
+    /// `SetUpContextDecorator` reports as its gas. The canonical chain's
+    /// results come from nodes that rebuilt it long before, so it is
+    /// rebuilt here, where it costs no block gas. Only the memory store is
+    /// written: the app hash does not change.
+    pub fn init_memory_stores(&mut self, ms: &mut MultiStore) -> Result<()> {
+        if self.finalized.is_some() {
+            return Err(sdk::error::sdk::logic(
+                "memory stores rebuilt with a finalized block pending",
+            ));
+        }
+        let version = app_version(ms);
+        let _v046 = sdk::version::SdkV046Scope::enter(version);
+        ms.select(sdk::store::Stack::Finalize);
+        let mut ctx = Context::new(ms, Header::default(), ExecMode::Finalize);
+        let r = x_capability::init_mem_store(&mut ctx);
+        drop(ctx);
+        r?;
+        ms.flush()
+            .map_err(|e| sdk::error::sdk::logic(format!("store: {e}")))
+    }
+
     /// `Commit`: commits the finalized block's writes as the next version.
     pub fn commit(&mut self, ms: &mut MultiStore) -> Result<CommitId> {
         let _v046 = sdk::version::SdkV046Scope::enter(self.app_version);
