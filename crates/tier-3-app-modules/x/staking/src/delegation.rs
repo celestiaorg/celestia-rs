@@ -259,6 +259,9 @@ pub fn complete_unbonding(ctx: &mut Context<'_>, del: &[u8], val: &[u8]) -> Resu
 
 /// `getBeginInfo`: `(completion time, height, complete now)`.
 fn get_begin_info(ctx: &mut Context<'_>, src: &[u8]) -> Result<(Timestamp, i64, bool)> {
+    if ctx.is_sdk_v046() {
+        return get_begin_info_v046(ctx, src);
+    }
     // Go returns its named `err` here: `ErrNoValidatorFound` when `Unbond`
     // has just removed the source validator (unbonded, no shares left), so
     // the redelegation fails.
@@ -275,6 +278,29 @@ fn get_begin_info(ctx: &mut Context<'_>, src: &[u8]) -> Result<(Timestamp, i64, 
         BondStatus::Unbonded => Ok((sdk::time::go_zero(), 0, true)),
         BondStatus::Unbonding => Ok((v.unbonding_time, v.unbonding_height, false)),
         BondStatus::Unspecified => Err(sdk::error::go_panic("unknown validator status")),
+    }
+}
+
+/// cosmos-sdk v0.46 `getBeginInfo`: a missing source validator counts as
+/// bonded, and only that case reads the unbonding time parameter.
+fn get_begin_info_v046(ctx: &mut Context<'_>, src: &[u8]) -> Result<(Timestamp, i64, bool)> {
+    let status =
+        store::get_validator(ctx, src)?.map(|v| (v.status, v.unbonding_time, v.unbonding_height));
+    match status {
+        None | Some((BondStatus::Bonded, _, _)) => {
+            let unbonding_time = store::unbonding_time(ctx)?;
+            Ok((
+                sdk::time::add_duration(&ctx.header.time, &unbonding_time),
+                ctx.header.height,
+                false,
+            ))
+        }
+        Some((BondStatus::Unbonded, _, _)) => Ok((sdk::time::go_zero(), 0, true)),
+        Some((BondStatus::Unbonding, time, height)) => Ok((time, height, false)),
+        Some((BondStatus::Unspecified, _, _)) => Err(sdk::error::go_panic(format!(
+            "unknown validator status: {}",
+            "BOND_STATUS_UNSPECIFIED"
+        ))),
     }
 }
 
@@ -337,7 +363,13 @@ pub fn begin_redelegation(
         return Err(errors::self_redelegation());
     }
     let dst_v = store::get_validator(ctx, dst)?.ok_or_else(errors::bad_redelegation_dst)?;
-    let src_v = store::get_validator(ctx, src)?.ok_or_else(errors::bad_redelegation_src)?;
+    // cosmos-sdk v0.46 reports a missing source as the destination error.
+    let missing_src = if ctx.is_sdk_v046() {
+        errors::bad_redelegation_dst
+    } else {
+        errors::bad_redelegation_src
+    };
+    let src_v = store::get_validator(ctx, src)?.ok_or_else(missing_src)?;
     if store::has_receiving_redelegation(ctx, del, src)? {
         return Err(errors::transitive_redelegation());
     }
