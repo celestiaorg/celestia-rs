@@ -406,7 +406,7 @@ fn verify_dry_run(
     let mut limit = 200_000u64;
     if !req.gas_limit.is_empty() {
         limit = u64::from(parse_u32(&req.gas_limit)?);
-        if limit > 10_000_000 && !sdk::version::is_v9(sdk::version::app_version()) {
+        if limit > 10_000_000 && !sdk::version::release(0).upstream_hyperlane() {
             return Err(QueryError::Plain(format!(
                 "gas limit {limit} exceeds maximum 10000000"
             )));
@@ -789,7 +789,7 @@ fn remote_routers(
     // `GetPaginatedPrefixFromMap`: each item through the app version's
     // value codec (v10: a v9 router's receiver contract must be a
     // `HexAddress`, security.md 71).
-    let v9 = sdk::version::is_v9(sdk::version::app_version());
+    let v9 = sdk::version::release(0).upstream_hyperlane();
     let remote_routers = items
         .iter()
         .map(|(_, v)| {

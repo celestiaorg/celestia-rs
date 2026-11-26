@@ -144,6 +144,7 @@ updates:
       - /conformance/strict-txdecode
       - /conformance/txdecode
       - /conformance/v1-oracle
+      - /conformance/v4-oracle
       - /conformance/v11-frozen
       - /conformance/websocket-lifecycle
     schedule:

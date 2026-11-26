@@ -240,7 +240,17 @@ fn on_timeout_packet(ctx: &mut Context<'_>, p: &Packet) -> Result<()> {
     let data = tr::PacketData::decode(&p.data).map_err(|e| {
         errs::unknown_request(format!("cannot unmarshal ICS-20 transfer packet data: {e}"))
     })?;
-    refund_packet_token(ctx, p, &data)?;
+    // packet-forward-middleware (app versions 2 and 3): a forwarded
+    // packet is sent again or its source packet acknowledged.
+    if super::pfm::on_timeout_packet(ctx, p, &data, |ctx| transfer_on_timeout(ctx, p, &data))? {
+        return Ok(());
+    }
+    transfer_on_timeout(ctx, p, &data)
+}
+
+/// transfer `IBCModule.OnTimeoutPacket` (v6) after the data decoded.
+fn transfer_on_timeout(ctx: &mut Context<'_>, p: &Packet, data: &tr::PacketData) -> Result<()> {
+    refund_packet_token(ctx, p, data)?;
     ctx.events.emit(event(
         "timeout",
         [

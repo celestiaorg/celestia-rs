@@ -152,7 +152,7 @@ snapshot infers v10 execution from the committed fibre and valaddr stores.
 | sequential `deliverTx` + block gas meter | `app::execute_txs_sequential` (`tx::run_msgs_gated`) |
 | decoder (registry, `MsgForward` fields, rc4 BlobTx, IndexWrapper, empty tx) | `txdecode::decode_v9`, `unmarshal_blob_tx_v9`, `has_duplicate_tx_raw_field` |
 | CheckTx, PrepareProposal, ProcessProposal | `app::check_tx_v9`, `proposal::{fill_v9, process_v9}` |
-| ante: `MsgExecDecorator`, no fibre decorators, multi-denom fees and priority | `x-ante` (`is_v9`, `celestia::msg_exec_v9`, `fee::get_tx_priority_v9`) |
+| ante: `MsgExecDecorator`, no fibre decorators, multi-denom fees and priority | `x-ante` (`Release::before_v10`, `celestia::msg_exec_v9`, `fee::get_tx_priority_v9`) |
 | consensus `MsgUpdateParams` may change `max_gas` | `x-consensus` |
 | equivocation against an unknown validator fails BeginBlock | `x-evidence` |
 | hyperlane v1.1.0: no ISM signature gas, 64-byte warp payload, collateral recipient = last 20 bytes | `x-hyperlane`, `x-warp` |

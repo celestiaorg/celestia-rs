@@ -5,9 +5,12 @@
 //! a v0.46 release's store set ([`super::release_of`]), mounts that
 //! release's stores ([`crate::stores::mount_release`]) and routes
 //! InitChain, FinalizeBlock and Commit to the [`Driver`]. A reopened
-//! driver takes the chain ID from the first block header. Only app
-//! version 1 executes; a v0.46 state at app version 2 or 3 stops with an
-//! error, as does the v1 to v2 upgrade block itself.
+//! driver takes the chain ID from the first block header. A genesis must
+//! be at app version 1; blocks execute at app versions 1 to 3, through
+//! the v1 to v2 upgrade (`App::set_v2_upgrade_height`, or the chain's
+//! default) and the signalled upgrades. A state whose app version became
+//! 4 (the scheduled v4 upgrade) stops with an error: app version 4 runs
+//! on the cosmos-sdk v0.50 app.
 //!
 //! celestia-rs replays committed v0.46 blocks only. CheckTx,
 //! PrepareProposal, ProcessProposal, queries and snapshot offers fail
@@ -71,6 +74,9 @@ impl App {
     pub(crate) fn new_legacy_driver(&self) -> AppDriver {
         let mut d = Driver::new((self.legacy_modules)());
         d.expect_chain_id(&self.chain_id);
+        if let Some(h) = self.v2_upgrade_height {
+            d.set_upgrade_height_v2(h);
+        }
         d
     }
 
@@ -110,6 +116,9 @@ impl App {
             stores::mount_release(&mut self.ms, release).map_err(store_err)?;
         }
         let mut driver = Driver::new((self.legacy_modules)());
+        if let Some(h) = self.v2_upgrade_height {
+            driver.set_upgrade_height_v2(h);
+        }
         // A failed InitChain leaves no writes (the driver discards them)
         // and, on a fresh app, the v0.50 stores mounted again.
         let res = match driver.init_chain(&mut self.ms, req) {
@@ -152,8 +161,10 @@ impl App {
         req: &abci::RequestFinalizeBlock,
     ) -> Result<ResponseFinalizeBlock> {
         if self.last_height > 0 {
+            // App versions 1 to 3 execute here; the v4 upgrade (app
+            // version 4 in the consensus params) runs on the v0.50 app.
             let v = super::app_version(&self.ms);
-            if !super::executes(v) {
+            if !super::is_v046(v) {
                 return Err(not_supported("block execution", v));
             }
         }

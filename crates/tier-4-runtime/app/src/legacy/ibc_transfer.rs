@@ -134,6 +134,12 @@ fn send_enabled(ctx: &mut Context<'_>) -> Result<bool> {
 
 /// transfer `msgServer.Transfer` (v6).
 fn transfer(ctx: &mut Context<'_>, m: &trpb::MsgTransfer) -> Result<Any> {
+    let sequence = transfer_sequence(ctx, m)?;
+    Ok(Any::pack(&trpb::MsgTransferResponse { sequence }))
+}
+
+/// [`transfer`]'s work: the sequence of the sent packet.
+pub(super) fn transfer_sequence(ctx: &mut Context<'_>, m: &trpb::MsgTransfer) -> Result<u64> {
     if !send_enabled(ctx)? {
         return Err(tr::errors::send_disabled(""));
     }
@@ -161,7 +167,7 @@ fn transfer(ctx: &mut Context<'_>, m: &trpb::MsgTransfer) -> Result<Any> {
     ));
     ctx.events
         .emit(event("message", [("module", x_transfer::MODULE_NAME)]));
-    Ok(Any::pack(&trpb::MsgTransferResponse { sequence }))
+    Ok(sequence)
 }
 
 /// transfer keeper `sendTransfer` (v6).
@@ -567,6 +573,11 @@ fn on_acknowledgement_packet(ctx: &mut Context<'_>, p: &Packet, ack_bz: &[u8]) -
     let data = tr::PacketData::decode(&p.data).map_err(|e| {
         errs::unknown_request(format!("cannot unmarshal ICS-20 transfer packet data: {e}"))
     })?;
+    // packet-forward-middleware (app versions 2 and 3): the
+    // acknowledgement of a forwarded packet goes to the source packet.
+    if let Some(ifp) = super::pfm::get_and_clear_in_flight(ctx, p)? {
+        return super::pfm::write_ack_for_forwarded_packet(ctx, p, &data, &ifp, &ack);
+    }
     let marshaled = ack.marshal();
     let bz = gostr::to_go_bytes(&marshaled);
     if *bz != *ack_bz {
@@ -776,16 +787,17 @@ fn recv_packet(
 }
 
 /// `NewErrorAcknowledgement` (v6): only the ABCI code of `e`.
-fn error_ack(e: &sdk::SdkError) -> channel::AckResponse {
+pub(super) fn error_ack(e: &sdk::SdkError) -> channel::AckResponse {
     channel::AckResponse::Error(format!(
         "ABCI code: {}: error handling packet: see events for details",
         e.code
     ))
 }
 
-/// The transfer stack's `OnRecvPacket` at app version 1: celestia-app's
-/// token filter, then transfer (v6).
-fn on_recv_packet(ctx: &mut Context<'_>, p: &Packet) -> Result<channel::AckResponse> {
+/// The transfer stack's `OnRecvPacket`: celestia-app's token filter, the
+/// packet-forward middleware from app version 2 ([`super::pfm`]), then
+/// transfer (v6).
+fn on_recv_packet(ctx: &mut Context<'_>, p: &Packet) -> Result<Option<channel::AckResponse>> {
     // Token filter: only a token returning to this chain passes.
     if let Ok(data) = tr::PacketData::decode(&p.data)
         && !tr::receiver_chain_is_source(&p.source_port, &p.source_channel, &data.denom)
@@ -807,9 +819,20 @@ fn on_recv_packet(ctx: &mut Context<'_>, p: &Packet) -> Result<channel::AckRespo
                 ("error", err.log.clone()),
             ],
         ));
-        return Ok(error_ack(&err));
+        return Ok(Some(error_ack(&err)));
     }
-    // transfer `IBCModule.OnRecvPacket`.
+    // packet-forward-middleware (app versions 2 and 3).
+    if super::pfm::runs(ctx) {
+        return super::pfm::on_recv_packet(ctx, p);
+    }
+    transfer_on_recv_packet(ctx, p).map(Some)
+}
+
+/// transfer `IBCModule.OnRecvPacket` (v6).
+pub(super) fn transfer_on_recv_packet(
+    ctx: &mut Context<'_>,
+    p: &Packet,
+) -> Result<channel::AckResponse> {
     let decoded = tr::PacketData::decode(&p.data);
     let (data, mut ack_err) = match decoded {
         Ok(d) => (d, None),
@@ -907,7 +930,8 @@ fn recv_packet_msg(ctx: &mut Context<'_>, m: &chpb::MsgRecvPacket) -> Result<Any
     let (module, cap) =
         channel::lookup_module_by_channel(ctx, &p.destination_port, &p.destination_channel)
             .map_err(|e| e.wrap("could not retrieve module from port-id"))?;
-    if module != x_transfer::MODULE_NAME {
+    let ica = module == super::ica_host::MODULE;
+    if module != x_transfer::MODULE_NAME && !ica {
         return Err(super::not_ported(errs::not_supported(format!(
             "the ibc-go v6 packet callbacks of module {module} are not ported"
         ))));
@@ -944,7 +968,11 @@ fn recv_packet_msg(ctx: &mut Context<'_>, m: &chpb::MsgRecvPacket) -> Result<Any
     let outer = std::mem::take(&mut ctx.events);
     let base = ctx.multistore().depth();
     let cp = ctx.branch();
-    let ack = on_recv_packet(ctx, &p);
+    let ack = if ica {
+        super::ica_host::on_recv_packet(ctx, &p).map(Some)
+    } else {
+        on_recv_packet(ctx, &p)
+    };
     let mut cached = std::mem::replace(&mut ctx.events, outer);
     let ack = match ack {
         Ok(a) => a,
@@ -955,7 +983,9 @@ fn recv_packet_msg(ctx: &mut Context<'_>, m: &chpb::MsgRecvPacket) -> Result<Any
             return Err(e);
         }
     };
-    if ack.success() {
+    // A nil (asynchronous) acknowledgement keeps the state and writes no
+    // acknowledgement.
+    if ack.as_ref().is_none_or(channel::AckResponse::success) {
         ctx.write(cp);
         ctx.events.emit_all(cached.take());
     } else {
@@ -963,7 +993,9 @@ fn recv_packet_msg(ctx: &mut Context<'_>, m: &chpb::MsgRecvPacket) -> Result<Any
             ctx.multistore().discard_branch();
         }
     }
-    write_acknowledgement(ctx, &cap, &p, &ack)?;
+    if let Some(ack) = ack {
+        write_acknowledgement(ctx, &cap, &p, &ack)?;
+    }
     Ok(Any::pack(&chpb::MsgRecvPacketResponse {
         result: chpb::ResponseResultType::Success as i32,
     }))
@@ -971,7 +1003,7 @@ fn recv_packet_msg(ctx: &mut Context<'_>, m: &chpb::MsgRecvPacket) -> Result<Any
 
 /// 04-channel `WriteAcknowledgement` (v6).
 #[allow(clippy::trivially_copy_pass_by_ref)]
-fn write_acknowledgement(
+pub(super) fn write_acknowledgement(
     ctx: &mut Context<'_>,
     cap: &celestia_proto::capability::v1::Capability,
     p: &Packet,

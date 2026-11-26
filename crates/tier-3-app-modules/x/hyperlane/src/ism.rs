@@ -222,7 +222,7 @@ impl Ism {
                     &message.id().0,
                 );
                 charge_signatures(ctx, md.signatures.len())?;
-                if crate::is_v9(ctx) {
+                if crate::upstream(ctx) {
                     return verify_multisig_v1_1(validators, *threshold, &md.signatures, &digest);
                 }
                 verify_multisig(validators, *threshold, &md.signatures, &digest)
@@ -245,7 +245,7 @@ impl Ism {
                     &md.signed_message_id,
                 );
                 charge_signatures(ctx, md.signatures.len())?;
-                if crate::is_v9(ctx) {
+                if crate::upstream(ctx) {
                     return verify_multisig_v1_1(validators, *threshold, &md.signatures, &digest);
                 }
                 verify_multisig(validators, *threshold, &md.signatures, &digest)
@@ -260,7 +260,7 @@ impl Ism {
 /// celestia's hyperlane-cosmos v1.3.0 (app version 10) charges 1000 gas per
 /// multisig signature; upstream v1.1.0 (app version 9) charges nothing.
 fn charge_signatures(ctx: &mut Context<'_>, n: usize) -> Result<()> {
-    if crate::is_v9(ctx) {
+    if crate::upstream(ctx) {
         return Ok(());
     }
     consume_gas(ctx, 1000 * n as u64, "ism signature verification")
@@ -655,7 +655,7 @@ pub fn create_multisig_ism(
         TYPE_MESSAGE_ID_MULTISIG
     };
     let id = next_ism_id(ctx, deps, ty)?;
-    if crate::is_v9(ctx) {
+    if crate::upstream(ctx) {
         validate_new_multisig_v1_1(&validators, threshold)
     } else {
         validate_new_multisig(&validators, threshold)
@@ -840,7 +840,7 @@ pub fn set_routing_ism_domain(
     if let Some(r) = routes.iter_mut().find(|r| r.domain == route.domain) {
         // hyperlane-cosmos v1.1.0 (app version 9) `SetDomain` assigns to
         // the loop's copy of the route: an existing domain keeps its ISM.
-        if !crate::is_v9(ctx) {
+        if !crate::upstream(ctx) {
             r.ism = route.ism;
         }
     } else {
@@ -927,7 +927,7 @@ pub fn announce_validator(
         corek::local_domain(ctx, mailbox_id).map_err(|e| err::unexpected_error(e.log))?;
     let digest = announcement_digest(storage_location, local_domain, mailbox_id.bytes());
     let signing_hash = eth_signing_hash(&digest);
-    let recovered = if crate::is_v9(ctx) {
+    let recovered = if crate::upstream(ctx) {
         recover_eth_address_v1_1(&signing_hash, &sig)
     } else {
         recover_eth_address(&signing_hash, &sig)

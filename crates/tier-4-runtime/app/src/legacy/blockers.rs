@@ -9,9 +9,7 @@
 //! staking's full-header `HistoricalInfo` and unbonding without IDs.
 //! Paths that no v1 block has reached in the oracle and whose v0.46
 //! behavior is not ported return not-supported instead of running v0.50
-//! code: evidence, downtime jailing, governance proposal processing, the
-//! ibc-go v6 upgrade and localhost client paths, and the v1 to v2
-//! upgrade.
+//! code: evidence and the ibc-go v6 upgrade and localhost client paths.
 
 use celestia_proto::celestia_core_proto::abci::ValidatorUpdate;
 use celestia_proto::celestia_core_proto::tendermint::types::Header as TmHeader;
@@ -64,14 +62,6 @@ pub const V1_END_BLOCKERS: &[&str] = &[
     "vesting",
 ];
 
-/// The last app version 1 height of each chain whose v1 to v2 upgrade
-/// height celestia-app knows (`appconsts.*UpgradeHeightV2 - 1`).
-const V2_UPGRADE_END_HEIGHTS: &[(&str, i64)] = &[
-    ("celestia", 2_371_494),
-    ("mocha-4", 2_585_030),
-    ("arabica-11", 1_751_706),
-];
-
 /// Not ported: the v0.46 behavior of `what`.
 fn not_ported(what: &str) -> sdk::SdkError {
     sdk::error::sdk::not_supported(format!("app version 1: {what}"))
@@ -111,24 +101,11 @@ fn begin_module(ctx: &mut Context<'_>, module: &str, header: &TmHeader) -> Resul
     }
 }
 
-/// cosmos-sdk v0.46 gov `EndBlocker`: only proposals whose deposit or
-/// voting period ended do anything, and their v0.46 processing is not
-/// ported.
-fn gov_end_block(ctx: &mut Context<'_>) -> Result<()> {
-    let now = ctx.header.time;
-    for prefix in [x_gov::INACTIVE_QUEUE_PREFIX, x_gov::ACTIVE_QUEUE_PREFIX] {
-        if !x_gov::expired_queue_entries(ctx, prefix, &now)?.is_empty() {
-            return Err(not_ported("governance proposal processing"));
-        }
-    }
-    Ok(())
-}
-
 /// One v1 module's EndBlock; staking returns the validator updates.
 fn end_module(ctx: &mut Context<'_>, module: &str) -> Result<Vec<ValidatorUpdate>> {
     match module {
         "staking" => return x_staking::end_block(ctx),
-        "gov" => gov_end_block(ctx)?,
+        "gov" => super::gov::end_block(ctx)?,
         // cosmos-sdk v0.46 has no limit on the allowances pruned per block.
         "feegrant" => x_feegrant::remove_expired_allowances(ctx, usize::MAX)?,
         "qgb" => x_qgb::end_block(ctx)?,
@@ -145,20 +122,35 @@ fn end_module(ctx: &mut Context<'_>, module: &str) -> Result<Vec<ValidatorUpdate
     Ok(Vec::new())
 }
 
+/// Whether `module` is in the block's module set: blobstream (`qgb`) only
+/// at app version 1. The modules app version 2 adds (signal, minfee,
+/// interchain accounts, packet forward middleware) have no begin or end
+/// blocker.
+fn runs_at(ctx: &Context<'_>, module: &str) -> bool {
+    let version = ctx.consensus_params.version.as_ref().map_or(1, |v| v.app);
+    module != "qgb" || version == 1
+}
+
 /// celestia-app v1 `BeginBlocker`: the module manager's BeginBlock.
 pub fn begin_block(ctx: &mut Context<'_>, header: &TmHeader) -> Result<()> {
     for &module in V1_BEGIN_BLOCKERS {
+        if !runs_at(ctx, module) {
+            continue;
+        }
         begin_module(ctx, module, header)?;
     }
     Ok(())
 }
 
 /// celestia-app v1 `EndBlocker`: the module manager's EndBlock (at most
-/// one module may return validator updates), then the height-based v1 to
-/// v2 upgrade, which is not ported.
+/// one module may return validator updates). The app version change
+/// that follows is the driver's ([`super::upgrade`]).
 pub fn end_block(ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
     let mut updates = Vec::new();
     for &module in V1_END_BLOCKERS {
+        if !runs_at(ctx, module) {
+            continue;
+        }
         let u = end_module(ctx, module)?;
         if !u.is_empty() {
             if !updates.is_empty() {
@@ -168,10 +160,6 @@ pub fn end_block(ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
             }
             updates = u;
         }
-    }
-    let chain = ctx.header.chain_id.as_str();
-    if V2_UPGRADE_END_HEIGHTS.contains(&(chain, ctx.header.height)) {
-        return Err(not_ported("the v1 to v2 upgrade"));
     }
     Ok(updates)
 }

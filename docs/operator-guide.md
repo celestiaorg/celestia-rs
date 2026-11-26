@@ -929,6 +929,74 @@ celestia-rs follow --light-only --chain-id celestia \
 HTTPS goes through the system `curl` (TLS, `HTTPS_PROXY` and CA settings
 from the environment), as do `--node https://…` for `tx` / `query`.
 
+### Block sync mainnet from genesis (P2P)
+
+`follow` replays history over RPC. To replay it over P2P like a Go node,
+start a fresh home without state sync: the node runs InitChain from the
+canonical genesis (app version 1, executed by the Cosmos SDK v0.46
+legacy driver) and block-syncs every height from peers.
+
+```sh
+celestia-rs init genesis-sync --network mainnet --home ~/.celestia-rs/mainnet-genesis
+# Optional: no snapshots while catching up; keep every block to serve
+# history to other nodes (needs much more disk).
+sed -i 's/^snapshot-interval = .*/snapshot-interval = 0/' ~/.celestia-rs/mainnet-genesis/config/app.toml
+celestia-rs start --home ~/.celestia-rs/mainnet-genesis \
+  --p2p.persistent_peers <id>@<archive-host>:26656 [--stop-at-height 120000]
+```
+
+`scripts/mainnet-genesis-blocksync.sh` does the same on a VM
+(`ARCHIVE_PEERS=… scripts/mainnet-genesis-blocksync.sh [stop-height]`).
+
+- **Archive peers.** Block sync asks a peer only for heights inside the
+  `[base, height]` range it reports. Most public peers prune old blocks,
+  so the node needs at least one persistent peer whose block store starts
+  at height 1. Without one, block sync waits at the first height that no
+  peer serves.
+- **Verification.** Each block `H` is applied only after the `LastCommit`
+  of `H+1` is checked as +2/3 of the validator set the node computed,
+  and after the header (app hash, results hash, validator and params
+  hashes, app version) matches the node's own state. Reaching height `H`
+  therefore means every app hash through `H-1` matched; the first
+  divergence stops the node with `wrong Block.Header.AppHash` (or the
+  field that differs).
+- **Historical app versions.** For blocks of app versions 1 to 8 this
+  binary does not run that version's ProcessProposal rules. Block sync
+  instead checks that the block's txs rebuild the committed data root.
+  Blocks of v9 and later go through ProcessProposal as in consensus.
+- **Upgrades.** App version switches (heights 2,371,495, 2,993,220,
+  6,680,340, 6,748,822, 8,662,013, 10,960,600, 11,771,699, 15,116,659)
+  come from FinalizeBlock and need no operator action, as long as the
+  binary executes every version along the way.
+- **Restarts.** Stopping and starting again resumes from the last
+  committed height (the handshake replays a block committed by the app
+  but not yet recorded in the consensus state).
+- **Progress.** Every 100 blocks the log line `Block Sync Rate` shows
+  `blocks_per_s` and the mean time per block of each phase
+  (`block_id_ms`, `verify_commit_ms`, `validate_ms`, `verify_data_ms`,
+  `save_ms`, `apply_ms`; `apply` is execution). `synced block` lines show
+  each height and app hash.
+- **Disk.** With the defaults (`min-retain-blocks = 3000`, `pruning =
+  default`) disk stays bounded while catching up. Set
+  `min-retain-blocks = 0` only for a node meant to serve history.
+- **Speed.** Execution is most of the time. Bigger caches and less
+  frequent pruning make catch-up about 30% faster without changing
+  state (mainnet blocks 1–1000: 236 → 165 ms per block on 4 vCPUs). Use
+  them while catching up, if the machine has 8 GB of memory to spare:
+
+  ```toml
+  # app.toml
+  pruning = "custom"
+  pruning-keep-recent = "100"
+  pruning-interval = "100"
+  iavl-cache-size = 8000000   # decoded IAVL nodes, ~250 B each
+  ```
+
+  and start with `--db-cache-mib 4096` (RocksDB block cache). To measure
+  other settings, `crates/tier-5-node/celestia-rs/examples/replay_bench.rs`
+  (flags in its header) replays cached mainnet blocks through the block
+  executor and checks every app hash.
+
 ## 11. Running a Mocha validator on a Mac (M13)
 
 Exact steps for the reference machine (Mac Mini M4, macOS, Apple silicon)

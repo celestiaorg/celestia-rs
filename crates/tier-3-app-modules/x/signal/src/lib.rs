@@ -94,6 +94,44 @@ pub fn upgrade_height_delay_v9(chain_id: &str) -> i64 {
     }
 }
 
+/// celestia-app v4.1.0 `appconsts.GetUpgradeHeightDelay` (app version 4):
+/// one block, three on `test`.
+#[must_use]
+pub fn upgrade_height_delay_v4(chain_id: &str) -> i64 {
+    if chain_id == "test" { 3 } else { 1 }
+}
+
+/// celestia-app v5.0.12 to v8.0.8 `appconsts.GetUpgradeHeightDelay` (app
+/// versions 5 to 8; their Mocha chain ID is still mocha-4).
+#[must_use]
+pub fn upgrade_height_delay_v5(chain_id: &str) -> i64 {
+    match chain_id {
+        "test" => 3,
+        "arabica-11" => 14_400,
+        "mocha-4" => 28_800,
+        _ => 100_800,
+    }
+}
+
+/// The delay the executing `release` applies after a quorum. `current` is
+/// the executing app version (v12's rules apply from 12, also past the
+/// release table); `committed` is the consensus app version.
+#[must_use]
+pub fn upgrade_height_delay_for(
+    release: &sdk::version::Release,
+    current: u64,
+    committed: u64,
+    chain_id: &str,
+) -> i64 {
+    match release.app_version {
+        4 => upgrade_height_delay_v4(chain_id),
+        5..=8 => upgrade_height_delay_v5(chain_id),
+        _ if release.before_v10() => upgrade_height_delay_v9(chain_id),
+        _ if current >= 12 => upgrade_height_delay_v12(chain_id, committed),
+        _ => upgrade_height_delay(chain_id),
+    }
+}
+
 fn upgrade_height_delay_v12(chain_id: &str, committed_version: u64) -> i64 {
     match chain_id {
         "test" => 3,
@@ -132,9 +170,35 @@ const HEADER_APP_VERSION: u64 = 0;
 /// clears a reached upgrade that does not raise the app version.
 pub const CONSENSUS_APP_VERSION_FROM: u64 = sdk::version::MAINLINE_RULES_FROM;
 
+/// celestia-app v3.13.0 `appconsts.UpgradeHeightDelay(chainID,
+/// version)` (app versions 1 to 3, cosmos-sdk v0.46), with `version` the
+/// block header's app version.
+#[must_use]
+pub fn upgrade_height_delay_v3(chain_id: &str, version: u64) -> i64 {
+    // v1 and v2: 7 days of 12 s blocks; v3: of 6 s blocks.
+    const V2_DELAY: i64 = 50_400;
+    const V3_DELAY: i64 = 100_800;
+    const BLOCKS_PER_DAY: i64 = 14_400;
+    if chain_id == "test" {
+        return 3;
+    }
+    match (version, chain_id) {
+        // Arabica shipped v2 with the v3 delay.
+        (2, "arabica-11") => V3_DELAY,
+        (1 | 2, _) => V2_DELAY,
+        (3, "arabica-11") => BLOCKS_PER_DAY,
+        (3, "mocha-4") => BLOCKS_PER_DAY * 2,
+        _ => V3_DELAY,
+    }
+}
+
 /// The current version the msg server compares signalled versions with.
 fn current_version(ctx: &Context<'_>) -> u64 {
     let version = app_version(ctx);
+    // cosmos-sdk v0.46 block headers carry the app version.
+    if ctx.is_sdk_v046() {
+        return version;
+    }
     if sdk::version::executing(version) >= CONSENSUS_APP_VERSION_FROM {
         version
     } else {
@@ -288,12 +352,15 @@ pub fn try_upgrade(
         }
         let committed = app_version(ctx);
         let current = sdk::version::executing(committed);
-        let delay = if sdk::version::is_v9(current) {
-            upgrade_height_delay_v9(&ctx.header.chain_id)
-        } else if current >= 12 {
-            upgrade_height_delay_v12(&ctx.header.chain_id, committed)
+        let delay = if ctx.is_sdk_v046() {
+            upgrade_height_delay_v3(&ctx.header.chain_id, committed)
         } else {
-            upgrade_height_delay(&ctx.header.chain_id)
+            upgrade_height_delay_for(
+                sdk::version::Release::executing(current),
+                current,
+                committed,
+                &ctx.header.chain_id,
+            )
         };
         let upgrade = Upgrade {
             app_version: version,
@@ -359,6 +426,43 @@ mod tests {
     use sdk::address::{VALOPER_PREFIX, to_bech32};
     use sdk::{ExecMode, Header, Kind, MultiStore};
 
+    /// `appconsts.GetUpgradeHeightDelay` of each release: v4.1.0 waits one
+    /// block (three on `test`); v5.0.12 to v8.0.8 wait 14,400 on
+    /// arabica-11, 28,800 on mocha-4 and 100,800 on mainnet. Executing
+    /// releases keep their delays (app versions 4 to 8 still run as 9).
+    #[test]
+    fn upgrade_height_delay_follows_the_release() {
+        use sdk::version::Release;
+        let delay = |v: u64, chain: &str| {
+            let r = Release::for_app_version(v).expect("known app version");
+            upgrade_height_delay_for(r, v, v, chain)
+        };
+        for chain in ["test", "arabica-11", "mocha-4", "mocha-5", "celestia"] {
+            let want = if chain == "test" { 3 } else { 1 };
+            assert_eq!(delay(4, chain), want, "v4 {chain}");
+        }
+        for v in 5..=8 {
+            assert_eq!(delay(v, "test"), 3, "v{v}");
+            assert_eq!(delay(v, "arabica-11"), 14_400, "v{v}");
+            assert_eq!(delay(v, "mocha-4"), 28_800, "v{v}");
+            assert_eq!(delay(v, "mocha-5"), 100_800, "v{v}");
+            assert_eq!(delay(v, "celestia"), 100_800, "v{v}");
+        }
+        for chain in ["test", "arabica-11", "corto-1", "mocha-5", "celestia"] {
+            for v in (0..=14).chain([u64::MAX]) {
+                let want = if (1..=9).contains(&v) {
+                    upgrade_height_delay_v9(chain)
+                } else if v >= 12 {
+                    upgrade_height_delay_v12(chain, v)
+                } else {
+                    upgrade_height_delay(chain)
+                };
+                let got = upgrade_height_delay_for(Release::executing(v), v, v, chain);
+                assert_eq!(got, want, "executing v{v} {chain}");
+            }
+        }
+    }
+
     struct Staking {
         vals: Vec<(Vec<u8>, i64, bool)>,
     }
@@ -380,6 +484,25 @@ mod tests {
                 .iter()
                 .find(|v| v.0 == val)
                 .map(|v| ValidatorStatus { bonded: v.2 }))
+        }
+    }
+
+    /// celestia-app v3.13.0 `appconsts.UpgradeHeightDelay`.
+    #[test]
+    fn v3_13_upgrade_height_delays() {
+        for (chain, version, delay) in [
+            ("test", 2, 3),
+            ("celestia", 2, 50_400),
+            ("arabica-11", 2, 100_800),
+            ("celestia", 3, 100_800),
+            ("mocha-4", 3, 28_800),
+            ("arabica-11", 3, 14_400),
+        ] {
+            assert_eq!(
+                upgrade_height_delay_v3(chain, version),
+                delay,
+                "{chain} {version}"
+            );
         }
     }
 

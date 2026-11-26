@@ -33,4 +33,6 @@ pub mod reactor;
 
 pub use msgs::BLOCKSYNC_CHANNEL;
 pub use pool::{BlockPool, BlockRequest, PeerError};
-pub use reactor::{Reactor, ReactorOptions, SwitchToConsensus, SyncOutcome};
+pub use reactor::{
+    CommittedDataCheck, Reactor, ReactorOptions, SwitchToConsensus, SyncOutcome, SyncTimings,
+};

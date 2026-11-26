@@ -71,12 +71,11 @@ pub const MERKLE_TREE_HOOKS_KEY: [u8; 2] = [2, 4];
 /// Post-dispatch `NoopHooksKey`.
 pub const NOOP_HOOKS_KEY: [u8; 2] = [2, 5];
 
-/// Whether the context executes app version 9: upstream hyperlane-cosmos
-/// v1.1.0 (celestia-app v9.0.8, ADR 0004) instead of Celestia's current
-/// v1.3.3 behavior.
-pub(crate) fn is_v9(ctx: &sdk::Context<'_>) -> bool {
-    let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    sdk::version::is_v9(sdk::version::executing(v))
+/// Whether the context executes upstream hyperlane-cosmos (v1.1.0 at app
+/// version 9, celestia-app v9.0.8, ADR 0004) instead of Celestia's current
+/// v1.3.3 behavior ([`sdk::version::Release::upstream_hyperlane`]).
+pub(crate) fn upstream(ctx: &sdk::Context<'_>) -> bool {
+    ctx.release().upstream_hyperlane()
 }
 
 /// `authtypes.NewModuleAddress(name)`: `sha256(name)[:20]`.

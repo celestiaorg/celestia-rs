@@ -38,13 +38,6 @@ pub const IAVL_STORES: &[&str] = &[
 /// upgrade's store loader (`StoreUpgrades.Added`).
 pub const ADDED_IN_V10: &[&str] = &["fibre", "valaddr"];
 
-/// Whether `app_version` is executed with celestia-app v9.0.8 semantics
-/// (ADR 0004). App version 0 (unset) is treated as current.
-#[must_use]
-pub const fn is_v9(app_version: u64) -> bool {
-    sdk::version::is_v9(app_version)
-}
-
 /// Whether module or store `name` exists in the state machine celestia-rs
 /// runs for `app_version` ([`sdk::version::Release::executing`]). Names
 /// that are not stores (most module names) always exist. App versions 2 to

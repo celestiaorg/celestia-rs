@@ -181,6 +181,35 @@ impl MultiStore {
         Ok(())
     }
 
+    /// Mounts a new IAVL store as cosmos-sdk v0.46 adds one in a store
+    /// upgrade ([`multistore::Store::mount_iavl_store_at_v019`]).
+    pub fn mount_iavl_at_v019(
+        &mut self,
+        name: &str,
+        initial_version: i64,
+    ) -> Result<(), StoreError> {
+        self.root.mount_iavl_store_at_v019(name, initial_version)?;
+        self.kinds.insert(name.to_owned(), Kind::Iavl);
+        Ok(())
+    }
+
+    /// Removes an IAVL store from the commit set (a store upgrade's
+    /// deleted store, [`multistore::Store::remove_store`]), with its
+    /// pending writes.
+    pub fn remove_iavl(&mut self, name: &str) -> Result<(), StoreError> {
+        if self.kind(name)? != Kind::Iavl {
+            return Err(StoreError::UnknownStore(name.to_owned()));
+        }
+        self.root.remove_store(name)?;
+        self.kinds.remove(name);
+        for stack in &mut self.stacks {
+            for layer in stack {
+                layer.remove(name);
+            }
+        }
+        Ok(())
+    }
+
     /// Unmounts an IAVL store that holds no committed version.
     pub fn unmount_iavl(&mut self, name: &str) -> Result<(), StoreError> {
         self.root.unmount_store(name)?;

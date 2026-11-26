@@ -36,7 +36,7 @@ fn list_implementations(
         return Err(invalid_arg("invalid interface name"));
     }
     // celestia-app v9.0.8's registry lacks the v10-only types (ADR 0004).
-    let v9 = sdk::version::is_v9(sdk::version::app_version());
+    let v9 = sdk::version::release(0).v9_registry();
     let impls = INTERFACES
         .iter()
         .find(|(i, _)| *i == req.interface_name)

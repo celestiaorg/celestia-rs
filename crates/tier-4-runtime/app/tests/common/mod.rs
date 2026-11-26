@@ -17,6 +17,9 @@ use celestia_proto::celestia_core_proto::tendermint::types::{
 use celestia_proto::celestia_core_proto::tendermint::version::Consensus;
 use flate2::read::GzDecoder;
 
+pub mod check;
+pub mod fixture;
+
 /// The oracle fixtures.
 pub const ORACLE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -233,7 +236,12 @@ pub fn header(block: &serde_json::Value) -> Header {
     let id = &h["last_block_id"];
     Header {
         version: Some(Consensus {
-            block: u64::try_from(int(&h["version"]["block"])).unwrap(),
+            // Omitted when zero (the IBC fixture's ibctesting headers).
+            block: if h["version"]["block"].is_null() {
+                0
+            } else {
+                u64::try_from(int(&h["version"]["block"])).unwrap()
+            },
             app: u64::try_from(int(&h["version"]["app"])).unwrap(),
         }),
         chain_id: h["chain_id"].as_str().unwrap().to_owned(),
@@ -366,7 +374,7 @@ pub fn oracle_diffs() -> BTreeMap<i64, BTreeMap<String, Diff>> {
     diffs_in(&format!("{ORACLE}/kv-diffs.jsonl.gz"))
 }
 
-fn diffs_in(path: &str) -> BTreeMap<i64, BTreeMap<String, Diff>> {
+pub fn diffs_in(path: &str) -> BTreeMap<i64, BTreeMap<String, Diff>> {
     let mut out: BTreeMap<i64, BTreeMap<String, Diff>> = BTreeMap::new();
     for d in gz_lines(path) {
         let diff = Diff {

@@ -253,7 +253,7 @@ pub fn forward(
     // (celestia-app v9.0.8) forwards GetBalance and never reads the
     // account's locked coins.
     let balance = x_bank::get_balance(ctx, &forward_addr, &denom)?;
-    let locked = if sdk::version::is_v9(app_version) {
+    let locked = if sdk::version::Release::executing(app_version).before_v10() {
         math::Int::zero()
     } else {
         x_bank::locked_coins(ctx, &forward_addr)?.amount_of(&denom)

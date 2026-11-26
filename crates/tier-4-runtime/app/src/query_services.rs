@@ -158,7 +158,7 @@ fn simulate_grpc(
 }
 
 fn tx_decode(_: &mut App, _: &mut QueryState, req: TxDecodeRequest) -> QResult<TxDecodeResponse> {
-    let decode = if sdk::version::is_v9(sdk::version::app_version()) {
+    let decode = if sdk::version::release(0).v9_registry() {
         txdecode::default_tx_decode_v9
     } else {
         txdecode::default_tx_decode

@@ -33,7 +33,7 @@ fn load(
                     )));
                 }
             };
-            let v9 = sdk::version::is_v9(sdk::version::app_version());
+            let v9 = sdk::version::release(0).v9_registry();
             match txdecode::scoped_v9(v9, || txdecode::unpack_cosmos_tx_msgs(&proposal.messages)) {
                 Ok(()) => Ok(Ok(proposal)),
                 Err(txdecode::GoFail::Err(msg)) => Ok(Err((

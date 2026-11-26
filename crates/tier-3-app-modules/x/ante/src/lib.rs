@@ -237,8 +237,8 @@ pub fn ante_handle_in_place(
 /// branch, panic and out-of-gas handling.
 ///
 /// `MsgVersioningGateKeeper` is the caller's (the legacy driver's), and
-/// the CheckTx-only `MaxTotalBlobSize` of app version 1 and `MaxTxSize`
-/// (a no-op below v3) are not ported ([`run_chain_v046`]).
+/// the CheckTx-only `MaxTotalBlobSize` of app version 1 is not ported
+/// ([`run_chain_v046`]).
 ///
 /// Fails without running when cosmos-sdk v0.46 semantics are not active
 /// ([`Context::is_sdk_v046`]).
@@ -386,14 +386,6 @@ fn run_ante_with<D: AnteDeps>(
     }
 }
 
-/// Whether the context's app version runs celestia-app v9.0.8's ante
-/// handler (ADR 0004).
-#[must_use]
-pub fn is_v9(ctx: &Context<'_>) -> bool {
-    let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    sdk::version::is_v9(sdk::version::executing(v))
-}
-
 /// Whether the executing app version is 12 or later (0 = unset is current,
 /// app version 10).
 #[must_use]
@@ -405,10 +397,8 @@ pub fn is_v12(ctx: &Context<'_>) -> bool {
 /// celestia-app v3.13.0 `NewAnteHandler` in order. `HandlePanicDecorator`
 /// is [`run_ante_with`]'s panic handling; `MsgVersioningGateKeeper` (before
 /// `SetUpContextDecorator`, it neither reads state nor uses gas) is the
-/// caller's; `MaxTxSizeDecorator` is a no-op below app version 3 and
-/// `MaxTotalBlobSizeDecorator` acts in CheckTx at app version 1 only, so
-/// neither is ported yet: the chain only runs in DeliverTx at app
-/// version 1.
+/// caller's; `MaxTotalBlobSizeDecorator` acts in CheckTx at app version
+/// 1 only, so it is not ported: the chain runs in DeliverTx only.
 fn run_chain_v046<D: AnteDeps>(
     ctx: &mut Context<'_>,
     tx: &sdk::tx::Tx,
@@ -417,6 +407,7 @@ fn run_chain_v046<D: AnteDeps>(
     _: Option<&PendingNextSequence<'_>>,
 ) -> R<i64> {
     setup::set_up_context(ctx, tx, simulate)?;
+    v046::max_tx_size(ctx)?;
     basic::extension_options(tx)?;
     basic::validate_basic(ctx, tx)?;
     basic::timeout_height(ctx, tx)?;
@@ -466,7 +457,7 @@ fn run_chain<D: AnteDeps>(
     sigverify::sig_verification(ctx, tx, simulate, deps)?;
     // celestia-app v9.0.8 (ADR 0004): `MsgExecDecorator`, no fibre
     // decorators (fibre messages do not decode at app version 9).
-    let v9 = is_v9(ctx);
+    let v9 = ctx.release().before_v10();
     if v9 {
         celestia::msg_exec_v9(tx)?;
     } else {

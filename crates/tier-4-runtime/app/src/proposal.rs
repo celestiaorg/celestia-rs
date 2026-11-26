@@ -293,6 +293,35 @@ pub fn verified_block_eds(
     Ok((eds, dah))
 }
 
+/// The newest app version whose committed blocks catch-up (follow, block
+/// sync) checks by data root instead of ProcessProposal.
+///
+/// This binary does not run the ProcessProposal rules of these versions
+/// (v1 to v3 are not ported; v4 to v8 would get v9 rules), so asking it
+/// could reject a block the network validly committed. Every such block
+/// already carries a verified +2/3 commit whose block ID binds the header
+/// (with its data hash) and all txs; rebuilding the square from those txs
+/// and matching the committed data hash proves the data is complete and
+/// laid out as committed. Executing the block then checks the next app
+/// hash. Consensus at the tip still runs full ProcessProposal.
+pub const LAST_DATA_ROOT_ONLY_APP_VERSION: u64 = 8;
+
+/// The data check of a committed (+2/3 signed) block during catch-up:
+/// `Some` result of [`verified_block_eds`] for app versions 1 to
+/// [`LAST_DATA_ROOT_ONLY_APP_VERSION`], `None` (ask ProcessProposal) for
+/// every other version.
+#[must_use]
+pub fn verify_committed_block_data(
+    app_version: u64,
+    txs: &[Vec<u8>],
+    committed_data_hash: &[u8],
+) -> Option<Result<(), String>> {
+    if !(1..=LAST_DATA_ROOT_ONLY_APP_VERSION).contains(&app_version) {
+        return None;
+    }
+    Some(verified_block_eds(app_version, txs, committed_data_hash).map(|_| ()))
+}
+
 // The v11 Go bridge uses go-square v2 for app versions 1–5 and v3 for 6–7.
 // Both recognize BlobTx envelopes before canonical encoding checks were introduced.
 // A normal SDK transaction is never interpreted as a pay-for-fibre in these versions.
@@ -345,7 +374,7 @@ fn block_eds_with_max(
     txs: &[Vec<u8>],
     max_square_size: usize,
 ) -> Result<square::ExtendedDataSquare, String> {
-    let square = if crate::stores::is_v9(app_version) {
+    let square = if sdk::version::Release::executing(app_version).go_square_v4_rc4() {
         v4::construct_rc4(
             &classify_txs_v9(txs)?,
             max_square_size,
@@ -638,7 +667,7 @@ fn prepare(
 ) -> Result<ResponsePrepareProposal, Abort> {
     let max_square_size = max_effective_square_size(ctx)?;
     let mut builder = Builder::new(max_square_size, SUBTREE_ROOT_THRESHOLD)?;
-    let txs = if x_ante::is_v9(ctx) {
+    let txs = if ctx.release().v9_registry() {
         fill_v9(ctx, deps, &mut builder, &req.txs, req.max_tx_bytes)?
     } else {
         x_fibre::begin_block(ctx)?;
@@ -767,6 +796,7 @@ fn fill_v9(
         within_bytes.push(tx);
     }
     // separateTxs (v9): no fibre txs exist at app version 9.
+    let rejects_duplicates = ctx.release().rejects_duplicate_tx_raw_fields();
     let mut normal: Vec<&[u8]> = Vec::new();
     let mut blobs: Vec<UnwrappedBlobTx> = Vec::new();
     for raw in within_bytes {
@@ -778,7 +808,7 @@ fn fill_v9(
             Some(Ok(u)) => u.tx.as_slice(),
             _ => raw,
         };
-        if txdecode::has_duplicate_tx_raw_field(sdk_bytes) {
+        if rejects_duplicates && txdecode::has_duplicate_tx_raw_field(sdk_bytes) {
             continue;
         }
         match b {
@@ -973,7 +1003,7 @@ fn process(
     blob_tx_cache: &crate::blob_cache::BlobTxCache,
     version: u64,
 ) -> Result<bool, Abort> {
-    if x_ante::is_v9(ctx) {
+    if ctx.release().v9_registry() {
         return process_v9(ctx, deps, req, proposed, blob_tx_cache, version);
     }
     let max_square_size = max_effective_square_size(ctx)?;
@@ -1109,6 +1139,28 @@ mod tests {
             assert_eq!(dah.hash().as_slice(), root);
             assert!(verified_block_eds(11, &txs, &[0; 32]).is_err());
             assert!(verified_block_eds(0, &txs, &root).is_err());
+        }
+    }
+
+    /// Catch-up (follow, block sync) checks committed blocks of app
+    /// versions 1 to 8 by data root and asks ProcessProposal from v9 on.
+    #[test]
+    fn committed_block_data_policy() {
+        let root = hex::decode("3d96b7d238e7e0456f6af8e7cdf0a67bd6cf9c2089ecb559c659dcaa1f880353")
+            .unwrap();
+        for v in 1..=8 {
+            assert_eq!(
+                verify_committed_block_data(v, &[], &root),
+                Some(Ok(())),
+                "v{v}"
+            );
+            assert!(
+                matches!(verify_committed_block_data(v, &[], &[0; 32]), Some(Err(_))),
+                "v{v}"
+            );
+        }
+        for v in [0, 9, 10, 11, 12] {
+            assert_eq!(verify_committed_block_data(v, &[], &[0; 32]), None, "v{v}");
         }
     }
 

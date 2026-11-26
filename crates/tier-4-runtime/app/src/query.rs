@@ -69,7 +69,7 @@ pub enum GrpcQueryError {
 /// celestia-app v9.0.8 registers no fibre / valaddr query services and no
 /// `cosmos.reflection.v1` service (ADR 0004).
 fn absent_at(app_version: u64, path: &str) -> bool {
-    sdk::version::is_v9(app_version)
+    !sdk::version::Release::executing(app_version).has_fibre()
         && (path.starts_with("/celestia.fibre.v1.")
             || path.starts_with("/celestia.valaddr.v1.")
             || path.starts_with("/cosmos.reflection.v1."))
