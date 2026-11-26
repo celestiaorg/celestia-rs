@@ -307,9 +307,11 @@ fn dec(s: &str) -> u128 {
 /// raised to it (update time: block 37's time) and the genesis validators
 /// (50%, max 100%) left alone; evidence MaxAgeDuration 337 hours and
 /// MaxAgeNumBlocks 242,640; ICA host enabled with an allow list; and the
-/// module migrations, which run capability's InitGenesis (it is back in the
-/// module set) and record interchainaccounts' version. No store is added
-/// or deleted.
+/// module migrations, which add interchainaccounts (missing from the
+/// stored version map) and run its InitGenesis: it records its version and
+/// binds the icahost port again, a new capability at index 4 (the next
+/// index becomes 5). capability itself is in the stored map since v3. No
+/// store is added or deleted.
 #[test]
 fn v6_upgrade_sets_the_v6_params() {
     let upgrade = common::diffs_in(&format!("{V6}/kv-upgrade.jsonl.gz"));
@@ -364,7 +366,20 @@ fn v6_upgrade_sets_the_v6_params() {
     assert!(host.host_enabled);
     assert!(!host.allow_messages.is_empty());
 
-    assert!(stores["capability"].set.contains_key(b"index".as_slice()));
+    let mut cap4 = b"capability_index".to_vec();
+    cap4.extend(4u64.to_be_bytes());
+    let capability = &stores["capability"].set;
+    assert_eq!(
+        capability.keys().cloned().collect::<Vec<_>>(),
+        [cap4.clone(), b"index".to_vec()]
+    );
+    assert!(capability[&cap4].windows(13).any(|w| w == b"ports/icahost"));
+    assert_eq!(capability[b"index".as_slice()], 5u64.to_be_bytes());
+    assert_eq!(
+        before["capability"][b"index".as_slice()],
+        4u64.to_be_bytes()
+    );
+    assert!(before["upgrade"].contains_key(&[b"\x02".as_slice(), b"capability"].concat()));
     assert!(after["upgrade"].contains_key(&[b"\x02".as_slice(), b"interchainaccounts"].concat()));
 
     let v6 = heights(V6);
