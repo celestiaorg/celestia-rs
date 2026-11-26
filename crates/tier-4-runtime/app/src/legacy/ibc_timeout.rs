@@ -240,6 +240,7 @@ fn on_timeout_packet(ctx: &mut Context<'_>, p: &Packet) -> Result<()> {
     let data = tr::PacketData::decode(&p.data).map_err(|e| {
         errs::unknown_request(format!("cannot unmarshal ICS-20 transfer packet data: {e}"))
     })?;
+    super::pfm::in_flight(ctx, p)?;
     refund_packet_token(ctx, p, &data)?;
     ctx.events.emit(event(
         "timeout",

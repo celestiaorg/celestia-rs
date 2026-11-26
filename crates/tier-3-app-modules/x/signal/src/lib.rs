@@ -170,9 +170,35 @@ const HEADER_APP_VERSION: u64 = 0;
 /// clears a reached upgrade that does not raise the app version.
 pub const CONSENSUS_APP_VERSION_FROM: u64 = sdk::version::MAINLINE_RULES_FROM;
 
+/// celestia-app v3.13.0 `appconsts.UpgradeHeightDelay(chainID,
+/// version)` (app versions 1 to 3, cosmos-sdk v0.46), with `version` the
+/// block header's app version.
+#[must_use]
+pub fn upgrade_height_delay_v3(chain_id: &str, version: u64) -> i64 {
+    // v1 and v2: 7 days of 12 s blocks; v3: of 6 s blocks.
+    const V2_DELAY: i64 = 50_400;
+    const V3_DELAY: i64 = 100_800;
+    const BLOCKS_PER_DAY: i64 = 14_400;
+    if chain_id == "test" {
+        return 3;
+    }
+    match (version, chain_id) {
+        // Arabica shipped v2 with the v3 delay.
+        (2, "arabica-11") => V3_DELAY,
+        (1 | 2, _) => V2_DELAY,
+        (3, "arabica-11") => BLOCKS_PER_DAY,
+        (3, "mocha-4") => BLOCKS_PER_DAY * 2,
+        _ => V3_DELAY,
+    }
+}
+
 /// The current version the msg server compares signalled versions with.
 fn current_version(ctx: &Context<'_>) -> u64 {
     let version = app_version(ctx);
+    // cosmos-sdk v0.46 block headers carry the app version.
+    if ctx.is_sdk_v046() {
+        return version;
+    }
     if sdk::version::executing(version) >= CONSENSUS_APP_VERSION_FROM {
         version
     } else {
@@ -326,12 +352,16 @@ pub fn try_upgrade(
         }
         let committed = app_version(ctx);
         let current = sdk::version::executing(committed);
-        let delay = upgrade_height_delay_for(
-            sdk::version::Release::executing(current),
-            current,
-            committed,
-            &ctx.header.chain_id,
-        );
+        let delay = if ctx.is_sdk_v046() {
+            upgrade_height_delay_v3(&ctx.header.chain_id, committed)
+        } else {
+            upgrade_height_delay_for(
+                sdk::version::Release::executing(current),
+                current,
+                committed,
+                &ctx.header.chain_id,
+            )
+        };
         let upgrade = Upgrade {
             app_version: version,
             upgrade_height: ctx.header.height + delay,
@@ -454,6 +484,25 @@ mod tests {
                 .iter()
                 .find(|v| v.0 == val)
                 .map(|v| ValidatorStatus { bonded: v.2 }))
+        }
+    }
+
+    /// celestia-app v3.13.0 `appconsts.UpgradeHeightDelay`.
+    #[test]
+    fn v3_13_upgrade_height_delays() {
+        for (chain, version, delay) in [
+            ("test", 2, 3),
+            ("celestia", 2, 50_400),
+            ("arabica-11", 2, 100_800),
+            ("celestia", 3, 100_800),
+            ("mocha-4", 3, 28_800),
+            ("arabica-11", 3, 14_400),
+        ] {
+            assert_eq!(
+                upgrade_height_delay_v3(chain, version),
+                delay,
+                "{chain} {version}"
+            );
         }
     }
 

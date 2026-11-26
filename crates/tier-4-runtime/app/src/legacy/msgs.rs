@@ -259,6 +259,9 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
     if let Some(r) = super::blob::validate_basic(msg) {
         return r;
     }
+    if let Some(r) = super::signal::validate_basic(msg) {
+        return r;
+    }
     if msg.type_url == bank::MsgSend::type_url() {
         let m: bank::MsgSend = decode(msg)?;
         acc_address(&m.from_address, "from")?;
@@ -413,6 +416,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
         return r;
     }
     if let Some(r) = super::blob::route(ctx, msg) {
+        return r;
+    }
+    if let Some(r) = super::signal::route(ctx, msg) {
         return r;
     }
     Err(super::not_ported(errs::unknown_request(format!(

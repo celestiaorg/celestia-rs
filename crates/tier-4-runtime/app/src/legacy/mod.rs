@@ -12,9 +12,13 @@
 //! and the thread's previous state is restored when the call returns.
 //! [`crate::App`] routes InitChain, FinalizeBlock and Commit here for a
 //! cosmos-sdk v0.46 state ([`app`]); only releases that run as themselves
-//! execute ([`executes`]: app version 1). App versions 2 and 3 still run
-//! as v9 elsewhere and stop with an error on a v0.46 state; app versions
-//! 4 and later never come here.
+//! start from genesis ([`executes`]: app version 1); blocks execute at
+//! app versions 1 to 3. The EndBlocker's app version change
+//! ([`upgrade`]) and the migrations that `Commit` runs for it in Go
+//! ([`migrate`]) are part of the block here, before its app hash. App
+//! version 4 (scheduled by the last app version 3 block) runs on the
+//! cosmos-sdk v0.50 app; a v0.46 state at app version 4 stops with an
+//! error.
 //!
 //! Reference: cosmos-sdk `v1.31.2-sdk-v0.46.16` `baseapp/abci.go` and
 //! `baseapp/baseapp.go`, celestia-app v3.13.0 `app/app.go`.
@@ -32,10 +36,14 @@ pub mod ibc;
 pub mod ibc_channel;
 pub mod ibc_timeout;
 pub mod ibc_transfer;
+pub mod migrate;
 pub mod msgs;
 pub mod params;
+pub mod pfm;
 pub mod qgb;
+pub mod signal;
 pub mod tx;
+pub mod upgrade;
 pub mod vesting;
 
 use celestia_proto::celestia_core_proto::abci::{
@@ -450,6 +458,9 @@ pub struct Driver<M> {
     app_version: u64,
     /// Header of the block finalized and not yet committed.
     finalized: Option<Header>,
+    /// `--v2-upgrade-height`; `None`: the chain's default
+    /// ([`upgrade::default_upgrade_height_v2`]).
+    upgrade_height_v2: Option<i64>,
 }
 
 impl<M> std::fmt::Debug for Driver<M> {
@@ -470,7 +481,20 @@ impl<M: Modules> Driver<M> {
             chain_id: String::new(),
             app_version: 0,
             finalized: None,
+            upgrade_height_v2: None,
         }
+    }
+
+    /// Sets the v1 to v2 upgrade height (the first app version 2 block),
+    /// as celestia-app's `--v2-upgrade-height` flag does, in place of the
+    /// chain's default.
+    pub fn set_upgrade_height_v2(&mut self, height: i64) {
+        self.upgrade_height_v2 = Some(height);
+    }
+
+    fn upgrade_height_v2(&self) -> Option<i64> {
+        self.upgrade_height_v2
+            .or_else(|| upgrade::default_upgrade_height_v2(&self.chain_id))
     }
 
     /// The app version the driver runs: set by InitChain, or read from the
@@ -629,6 +653,9 @@ impl<M: Modules> Driver<M> {
             next_validators_hash: req.next_validators_hash.clone(),
         };
         let mut ctx = Context::new(ms, header.clone(), ExecMode::Finalize);
+        // `BeginBlock` reads the consensus params twice on the block
+        // context's meter: `getMaximumBlockGas`, then `GetConsensusParams`.
+        consensus_params::load(&mut ctx, self.app_version)?;
         ctx.consensus_params = consensus_params::load(&mut ctx, self.app_version)?;
         ctx.vote_infos = req
             .decided_last_commit
@@ -662,11 +689,35 @@ impl<M: Modules> Driver<M> {
             tx_results.push(result);
         }
         let validator_updates = self.modules.end_block(&mut ctx)?;
+        let block_version = self.app_version;
+        let upgraded = upgrade::end_blocker(&mut ctx, block_version, self.upgrade_height_v2())?;
         self.phase_not_ported(req.height, "EndBlock")?;
+        let app_version = upgraded.unwrap_or(block_version);
         events.extend(ctx.events.take());
-        let cp = consensus_params::load(&mut ctx, self.app_version)?;
+        let cp = consensus_params::load(&mut ctx, app_version)?;
         drop(ctx);
 
+        if let Some(to) = upgraded {
+            // `BaseApp.Commit`: the header's app version is below the new
+            // one, so the store and module migrations run before the
+            // commit. They run on the block's branch, before the flush,
+            // so that a failure leaves no writes and no store changes.
+            let added = migrate::add_stores(ms, block_version, to)?;
+            let migrated = (|| {
+                let _scope = sdk::version::SdkV046Scope::enter(to);
+                let mut ctx = Context::new(ms, header.clone(), ExecMode::Finalize);
+                ctx.consensus_params = cp.clone();
+                migrate::modules(&mut ctx, block_version, to)?;
+                drop(ctx);
+                self.phase_not_ported(req.height, "Commit migrations")
+            })();
+            if let Err(e) = migrated {
+                migrate::unmount_added(ms, &added);
+                return Err(e);
+            }
+            migrate::remove_stores(ms, block_version, to)?;
+            self.app_version = to;
+        }
         ms.flush()?;
         let app_hash = ms.working_hash()?.to_vec();
         self.finalized = Some(header);
@@ -676,7 +727,8 @@ impl<M: Modules> Driver<M> {
             validator_updates,
             consensus_param_updates: Some(cp),
             app_hash,
-            timeout_info: Some(timeouts(self.app_version)),
+            // `getTimeoutCommit(currentVersion)`: the block's version.
+            timeout_info: Some(timeouts(block_version)),
         })
     }
 
