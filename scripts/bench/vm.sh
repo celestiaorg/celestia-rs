@@ -502,8 +502,7 @@ arm_err_trap() {
 main() {
   mkdir -p "$STATE"
   if [[ -z $DRY && ${BENCH_DETACHED:-} != 1 ]]; then # the startup script re-runs on boot
-    [[ ! -e $STATE/started ]] || exit 0
-    touch "$STATE/started"
+    bench_claim_driver "$STATE" || exit 0
     curl -fsS -m 10 -H Metadata-Flavor:Google "$MD/attributes/startup-script" >"$STATE/run.sh"
     exec systemd-run --unit=bench-driver --setenv=BENCH_DETACHED=1 bash "$STATE/run.sh"
   fi
