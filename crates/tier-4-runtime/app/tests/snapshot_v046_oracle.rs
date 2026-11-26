@@ -97,6 +97,16 @@ impl Chain {
         let mut a = app::App::open(home.path()).unwrap();
         a.set_v2_upgrade_height(fix.roots()["upgrade_height_v2"].as_i64().unwrap());
         let chunks = self.chunks(height);
+        // Go's StreamWriter closes its zlib writer twice: the stream ends
+        // with the Adler-32 trailer written a second time, as on mainnet.
+        let all = chunks.concat();
+        let n = all.len();
+        assert_eq!(
+            all[n - 4..],
+            all[n - 8..n - 4],
+            "{} snapshot {height}: Go's duplicated Adler-32 trailer",
+            self.fixture
+        );
         let mut total = hash::Sha256Hasher::new();
         let mut chunk_hashes = Vec::new();
         for c in &chunks {

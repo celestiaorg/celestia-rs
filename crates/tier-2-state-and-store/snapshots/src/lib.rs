@@ -29,7 +29,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 
 use flate2::Compression;
-use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 use prost::Message;
 
@@ -498,6 +497,77 @@ impl Read for ChunkReader {
     }
 }
 
+/// Adler-32 of everything read through it (the zlib trailer's checksum).
+struct Adler32<R> {
+    inner: R,
+    a: u32,
+    b: u32,
+}
+
+impl<R: Read> Read for Adler32<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        const MOD: u32 = 65_521;
+        let n = self.inner.read(buf)?;
+        for block in buf[..n].chunks(5552) {
+            for &x in block {
+                self.a += u32::from(x);
+                self.b += self.a;
+            }
+            self.a %= MOD;
+            self.b %= MOD;
+        }
+        Ok(n)
+    }
+}
+
+/// The decompressed item stream of a snapshot's chunks. After the zlib
+/// stream only Go's duplicated Adler-32 trailer may follow: cosmos-sdk
+/// `StreamWriter.Close` closes its zlib writer twice (the delimited
+/// writer closes it, then `Close` closes it again), so every Go snapshot
+/// ends with the 4 trailer bytes written a second time. Go's reader stops
+/// at the end of the zlib stream; any other trailing bytes are refused.
+struct ItemStream<R: Read> {
+    decoder: BufReader<Adler32<flate2::bufread::ZlibDecoder<BufReader<R>>>>,
+}
+
+impl<R: Read> ItemStream<R> {
+    fn new(chunks: R) -> Self {
+        Self {
+            decoder: BufReader::new(Adler32 {
+                inner: flate2::bufread::ZlibDecoder::new(BufReader::new(chunks)),
+                a: 1,
+                b: 0,
+            }),
+        }
+    }
+
+    /// Checks what follows the zlib stream, once every item was read.
+    fn finish(self) -> Result<()> {
+        let adler = self.decoder.into_inner();
+        let checksum = (adler.b << 16) | adler.a;
+        let mut rest = Vec::new();
+        adler.inner.into_inner().take(5).read_to_end(&mut rest)?;
+        if rest.is_empty() || rest == checksum.to_be_bytes() {
+            Ok(())
+        } else {
+            Err(Error::Decode(format!(
+                "{} trailing bytes after the zlib stream (only Go's duplicated Adler-32 trailer {checksum:08x} is accepted)",
+                if rest.len() > 4 {
+                    "more than 4".to_string()
+                } else {
+                    rest.len().to_string()
+                }
+            )))
+        }
+    }
+}
+
+impl<R: Read> Read for ItemStream<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.decoder.read(buf)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Manager
 // ---------------------------------------------------------------------------
@@ -919,20 +989,20 @@ fn restore_from(
     height: u64,
     paths: Vec<PathBuf>,
 ) -> Result<multistore::CommitId> {
-    let reader = ChunkReader {
+    let mut stream = ItemStream::new(ChunkReader {
         paths: paths.into_iter(),
         current: None,
-    };
-    let mut decoder = BufReader::new(ZlibDecoder::new(reader));
-    read_items(store, height, &mut decoder)
+    });
+    let id = read_items(store, height, &mut stream)?;
+    stream.finish()?;
+    Ok(id)
 }
 
 fn snapshot_store_names(paths: Vec<PathBuf>) -> Result<BTreeSet<String>> {
-    let reader = ChunkReader {
+    let mut decoder = ItemStream::new(ChunkReader {
         paths: paths.into_iter(),
         current: None,
-    };
-    let mut decoder = BufReader::new(ZlibDecoder::new(reader));
+    });
     let mut names = BTreeSet::new();
     while let Some(item) = read_item(&mut decoder)? {
         if let Some(Item::Store(store)) = item.item
@@ -944,6 +1014,7 @@ fn snapshot_store_names(paths: Vec<PathBuf>) -> Result<BTreeSet<String>> {
             )));
         }
     }
+    decoder.finish()?;
     Ok(names)
 }
 
@@ -1169,16 +1240,15 @@ pub fn compare_dirs(a: &Path, b: &Path, height: u64, format: u32) -> Result<Comp
     let (sa, sb) = (ChunkStream::open(&da)?, ChunkStream::open(&db)?);
     let chunks = (sa.chunks(), sb.chunks());
     let chunk_bytes_identical = chunks.0 == chunks.1 && same_chunk_bytes(&da, &db, chunks.0)?;
-    let (mut ra, mut rb) = (
-        BufReader::new(ZlibDecoder::new(sa)),
-        BufReader::new(ZlibDecoder::new(sb)),
-    );
+    let (mut ra, mut rb) = (ItemStream::new(sa), ItemStream::new(sb));
     let mut items = 0u64;
     let mut store = String::new();
     let mut first_difference = None;
     loop {
         let (x, y) = (read_item(&mut ra)?, read_item(&mut rb)?);
         if x.is_none() && y.is_none() {
+            ra.finish()?;
+            rb.finish()?;
             break;
         }
         items += 1;
@@ -1603,6 +1673,58 @@ mod tests {
         assert!(same_chunk_bytes(a.path(), a.path(), 3).unwrap());
         assert!(!same_chunk_bytes(a.path(), b.path(), 3).unwrap());
         assert!(ChunkStream::open(&a.path().join("missing")).is_err());
+    }
+
+    /// Go cosmos-sdk `StreamWriter.Close` closes its zlib writer twice, so
+    /// every Go snapshot stream ends with the Adler-32 trailer written a
+    /// second time. Restores and comparisons accept exactly that, and no
+    /// other bytes after the zlib stream.
+    #[test]
+    fn go_duplicated_adler32_trailer_and_nothing_else() {
+        let mut src = store(Arc::new(kvdb::MemBackend::new()));
+        fill(&mut src, 3);
+        let dir = tempfile::tempdir().unwrap();
+        let manager = Manager::new(dir.path(), SnapshotOptions::default()).unwrap();
+        let snap = manager.create_with_format(&src, 3, FORMAT_V046).unwrap();
+        let chunk_dir = dir.path().join("3").join(FORMAT_V046.to_string());
+        let last = chunk_dir.join((snap.chunks - 1).to_string());
+        let original = std::fs::read(&last).unwrap();
+        let trailer = original[original.len() - 4..].to_vec();
+        let plain = tempfile::tempdir().unwrap();
+        let plain_dir = plain.path().join("3").join(FORMAT_V046.to_string());
+        std::fs::create_dir_all(&plain_dir).unwrap();
+        for i in 0..snap.chunks {
+            std::fs::copy(chunk_dir.join(i.to_string()), plain_dir.join(i.to_string())).unwrap();
+        }
+        let with = |extra: &[u8]| {
+            let mut bytes = original.clone();
+            bytes.extend_from_slice(extra);
+            std::fs::write(&last, bytes).unwrap();
+        };
+        let restore = |m: &Manager| {
+            let mut dst = store(Arc::new(kvdb::MemBackend::new()));
+            m.restore_local(&mut dst, 3, FORMAT_V046)
+        };
+
+        with(&trailer);
+        assert_eq!(restore(&manager).unwrap(), src.last_commit_id().unwrap());
+        let c = compare_dirs(dir.path(), plain.path(), 3, FORMAT_V046).unwrap();
+        assert_eq!(c.first_difference, None);
+        assert!(!c.chunk_bytes_identical);
+
+        let mut wrong = trailer.clone();
+        wrong[0] ^= 1;
+        let mut longer = trailer.clone();
+        longer.push(0);
+        for bad in [wrong, longer, vec![0u8], trailer[..3].to_vec()] {
+            with(&bad);
+            let e = restore(&manager).unwrap_err().to_string();
+            assert!(e.contains("trailing"), "{bad:?}: {e}");
+            let e = compare_dirs(dir.path(), plain.path(), 3, FORMAT_V046)
+                .unwrap_err()
+                .to_string();
+            assert!(e.contains("trailing"), "{bad:?}: {e}");
+        }
     }
 
     /// A store pruned after every commit down to the latest version (the
