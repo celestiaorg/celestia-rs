@@ -45,6 +45,10 @@ pub const DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 const MIN_BACKOFF: Duration = Duration::from_secs(1);
 /// Longest retry delay.
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
+/// A server that ran this long resets the backoff.
+const STABLE_UPTIME: Duration = Duration::from_secs(60);
+/// Extra time, beyond the drain, that a stop waits for the server.
+const JOIN_MARGIN: Duration = Duration::from_secs(5);
 /// The server re-issues its TLS certificate (valid 365 days) by restarting
 /// after this long.
 const CERT_RENEWAL: Duration = Duration::from_secs(360 * 24 * 3600);
@@ -618,6 +622,10 @@ pub type MetricsSlot = Arc<Mutex<Option<Arc<ServerMetrics>>>>;
 pub struct Supervisor {
     stop: CancellationToken,
     thread: Option<std::thread::JoinHandle<()>>,
+    /// Signalled when the supervisor thread is about to end.
+    finished: std::sync::mpsc::Receiver<()>,
+    /// How long dropping the supervisor waits for the thread.
+    join_timeout: Duration,
     metrics: MetricsSlot,
 }
 
@@ -644,21 +652,32 @@ impl Supervisor {
             .context("start the fibre runtime")?;
         let stop = CancellationToken::new();
         let metrics: MetricsSlot = Arc::default();
+        let (done, finished) = std::sync::mpsc::channel();
         let thread = {
             let (stop, metrics) = (stop.clone(), Arc::clone(&metrics));
+            let inputs = Inputs {
+                cfg,
+                state,
+                signer,
+                validator,
+                stop,
+                metrics,
+                fatal,
+            };
             std::thread::Builder::new()
                 .name("fibre-supervisor".into())
                 .spawn(move || {
-                    runtime.block_on(supervise(
-                        cfg, state, signer, validator, stop, metrics, fatal,
-                    ));
+                    runtime.block_on(supervise_forever(inputs));
                     runtime.shutdown_timeout(Duration::from_secs(1));
+                    let _ = done.send(());
                 })
                 .context("start the fibre supervisor thread")?
         };
         Ok(Self {
             stop,
             thread: Some(thread),
+            finished,
+            join_timeout: DRAIN_TIMEOUT + JOIN_MARGIN,
             metrics,
         })
     }
@@ -677,10 +696,63 @@ impl Supervisor {
 }
 
 impl Drop for Supervisor {
+    /// Stops the server and waits for it, at most the drain timeout plus a
+    /// margin; a server stuck beyond that is left behind (logged), so the
+    /// node's shutdown never hangs on Fibre.
     fn drop(&mut self) {
         self.stop.cancel();
-        if let Some(t) = self.thread.take() {
-            let _ = t.join();
+        let Some(t) = self.thread.take() else { return };
+        match self.finished.recv_timeout(self.join_timeout) {
+            Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                let _ = t.join();
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => tracing::error!(
+                timeout = ?self.join_timeout,
+                "the fibre server did not stop in time; leaving it behind"
+            ),
+        }
+    }
+}
+
+/// What the supervisor runs with.
+#[derive(Clone)]
+struct Inputs {
+    cfg: ServerConfig,
+    state: Arc<dyn ChainState>,
+    signer: Arc<dyn Signer>,
+    validator: String,
+    stop: CancellationToken,
+    metrics: MetricsSlot,
+    fatal: FatalCheck,
+}
+
+/// The backoff after a server ran for `uptime`: a server that failed
+/// before [`STABLE_UPTIME`] keeps the grown backoff (no restart loop, each
+/// minting a new certificate), a stable one starts over.
+fn backoff_after_run(backoff: Duration, uptime: Duration) -> Duration {
+    if uptime >= STABLE_UPTIME {
+        MIN_BACKOFF
+    } else {
+        backoff
+    }
+}
+
+/// Runs [`supervise`]; a panic in it is logged and the supervisor starts
+/// again after a backoff.
+async fn supervise_forever(inputs: Inputs) {
+    let mut backoff = MIN_BACKOFF;
+    loop {
+        let run = tokio::spawn(supervise(inputs.clone()));
+        match run.await {
+            Ok(()) => return,
+            Err(e) => {
+                let d = backoff;
+                backoff = (backoff * 2).min(MAX_BACKOFF);
+                tracing::error!(error = %e, retry_in = ?d, "fibre supervisor panicked; restarting it");
+                if wait(&inputs.stop, d).await {
+                    return;
+                }
+            }
         }
     }
 }
@@ -693,15 +765,17 @@ async fn wait(stop: &CancellationToken, d: Duration) -> bool {
     }
 }
 
-async fn supervise(
-    cfg: ServerConfig,
-    state: Arc<dyn ChainState>,
-    signer: Arc<dyn Signer>,
-    validator: String,
-    stop: CancellationToken,
-    metrics: MetricsSlot,
-    fatal: FatalCheck,
-) {
+#[allow(clippy::too_many_lines)]
+async fn supervise(inputs: Inputs) {
+    let Inputs {
+        cfg,
+        state,
+        signer,
+        validator,
+        stop,
+        metrics,
+        fatal,
+    } = inputs;
     // A failure retrying cannot fix: log once, then wait for shutdown.
     let give_up = |stop: CancellationToken, fatal: FatalCheck| async move {
         let reason = fatal()?;
@@ -759,7 +833,7 @@ async fn supervise(
             }
             Some(Ok(())) => {}
         }
-        backoff = MIN_BACKOFF;
+        let started_at = std::time::Instant::now();
         *metrics.lock().unwrap_or_else(PoisonError::into_inner) = Some(server.metrics());
         tracing::info!(
             listen = %server.listen_address(),
@@ -787,6 +861,7 @@ async fn supervise(
                 if give_up(stop.clone(), Arc::clone(&fatal)).await.is_some() {
                     break;
                 }
+                backoff = backoff_after_run(backoff, started_at.elapsed());
                 let d = retry(&mut backoff);
                 tracing::error!(retry_in = ?d, "restarting the fibre server");
                 if wait(&stop, d).await {
@@ -794,6 +869,7 @@ async fn supervise(
                 }
             }
             () = tokio::time::sleep(CERT_RENEWAL) => {
+                backoff = MIN_BACKOFF;
                 tracing::info!("restarting the fibre server to renew its TLS certificate");
                 if let Err(e) = server.stop(DRAIN_TIMEOUT).await {
                     tracing::error!(error = %e, "fibre server stopped with an error");
@@ -861,6 +937,111 @@ mod tests {
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Box::pin(async { Err(SignerError("remote signer connection: hung up".into())) })
         }
+    }
+
+    /// A server that failed soon after starting keeps the grown backoff;
+    /// one that ran for [`STABLE_UPTIME`] starts over.
+    #[test]
+    fn backoff_resets_only_after_a_stable_run() {
+        let grown = Duration::from_secs(16);
+        assert_eq!(backoff_after_run(grown, Duration::from_secs(1)), grown);
+        assert_eq!(backoff_after_run(grown, Duration::from_secs(59)), grown);
+        assert_eq!(backoff_after_run(grown, STABLE_UPTIME), MIN_BACKOFF);
+    }
+
+    /// A chain whose `chain_id` panics the first `panics` times and blocks
+    /// forever when `block` is set.
+    struct PanickyChain {
+        calls: std::sync::atomic::AtomicUsize,
+        panics: usize,
+        block: bool,
+    }
+
+    impl ChainState for PanickyChain {
+        fn chain_id(&self) -> String {
+            let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if self.block {
+                std::thread::sleep(Duration::from_secs(3600));
+            }
+            assert!(n >= self.panics, "chain_id panic {n}");
+            "c".into()
+        }
+        fn validator_set(&self, h: u64) -> BoxFuture<'_, Result<ValidatorSet, StateError>> {
+            NoChain.validator_set(h)
+        }
+        fn head_validator_set(&self) -> BoxFuture<'_, Result<ValidatorSet, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn verify_promise<'a>(
+            &'a self,
+            _: &'a PaymentPromise,
+        ) -> BoxFuture<'a, Result<VerifiedPromise, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn full_stake_storage_budget(&self) -> BoxFuture<'_, Result<i64, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn node_status(&self) -> BoxFuture<'_, Result<NodeStatus, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn provider_registration<'a>(
+            &'a self,
+            _: &'a [u8; 20],
+        ) -> BoxFuture<'a, Result<ProviderRegistration, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+    }
+
+    fn panicky(dir: &Path, chain: Arc<PanickyChain>, join_timeout: Duration) -> Supervisor {
+        let cfg = ServerConfig {
+            server_listen_address: "127.0.0.1:0".into(),
+            store: fibre_server::store::StoreConfig::new(dir.join("fibre")),
+            ..ServerConfig::default()
+        };
+        let mut sup = Supervisor::start(
+            cfg,
+            chain,
+            Arc::new(BrokenSigner::default()),
+            "v".into(),
+            Arc::new(|| None),
+        )
+        .unwrap();
+        sup.join_timeout = join_timeout;
+        sup
+    }
+
+    /// A panic in the supervisor itself is logged and the supervisor
+    /// starts again after a backoff.
+    #[test]
+    fn a_supervisor_panic_restarts_the_supervisor() {
+        let dir = tempfile::tempdir().unwrap();
+        let chain = Arc::new(PanickyChain {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            panics: 1,
+            block: false,
+        });
+        let sup = panicky(dir.path(), Arc::clone(&chain), DRAIN_TIMEOUT);
+        std::thread::sleep(Duration::from_millis(1600));
+        // The panicking call, then the restarted supervisor's start.
+        assert!(chain.calls.load(std::sync::atomic::Ordering::SeqCst) >= 2);
+        drop(sup);
+    }
+
+    /// Dropping the supervisor never waits longer than its join timeout,
+    /// even when the server is stuck.
+    #[test]
+    fn drop_is_bounded_when_the_server_is_stuck() {
+        let dir = tempfile::tempdir().unwrap();
+        let chain = Arc::new(PanickyChain {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            panics: 0,
+            block: true,
+        });
+        let sup = panicky(dir.path(), Arc::clone(&chain), Duration::from_millis(300));
+        std::thread::sleep(Duration::from_millis(200));
+        let t = std::time::Instant::now();
+        drop(sup);
+        assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
     }
 
     /// At most [`MAX_VIEW_PREPARATIONS`] queries wait on the app lock at
