@@ -3117,3 +3117,39 @@ fn v046_exec_dispatches_send_and_transfer_signers() {
     let e = sdk::error::recover(|| msgs::route(&mut ctx, &exec(transfer))).unwrap_err();
     assert!(e.is_panic(), "{}", e.log);
 }
+
+/// v0.46 `DispatchActions` of a nested authz `MsgGrant` (signer: its
+/// granter) under a `GenericAuthorization` for `MsgGrant`: the nested
+/// grant is stored (mainnet block 45631).
+#[test]
+fn v046_exec_dispatches_a_nested_grant() {
+    use celestia_proto::cosmos::authz::v1beta1::{GenericAuthorization, Grant, MsgExec, MsgGrant};
+    use prost::Message as _;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    let (owner, agent, voter) = ([1u8; 20], [2u8; 20], [3u8; 20]);
+    let grant = |granter: &[u8], grantee: &[u8], msg: &str| MsgGrant {
+        granter: x_auth::bech32(granter).unwrap(),
+        grantee: x_auth::bech32(grantee).unwrap(),
+        grant: Some(Grant {
+            authorization: Some(celestia_proto::Any::pack(&GenericAuthorization {
+                msg: msg.into(),
+            })),
+            expiration: None,
+        }),
+    };
+    let outer = celestia_proto::Any::pack(&grant(&owner, &agent, "/cosmos.authz.v1beta1.MsgGrant"));
+    msgs::route(&mut ctx, &outer).unwrap();
+    let nested = celestia_proto::Any::pack(&grant(&owner, &voter, "/cosmos.gov.v1beta1.MsgVote"));
+    let exec = celestia_proto::Any::pack(&MsgExec {
+        grantee: x_auth::bech32(&agent).unwrap(),
+        msgs: vec![nested],
+    });
+    let _ = take_not_ported();
+    msgs::route(&mut ctx, &exec).unwrap();
+    assert!(take_not_ported().is_none());
+    let key = x_authz::grant_key(&voter, &owner, "/cosmos.gov.v1beta1.MsgVote");
+    let stored = ctx.get(x_authz::STORE_KEY, &key).unwrap().unwrap();
+    assert!(Grant::decode(stored.as_slice()).is_ok());
+}

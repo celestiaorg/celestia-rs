@@ -22,6 +22,7 @@ use celestia_proto::cosmos::authz::v1beta1::{
 };
 use celestia_proto::cosmos::bank::v1beta1 as bank;
 use celestia_proto::cosmos::distribution::v1beta1 as distr;
+use celestia_proto::cosmos::feegrant::v1beta1 as feegrant;
 use celestia_proto::cosmos::gov;
 use celestia_proto::cosmos::staking::v1beta1 as staking;
 use celestia_proto::ibc::applications::transfer::v1 as transfer;
@@ -542,6 +543,14 @@ fn exec_signer(msg: &Any) -> Result<Option<Vec<u8>>> {
             acc(&decode::<gov::v1beta1::MsgVote>(msg)?.voter)
         } else if u == gov::v1::MsgVote::type_url() {
             acc(&decode::<gov::v1::MsgVote>(msg)?.voter)
+        } else if u == authz::MsgGrant::type_url() {
+            acc(&decode::<authz::MsgGrant>(msg)?.granter)
+        } else if u == authz::MsgRevoke::type_url() {
+            acc(&decode::<authz::MsgRevoke>(msg)?.granter)
+        } else if u == feegrant::MsgGrantAllowance::type_url() {
+            acc(&decode::<feegrant::MsgGrantAllowance>(msg)?.granter)
+        } else if u == feegrant::MsgRevokeAllowance::type_url() {
+            acc(&decode::<feegrant::MsgRevokeAllowance>(msg)?.granter)
         } else if u == transfer::MsgTransfer::type_url() {
             // ibc-go v6 `MsgTransfer.GetSigners` panics on a sender that
             // does not parse.
