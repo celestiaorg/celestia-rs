@@ -165,13 +165,18 @@ func (s *synth) start(appHash []byte) {
 // committed records what the next header commits to: the app hash, the
 // DeliverTx results and the app version of the EndBlock consensus params
 // (celestia-core v0.34 updateState).
-func (s *synth) committed(appHash []byte, results []*abci.ResponseDeliverTx, end abci.ResponseEndBlock) {
+func (s *synth) committed(_ int64, appHash []byte, results []*abci.ResponseDeliverTx, end abci.ResponseEndBlock) error {
 	s.appHash = appHash
 	s.lastResultsHash = tmtypes.NewResults(results).Hash()
 	if end.ConsensusParamUpdates != nil && end.ConsensusParamUpdates.Version != nil {
 		s.appVersion = end.ConsensusParamUpdates.Version.AppVersion
 	}
+	return nil
 }
+
+func (s *synth) unchecked() bool { return false }
+
+func (s *synth) blocksJSONL() []byte { return s.blocks.Bytes() }
 
 // signer is a signer for the accounts at their committed account numbers
 // and sequences.
