@@ -233,10 +233,77 @@ pub fn worst_case_upload_bytes(cfg: &ServerConfig) -> u64 {
 
 // ------------------------------------------------------------------ state
 
+/// Most module queries that may prepare a view (and so wait on the app
+/// lock) at once; more wait without holding a blocking thread.
+pub const MAX_VIEW_PREPARATIONS: usize = 2;
+
+/// Module queries on detached views of the latest committed state.
+pub struct DetachedQueries {
+    app: Arc<Mutex<app::App>>,
+    prepare: Arc<tokio::sync::Semaphore>,
+    preparing: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl DetachedQueries {
+    /// Queries against `app`.
+    #[must_use]
+    pub fn new(app: Arc<Mutex<app::App>>) -> Self {
+        Self {
+            app,
+            prepare: Arc::new(tokio::sync::Semaphore::new(MAX_VIEW_PREPARATIONS)),
+            preparing: Arc::default(),
+        }
+    }
+
+    /// Queries preparing a view now (waiting for or holding the app lock).
+    #[must_use]
+    pub fn preparing(&self) -> usize {
+        self.preparing.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Runs module query `path` like Go's app gRPC client would see it:
+    /// the view is built under the app lock (at most
+    /// [`MAX_VIEW_PREPARATIONS`] queries at once), the handler runs
+    /// without it.
+    pub async fn query<Req, Resp>(&self, path: &'static str, req: &Req) -> Result<Resp, StateError>
+    where
+        Req: prost::Message,
+        Resp: prost::Message + Default,
+    {
+        let data = req.encode_to_vec();
+        let app = Arc::clone(&self.app);
+        let permit = Arc::clone(&self.prepare)
+            .acquire_owned()
+            .await
+            .map_err(|e| StateError::other(format!("query limiter closed: {e}")))?;
+        let preparing = Arc::clone(&self.preparing);
+        let res = tokio::task::spawn_blocking(move || {
+            preparing.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let prepared = app
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .detached_grpc_query(path);
+            preparing.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            drop(permit);
+            prepared.and_then(|q| q.run(&data))
+        })
+        .await
+        .map_err(|e| StateError::other(format!("query task failed: {e}")))?;
+        match res {
+            Ok((bytes, _)) => Resp::decode(bytes.as_slice()).map_err(|e| {
+                StateError::other(format!(
+                    "rpc error: code = Internal desc = grpc: failed to unmarshal the received message: {e}"
+                ))
+            }),
+            Err(e) => Err(grpc_error(&e)),
+        }
+    }
+}
+
 /// [`ChainState`] over the node's own stores and app.
 pub struct NodeChainState {
     chain_id: String,
-    app: Arc<Mutex<app::App>>,
+    queries: DetachedQueries,
     block_store: BlockStore,
     state_store: StateStore,
     env: Arc<rpc::Environment>,
@@ -255,39 +322,19 @@ impl NodeChainState {
     ) -> Self {
         Self {
             chain_id: chain_id.to_owned(),
-            app,
+            queries: DetachedQueries::new(app),
             block_store,
             state_store,
             env,
         }
     }
 
-    /// Runs module query `path` like Go's app gRPC client would see it:
-    /// the view is built under the app lock, the handler runs without it.
     async fn query<Req, Resp>(&self, path: &'static str, req: &Req) -> Result<Resp, StateError>
     where
         Req: prost::Message,
         Resp: prost::Message + Default,
     {
-        let data = req.encode_to_vec();
-        let app = Arc::clone(&self.app);
-        let res = tokio::task::spawn_blocking(move || {
-            let prepared = app
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .detached_grpc_query(path);
-            prepared.and_then(|q| q.run(&data))
-        })
-        .await
-        .map_err(|e| StateError::other(format!("query task failed: {e}")))?;
-        match res {
-            Ok((bytes, _)) => Resp::decode(bytes.as_slice()).map_err(|e| {
-                StateError::other(format!(
-                    "rpc error: code = Internal desc = grpc: failed to unmarshal the received message: {e}"
-                ))
-            }),
-            Err(e) => Err(grpc_error(&e)),
-        }
+        self.queries.query(path, req).await
     }
 
     async fn validators_at(&self, height: Option<u64>) -> Result<ValidatorSet, StateError> {
@@ -814,6 +861,40 @@ mod tests {
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Box::pin(async { Err(SignerError("remote signer connection: hung up".into())) })
         }
+    }
+
+    /// At most [`MAX_VIEW_PREPARATIONS`] queries wait on the app lock at
+    /// once; the rest wait in async code, holding no blocking thread.
+    #[test]
+    fn view_preparations_are_bounded() {
+        let app = Arc::new(Mutex::new(app::App::new()));
+        let queries = Arc::new(DetachedQueries::new(Arc::clone(&app)));
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let held = app.lock().unwrap();
+        let tasks: Vec<_> = (0..8)
+            .map(|_| {
+                let q = Arc::clone(&queries);
+                rt.spawn(async move {
+                    q.query::<_, fibre_pb::QueryParamsResponse>(
+                        "/celestia.fibre.v1.Query/Params",
+                        &fibre_pb::QueryParamsRequest {},
+                    )
+                    .await
+                })
+            })
+            .collect();
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(queries.preparing(), MAX_VIEW_PREPARATIONS);
+        drop(held);
+        for t in tasks {
+            // No block is committed: every query fails like Go's would.
+            assert!(rt.block_on(t).unwrap().is_err());
+        }
+        assert_eq!(queries.preparing(), 0);
     }
 
     /// Once the signer reports a permanent failure, the supervisor stops
