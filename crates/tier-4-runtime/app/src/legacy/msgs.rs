@@ -213,6 +213,9 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
     if let Some(r) = super::ibc_transfer::validate_basic(msg) {
         return r;
     }
+    if let Some(r) = super::ibc_timeout::validate_basic(msg) {
+        return r;
+    }
     if let Some(r) = super::ibc::validate_basic(msg) {
         return r;
     }
@@ -332,6 +335,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
         return r;
     }
     if let Some(r) = super::ibc_transfer::route(ctx, msg) {
+        return r;
+    }
+    if let Some(r) = super::ibc_timeout::route(ctx, msg) {
         return r;
     }
     if let Some(r) = super::authz::route(ctx, msg) {

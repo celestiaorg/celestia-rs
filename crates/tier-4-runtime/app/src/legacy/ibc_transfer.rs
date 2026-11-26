@@ -215,7 +215,7 @@ fn send_transfer(
 }
 
 /// `Packet.ValidateBasic` (v6).
-fn validate_packet(p: &Packet) -> Result<()> {
+pub(super) fn validate_packet(p: &Packet) -> Result<()> {
     host::port_identifier_validator(&p.source_port)
         .map_err(|e| e.wrap("invalid source port ID"))?;
     host::port_identifier_validator(&p.destination_port)
@@ -507,7 +507,7 @@ fn acknowledge_packet(
 }
 
 /// Go `%v` of a `[]byte`.
-fn go_byte_slice(b: &[u8]) -> String {
+pub(super) fn go_byte_slice(b: &[u8]) -> String {
     let parts: Vec<String> = b.iter().map(u8::to_string).collect();
     format!("[{}]", parts.join(" "))
 }
@@ -601,7 +601,11 @@ fn on_acknowledgement_packet(ctx: &mut Context<'_>, p: &Packet, ack_bz: &[u8]) -
 
 /// Transfer `refundPacketToken` (v6: no total-escrow tracking). Only the
 /// unescrow of a native token is ported.
-fn refund_packet_token(ctx: &mut Context<'_>, p: &Packet, data: &tr::PacketData) -> Result<()> {
+pub(super) fn refund_packet_token(
+    ctx: &mut Context<'_>,
+    p: &Packet,
+    data: &tr::PacketData,
+) -> Result<()> {
     let trace = tr::parse_denom_trace(&data.denom);
     let amount = sdk::coins::Amount::parse(&data.amount).map_err(|_| {
         tr::errors::invalid_amount(&format!(

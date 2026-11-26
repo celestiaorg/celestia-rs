@@ -28,6 +28,7 @@ pub mod consensus_params;
 pub mod genesis;
 pub mod ibc;
 pub mod ibc_channel;
+pub mod ibc_timeout;
 pub mod ibc_transfer;
 pub mod msgs;
 pub mod params;

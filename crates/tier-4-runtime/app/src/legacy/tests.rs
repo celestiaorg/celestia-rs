@@ -2421,3 +2421,41 @@ fn v046_authz_validate_basic() {
         "missing method name: invalid request"
     );
 }
+
+/// ibc-go v6 `MsgTimeout.ValidateBasic`: proof, proof height, next
+/// sequence receive, signer, then the packet.
+#[test]
+fn v6_timeout_validate_basic() {
+    use celestia_proto::ibc::core::channel::v1 as chpb;
+    use celestia_proto::ibc::core::client::v1::Height;
+    let timeout = |h: u64, proof: Vec<u8>, next: u64, seq: u64| {
+        msgs::validate_basic(&celestia_proto::Any::pack(&chpb::MsgTimeout {
+            packet: Some(chpb::Packet {
+                sequence: seq,
+                source_port: "transfer".into(),
+                source_channel: "channel-1".into(),
+                destination_port: "transfer".into(),
+                destination_channel: "channel-0".into(),
+                data: vec![1],
+                timeout_height: None,
+                timeout_timestamp: 1,
+            }),
+            proof_unreceived: proof,
+            proof_height: Some(Height {
+                revision_number: 0,
+                revision_height: h,
+            }),
+            next_sequence_recv: next,
+            signer: x_auth::bech32(&[1; 20]).unwrap(),
+        }))
+    };
+    timeout(1, vec![1], 1, 1).unwrap();
+    let e = timeout(1, Vec::new(), 1, 1).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("commitment", 2), "{}", e.log);
+    let e = timeout(0, vec![1], 1, 1).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 26), "{}", e.log);
+    let e = timeout(1, vec![1], 0, 1).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 3), "{}", e.log);
+    let e = timeout(1, vec![1], 1, 0).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("channel", 13), "{}", e.log);
+}
