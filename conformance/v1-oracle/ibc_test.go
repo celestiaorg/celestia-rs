@@ -620,6 +620,13 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 		t.Fatalf("reopened account %s, want %s", addr, icaAddr)
 	}
 	sendICA(banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 2))))
+	// A multi-send from the account (its signers are every input).
+	sendICA(banktypes.NewMsgMultiSend(
+		[]banktypes.Input{banktypes.NewInput(icaAcc, sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 30)))},
+		[]banktypes.Output{
+			banktypes.NewOutput(chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 10))),
+			banktypes.NewOutput(chainA.SenderAccounts[2].SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 20))),
+		}))
 	// A last empty block commits the last transaction's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc

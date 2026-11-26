@@ -33,8 +33,8 @@
 //! Then an interchain account packet times out on B, so the ordered
 //! channel closes (block 115: `MsgChannelCloseConfirm`), B registers
 //! again and A reopens the same account on a new channel (blocks 117 and
-//! 120) and executes a send over it (block 122). The fixture keeps its
-//! `ibc-v2` name.
+//! 120) and executes a send over it (block 122), then a multi-send
+//! (block 125). The fixture keeps its `ibc-v2` name.
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::print_stdout)]
 
@@ -47,7 +47,7 @@ fn fix() -> Fixture {
 }
 
 /// The last block that celestia-rs executes as Go does: every block.
-const MATCHED_THROUGH: i64 = 124;
+const MATCHED_THROUGH: i64 = 127;
 
 /// The fixture files are the ones the oracle wrote.
 #[test]
@@ -71,7 +71,7 @@ fn ibc_fixture_files_match_their_record() {
         r["kv"]["kv-diffs.jsonl"],
         sha(&f.gunzip("kv-diffs.jsonl.gz"))
     );
-    assert_eq!(f.last_height(), 124);
+    assert_eq!(f.last_height(), 127);
 }
 
 #[test]
