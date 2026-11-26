@@ -193,6 +193,12 @@ fn sync_node(home: &Path, archive: &Arc<Reactor>, stop_height: i64) -> nodestore
         &shutdown,
     )
     .unwrap();
+    let t = client.timings();
+    eprintln!(
+        "synced {} blocks: {:?} total, per phase {t:?}",
+        t.blocks,
+        t.total()
+    );
     // Break the reactor <-> network cycle so the stores close.
     net.reactors.write().unwrap().clear();
     let stopped = net.stopped.lock().unwrap().clone();

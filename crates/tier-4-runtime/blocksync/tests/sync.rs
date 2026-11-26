@@ -939,3 +939,20 @@ fn header_app_version_is_enforced_after_switch() {
         "{stopped:?}"
     );
 }
+
+#[test]
+fn phase_timings_cover_every_synced_block() {
+    let (g, server, _) = chain(15, 0);
+    let mut client = open_node(&g, TestApp::default());
+    let net = Arc::new(Net::default());
+    reactor_for(&server, "server", &net);
+    let rc = reactor_for(&client, "client", &net);
+    connect(&net, "server", "client");
+    let out = sync(&mut client, &rc);
+    let t = rc.timings();
+    assert_eq!(t.blocks, out.blocks_synced);
+    assert_eq!(t.blocks, 14);
+    assert!(t.apply > std::time::Duration::ZERO);
+    assert!(t.verify_commit > std::time::Duration::ZERO);
+    assert!(t.total() >= t.apply);
+}
