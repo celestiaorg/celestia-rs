@@ -442,6 +442,36 @@ holds heights 0 to 32 (regenerate it as the governance chain, with
 `-chain staking-v1-v3`). `cargo test -p app --test staking_oracle` compares each
 block.
 
+#### State-sync snapshots of the v0.46 chains
+
+`v1-oracle -snapshot-at h1,h2,...` writes a cosmos-sdk v0.46 state-sync
+snapshot of each height right after it commits, with that height's store
+set, through the SDK's own snapshot manager (format 2: the multistore's
+IAVL export as delimited `SnapshotItem`s, zlib level 7, 10 MB chunks), as
+`celestia-appd` and `snapshots export` write them. Chunk `i` of height `h`
+is `<dir>/<h>/2/<i>` (`-snapshot-dir`, default `<out>/snapshots`); the
+store's `metadata.db` index is not part of the fixtures. The flag does not
+change any other output.
+
+[`fixtures/synthetic/v1-v3-snapshots`](fixtures/synthetic/v1-v3-snapshots)
+(heights 3, 5, 7, 12),
+[`staking-v1-v3-snapshots`](fixtures/synthetic/staking-v1-v3-snapshots)
+(9, 13, 27) and [`ibc-v2-snapshots`](fixtures/synthetic/ibc-v2-snapshots)
+(39, 72, 100, 120, written by `TestIBCFixture`) hold them;
+`TestSnapshotFixturesAreReproducible` and `TestIBCFixture` require them
+byte for byte. `cargo test -p app --test snapshot_v046_oracle` restores
+each into a fresh app through `OfferSnapshot` and `ApplySnapshotChunk`,
+requires the oracle's app hash at the snapshot height, and executes every
+later block of the chain with the oracle's app hash and transaction
+results. To regenerate the synthetic ones:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -chain v1-v3 -out "$OUT/a" -snapshot-at 3,5,7,12
+GOFLAGS=-mod=mod go run . -synthetic -chain staking-v1-v3 -out "$OUT/b" -snapshot-at 9,13,27
+# copy "$OUT"/a/snapshots/<h>/2/* to ../fixtures/synthetic/v1-v3-snapshots/<h>/2/, and so on
+```
+
 #### IBC chain for app version 2
 
 Mainnet's v2 and v3 eras carry interchain account host packets (27,031

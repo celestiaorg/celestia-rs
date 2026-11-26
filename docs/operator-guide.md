@@ -948,6 +948,25 @@ celestia-rs start --home ~/.celestia-rs/mainnet-genesis \
 `scripts/mainnet-genesis-blocksync.sh` does the same on a VM
 (`ARCHIVE_PEERS=… scripts/mainnet-genesis-blocksync.sh [stop-height]`).
 
+To start from a later height instead, restore a Go state-sync snapshot and
+follow the network from there. `celestia-rs follow --snapshot <dir>`
+restores `<dir>/<height>/<format>/<chunk>` (Go's snapshot layout):
+format 2 for the cosmos-sdk v0.46 states of app versions 1 to 3 (heights
+below 6,680,340), format 3 after. The restored app hash must equal header
+`<height>+1`'s; the light client supplies the validators, consensus
+params and commit at the snapshot height; then each block executes and
+must match the next signed header. On a VM:
+
+```sh
+RPC=https://<archive-rpc>[,<witness-rpc>] TRUST_HASH=<header hash at H> \
+  scripts/mainnet-snapshot-follow.sh <snapshot-dir> <H> [stop-height]
+```
+
+The RPC servers must still hold height `H` (archive nodes for old
+heights). The script sets a long `--trust-period-hours`, because the light
+client measures the trusting period from now and an old header is years
+old; the trust itself comes from `TRUST_HASH` (or the primary's header).
+
 - **Archive peers.** Block sync asks a peer only for heights inside the
   `[base, height]` range it reports. Most public peers prune old blocks,
   so the node needs at least one persistent peer whose block store starts

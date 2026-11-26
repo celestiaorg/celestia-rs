@@ -28,7 +28,8 @@
 //!
 //! The first start bootstraps from a Go SDK state-sync snapshot on disk
 //! (`<dir>/<height>/<format>/<chunk>`, as Go writes them to
-//! `data/snapshots`), verified like state sync: the light client
+//! `data/snapshots`: format 3 from app version 4, format 2 for the
+//! cosmos-sdk v0.46 states of app versions 1 to 3), verified like state sync: the light client
 //! establishes the trusted header at the snapshot height and the restored
 //! app hash must equal header `h+1`'s. Without a snapshot, a fresh home
 //! initializes from its independently supplied `config/genesis.json`,
@@ -318,7 +319,12 @@ fn read_snapshot(root: &Path, want: Option<u64>) -> anyhow::Result<LocalSnapshot
             .last()
             .ok_or_else(|| anyhow!("no snapshot in {}", root.display()))?,
     };
-    let format = snapshots::CURRENT_FORMAT;
+    // Go writes `<height>/<format>`: format 3 (cosmos-sdk v0.50, app
+    // version 4 on) or format 2 (cosmos-sdk v0.46, app versions 1 to 3).
+    let format = [snapshots::CURRENT_FORMAT, snapshots::FORMAT_V046]
+        .into_iter()
+        .find(|f| root.join(height.to_string()).join(f.to_string()).is_dir())
+        .unwrap_or(snapshots::CURRENT_FORMAT);
     let dir = root.join(height.to_string()).join(format.to_string());
     let mut chunks: Vec<u32> = std::fs::read_dir(&dir)
         .with_context(|| format!("read {}", dir.display()))?
@@ -1336,6 +1342,23 @@ mod tests {
         assert!(read_snapshot(dir.path(), Some(7)).is_err());
         std::fs::remove_file(fmt.join("0")).unwrap_or_else(|e| panic!("{e}"));
         assert!(read_snapshot(dir.path(), Some(1500)).is_err());
+    }
+
+    /// A cosmos-sdk v0.46 snapshot (format 2, celestia-app v1 to v3) is
+    /// read from `<height>/2`; format 3 wins when both exist.
+    #[test]
+    fn local_snapshot_formats() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let v046 = dir.path().join("500").join("2");
+        std::fs::create_dir_all(&v046).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(v046.join("0"), b"v046").unwrap_or_else(|e| panic!("{e}"));
+        let s = read_snapshot(dir.path(), None).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!((s.snapshot.height, s.snapshot.format), (500, 2));
+        let v050 = dir.path().join("500").join("3");
+        std::fs::create_dir_all(&v050).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(v050.join("0"), b"v050").unwrap_or_else(|e| panic!("{e}"));
+        let s = read_snapshot(dir.path(), Some(500)).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(s.snapshot.format, 3);
     }
 
     /// A block with duplicate-vote evidence survives the RPC JSON (our
