@@ -7,8 +7,10 @@ use sdk::{Context, Result};
 use x_upgrade::VersionMap;
 
 /// `ModuleManager.GetVersionMap` of celestia-app v4.1.0: its modules and
-/// consensus versions (`interchainaccounts` is not registered; crisis and
-/// qgb are gone, their stale entries stay in the stored map).
+/// consensus versions. `capability` and `interchainaccounts` are not in
+/// the module manager, and crisis and qgb are gone: their stored entries
+/// stay as they were (the oracle's IAVL export shows the `capability`,
+/// `crisis` and `qgb` leaves keep their old version).
 pub const VERSION_MAP: &[(&str, u64)] = &[
     ("06-solomachine", 0),
     ("07-tendermint", 0),
@@ -16,7 +18,6 @@ pub const VERSION_MAP: &[(&str, u64)] = &[
     ("authz", 2),
     ("bank", 4),
     ("blob", 3),
-    ("capability", 1),
     ("circuit", 1),
     ("consensus", 1),
     ("distribution", 4),

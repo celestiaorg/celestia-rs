@@ -445,9 +445,13 @@ func (s *synth) committed(id cmttypes.BlockID, res *abci.ResponseFinalizeBlock) 
 	}
 	s.vals[height+2] = next
 	out := []ValidatorUpdate{}
-	for _, u := range res.ValidatorUpdates {
-		pk := u.PubKey.GetEd25519()
-		out = append(out, ValidatorUpdate{PubKeyType: "ed25519", PubKey: upper(pk), Power: u.Power})
+	for _, u := range updates {
+		out = append(out, ValidatorUpdate{
+			Address:    upper(u.Address),
+			PubKeyType: u.PubKey.Type(),
+			PubKey:     upper(u.PubKey.Bytes()),
+			Power:      u.VotingPower,
+		})
 	}
 	return out, nil
 }
