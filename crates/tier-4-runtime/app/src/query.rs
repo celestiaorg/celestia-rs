@@ -735,6 +735,48 @@ mod tests {
         assert_eq!(app.query(&request), legacy);
     }
 
+    /// A detached query pins its version only while it lives: pruning
+    /// passes the version once the query is dropped, also when the thread
+    /// holding it panics.
+    #[test]
+    fn detached_query_pins_its_version_until_dropped() {
+        let mut app = App::new();
+        app.execution_version = Some(11);
+        app.set_pruning(multistore::PruningOptions::latest_only());
+        let commit = |app: &mut App, i: u8| {
+            app.ms.set("bank", vec![i], vec![i]).expect("set key");
+            app.ms.flush().expect("flush");
+            app.last_height = app.ms.commit().expect("commit").version;
+        };
+        let bank = "/cosmos.bank.v1beta1.Query/Params";
+        for (i, panics) in [(1u8, false), (10, true)] {
+            commit(&mut app, i);
+            let v = app.last_height;
+            let q = app.detached_grpc_query(bank).expect("prepare");
+            assert_eq!(q.height(), v);
+            commit(&mut app, i + 1);
+            commit(&mut app, i + 2);
+            assert!(
+                app.ms.root().available_versions().contains(&v),
+                "pinned version {v} pruned"
+            );
+            if panics {
+                let t = std::thread::spawn(move || {
+                    let _q = q;
+                    panic!("handler panicked");
+                });
+                assert!(t.join().is_err());
+            } else {
+                q.run(&[]).expect("query");
+            }
+            commit(&mut app, i + 3);
+            assert!(
+                !app.ms.root().available_versions().contains(&v),
+                "version {v} kept after its query was dropped (panic: {panics})"
+            );
+        }
+    }
+
     #[test]
     fn detached_grpc_query_matches_the_locked_path() {
         let mut app = App::new();
