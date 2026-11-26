@@ -23,6 +23,14 @@
 //! fail with error acknowledgements: one signed by another account
 //! (block 85) and one whose send exceeds the balance (block 88, which
 //! rolls back its delegation too).
+//!
+//! Then a sender creates a validator with 100 times the genesis
+//! validators' power (block 90), signals version 3 (block 91) and sends
+//! `MsgTryUpgrade` (block 92); the EndBlocker of block 95 sets app
+//! version 3. At app version 3: a transfer to B (block 96), a PFM
+//! forward from B to C (block 102, acknowledged in block 107) and an
+//! interchain account delegation to the new validator (block 110). The
+//! fixture keeps its `ibc-v2` name.
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::print_stdout)]
 
@@ -35,7 +43,7 @@ fn fix() -> Fixture {
 }
 
 /// The last block that celestia-rs executes as Go does: every block.
-const MATCHED_THROUGH: i64 = 90;
+const MATCHED_THROUGH: i64 = 112;
 
 /// The fixture files are the ones the oracle wrote.
 #[test]
@@ -59,7 +67,7 @@ fn ibc_fixture_files_match_their_record() {
         r["kv"]["kv-diffs.jsonl"],
         sha(&f.gunzip("kv-diffs.jsonl.gz"))
     );
-    assert_eq!(f.last_height(), 90);
+    assert_eq!(f.last_height(), 112);
 }
 
 #[test]

@@ -340,6 +340,11 @@ ibc-go simapp chains as counterparties:
   transactions fail on A with error acknowledgements: a message signed
   by another account, and a send of more than the account holds (after
   a delegation that is rolled back with it).
+- A sender creates a validator with 100 times the genesis validators'
+  power and signals version 3 (chain ID `test` has a 3 block upgrade
+  delay), so A reaches app version 3 at block 95. Then a transfer to B,
+  a PFM forward from B to C and an interchain account delegation run at
+  app version 3. The fixture keeps its `ibc-v2` name.
 
 The test records A's genesis, each BeginBlock header and the
 transactions of each block. It replays them in a fresh app through the
@@ -348,7 +353,7 @@ run's. Each block gets one BeginBlock at one time (ibctesting re-runs
 BeginBlock when its clock moves, which no consensus engine does), so
 the clients that A hosts allow an hour of clock drift. The blocks carry
 no last commit. [`fixtures/synthetic/ibc-v2`](fixtures/synthetic/ibc-v2)
-holds heights 0 to 90; the test requires it byte for byte. To
+holds heights 0 to 112; the test requires it byte for byte. To
 regenerate it:
 
 ```sh

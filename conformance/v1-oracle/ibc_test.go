@@ -3,7 +3,7 @@ package main
 // The IBC fixture (`go test -run TestIBCFixture`): celestia-app v3.13.0
 // as chain A of an ibc-go v6 ibctesting coordinator, with two ibc-go
 // simapp chains (B and C) as counterparties, so that celestia-rs can
-// check the app version 2 IBC paths that mainnet uses: the interchain
+// check the app version 2 and 3 IBC paths that mainnet uses: the interchain
 // accounts host and packet-forward-middleware forwarding.
 //
 // Chain A starts at app version 1 and crosses the v1 to v2 upgrade
@@ -31,6 +31,7 @@ import (
 	"github.com/celestiaorg/celestia-app/v3/app"
 	"github.com/celestiaorg/celestia-app/v3/app/encoding"
 	"github.com/celestiaorg/celestia-app/v3/pkg/appconsts"
+	signaltypes "github.com/celestiaorg/celestia-app/v3/x/signal/types"
 	"github.com/cosmos/cosmos-sdk/client"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
@@ -564,9 +565,91 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 		stakingtypes.NewMsgDelegate(icaAcc, val, sdk.NewInt64Coin(appconsts.BondDenom, 1_000_000)),
 		banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 1_000_000_000))),
 	)
-	// A last empty block commits the relayed acknowledgement's block.
+
+	runV3(t, coord, chainA, chainB, chainC, pathAB, pathAC, voucher, timeout, sendICA, icaAcc)
+	// A last empty block commits the last transaction's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc
+}
+
+// runV3 upgrades chain A to app version 3 through x/signal and repeats
+// the IBC traffic there. The genesis validators have no account keys,
+// so a sender account creates a validator with 100 times their power
+// (over the 5/6 quorum alone) and signals version 3; with chain ID
+// "test" the upgrade height is 3 blocks after MsgTryUpgrade. At app
+// version 3: a transfer to B, a PFM forward from B to C, and an
+// interchain account delegation.
+func runV3(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB, chainC *ibctesting.TestChain,
+	pathAB, pathAC *ibctesting.Path, voucher string, timeout clienttypes.Height,
+	sendICA func(msgs ...proto.Message), icaAcc sdk.AccAddress,
+) {
+	sender, senderKey := chainA.SenderAccount, chainA.SenderPrivKey
+	chainA.SenderAccount, chainA.SenderPrivKey = chainA.SenderAccounts[1].SenderAccount, chainA.SenderAccounts[1].SenderPrivKey
+	operatorAcc := chainA.SenderAccount.GetAddress()
+	operator := sdk.ValAddress(operatorAcc)
+	pv := mock.PV{PrivKey: cosmosed25519.GenPrivKeyFromSecret([]byte(ibcChainA + " validator v3"))}
+	tmPK, err := pv.GetPubKey()
+	must(t, err)
+	chainA.Signers[tmPK.Address().String()] = pv
+	createVal, err := stakingtypes.NewMsgCreateValidator(operator, pv.PrivKey.PubKey(),
+		sdk.NewCoin(appconsts.BondDenom, sdk.TokensFromConsensusPower(100, sdk.DefaultPowerReduction)),
+		stakingtypes.NewDescription("v3", "", "", "", ""),
+		stakingtypes.NewCommissionRates(sdk.NewDecWithPrec(1, 1), sdk.NewDecWithPrec(2, 1), sdk.NewDecWithPrec(1, 2)),
+		sdk.OneInt())
+	must(t, err)
+	_, err = chainA.SendMsgs(createVal)
+	must(t, err)
+	_, err = chainA.SendMsgs(signaltypes.NewMsgSignalVersion(operator, 3))
+	must(t, err)
+	_, err = chainA.SendMsgs(signaltypes.NewMsgTryUpgrade(operatorAcc))
+	must(t, err)
+	chainA.SenderAccount, chainA.SenderPrivKey = sender, senderKey
+	for i := 0; chainA.CurrentHeader.Version.App != 3; i++ {
+		if i == 5 {
+			t.Fatalf("chain A still at app version %d", chainA.CurrentHeader.Version.App)
+		}
+		nextBlockWithVersion(chainA)
+	}
+
+	// A to B at app version 3.
+	res, err := chainA.SendMsgs(transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		sdk.NewInt64Coin(appconsts.BondDenom, 200_000), chainA.SenderAccount.GetAddress().String(),
+		chainB.SenderAccount.GetAddress().String(), timeout, 0, ""))
+	must(t, err)
+	packet, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAB.EndpointB.UpdateClient())
+	must(t, pathAB.RelayPacket(packet))
+
+	// B back to A, forwarded to C and acknowledged.
+	res, err = chainB.SendMsgs(transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointB.ChannelID,
+		sdk.NewInt64Coin(voucher, 20_000), chainB.SenderAccount.GetAddress().String(),
+		chainA.SenderAccount.GetAddress().String(), timeout, 0,
+		fmt.Sprintf(`{"forward":{"receiver":"%s","port":"transfer","channel":"%s"}}`, chainC.SenderAccount.GetAddress(), pathAC.EndpointA.ChannelID)))
+	must(t, err)
+	inbound, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAB.EndpointA.UpdateClient())
+	res, err = pathAB.EndpointA.RecvPacketWithResult(inbound)
+	must(t, err)
+	forwarded, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAC.EndpointB.UpdateClient())
+	res, err = pathAC.EndpointB.RecvPacketWithResult(forwarded)
+	must(t, err)
+	ack, err := ibctesting.ParseAckFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAC.EndpointA.UpdateClient())
+	ackProof, ackProofHeight := chainC.QueryProof(host.PacketAcknowledgementKey(forwarded.GetDestPort(), forwarded.GetDestChannel(), forwarded.GetSequence()))
+	res, err = chainA.SendMsgs(channeltypes.NewMsgAcknowledgement(forwarded, ack, ackProof, ackProofHeight, chainA.SenderAccount.GetAddress().String()))
+	must(t, err)
+	inboundAck, err := ibctesting.ParseAckFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAB.EndpointB.UpdateClient())
+	must(t, pathAB.EndpointB.AcknowledgePacket(inbound, inboundAck))
+
+	// The interchain account delegates to the new validator.
+	sendICA(stakingtypes.NewMsgDelegate(icaAcc, operator, sdk.NewInt64Coin(appconsts.BondDenom, 1_000_000)))
 }
 
 // runPFMFailures forwards two more packets from B through A to C that
