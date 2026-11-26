@@ -56,6 +56,7 @@ const WRITE_COST_PER_BYTE: u64 = 30;
 const COMMUNITY_POOL_SPEND: &str = "/cosmos.distribution.v1beta1.CommunityPoolSpendProposal";
 const TEXT_PROPOSAL: &str = "/cosmos.gov.v1beta1.TextProposal";
 const PARAMETER_CHANGE: &str = "/cosmos.params.v1beta1.ParameterChangeProposal";
+const CLIENT_UPDATE: &str = "/ibc.core.client.v1.ClientUpdateProposal";
 
 // ---- keys ---------------------------------------------------------------
 
@@ -360,8 +361,45 @@ fn validate_content(content: &Any) -> Result<()> {
             abstract_(&c.title, &c.description)?;
             super::param_change::validate_changes(&c)
         }
+        CLIENT_UPDATE => {
+            let c: celestia_proto::ibc::core::client::v1::ClientUpdateProposal = decode(content)?;
+            abstract_(&c.title, &c.description)?;
+            if c.subject_client_id == c.substitute_client_id {
+                return Err(x_ibc::errors::client::invalid_substitute(
+                    "subject and substitute client identifiers are equal",
+                ));
+            }
+            parse_client_identifier(&c.subject_client_id)?;
+            parse_client_identifier(&c.substitute_client_id)
+        }
         other => Err(not_ported(format!("gov proposal content {other}"))),
     }
+}
+
+/// ibc-go v6 `ParseClientIdentifier` (`{client-type}-{N}`).
+fn parse_client_identifier(id: &str) -> Result<()> {
+    // `IsClientIDFormat`: `^.*[^\n-]-[0-9]{1,20}$`.
+    let format = id.rsplit_once('-').is_some_and(|(head, n)| {
+        !n.is_empty()
+            && n.len() <= 20
+            && n.bytes().all(|b| b.is_ascii_digit())
+            && head.chars().last().is_some_and(|c| c != '\n' && c != '-')
+            && !head.contains('\n')
+    });
+    if !format {
+        return Err(x_ibc::errors::host::invalid_id(format!(
+            "invalid client identifier {id} is not in format: `{{client-type}}-{{N}}`"
+        )));
+    }
+    let (head, n) = id.rsplit_once('-').unwrap_or_default();
+    if head.trim().is_empty() {
+        return Err(x_ibc::errors::host::invalid_id(
+            "client identifier must be in format: `{client-type}-{N}` and client type cannot be blank",
+        ));
+    }
+    n.parse::<u64>()
+        .map(|_| ())
+        .map_err(|_| not_ported("client identifier sequence beyond uint64"))
 }
 
 /// `MsgSubmitProposal.ValidateBasic` (v1beta1).
@@ -470,6 +508,24 @@ fn run_legacy_content(ctx: &mut Context<'_>, content: &Any) -> Result<()> {
             )
         }
         PARAMETER_CHANGE => super::param_change::handle(ctx, content),
+        // celestia-app v1 `NewClientProposalHandler` → ibc-go v6
+        // `Keeper.ClientUpdateProposal`, up to the subject client's
+        // lookup.
+        CLIENT_UPDATE => {
+            let c: celestia_proto::ibc::core::client::v1::ClientUpdateProposal = decode(content)?;
+            if c.subject_client_id == "09-localhost" || c.substitute_client_id == "09-localhost" {
+                // `ErrInvalidUpdateClientProposal` (client code 24 in v6).
+                return Err(SdkError::new("client", 24, "invalid update client proposal")
+                    .wrap("cannot update localhost client with proposal"));
+            }
+            match x_ibc::client::get_client_state(ctx, &c.subject_client_id)? {
+                None => Err(x_ibc::errors::client::client_not_found(format!(
+                    "subject client with ID {}",
+                    c.subject_client_id
+                ))),
+                Some(_) => Err(not_ported("ibc client update proposal of an existing client")),
+            }
+        }
         other => Err(not_ported(format!("gov proposal content {other}"))),
     }
 }
@@ -480,6 +536,7 @@ fn content_route(content: &Any) -> Result<&'static str> {
         COMMUNITY_POOL_SPEND => Ok("distribution"),
         TEXT_PROPOSAL => Ok("gov"),
         PARAMETER_CHANGE => Ok("params"),
+        CLIENT_UPDATE => Ok("client"),
         other => Err(not_ported(format!("gov proposal content {other}"))),
     }
 }
@@ -500,15 +557,19 @@ fn exec_legacy_content(
         }
         let content = m.content.clone().unwrap_or_default();
         let route = content_route(&content)?;
-        if route != "distribution" && route != "params" {
+        if route != "distribution" && route != "params" && route != "client" {
             return Err(gerr::no_proposal_handler_exists().wrap(route));
         }
         run_legacy_content(ctx, &content).map_err(|e| {
             if e.is_panic() {
                 return e;
             }
+            // Go formats the handler's error with `%+v`: the ibc client
+            // handler's errors carry a stack, printed after a newline
+            // (the oracle drops the frames: they name the build's paths).
+            let sep = if route == "client" { ", \n" } else { ", " };
             gerr::invalid_proposal_content()
-                .wrap(format!("failed to run legacy handler {route}, {}", e.log))
+                .wrap(format!("failed to run legacy handler {route},{}{}", &sep[1..], e.log))
         })
     })();
     let events = std::mem::replace(&mut ctx.events, outer).take();

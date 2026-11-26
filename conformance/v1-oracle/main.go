@@ -61,6 +61,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -576,7 +577,7 @@ func execute(cfg runConfig) error {
 				GasWanted: r.GasWanted,
 				GasUsed:   r.GasUsed,
 				Data:      hex.EncodeToString(r.Data),
-				Log:       r.Log,
+				Log:       stableLog(r.Log),
 				Info:      r.Info,
 				Events:    events(r.Events),
 			})
@@ -1179,3 +1180,19 @@ func sha256Hex(b []byte) string {
 }
 
 func upper(b []byte) string { return strings.ToUpper(hex.EncodeToString(b)) }
+
+// stableLog drops what in a log depends on the machine and the run, which
+// the log (not part of consensus) carries in two cases: the goroutine
+// stack baseapp appends to the log of a recovered panic (code 111222),
+// whose addresses change from run to run, and the stack frames
+// ("<func>\n\t<file>:<line>") that a `%+v` of an error with a recorded
+// stack prints (gov's "failed to run legacy handler" of ibc client
+// proposals), which name the build's module paths.
+func stableLog(log string) string {
+	if i := strings.Index(log, "\nstack:\n"); i >= 0 {
+		log = strings.TrimRight(log[:i], "\n")
+	}
+	return stackFrame.ReplaceAllString(log, "")
+}
+
+var stackFrame = regexp.MustCompile(`(?m)^[^\t\n][^\n]*\n\t[^\n]+\.go:\d+\n`)
