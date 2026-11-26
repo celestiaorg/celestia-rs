@@ -79,7 +79,7 @@ pub const DEFAULT_PROTOCOL_PARAMS: ProtocolParams = ProtocolParams {
 pub struct UnsupportedBlobVersion(pub u8);
 
 fn ceil_div(a: usize, b: usize) -> usize {
-    (a + b - 1) / b
+    a.div_ceil(b)
 }
 
 /// Go `ceilPow2`.
@@ -169,7 +169,7 @@ impl ProtocolParams {
             return Ok(0);
         }
         let row_size = ceil_div(total_len, self.rows);
-        Ok(if row_size % self.min_row_size == 0 {
+        Ok(if row_size.is_multiple_of(self.min_row_size) {
             row_size
         } else {
             (row_size / self.min_row_size + 1) * self.min_row_size
@@ -308,7 +308,7 @@ pub fn go_hex_decode(s: &str) -> Result<Vec<u8>, String> {
     }
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len() / 2);
-    for pair in b.chunks_exact(2) {
+    for pair in b.as_chunks::<2>().0 {
         let hi = val(pair[0]).ok_or_else(|| invalid(pair[0]))?;
         let lo = val(pair[1]).ok_or_else(|| invalid(pair[1]))?;
         out.push((hi << 4) | lo);

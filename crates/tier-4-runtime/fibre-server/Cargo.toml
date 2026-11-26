@@ -16,6 +16,8 @@ workspace = true
 # Go math/rand/v2 ChaCha8 (dependency-free); seeds validator row assignment.
 chacha8rand = "0.1.2"
 crypto = { path = "../../tier-0-primitives/crypto" }
+# OS randomness for the ephemeral TLS key and certificate serial.
+getrandom = "0.3"
 hash = { path = "../../tier-0-primitives/hash" }
 hex = "0.4"
 # rsema1d primitives (RLC extension, coefficient derivation, row RLCs) from

@@ -237,7 +237,10 @@ mod tests {
             env!("CARGO_MANIFEST_DIR")
         );
         let raw = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
-        if name.ends_with(".zst") {
+        if std::path::Path::new(name)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("zst"))
+        {
             zstd::decode_all(raw.as_slice()).expect("zstd")
         } else {
             raw

@@ -291,16 +291,14 @@ fn parse_row(row: &ShardRow<'_>) -> Result<(), ShardError> {
 
 /// `rlc.Unmarshal`: little-endian GF128 values, 16 bytes each.
 pub fn unmarshal_rlcs(src: &[u8]) -> Result<Vec<GF128>, ShardError> {
-    if src.len() % GF128_SIZE != 0 {
+    if !src.len().is_multiple_of(GF128_SIZE) {
         return Err(ShardError::RlcMisaligned(src.len()));
     }
     Ok(src
-        .chunks_exact(GF128_SIZE)
-        .map(|c| {
-            let mut b = [0u8; GF128_SIZE];
-            b.copy_from_slice(c);
-            GF128::from_bytes(&b)
-        })
+        .as_chunks::<GF128_SIZE>()
+        .0
+        .iter()
+        .map(GF128::from_bytes)
         .collect())
 }
 
@@ -312,7 +310,7 @@ fn root_from_proof(leaf: &[u8], index: u32, proof: &[Vec<u8>]) -> [u8; 32] {
     for seg in proof {
         let mut sibling = [0u8; 32];
         sibling.copy_from_slice(seg);
-        current = if pos % 2 == 0 {
+        current = if pos.is_multiple_of(2) {
             hash_internal(&current, &sibling)
         } else {
             hash_internal(&sibling, &current)
@@ -380,7 +378,9 @@ fn rlc_root(rlcs: &[GF128]) -> [u8; 32] {
     let mut level: Vec<[u8; 32]> = rlcs.iter().map(|g| hash_leaf(&g.to_bytes())).collect();
     while level.len() > 1 {
         level = level
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|p| hash_internal(&p[0], &p[1]))
             .collect();
     }
@@ -575,7 +575,9 @@ mod tests {
             "clear_all_data" => rows.iter_mut().for_each(|r| r.data.clear()),
             "clear_row_data" => rows[m.row].data.clear(),
             "resize_all_rows" => {
-                rows.iter_mut().for_each(|r| r.data.resize(arg, 0));
+                for r in rows.iter_mut() {
+                    r.data.resize(arg, 0);
+                }
                 st.upload_size = (arg * DEFAULT_PROTOCOL_PARAMS.rows) as u32;
             }
             "upload_size_delta" => st.upload_size = (i64::from(st.upload_size) + m.arg) as u32,
@@ -594,9 +596,7 @@ mod tests {
             "flip_row_byte" => rows[m.row].data[arg] ^= 1,
             "flip_commitment_byte" => st.commitment[arg] ^= 1,
             "graft_alt_rows" => {
-                for i in m.row..arg {
-                    rows[i] = alt[i - alt_start].clone();
-                }
+                rows[m.row..arg].clone_from_slice(&alt[m.row - alt_start..arg - alt_start]);
             }
             op => panic!("unknown op {op}"),
         }
@@ -668,7 +668,7 @@ mod tests {
             );
             let unassigned = if c.validator_index >= 0 {
                 let mine = assigned.rows(0).expect("validator 0");
-                (0u32..)
+                (0u32..u32::MAX)
                     .find(|i| !mine.contains(i))
                     .expect("unassigned row")
             } else {
