@@ -533,11 +533,14 @@ pub enum NodeSigner {
 impl NodeSigner {
     /// The signer of a `priv_validator_key.json` key.
     pub fn from_key_file(path: &Path) -> anyhow::Result<Self> {
-        let bz = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
-        let key = privval::FilePvKey::from_json(&bz).map_err(|e| anyhow!("{e}"))?;
-        let seed: [u8; 32] = key.priv_key[..32]
-            .try_into()
-            .map_err(|_| anyhow!("short validator key"))?;
+        use zeroize::{Zeroize as _, Zeroizing};
+        let bz = Zeroizing::new(
+            std::fs::read(path).with_context(|| format!("read {}", path.display()))?,
+        );
+        let mut key = privval::FilePvKey::from_json(&bz).map_err(|e| anyhow!("{e}"))?;
+        let mut seed = Zeroizing::new([0u8; 32]);
+        seed.copy_from_slice(&key.priv_key[..32]);
+        key.priv_key.zeroize();
         let signer = fibre_server::tlsid::Ed25519RawBytesSigner::from_seed(&seed);
         if signer.public_key() != key.pub_key {
             bail!(

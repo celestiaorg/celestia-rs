@@ -1261,6 +1261,7 @@ dependencies = [
  "x-upgrade",
  "x-valaddr",
  "x509-parser 0.18.1",
+ "zeroize",
 ]
 
 [[package]]
@@ -2368,6 +2369,7 @@ dependencies = [
  "tracing",
  "x-fibre",
  "x509-parser 0.18.1",
+ "zeroize",
  "zstd",
 ]
 

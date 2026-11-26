@@ -58,6 +58,8 @@ tonic = { version = "=0.12.3", default-features = false }
 tracing = "0.1"
 x-fibre = { path = "../../tier-3-app-modules/x/fibre" }
 x509-parser = "0.18"
+# Wipes the in-process consensus key of Ed25519RawBytesSigner on drop.
+zeroize = "1"
 
 [dev-dependencies]
 # HTTP/2 client that holds upload streams open (tests/memory.rs).
