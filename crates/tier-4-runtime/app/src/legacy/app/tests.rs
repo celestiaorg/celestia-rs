@@ -163,6 +163,13 @@ fn v1_genesis_runs_on_the_v046_driver() {
     let init = app.init_chain(init_request(1)).unwrap();
     assert_eq!(init.app_hash, hash::sha256(&[]).to_vec());
     assert!(app.is_sdk_v046_state());
+    // Info between InitChain and the first commit already reports v1.
+    assert_eq!(app.info().app_version, 1);
+    assert_eq!(
+        app.info().timeout_info,
+        Some(super::super::timeouts(1)),
+        "v1 timeouts before block 1"
+    );
     let hashes = run(&mut app, 1..=2);
     assert_ne!(hashes[0], hashes[1]);
     assert_eq!(store_names(&app), v1_commit_info_names());

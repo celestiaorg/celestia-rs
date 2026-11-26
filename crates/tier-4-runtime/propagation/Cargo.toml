@@ -21,7 +21,6 @@ p2p = { path = "../p2p" }
 privval = { path = "../privval" }
 prost = "0.13"
 rand = "0.9"
-reed-solomon-erasure = "6"
 reed-solomon-simd = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 tracing = "0.1"

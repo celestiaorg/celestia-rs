@@ -466,6 +466,13 @@ impl<M: Modules> Driver<M> {
         }
     }
 
+    /// The app version the driver runs: set by InitChain, or read from the
+    /// state at the first block after a reopen. 0 before either.
+    #[must_use]
+    pub fn app_version(&self) -> u64 {
+        self.app_version
+    }
+
     /// The chain ID a driver opened on committed state requires of every
     /// block header (empty: the first header's).
     pub fn expect_chain_id(&mut self, chain_id: &str) {
