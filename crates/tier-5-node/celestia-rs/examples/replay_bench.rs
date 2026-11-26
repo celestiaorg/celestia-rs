@@ -13,12 +13,23 @@
 //! cargo run --release -p celestia-rs --example replay_bench -- \
 //!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR] \
 //!   [--iavl-cache 781250] [--db-cache-mib 512] [--pruning-interval 1] \
-//!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl]
+//!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl] \
+//!   [--home DIR [--in-place true]] [--blocks-home DIR] [--save-blocks false]
 //! ```
 //!
 //! `--base` holds a home after InitChain (created on first use), so later
 //! runs copy it and skip the genesis import. Profile with
 //! `perf record -g -- target/release/examples/replay_bench ...`.
+//!
+//! Large state: `--home` starts from an existing node home at any height
+//! `H` (for example a node stopped with `start --halt-height H+1`) and
+//! replays `--blocks` blocks from `H + 1`. The home is copied first (next
+//! to it), unless `--in-place true`, which advances it and makes the run
+//! unrepeatable. Blocks come from `--blocks-jsonl`, then from the block
+//! store of `--blocks-home` (a stopped node home past `H + blocks`), then
+//! from the `.pb` cache. `--save-blocks true` also stores each block with
+//! its seen commit (the next block's last commit) before executing it, as
+//! block sync does; this makes the home usable as a `--blocks-home`.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 use std::path::{Path, PathBuf};
@@ -45,6 +56,10 @@ struct Args {
     pruning_interval: u64,
     discard_abci_responses: bool,
     blocks_jsonl: Vec<PathBuf>,
+    home: Option<PathBuf>,
+    in_place: bool,
+    blocks_home: Option<PathBuf>,
+    save_blocks: bool,
 }
 
 fn args() -> anyhow::Result<Args> {
@@ -62,6 +77,10 @@ fn args() -> anyhow::Result<Args> {
         // config.toml `storage.discard_abci_responses` (template: true).
         discard_abci_responses: true,
         blocks_jsonl: Vec::new(),
+        home: None,
+        in_place: false,
+        blocks_home: None,
+        save_blocks: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(k) = it.next() {
@@ -75,6 +94,10 @@ fn args() -> anyhow::Result<Args> {
             "--pruning-interval" => a.pruning_interval = v.parse()?,
             "--discard-abci-responses" => a.discard_abci_responses = v.parse()?,
             "--blocks-jsonl" => a.blocks_jsonl.extend(v.split(',').map(PathBuf::from)),
+            "--home" => a.home = Some(v.into()),
+            "--in-place" => a.in_place = v.parse()?,
+            "--blocks-home" => a.blocks_home = Some(v.into()),
+            "--save-blocks" => a.save_blocks = v.parse()?,
             _ => bail!("unknown argument {k}"),
         }
     }
@@ -84,14 +107,16 @@ fn args() -> anyhow::Result<Args> {
 /// Blocks from `--blocks-jsonl` files (RPC `/block` results, one
 /// `{"height", "result"}` object per line, gzipped or not: the format of
 /// `conformance/fixtures/mainnet/blocks.jsonl.gz` and of the Go
-/// `v1-oracle -blocks` input), then the `.pb` cache.
+/// `v1-oracle -blocks` input), then the block store of `--blocks-home`,
+/// then the `.pb` cache.
 struct Blocks {
     cache: PathBuf,
     json: std::collections::HashMap<i64, Block>,
+    store: Option<nodestore::BlockStore>,
 }
 
 impl Blocks {
-    fn load(cache: PathBuf, files: &[PathBuf]) -> anyhow::Result<Self> {
+    fn load(cache: PathBuf, files: &[PathBuf], home: Option<&Path>) -> anyhow::Result<Self> {
         use std::io::{BufRead as _, BufReader, Read};
         let mut json = std::collections::HashMap::new();
         for file in files {
@@ -110,14 +135,25 @@ impl Blocks {
                 json.insert(height, block);
             }
         }
-        Ok(Self { cache, json })
+        let store = home
+            .map(|h| node::open_stores(h).map(|(bs, _)| bs))
+            .transpose()
+            .context("open --blocks-home")?;
+        Ok(Self { cache, json, store })
     }
 
     fn get(&self, height: i64) -> anyhow::Result<Block> {
-        match self.json.get(&height) {
-            Some(b) => Ok(b.clone()),
-            None => cached_block(&self.cache, height),
+        if let Some(b) = self.json.get(&height) {
+            return Ok(b.clone());
         }
+        if let Some(store) = &self.store
+            && let Some(b) = store
+                .load_block(height)
+                .map_err(|e| anyhow!("--blocks-home block {height}: {e}"))?
+        {
+            return Ok(b);
+        }
+        cached_block(&self.cache, height)
     }
 }
 
@@ -185,8 +221,8 @@ fn percentile(sorted: &[Duration], p: f64) -> f64 {
     sorted.get(i).map_or(0.0, |d| d.as_secs_f64() * 1e3)
 }
 
-fn main() -> anyhow::Result<()> {
-    let a = args()?;
+/// A copy of the `--base` home after InitChain (created on first use).
+fn base_copy(a: &Args) -> anyhow::Result<tempfile::TempDir> {
     if !a.base.join("config/genesis.json").exists() {
         let genesis = a.cache.join("genesis.json");
         celestia_rs::networks::verify_genesis(
@@ -197,17 +233,42 @@ fn main() -> anyhow::Result<()> {
         std::fs::create_dir_all(a.base.join("data"))?;
         std::fs::copy(&genesis, a.base.join("config/genesis.json"))?;
         let t = Instant::now();
-        drop(open(&a.base, &a)?);
+        drop(open(&a.base, a)?);
         println!("init_chain_secs: {:.1}", t.elapsed().as_secs_f64());
     }
     let tmp = tempfile::tempdir_in(a.base.parent().unwrap_or(Path::new(".")))?;
-    let home = tmp.path().join("home");
-    copy_dir(&a.base, &home)?;
-    let (mut exec, mut state) = open(&home, &a)?;
-    ensure!(state.last_block_height == 0, "base home is past genesis");
+    copy_dir(&a.base, &tmp.path().join("home"))?;
+    Ok(tmp)
+}
 
-    let blocks = Blocks::load(a.cache.clone(), &a.blocks_jsonl)?;
-    let mut next = blocks.get(1)?;
+fn main() -> anyhow::Result<()> {
+    let a = args()?;
+    // Holds the copied home until the run ends.
+    let tmp;
+    let home = if let Some(src) = &a.home {
+        if a.in_place {
+            src.clone()
+        } else {
+            tmp = tempfile::tempdir_in(src.parent().unwrap_or(Path::new(".")))?;
+            let home = tmp.path().join("home");
+            let t = Instant::now();
+            copy_dir(src, &home)?;
+            println!("copy_home_secs: {:.1}", t.elapsed().as_secs_f64());
+            home
+        }
+    } else {
+        tmp = base_copy(&a)?;
+        tmp.path().join("home")
+    };
+    let (mut exec, mut state) = open(&home, &a)?;
+    let first = state.last_block_height + 1;
+    if a.home.is_none() {
+        ensure!(first == 1, "base home is past genesis");
+    }
+    println!("first_height: {first}");
+
+    let blocks = Blocks::load(a.cache.clone(), &a.blocks_jsonl, a.blocks_home.as_deref())?;
+    let mut next = blocks.get(first)?;
     let mut times = Vec::new();
     let mut txs = 0usize;
     // Chained SHA-256 of every FinalizeBlock response (tx results with gas
@@ -216,7 +277,7 @@ fn main() -> anyhow::Result<()> {
     // each next header's last_results_hash in validate_block.
     let mut digest = [0u8; 32];
     let started = Instant::now();
-    for h in 1..=a.blocks {
+    for h in first..first + a.blocks {
         let mut block = next;
         next = blocks.get(h + 1)?;
         txs += block.data.txs.len();
@@ -229,6 +290,15 @@ fn main() -> anyhow::Result<()> {
         ensure!(id == next.header.last_block_id, "block id at {h}");
         exec.validate_block(&state, &mut block, consensus::ticker::system_now())
             .map_err(|e| anyhow!("validate {h}: {e}"))?;
+        if a.save_blocks {
+            let commit = next
+                .last_commit
+                .as_ref()
+                .context("next block without last commit")?;
+            exec.block_store
+                .save_block(&mut block, &parts, commit)
+                .map_err(|e| anyhow!("save block {h}: {e}"))?;
+        }
         state = exec
             .apply_verified_block(&state, id, &mut block)
             .map_err(|e| anyhow!("execute {h}: {e}"))?;
@@ -246,7 +316,7 @@ fn main() -> anyhow::Result<()> {
             hex::encode_upper(&state.app_hash),
             hex::encode_upper(&next.header.app_hash)
         );
-        if h % 100 == 0 {
+        if times.len() % 100 == 0 {
             let w = &times[times.len() - 100..];
             let ms = w.iter().sum::<Duration>().as_secs_f64() * 10.0;
             eprintln!("height {h}: {ms:.1} ms/block over the last 100");
