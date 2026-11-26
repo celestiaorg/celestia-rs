@@ -5,6 +5,7 @@
 
 use celestia_proto::Any;
 use celestia_proto::cosmos::bank::v1beta1 as bank;
+use celestia_proto::cosmos::distribution::v1beta1 as distr;
 use celestia_proto::cosmos::staking::v1beta1 as staking;
 use prost::{Message, Name};
 use sdk::coins::Coins;
@@ -238,6 +239,17 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
         validate_create_validator(&decode(msg)?)?;
     } else if msg.type_url == staking::MsgEditValidator::type_url() {
         validate_edit_validator(&decode(msg)?, &msg.value)?;
+    } else if msg.type_url == distr::MsgSetWithdrawAddress::type_url() {
+        let m: distr::MsgSetWithdrawAddress = decode(msg)?;
+        acc_address(&m.delegator_address, "delegator")?;
+        acc_address(&m.withdraw_address, "withdraw")?;
+    } else if msg.type_url == distr::MsgWithdrawDelegatorReward::type_url() {
+        let m: distr::MsgWithdrawDelegatorReward = decode(msg)?;
+        acc_address(&m.delegator_address, "delegator")?;
+        val_address(&m.validator_address, "validator")?;
+    } else if msg.type_url == distr::MsgWithdrawValidatorCommission::type_url() {
+        let m: distr::MsgWithdrawValidatorCommission = decode(msg)?;
+        val_address(&m.validator_address, "validator")?;
     } else if msg.type_url == staking::MsgUndelegate::type_url() {
         let m: staking::MsgUndelegate = decode(msg)?;
         acc_address(&m.delegator_address, "delegator")?;
@@ -281,6 +293,18 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
     }
     if msg.type_url == staking::MsgUndelegate::type_url() {
         return Ok(Any::pack(&undelegate(ctx, &decode(msg)?)?));
+    }
+    if msg.type_url == distr::MsgSetWithdrawAddress::type_url() {
+        return Ok(Any::pack(&set_withdraw_address(ctx, &decode(msg)?)?));
+    }
+    if msg.type_url == distr::MsgWithdrawDelegatorReward::type_url() {
+        return Ok(Any::pack(&withdraw_delegator_reward(ctx, &decode(msg)?)?));
+    }
+    if msg.type_url == distr::MsgWithdrawValidatorCommission::type_url() {
+        return Ok(Any::pack(&withdraw_validator_commission(
+            ctx,
+            &decode(msg)?,
+        )?));
     }
     if msg.type_url == staking::MsgBeginRedelegate::type_url() {
         return Ok(Any::pack(&begin_redelegate(ctx, &decode(msg)?)?));
@@ -613,5 +637,78 @@ fn begin_redelegate(
     staking_message_event(ctx, &msg.delegator_address);
     Ok(staking::MsgBeginRedelegateResponse {
         completion_time: Some(completion),
+    })
+}
+
+fn distribution_message_event(ctx: &mut Context<'_>, sender: &str) {
+    ctx.events.emit(event(
+        "message",
+        [("module", "distribution"), ("sender", sender)],
+    ));
+}
+
+/// distribution `msgServer.SetWithdrawAddress` and keeper
+/// `SetWithdrawAddr` (v0.46: reads only `WithdrawAddrEnabled`).
+fn set_withdraw_address(
+    ctx: &mut Context<'_>,
+    msg: &distr::MsgSetWithdrawAddress,
+) -> Result<distr::MsgSetWithdrawAddressResponse> {
+    let del = server_acc(&msg.delegator_address)?;
+    let to = server_acc(&msg.withdraw_address)?;
+    if x_bank::is_blocked(&to) {
+        return Err(errs::unauthorized(format!(
+            "{} is not allowed to receive external funds",
+            msg.withdraw_address
+        )));
+    }
+    if !x_params::v046::get_bool(ctx, "distribution", "withdrawaddrenabled")? {
+        return Err(x_distribution::errors::set_withdraw_addr_disabled());
+    }
+    ctx.events.emit(event(
+        "set_withdraw_address",
+        [("withdraw_address", x_auth::bech32(&to)?)],
+    ));
+    x_distribution::store::set_withdraw_addr(ctx, &del, &to)?;
+    distribution_message_event(ctx, &msg.delegator_address);
+    Ok(distr::MsgSetWithdrawAddressResponse {})
+}
+
+/// distribution `msgServer.WithdrawDelegatorReward` and keeper
+/// `WithdrawDelegationRewards` (v0.46).
+fn withdraw_delegator_reward(
+    ctx: &mut Context<'_>,
+    msg: &distr::MsgWithdrawDelegatorReward,
+) -> Result<distr::MsgWithdrawDelegatorRewardResponse> {
+    let val = server_val(&msg.validator_address)?;
+    let del = server_acc(&msg.delegator_address)?;
+    let v = x_staking::store::get_validator(ctx, &val)?
+        .ok_or_else(x_distribution::errors::no_validator_dist_info)?;
+    let d = x_staking::store::get_delegation(ctx, &del, &val)?
+        .ok_or_else(x_distribution::errors::empty_delegation_dist_info)?;
+    let rewards = x_distribution::keeper::withdraw_delegation_rewards(ctx, &v, &d, true)?;
+    // Zero rewards are one coin of the unregistered base denom ("").
+    let amount = if rewards.is_empty() {
+        vec![celestia_proto::cosmos::base::v1beta1::Coin {
+            denom: String::new(),
+            amount: "0".to_owned(),
+        }]
+    } else {
+        rewards.to_proto()
+    };
+    x_distribution::keeper::initialize_delegation(ctx, &val, &del)?;
+    distribution_message_event(ctx, &msg.delegator_address);
+    Ok(distr::MsgWithdrawDelegatorRewardResponse { amount })
+}
+
+/// distribution `msgServer.WithdrawValidatorCommission` (v0.46).
+fn withdraw_validator_commission(
+    ctx: &mut Context<'_>,
+    msg: &distr::MsgWithdrawValidatorCommission,
+) -> Result<distr::MsgWithdrawValidatorCommissionResponse> {
+    let val = server_val(&msg.validator_address)?;
+    let amount = x_distribution::keeper::withdraw_validator_commission(ctx, &val)?;
+    distribution_message_event(ctx, &msg.validator_address);
+    Ok(distr::MsgWithdrawValidatorCommissionResponse {
+        amount: amount.to_proto(),
     })
 }
