@@ -284,7 +284,7 @@ fn withdraw_without_delegation_follows_the_release() {
         .unwrap();
         let err =
             crate::keeper::withdraw_delegation_rewards_for(&mut ctx, &[2u8; 20], &op).unwrap_err();
-        assert_eq!((&*err.codespace, err.code), (codespace, code), "v{version}");
+        assert_eq!((err.codespace, err.code), (codespace, code), "v{version}");
     }
     sdk::version::set_app_version(prev);
 }
