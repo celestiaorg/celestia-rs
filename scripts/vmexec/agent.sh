@@ -248,9 +248,9 @@ daemon() {
 }
 
 # --- jobs -------------------------------------------------------------------------
-# vmx-job start NAME [--restart] [--interval S] [--status-cmd CMD] -- COMMAND...
+# vmx-job start NAME [--restart] [--boot] [--interval S] [--status-cmd CMD] -- COMMAND...
 # vmx-job stop NAME | status NAME | logs NAME [LINES] | list
-# A job is a systemd service (vmxjob-NAME) that survives reboots, logging to
+# A job is a systemd service (vmxjob-NAME), started at every boot with --boot, logging to
 # /var/lib/vmexec/jobs/NAME/log. Every interval (default 60 s) the agent
 # publishes vmx/job-NAME: the unit state, the status command's output and
 # the log's last lines.
@@ -295,16 +295,17 @@ job() {
   case $cmd in
     list) ls "$ROOT/jobs" 2>/dev/null; return ;;
     start | stop | status | logs | remove) vmx_valid job "$name" || { echo "invalid job name: $name" >&2; return 2; } ;;
-    *) echo "usage: vmx-job start NAME [--restart] [--interval S] [--status-cmd CMD] -- COMMAND... | stop NAME | status NAME | logs NAME [LINES] | remove NAME | list" >&2; return 2 ;;
+    *) echo "usage: vmx-job start NAME [--restart] [--boot] [--interval S] [--status-cmd CMD] -- COMMAND... | stop NAME | status NAME | logs NAME [LINES] | remove NAME | list" >&2; return 2 ;;
   esac
   shift 2
   local j=$ROOT/jobs/$name unit=vmxjob-$name
   case $cmd in
     start)
-      local restart=no interval=60 status_cmd=''
+      local restart=no interval=60 status_cmd='' boot=0
       while (($#)); do
         case $1 in
           --restart) restart=on-failure; shift ;;
+          --boot) boot=1; shift ;; # also start at every boot (default: this boot only)
           --interval) interval=$2; shift 2 ;;
           --status-cmd) status_cmd=$2; shift 2 ;;
           --) shift; break ;;
@@ -323,7 +324,8 @@ job() {
         (cd "$j" && setsid bash "$j/cmd" >>"$j/log" 2>&1 </dev/null & echo $! >"$j/pid")
       else
         vmx_job_unit "$name" "$j/cmd" "$j/log" "$restart" >"/etc/systemd/system/$unit.service"
-        systemctl daemon-reload && systemctl enable --now "$unit" >/dev/null 2>&1 || return 1
+        systemctl daemon-reload || return 1
+        if ((boot)); then systemctl enable --now "$unit" >/dev/null 2>&1 || return 1; else systemctl start "$unit" || return 1; fi
       fi
       echo 0 >"$j/published" # publish on the agent's next pass
       echo "started job $name"

@@ -59,8 +59,10 @@ $V delete rs-1
 - `build` installs build-essential, clang, protobuf and rustup, then runs
   cargo in `/opt/celestia-rs` (`-- CARGO_ARGS` overrides the arguments).
 - `job` manages long-running commands as real systemd services
-  (`vmxjob-<name>`, survive reboots, log to
-  `/var/lib/vmexec/jobs/<name>/log`). `--restart` restarts on failure.
+  (`vmxjob-<name>`, log to
+  `/var/lib/vmexec/jobs/<name>/log`). `--restart` restarts on failure;
+  `--boot` also starts the job at every boot (only for jobs that resume
+  safely: a one-shot command that truncates its output would start over).
   Every `--interval` seconds the agent publishes the unit state, the
   `--status-cmd` output (run in the job directory, so `log` is the job log)
   and the last 25 log lines as guest attribute `vmx/job-<name>`.

@@ -46,7 +46,7 @@ vmexec=1 and a maximum run duration after which Compute Engine deletes it.
   vmexec build NAME [--dest /opt/celestia-rs] [--timeout 10800] [-- CARGO_ARGS...]
       Install the Rust toolchain and build deps, then `cargo build --release
       --locked -p celestia-rs` (or CARGO_ARGS) in --dest.
-  vmexec job NAME start JOB [--restart] [--interval S] [--status-cmd CMD] -- COMMAND...
+  vmexec job NAME start JOB [--restart] [--boot] [--interval S] [--status-cmd CMD] -- COMMAND...
   vmexec job NAME stop|remove|logs JOB
   vmexec job NAME status JOB     Published job state (no round trip to the VM).
   vmexec status NAME             Agent heartbeat and job states.
