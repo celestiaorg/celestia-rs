@@ -91,8 +91,10 @@ struct UpgradePlan {
 }
 
 /// Why a faithful Go checkpoint before each window cannot replay.
-/// Versions 9 and 10 have no structural blocker. App v1 starts at genesis.
-const EXPECTED_BLOCKERS: [(u64, &[&str]); 8] = [
+/// Versions 9 and 10 have no structural blocker. App v1 starts at genesis
+/// and executes on the cosmos-sdk v0.46 driver.
+const EXPECTED_BLOCKERS: [(u64, &[&str]); 9] = [
+    (1, &[]),
     (2, &["no public pre-state at height 2371494"]),
     (3, &["no public pre-state at height 2993219"]),
     (
@@ -523,6 +525,18 @@ fn commit_info_hash(stores: &BTreeMap<String, String>) -> anyhow::Result<Vec<u8>
 /// then lists what stops celestia-rs from replaying the window from it.
 fn replay_blockers(window: &Window) -> anyhow::Result<Vec<String>> {
     let height = window.start_height - 1;
+    if height == 0 {
+        // Genesis: the window executes from InitChain when its app
+        // version runs as itself on the v0.46 driver.
+        return Ok(if app::legacy::executes(window.app_version) {
+            Vec::new()
+        } else {
+            vec![format!(
+                "app version {} does not execute from genesis",
+                window.app_version
+            )]
+        });
+    }
     let Some(pre) = &window.pre_state else {
         return Ok(vec![format!("no public pre-state at height {height}")]);
     };
@@ -576,8 +590,11 @@ fn replay_blockers(window: &Window) -> anyhow::Result<Vec<String>> {
 #[test]
 fn historical_replay_blockers_match_record() -> anyhow::Result<()> {
     let fixtures = read_fixtures()?;
-    let windows = fixtures.windows.iter().filter(|w| w.start_height > 1);
-    for (window, (version, expected)) in windows.zip(EXPECTED_BLOCKERS) {
+    ensure!(
+        fixtures.windows.len() == EXPECTED_BLOCKERS.len(),
+        "blocker record size"
+    );
+    for (window, (version, expected)) in fixtures.windows.iter().zip(EXPECTED_BLOCKERS) {
         ensure!(window.app_version == version, "blocker record order");
         let blockers = replay_blockers(window)?;
         println!("mainnet v{version}: {blockers:?}");

@@ -187,6 +187,9 @@ impl App {
     /// `ExportAppStateAndValidators(forZeroHeight=false)` at `height`
     /// (default: the latest).
     pub fn export_app_state(&self, height: Option<i64>) -> Result<ExportedApp> {
+        if let Some(e) = self.v046_unsupported("genesis export") {
+            return Err(e);
+        }
         let last = self.last_height;
         let h = height.unwrap_or(last);
         if h <= 0 || h > last {

@@ -525,6 +525,28 @@ impl Store {
         self.last_commit_id()
     }
 
+    /// The commit info of the latest version in the database, read without
+    /// any mounted store (to choose which stores to mount before
+    /// [`Self::load_latest_version`]). `None` for in-memory stores and
+    /// fresh databases.
+    pub fn stored_latest_commit_info(&self) -> Result<Option<CommitInfo>> {
+        let Some(db) = &self.db else {
+            return Ok(None);
+        };
+        let latest = match db.get(LATEST_KEY).map_err(db_err)? {
+            None => return Ok(None),
+            Some(raw) => Version::from_be_bytes(
+                raw.as_slice()
+                    .try_into()
+                    .map_err(|_| Error::InvalidCommitInfo("latest version encoding"))?,
+            ),
+        };
+        if latest == 0 {
+            return Ok(None);
+        }
+        self.read_commit_info(latest).map(Some)
+    }
+
     fn read_commit_info(&self, version: Version) -> Result<CommitInfo> {
         let Some(db) = &self.db else {
             return self

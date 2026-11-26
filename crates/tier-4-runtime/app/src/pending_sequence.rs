@@ -39,8 +39,12 @@ impl App {
 
     /// `QuerySequence` (celestia-core mempool). From v12 with a local
     /// mempool, use the higher of the committed sequence and the next
-    /// pending sequence. Otherwise read check state.
+    /// pending sequence. Otherwise read check state. A cosmos-sdk v0.46
+    /// state (no mempool: CheckTx is not supported) answers 0.
     pub fn query_sequence(&mut self, signer: &[u8]) -> ResponseQuerySequence {
+        if self.is_sdk_v046_state() {
+            return ResponseQuerySequence { sequence: 0 };
+        }
         if sdk::version::is_v12(self.execution_version())
             && self.last_height > 0
             && let Some(source) = &self.pending_sequencer

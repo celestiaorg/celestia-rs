@@ -341,3 +341,42 @@ fn store_added_after_restart_starts_at_next_version_on(kind: BackendKind) {
         2
     );
 }
+
+/// The latest commit info is readable before any store is mounted, so a
+/// node can choose the store set to mount (e.g. a cosmos-sdk v0.46 state
+/// with a memory store entry); fresh and in-memory stores have none.
+#[test]
+fn latest_commit_info_is_readable_before_mounting() {
+    let db: Arc<dyn KvBackend> = Arc::new(MemBackend::new());
+    let fresh = Store::open(Arc::clone(&db), StoreOptions::default());
+    assert!(fresh.stored_latest_commit_info().unwrap().is_none());
+    assert!(Store::new().stored_latest_commit_info().unwrap().is_none());
+
+    let mut store = Store::open(Arc::clone(&db), StoreOptions::default());
+    store.mount_store("acc", StoreKind::Iavl).unwrap();
+    store
+        .mount_store("mem_capability", StoreKind::Memory)
+        .unwrap();
+    store.load_latest_version().unwrap();
+    for _ in 0..2 {
+        store
+            .get_store_mut("acc")
+            .unwrap()
+            .set(b"k".to_vec(), b"v".to_vec())
+            .unwrap();
+        store.commit().unwrap();
+    }
+    let committed = store.last_commit_info().unwrap().clone();
+    drop(store);
+
+    let unmounted = Store::open(db, StoreOptions::default());
+    let info = unmounted.stored_latest_commit_info().unwrap().unwrap();
+    assert_eq!(info, committed);
+    assert_eq!(info.version, 2);
+    assert!(
+        info.store_info("mem_capability")
+            .unwrap()
+            .commit_id
+            .is_none()
+    );
+}

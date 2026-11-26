@@ -146,6 +146,38 @@ fn gatekeeper(ctx: &Context<'_>, tx: &Tx) -> Result<(), SdkError> {
     Ok(())
 }
 
+/// Every message type (with a `MsgExec`'s nested ones) must be one the
+/// gatekeeper accepts at the block's app version: the only types v1's
+/// interface registry and router both know. Others decode differently in
+/// Go (or not at all) than in the v10 decoder used here.
+fn registry_check(ctx: &Context<'_>, tx: &Tx) -> Result<(), SdkError> {
+    let v = header_app_version(ctx);
+    let mut urls = Vec::new();
+    gatekeeper_order(tx.msgs(), 0, &mut urls).map_err(|e| {
+        errs::tx_decode(format!(
+            "decoding a nested message with the v1 registry is not ported: {}",
+            e.log
+        ))
+    })?;
+    for url in urls {
+        if gatekeeper_accepts(v, &url) != Some(true) {
+            return Err(errs::tx_decode(format!(
+                "the cosmos-sdk v0.46 decoding of {url}, outside the app version {v} registry, is not ported"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// The ante keepers of the v1 ante handler: a keeper path that is not
+/// ported records it ([`super::record_not_ported`]).
+pub(crate) fn ante_deps() -> x_ante::StoreDeps {
+    x_ante::StoreDeps {
+        on_not_ported: Some(super::record_not_ported),
+        ..crate::txpipe::ante_deps(None)
+    }
+}
+
 /// The block gas meter (`ctx.BlockGasMeter()`): finite for a positive
 /// consensus `max_gas`, infinite otherwise.
 #[must_use]
@@ -259,10 +291,26 @@ fn consume_block_gas(
 }
 
 fn run(ctx: &mut Context<'_>, block_gas: &mut GasMeter, tx_bytes: &[u8]) -> Ran {
+    // The v1 decoder and interface registry are not ported: this is the
+    // v10 decoder, whose registry differs from v1's (it lacks
+    // `MsgRegisterEVMAddress` and knows later messages). Any transaction
+    // it rejects, and any message outside v1's registry, aborts the block
+    // rather than produce a result Go may not.
     let tx = match crate::txpipe::decode_tx(tx_bytes) {
         Ok(tx) => tx,
-        Err(e) => return Ran::early(0, e),
+        Err(e) => {
+            return Ran::early(
+                0,
+                super::not_ported(errs::tx_decode(format!(
+                    "decoding with the cosmos-sdk v0.46 app version 1 registry is not ported (the v10 decoder failed: {})",
+                    e.log
+                ))),
+            );
+        }
     };
+    if let Err(e) = registry_check(ctx, &tx) {
+        return Ran::early(0, super::not_ported(e));
+    }
     // `validateBasicTxMsgs` (a Go panic in a `ValidateBasic` is recovered
     // by `runTx`).
     if let Err(e) = sdk::error::recover(|| msgs::validate_basic_tx_msgs(tx.msgs())) {
@@ -275,7 +323,7 @@ fn run(ctx: &mut Context<'_>, block_gas: &mut GasMeter, tx_bytes: &[u8]) -> Ran 
         return Ran::early(u64::MAX, e);
     }
     let events_before = std::mem::take(&mut ctx.events);
-    let deps = crate::txpipe::ante_deps(None);
+    let deps = ante_deps();
     let ante = x_ante::ante_handle_v046(ctx, &tx, false, &deps);
     let ante_events = std::mem::replace(&mut ctx.events, events_before).take();
     let gas_wanted = match ante {

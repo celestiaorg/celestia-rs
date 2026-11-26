@@ -98,6 +98,11 @@ pub struct App {
     proposed: proposal::ProposedSquare,
     /// Pure blob proofs admitted only by successful New CheckTx.
     blob_tx_cache: blob_cache::BlobTxCache,
+    /// The cosmos-sdk v0.46 driver of a v0.46 state (app versions 1 to 3;
+    /// [`legacy`]); `None` on a v0.50 state.
+    legacy: Option<legacy::AppDriver>,
+    /// The modules a v0.46 driver runs (app version 1's).
+    legacy_modules: fn() -> legacy::AppModules,
 }
 
 /// Node-local settings that do not affect consensus state. Most come from
@@ -292,6 +297,8 @@ impl App {
             node: NodeOptions::default(),
             proposed: proposal::ProposedSquare::default(),
             blob_tx_cache: blob_cache::BlobTxCache::default(),
+            legacy: None,
+            legacy_modules: legacy::v1_modules,
         }
     }
 
@@ -312,6 +319,7 @@ impl App {
             .map_err(store_err)?;
         self.finalize_header = None;
         self.load_committed_state()?;
+        self.reset_legacy_driver();
         self.check_header = self.init_check_header();
         Ok(())
     }
@@ -375,8 +383,20 @@ impl App {
     /// Opens an app over an arbitrary storage backend (tests).
     pub fn open_backend(db: Arc<dyn KvBackend>, options: &AppOptions) -> Result<Self> {
         let mut ms = MultiStore::open(db, options.store);
-        for (name, kind) in stores::all() {
-            ms.mount(name, kind).map_err(store_err)?;
+        // A cosmos-sdk v0.46 state (app versions 1 to 3) mounts its
+        // release's stores, as its latest commit info lists them.
+        let v046 = ms
+            .root()
+            .stored_latest_commit_info()
+            .map_err(store_err)?
+            .as_ref()
+            .and_then(legacy::release_of);
+        if let Some(release) = v046 {
+            stores::mount_release(&mut ms, release).map_err(store_err)?;
+        } else {
+            for (name, kind) in stores::all() {
+                ms.mount(name, kind).map_err(store_err)?;
+            }
         }
         ms.load_latest_version().map_err(store_err)?;
         // A state committed at app version 9 has no fibre / valaddr stores
@@ -384,6 +404,7 @@ impl App {
         let missing: Vec<&'static str> = ms
             .root()
             .last_commit_info()
+            .filter(|_| v046.is_none())
             .map(|info| {
                 stores::ADDED_IN_V10
                     .iter()
@@ -397,6 +418,18 @@ impl App {
         }
         let mut app = Self::from_multistore(ms);
         app.load_committed_state()?;
+        if v046.is_some() {
+            app.legacy = Some(app.new_legacy_driver());
+        } else if app.last_height > 0 && legacy::executes(app.app_version()) {
+            // Releases before the v0.46 driver ran app version 1 as app
+            // version 9 on the v0.50 stores; app version 1 now selects the
+            // v0.46 release's modules and handlers, so such a state would
+            // continue under different rules.
+            return Err(sdk::error::sdk::not_supported(format!(
+                "a cosmos-sdk v0.50 store set at app version {}: app version 1 runs only on a cosmos-sdk v0.46 state; this database was written by a release that ran it as app version 9, sync it again from genesis",
+                app.app_version()
+            )));
+        }
         if app.chain_id.is_empty()
             && let Some(chain_id) = &options.chain_id
         {
@@ -424,6 +457,11 @@ impl App {
             );
         }
         app.set_node_options(options.node.clone());
+        if app.legacy.is_some() {
+            // No x/upgrade release switch exists below app version 4.
+            app.check_header = app.init_check_header();
+            return Ok(app);
+        }
         app.restore_execution_version()?;
         app.check_header = app.init_check_header();
         app.mount_upgrade_stores()?;
@@ -654,13 +692,22 @@ impl App {
             app_version: self.app_version(),
             last_block_height: self.last_height,
             last_block_app_hash: self.last_commit_hash.clone(),
-            timeout_info: Some(timeout_info_at(self.app_version())),
+            timeout_info: Some(if self.legacy.is_some() {
+                legacy::timeouts(self.app_version())
+            } else {
+                timeout_info_at(self.app_version())
+            }),
         }
     }
 
     fn app_version(&self) -> u64 {
         if self.last_height == 0 {
-            return INITIAL_APP_VERSION;
+            // Between a v0.46 InitChain and the first commit, the driver
+            // holds the genesis app version.
+            return match self.legacy.as_ref().map(legacy::Driver::app_version) {
+                Some(v) if v != 0 => v,
+                _ => INITIAL_APP_VERSION,
+            };
         }
         // A cosmos-sdk v0.46 state (app versions 1 to 3) has no x/consensus
         // store; its version lives in the params subspace `baseapp`.
@@ -692,6 +739,16 @@ impl App {
         if req.initial_height > 1 {
             return Err(sdk::error::sdk::not_supported("initial_height > 1"));
         }
+        let genesis_app_version = req
+            .consensus_params
+            .as_ref()
+            .and_then(|cp| cp.version.as_ref())
+            .map_or(INITIAL_APP_VERSION, |v| v.app);
+        // App versions 1 to 3 are cosmos-sdk v0.46 releases: only the
+        // legacy driver may run them (app version 1).
+        if legacy::is_v046(genesis_app_version) || self.legacy.is_some() {
+            return self.legacy_init_chain(&req, genesis_app_version);
+        }
         self.chain_id.clone_from(&req.chain_id);
         self.ms
             .root_mut()
@@ -704,11 +761,6 @@ impl App {
             ..Header::default()
         };
         self.check_header = header.clone();
-        let genesis_app_version = req
-            .consensus_params
-            .as_ref()
-            .and_then(|cp| cp.version.as_ref())
-            .map_or(INITIAL_APP_VERSION, |v| v.app);
         sdk::version::set_app_version(genesis_app_version);
         // celestia-app v9.0.8 has no fibre / valaddr stores (ADR 0004).
         if stores::is_v9(genesis_app_version) {
@@ -786,6 +838,9 @@ impl App {
         req: abci::RequestFinalizeBlock,
     ) -> Result<ResponseFinalizeBlock> {
         self.check_halt(&req)?;
+        if self.legacy.is_some() {
+            return self.legacy_finalize_block(&req);
+        }
         let header = Header {
             chain_id: self.chain_id.clone(),
             height: req.height,
@@ -894,6 +949,9 @@ impl App {
 
     /// `Commit`.
     pub fn commit(&mut self) -> Result<ResponseCommit> {
+        if self.legacy.is_some() {
+            return self.legacy_commit();
+        }
         let header = self
             .finalize_header
             .take()
@@ -1047,6 +1105,15 @@ impl App {
         req: abci::RequestOfferSnapshot,
     ) -> abci::ResponseOfferSnapshot {
         use abci::response_offer_snapshot::Result as R;
+        if legacy::is_v046(req.app_version) || self.legacy.is_some() {
+            tracing::error!(
+                app_version = req.app_version,
+                "rejecting snapshot: state sync of cosmos-sdk v0.46 states (app versions 1 to 3) is not supported"
+            );
+            return abci::ResponseOfferSnapshot {
+                result: R::Reject as i32,
+            };
+        }
         let result = match (&mut self.snapshots, req.snapshot) {
             (None, _) => R::Abort,
             (Some(_), None) => R::Reject,
@@ -1940,37 +2007,20 @@ mod node_options_tests {
         );
     }
 
-    /// The main app runs genesis app versions 1 to 3 as v9: the shared
-    /// modules keep their v0.50 params and layout (cosmos-sdk v0.46
-    /// semantics belong to the legacy driver only).
+    /// The main (v0.50) app never runs a genesis at app versions 1 to 3:
+    /// app version 1 goes to the cosmos-sdk v0.46 driver on the v1 store
+    /// set, app versions 2 and 3 fail with a not-supported error (they no
+    /// longer run as v9 on a v0.50 store set).
     #[test]
-    fn main_app_runs_sdk_v046_app_versions_as_v9() {
-        let mut genesis: serde_json::Value = serde_json::from_str(include_str!(
+    fn main_app_does_not_run_sdk_v046_app_versions() {
+        let genesis: serde_json::Value = serde_json::from_str(include_str!(
             "../../../../conformance/fixtures/devnet/empty/genesis.json"
         ))
         .unwrap();
-        // x/gov reads a cosmos-sdk v0.46 gov genesis at app versions 1 to 3
-        // (as the mainnet genesis has it).
-        genesis["app_state"]["gov"] = serde_json::json!({
-            "starting_proposal_id": "1",
-            "deposits": [],
-            "votes": [],
-            "proposals": [],
-            "deposit_params": {
-                "min_deposit": [{"denom": "utia", "amount": "10000000000"}],
-                "max_deposit_period": "604800s"
-            },
-            "voting_params": {"voting_period": "604800s"},
-            "tally_params": {
-                "quorum": "0.334000000000000000",
-                "threshold": "0.500000000000000000",
-                "veto_threshold": "0.334000000000000000"
-            }
-        });
         for version in 1..=3 {
             let home = tempfile::tempdir().unwrap();
             let mut app = App::open(home.path()).unwrap();
-            app.init_chain(abci::RequestInitChain {
+            let res = app.init_chain(abci::RequestInitChain {
                 chain_id: genesis["chain_id"].as_str().unwrap().into(),
                 consensus_params: Some(ConsensusParams {
                     version: Some(VersionParams { app: version }),
@@ -1978,39 +2028,17 @@ mod node_options_tests {
                 }),
                 app_state_bytes: serde_json::to_vec(&genesis["app_state"]).unwrap(),
                 ..Default::default()
-            })
-            .unwrap();
-            app.finalize_block(abci::RequestFinalizeBlock {
-                height: 1,
-                ..Default::default()
-            })
-            .unwrap();
-            app.commit().unwrap();
-            let mut ctx = Context::new(&mut app.ms, Header::default(), ExecMode::Finalize);
-            ctx.consensus_params.version = Some(VersionParams { app: version });
-            assert!(!ctx.is_sdk_v046(), "v{version}");
-            for (store, key) in [
-                (x_auth::STORE_KEY, &[0x00u8]),
-                (x_bank::STORE_KEY, &[0x05]),
-                (x_staking::STORE_KEY, &[0x51]),
-                (x_slashing::STORE_KEY, &[0x00]),
-                (x_distribution::STORE_KEY, &[0x09]),
-            ] {
-                assert!(
-                    ctx.get(store, key).unwrap().is_some(),
-                    "{store} params at v{version}"
-                );
+            });
+            let e = res.unwrap_err();
+            if version == 1 {
+                // The v1 InitChainer ran on the v1 store set and rejected
+                // this v0.50 genesis; the v0.50 stores are mounted again.
+                assert!(!app.is_sdk_v046_state(), "v1");
+                assert!(!app.ms.is_mounted("qgb"), "v1");
+            } else {
+                assert!(e.log.contains("not supported"), "v{version}: {}", e.log);
             }
-            assert_eq!(
-                x_staking::store::get_params(&mut ctx)
-                    .unwrap()
-                    .max_validators,
-                100
-            );
-            x_auth::get_params(&mut ctx).unwrap();
-            x_bank::get_params(&mut ctx).unwrap();
-            x_slashing::get_params(&mut ctx).unwrap();
-            x_distribution::store::get_params(&mut ctx).unwrap();
+            assert!(app.ms.is_mounted(x_consensus::STORE_KEY), "v{version}");
         }
     }
 

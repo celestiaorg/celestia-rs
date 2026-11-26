@@ -51,6 +51,9 @@ fn signer_data(tx: &Tx) -> Result<(Vec<u8>, u64), String> {
 impl App {
     /// `CheckTx`.
     pub fn check_tx(&mut self, req: &RequestCheckTx) -> Result<ResponseCheckTx, String> {
+        if let Some(e) = self.v046_unsupported("CheckTx") {
+            return Ok(error_response(&e, 0, 0));
+        }
         let version = self.execution_version();
         sdk::version::set_app_version(version);
         if crate::stores::is_v9(version) {

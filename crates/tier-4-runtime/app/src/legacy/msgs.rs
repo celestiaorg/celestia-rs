@@ -187,10 +187,10 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
     if let Some(r) = super::ibc::route(ctx, msg) {
         return r;
     }
-    Err(errs::unknown_request(format!(
+    Err(super::not_ported(errs::unknown_request(format!(
         "the cosmos-sdk v0.46 handler of {} is not ported",
         msg.type_url
-    )))
+    ))))
 }
 
 /// v0.46 bank `IsSendEnabledCoins`: each coin reads the params

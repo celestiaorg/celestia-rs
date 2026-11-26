@@ -118,8 +118,9 @@ pub struct Release {
     /// Upgrade plan names the release's binary registers a handler for.
     pub upgrade_handlers: &'static [&'static str],
     /// The app version whose state machine celestia-rs runs for this one.
-    /// Equal to `app_version` once that version is ported; app versions
-    /// 1 to 8 run as 9 until historical execution exists.
+    /// Equal to `app_version` once that version is ported: app version 1
+    /// runs as itself on the cosmos-sdk v0.46 driver; app versions 2 to 8
+    /// run as 9 until their historical execution exists.
     pub runs_as: u64,
 }
 
@@ -276,8 +277,13 @@ const fn release(
         stores,
         commit_memory_stores,
         upgrade_handlers,
-        // Historical execution (app versions 1 to 8) is not ported yet.
-        runs_as: if app_version < 9 { 9 } else { app_version },
+        // App version 1 executes as itself (the cosmos-sdk v0.46 driver);
+        // historical execution of app versions 2 to 8 is not ported yet.
+        runs_as: if app_version > 1 && app_version < 9 {
+            9
+        } else {
+            app_version
+        },
     }
 }
 
@@ -340,11 +346,14 @@ impl Release {
     }
 }
 
-/// Whether `v` is executed with celestia-app v9.0.8 semantics (0 = unset
-/// is current).
+/// Whether `v` takes celestia-app v9.0.8 semantics in shared code (0 =
+/// unset is current): app versions 2 to 9, which run as v9, and app
+/// version 1, whose cosmos-sdk v0.46 driver selects its own paths with
+/// [`is_sdk_v046`] and otherwise keeps the v9 behavior the Go v1 oracle
+/// was matched against.
 #[must_use]
 pub const fn is_v9(v: u64) -> bool {
-    Release::executing(v).app_version == 9
+    matches!(v, 1..=9)
 }
 
 /// First app version for the mainline consensus changes excluded from the
@@ -471,7 +480,7 @@ mod tests {
         }
     }
 
-    /// The main app sets the raw app version (1 to 8 run as v9): that
+    /// The main app sets the raw app version: that
     /// alone never selects cosmos-sdk v0.46 semantics.
     #[test]
     fn raw_app_versions_1_to_3_are_not_sdk_v046() {
@@ -513,14 +522,21 @@ mod tests {
         set_app_version(0);
     }
 
-    /// Nothing below app version 9 is executed with its own rules yet:
-    /// those versions keep running as v9 (no behavior change).
+    /// App version 1 executes as itself (the v0.46 driver); app versions
+    /// 2 to 8 keep running as v9 (no behavior change). Shared code keeps
+    /// its v9 paths for every app version up to 9.
     #[test]
-    fn historical_versions_run_as_v9() {
+    fn historical_versions_run_as_v9_except_v1() {
         for v in 1..=12 {
             let r = Release::for_app_version(v).expect("known app version");
-            assert_eq!(r.runs_as, v.max(9), "v{v}");
-            assert_eq!(is_v9(v), r.runs_as == 9, "v{v}");
+            let runs_as = if v == 1 { 1 } else { v.max(9) };
+            assert_eq!(r.runs_as, runs_as, "v{v}");
+            assert_eq!(is_v9(v), v <= 9, "v{v}");
+        }
+        assert_eq!(Release::executing(1).app_version, 1);
+        assert_eq!(Release::executing(1).sdk_line, SdkLine::V046);
+        for v in 2..=3 {
+            assert_eq!(Release::executing(v).sdk_line, SdkLine::V050, "v{v}");
         }
         assert!(!is_v9(0));
         assert!(!is_v9(13));

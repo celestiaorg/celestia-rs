@@ -365,6 +365,76 @@ fn v1_blocks_1_to_10_match_the_oracle() {
     }
 }
 
+/// The node's [`app::App`] (not the bare driver) runs InitChain on the
+/// mainnet genesis and blocks 1 to 10 on a persistent home, closing and
+/// reopening it after block 5: every app hash and every transaction's
+/// code and gas equal the oracle's.
+#[test]
+#[ignore = "needs the mainnet genesis: CELESTIA_MAINNET_GENESIS=<genesis.json>"]
+fn v1_app_runs_blocks_1_to_10_across_a_reopen() {
+    let genesis = common::mainnet_genesis();
+    let archive = common::archive();
+    let results = common::oracle_results();
+    let roots = common::oracle_roots();
+    let home = tempfile::tempdir().unwrap();
+    let mut app = app::App::open(home.path()).unwrap();
+    let init = app.init_chain(common::init_request(&genesis)).unwrap();
+    drop(genesis);
+    assert!(app.is_sdk_v046_state());
+    assert_eq!(init.app_hash, hash::sha256(&[]).to_vec());
+
+    let mut vals: BTreeMap<i64, common::ValidatorSet> = BTreeMap::new();
+    let mut genesis_set = update_set(&init.validators);
+    common::sort_validators(&mut genesis_set);
+    vals.insert(1, genesis_set.clone());
+    vals.insert(2, genesis_set);
+    for h in 1..=9 {
+        let next = common::apply_updates(&vals[&(h + 1)], &common::oracle_updates(&results[&h]));
+        vals.insert(h + 2, next);
+    }
+    for height in 1..=10i64 {
+        if height == 6 {
+            drop(app);
+            app = app::App::open(home.path()).unwrap();
+            assert!(app.is_sdk_v046_state());
+            assert_eq!(app.info().last_block_height, 5);
+            assert_eq!(app.info().app_version, 1);
+        }
+        let last = if height == 1 {
+            Vec::new()
+        } else {
+            vals[&(height - 1)].clone()
+        };
+        let req = common::finalize_request(&archive[&height], &last);
+        let res = app.finalize_block(req).unwrap();
+        app.commit().unwrap();
+        let want = &roots["heights"][usize::try_from(height).unwrap()];
+        assert_eq!(
+            hex::encode_upper(&res.app_hash),
+            want["app_hash"].as_str().unwrap(),
+            "app hash at {height}"
+        );
+        assert_eq!(app.info().last_block_app_hash, res.app_hash);
+        let want_txs = results[&height]["txs"].as_array().unwrap();
+        assert_eq!(res.tx_results.len(), want_txs.len());
+        for (i, (got, w)) in res.tx_results.iter().zip(want_txs).enumerate() {
+            assert_eq!(
+                (i64::from(got.code), got.gas_wanted, got.gas_used),
+                (
+                    w["code"].as_i64().unwrap(),
+                    w["gas_wanted"].as_i64().unwrap(),
+                    w["gas_used"].as_i64().unwrap()
+                ),
+                "tx {height}:{i}"
+            );
+        }
+        println!(
+            "app block {height} matches {}",
+            hex::encode_upper(&res.app_hash)
+        );
+    }
+}
+
 /// The oracle state at height 0 from the full dump, every IAVL store.
 fn full_height_0(path: &str) -> BTreeMap<String, Kv> {
     common::gz_lines(path)

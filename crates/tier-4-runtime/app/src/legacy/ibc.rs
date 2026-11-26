@@ -28,10 +28,10 @@ fn decode<M: Message + Default>(msg: &Any) -> Result<M> {
 fn unpack_tm_client_state(any: Option<&Any>) -> Result<tmpb::ClientState> {
     let any = any.ok_or_else(|| errs::unpack_any("protobuf Any message cannot be nil"))?;
     if any.type_url != tmpb::ClientState::type_url() {
-        return Err(errs::unpack_any(format!(
+        return Err(super::not_ported(errs::unpack_any(format!(
             "the ibc-go v6 client type {} is not ported",
             any.type_url
-        )));
+        ))));
     }
     tmpb::ClientState::decode(any.value.as_slice()).map_err(|e| errs::unpack_any(e.to_string()))
 }
@@ -148,10 +148,10 @@ fn update_client(ctx: &mut Context<'_>, m: &clpb::MsgUpdateClient) -> Result<Any
         .as_ref()
         .ok_or_else(|| errs::unpack_any("protobuf Any message cannot be nil"))?;
     if header_any.type_url != tmpb::Header::type_url() {
-        return Err(errs::unpack_any(format!(
+        return Err(super::not_ported(errs::unpack_any(format!(
             "the ibc-go v6 header type {} is not ported",
             header_any.type_url
-        )));
+        ))));
     }
     let header = tmpb::Header::decode(header_any.value.as_slice())
         .map_err(|e| errs::unpack_any(e.to_string()))?;
@@ -159,9 +159,9 @@ fn update_client(ctx: &mut Context<'_>, m: &clpb::MsgUpdateClient) -> Result<Any
     let cs = match client::client_state(ctx, client_id)? {
         Some(client::ClientState::Tendermint(cs)) => *cs,
         Some(_) => {
-            return Err(errs::not_supported(
+            return Err(super::not_ported(errs::not_supported(
                 "the ibc-go v6 update of this client type is not ported",
-            ));
+            )));
         }
         None => {
             return Err(clerr::client_not_found(format!(
@@ -360,9 +360,9 @@ fn verify(
     let cs = match client::client_state(ctx, client_id)? {
         Some(client::ClientState::Tendermint(cs)) => *cs,
         Some(_) => {
-            return Err(errs::not_supported(
+            return Err(super::not_ported(errs::not_supported(
                 "the ibc-go v6 verification of this client type is not ported",
-            ));
+            )));
         }
         None => return Err(clerr::client_not_found(client_id)),
     };
