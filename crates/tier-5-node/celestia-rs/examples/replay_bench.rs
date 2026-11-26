@@ -13,7 +13,7 @@
 //! cargo run --release -p celestia-rs --example replay_bench -- \
 //!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR] \
 //!   [--iavl-cache 781250] [--db-cache-mib 512] [--pruning-interval 1] \
-//!   [--discard-abci-responses false]
+//!   [--discard-abci-responses true]
 //! ```
 //!
 //! `--base` holds a home after InitChain (created on first use), so later
@@ -58,7 +58,8 @@ fn args() -> anyhow::Result<Args> {
         iavl_cache: 781_250,
         db_cache_mib: 512,
         pruning_interval: 1,
-        discard_abci_responses: false,
+        // config.toml `storage.discard_abci_responses` (template: true).
+        discard_abci_responses: true,
     };
     let mut it = std::env::args().skip(1);
     while let Some(k) = it.next() {
