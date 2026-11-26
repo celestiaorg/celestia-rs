@@ -401,6 +401,43 @@ struct Accepted {
 }
 
 /// `StakeAuthorization.Accept` (v0.46) of a nested staking message.
+/// A gogoproto `math.Int` customtype from its wire text: empty is a nil
+/// `Int`, whose arithmetic dereferences nil (a Go panic).
+fn wire_int_or_nil(s: &str) -> Result<math::Int> {
+    if s.is_empty() {
+        return Err(sdk::error::go_panic(
+            "runtime error: invalid memory address or nil pointer dereference",
+        ));
+    }
+    x_staking::msgs::wire_int(s)
+}
+
+/// v0.46 `Coin.SafeSub` of the stake authorization's `MaxTokens` by the
+/// message amount: plain errors for a denom mismatch and a negative
+/// result (`Int.Sub` panics past 256 bits).
+fn safe_sub(
+    max: &celestia_proto::cosmos::base::v1beta1::Coin,
+    amount: Option<&celestia_proto::cosmos::base::v1beta1::Coin>,
+) -> Result<celestia_proto::cosmos::base::v1beta1::Coin> {
+    let amount = amount.cloned().unwrap_or_default();
+    if max.denom != amount.denom {
+        return Err(sdk::error::internal(format!(
+            "invalid coin denoms: {}, {}",
+            max.denom, amount.denom
+        )));
+    }
+    let left = wire_int_or_nil(&max.amount)?
+        .checked_sub(&wire_int_or_nil(&amount.amount)?)
+        .map_err(|e| sdk::error::go_panic(e.to_string()))?;
+    if left.is_negative() {
+        return Err(sdk::error::internal("negative coin amount"));
+    }
+    Ok(celestia_proto::cosmos::base::v1beta1::Coin {
+        denom: max.denom.clone(),
+        amount: left.to_string(),
+    })
+}
+
 fn accept_stake(
     ctx: &mut Context<'_>,
     a: &staking::StakeAuthorization,
@@ -445,12 +482,22 @@ fn accept_stake(
             "cannot delegate/undelegate to {validator} validator"
         )));
     }
-    if a.max_tokens.is_some() {
-        // `Coin.SafeSub` of the spend limit is not ported.
-        let _ = amount;
-        return Err(super::not_ported(errs::invalid_request(
-            "the cosmos-sdk v0.46 StakeAuthorization max tokens are not ported",
-        )));
+    if let Some(max) = &a.max_tokens {
+        let left = safe_sub(max, amount.as_ref())?;
+        if left.amount == "0" {
+            return Ok(Accepted {
+                delete: true,
+                updated: None,
+            });
+        }
+        return Ok(Accepted {
+            delete: false,
+            updated: Some(Authorization::Stake(staking::StakeAuthorization {
+                max_tokens: Some(left),
+                policy: a.policy.clone(),
+                authorization_type: a.authorization_type,
+            })),
+        });
     }
     Ok(Accepted {
         delete: false,
@@ -596,4 +643,61 @@ fn wrap_failed(e: SdkError, msg: &Any) -> SdkError {
         "failed to execute message; message {}",
         msg_text(msg)
     ))
+}
+
+#[cfg(test)]
+mod stake_max_tokens_tests {
+    use super::*;
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+
+    fn coin(denom: &str, amount: &str) -> Coin {
+        Coin {
+            denom: denom.into(),
+            amount: amount.into(),
+        }
+    }
+
+    fn accept(max: Coin, amount: Coin) -> Result<Accepted> {
+        let mut ms = sdk::MultiStore::new();
+        let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        let a = staking::StakeAuthorization {
+            max_tokens: Some(max),
+            policy: None,
+            authorization_type: 1,
+        };
+        let msg = Any::pack(&staking::MsgDelegate {
+            delegator_address: String::new(),
+            validator_address: "v".into(),
+            amount: Some(amount),
+        });
+        accept_stake(&mut ctx, &a, &msg)
+    }
+
+    /// v0.46 `StakeAuthorization.Accept` with `MaxTokens`: the limit
+    /// shrinks by the amount (`SafeSub`); exhausting it deletes the grant;
+    /// exceeding it or another denom is a plain error; a nil limit amount
+    /// panics.
+    #[test]
+    fn max_tokens_shrink_and_delete() {
+        let r = accept(coin("utia", "100"), coin("utia", "40")).unwrap();
+        assert!(!r.delete);
+        let Some(Authorization::Stake(u)) = r.updated else {
+            panic!("no update")
+        };
+        assert_eq!(u.max_tokens, Some(coin("utia", "60")));
+        assert_eq!(u.authorization_type, 1);
+        let r = accept(coin("utia", "100"), coin("utia", "100")).unwrap();
+        assert!(r.delete && r.updated.is_none());
+        for (max, amount) in [
+            (coin("utia", "100"), coin("utia", "101")),
+            (coin("uatom", "100"), coin("utia", "1")),
+        ] {
+            let e = accept(max, amount).err().unwrap();
+            assert_eq!((e.codespace, e.code), ("undefined", 1), "{}", e.log);
+        }
+        let e = sdk::error::recover(|| accept(coin("utia", ""), coin("utia", "1")))
+            .err()
+            .unwrap();
+        assert!(e.is_panic(), "{}", e.log);
+    }
 }
