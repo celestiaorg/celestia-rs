@@ -117,7 +117,12 @@ pub fn unbond(ctx: &mut Context<'_>, del: &[u8], val: &[u8], shares: &LegacyDec)
 
 /// `HasMaxUnbondingDelegationEntries`.
 fn has_max_ubd_entries(ctx: &mut Context<'_>, del: &[u8], val: &[u8]) -> Result<bool> {
-    let n = store::get_ubd(ctx, del, val)?.map_or(0, |u| u.entries.len());
+    let ubd = store::get_ubd(ctx, del, val)?;
+    if ubd.is_none() && ctx.is_sdk_v046() {
+        // cosmos-sdk v0.46 reads `MaxEntries` only for an existing entry.
+        return Ok(false);
+    }
+    let n = ubd.map_or(0, |u| u.entries.len());
     let max = store::max_entries(ctx)? as usize;
     Ok(n >= max)
 }
@@ -131,6 +136,9 @@ pub fn set_ubd_entry(
     min_time: Timestamp,
     balance: &Int,
 ) -> Result<UnbondingDelegation> {
+    if ctx.is_sdk_v046() {
+        return set_ubd_entry_v046(ctx, del, val, creation_height, min_time, balance);
+    }
     let id = store::increment_unbonding_id(ctx)?;
     let (ubd, is_new) = if let Some(mut u) = store::get_ubd(ctx, del, val)? {
         let n = u.add_entry(creation_height, min_time, balance, id)?;
@@ -156,6 +164,38 @@ pub fn set_ubd_entry(
         // Go logs and ignores hook errors here.
         let _ = hooks::hooks().after_unbonding_initiated(ctx, id);
     }
+    Ok(ubd)
+}
+
+/// cosmos-sdk v0.46 `SetUnbondingDelegationEntry`: no unbonding IDs, no
+/// index by ID, no hook; `AddEntry` always appends.
+fn set_ubd_entry_v046(
+    ctx: &mut Context<'_>,
+    del: &[u8],
+    val: &[u8],
+    creation_height: i64,
+    min_time: Timestamp,
+    balance: &Int,
+) -> Result<UnbondingDelegation> {
+    let entry = UbdEntry {
+        creation_height,
+        completion_time: min_time,
+        initial_balance: balance.clone(),
+        balance: balance.clone(),
+        unbonding_id: 0,
+        unbonding_on_hold_ref_count: 0,
+    };
+    let ubd = if let Some(mut u) = store::get_ubd(ctx, del, val)? {
+        u.entries.push(entry);
+        u
+    } else {
+        UnbondingDelegation {
+            delegator_address: crate::addr::acc_to_string(del)?,
+            validator_address: crate::addr::val_to_string(val)?,
+            entries: vec![entry],
+        }
+    };
+    store::set_ubd(ctx, &ubd)?;
     Ok(ubd)
 }
 
@@ -250,7 +290,13 @@ fn set_red_entry(
     balance: &Int,
     shares_dst: &LegacyDec,
 ) -> Result<Redelegation> {
-    let id = store::increment_unbonding_id(ctx)?;
+    // cosmos-sdk v0.46 has no unbonding IDs, no index by ID and no hook.
+    let v046 = ctx.is_sdk_v046();
+    let id = if v046 {
+        0
+    } else {
+        store::increment_unbonding_id(ctx)?
+    };
     let entry = RedEntry {
         creation_height,
         completion_time: min_time,
@@ -271,6 +317,9 @@ fn set_red_entry(
         }
     };
     store::set_red(ctx, &red)?;
+    if v046 {
+        return Ok(red);
+    }
     store::set_red_by_unbonding_id(ctx, &red, id)?;
     let _ = hooks::hooks().after_unbonding_initiated(ctx, id);
     Ok(red)

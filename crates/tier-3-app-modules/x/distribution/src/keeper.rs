@@ -263,11 +263,16 @@ pub fn calculate_delegation_rewards(
     rewards.add(&r)
 }
 
-fn base_denom_zero() -> Coins {
-    Coins(vec![Coin::with_amount(
-        x_staking::DEFAULT_BOND_DENOM,
-        Int::zero(),
-    )])
+/// The zero coin of the event of an empty withdrawal: the registered
+/// base denom, else `sdk.DefaultBondDenom` (`stake` in cosmos-sdk v0.46,
+/// whose celestia-app registers no base denom).
+fn base_denom_zero(ctx: &Context<'_>) -> Coins {
+    let denom = if ctx.is_sdk_v046() {
+        "stake"
+    } else {
+        x_staking::DEFAULT_BOND_DENOM
+    };
+    Coins(vec![Coin::with_amount(denom, Int::zero())])
 }
 
 /// `withdrawDelegationRewards`.
@@ -330,8 +335,14 @@ pub fn withdraw_delegation_rewards(
     decrement_reference_count(ctx, &val, info.previous_period)?;
     store::delete_starting_info(ctx, &val, &del)?;
 
+    // cosmos-sdk v0.46 returns the (empty) rewards and emits the zero coin.
+    let returned = if ctx.is_sdk_v046() {
+        Some(final_rewards.clone())
+    } else {
+        None
+    };
     if final_rewards.is_empty() {
-        final_rewards = base_denom_zero();
+        final_rewards = base_denom_zero(ctx);
     }
     ctx.events.emit(event(
         "withdraw_rewards",
@@ -341,7 +352,7 @@ pub fn withdraw_delegation_rewards(
             ("delegator", d.delegator_address.clone()),
         ],
     ));
-    Ok(final_rewards)
+    Ok(returned.unwrap_or(final_rewards))
 }
 
 /// `WithdrawDelegationRewards`.
