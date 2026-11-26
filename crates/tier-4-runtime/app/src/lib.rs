@@ -838,7 +838,7 @@ impl App {
             .map_err(|e| sdk::error::sdk::json_unmarshal(e.to_string()))?;
         let app_state = &genesis;
         if let Some(versions) = upgrades::release_version_map(release.app_version) {
-            x_upgrade::set_module_version_map(&mut ctx, versions.into_iter())?;
+            x_upgrade::set_module_version_map(&mut ctx, versions)?;
         } else {
             x_upgrade::set_module_version_map(
                 &mut ctx,
