@@ -331,7 +331,7 @@ mod tests {
     #[test]
     fn filters_foreign_denoms_in_v4_and_v5() {
         let prev = sdk::version::app_version();
-        for (version, filters) in [(4, true), (5, false), (9, false), (10, false)] {
+        for (version, filters) in [(4, true), (5, true), (9, false), (10, false)] {
             sdk::version::set_app_version(version);
             let mut ms = MultiStore::new();
             let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
