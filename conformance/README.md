@@ -255,7 +255,10 @@ gzipped; not committed). With `-from 11` it still executes every block
 from genesis but records only heights 11 to N, and checks each app hash
 against the next header (`-windows` is optional; it adds the pinned
 hashes of window 1). Like celestia-core v0.34, the oracle delivers the
-inner transaction of a `BlobTx`. Then point the block test at both:
+inner transaction of a `BlobTx`. For long runs, `-keep-recent 2` prunes
+old IAVL versions (the app keeps every version in memory otherwise); the
+app hashes do not depend on it. Then point the block test at both (it
+streams the blocks and the oracle output, one height at a time):
 
 ```sh
 ./v1-oracle -genesis <genesis.json> -blocks <blocks.jsonl.gz> \
