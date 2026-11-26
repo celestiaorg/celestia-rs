@@ -15,7 +15,7 @@ workspace = true
 [dependencies]
 hash = { path = "../../tier-0-primitives/hash" }
 kvdb = { path = "../kvdb" }
-lru = { version = "0.19", default-features = false }
+foldhash = "0.2"
 
 [dev-dependencies]
 hex = "0.4"
