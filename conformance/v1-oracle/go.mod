@@ -11,6 +11,7 @@ require (
 	github.com/cosmos/cosmos-sdk v0.46.16
 	github.com/cosmos/go-bip39 v1.0.0
 	github.com/cosmos/ibc-go/v6 v6.2.2
+	github.com/ethereum/go-ethereum v1.17.0
 	github.com/gogo/protobuf v1.3.3
 	github.com/tendermint/tendermint v0.34.29
 	github.com/tendermint/tm-db v0.6.7
@@ -105,7 +106,6 @@ require (
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.5 // indirect
-	github.com/ethereum/go-ethereum v1.17.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/getsentry/sentry-go v0.31.1 // indirect

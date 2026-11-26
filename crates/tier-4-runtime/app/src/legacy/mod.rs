@@ -30,6 +30,8 @@ pub mod authz;
 pub mod blob;
 pub mod blockers;
 pub mod consensus_params;
+pub mod crisis;
+pub mod evidence;
 pub mod feegrant;
 pub mod genesis;
 pub mod gov;
@@ -618,6 +620,42 @@ impl<M: Modules> Driver<M> {
         }
     }
 
+    /// `BaseApp.Commit` at an app version change: the header's app
+    /// version is below the new one, so the store and module migrations
+    /// run before the commit. They run on the block's branch, before the
+    /// flush, so that a failure leaves no writes and no store changes.
+    fn commit_migrations(
+        &mut self,
+        ms: &mut MultiStore,
+        header: &Header,
+        cp: &celestia_proto::celestia_core_proto::tendermint::types::ConsensusParams,
+        height: i64,
+        to: u64,
+    ) -> Result<()> {
+        let block_version = self.app_version;
+        let added = migrate::add_stores(ms, block_version, to)?;
+        let migrated = (|| {
+            let _scope = sdk::version::SdkV046Scope::enter(to);
+            let mut ctx = Context::new(ms, header.clone(), ExecMode::Finalize);
+            ctx.consensus_params = cp.clone();
+            migrate::modules(&mut ctx, block_version, to)?;
+            drop(ctx);
+            self.phase_not_ported(height, "Commit migrations")
+        })();
+        if let Err(e) = migrated {
+            migrate::unmount_added(ms, &added);
+            return Err(e);
+        }
+        migrate::remove_stores(ms, block_version, to)?;
+        // `cms.LoadLatestVersionAndUpgrade` reloads the root store: its
+        // memory stores start empty, so the next BeginBlock rebuilds the
+        // capability memory store on the block context's meter (v0.46
+        // `noGasCtx`), as on every node at the upgrade.
+        ms.clear_memory_stores();
+        self.app_version = to;
+        Ok(())
+    }
+
     fn finalize_block_on(
         &mut self,
         ms: &mut MultiStore,
@@ -704,25 +742,7 @@ impl<M: Modules> Driver<M> {
         drop(ctx);
 
         if let Some(to) = upgraded {
-            // `BaseApp.Commit`: the header's app version is below the new
-            // one, so the store and module migrations run before the
-            // commit. They run on the block's branch, before the flush,
-            // so that a failure leaves no writes and no store changes.
-            let added = migrate::add_stores(ms, block_version, to)?;
-            let migrated = (|| {
-                let _scope = sdk::version::SdkV046Scope::enter(to);
-                let mut ctx = Context::new(ms, header.clone(), ExecMode::Finalize);
-                ctx.consensus_params = cp.clone();
-                migrate::modules(&mut ctx, block_version, to)?;
-                drop(ctx);
-                self.phase_not_ported(req.height, "Commit migrations")
-            })();
-            if let Err(e) = migrated {
-                migrate::unmount_added(ms, &added);
-                return Err(e);
-            }
-            migrate::remove_stores(ms, block_version, to)?;
-            self.app_version = to;
+            self.commit_migrations(ms, &header, &cp, req.height, to)?;
         }
         ms.flush()?;
         let app_hash = ms.working_hash()?.to_vec();

@@ -327,6 +327,19 @@ fn get_quoted<T: std::str::FromStr>(ctx: &mut Context<'_>, space: &str, key: &st
     }
 }
 
+/// An `sdk.Coin` parameter: its denom and amount.
+pub fn get_coin(ctx: &mut Context<'_>, space: &str, key: &str) -> Result<(String, String)> {
+    match get_json(ctx, space, key)? {
+        serde_json::Value::Object(m) => match (m.get("denom"), m.get("amount")) {
+            (Some(serde_json::Value::String(d)), Some(serde_json::Value::String(a))) => {
+                Ok((d.clone(), a.clone()))
+            }
+            _ => Err(bad(space, key)),
+        },
+        _ => Err(bad(space, key)),
+    }
+}
+
 /// A `uint64` parameter.
 pub fn get_u64(ctx: &mut Context<'_>, space: &str, key: &str) -> Result<u64> {
     get_quoted(ctx, space, key)
