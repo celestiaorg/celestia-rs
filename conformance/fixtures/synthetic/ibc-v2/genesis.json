@@ -303,10 +303,10 @@
             "amount": "10000000000"
           }
         ],
-        "max_deposit_period": "604800s"
+        "max_deposit_period": "40s"
       },
       "voting_params": {
-        "voting_period": "604800s"
+        "voting_period": "40s"
       },
       "tally_params": {
         "quorum": "0.334000000000000000",
