@@ -1,30 +1,23 @@
 //! `types.Encode` / `types.Decode` (`types/part_set.go`): Reed-Solomon
 //! parity for a block's part set, as klauspost/reedsolomon v1.14.2 computes
 //! it with `reedsolomon.New(total, total)`: the classic Vandermonde code
-//! over GF(2^8) up to 256 shards (`reed-solomon-erasure`, byte-identical)
+//! over GF(2^8) up to 256 shards (`crate::gf8`, byte-identical)
 //! and leopard over GF(2^16) above (`reed-solomon-simd`, byte-identical).
 //! Both are checked against Go vectors (`conformance/consensusvectors/propagation`).
 
 use ctypes::merkle_proof::proofs_from_byte_slices;
 use ctypes::{Part, PartSet, PartSetHeader};
 
+use crate::gf8;
+
 /// Shard count up to which klauspost uses the GF(2^8) code.
-const MAX_GF8_SHARDS: usize = 256;
+const MAX_GF8_SHARDS: usize = gf8::MAX_SHARDS;
 
-fn gf8(total: usize) -> Result<reed_solomon_erasure::galois_8::ReedSolomon, String> {
-    reed_solomon_erasure::galois_8::ReedSolomon::new(total, total).map_err(|e| format!("{e:?}"))
-}
-
-/// Parity shards of `data` (all of `part_size` bytes).
-fn encode_shards(data: &[Vec<u8>], part_size: usize) -> Result<Vec<Vec<u8>>, String> {
+/// Parity shards of `data` (shards of one length).
+fn encode_shards(data: &[Vec<u8>]) -> Result<Vec<Vec<u8>>, String> {
     let total = data.len();
     if 2 * total <= MAX_GF8_SHARDS {
-        let mut shards: Vec<Vec<u8>> = data.to_vec();
-        shards.extend((0..total).map(|_| vec![0u8; part_size]));
-        gf8(total)?
-            .encode(&mut shards)
-            .map_err(|e| format!("{e:?}"))?;
-        Ok(shards.split_off(total))
+        gf8::Code::new(total)?.encode(data)
     } else {
         reed_solomon_simd::encode(total, total, data).map_err(|e| e.to_string())
     }
@@ -69,7 +62,7 @@ pub fn encode(ops: &PartSet, part_size: u32) -> Result<(PartSet, usize), String>
     if last_len < ps {
         chunks[total - 1].resize(ps, 0);
     }
-    let parity = encode_shards(&chunks, ps)?;
+    let parity = encode_shards(&chunks)?;
     let (root, proofs) = proofs_from_byte_slices(&parity);
     let eps = part_set_from_chunks(&parity, root, proofs, part_size)?;
     Ok((eps, last_len))
@@ -102,9 +95,7 @@ pub fn decode(ops: &mut PartSet, eps: &mut PartSet, last_part_len: usize) -> Res
     if 2 * total <= MAX_GF8_SHARDS {
         let mut shards: Vec<Option<Vec<u8>>> = originals;
         shards.append(&mut parity);
-        gf8(total)?
-            .reconstruct(&mut shards)
-            .map_err(|e| format!("{e:?}"))?;
+        gf8::Code::new(total)?.reconstruct(&mut shards)?;
         parity = shards.split_off(total);
         originals = shards;
     } else {
@@ -131,7 +122,7 @@ pub fn decode(ops: &mut PartSet, eps: &mut PartSet, last_part_len: usize) -> Res
                 .iter()
                 .map(|s| s.clone().ok_or("too few shards"))
                 .collect::<Result<_, _>>()?;
-            parity = encode_shards(&full, ps)?.into_iter().map(Some).collect();
+            parity = encode_shards(&full)?.into_iter().map(Some).collect();
         }
     }
     let mut data: Vec<Vec<u8>> = originals
