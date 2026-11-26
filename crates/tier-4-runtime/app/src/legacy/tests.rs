@@ -3390,6 +3390,58 @@ fn v046_exec_dispatches_a_nested_grant() {
     assert!(Grant::decode(stored.as_slice()).is_ok());
 }
 
+/// `MsgExec` dispatches the gov messages (signer: voter, depositor,
+/// proposer): run by their own signer, they reach the gov server (an
+/// unknown proposal fails with gov code 2).
+#[test]
+fn v046_exec_dispatches_gov_messages() {
+    use celestia_proto::cosmos::authz::v1beta1::MsgExec;
+    use celestia_proto::cosmos::gov::{v1, v1beta1};
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    let me = x_auth::bech32(&[4u8; 20]).unwrap();
+    let nested = [
+        celestia_proto::Any::pack(&v1beta1::MsgVoteWeighted {
+            proposal_id: 7,
+            voter: me.clone(),
+            options: vec![v1beta1::WeightedVoteOption {
+                option: 1,
+                weight: "1000000000000000000".into(),
+            }],
+        }),
+        celestia_proto::Any::pack(&v1::MsgVoteWeighted {
+            proposal_id: 7,
+            voter: me.clone(),
+            options: vec![v1::WeightedVoteOption {
+                option: 1,
+                weight: "1.000000000000000000".into(),
+            }],
+            metadata: String::new(),
+        }),
+        celestia_proto::Any::pack(&v1beta1::MsgDeposit {
+            proposal_id: 7,
+            depositor: me.clone(),
+            amount: vec![],
+        }),
+        celestia_proto::Any::pack(&v1::MsgDeposit {
+            proposal_id: 7,
+            depositor: me.clone(),
+            amount: vec![],
+        }),
+    ];
+    for m in nested {
+        let exec = celestia_proto::Any::pack(&MsgExec {
+            grantee: me.clone(),
+            msgs: vec![m.clone()],
+        });
+        let _ = take_not_ported();
+        let e = msgs::route(&mut ctx, &exec).unwrap_err();
+        assert!(take_not_ported().is_none(), "{}", m.type_url);
+        assert_eq!((e.codespace, e.code), ("gov", 2), "{}", e.log);
+    }
+}
+
 /// celestia's router runs a `MsgExec`-dispatched `MsgDelegate` whose
 /// `ValidateBasic` fails on a zero amount: the delegation of 0 tokens
 /// succeeds (mainnet block 52698). A nil amount panics in `IsZero`.

@@ -826,6 +826,18 @@ fn exec_signer(msg: &Any) -> Result<Option<Vec<u8>>> {
             acc(&decode::<gov::v1beta1::MsgVote>(msg)?.voter)
         } else if u == gov::v1::MsgVote::type_url() {
             acc(&decode::<gov::v1::MsgVote>(msg)?.voter)
+        } else if u == gov::v1beta1::MsgVoteWeighted::type_url() {
+            acc(&decode::<gov::v1beta1::MsgVoteWeighted>(msg)?.voter)
+        } else if u == gov::v1::MsgVoteWeighted::type_url() {
+            acc(&decode::<gov::v1::MsgVoteWeighted>(msg)?.voter)
+        } else if u == gov::v1beta1::MsgDeposit::type_url() {
+            acc(&decode::<gov::v1beta1::MsgDeposit>(msg)?.depositor)
+        } else if u == gov::v1::MsgDeposit::type_url() {
+            acc(&decode::<gov::v1::MsgDeposit>(msg)?.depositor)
+        } else if u == gov::v1beta1::MsgSubmitProposal::type_url() {
+            acc(&decode::<gov::v1beta1::MsgSubmitProposal>(msg)?.proposer)
+        } else if u == gov::v1::MsgSubmitProposal::type_url() {
+            acc(&decode::<gov::v1::MsgSubmitProposal>(msg)?.proposer)
         } else if u == authz::MsgGrant::type_url() {
             acc(&decode::<authz::MsgGrant>(msg)?.granter)
         } else if u == authz::MsgRevoke::type_url() {
