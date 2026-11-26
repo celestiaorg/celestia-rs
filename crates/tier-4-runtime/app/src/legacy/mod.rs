@@ -35,6 +35,7 @@ pub mod msgs;
 pub mod params;
 pub mod qgb;
 pub mod tx;
+pub mod vesting;
 
 use celestia_proto::celestia_core_proto::abci::{
     self, ExecTxResult, ResponseFinalizeBlock, ResponseInitChain, TimeoutInfo, ValidatorUpdate,

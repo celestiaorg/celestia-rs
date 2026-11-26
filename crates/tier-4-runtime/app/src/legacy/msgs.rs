@@ -26,7 +26,9 @@ pub(super) fn acc_address(s: &str, what: &str) -> Result<Vec<u8>> {
 
 /// `Coins.IsValid() && Coins.IsAllPositive()` of decoded coins, failing
 /// with `ErrInvalidCoins` wrapping their string.
-fn valid_positive_coins(coins: &[celestia_proto::cosmos::base::v1beta1::Coin]) -> Result<Coins> {
+pub(super) fn valid_positive_coins(
+    coins: &[celestia_proto::cosmos::base::v1beta1::Coin],
+) -> Result<Coins> {
     let invalid = || errs::invalid_coins("").wrap(sdk::coins::raw_coins_string(coins));
     if !sdk::coins::raw_coins_is_valid(coins)? {
         return Err(invalid());
@@ -248,6 +250,9 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
     if let Some(r) = super::gov::validate_basic(msg) {
         return r;
     }
+    if let Some(r) = super::vesting::validate_basic(msg) {
+        return r;
+    }
     if let Some(r) = super::blob::validate_basic(msg) {
         return r;
     }
@@ -383,6 +388,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
         return r;
     }
     if let Some(r) = super::gov::route(ctx, msg) {
+        return r;
+    }
+    if let Some(r) = super::vesting::route(ctx, msg) {
         return r;
     }
     if let Some(r) = super::blob::route(ctx, msg) {

@@ -2868,3 +2868,57 @@ fn v1_nested_std_durations_are_read_as_gogoproto_decodes_them() {
     let cs = ClientState::decode(m.client_state.unwrap().value.as_slice()).unwrap();
     assert_eq!(cs.trusting_period, Some(d(200, 0)));
 }
+
+/// cosmos-sdk v0.46 `CreateVestingAccount`: a continuous account starts
+/// at the block time when its start time is 0, takes the next account
+/// number and receives the coins; an existing account or `end <= start`
+/// fails.
+#[test]
+fn v046_create_vesting_account() {
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::cosmos::vesting::v1beta1::MsgCreateVestingAccount;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    write_mainnet_genesis_params(&mut ctx).unwrap();
+    ctx.header.time = pbjson_types::Timestamp {
+        seconds: 1_700_000_000,
+        nanos: 5,
+    };
+    let (from, to) = ([1u8; 20], [2u8; 20]);
+    let acc = x_auth::new_account_with_address(&mut ctx, &from).unwrap();
+    x_auth::set_account(&mut ctx, &acc).unwrap();
+    x_bank::set_balance(&mut ctx, &from, &sdk::coins::Coin::new("utia", 1000)).unwrap();
+    let msg = |start: i64, end: i64| {
+        celestia_proto::Any::pack(&MsgCreateVestingAccount {
+            from_address: x_auth::bech32(&from).unwrap(),
+            to_address: x_auth::bech32(&to).unwrap(),
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: "400".into(),
+            }],
+            end_time: end,
+            delayed: false,
+            start_time: start,
+        })
+    };
+    let e = msgs::validate_basic(&msg(0, 0)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18), "{}", e.log);
+    let e = msgs::route(&mut ctx, &msg(10, 10)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18), "{}", e.log);
+    msgs::validate_basic(&msg(0, 1_800_000_000)).unwrap();
+    msgs::route(&mut ctx, &msg(0, 1_800_000_000)).unwrap();
+    let Some(x_auth::Account::ContinuousVesting(v)) = x_auth::get_account(&mut ctx, &to).unwrap()
+    else {
+        panic!("not a continuous vesting account")
+    };
+    assert_eq!(v.start_time, 1_700_000_000);
+    let bva = v.base_vesting_account.unwrap();
+    assert_eq!(bva.end_time, 1_800_000_000);
+    assert_eq!(bva.base_account.unwrap().account_number, 1);
+    let bal = x_bank::get_balance(&mut ctx, &to, "utia").unwrap().amount;
+    assert_eq!(bal, math::Int::from_u64(400));
+    let e = msgs::route(&mut ctx, &msg(0, 1_800_000_000)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18), "{}", e.log);
+}
