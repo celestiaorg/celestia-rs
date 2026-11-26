@@ -17,6 +17,8 @@ use celestia_proto::celestia_core_proto::tendermint::types::{
 use celestia_proto::celestia_core_proto::tendermint::version::Consensus;
 use flate2::read::GzDecoder;
 
+pub mod check;
+
 /// The oracle fixtures.
 pub const ORACLE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -366,7 +368,7 @@ pub fn oracle_diffs() -> BTreeMap<i64, BTreeMap<String, Diff>> {
     diffs_in(&format!("{ORACLE}/kv-diffs.jsonl.gz"))
 }
 
-fn diffs_in(path: &str) -> BTreeMap<i64, BTreeMap<String, Diff>> {
+pub fn diffs_in(path: &str) -> BTreeMap<i64, BTreeMap<String, Diff>> {
     let mut out: BTreeMap<i64, BTreeMap<String, Diff>> = BTreeMap::new();
     for d in gz_lines(path) {
         let diff = Diff {
