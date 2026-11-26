@@ -112,6 +112,7 @@ impl PoolInner {
 /// `snapshotPool`.
 #[derive(Default)]
 pub struct SnapshotPool {
+    pub(crate) min_height: u64,
     inner: Mutex<PoolInner>,
 }
 
@@ -128,6 +129,13 @@ impl SnapshotPool {
         Self::default()
     }
 
+    pub(crate) fn with_min_height(min_height: u64) -> Self {
+        Self {
+            min_height,
+            ..Self::default()
+        }
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, PoolInner> {
         self.inner
             .lock()
@@ -136,6 +144,15 @@ impl SnapshotPool {
 
     /// `Add`: true if this is a new, non-blacklisted snapshot.
     pub fn add(&self, peer: &PeerRef, snapshot: Snapshot) -> bool {
+        if snapshot.height < self.min_height {
+            tracing::debug!(
+                height = snapshot.height,
+                min_height = self.min_height,
+                peer = %peer.id(),
+                "Ignoring snapshot below the minimum restore height"
+            );
+            return false;
+        }
         let key = snapshot.key();
         let id = peer.id();
         let mut p = self.lock();

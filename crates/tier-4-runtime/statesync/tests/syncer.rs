@@ -67,13 +67,17 @@ impl AppConn for ScriptConn {
 
 struct MockState {
     fail: Option<light::Error>,
+    min_height: u64,
 }
 
 fn app_hash_for(h: u64) -> Vec<u8> {
-    vec![u8::try_from(h).unwrap(); 32]
+    h.to_be_bytes().repeat(4)
 }
 
 impl StateProvider for MockState {
+    fn minimum_snapshot_height(&self) -> u64 {
+        self.min_height
+    }
     fn app_hash(&self, height: u64) -> light::Result<Vec<u8>> {
         if let Some(e) = &self.fail {
             return Err(e.clone());
@@ -116,11 +120,12 @@ impl PeerHandle for ReqPeer {
 }
 
 fn chunk_body(h: u64, f: u32, i: u32) -> Vec<u8> {
-    vec![
-        u8::try_from(h).unwrap(),
-        u8::try_from(f).unwrap(),
-        u8::try_from(i).unwrap(),
+    [
+        h.to_be_bytes().as_slice(),
+        &f.to_be_bytes(),
+        &i.to_be_bytes(),
     ]
+    .concat()
 }
 
 struct Harness {
@@ -131,11 +136,16 @@ struct Harness {
 }
 
 fn harness(peer_ids: &[&str], fail: Option<light::Error>) -> Harness {
-    harness_answering(peer_ids, fail, u32::MAX)
+    harness_answering(peer_ids, fail, u32::MAX, 0)
 }
 
 /// A harness whose peers only answer chunk requests below `answer_below`.
-fn harness_answering(peer_ids: &[&str], fail: Option<light::Error>, answer_below: u32) -> Harness {
+fn harness_answering(
+    peer_ids: &[&str],
+    fail: Option<light::Error>,
+    answer_below: u32,
+    min_height: u64,
+) -> Harness {
     let dir = tempfile::tempdir().unwrap();
     let conn = Arc::new(ScriptConn::default());
     let cfg = Config {
@@ -148,7 +158,7 @@ fn harness_answering(peer_ids: &[&str], fail: Option<light::Error>, answer_below
     let syncer = Arc::new(Syncer::new(
         cfg,
         Arc::clone(&conn) as Arc<dyn AppConn>,
-        Arc::new(MockState { fail }),
+        Arc::new(MockState { fail, min_height }),
     ));
     let (tx, rx) = mpsc::channel::<(String, pbss::ChunkRequest)>();
     let peers: Vec<PeerRef> = peer_ids
@@ -282,6 +292,45 @@ fn sync_any_no_snapshots() {
     );
 }
 
+#[test]
+fn discovery_retries_after_only_pre_anchor_offers() {
+    // Heights from mainnet operator run 4A.
+    let anchor = 16_214_000;
+    let recent = 16_216_500;
+    let h = harness_answering(&["aa"], None, u32::MAX, anchor);
+    let peer = &h.peers[0];
+    // Filling the per-peer quota with stale offers must not hide a later one.
+    for i in 0..statesync::messages::RECENT_SNAPSHOTS {
+        let height = 11_643_500 + u64::try_from(i).unwrap();
+        assert!(!h.syncer.add_snapshot(peer, snap(height, 1, 1)));
+    }
+    assert_eq!(
+        h.syncer.sync_any(Duration::ZERO, &|| {}).err(),
+        Some(SyncError::NoSnapshots)
+    );
+    {
+        let mut s = h.conn.0.lock().unwrap();
+        s.offers = [OfferR::Accept as i32].into();
+        s.applies = [accept()].into();
+        s.info = Some(info(recent));
+    }
+    let (state, commit) = h
+        .syncer
+        .sync_any(statesync::syncer::MINIMUM_DISCOVERY_TIME, &|| {
+            // On the next request this same peer supplies the newest snapshot
+            // first, followed by the snapshot exactly at the trusted height.
+            assert!(h.syncer.add_snapshot(peer, snap(recent, 1, 1)));
+            assert!(h.syncer.add_snapshot(peer, snap(anchor, 1, 1)));
+        })
+        .unwrap();
+    let expected = i64::try_from(recent).unwrap();
+    assert_eq!(
+        (state.last_block_height, commit.height),
+        (expected, expected)
+    );
+    assert_eq!(h.conn.0.lock().unwrap().offered.len(), 1);
+}
+
 /// `TestSyncer_SyncAny_abort` / `_reject_sender` / `_abciError` and the
 /// offer result table of `TestSyncer_offerSnapshot`.
 #[test]
@@ -383,7 +432,7 @@ fn apply_results() {
 /// from other peers, the peer is blacklisted and the callback fires.
 #[test]
 fn reject_senders() {
-    let h = harness_answering(&["aa"], None, 1);
+    let h = harness_answering(&["aa"], None, 1, 0);
     let rejected = Arc::new(Mutex::new(Vec::new()));
     let r2 = Arc::clone(&rejected);
     h.syncer.set_on_peer_rejected(Arc::new(move |p: &str| {
@@ -522,7 +571,7 @@ fn stop_before_sync_any() {
 #[test]
 fn stop_interrupts_chunk_wait() {
     // peers answer chunk 0 only; chunk 1 never arrives
-    let h = harness_answering(&["aa"], None, 1);
+    let h = harness_answering(&["aa"], None, 1, 0);
     assert!(h.syncer.add_snapshot(&h.peers[0], snap(1, 1, 3)));
     {
         let mut s = h.conn.0.lock().unwrap();

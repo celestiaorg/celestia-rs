@@ -18,6 +18,8 @@
 #
 # Writes $BENCH_DIR/results/*.json and results.md.
 #
+# BENCH_MAX_HEIGHT=<h> stops the phase A replay after that height.
+#
 # usage: [BENCH_DIR=target/bench] [BENCH_PHASES="A B C D"] [CELESTIA_RS=path]
 #        [ABCI_BENCH=path] [DEVNET_BIN=dir] [DEVNET_PORT_OFFSET=21000]
 #        conformance/bench/run.sh
@@ -122,7 +124,8 @@ phase_a() {
   wait_port $APP_PORT || { tail "$W/replay-$kind.log"; return 1; }
   echo "A/$kind: replaying $(du -sh "$C/abci.rec" | cut -f1) recording (loadavg $(loadavg))"
   "$AB" "$C/abci.rec" "127.0.0.1:$APP_PORT" "$OUTD/replay-$kind.json" \
-    --reps "${BENCH_REPS:-3}" --heavy-reps "${BENCH_HEAVY_REPS:-10}" > "$W/replay-$kind.out"
+    --reps "${BENCH_REPS:-3}" --heavy-reps "${BENCH_HEAVY_REPS:-10}" \
+    ${BENCH_MAX_HEIGHT:+--max-height "$BENCH_MAX_HEIGHT"} > "$W/replay-$kind.out"
   local mem; mem=$(rss $pid)
   kill $pid; wait $pid 2>/dev/null || true
   python3 - "$OUTD/replay-$kind.json" "$mem" "$(dumb "$h")" <<'PY'

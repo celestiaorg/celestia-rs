@@ -405,12 +405,21 @@ impl Bridge {
             height > 0 && height <= head,
             "height {height} is not committed"
         );
-        let block = self.committed(height)?;
         match query {
             Query::Header(_) | Query::Head | Query::Tail | Query::Hash(_) => {
-                Ok(block.header_json())
+                let header = self.index.header(height)?;
+                if let Query::Hash(hash) = query {
+                    ensure!(
+                        header.commit.block_id.hash == hash,
+                        "indexed header hash mismatch"
+                    );
+                }
+                Ok(header.json())
             }
-            _ => query.answer_square(&block.eds, &block.dah),
+            _ => {
+                let block = self.committed(height)?;
+                query.answer_square(&block.eds, &block.dah)
+            }
         }
     }
 }
@@ -472,12 +481,6 @@ impl Query {
                 .context("blob: not found");
         }
         anyhow::bail!("expected a blob or share query")
-    }
-}
-
-impl Committed {
-    fn header_json(&self) -> J {
-        header_json(&self.header, &self.commit, &self.validators, &self.dah)
     }
 }
 

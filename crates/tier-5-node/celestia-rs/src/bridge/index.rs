@@ -108,6 +108,31 @@ pub(crate) struct Store {
     chain: String,
 }
 
+pub(super) struct IndexedHeader {
+    pub(super) header: ctypes::Header,
+    pub(super) commit: ctypes::Commit,
+    validators: ctypes::ValidatorSet,
+    dah: square::DataAvailabilityHeader,
+}
+
+impl IndexedHeader {
+    fn decode(raw: &[u8]) -> Result<Self> {
+        let wire = HeaderWire::decode(raw)?;
+        Ok(Self {
+            header: ctypes::Header::from_proto(&wire.header.context("missing indexed header")?)?,
+            commit: ctypes::Commit::from_proto(&wire.commit.context("missing indexed commit")?)?,
+            validators: ctypes::ValidatorSet::from_proto(
+                &wire.validators.context("missing indexed validators")?,
+            )?,
+            dah: square::DataAvailabilityHeader::from_proto_bytes(&wire.dah)?,
+        })
+    }
+
+    pub(super) fn json(&self) -> rpc::json::J {
+        super::header_json(&self.header, &self.commit, &self.validators, &self.dah)
+    }
+}
+
 fn at(prefix: u8, height: i64) -> Vec<u8> {
     [[prefix].as_slice(), &height.to_be_bytes()].concat()
 }
@@ -433,15 +458,45 @@ impl Store {
         Ok(())
     }
 
+    pub(super) fn header(&self, height: i64) -> Result<IndexedHeader> {
+        let indexed = IndexedHeader::decode(&self.header_wire(height)?)?;
+        let header = &indexed.header;
+        let commit = &indexed.commit;
+        // Indexing already verified the commit signatures and reconstructed the EDS.
+        // The header binds the stored validator set and DAH without the block body.
+        ensure!(
+            header.chain_id == self.chain && header.height == height && commit.height == height,
+            "unexpected indexed header chain or height"
+        );
+        ensure!(
+            header.hash().as_ref() == Some(&commit.block_id.hash)
+                && header.validators_hash == indexed.validators.hash()
+                && header.data_hash == indexed.dah.hash(),
+            "indexed header commitments disagree"
+        );
+        if height >= self.blocks.base()
+            && let Some(meta) = self.blocks.load_block_meta(height)?
+        {
+            ensure!(
+                meta.block_id.hash == commit.block_id.hash,
+                "DA header and consensus block disagree"
+            );
+        } else {
+            ensure!(
+                self.by_hash(&commit.block_id.hash)? == Some(height),
+                "DA header and indexed block hash disagree"
+            );
+        }
+        Ok(indexed)
+    }
+
     pub(super) fn block(&self, height: i64) -> Result<Committed> {
-        let encoded = self.header_wire(height)?;
-        let wire = HeaderWire::decode(encoded.as_slice())?;
-        let header = ctypes::Header::from_proto(&wire.header.context("missing indexed header")?)?;
-        let commit = ctypes::Commit::from_proto(&wire.commit.context("missing indexed commit")?)?;
-        let validators = ctypes::ValidatorSet::from_proto(
-            &wire.validators.context("missing indexed validators")?,
-        )?;
-        let dah = square::DataAvailabilityHeader::from_proto_bytes(&wire.dah)?;
+        let IndexedHeader {
+            header,
+            commit,
+            validators,
+            dah,
+        } = IndexedHeader::decode(&self.header_wire(height)?)?;
         let consensus = if height >= self.blocks.base() {
             self.blocks.load_block(height)?
         } else {
@@ -599,6 +654,103 @@ mod tests {
             eds,
             dah,
         })
+    }
+
+    #[tokio::test]
+    async fn header_rpcs_return_identical_json_without_block_bodies() -> Result<()> {
+        use crate::bridge::{Bridge, Query, header_json, header_rpc, ws::Endpoint as _};
+        use rpc::json::J;
+        use serde_json::json;
+        use tokio::sync::Semaphore;
+
+        let temp = tempfile::tempdir()?;
+        let blocks = BlockStore::new(Arc::new(kvdb::MemBackend::default()))?;
+        let store = Store::open(&temp.path().join("index.redb"), "controls", None, blocks)?;
+        let mut expected = Vec::new();
+        let mut previous = ctypes::BlockId::default();
+        for height in 1..=3 {
+            let mut block = block(height, height)?;
+            block.header.last_block_id = previous;
+            block.commit.block_id.hash = block.header.hash().context("empty hash")?;
+            store.save(&block)?;
+            expected.push(header_json(
+                &block.header,
+                &block.commit,
+                &block.validators,
+                &block.dah,
+            ));
+            previous = block.commit.block_id;
+        }
+        let bridge = Arc::new(Bridge {
+            index: Arc::new(store),
+            #[cfg(feature = "da-fibre")]
+            fibre: None,
+            #[cfg(feature = "bridge-p2p")]
+            peer_control: None,
+            app: None,
+            wallet: None,
+            waiters: Arc::new(Semaphore::new(1)),
+            worker: Arc::new(Semaphore::new(1)),
+        });
+        // Only the indexed headers exist. Any attempt to reconstruct the EDS must fail.
+        assert_eq!(
+            bridge.read(Query::Share(2, 0, 0)).unwrap_err().to_string(),
+            "original data square unavailable"
+        );
+        assert_eq!(bridge.read(Query::Head)?, expected[2]);
+        assert_eq!(bridge.read(Query::Hash(previous.hash))?, expected[2]);
+        assert_eq!(bridge.read(Query::Header(2))?, expected[1]);
+        assert_eq!(bridge.read(Query::Tail)?, expected[0]);
+        assert_eq!(
+            header_rpc::handle(bridge.clone(), "header.WaitForHeight", &json!([2])).await?,
+            expected[1]
+        );
+        assert_eq!(
+            bridge.clone().event(2, None).await?,
+            Some(expected[1].encode())
+        );
+
+        let mut from = serde_json::from_str::<serde_json::Value>(&expected[0].encode())?;
+        let method = "header.GetRangeByHeight";
+        let range = header_rpc::handle(bridge.clone(), method, &json!([from, 4])).await?;
+        assert_eq!(range, J::Arr(expected[1..].to_vec()));
+        from["commit"]["block_id"]["hash"] = json!(hex::encode([0; 32]));
+        let error = header_rpc::handle(bridge, method, &json!([from, 4]))
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), "discontinuous header range");
+        Ok(())
+    }
+
+    #[test]
+    fn indexed_header_checks_data_root_and_retained_consensus_header() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let blocks = BlockStore::new(Arc::new(kvdb::MemBackend::default()))?;
+        let store = Store::open(
+            &temp.path().join("index.redb"),
+            "controls",
+            None,
+            blocks.clone(),
+        )?;
+        let mut indexed = block(1, 1)?;
+        let mut consensus = ctypes::Block::new(
+            indexed.header.clone(),
+            ctypes::Data::new(Vec::new(), 1, Some(indexed.header.data_hash.clone())),
+            ctypes::EvidenceData::default(),
+            Some(ctypes::Commit::default()),
+        );
+        let parts = consensus.make_part_set(65_536)?;
+        blocks.save_block(&mut consensus, &parts, &indexed.commit)?;
+        store.save(&indexed)?;
+        assert_eq!(store.header(1)?.commit, indexed.commit);
+
+        indexed.dah.row_roots[0][0] ^= 1;
+        store.save(&indexed)?;
+        assert!(store.header(1).is_err());
+        // This entry has consistent commitments but names a different consensus block.
+        store.save(&block(1, 2)?)?;
+        assert!(store.header(1).is_err());
+        Ok(())
     }
 
     #[test]

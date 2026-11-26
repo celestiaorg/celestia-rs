@@ -59,7 +59,11 @@ read_inputs() {
     echo "invalid trust inputs" >&2; return 1
   fi
   window_min=30
-  [[ $campaign != bridge ]] || window_min=60
+  if [[ $campaign == bridge ]]; then
+    bridge_start=$(meta bridge-start)
+    if ! bench_valid height "$bridge_start" || ((bridge_start <= trust_height)); then echo "invalid DA window start" >&2; return 1; fi
+    window_min='' # bridge duration is defined in blocks
+  fi
   outcome=running reason='' height='' t0='' tip_t='' tip_h=''
 }
 
@@ -68,7 +72,7 @@ setup() {
   status setup force
   run apt-get update -q
   run env DEBIAN_FRONTEND=noninteractive apt-get install -yq build-essential clang libclang-dev cmake \
-    pkg-config git jq curl wget ca-certificates
+    pkg-config git jq python3 curl wget ca-certificates
   local dev=/dev/disk/by-id/google-data
   run mkfs.ext4 -q -m 0 "$dev"
   run mkdir -p "$DATA" && run mount -o noatime "$dev" "$DATA"
@@ -165,8 +169,6 @@ configure() {
     node_cmd=(/usr/local/bin/celestia-rs start --home "$HOMEDIR")
     [[ $campaign == genesis-prefix ]] || node_cmd+=(--statesync-rpc-servers "$rpcs"
       --statesync-trust-height "$trust_height" --statesync-trust-hash "$trust_hash")
-    # The integrated bridge with its default 169 h retention, as celestia-node's.
-    [[ $campaign != bridge ]] || node_cmd+=(--bridge-rpc-listen 127.0.0.1:26658 --bridge-p2p-listen /ip4/0.0.0.0/tcp/2121)
   else
     node_cmd=(/usr/local/bin/celestia-appd start --home "$HOMEDIR")
   fi
@@ -261,35 +263,134 @@ run_state_sync() {
   measure 5 600 window_done || return 1
 }
 
-# Bridge: state sync to tip, then (Go) start celestia-node; measure the stack
-# for the window under live mainnet traffic, probing the local DA head each
-# minute. No client workload is generated.
+# Both consensus nodes reach verified tip with DA disabled. Each bridge then
+# indexes from the first retained block. A pair is comparable only if its
+# snapshots, actual tails, window endpoints and read receipts all agree.
 run_bridge() {
   phase=sync; t0=$(mono)
   start_unit node "${node_cmd[@]}" || { reason=start_failed; return 1; }
-  local net=(--p2p.network celestia --node.store "$DATA/bridge")
-  if [[ -z $DRY ]]; then poll_s=5; measure 5 3600 at_tip || return 1; verify_block_id || { reason=tip_block_id_mismatch_or_unavailable; return 1; }; fi
+  if [[ -z $DRY ]]; then
+    poll_s=5; measure 5 3600 at_tip || return 1
+    verify_block_id || { reason=tip_block_id_mismatch_or_unavailable; return 1; }
+    if ! bridge_tail=$(rpc "$LOCAL/status" | jq -er '.result.sync_info.earliest_block_height | tonumber') ||
+      ! bench_valid height "$bridge_tail" || ((bridge_tail >= bridge_start)); then reason=invalid_bridge_base; return 1; fi
+    # Same endpoint for the consensus-only state-sync memory comparison, before any DA service starts.
+    if ! sync_peak=$(cat "$SLICE/memory.peak") || ! sync_rss=$(rss_kib); then reason=missing_sync_memory; return 1; fi
+  else
+    bridge_tail=$((trust_height + 1))
+  fi
   if [[ $role == go ]]; then
+    local net=(--p2p.network celestia --node.store "$DATA/bridge")
     as_bench celestia bridge init "${net[@]}" --core.ip 127.0.0.1 --core.port 9090 || { reason=bridge_init_failed; return 1; }
+    local cfg=$DATA/bridge/config.toml
+    if [[ -n $DRY ]]; then mkdir -p "$DATA/bridge"; printf '  [Header.Syncer]\n    SyncFromHeight = 0\n' >"$cfg"; fi
+    sed -i -E "s/^([[:space:]]*)SyncFromHeight = [0-9]+$/\1SyncFromHeight = $bridge_tail/" "$cfg"
+    # Reject unexpected encoder layout or an overriding hash in the pinned Go config.
+    python3 -c 'import sys,tomllib; s=tomllib.load(open(sys.argv[1], "rb"))["Header"]["Syncer"]; sys.exit(s.get("SyncFromHeight") != int(sys.argv[2]) or bool(s.get("SyncFromHash")))' \
+      "$cfg" "$bridge_tail" || { reason=bridge_config_failed; return 1; }
+    cp "$cfg" "$STATE/bridge-config.toml"
     start_unit bridge /usr/local/bin/celestia bridge start "${net[@]}" --core.ip 127.0.0.1 --core.port 9090 \
       --rpc.addr 127.0.0.1 --rpc.port 26658 || { reason=bridge_start_failed; return 1; }
+  else
+    # Preserve the consensus-only measurements across restarting with DA enabled.
+    if [[ -z $DRY ]]; then
+      sync_unit_peak=$(cat "$SLICE/bench-node.service/memory.peak")
+      sync_cpu=$(awk '/^usage_usec/ {print $2}' "$SLICE/cpu.stat")
+      sync_slice=$(stat -c %i "$SLICE")
+    fi
+    run systemctl stop bench-node || { reason=stop_failed; return 1; }
+    units=()
+    start_unit stack "${node_cmd[@]}" --bridge-rpc-listen 127.0.0.1:26658 --bridge-p2p-listen /ip4/0.0.0.0/tcp/2121 || { reason=bridge_start_failed; return 1; }
+    if [[ -z $DRY && $(stat -c %i "$SLICE") != "$sync_slice" ]]; then cpu_offset=$sync_cpu; fi
   fi
   [[ -z $DRY ]] || return 0
-  phase=bridge-window; window_start_s=$(awk -v a="$(mono)" -v b="$t0" 'BEGIN{print a - b}')
-  window_end=$(($(now) + window_min * 60)) next_probe=0
-  measure 5 600 da_window_done || return 1
+  phase=da-catchup; da_token=""
+  if [[ $role == rs ]]; then
+    token_cmd=(runuser -u bench -- celestia-rs da-auth read --home "$HOMEDIR")
+  else
+    token_cmd=(runuser -u bench -- env HOME="$DATA/userhome" celestia bridge auth read "${net[@]}")
+  fi
+  measure 5 600 da_ready || return 1
+  da_window || return 1
 }
-da_window_done() {
-  if (($(now) >= next_probe)); then next_probe=$(($(now) + 60)); da_probe; fi
-  window_done
+
+da_rpc() { # METHOD JSON_PARAMS [TIMEOUT]; output must be a successful result
+  curl -fsS -m "${3:-10}" http://127.0.0.1:26658 -H "Authorization: Bearer $da_token" -H 'Content-Type: application/json' \
+    --data "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"$1\",\"params\":$2}" |
+    jq -ce 'select(.id == 1 and (.error == null)) | .result'
 }
-da_probe() { # elapsed da_local_head consensus_height
-  local tok h
-  if [[ $role == rs ]]; then tok=$(runuser -u bench -- celestia-rs da-auth read --home "$HOMEDIR" 2>/dev/null)
-  else tok=$(runuser -u bench -- env HOME="$DATA/userhome" celestia bridge auth read --p2p.network celestia --node.store "$DATA/bridge" 2>/dev/null); fi
-  h=$(curl -fsS -m 10 http://127.0.0.1:26658 -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' \
-    -d '{"jsonrpc":"2.0","id":1,"method":"header.LocalHead","params":[]}' 2>/dev/null | jq -r '.result.header.height // "-"' 2>/dev/null)
-  echo "$(awk -v a="$(mono)" -v b="$t0" 'BEGIN{print a - b}') ${h:--} $height" >>"$STATE/da.tsv"
+da_height() { da_rpc "$@" | jq -er '.header.height | tonumber'; }
+da_ready() {
+  # Warm up before the common start. WaitForHeight then wakes at the exact block.
+  [[ $height =~ ^[0-9]+$ ]] && ((height >= bridge_start - 30)) || return 1
+  # Stop waiting if the consensus chain passes the scheduled window before DA catches up.
+  if ((height > bridge_start + 5)); then return 0; fi
+  da_token=$("${token_cmd[@]}") && [[ -n $da_token ]] || return 1
+  local tail head
+  tail=$(da_height header.Tail '[]') && head=$(da_height header.LocalHead '[]') || return 1
+  echo "$height $tail $head" >>"$STATE/da-ready.tsv"
+  [[ $tail == "$bridge_tail" ]] && ((head >= bridge_start - 30))
+}
+da_read() { # One request, no retries. Commit the canonical 512-byte share to the receipt.
+  local h=$1 share
+  share=$(da_rpc share.GetShare "[$h,0,0]" | jq -er 'select(type=="string" and length==684 and test("^[A-Za-z0-9+/]{682}[AEIMQUYcgkosw048]=$"))') || return 1
+  printf '%s 0 0 %s\n' "$h" "$share" >>"$STATE/da-reads.tsv"
+}
+da_sample() {
+  local current rss cpu anon file disk
+  current=$(cat "$SLICE/memory.current") && rss=$(rss_kib) &&
+    cpu=$(awk '/^usage_usec/ {print $2}' "$SLICE/cpu.stat") &&
+    read -r anon file < <(awk '$1=="anon"{a=$2} $1=="file"{f=$2} END{print a,f}' "$SLICE/memory.stat") || return 1
+  [[ $current =~ ^[0-9]+$ && $rss =~ ^[1-9][0-9]*$ && $cpu =~ ^[0-9]+$ && $anon =~ ^[0-9]+$ && $file =~ ^[0-9]+$ ]] || return 1
+  disk=$(df -B1 --output=used "$DATA" | tail -1 | tr -d ' ') || return 1
+  echo "$(mono) $current $rss $cpu $anon $file $disk" >>"$STATE/da-memory.tsv"
+}
+da_boundary() {
+  local h=$1 waited head tail sampled=-
+  waited=$(da_height header.WaitForHeight "[$h]" 180) && [[ $waited == "$h" ]] || return 1
+  if [[ $role == go ]]; then
+    # The header store can be at tip while the separate DASer is still filling
+    # earlier EDSs. Require its contiguous sampled chain to cover the boundary.
+    local until_s=$((SECONDS + 10))
+    until sampled=$(da_rpc das.SamplingStats '[]' | jq -er --argjson h "$h" \
+      'select(.is_running == true and (.failed // {} | length == 0)) | .head_of_sampled_chain | numbers | select(. >= $h)'); do
+      ((SECONDS < until_s)) || return 1
+      sleep 0.2
+    done
+  fi
+  head=$(da_height header.LocalHead '[]') && tail=$(da_height header.Tail '[]') || return 1
+  echo "$h $head $tail $sampled" >>"$STATE/da-boundaries.tsv"
+  [[ $head == "$h" && $tail == "$bridge_tail" ]]
+}
+da_workload() {
+  local h waited stop=$((bridge_start + BENCH_BRIDGE_HEIGHTS))
+  da_read "$bridge_tail" && da_read "$bridge_start" || return 1
+  for ((h = bridge_start + BENCH_BRIDGE_STRIDE; h < stop; h += BENCH_BRIDGE_STRIDE)); do
+    (($(now) < deadline)) && alive || return 1
+    waited=$(da_height header.WaitForHeight "[$h]" 120) && [[ $waited == "$h" ]] || return 1
+    da_read "$h" || return 1
+  done
+  da_boundary "$stop" && da_read "$stop"
+}
+da_window() {
+  local sampler rc=0 count digest stop=$((bridge_start + BENCH_BRIDGE_HEIGHTS))
+  if [[ -z $da_token ]] || ! da_boundary "$bridge_start"; then reason=missed_da_window_start; return 1; fi
+
+  phase=bridge-window; window_start_s=$(awk -v a="$(mono)" -v b="$t0" 'BEGIN{print a-b}')
+  echo '# uptime_s mem_current_B rss_KiB cpu_usec anon_B file_B disk_used_B' >"$STATE/da-memory.tsv"
+  da_sample || { reason=missing_da_memory; return 1; }
+  (while sleep 5; do da_sample || exit 1; done) & sampler=$!
+  da_workload || rc=1
+  kill "$sampler" 2>/dev/null || rc=1
+  wait "$sampler" 2>/dev/null || true
+  da_sample || rc=1
+  ((rc == 0)) || { reason=incomplete_da_window; return 1; }
+  count=$(wc -l <"$STATE/da-reads.tsv")
+  digest=$(sha256sum "$STATE/da-reads.tsv" | cut -d' ' -f1)
+  jq -n --argjson tail "$bridge_tail" --argjson start "$bridge_start" --argjson end "$stop" \
+    --argjson requests "$count" --arg digest "$digest" '$ARGS.named' >"$STATE/bridge.json"
+  # Preserve the endpoint poll separately from the exact DA boundary receipt.
+  poll
 }
 
 verify_block_id() { # chain ID and block ID at the local height against the reference
@@ -323,27 +424,45 @@ finish() {
   local slice_peak cpu
   slice_peak=$(cat "$SLICE/memory.peak" 2>/dev/null || true)
   cpu=$(awk '/^usage_usec/ {print $2}' "$SLICE/cpu.stat" 2>/dev/null || true)
+  local -a log_units=("${units[@]}")
+  if [[ -n ${sync_unit_peak:-} ]]; then
+    log_units+=(bench-node)
+    peak=$(jq -c --arg v "$sync_unit_peak" '. + {"bench-node":$v}' <<<"$peak")
+    ((sync_peak <= ${slice_peak:-0})) || slice_peak=$sync_peak
+    cpu=$((${cpu:-0} + ${cpu_offset:-0}))
+  fi
   for u in "${units[@]}"; do run systemctl stop "$u" || true; done
-  [[ -n $DRY ]] || for u in "${units[@]}"; do journalctl -u "$u" -o short-iso-precise --no-pager >"$STATE/$u.log" || true; done
+  [[ -n $DRY ]] || for u in "${log_units[@]}"; do journalctl -u "$u" -o short-iso-precise --no-pager >"$STATE/$u.log" || true; done
   local snap
   snap=$(grep -hoE 'Snapshot restored.*height[=: "]+[0-9]+' "$STATE"/bench-*.log 2>/dev/null | grep -oE '[0-9]+$' | head -1 || true)
   du -sB1 "$HOMEDIR" "$HOMEDIR"/data/* "$DATA"/bridge 2>/dev/null >"$STATE/du.txt" || true
+  local rss_max disk_max mem_max
+  rss_max=$(bench_max "$STATE/polls.tsv" 6 2>/dev/null || true)
+  disk_max=$(bench_max "$STATE/polls.tsv" 7 2>/dev/null || true)
+  mem_max=$(bench_max "$STATE/polls.tsv" 5 2>/dev/null || true)
+  if [[ -s $STATE/da-memory.tsv ]]; then
+    rss_max=$(printf '%s\n' "$rss_max" "$(bench_max "$STATE/da-memory.tsv" 3)" | sort -nr | head -1)
+    disk_max=$(printf '%s\n' "$disk_max" "$(bench_max "$STATE/da-memory.tsv" 7)" | sort -nr | head -1)
+    mem_max=$(printf '%s\n' "$mem_max" "$(bench_max "$STATE/da-memory.tsv" 2)" | sort -nr | head -1)
+  fi
   jq -n --arg campaign "$campaign" --arg role "$role" --arg name "$name" --arg outcome "$outcome" --arg reason "$reason" \
     --arg last_height "$(awk '$2 ~ /^[0-9]+$/ {h = $2} END {print h}' "$STATE/polls.tsv" 2>/dev/null)" \
     --arg target "$height_target" --arg tip_t "$tip_t" --arg tip_h "$tip_h" --arg snapshot "$snap" \
     --arg rust_commit "$rust_commit" --arg go_commit "$BENCH_GO_COMMIT" --arg node_commit "${node_commit:-}" \
     --arg bin_sha "${bin_sha:-}" --arg node_sha "${node_sha:-}" --arg toolchain "${toolchain:-}" \
     --arg trust_height "$trust_height" --arg trust_hash "$trust_hash" --arg egress "$EGRESS_CAP" \
+    --arg sync_peak_B "${sync_peak:-}" --arg sync_tip_rss_KiB "${sync_rss:-}" \
     --arg slice_peak "$slice_peak" --argjson unit_peaks "$peak" --arg cpu_usec "$cpu" \
-    --arg rss_peak "$(bench_max "$STATE/polls.tsv" 6 2>/dev/null)" --arg mem_max "$(bench_max "$STATE/polls.tsv" 5 2>/dev/null)" \
-    --arg disk_hwm "$(bench_max "$STATE/polls.tsv" 7 2>/dev/null)" --arg end "$(tail -1 "$STATE/polls.tsv" 2>/dev/null)" \
+    --arg rss_peak "$rss_max" --arg mem_max "$mem_max" \
+    --arg disk_hwm "$disk_max" --arg end "$(tail -1 "$STATE/polls.tsv" 2>/dev/null)" \
     --arg du "$(cat "$STATE/du.txt")" --arg window "${window_min:-}" --arg window_start_s "${window_start_s:-}" \
-    --arg workload "$([[ $campaign == bridge ]] && echo 'live mainnet traffic only')" --arg node_tag "$BENCH_NODE_TAG" \
+    --slurpfile bridge <(cat "$STATE/bridge.json" 2>/dev/null) \
+    --arg workload "$([[ $campaign == bridge ]] && echo "share.GetShare(row=0,col=0) at tail and every $BENCH_BRIDGE_STRIDE blocks")" --arg node_tag "$BENCH_NODE_TAG" \
     --arg machine "$(curl -fsS -m 5 -H Metadata-Flavor:Google "$MD/machine-type" 2>/dev/null | sed 's,.*/,,')" \
     --arg kernel "$(uname -r)" --arg cpus "$(nproc)" --arg mem "$(awk '/MemTotal/ {print $2}' /proc/meminfo)" \
     --slurpfile verify <(cat "$STATE"/verify-*.json 2>/dev/null) \
     --arg poll_columns "$POLL_COLUMNS" --arg poll_interval_s "$poll_s" --arg timings "$(timings)" \
-    --arg mem_peak_polled "$(bench_max "$STATE/polls.tsv" 10 2>/dev/null)" '$ARGS.named + {verify: $verify}' \
+    --arg mem_peak_polled "$(bench_max "$STATE/polls.tsv" 10 2>/dev/null)" '$ARGS.named + {verify: $verify, bridge: $bridge[0]}' \
     >"$STATE/summary.json"
   # Guest attributes kept only about 500 KB for each VM in the 2026-11-25
   # runs: chunks after the second were dropped. Two chunks is the budget.
@@ -352,7 +471,7 @@ finish() {
   # the full node logs, and as the last resort the polls alone.
   local n i f
   for f in "$STATE"/bench-*.log; do
-    [[ -e $f ]] && bench_log_excerpt <"$f" >"${f%.log}.excerpt" || true
+    if [[ -e $f ]]; then bench_log_excerpt <"$f" >"${f%.log}.excerpt" || true; fi
   done
   pack() { tar -C "$STATE" -cf "$STATE/raw.tar" --exclude=raw.tar --exclude=attrs --exclude='raw.*' "$@" . 2>/dev/null || true; }
   pack --exclude='*.excerpt'
@@ -361,7 +480,9 @@ finish() {
     n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 "$RAW_MAX_CHUNKS")
   } || {
     tail -c 1000000 "$STATE/polls.tsv" >"$STATE/polls.tail.tsv"
-    tar -C "$STATE" -cf "$STATE/raw.tar" polls.tail.tsv summary.json
+    local evidence=(polls.tail.tsv summary.json)
+    for f in da-reads.tsv da-memory.tsv da-boundaries.tsv bridge-config.toml; do [[ ! -f $STATE/$f ]] || evidence+=("$f"); done
+    tar -C "$STATE" -cf "$STATE/raw.tar" "${evidence[@]}"
     n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 "$RAW_MAX_CHUNKS")
   }
   put summary "$STATE/summary.json"
@@ -381,8 +502,7 @@ arm_err_trap() {
 main() {
   mkdir -p "$STATE"
   if [[ -z $DRY && ${BENCH_DETACHED:-} != 1 ]]; then # the startup script re-runs on boot
-    [[ ! -e $STATE/started ]] || exit 0
-    touch "$STATE/started"
+    bench_claim_driver "$STATE" || exit 0
     curl -fsS -m 10 -H Metadata-Flavor:Google "$MD/attributes/startup-script" >"$STATE/run.sh"
     exec systemd-run --unit=bench-driver --setenv=BENCH_DETACHED=1 bash "$STATE/run.sh"
   fi
