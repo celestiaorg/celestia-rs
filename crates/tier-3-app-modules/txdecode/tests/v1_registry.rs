@@ -118,3 +118,72 @@ fn core_v034_blob_tx_unwraps_like_go() {
     );
     assert_eq!(txdecode::unmarshal_blob_tx_v034(b"\xff"), None);
 }
+
+/// A `TxRaw` whose single message is `levels` `MsgExec`s nested through
+/// their `msgs` field (the innermost holds no message), built back to
+/// front in linear time.
+fn nested_exec_tx(levels: usize) -> Vec<u8> {
+    fn rev_varint(out: &mut Vec<u8>, mut v: usize) {
+        let mut b = Vec::new();
+        loop {
+            let byte = u8::try_from(v & 0x7f).unwrap();
+            v >>= 7;
+            if v == 0 {
+                b.push(byte);
+                break;
+            }
+            b.push(byte | 0x80);
+        }
+        out.extend(b.iter().rev());
+    }
+    const URL: &[u8] = b"/cosmos.authz.v1beta1.MsgExec";
+    // Reversed bytes of the current innermost `MsgExec` (empty).
+    let mut rev = Vec::new();
+    for _ in 0..levels {
+        // Any { type_url: 1, value: 2 } around the current message.
+        let inner = rev.len();
+        rev_varint(&mut rev, inner);
+        rev.push(0x12);
+        rev.extend(URL.iter().rev());
+        rev_varint(&mut rev, URL.len());
+        rev.push(0x0a);
+        // MsgExec { msgs: 2 } around that Any.
+        let any = rev.len();
+        rev_varint(&mut rev, any);
+        rev.push(0x12);
+    }
+    rev.reverse();
+    let msg = Any {
+        type_url: String::from_utf8(URL.to_vec()).unwrap(),
+        value: rev,
+    };
+    tx(vec![msg], 0)
+}
+
+/// Go v0.46's `RejectUnknownFields` and `UnpackInterfaces` have no
+/// nesting limits: deeper than v0.50's unpack limit (10) decodes under
+/// the v1 decoder, and production decoding still rejects it.
+#[test]
+fn v1_decodes_past_the_unpack_depth_limit() {
+    let raw = nested_exec_tx(12);
+    let decoded = txdecode::decode_v1(&raw).unwrap();
+    assert_eq!(decoded.msgs().len(), 1);
+    let e = txdecode::decode(&raw).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 2), "{}", e.log);
+    assert!(e.log.contains("max depth exceeded"), "{}", e.log);
+    assert!(!txdecode::is_v1_unsupported_limit(&e));
+}
+
+/// The unknown-fields walk's recursion limit is not Go v0.46's: under
+/// the v1 decoder tripping it is a distinct error the legacy layer
+/// aborts the block on; production decoding keeps its error.
+#[test]
+fn v1_recursion_limit_is_a_distinct_error() {
+    let raw = nested_exec_tx(10_050);
+    let e = txdecode::decode_v1(&raw).unwrap_err();
+    assert!(txdecode::is_v1_unsupported_limit(&e), "{e:?}");
+    let e = txdecode::decode(&raw).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 2), "{}", e.log);
+    assert_eq!(e.log, "recursion limit reached: tx parse error");
+    assert!(!txdecode::is_v1_unsupported_limit(&e));
+}
