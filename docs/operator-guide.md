@@ -966,6 +966,12 @@ The RPC servers must still hold height `H` (archive nodes for old
 heights). The script sets a long `--trust-period-hours`, because the light
 client measures the trusting period from now and an old header is years
 old; the trust itself comes from `TRUST_HASH` (or the primary's header).
+With a height, `follow` verifies the light-client data at `H` (validator
+sets, consensus params, commit, header `H+1`'s app hash) before it reads
+the snapshot. Run the script with an empty snapshot directory to check
+the RPC servers and the trust hash ahead of time: it logs
+`light-client data at the snapshot height verified` and then stops at the
+missing snapshot.
 
 - **Archive peers.** Block sync asks a peer only for heights inside the
   `[base, height]` range it reports. Most public peers prune old blocks,

@@ -353,28 +353,13 @@ fn read_snapshot(root: &Path, want: Option<u64>) -> anyhow::Result<LocalSnapshot
     })
 }
 
-#[allow(clippy::too_many_lines)]
-/// Restores `snap` into the app (OfferSnapshot + ApplySnapshotChunk, the
-/// state-sync syncer's calls) and bootstraps the node stores with the
-/// light-client-verified state at the snapshot height.
-fn bootstrap(
+/// The light-client-verified app hash (header `height + 1`'s), state and
+/// commit at the snapshot height.
+fn verified_state(
     opts: &FollowOptions,
     chain_id: &str,
-    app: &Arc<Mutex<app::App>>,
-    ss: &StateStore,
-    bs: &BlockStore,
-) -> anyhow::Result<State> {
-    let root = opts.snapshot.as_ref().ok_or_else(|| {
-        anyhow!("the home has no state: pass --snapshot <dir> for the first start")
-    })?;
-    let snap = read_snapshot(root, opts.snapshot_height)?;
-    let height = i64::try_from(snap.snapshot.height)?;
-    tracing::info!(
-        height,
-        chunks = snap.snapshot.chunks,
-        hash = %hex::encode_upper(&snap.snapshot.hash),
-        "bootstrapping from snapshot"
-    );
+    height: i64,
+) -> anyhow::Result<(Vec<u8>, State, Commit)> {
     let trust_hash = if let Some(h) = &opts.trust_hash {
         h.clone()
     } else {
@@ -423,12 +408,62 @@ fn bootstrap(
         },
     )
     .map_err(|e| anyhow!("light client: {e}"))?;
-    let h = snap.snapshot.height;
+    let h = u64::try_from(height)?;
     let app_hash = sp
         .app_hash(h)
         .map_err(|e| anyhow!("app hash at {h}: {e}"))?;
     let state = sp.state(h).map_err(|e| anyhow!("state at {h}: {e}"))?;
     let commit = sp.commit(h).map_err(|e| anyhow!("commit at {h}: {e}"))?;
+    tracing::info!(
+        height,
+        app_hash = %hex::encode_upper(&app_hash),
+        app_version = state.consensus_params.version.app,
+        "light-client data at the snapshot height verified"
+    );
+    Ok((app_hash, state, commit))
+}
+
+#[allow(clippy::too_many_lines)]
+/// Restores `snap` into the app (OfferSnapshot + ApplySnapshotChunk, the
+/// state-sync syncer's calls) and bootstraps the node stores with the
+/// light-client-verified state at the snapshot height.
+fn bootstrap(
+    opts: &FollowOptions,
+    chain_id: &str,
+    app: &Arc<Mutex<app::App>>,
+    ss: &StateStore,
+    bs: &BlockStore,
+) -> anyhow::Result<State> {
+    let root = opts.snapshot.as_ref().ok_or_else(|| {
+        anyhow!("the home has no state: pass --snapshot <dir> for the first start")
+    })?;
+    // With a known height, the RPC side (trusted header, validator sets,
+    // consensus params, commit, header h+1) is verified before the snapshot
+    // is read, so a missing or broken snapshot fails only after the network
+    // data at that height has been proven obtainable.
+    let (snap, (app_hash, state, commit)) = if let Some(h) = opts.snapshot_height {
+        let verified = verified_state(opts, chain_id, i64::try_from(h)?)?;
+        let snap = read_snapshot(root, Some(h)).with_context(|| {
+            format!(
+                "light-client data at {h} verified (app hash {}, app version {})",
+                hex::encode_upper(&verified.0),
+                verified.1.consensus_params.version.app
+            )
+        })?;
+        (snap, verified)
+    } else {
+        let snap = read_snapshot(root, None)?;
+        let h = i64::try_from(snap.snapshot.height)?;
+        let verified = verified_state(opts, chain_id, h)?;
+        (snap, verified)
+    };
+    let height = i64::try_from(snap.snapshot.height)?;
+    tracing::info!(
+        height,
+        chunks = snap.snapshot.chunks,
+        hash = %hex::encode_upper(&snap.snapshot.hash),
+        "bootstrapping from snapshot"
+    );
 
     let mut a = app
         .lock()

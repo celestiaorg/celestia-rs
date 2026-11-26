@@ -33,7 +33,11 @@ BIN=${CELESTIA_RS_BIN:-celestia-rs}
 HOME_DIR=${CELESTIA_RS_HOME:-$HOME/.celestia-rs/mainnet-snapshot-$HEIGHT}
 [[ -n ${RPC:-} ]] || { echo "set RPC to archive RPC servers holding height $HEIGHT" >&2; exit 2; }
 [[ $HEIGHT =~ ^[0-9]+$ && $STOP =~ ^[0-9]+$ ]] || { echo "heights must be numbers" >&2; exit 2; }
-ls -d "$SNAP/$HEIGHT"/[23] >/dev/null 2>&1 || { echo "no $SNAP/$HEIGHT/2 or $SNAP/$HEIGHT/3" >&2; exit 2; }
+# Without the snapshot the run still verifies the light-client data at
+# <height> over RPC and then stops at the missing snapshot: a check of the
+# RPC servers and trust hash before the snapshot arrives.
+ls -d "$SNAP/$HEIGHT"/[23] >/dev/null 2>&1 ||
+  echo "warning: no $SNAP/$HEIGHT/2 or $SNAP/$HEIGHT/3: checking the RPC side only" >&2
 
 ulimit -n 65536 2>/dev/null || echo "warning: could not raise the open-files limit" >&2
 mkdir -p "$HOME_DIR/logs"
@@ -53,7 +57,7 @@ set +e
 "$BIN" "${args[@]}" >"$log" 2>&1
 status=$?
 set -e
-grep -E 'snapshot restored|restored cosmos-sdk v0.46' "$log" | tail -n 2 || true
+grep -E 'light-client data at the snapshot height verified|snapshot restored' "$log" | tail -n 2 || true
 if [[ $status -ne 0 ]]; then
   echo "follower exited with status $status; last lines:" >&2
   tail -n 20 "$log" >&2
