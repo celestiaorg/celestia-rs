@@ -10,7 +10,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 t=$(mktemp -d)
 agent_pid=''
 cleanup() {
-  [[ -z $agent_pid ]] || { kill "$agent_pid" 2>/dev/null; wait "$agent_pid" 2>/dev/null; }
+  # The killed agent makes `wait` return 143; under `set -e` that would become
+  # the exit status of the whole test.
+  [[ -z $agent_pid ]] || { kill "$agent_pid" 2>/dev/null || true; wait "$agent_pid" 2>/dev/null || true; }
   pkill -f "$t/" 2>/dev/null || true
   pkill -f "$here/agent.sh" 2>/dev/null || true
   sleep 0.5
