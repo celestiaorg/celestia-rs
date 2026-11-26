@@ -113,12 +113,15 @@ fn mainnet_duplicate_vote_evidence_verifies() {
         let ev = &f.evidence[0];
         assert!(matches!(ev, Evidence::DuplicateVote(_)));
         let state = state_before(&f);
-        verify(&state, ev, &Blocks(&f), &Validators(Some(&f)))
-            .unwrap_or_else(|e| panic!("evidence at {}: {e}", f.height));
+        assert!(
+            verify(&state, ev, &Blocks(&f), &Validators(Some(&f))).is_ok(),
+            "evidence at height {} does not verify",
+            f.height
+        );
         // Without the stored validator set of the evidence height (a
         // pruned state store), the block cannot be verified.
         let err = verify(&state, ev, &Blocks(&f), &Validators(None)).unwrap_err();
-        assert!(err.contains("validator set"), "{err}");
+        assert!(err.contains("validator set"));
         // Signed for mainnet only.
         let mut other = state.clone();
         other.chain_id = "mocha-5".into();
@@ -143,7 +146,7 @@ fn evidence_age_uses_the_params_of_the_synced_state() {
     state.last_block_time =
         nodestore::state::add_duration(state.last_block_time, 22 * 24 * 3600 * 1_000_000_000);
     let err = verify(&state, ev, &Blocks(&v5), &Validators(Some(&v5))).unwrap_err();
-    assert!(err.contains("too old"), "{err}");
+    assert!(err.contains("too old"));
     state.consensus_params.evidence = v6.params.evidence;
     verify(&state, ev, &Blocks(&v5), &Validators(Some(&v5))).unwrap();
 }
