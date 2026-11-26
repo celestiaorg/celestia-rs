@@ -86,13 +86,17 @@ mount_disk() { # mount_disk DEVICE_NAME DIR: format only a disk with no filesyst
   mkdir -p "$2"
   [[ -z $DRY ]] || { run mount -o noatime "$dev" "$2"; return; }
   blkid -p "$dev" >/dev/null 2>&1 || mkfs.ext4 -q -m 0 "$dev"
-  mountpoint -q "$2" || mount -o noatime "$dev" "$2"
+  mountpoint -q "$2" || mount -o noatime "$dev" "$2" || mountpoint -q "$2" # another boot script may mount it first
 }
 
 setup() {
   mkdir -p "$RUN"
-  run apt-get update -q
-  run env DEBIAN_FRONTEND=noninteractive apt-get install -yq build-essential git jq curl wget ca-certificates python3
+  # The first campaign failed when unattended-upgrades' needrestart restarted
+  # this driver: the new driver failed on the apt lock and stopped the node.
+  run systemctl disable --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer
+  [[ -n $DRY ]] || { mkdir -p /etc/needrestart/conf.d && echo "\$nrconf{restart} = 'l';" >/etc/needrestart/conf.d/ckpt.conf; }
+  run apt-get -o DPkg::Lock::Timeout=900 update -q
+  run env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=900 install -yq build-essential git jq curl wget ca-certificates python3
   mount_disk data "$DATA"
   mount_disk ckpt "$CKPT"
   mkdir -p "$STATE" "$HOMEDIR" "$USERHOME" "$DATA/bin"
@@ -101,7 +105,17 @@ setup() {
   run chown bench:bench "$DATA" "$HOMEDIR" "$USERHOME"
   local dev_if
   dev_if=$(ip route show default 2>/dev/null | awk '{print $5; exit}' || true)
-  run tc qdisc replace dev "${dev_if:-ens4}" root tbf rate "$CKPT_EGRESS_CAP" burst 64kb latency 400ms
+  # Internet egress is capped; Cloud Storage (through the private.googleapis.com
+  # VIP, free in region) and the metadata server are not.
+  dev_if=${dev_if:-ens4}
+  run tc qdisc replace dev "$dev_if" root handle 1: htb default 20
+  run tc class replace dev "$dev_if" parent 1: classid 1:10 htb rate 10gbit
+  run tc class replace dev "$dev_if" parent 1: classid 1:20 htb rate "$CKPT_EGRESS_CAP" ceil "$CKPT_EGRESS_CAP"
+  run tc filter replace dev "$dev_if" parent 1: protocol ip prio 1 handle 800::800 u32 match ip dst 199.36.153.8/30 flowid 1:10
+  run tc filter replace dev "$dev_if" parent 1: protocol ip prio 1 handle 800::801 u32 match ip dst 169.254.169.254/32 flowid 1:10
+  local hosts=${DRY:+$DRY/hosts}
+  hosts=${hosts:-/etc/hosts}
+  grep -q ' storage.googleapis.com$' "$hosts" 2>/dev/null || echo '199.36.153.8 storage.googleapis.com' >>"$hosts"
   run modprobe tcp_bbr # celestia-app refuses to start without BBR
   run sysctl -w net.core.default_qdisc=fq net.ipv4.tcp_congestion_control=bbr
 }
@@ -156,6 +170,9 @@ configure() {
   bench_toml_set "$a" "" pruning-keep-recent '"100"'
   bench_toml_set "$a" "" pruning-interval '"10"'
   bench_toml_set "$a" "" min-retain-blocks 3000
+  # The fast-node index only speeds up queries of the latest state; keeping it
+  # costs a write per changed key. Snapshot export reads the trees.
+  bench_toml_set "$a" "" iavl-disable-fastnode true
   bench_toml_set "$a" state-sync snapshot-interval 0
 }
 
@@ -298,6 +315,18 @@ checkpoint() { # checkpoint H V
   mv "$CKPT/$h/checkpoint.tmp" "$CKPT/$h/checkpoint.json"
   sync
   put "ckpt-$h" "$CKPT/$h/checkpoint.json"
+  upload "$h" || echo "checkpoint $h not uploaded; it stays on the checkpoint disk" >&2
+}
+
+# upload H: copy checkpoint H to Cloud Storage under checkpoints/<campaign>/
+# when the VM runs the vmexec agent with a bucket (vmexec create --gcs).
+has_bucket() { [[ -n $DRY ]] || { command -v vmx-gcs >/dev/null && vmx-gcs url probe >/dev/null 2>&1; }; }
+upload() {
+  has_bucket || return 0
+  local f
+  while IFS= read -r f; do
+    run vmx-gcs put "$f" "checkpoints/$name/${f#"$CKPT"/}" || return 1
+  done < <(find "$CKPT/$1" -type f | sort)
 }
 
 run_campaign() {
@@ -337,7 +366,11 @@ finish() {
   local n files=()
   for f in polls.tail.tsv node.excerpt status.log du.txt df.txt export-*.log; do [[ -e $STATE/$f ]] && files+=("$f"); done
   tar -C "$STATE" -cf "$RUN/raw.tar" "${files[@]}" 2>/dev/null || true
-  n=$(bench_chunk "$RUN/raw.tar" "$RUN/raw" 196608 2) || {
+  # With a bucket the raw results go there: guest attributes share ~512 KiB
+  # per VM with the vmexec agent's results.
+  if has_bucket && run vmx-gcs put "$RUN/raw.tar" "checkpoints/$name/raw/$(date -u +%Y%m%dT%H%M%SZ).tar"; then
+    n=0
+  else n=$(bench_chunk "$RUN/raw.tar" "$RUN/raw" 196608 2); fi || {
     tar -C "$STATE" -cf "$RUN/raw.tar" polls.tail.tsv status.log 2>/dev/null || true
     n=$(bench_chunk "$RUN/raw.tar" "$RUN/raw" 196608 2) || n=0
   }

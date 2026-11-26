@@ -454,6 +454,34 @@ height before it, H−1:
 4. Add the snapshot root, H−1 and the block hash at H−1 under key `N` in
    `checkpoints`.
 
+##### Checkpoints from the QubeLabs archive application database
+
+The QubeLabs tar is a node `data/` directory, not only snapshots. Its
+`application.db` (pebble, 1.56 million files, 3.68 TB) is an archive from
+genesis: the multistore commit info `s/<height>` exists from height 1, the
+legacy IAVL roots (`r` keys) cover the v1 to v3 eras and the IAVL v1 nodes
+(`s` keys) start at 6,680,340. Its latest version is about 15,116,644, the
+end of app version 9. Every planned checkpoint height is in it.
+
+[`archive-export/v046`](archive-export/v046) and
+[`archive-export/v050`](archive-export/v050) export a Go state-sync snapshot
+from that database at any height: they mount the stores named in the commit
+info of that height, load that version and write the snapshot with the SDK
+snapshot manager (format 2 with the celestia-app v3.13.0 SDK fork, format 3
+with `cosmossdk.io/store` v1.1.2 and IAVL v1.2.6). The download scripts are
+in [`archive-export/tools`](archive-export/tools); `lsm.py` reads a
+`pebble manifest dump` and lists the IAVL key kinds and versions per store,
+which is how the archive was recognised. The download needs the tar's byte
+offsets: `tarindex.py` walks the tar headers with HTTP range
+requests (about one hour), and `archive-fetch.py` fetches only the
+`application.db` members in parallel (about 100 MB/s from QubeLabs, so
+about ten hours). The scripts and the index are in
+`gs://fibreda-celestia-rs-genesis/tools/` and
+`gs://fibreda-celestia-rs-genesis/archive/qubelabs-celestia_2026-11-03/`;
+exported checkpoints go to
+`gs://fibreda-celestia-rs-genesis/go-snapshots/<height>/<format>/` (chunks, `metadata.json`)
+after `verify-replay-checkpoint.py` checked them.
+
 ##### Go checkpoint campaign
 
 The `checkpoints` job of
