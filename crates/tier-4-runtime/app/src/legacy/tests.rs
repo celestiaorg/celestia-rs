@@ -2670,9 +2670,11 @@ fn v046_authz_validate_basic() {
     let e = grant(&a, &b, stake(0)).unwrap_err();
     assert_eq!((e.codespace, e.code), ("authz", 4));
     let _ = take_not_ported();
+    // A v0.46 `SendAuthorization` without a spend limit is invalid.
     let send = Any::pack(&celestia_proto::cosmos::bank::v1beta1::SendAuthorization::default());
-    grant(&a, &b, Some(send)).unwrap_err();
-    assert!(take_not_ported().is_some());
+    let e = grant(&a, &b, Some(send)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 10), "{}", e.log);
+    assert!(take_not_ported().is_none());
 
     let exec = |grantee: &str, n: usize| {
         msgs::validate_basic(&Any::pack(&authz::MsgExec {
@@ -2773,11 +2775,238 @@ fn v046_gov_vote_on_unknown_proposal() {
         assert_eq!((e.codespace, e.code), ("gov", 2), "{}", e.log);
         assert!(take_not_ported().is_none());
     }
-    let mut key = vec![0x00];
-    key.extend_from_slice(&1u64.to_be_bytes());
-    ctx.set(x_gov::STORE_KEY, key, vec![1]).unwrap();
-    assert!(msgs::route(&mut ctx, &old(1)).is_err());
-    assert!(take_not_ported().is_some());
+}
+
+/// A v0.46 community pool spend proposal end to end: submitted with half
+/// the minimum deposit (deposit period, inactive queue), deposited to the
+/// minimum (voting period, active queue), voted yes by one validator of
+/// two (quorum and threshold met), then tallied by the EndBlocker after
+/// the voting period: it passes, the spend runs, the deposits are
+/// refunded and the votes deleted. A second proposal that never reaches
+/// the minimum is dropped (deleted, deposit refunded) after its deposit
+/// period.
+#[test]
+#[allow(clippy::too_many_lines)]
+fn v046_gov_community_pool_spend_proposal_lifecycle() {
+    use celestia_proto::cosmos::gov::{v1, v1beta1};
+    use prost::Message as _;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let (mut ctx, _) = v046_two_validators(&mut ms, 2);
+    ctx.header.time = pbjson_types::Timestamp {
+        seconds: 1_700_000_000,
+        nanos: 0,
+    };
+    x_gov::set_proposal_id(&mut ctx, 1).unwrap();
+    let utia = |n: u64| sdk::coins::Coins(vec![sdk::coins::Coin::new("utia", n)]);
+    let pb = |n: u64| utia(n).to_proto();
+    let addr_of = |name: &str, ctx: &mut sdk::Context<'_>| {
+        let m = x_auth::get_module_account(ctx, name).unwrap().unwrap();
+        x_auth::Account::Module(m).address().unwrap()
+    };
+    let bonded = addr_of("bonded_tokens_pool", &mut ctx);
+    x_bank::set_balance(
+        &mut ctx,
+        &bonded,
+        &sdk::coins::Coin::new("utia", 200_000_000),
+    )
+    .unwrap();
+    let distr = addr_of("distribution", &mut ctx);
+    x_bank::set_balance(&mut ctx, &distr, &sdk::coins::Coin::new("utia", 1_000)).unwrap();
+    x_distribution::store::set_fee_pool(
+        &mut ctx,
+        &sdk::dec_coins::DecCoins::from_coins(&utia(1_000)).unwrap(),
+    )
+    .unwrap();
+    let proposer = [9u8; 20];
+    x_bank::set_balance(
+        &mut ctx,
+        &proposer,
+        &sdk::coins::Coin::new("utia", 30_000_000_000),
+    )
+    .unwrap();
+    let recipient = [8u8; 20];
+    let spend = celestia_proto::Any::pack(
+        &celestia_proto::cosmos::distribution::v1beta1::CommunityPoolSpendProposal {
+            title: "t".into(),
+            description: "d".into(),
+            recipient: x_auth::bech32(&recipient).unwrap(),
+            amount: pb(400),
+        },
+    );
+    let submit = |deposit: u64| {
+        celestia_proto::Any::pack(&v1beta1::MsgSubmitProposal {
+            content: Some(spend.clone()),
+            initial_deposit: pb(deposit),
+            proposer: x_auth::bech32(&proposer).unwrap(),
+        })
+    };
+    // Submit with half the minimum deposit (10,000,000,000 utia).
+    msgs::validate_basic(&submit(5_000_000_000)).unwrap();
+    let gas0 = ctx.gas.consumed();
+    let r = msgs::route(&mut ctx, &submit(5_000_000_000)).unwrap();
+    assert!(ctx.gas.consumed() > gas0);
+    assert_eq!(
+        v1beta1::MsgSubmitProposalResponse::decode(r.value.as_slice())
+            .unwrap()
+            .proposal_id,
+        1
+    );
+    assert!(take_not_ported().is_none());
+    let get = |ctx: &mut sdk::Context<'_>, id: u64| -> Option<v1::Proposal> {
+        let mut k = vec![0x00];
+        k.extend_from_slice(&id.to_be_bytes());
+        ctx.get(x_gov::STORE_KEY, &k)
+            .unwrap()
+            .map(|b| v1::Proposal::decode(b.as_slice()).unwrap())
+    };
+    let p = get(&mut ctx, 1).unwrap();
+    assert_eq!(p.status, v1::ProposalStatus::DepositPeriod as i32);
+    assert_eq!(p.total_deposit, pb(5_000_000_000));
+    assert_eq!(
+        p.messages[0].type_url,
+        "/cosmos.gov.v1.MsgExecLegacyContent"
+    );
+    let dep_end = p.deposit_end_time.unwrap();
+    assert_eq!(dep_end.seconds, 1_700_000_000 + 604_800);
+    // The submit dry run left the community pool alone.
+    assert_eq!(
+        x_bank::get_balance(&mut ctx, &recipient, "utia")
+            .unwrap()
+            .amount,
+        math::Int::zero()
+    );
+    // Deposit the rest: the voting period starts.
+    let dep = celestia_proto::Any::pack(&v1::MsgDeposit {
+        proposal_id: 1,
+        depositor: x_auth::bech32(&proposer).unwrap(),
+        amount: pb(5_000_000_000),
+    });
+    msgs::validate_basic(&dep).unwrap();
+    msgs::route(&mut ctx, &dep).unwrap();
+    let p = get(&mut ctx, 1).unwrap();
+    assert_eq!(p.status, v1::ProposalStatus::VotingPeriod as i32);
+    assert_eq!(p.total_deposit, pb(10_000_000_000));
+    assert!(
+        x_gov::expired_queue_entries(&mut ctx, x_gov::INACTIVE_QUEUE_PREFIX, &dep_end)
+            .unwrap()
+            .is_empty()
+    );
+    // A second proposal that stays below the minimum.
+    msgs::route(&mut ctx, &submit(1)).unwrap();
+    // Validator 1 (half of the bonded tokens) votes yes.
+    let yes = celestia_proto::Any::pack(&v1beta1::MsgVote {
+        proposal_id: 1,
+        voter: x_auth::bech32(&[1u8; 20]).unwrap(),
+        option: 1,
+    });
+    msgs::route(&mut ctx, &yes).unwrap();
+    // A vote on the proposal in its deposit period is inactive.
+    let early = celestia_proto::Any::pack(&v1beta1::MsgVote {
+        proposal_id: 2,
+        voter: x_auth::bech32(&[1u8; 20]).unwrap(),
+        option: 1,
+    });
+    let e = msgs::route(&mut ctx, &early).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("gov", 3), "{}", e.log);
+    // After both periods: proposal 2 is dropped, proposal 1 passes.
+    ctx.header.time = pbjson_types::Timestamp {
+        seconds: 1_700_000_000 + 604_800 + 1,
+        nanos: 0,
+    };
+    ctx.events.take();
+    gov::end_block(&mut ctx).unwrap();
+    assert!(take_not_ported().is_none());
+    assert!(get(&mut ctx, 2).is_none());
+    let p = get(&mut ctx, 1).unwrap();
+    assert_eq!(p.status, v1::ProposalStatus::Passed as i32);
+    let t = p.final_tally_result.unwrap();
+    assert_eq!(t.yes_count, "100000000");
+    assert_eq!(t.no_count, "0");
+    assert_eq!(
+        x_bank::get_balance(&mut ctx, &recipient, "utia")
+            .unwrap()
+            .amount,
+        math::Int::from_u64(400)
+    );
+    // Every deposit refunded.
+    assert_eq!(
+        x_bank::get_balance(&mut ctx, &proposer, "utia")
+            .unwrap()
+            .amount,
+        math::Int::from_u64(30_000_000_000)
+    );
+    let types: Vec<&str> = ctx
+        .events
+        .events()
+        .iter()
+        .map(|e| e.r#type.as_str())
+        .collect();
+    assert!(types.contains(&"inactive_proposal"), "{types:?}");
+    assert_eq!(types.last(), Some(&"active_proposal"), "{types:?}");
+    let mut prefix = vec![0x20];
+    prefix.extend_from_slice(&1u64.to_be_bytes());
+    let mut it = ctx.prefix_iter(x_gov::STORE_KEY, &prefix).unwrap();
+    assert!(it.next(&mut ctx).unwrap().is_none());
+    let now = ctx.header.time;
+    assert!(
+        x_gov::expired_queue_entries(&mut ctx, x_gov::ACTIVE_QUEUE_PREFIX, &now)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// A text proposal has no route in celestia-app v1: its submission fails
+/// (gov code 9) and nothing is stored. A parameter change is validated and
+/// submitted; its dry run changes nothing.
+#[test]
+fn v046_gov_text_proposal_has_no_handler() {
+    use celestia_proto::cosmos::gov::v1beta1;
+    use celestia_proto::cosmos::params::v1beta1::{ParamChange, ParameterChangeProposal};
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let (mut ctx, _) = v046_two_validators(&mut ms, 2);
+    x_gov::set_proposal_id(&mut ctx, 1).unwrap();
+    let proposer = x_auth::bech32(&[9u8; 20]).unwrap();
+    let text = celestia_proto::Any::pack(&v1beta1::MsgSubmitProposal {
+        content: Some(celestia_proto::Any::pack(&v1beta1::TextProposal {
+            title: "t".into(),
+            description: "d".into(),
+        })),
+        initial_deposit: vec![],
+        proposer: proposer.clone(),
+    });
+    msgs::validate_basic(&text).unwrap();
+    let e = msgs::route(&mut ctx, &text).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("gov", 9), "{}", e.log);
+    assert!(take_not_ported().is_none());
+    // A parameter change: a blank title fails `ValidateBasic`; a valid
+    // one is submitted (its dry run sets nothing).
+    let change = |title: &str| {
+        celestia_proto::Any::pack(&v1beta1::MsgSubmitProposal {
+            content: Some(celestia_proto::Any::pack(&ParameterChangeProposal {
+                title: title.into(),
+                description: "d".into(),
+                changes: vec![ParamChange {
+                    subspace: "slashing".into(),
+                    key: "SignedBlocksWindow".into(),
+                    value: "\"10000\"".into(),
+                }],
+            })),
+            initial_deposit: vec![],
+            proposer: proposer.clone(),
+        })
+    };
+    let e = msgs::validate_basic(&change("")).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("gov", 5), "{}", e.log);
+    msgs::validate_basic(&change("t")).unwrap();
+    let before = x_params::get_raw(&mut ctx, "slashing", b"SignedBlocksWindow").unwrap();
+    msgs::route(&mut ctx, &change("t")).unwrap();
+    assert!(take_not_ported().is_none());
+    assert_eq!(
+        x_params::get_raw(&mut ctx, "slashing", b"SignedBlocksWindow").unwrap(),
+        before
+    );
 }
 
 /// `Grant.expiration` (nullable stdtime) sent twice: gogoproto's
@@ -3159,6 +3388,58 @@ fn v046_exec_dispatches_a_nested_grant() {
     let key = x_authz::grant_key(&voter, &owner, "/cosmos.gov.v1beta1.MsgVote");
     let stored = ctx.get(x_authz::STORE_KEY, &key).unwrap().unwrap();
     assert!(Grant::decode(stored.as_slice()).is_ok());
+}
+
+/// `MsgExec` dispatches the gov messages (signer: voter, depositor,
+/// proposer): run by their own signer, they reach the gov server (an
+/// unknown proposal fails with gov code 2).
+#[test]
+fn v046_exec_dispatches_gov_messages() {
+    use celestia_proto::cosmos::authz::v1beta1::MsgExec;
+    use celestia_proto::cosmos::gov::{v1, v1beta1};
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    let me = x_auth::bech32(&[4u8; 20]).unwrap();
+    let nested = [
+        celestia_proto::Any::pack(&v1beta1::MsgVoteWeighted {
+            proposal_id: 7,
+            voter: me.clone(),
+            options: vec![v1beta1::WeightedVoteOption {
+                option: 1,
+                weight: "1000000000000000000".into(),
+            }],
+        }),
+        celestia_proto::Any::pack(&v1::MsgVoteWeighted {
+            proposal_id: 7,
+            voter: me.clone(),
+            options: vec![v1::WeightedVoteOption {
+                option: 1,
+                weight: "1.000000000000000000".into(),
+            }],
+            metadata: String::new(),
+        }),
+        celestia_proto::Any::pack(&v1beta1::MsgDeposit {
+            proposal_id: 7,
+            depositor: me.clone(),
+            amount: vec![],
+        }),
+        celestia_proto::Any::pack(&v1::MsgDeposit {
+            proposal_id: 7,
+            depositor: me.clone(),
+            amount: vec![],
+        }),
+    ];
+    for m in nested {
+        let exec = celestia_proto::Any::pack(&MsgExec {
+            grantee: me.clone(),
+            msgs: vec![m.clone()],
+        });
+        let _ = take_not_ported();
+        let e = msgs::route(&mut ctx, &exec).unwrap_err();
+        assert!(take_not_ported().is_none(), "{}", m.type_url);
+        assert_eq!((e.codespace, e.code), ("gov", 2), "{}", e.log);
+    }
 }
 
 /// celestia's router runs a `MsgExec`-dispatched `MsgDelegate` whose
