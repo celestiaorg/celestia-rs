@@ -161,6 +161,13 @@ type Fixture struct {
 	KV               *KVFiles `json:"kv,omitempty"`
 	// TxResultsSHA256 is the SHA-256 of the uncompressed tx-results.jsonl.
 	TxResultsSHA256 string `json:"tx_results_sha256"`
+	// UpgradeHeightV2 is the app's v2 upgrade height (`--v2-upgrade-height`)
+	// on the synthetic chain; the mainnet fixture runs with
+	// appconsts.MainnetUpgradeHeightV2.
+	UpgradeHeightV2 int64 `json:"upgrade_height_v2,omitempty"`
+	// BlocksSHA256 is the SHA-256 of the uncompressed blocks.jsonl that the
+	// synthetic chain wrote.
+	BlocksSHA256 string `json:"blocks_sha256,omitempty"`
 }
 
 // Height is the committed state at one height.
@@ -290,11 +297,33 @@ func run() error {
 	withKV := flag.Bool("kv", false, "also write the KV dump at height 0 and the per-block KV diffs")
 	registryOut := flag.String("registry-out", "", "only write the Rust v1 registry and schema tables (registry.go) to this directory")
 	keepRecent := flag.Uint64("keep-recent", 0, "prune all but this many recent IAVL versions (0: keep every version); bounds memory on long runs")
+	synthetic := flag.Bool("synthetic", false, "build the synthetic app version 1 to 3 chain (synthetic.go) instead of reading -genesis and -blocks; writes its genesis.json and blocks.jsonl.gz to -out")
 	flag.Parse()
 	if *registryOut != "" {
 		return writeRegistry(*registryOut)
 	}
-	if *genesisPath == "" || *blocksPath == "" || *out == "" || *heights < 1 || *from < 1 || *from > *heights {
+	upgradeHeightV2 := int64(appconsts.MainnetUpgradeHeightV2)
+	var syn *synth
+	if *synthetic {
+		if *out == "" || *genesisPath != "" || *blocksPath != "" || *windowsPath != "" || *from != 1 {
+			flag.Usage()
+			return errors.New("-synthetic takes -out (and -kv) only")
+		}
+		*heights = syntheticHeights
+		upgradeHeightV2 = syntheticUpgradeHeightV2
+		var err error
+		if syn, err = newSynth(); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			return err
+		}
+		*genesisPath = filepath.Join(*out, "genesis.json")
+		if err := syn.genDoc.SaveAs(*genesisPath); err != nil {
+			return err
+		}
+	}
+	if *genesisPath == "" || (*blocksPath == "" && syn == nil) || *out == "" || *heights < 1 || *from < 1 || *from > *heights {
 		flag.Usage()
 		return errors.New("missing arguments")
 	}
@@ -310,9 +339,11 @@ func run() error {
 	}
 	genesisBytes = nil
 
-	blocks, err := readBlocks(*blocksPath, *heights+1)
-	if err != nil {
-		return err
+	var blocks map[int64]rpcBlock
+	if syn == nil {
+		if blocks, err = readBlocks(*blocksPath, *heights+1); err != nil {
+			return err
+		}
 	}
 	postAppHash := map[int64]string{}
 	if *windowsPath != "" {
@@ -328,6 +359,9 @@ func run() error {
 		GenesisSHA256: hex.EncodeToString(genesisSum[:]),
 		Height0:       "genesis state alone: InitChain then Commit with no block, as IAVL version 1",
 	}
+	if syn != nil {
+		fixture.UpgradeHeightV2 = upgradeHeightV2
+	}
 
 	// Height 0: the genesis state alone, committed as version 1.
 	var prev kvState
@@ -338,7 +372,7 @@ func run() error {
 			return err
 		}
 		defer os.RemoveAll(home)
-		genesisApp := newApp(home, 0)
+		genesisApp := newApp(home, 0, upgradeHeightV2)
 		if _, err := initChain(genesisApp, genDoc); err != nil {
 			return err
 		}
@@ -371,13 +405,15 @@ func run() error {
 		return err
 	}
 	defer os.RemoveAll(home)
-	replayApp := newApp(home, *keepRecent)
+	replayApp := newApp(home, *keepRecent, upgradeHeightV2)
 	res, err := initChain(replayApp, genDoc)
 	if err != nil {
 		return err
 	}
 	fixture.InitChainAppHash = upper(res.AppHash)
-	if fixture.InitChainAppHash != blocks[1].Block.Header.AppHash {
+	if syn != nil {
+		syn.start(res.AppHash)
+	} else if fixture.InitChainAppHash != blocks[1].Block.Header.AppHash {
 		return fmt.Errorf("InitChain app hash %s, header 1 app hash %s", fixture.InitChainAppHash, blocks[1].Block.Header.AppHash)
 	}
 	initVals, err := tmtypes.PB2TM.ValidatorUpdates(res.Validators)
@@ -392,6 +428,11 @@ func run() error {
 	var diffs, txResultsJSONL bytes.Buffer
 	for height := int64(1); height <= *heights; height++ {
 		block := blocks[height]
+		if syn != nil {
+			if block, err = syn.block(replayApp, height, vals); err != nil {
+				return fmt.Errorf("height %d: %w", height, err)
+			}
+		}
 		header, err := protoHeader(block)
 		if err != nil {
 			return fmt.Errorf("height %d: %w", height, err)
@@ -452,13 +493,17 @@ func run() error {
 		end := replayApp.EndBlock(abci.RequestEndBlock{Height: height})
 		commit := replayApp.Commit()
 
-		next := blocks[height+1].Block.Header
 		got := upper(commit.Data)
-		if pinned, ok := postAppHash[height]; got != next.AppHash || (ok && got != pinned) {
-			return fmt.Errorf("height %d: app hash %s, pinned %s, next header %s", height, got, pinned, next.AppHash)
-		}
-		if rh := upper(tmtypes.NewResults(results).Hash()); rh != next.LastResultsHash {
-			return fmt.Errorf("height %d: results hash %s, next header %s", height, rh, next.LastResultsHash)
+		if syn != nil {
+			syn.committed(commit.Data, results, end)
+		} else {
+			next := blocks[height+1].Block.Header
+			if pinned, ok := postAppHash[height]; got != next.AppHash || (ok && got != pinned) {
+				return fmt.Errorf("height %d: app hash %s, pinned %s, next header %s", height, got, pinned, next.AppHash)
+			}
+			if rh := upper(tmtypes.NewResults(results).Hash()); rh != next.LastResultsHash {
+				return fmt.Errorf("height %d: results hash %s, next header %s", height, rh, next.LastResultsHash)
+			}
 		}
 
 		// The state at from-1 is the base of the first recorded diff.
@@ -542,6 +587,16 @@ func run() error {
 			}
 		}
 	}
+	if syn != nil {
+		compressed, err := gzipBytes(syn.blocks.Bytes())
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(*out, "blocks.jsonl.gz"), compressed, 0o644); err != nil {
+			return err
+		}
+		fixture.BlocksSHA256 = sha256Hex(syn.blocks.Bytes())
+	}
 	fixture.TxResultsSHA256 = sha256Hex(txResultsJSONL.Bytes())
 	compressed, err := gzipBytes(txResultsJSONL.Bytes())
 	if err != nil {
@@ -557,7 +612,7 @@ func run() error {
 	return os.WriteFile(filepath.Join(*out, "store-roots.json"), append(encoded, '\n'), 0o644)
 }
 
-func newApp(home string, keepRecent uint64) *app.App {
+func newApp(home string, keepRecent uint64, upgradeHeightV2 int64) *app.App {
 	pruning := pruningtypes.NewPruningOptions(pruningtypes.PruningNothing)
 	if keepRecent > 0 {
 		pruning = pruningtypes.NewCustomPruningOptions(keepRecent, 10)
@@ -568,7 +623,7 @@ func newApp(home string, keepRecent uint64) *app.App {
 		nil,
 		0,
 		encoding.MakeConfig(app.ModuleEncodingRegisters...),
-		appconsts.MainnetUpgradeHeightV2,
+		upgradeHeightV2,
 		0,
 		appOptions{flags.FlagHome: home},
 		baseapp.SetPruning(pruning),
