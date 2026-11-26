@@ -639,6 +639,50 @@ impl Release {
         self.app_version != 4
     }
 
+    /// The module manager registers the ICA host module (its msg service,
+    /// genesis and migrations). celestia-app v4.1.0 and v5.0.12 wire only
+    /// its keeper and IBC route; v6.4.x adds the module.
+    #[must_use]
+    pub const fn has_ica_host_module(&self) -> bool {
+        !matches!(self.app_version, 4 | 5)
+    }
+
+    /// x/warp enables synthetic tokens (celestia-app v6.4.x on; v4.1.0 and
+    /// v5.0.12 enable only collateral tokens).
+    #[must_use]
+    pub const fn warp_synthetic_tokens(&self) -> bool {
+        !matches!(self.app_version, 4 | 5)
+    }
+
+    /// x/distribution `WithdrawDelegationRewards` pays a removed
+    /// delegation's `UserOutstandingRewards` (cosmos-sdk v0.51.8 on). The
+    /// v0.50.14 forks (celestia-app v4.1.0, v5.0.12) return
+    /// `ErrNoDelegation` instead.
+    #[must_use]
+    pub const fn withdraws_outstanding_without_delegation(&self) -> bool {
+        !matches!(self.app_version, 4 | 5)
+    }
+
+    /// celestia-core `MaxBlockSizeBytes`, the `block.MaxBytes` cap of
+    /// `ConsensusParams.ValidateBasic`: 100 MB in v1.57.2-tm-v0.38.17 and
+    /// v1.59.0-tm-v0.38.17 (celestia-app v4.1.0, v5.0.12), 128 MiB in the
+    /// v0.39 line.
+    #[must_use]
+    pub const fn max_block_size_bytes(&self) -> i64 {
+        if matches!(self.app_version, 4 | 5) {
+            104_857_600
+        } else {
+            128 * 1024 * 1024
+        }
+    }
+
+    /// BaseApp sets `ExecTxResult.Signers` (cosmos-sdk v1.31.0-sdk-v0.50.14
+    /// on: celestia-app v5.0.12 on; v4.1.0's v1.29.4 does not).
+    #[must_use]
+    pub const fn sets_tx_result_signers(&self) -> bool {
+        self.app_version != 4
+    }
+
     /// The transfer stack's outermost middleware is `x/tokenfilter`
     /// (celestia-app v4.1.0 and v5.0.12; v6.4.10 removed it). The
     /// cosmos-sdk v0.46 driver has its own (app versions 1 to 3).
@@ -900,6 +944,11 @@ mod tests {
             assert!(r.has_forwarding(), "v{v}");
             assert!(r.has_zkism(), "v{v}");
             assert!(r.has_capability_module(), "v{v}");
+            assert!(r.has_ica_host_module(), "v{v}");
+            assert!(r.warp_synthetic_tokens(), "v{v}");
+            assert!(r.withdraws_outstanding_without_delegation(), "v{v}");
+            assert_eq!(r.max_block_size_bytes(), 128 * 1024 * 1024, "v{v}");
+            assert!(r.sets_tx_result_signers(), "v{v}");
             assert!(!r.has_token_filter(), "v{v}");
             assert!(!r.legacy_insufficient_fee_message(), "v{v}");
             assert_eq!(r.default_unbonding_time_secs(), None, "v{v}");
@@ -940,6 +989,16 @@ mod tests {
                 assert_eq!(r.has_forwarding(), v >= 7, "v{v}");
                 assert_eq!(r.has_zkism(), v >= 7, "v{v}");
                 assert_eq!(r.has_capability_module(), v != 4, "v{v}");
+                assert_eq!(r.has_ica_host_module(), !v4_v5, "v{v}");
+                assert_eq!(r.warp_synthetic_tokens(), !v4_v5, "v{v}");
+                assert_eq!(r.withdraws_outstanding_without_delegation(), !v4_v5, "v{v}");
+                let max_block = if v4_v5 {
+                    104_857_600
+                } else {
+                    128 * 1024 * 1024
+                };
+                assert_eq!(r.max_block_size_bytes(), max_block, "v{v}");
+                assert_eq!(r.sets_tx_result_signers(), v != 4, "v{v}");
                 assert_eq!(r.has_token_filter(), v4_v5, "v{v}");
                 assert_eq!(r.legacy_insufficient_fee_message(), v <= 6, "v{v}");
                 let unbonding = v4_v5.then_some(21 * 24 * 3600);

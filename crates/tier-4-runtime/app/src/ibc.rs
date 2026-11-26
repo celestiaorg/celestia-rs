@@ -78,7 +78,8 @@ pub fn has_handler(type_url: &str) -> bool {
     x_ibc::msgs::is_ibc_msg(type_url)
         || type_url == transfer::MsgTransfer::type_url()
         || type_url == transfer::MsgUpdateParams::type_url()
-        || x_icahost::host::is_host_msg(type_url)
+        || (x_icahost::host::is_host_msg(type_url)
+            && sdk::version::release(0).has_ica_host_module())
 }
 
 /// See [`x_ibc::lightclients::light::set_max_block_parts_count`] (fixture

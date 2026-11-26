@@ -114,6 +114,23 @@ mod tests {
 
     use super::*;
 
+    /// celestia-app v4.1.0 and v5.0.12 enable only collateral warp tokens
+    /// (`warpkeeper.NewKeeper(..., []int32{HYP_TOKEN_TYPE_COLLATERAL})`);
+    /// v6.4.x on enable synthetic tokens too.
+    #[test]
+    fn warp_synthetic_tokens_from_v6() {
+        let prev = sdk::version::app_version();
+        for (version, synthetic) in [(4, false), (5, false), (6, true), (9, true), (10, true)] {
+            sdk::version::set_app_version(version);
+            let mut want = vec![x_warp::TOKEN_TYPE_COLLATERAL];
+            if synthetic {
+                want.push(x_warp::TOKEN_TYPE_SYNTHETIC);
+            }
+            assert_eq!(Warp::celestia().enabled_tokens, want, "v{version}");
+        }
+        sdk::version::set_app_version(prev);
+    }
+
     #[test]
     fn routes_hyperlane_messages() -> Result<()> {
         let mut ms = MultiStore::new();

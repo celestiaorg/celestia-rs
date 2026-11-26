@@ -211,3 +211,80 @@ fn slash_event_handler_runs_before_the_events_iteration_gas() {
     assert_eq!(seen, vec![(3, 1, 210), (4, 2, 420)]);
     assert_eq!(ctx.gas.consumed() - start, 630);
 }
+
+/// `WithdrawDelegationRewards` for a delegator with no delegation:
+/// cosmos-sdk v1.29.4-sdk-v0.50.14 and v1.31.0-sdk-v0.50.14 (celestia-app
+/// v4.1.0, v5.0.12) return `stakingKeeper.Delegation`'s `ErrNoDelegation`;
+/// v0.51.8 on look for outstanding rewards (`ErrEmptyDelegationDistInfo`
+/// when there are none).
+#[test]
+fn withdraw_without_delegation_follows_the_release() {
+    x_staking::set_hooks(Arc::new(crate::Hooks));
+    let prev = sdk::version::app_version();
+    for (version, codespace, code) in [
+        (4, "staking", 19),
+        (5, "staking", 19),
+        (6, "distribution", 5),
+    ] {
+        sdk::version::set_app_version(version);
+        let mut m = MultiStore::new();
+        for s in [
+            x_staking::STORE_KEY,
+            crate::STORE_KEY,
+            x_auth::STORE_KEY,
+            x_bank::STORE_KEY,
+        ] {
+            m.mount(s, Kind::Iavl).unwrap();
+        }
+        let mut ctx = Context::new(&mut m, header(0), ExecMode::Finalize);
+        crate::init_genesis(
+            &mut ctx,
+            &serde_json::json!({
+                "params": {"community_tax": "0.02", "base_proposer_reward": "0", "bonus_proposer_reward": "0", "withdraw_addr_enabled": true},
+                "fee_pool": {"community_pool": []}
+            }),
+        )
+        .unwrap();
+        x_staking::init_genesis(
+            &mut ctx,
+            &serde_json::json!({
+                "params": {"unbonding_time": "1000s", "max_validators": 10, "max_entries": 7,
+                           "historical_entries": 0, "bond_denom": "utia", "min_commission_rate": "0.05"},
+                "last_total_power": "0"
+            }),
+        )
+        .unwrap();
+        let op = vec![1u8; 20];
+        let acct = x_auth::new_account_with_address(&mut ctx, &op).unwrap();
+        x_auth::set_account(&mut ctx, &acct).unwrap();
+        x_bank::set_balance(&mut ctx, &op, &Coin::new("utia", 10_000_000)).unwrap();
+        let pk = ed25519::PubKey { key: vec![7; 32] };
+        x_staking::handle_create_validator(
+            &mut ctx,
+            &spb::MsgCreateValidator {
+                description: Some(spb::Description {
+                    moniker: "v".into(),
+                    ..Default::default()
+                }),
+                commission: Some(spb::CommissionRates {
+                    rate: dec("0.1"),
+                    max_rate: dec("0.2"),
+                    max_change_rate: dec("0.01"),
+                }),
+                min_self_delegation: "1".into(),
+                delegator_address: String::new(),
+                validator_address: x_staking::addr::val_to_string(&op).unwrap(),
+                pubkey: Some(Any::pack(&pk)),
+                value: Some(PbCoin {
+                    denom: "utia".into(),
+                    amount: "5000000".into(),
+                }),
+            },
+        )
+        .unwrap();
+        let err =
+            crate::keeper::withdraw_delegation_rewards_for(&mut ctx, &[2u8; 20], &op).unwrap_err();
+        assert_eq!((&*err.codespace, err.code), (codespace, code), "v{version}");
+    }
+    sdk::version::set_app_version(prev);
+}

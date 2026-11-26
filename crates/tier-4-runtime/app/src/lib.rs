@@ -1363,6 +1363,9 @@ fn with_mode(events: &mut [abci::Event], mode: &str) {
 /// `BaseApp.extractSigners`: the bech32 addresses of the signer infos'
 /// public keys (nil on any error).
 fn extract_signers(decode: tx::DecodeFn, tx_bytes: &[u8]) -> Vec<String> {
+    if !sdk::version::release(0).sets_tx_result_signers() {
+        return Vec::new();
+    }
     let Ok(tx) = decode(tx_bytes) else {
         return Vec::new();
     };
@@ -1853,6 +1856,27 @@ mod finalize_gas_tests {
     /// must hold an infinite gas meter again, not the last tx's limited one.
     /// EndBlock work (here: executing a passed gov proposal) ran out of gas
     /// on Rust nodes only and halted them.
+    /// cosmos-sdk v1.29.4-sdk-v0.50.14 (celestia-app v4.1.0) never sets
+    /// `ExecTxResult.Signers`; v1.31.0-sdk-v0.50.14 (v5.0.12) on do.
+    #[test]
+    fn tx_result_signers_follow_the_release() {
+        let mut app = App::new();
+        let header = Header {
+            chain_id: "test".into(),
+            height: 5,
+            ..Default::default()
+        };
+        let mut ctx = Context::new(&mut app.ms, header, ExecMode::Finalize);
+        let tx = signed_sends(&mut ctx, 1, 100_000);
+        let prev = sdk::version::app_version();
+        for (version, set) in [(4, false), (5, true), (10, true)] {
+            sdk::version::set_app_version(version);
+            let signers = extract_signers(txpipe::decode_tx, &tx);
+            assert_eq!(signers.len(), usize::from(set), "v{version}");
+        }
+        sdk::version::set_app_version(prev);
+    }
+
     #[test]
     fn end_block_context_gets_an_infinite_gas_meter() {
         let mut app = App::new();
