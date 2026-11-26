@@ -299,6 +299,8 @@ func run() error {
 	keepRecent := flag.Uint64("keep-recent", 0, "prune all but this many recent IAVL versions (0: keep every version); bounds memory on long runs")
 	synthetic := flag.Bool("synthetic", false, "build the synthetic app version 1 to 3 chain (synthetic.go) instead of reading -genesis and -blocks; writes its genesis.json and blocks.jsonl.gz to -out")
 	chain := flag.String("chain", "v1-v3", "with -synthetic: the synthetic chain, v1-v3 (synthetic.go) or v3-rich (rich.go)")
+	snapshotAt := flag.String("snapshot-at", "", "comma-separated heights: after the run, write a cosmos-sdk v0.46 state-sync snapshot (format 2) of each with the SDK's snapshot manager, as celestia-appd does, to -snapshot-dir")
+	snapshotDir := flag.String("snapshot-dir", "", "with -snapshot-at: the snapshot store directory (default <out>/snapshots); the chunks of height h are <dir>/<h>/2/<i>")
 	handoff := flag.String("handoff", "", "with -synthetic: keep the app home (goleveldb data/application.db and data/upgrade-info.json) in this new directory and write handoff.json there, for conformance/v4-oracle to continue the chain")
 	flag.Parse()
 	if *registryOut != "" {
@@ -327,12 +329,28 @@ func run() error {
 		cfg.src = syn
 		cfg.chain = *chain
 		cfg.handoff = *handoff
+		if *handoff != "" && spec.noHandoff {
+			return fmt.Errorf("-handoff: chain %s does not schedule the v4 upgrade", *chain)
+		}
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			return err
 		}
 		cfg.genesisPath = filepath.Join(*out, "genesis.json")
 		if err := syn.genDoc.SaveAs(cfg.genesisPath); err != nil {
 			return err
+		}
+	}
+	if *snapshotAt != "" {
+		for _, f := range strings.Split(*snapshotAt, ",") {
+			h, err := strconv.ParseUint(strings.TrimSpace(f), 10, 64)
+			if err != nil || h == 0 {
+				return fmt.Errorf("-snapshot-at: bad height %q", f)
+			}
+			cfg.snapshotAt = append(cfg.snapshotAt, h)
+		}
+		cfg.snapshotDir = *snapshotDir
+		if cfg.snapshotDir == "" {
+			cfg.snapshotDir = filepath.Join(*out, "snapshots")
 		}
 	}
 	if *handoff != "" && cfg.src == nil {
@@ -361,6 +379,10 @@ type runConfig struct {
 	// directory and write handoff.json for conformance/v4-oracle; chain is
 	// the chain's -chain name.
 	handoff, chain string
+	// snapshotAt are the heights to snapshot after the run, into
+	// snapshotDir.
+	snapshotAt  []uint64
+	snapshotDir string
 }
 
 // blockSource builds a chain's blocks on the replaying app's state.
@@ -468,6 +490,11 @@ func execute(cfg runConfig) error {
 	if err != nil {
 		return err
 	}
+	snaps, err := newSnapshotter(replayApp, cfg.snapshotDir, cfg.snapshotAt)
+	if err != nil {
+		return err
+	}
+	defer snaps.close()
 	res, err := initChain(replayApp, genDoc)
 	if err != nil {
 		return err
@@ -556,6 +583,11 @@ func execute(cfg runConfig) error {
 		}
 		end := replayApp.EndBlock(abci.RequestEndBlock{Height: height})
 		commit := replayApp.Commit()
+		// A node snapshots a height right after committing it, with the
+		// store set of that height.
+		if err := snaps.at(height); err != nil {
+			return err
+		}
 
 		got := upper(commit.Data)
 		if syn != nil {

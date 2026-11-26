@@ -312,8 +312,9 @@ struct FollowArgs {
     #[arg(long = "chain-id")]
     chain_id: Option<String>,
     /// First start: directory holding a Go SDK state-sync snapshot
-    /// (`<height>/3/<chunk>`, a Go node's `data/snapshots`). If omitted,
-    /// initialize from the independently supplied `config/genesis.json`.
+    /// (`<height>/<format>/<chunk>`, a Go node's `data/snapshots`: format 3,
+    /// or format 2 for app versions 1 to 3). If omitted, initialize from
+    /// the independently supplied `config/genesis.json`.
     #[arg(long)]
     snapshot: Option<PathBuf>,
     /// New JSONL receipt file; records each executed height after the following
