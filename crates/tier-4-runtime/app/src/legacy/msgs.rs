@@ -194,6 +194,9 @@ pub fn commission_yaml(c: &x_staking::types::Commission) -> String {
 
 /// `msg.ValidateBasic()` of a v0.46 message.
 pub fn validate_basic(msg: &Any) -> Result<()> {
+    if let Some(r) = super::ibc_channel::validate_basic(msg) {
+        return r;
+    }
     if let Some(r) = super::ibc::validate_basic(msg) {
         return r;
     }
@@ -251,6 +254,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
         return Ok(Any::pack(&edit_validator(ctx, &decode(msg)?, &msg.value)?));
     }
     if let Some(r) = super::ibc::route(ctx, msg) {
+        return r;
+    }
+    if let Some(r) = super::ibc_channel::route(ctx, msg) {
         return r;
     }
     Err(super::not_ported(errs::unknown_request(format!(

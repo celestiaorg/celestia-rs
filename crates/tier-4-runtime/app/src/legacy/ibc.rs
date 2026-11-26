@@ -446,7 +446,7 @@ fn get_self_consensus_state(ctx: &mut Context<'_>, h: &Height) -> Result<tmpb::C
 /// v6 connection keeper verification: the connection's client (active),
 /// then `produceVerificationArgs` and the membership proof of `value` at
 /// `path` under the counterparty prefix.
-fn verify(
+pub(super) fn verify(
     ctx: &mut Context<'_>,
     conn: &ConnectionEnd,
     proof_height: &Height,
@@ -669,6 +669,10 @@ fn connection_end(ctx: &mut Context<'_>, conn_id: &str) -> Result<ConnectionEnd>
 }
 
 /// The proto name of a connection state (`State.String()`).
+pub(super) fn connection_state_name(s: i32) -> String {
+    state_name(s)
+}
+
 fn state_name(s: i32) -> String {
     State::try_from(s).map_or_else(|_| s.to_string(), |s| s.as_str_name().to_owned())
 }

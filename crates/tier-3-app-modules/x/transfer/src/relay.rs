@@ -752,7 +752,7 @@ pub fn refund_packet_token(ctx: &mut Context<'_>, p: &Packet, data: &PacketData)
 pub struct TransferModule;
 
 /// `ValidateTransferChannelParams`.
-fn validate_channel_params(
+pub fn validate_channel_params(
     ctx: &mut Context<'_>,
     order: Order,
     port: &str,

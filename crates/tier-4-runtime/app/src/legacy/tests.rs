@@ -2168,3 +2168,29 @@ fn v6_connection_validate_basic() {
         .unwrap()
         .unwrap();
 }
+
+/// ibc-go v6 `ValidateBasic` of the channel handshake: a zero proof
+/// height fails `MsgChannelOpenAck` with the SDK's `ErrInvalidHeight`
+/// (ibc-go v8 no longer checks it).
+#[test]
+fn v6_channel_validate_basic() {
+    use celestia_proto::ibc::core::channel::v1 as chpb;
+    use celestia_proto::ibc::core::client::v1::Height;
+    let ack = |h: u64| {
+        msgs::validate_basic(&celestia_proto::Any::pack(&chpb::MsgChannelOpenAck {
+            port_id: "transfer".into(),
+            channel_id: "channel-0".into(),
+            counterparty_channel_id: "channel-1".into(),
+            counterparty_version: "ics20-1".into(),
+            proof_try: vec![1],
+            proof_height: Some(Height {
+                revision_number: 0,
+                revision_height: h,
+            }),
+            signer: x_auth::bech32(&[1; 20]).unwrap(),
+        }))
+    };
+    ack(1).unwrap();
+    let e = ack(0).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 26), "{}", e.log);
+}

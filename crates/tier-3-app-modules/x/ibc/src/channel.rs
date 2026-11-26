@@ -631,7 +631,8 @@ pub(crate) fn conn_state_name(s: i32) -> std::borrow::Cow<'static, str> {
     })
 }
 
-fn single_version_supports(c: &ConnectionEnd, order: i32) -> Result<()> {
+/// The connection has a single negotiated version that supports `order`.
+pub fn single_version_supports(c: &ConnectionEnd, order: i32) -> Result<()> {
     if c.versions.len() != 1 {
         return Err(conerr::invalid_version(format!(
             "single version must be negotiated on connection before opening channel, got: {}",
