@@ -62,14 +62,44 @@ pub fn validate_changes(p: &ParameterChangeProposal) -> Result<()> {
     Ok(())
 }
 
-/// The subspaces of the executing app version. Only app version 1's set
-/// is complete here; on a later version an unknown subspace is not ported
-/// rather than `ErrUnknownSubspace`.
+/// ibc-go v6 `validateAllowlist`.
+fn allowlist(v: &Value) -> std::result::Result<(), String> {
+    match v {
+        Value::Strings(list) => {
+            let list = list.as_deref().unwrap_or_default();
+            if list.iter().any(|s| s.trim().is_empty()) {
+                return Err(format!(
+                    "parameter must not contain empty strings: [{}]",
+                    list.join(" ")
+                ));
+            }
+            Ok(())
+        }
+        _ => Err("invalid parameter type".to_owned()),
+    }
+}
+
+/// The ibc-go v6 interchain-accounts host subspace (app version 2 on).
+const ICAHOST: Subspace = Subspace {
+    name: "icahost",
+    table: &[
+        x_params::v046::param("HostEnabled", Kind::Bool, x_params::v046::validate::any),
+        x_params::v046::param("AllowMessages", Kind::Strings, allowlist),
+    ],
+};
+
+/// The subspaces of the executing app version. App version 1's set is
+/// complete; from app version 2 only `icahost` is added here, so another
+/// unknown subspace there is not ported rather than `ErrUnknownSubspace`.
 fn subspace(name: &str) -> Option<Subspace> {
-    super::params::V1_SUBSPACES
+    let v1 = super::params::V1_SUBSPACES
         .iter()
         .find(|s| s.name == name)
-        .copied()
+        .copied();
+    if sdk::version::app_version() >= 2 && name == ICAHOST.name {
+        return Some(ICAHOST);
+    }
+    v1
 }
 
 fn json(value: &str) -> Result<std::result::Result<serde_json::Value, String>> {
@@ -328,6 +358,37 @@ mod tests {
         let _ = super::super::take_not_ported();
         assert!(update(&mut ctx, &slashing, "SignedBlocksWindow", "10").is_err());
         assert!(super::super::take_not_ported().is_some());
+    }
+
+    /// From app version 2 the `icahost` subspace exists (ibc-go v6
+    /// `validateAllowlist` rejects an empty entry); at app version 1 it is
+    /// an unknown subspace.
+    #[test]
+    fn icahost_from_app_version_2() {
+        let mut ms = ctx_store();
+        let change = |v: &str| {
+            Any::pack(&ParameterChangeProposal {
+                title: "t".into(),
+                description: "d".into(),
+                changes: vec![ParamChange {
+                    subspace: "icahost".into(),
+                    key: "AllowMessages".into(),
+                    value: v.into(),
+                }],
+            })
+        };
+        {
+            let _v046 = sdk::version::SdkV046Scope::enter(1);
+            let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+            let e = handle(&mut ctx, &change("[\"/a\"]")).unwrap_err();
+            assert_eq!((e.codespace, e.code), ("params", 2));
+        }
+        let _v046 = sdk::version::SdkV046Scope::enter(2);
+        let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        handle(&mut ctx, &change("[\"/a\", \"/b\"]")).unwrap();
+        assert_eq!(get(&mut ctx, "icahost", "AllowMessages"), "[\"/a\",\"/b\"]");
+        let e = handle(&mut ctx, &change("[\"/a\", \" \"]")).unwrap_err();
+        assert_eq!((e.codespace, e.code), ("params", 3), "{}", e.log);
     }
 
     /// The param filter rejects a blocked parameter before any change;
