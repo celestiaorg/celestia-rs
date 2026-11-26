@@ -13,5 +13,19 @@ publish = false
 workspace = true
 
 [dependencies]
+celestia-proto = { path = "../../tier-1-protocol-types/celestia-proto" }
+hex = "0.4"
+prost = "0.13"
+# Shard metadata store: pure Rust, ACID, ordered (same pin as kvdb).
+redb = "=2.6.4"
+rustix = { version = "1", features = ["fs"] }
+thiserror = "2"
+tokio = { version = "1", features = ["sync"] }
+tokio-util = "0.7"
+tracing = "0.1"
+x-fibre = { path = "../../tier-3-app-modules/x/fibre" }
 
 [dev-dependencies]
+pbjson-types = "0.7"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt", "sync", "test-util", "time"] }
