@@ -289,6 +289,9 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 		if err == nil && probe == nil {
 			probe, err = s.warpProbeSteps(a, height-s.handoffHeight-1, addr, probeTx, aminoTx)
 		}
+		if err == nil && probe == nil {
+			probe, err = s.pfmProbeSteps(a, height-s.handoffHeight-1, addr, probeTx)
+		}
 		if err != nil {
 			return nil, err
 		}

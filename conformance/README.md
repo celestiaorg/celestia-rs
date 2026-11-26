@@ -372,9 +372,9 @@ tar -C "$OUT/home" --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -c
 
 #### Probe blocks per release
 
-`-heights 14 -probes` (in `v4-oracle` to `v9-oracle`, `probes.go` and
-`warpprobes.go`) runs each release's usual five blocks and then nine probe
-blocks of transactions whose outcome differs between releases. Blocks +5 to
+`-heights 16 -probes` (in `v4-oracle` to `v9-oracle`, `probes.go`,
+`warpprobes.go` and `pfmprobes.go`) runs each release's usual five blocks and
+then eleven probe blocks of transactions whose outcome differs between releases. Blocks +5 to
 +7 hold an ICA host `MsgModuleQuerySafe`, a warp `MsgCreateSyntheticToken`,
 a `MsgWithdrawDelegatorReward` without a delegation, and gov proposals of an
 ICA host `MsgUpdateParams` and of consensus `MsgUpdateParams` with evidence
@@ -383,7 +383,10 @@ hyperlane route (noop ISM and hook, mailbox) and then send warp transactions
 signed in `SIGN_MODE_LEGACY_AMINO_JSON`: a collateral token, a remote router
 enrollment and two remote transfers. Where Go cannot build the amino sign
 bytes (a `RemoteRouter` before hyperlane-cosmos v1.1.0), the transaction is
-signed over the bytes `unsignable: <error>`. With `-probes` the tx results
+signed over the bytes `unsignable: <error>`. From v6, where the chain has the solo
+machine's transfer channel, blocks +14 and +15 receive solo machine packets
+whose memo asks packet-forward-middleware to forward them: back over
+`channel-0`, and to `channel-9`, which does not exist. With `-probes` the tx results
 also record `signers` (absent on v4, whose celestia-core has no such field).
 The fixtures are `fixtures/synthetic/v{4,5,6,8,9}-probes`; v4 starts from
 the v3 hand-off, the others from the previous stage's home. `cargo test -p
@@ -394,7 +397,7 @@ For example, for v6:
 ```sh
 cd conformance/v6-oracle
 tar -C "$OUT/home" -xzf ../fixtures/synthetic/homes/home-36.tar.gz
-GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -heights 14 -probes \
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -heights 16 -probes \
   -genesis ../fixtures/synthetic/v1-v3/genesis.json -out ../fixtures/synthetic/v6-probes
 ```
 

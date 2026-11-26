@@ -1,11 +1,14 @@
-//! Probe blocks per release, as the Go oracles ran them (`-heights 14
-//! -probes` in `conformance/v{4,5,6,8,9}-oracle`, `probes.go` and
-//! `warpprobes.go`; fixtures `conformance/fixtures/synthetic/v*-probes`):
-//! after each release's usual five blocks, nine blocks of transactions
-//! whose outcome differs between releases. Blocks +5 to +7 probe module
-//! rules; blocks +8 to +13 set up a hyperlane route and send warp
-//! transactions signed in SIGN_MODE_LEGACY_AMINO_JSON. These tests pin Go's
-//! outcome per release, the target of the per-release rules.
+//! Probe blocks per release, as the Go oracles ran them (`-heights 16
+//! -probes` in `conformance/v{4,5,6,8,9}-oracle`, `probes.go`,
+//! `warpprobes.go` and `pfmprobes.go`; fixtures
+//! `conformance/fixtures/synthetic/v*-probes`): after each release's usual
+//! five blocks, eleven blocks of transactions whose outcome differs between
+//! releases. Blocks +5 to +7 probe module rules; blocks +8 to +13 set up a
+//! hyperlane route and send warp transactions signed in
+//! SIGN_MODE_LEGACY_AMINO_JSON; from v6, where the chain has the solo
+//! machine's transfer channel, blocks +14 and +15 receive packets that
+//! packet-forward-middleware forwards. These tests pin Go's outcome per
+//! release, the target of the per-release rules.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -35,14 +38,23 @@ const PROBES: [&str; 15] = [
     "warp MsgRemoteTransfer to domain 2 (amino)",
 ];
 
-/// The probe transactions of `release` (the last fifteen of its fixture):
-/// code, codespace, the end of the log and the signers.
+/// The transactions of the probe blocks of `release`: those after the
+/// usual five blocks that follow its hand-off height.
+fn probe_txs(release: &str) -> Vec<serde_json::Value> {
+    let dir = format!("{FIXTURES}/{release}-probes");
+    let roots: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(format!("{dir}/store-roots.json")).unwrap()).unwrap();
+    let first = roots["handoff_height"].as_i64().unwrap() + 6;
+    common::gz_lines(&format!("{dir}/tx-results.jsonl.gz"))
+        .filter(|d| d["height"].as_i64().unwrap() >= first)
+        .flat_map(|d| d["txs"].as_array().unwrap().clone())
+        .collect()
+}
+
+/// The first fifteen probe transactions of `release` (all but the packet
+/// forwards): code, codespace, log and signers.
 fn probes(release: &str) -> Vec<(u64, String, String, Option<Vec<String>>)> {
-    let txs: Vec<serde_json::Value> =
-        common::gz_lines(&format!("{FIXTURES}/{release}-probes/tx-results.jsonl.gz"))
-            .flat_map(|d| d["txs"].as_array().unwrap().clone())
-            .collect();
-    txs[txs.len() - PROBES.len()..]
+    probe_txs(release)[..PROBES.len()]
         .iter()
         .map(|t| {
             (
@@ -58,6 +70,19 @@ fn probes(release: &str) -> Vec<(u64, String, String, Option<Vec<String>>)> {
                 }),
             )
         })
+        .collect()
+}
+
+/// The value of attribute `key` of each event of type `kind` in `tx`.
+fn attrs(tx: &serde_json::Value, kind: &str, key: &str) -> Vec<String> {
+    tx["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["type"] == kind)
+        .flat_map(|e| e["attributes"].as_array().unwrap().clone())
+        .filter(|a| a["key"] == key)
+        .map(|a| a["value"].as_str().unwrap().to_owned())
         .collect()
 }
 
@@ -229,5 +254,68 @@ fn signers_are_recorded_from_v5() {
         for (i, (_, _, _, signers)) in probes(release).into_iter().enumerate() {
             assert_eq!(signers.unwrap().len(), 1, "{release} {}", PROBES[i]);
         }
+    }
+}
+
+/// Packet forwarding (packet-forward-middleware v8.2.0) from v6.4.4, on
+/// the solo machine's channel-0. Block +14: the solo machine's packet 3
+/// asks to forward 300 uatom back over channel-0; the voucher is received
+/// and sent on as packet 2 of channel-0 (`transfer/channel-0/uatom`), and
+/// the acknowledgement waits for the forward's. Block +15: packet 4 asks
+/// to forward to channel-9, which does not exist, and the receive writes
+/// an error acknowledgement at once. v4 and v5 have no channel there.
+#[test]
+fn packet_forward_from_v6() {
+    for release in ["v4", "v5"] {
+        assert_eq!(probe_txs(release).len(), PROBES.len(), "{release}");
+    }
+    for release in ["v6", "v8", "v9"] {
+        let txs = probe_txs(release);
+        assert_eq!(txs.len(), PROBES.len() + 2, "{release}");
+        let (forward, bad) = (&txs[PROBES.len()], &txs[PROBES.len() + 1]);
+        for tx in [forward, bad] {
+            assert_eq!(tx["code"], 0, "{release}: {}", tx["log"]);
+        }
+        assert_eq!(
+            attrs(forward, "recv_packet", "packet_sequence"),
+            ["3"],
+            "{release}"
+        );
+        assert_eq!(
+            attrs(forward, "send_packet", "packet_sequence"),
+            ["2"],
+            "{release}"
+        );
+        assert_eq!(
+            attrs(forward, "send_packet", "packet_src_channel"),
+            ["channel-0"],
+            "{release}"
+        );
+        let data: serde_json::Value =
+            serde_json::from_str(&attrs(forward, "send_packet", "packet_data")[0]).unwrap();
+        assert_eq!(data["denom"], "transfer/channel-0/uatom", "{release}");
+        assert_eq!(data["receiver"], "solo-forward-receiver", "{release}");
+        assert_eq!(data["amount"], "300", "{release}");
+        assert!(
+            attrs(forward, "write_acknowledgement", "packet_ack").is_empty(),
+            "{release}"
+        );
+
+        assert_eq!(
+            attrs(bad, "recv_packet", "packet_sequence"),
+            ["4"],
+            "{release}"
+        );
+        assert!(
+            attrs(bad, "send_packet", "packet_sequence").is_empty(),
+            "{release}"
+        );
+        let ack = &attrs(bad, "write_acknowledgement", "packet_ack")[0];
+        assert!(
+            ack.starts_with(
+                "{\"error\":\"packet-forward-middleware error: port ID (transfer) channel ID (channel-9): channel not found"
+            ),
+            "{release}: {ack}"
+        );
     }
 }
