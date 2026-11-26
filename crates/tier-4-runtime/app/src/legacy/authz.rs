@@ -580,6 +580,9 @@ fn exec(ctx: &mut Context<'_>, msg: &authz::MsgExec) -> Result<authz::MsgExecRes
     let now = ctx.header.time;
     let mut results = Vec::with_capacity(msg.msgs.len());
     for (i, m) in msg.msgs.iter().enumerate() {
+        // The nested message as Go holds it (the `MsgExec` keeps them as
+        // received).
+        let m = &msgs::gogo_view(m)?;
         let Some(granter) = exec_signer(m)? else {
             return Err(super::not_ported(errs::unknown_request(format!(
                 "the cosmos-sdk v0.46 dispatch of {} by MsgExec is not ported",

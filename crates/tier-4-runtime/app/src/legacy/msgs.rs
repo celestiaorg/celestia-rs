@@ -206,8 +206,27 @@ pub fn commission_yaml(c: &x_staking::types::Commission) -> String {
     )
 }
 
+/// The message as Go's handlers hold it: gogoproto's decoding under the
+/// v1 schema, re-encoded so prost reads the same struct (nested `Any`s
+/// too, except a `MsgExec`'s messages, which are read so when they run;
+/// see `txdecode::prost_compatible`). prost alone merges a repeated
+/// stdtime / stdduration that gogoproto replaces, and fails on keys past
+/// `u32::MAX`, over-long varints and mismatched groups that gogoproto
+/// skips. The transaction's bytes (sign bytes, size, hash) are not
+/// touched. `decode_v1` already unpacked every message with gogoproto,
+/// so one that gogoproto cannot decode here is not ported.
+pub(super) fn gogo_view(msg: &Any) -> Result<Any> {
+    txdecode::prost_compatible(msg).ok_or_else(|| {
+        super::not_ported(errs::tx_decode(format!(
+            "gogoproto cannot decode the {} the v1 decoder accepted",
+            msg.type_url
+        )))
+    })
+}
+
 /// `msg.ValidateBasic()` of a v0.46 message.
 pub fn validate_basic(msg: &Any) -> Result<()> {
+    let msg = &gogo_view(msg)?;
     if let Some(r) = super::ibc_channel::validate_basic(msg) {
         return r;
     }
@@ -305,6 +324,7 @@ pub fn validate_basic_tx_msgs(msgs: &[Any]) -> Result<()> {
 /// Executes `msg` through its v0.46 msg server, returning its packed
 /// response. Events go to `ctx.events` (a fresh manager per message).
 pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
+    let msg = &gogo_view(msg)?;
     if msg.type_url == bank::MsgSend::type_url() {
         return Ok(Any::pack(&send(ctx, &decode(msg)?)?));
     }

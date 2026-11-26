@@ -2772,3 +2772,99 @@ fn v046_gov_vote_on_unknown_proposal() {
     assert!(msgs::route(&mut ctx, &old(1)).is_err());
     assert!(take_not_ported().is_some());
 }
+
+/// `Grant.expiration` (nullable stdtime) sent twice: gogoproto's
+/// `StdTimeUnmarshal` keeps the last timestamp, prost would merge the
+/// two (keeping the first one's nanos). The stored grant is Go's.
+#[test]
+fn v1_messages_are_read_as_gogoproto_decodes_them() {
+    use celestia_proto::cosmos::authz::v1beta1::{GenericAuthorization, Grant, MsgGrant};
+    use prost::Message as _;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    let (giver, taker) = ([1u8; 20], [2u8; 20]);
+    let at = |seconds: i64, nanos: i32| pbjson_types::Timestamp { seconds, nanos };
+    let grant = |exp| MsgGrant {
+        granter: x_auth::bech32(&giver).unwrap(),
+        grantee: x_auth::bech32(&taker).unwrap(),
+        grant: Some(Grant {
+            authorization: Some(celestia_proto::Any::pack(&GenericAuthorization {
+                msg: "/cosmos.bank.v1beta1.MsgSend".into(),
+            })),
+            expiration: Some(exp),
+        }),
+    };
+    // MsgGrant field 3 (grant) twice: prost merges the two `Grant`s
+    // (authorization from the first, expiration merged field by field);
+    // gogoproto merges the `Grant`s too but replaces the expiration.
+    let mut value = grant(at(2_000_000_000, 7)).encode_to_vec();
+    let mut second = Vec::new();
+    prost::encoding::message::encode(
+        3,
+        &Grant {
+            authorization: None,
+            expiration: Some(at(2_000_000_001, 0)),
+        },
+        &mut second,
+    );
+    value.extend_from_slice(&second);
+    let msg = celestia_proto::Any {
+        type_url: "/cosmos.authz.v1beta1.MsgGrant".into(),
+        value,
+    };
+    msgs::validate_basic(&msg).unwrap();
+    msgs::route(&mut ctx, &msg).unwrap();
+    let key = x_authz::grant_key(&taker, &giver, "/cosmos.bank.v1beta1.MsgSend");
+    let stored = ctx.get(x_authz::STORE_KEY, &key).unwrap().unwrap();
+    let stored = Grant::decode(stored.as_slice()).unwrap();
+    assert_eq!(stored.expiration, Some(at(2_000_000_001, 0)));
+
+    // A non-critical unknown field whose key is past `u32::MAX`: gogoproto
+    // skips it (as Go's decoder accepted it), prost fails. The MsgSend's
+    // own `ValidateBasic` decides (no coins: invalid coins).
+    let mut value = celestia_proto::cosmos::bank::v1beta1::MsgSend {
+        from_address: x_auth::bech32(&giver).unwrap(),
+        to_address: x_auth::bech32(&taker).unwrap(),
+        amount: Vec::new(),
+    }
+    .encode_to_vec();
+    value.extend_from_slice(&[0xf8, 0xff, 0xff, 0xff, 0x3f, 0x00]);
+    let send = celestia_proto::Any {
+        type_url: "/cosmos.bank.v1beta1.MsgSend".into(),
+        value,
+    };
+    let e = msgs::validate_basic(&send).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 10), "{}", e.log);
+}
+
+/// The ibc-go v6 tendermint `ClientState.trusting_period` (non-nullable
+/// stdduration) sent twice inside `MsgCreateClient`'s client state `Any`:
+/// the handlers see gogoproto's last value, not prost's merge.
+#[test]
+fn v1_nested_std_durations_are_read_as_gogoproto_decodes_them() {
+    use celestia_proto::ibc::core::client::v1::MsgCreateClient;
+    use celestia_proto::ibc::lightclients::tendermint::v1::ClientState;
+    use prost::Message as _;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let d = |seconds: i64, nanos: i32| pbjson_types::Duration { seconds, nanos };
+    let mut cs = ClientState {
+        chain_id: "x".into(),
+        trusting_period: Some(d(100, 5)),
+        ..ClientState::default()
+    }
+    .encode_to_vec();
+    prost::encoding::message::encode(3, &d(200, 0), &mut cs);
+    let msg = celestia_proto::Any::pack(&MsgCreateClient {
+        client_state: Some(celestia_proto::Any {
+            type_url: "/ibc.lightclients.tendermint.v1.ClientState".into(),
+            value: cs,
+        }),
+        consensus_state: None,
+        signer: String::new(),
+    });
+    let view = msgs::gogo_view(&msg).unwrap();
+    let m = MsgCreateClient::decode(view.value.as_slice()).unwrap();
+    let cs = ClientState::decode(m.client_state.unwrap().value.as_slice()).unwrap();
+    assert_eq!(cs.trusting_period, Some(d(200, 0)));
+}
