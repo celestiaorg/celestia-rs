@@ -139,7 +139,10 @@ fn init_default_genesis(ctx: &mut Context<'_>, name: &str) -> Result<()> {
         "06-solomachine" | "07-tendermint" | "circuit" | "consensus" | "signal" | "upgrade" => {
             Ok(())
         }
-        "packetfowardmiddleware" => x_packetforward::init_genesis(ctx, &Default::default()),
+        "packetfowardmiddleware" => x_packetforward::init_genesis(
+            ctx,
+            &celestia_proto::packetforward::v1::GenesisState::default(),
+        ),
         "minfee" => x_minfee::set_params(
             ctx,
             &x_minfee::MinfeeParams {
@@ -147,11 +150,23 @@ fn init_default_genesis(ctx: &mut Context<'_>, name: &str) -> Result<()> {
             },
         ),
         "hyperlane" => {
-            x_hyperlane::genesis::init_genesis(ctx, &Default::default())?;
-            x_hyperlane::ism::init_genesis(ctx, &Default::default())?;
-            x_hyperlane::post_dispatch::init_genesis(ctx, &Default::default())
+            x_hyperlane::genesis::init_genesis(
+                ctx,
+                &celestia_proto::hyperlane::core::v1::GenesisState::default(),
+            )?;
+            x_hyperlane::ism::init_genesis(
+                ctx,
+                &celestia_proto::hyperlane::core::interchain_security::v1::GenesisState::default(),
+            )?;
+            x_hyperlane::post_dispatch::init_genesis(
+                ctx,
+                &celestia_proto::hyperlane::core::post_dispatch::v1::GenesisState::default(),
+            )
         }
-        "warp" => x_warp::init_genesis(ctx, &Default::default()),
+        "warp" => x_warp::init_genesis(
+            ctx,
+            &celestia_proto::hyperlane::warp::v1::GenesisState::default(),
+        ),
         _ => Err(sdk::error::sdk::not_supported(format!(
             "adding module {name} during the v4 upgrade"
         ))),

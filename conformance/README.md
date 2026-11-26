@@ -331,11 +331,16 @@ blocks 16 to 20 with FinalizeBlock and Commit.
 
 [`fixtures/synthetic/v4`](fixtures/synthetic/v4) holds the blocks it
 built, the store roots and IAVL versions of heights 15 to 20, the
-FinalizeBlock responses, every key at height 15 (`kv-handoff.jsonl.gz`)
-and the KV changes of each block. `go test` in `v4-oracle` builds
+FinalizeBlock responses, every key at height 15 (`kv-handoff.jsonl.gz`),
+the KV changes of each block, and the KV changes of the store loader and
+the x/upgrade PreBlocker of block 16 alone (`kv-upgrade.jsonl.gz`, run on
+a copy of the home), which is the target of the module migrations. `go test` in `v4-oracle` builds
 `v1-oracle`, makes the hand-off and requires the fixture byte for byte.
 `cargo test -p app --test synthetic_v4_oracle` checks the fixture and
 the facts of the upgrade block that the Rust hand-off must reproduce.
+`cargo test -p app --test upgrade_v4_oracle` runs each Rust migration of
+the `v4` handler, and the whole handler, on the height-15 state and
+requires Go's result in every store.
 To regenerate it:
 
 ```sh

@@ -5,7 +5,7 @@
 //! must hold what the Go store loader and `v4` upgrade handler left
 //! (`kv-upgrade.jsonl.gz`: the x/upgrade PreBlocker of block 16 alone).
 
-#![allow(clippy::expect_used, clippy::unwrap_used)]
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
 mod common;
 
@@ -195,7 +195,7 @@ fn v4_migrates_gov() {
     assert_eq!(g, w);
     let without_params = |kv: &Kv| {
         let mut kv = kv.clone();
-        kv.remove(&b"0".to_vec());
+        kv.remove(b"0".as_slice());
         kv
     };
     assert_eq!(without_params(&got), without_params(&want));

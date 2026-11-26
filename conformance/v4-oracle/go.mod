@@ -5,6 +5,7 @@ go 1.26.0
 toolchain go1.26.9
 
 require (
+	cosmossdk.io/core v0.11.1
 	cosmossdk.io/log v1.6.0
 	cosmossdk.io/math v1.5.3
 	cosmossdk.io/store v1.1.2
@@ -28,7 +29,6 @@ require (
 	cosmossdk.io/api v0.7.6 // indirect
 	cosmossdk.io/client/v2 v2.0.0-beta.8 // indirect
 	cosmossdk.io/collections v0.4.0 // indirect
-	cosmossdk.io/core v0.11.1 // indirect
 	cosmossdk.io/depinject v1.1.0 // indirect
 	cosmossdk.io/errors v1.0.2 // indirect
 	cosmossdk.io/x/circuit v0.1.1 // indirect

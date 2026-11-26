@@ -129,6 +129,10 @@ fn v4_fixture_files_match_their_record() {
         sha256_hex(&gunzip("kv-handoff.jsonl.gz"))
     );
     assert_eq!(
+        r["kv"]["kv-upgrade.jsonl"],
+        sha256_hex(&gunzip("kv-upgrade.jsonl.gz"))
+    );
+    assert_eq!(
         r["kv"]["kv-diffs.jsonl"],
         sha256_hex(&gunzip("kv-diffs.jsonl.gz"))
     );
