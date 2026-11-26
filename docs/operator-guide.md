@@ -954,6 +954,7 @@ celestia-rs start --home ~/.celestia-rs/mainnet-genesis \
   at height 1. Without one, block sync waits at the first height that no
   peer serves. Peers seen serving mainnet from height 1 (November 2026;
   public addresses, availability not guaranteed):
+  `e0c570997f9c4ecc3b1c4c0f5fbb2681031e5353@157.180.10.38:40656`,
   `217bd0e9fb6ed289a44c5ad7d95ee62becaccb1c@169.155.169.214:26656`,
   `fb779c787dda02b66c061ce030f77682494cc4c8@65.21.231.168:11656`.
   Many public peers are at their inbound limit and close the connection
