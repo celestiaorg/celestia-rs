@@ -45,6 +45,7 @@ pub use go_types::go_type_name;
 pub use registry::added_in_v10;
 mod unknownproto;
 mod unpack;
+mod v1;
 mod wrappers;
 
 use celestia_proto::cosmos::tx::v1beta1::AuthInfo;
@@ -53,7 +54,7 @@ use sdk::tx::Tx;
 
 pub use wrappers::{
     BlobTxError, PgoField, UnwrappedBlobTx, marshal_blob_tx, pgo_fields, unmarshal_blob_tx,
-    unmarshal_blob_tx_v9, unmarshal_index_wrapper,
+    unmarshal_blob_tx_v9, unmarshal_blob_tx_v034, unmarshal_index_wrapper,
 };
 
 use crate::gogo::{Dyn, GoError, Mode};
@@ -110,11 +111,52 @@ fn with_stack(len: usize, f: impl FnOnce() -> sdk::Result<Tx> + Send) -> sdk::Re
 std::thread_local! {
     /// Set while decoding with celestia-app v9.0.8's decoder ([`decode_v9`]).
     static V9: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Set while decoding with celestia-app v3.13.0's decoder ([`decode_v1`]).
+    static V1: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Whether the current decode runs with v9.0.8's registry and schema.
 pub(crate) fn v9() -> bool {
     V9.with(std::cell::Cell::get)
+}
+
+/// Whether the current decode runs with v3.13.0's registry and schema
+/// (app version 1, [`v1`]).
+pub(crate) fn v1() -> bool {
+    V1.with(std::cell::Cell::get)
+}
+
+/// Runs `f` with celestia-app v3.13.0's registry and schema (app version
+/// 1): the gogoproto helpers ([`gogo_repack`], [`gogo_marshaled`],
+/// [`prost_compatible`]) and decoding.
+pub fn with_v1<T>(f: impl FnOnce() -> T) -> T {
+    let prev = V1.with(|v| v.replace(true));
+    let out = f();
+    V1.with(|v| v.set(prev));
+    out
+}
+
+/// Whether a gogoproto helper called outside a v1 decode must take the v1
+/// schema: on a thread executing a cosmos-sdk v0.46 block (the legacy
+/// driver's scope, app versions 1 to 3, which run celestia-app v3.13.0).
+fn enter_v1() -> bool {
+    !v1() && sdk::version::is_sdk_v046(0)
+}
+
+/// celestia-app v3.13.0's `TxConfig.TxDecoder()` (app version 1, as the
+/// multiplexer runs it for app versions 1 to 3): celestia-core v0.34's
+/// `UnmarshalIndexWrapper` (the inner tx of an `IndexWrapper`, with no
+/// check of its messages), then cosmos-sdk v0.46's `DefaultTxDecoder`
+/// with the v1 interface registry and v0.46 message schema ([`v1`]).
+/// celestia-core v0.34 delivers only the inner tx of a `BlobTx`, so no
+/// `BlobTx` reaches it; empty bytes decode (to a tx without messages).
+pub fn decode_v1(raw: &[u8]) -> sdk::Result<Tx> {
+    with_stack(raw.len(), || {
+        with_v1(|| match unmarshal_index_wrapper(raw) {
+            Some((inner, _)) => decode_sdk_tx(&inner, false),
+            None => decode_sdk_tx(raw, false),
+        })
+    })
 }
 
 /// Runs `f` with celestia-app v9.0.8's registry and schema when `v9` (the
@@ -255,7 +297,10 @@ pub fn gogo_unmarshal(name: &str, data: &[u8]) -> Result<Vec<u8>, String> {
 /// decode.
 #[must_use]
 pub fn gogo_marshaled(any: &celestia_proto::Any) -> celestia_proto::Any {
-    if !v9() && sdk::version::is_v9(sdk::version::app_version()) {
+    if enter_v1() {
+        return with_v1(|| gogo_marshaled(any));
+    }
+    if !v1() && !v9() && sdk::version::is_v9(sdk::version::app_version()) {
         return with_v9(|| gogo_marshaled(any));
     }
     let name = any.type_url.rsplit('/').next().unwrap_or_default();
@@ -282,7 +327,10 @@ pub fn gogo_marshaled(any: &celestia_proto::Any) -> celestia_proto::Any {
 /// non-nullable `HexAddress`).
 #[must_use]
 pub fn gogo_repack(any: &celestia_proto::Any) -> celestia_proto::Any {
-    if !v9() && sdk::version::is_v9(sdk::version::app_version()) {
+    if enter_v1() {
+        return with_v1(|| gogo_repack(any));
+    }
+    if !v1() && !v9() && sdk::version::is_v9(sdk::version::app_version()) {
         return with_v9(|| gogo_repack(any));
     }
     let name = any.type_url.rsplit('/').next().unwrap_or_default();
@@ -306,8 +354,11 @@ pub fn gogo_repack(any: &celestia_proto::Any) -> celestia_proto::Any {
 /// `None` when gogoproto cannot decode it (Go never runs such a message).
 #[must_use]
 pub fn prost_compatible(any: &celestia_proto::Any) -> Option<celestia_proto::Any> {
+    if enter_v1() {
+        return with_v1(|| prost_compatible(any));
+    }
     let name = any.type_url.rsplit('/').next().unwrap_or_default();
-    let v9 = v9() || sdk::version::is_v9(sdk::version::app_version());
+    let v9 = !v1() && (v9() || sdk::version::is_v9(sdk::version::app_version()));
     let value = scoped_v9(v9, || gogo_unmarshal(name, &any.value)).ok()?;
     Some(celestia_proto::Any {
         type_url: any.type_url.clone(),

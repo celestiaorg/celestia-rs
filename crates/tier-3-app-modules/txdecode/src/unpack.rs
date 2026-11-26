@@ -42,10 +42,13 @@ struct Unpacker<'a> {
 impl Unpacker<'_> {
     /// `statefulUnpacker.UnpackAny`. `any` is `None` for a nil `*Any`.
     fn unpack_any(&mut self, any: Option<&mut Dyn>, iface: u32) -> UResult<()> {
-        if self.max_depth == 0 {
+        // cosmos-sdk v0.46 (app version 1) unpacks without depth or call
+        // limits (no `statefulUnpacker`).
+        let limited = !crate::v1();
+        if limited && self.max_depth == 0 {
             return Err(GoError::new("max depth exceeded").into());
         }
-        if *self.calls == 0 {
+        if limited && *self.calls == 0 {
             return Err(GoError::new("call limit exceeded").into());
         }
         let Some(any) = any else { return Ok(()) };
@@ -53,7 +56,9 @@ impl Unpacker<'_> {
         if type_url.is_empty() {
             return Ok(());
         }
-        *self.calls -= 1;
+        if limited {
+            *self.calls -= 1;
+        }
         if !registry::has_impls(iface) {
             return Err(GoError::new(format!(
                 "no registered implementations of type {}",
@@ -139,8 +144,39 @@ pub(crate) const IMPLEMENTED: &[&str] = &[
     "ibc.lightclients.solomachine.v3.Header",
 ];
 
+/// ibc-go v6's `UnpackInterfaces` methods where they differ from v8's
+/// (app version 1): a client update holds an `exported.Header`, a
+/// misbehaviour submission an `exported.Misbehaviour`, and the solo
+/// machine client is v2 (its header's new public key is field 4). `None`
+/// for any other message.
+fn unpack_interfaces_v1(m: &mut Dyn, u: &mut Unpacker<'_>) -> Option<UResult<()>> {
+    Some(match m.info.name {
+        "ibc.core.client.v1.MsgUpdateClient" => u.unpack_any(m.msg_mut(2), iface::HEADER),
+        "ibc.core.client.v1.MsgSubmitMisbehaviour" => {
+            u.unpack_any(m.msg_mut(2), iface::MISBEHAVIOUR)
+        }
+        // A value-receiver method through a nil pointer panics.
+        "ibc.lightclients.solomachine.v2.ClientState" => match m.msg_mut(3) {
+            Some(cs) => unpack_interfaces(cs, u),
+            None => Err(UnpackError::Panic(
+                "runtime error: invalid memory address or nil pointer dereference".into(),
+            )),
+        },
+        "ibc.lightclients.solomachine.v2.ConsensusState" => {
+            u.unpack_any(m.msg_mut(1), iface::PUB_KEY)
+        }
+        "ibc.lightclients.solomachine.v2.Header" => u.unpack_any(m.msg_mut(4), iface::PUB_KEY),
+        _ => return None,
+    })
+}
+
 /// `UnpackInterfaces(msg, unpacker)`.
 fn unpack_interfaces(m: &mut Dyn, u: &mut Unpacker<'_>) -> UResult<()> {
+    if crate::v1()
+        && let Some(r) = unpack_interfaces_v1(m, u)
+    {
+        return r;
+    }
     match m.info.name {
         // authz MsgExec: msgs as sdk.Msg.
         "cosmos.authz.v1beta1.MsgExec" => {

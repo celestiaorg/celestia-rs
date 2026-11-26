@@ -2019,23 +2019,15 @@ fn not_ported_in_genesis_and_blockers_is_not_lost() {
     driver.commit(&mut ms).unwrap();
 }
 
-/// The v1 runTx aborts (records a not-ported behavior) for a transaction
-/// the v10 decoder rejects (`MsgRegisterEVMAddress` is not in its
-/// registry) and for a message type outside v1's registry (x/signal),
-/// before any ante handler state change.
+/// The v1 runTx decodes with the v1 registry: a message outside it (a
+/// later release's bank `MsgUpdateParams`) fails the transaction as Go
+/// does (a decode error, no gas wanted, no record); blobstream's
+/// `MsgRegisterEVMAddress` decodes and fails its `ValidateBasic`; a
+/// registered message whose `ValidateBasic` is not ported (x/signal)
+/// aborts the block before any ante handler state change.
 #[test]
-fn v1_run_tx_aborts_outside_the_v1_registry() {
-    let evm = celestia_proto::Any {
-        type_url: "/celestia.qgb.v1.MsgRegisterEVMAddress".to_owned(),
-        value: Vec::new(),
-    };
-    let signal =
-        celestia_proto::Any::pack(&celestia_proto::celestia::signal::v1::MsgSignalVersion {
-            validator_address: "celestiavaloper1".to_owned(),
-            version: 2,
-        });
-    for msg in [evm, signal] {
-        let url = msg.type_url.clone();
+fn v1_run_tx_decodes_with_the_v1_registry() {
+    let run = |msg: celestia_proto::Any| {
         let mut ms = v1_store();
         let _v046 = sdk::version::SdkV046Scope::enter(1);
         let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
@@ -2043,10 +2035,41 @@ fn v1_run_tx_aborts_outside_the_v1_registry() {
         let mut block_gas = kvstore::GasMeter::infinite();
         let _ = take_not_ported();
         let out = tx::deliver_tx(&mut ctx, &mut block_gas, &raw_tx(vec![msg]));
-        assert!(out.result.is_err(), "{url}");
-        let what = take_not_ported().unwrap_or_else(|| panic!("{url}: not recorded"));
-        assert!(what.contains("not ported"), "{url}: {what}");
-    }
+        (out, take_not_ported())
+    };
+    let later = celestia_proto::Any::pack(
+        &celestia_proto::cosmos::bank::v1beta1::MsgUpdateParams::default(),
+    );
+    let (out, record) = run(later);
+    let e = out.result.unwrap_err();
+    assert_eq!(
+        (e.codespace, e.code, out.gas_wanted),
+        ("sdk", 2, 0),
+        "{}",
+        e.log
+    );
+    assert!(record.is_none());
+
+    let evm = celestia_proto::Any {
+        type_url: "/celestia.qgb.v1.MsgRegisterEVMAddress".to_owned(),
+        value: Vec::new(),
+    };
+    let (out, record) = run(evm);
+    assert!(out.result.is_err());
+    assert!(record.is_none());
+
+    let signal =
+        celestia_proto::Any::pack(&celestia_proto::celestia::signal::v1::MsgSignalVersion {
+            validator_address: "celestiavaloper1".to_owned(),
+            version: 2,
+        });
+    let (out, record) = run(signal);
+    assert!(out.result.is_err());
+    let what = record.expect("not recorded");
+    assert!(
+        what.contains("ValidateBasic of /celestia.signal.v1.MsgSignalVersion"),
+        "{what}"
+    );
 }
 
 /// v0.46 `Commission.String()` as mainnet's first `MsgEditValidator`

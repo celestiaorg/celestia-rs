@@ -32,6 +32,10 @@ pub(crate) mod iface {
     pub(crate) const CLIENT_MESSAGE: u32 = 1 << 8;
     /// `tx.TxExtensionOptionI` (registered without implementations).
     pub(crate) const TX_EXTENSION_OPTION: u32 = 1 << 9;
+    /// ibc-go v6 `exported.Header` (app version 1 only).
+    pub(crate) const HEADER: u32 = 1 << 10;
+    /// ibc-go v6 `exported.Misbehaviour` (app version 1 only).
+    pub(crate) const MISBEHAVIOUR: u32 = 1 << 11;
 }
 
 include!("registry_table.rs");
@@ -50,11 +54,16 @@ pub(crate) fn iface_go_type(iface: u32) -> &'static str {
         iface::CLIENT_STATE => "exported.ClientState",
         iface::CONSENSUS_STATE => "exported.ConsensusState",
         iface::CLIENT_MESSAGE => "exported.ClientMessage",
+        iface::HEADER => "exported.Header",
+        iface::MISBEHAVIOUR => "exported.Misbehaviour",
         _ => "tx.TxExtensionOptionI",
     }
 }
 
 fn lookup(type_url: &[u8]) -> Option<&'static (&'static str, &'static str, u32)> {
+    if crate::v1() {
+        return crate::v1::lookup(type_url);
+    }
     TYPE_URLS
         .binary_search_by(|(u, _, _)| u.as_bytes().cmp(type_url))
         .ok()
@@ -73,6 +82,9 @@ pub fn added_in_v10(type_url: &str) -> bool {
 
 /// `interfaceRegistry.Resolve`: the message type registered under a type URL.
 pub(crate) fn resolve(type_url: &[u8]) -> Option<&'static MessageInfo> {
+    if crate::v1() {
+        return lookup(type_url).and_then(|(_, name, _)| crate::v1::message(name));
+    }
     lookup(type_url).and_then(|(_, name, _)| celestia_proto::wire_table::message(name))
 }
 
@@ -86,6 +98,9 @@ pub(crate) fn resolve_impl(type_url: &[u8], iface: u32) -> Option<&'static Messa
 /// Whether `iface` has any registered implementation (`interfaceImpls`
 /// entry). `TxExtensionOptionI` has none.
 pub(crate) fn has_impls(iface: u32) -> bool {
+    if crate::v1() {
+        return crate::v1::has_impls(iface);
+    }
     TYPE_URLS.iter().any(|(_, _, bits)| bits & iface != 0)
 }
 

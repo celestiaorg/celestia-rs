@@ -89,6 +89,9 @@ pub fn bytes_to_bech32(bz: &[u8]) -> String {
 /// Signers of one message (`codec.GetMsgAnySigners` via `x/tx` signing
 /// context).
 pub fn msg_signers(any: &Any) -> Result<Vec<Vec<u8>>, SdkError> {
+    if let Some(s) = v046_msg_signers(any) {
+        return s;
+    }
     let Some(res) = celestia_proto::signers::get_signers(&any.type_url, &any.value) else {
         return Err(internal(format!(
             "no cosmos.msg.v1.signer option found for message {}; use DefineCustomGetSigners to specify a custom getter",
@@ -97,6 +100,27 @@ pub fn msg_signers(any: &Any) -> Result<Vec<Vec<u8>>, SdkError> {
     };
     let signers = res.map_err(|e| internal(e.to_string()))?;
     signer_bytes(&any.type_url, signers)
+}
+
+/// blobstream's `MsgRegisterEVMAddress` (celestia-app v1, executing
+/// cosmos-sdk v0.46): its validator, as an account (`GetSigners`; it has
+/// no `cosmos.msg.v1.signer` option). `None` for any other message or
+/// outside a v0.46 block.
+fn v046_msg_signers(any: &Any) -> Option<Result<Vec<Vec<u8>>, SdkError>> {
+    #[derive(Clone, PartialEq, prost::Message)]
+    struct RegisterEvmAddress {
+        #[prost(string, tag = "1")]
+        validator_address: String,
+    }
+    if any.type_url != "/celestia.qgb.v1.MsgRegisterEVMAddress" || !sdk::version::is_sdk_v046(0) {
+        return None;
+    }
+    Some(
+        <RegisterEvmAddress as prost::Message>::decode(any.value.as_slice())
+            .map_err(|e| internal(e.to_string()))
+            .and_then(|m| bech32_to_bytes(&m.validator_address, VALIDATOR_PREFIX))
+            .map(|v| vec![v]),
+    )
 }
 
 /// The signing context's address decoding of a message's signer fields:

@@ -265,6 +265,15 @@ CELESTIA_V1_ORACLE_EXT="$EXT" [CELESTIA_V1_LAST_HEIGHT=<h>] \
   cargo test -p app --test v1_block_oracle v1_blocks_match_the_oracle -- --ignored
 ```
 
+The app version 1 transaction decoder of the Rust `txdecode` crate
+(`decode_v1`) uses the celestia-app v3.13.0 interface registry and the
+cosmos-sdk v0.46 message schema. The oracle generates both tables
+(`registry_table_v1.rs`, `wire_table_v1.rs`) from the registry Go builds:
+
+```sh
+./v1-oracle -registry-out ../../crates/tier-3-app-modules/txdecode/src
+```
+
 #### Where checkpoints come from
 
 The QubeLabs archive (`celestia_2026-11-03.tar`, ETag

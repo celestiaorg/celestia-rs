@@ -98,6 +98,11 @@ pub(crate) struct Dyn {
 
 /// Looks up a message type in the schema.
 pub(crate) fn info(name: &str) -> GoResult<&'static MessageInfo> {
+    if crate::v1() {
+        return crate::v1::message(name).ok_or_else(|| {
+            GoError::new(format!("failed to retrieve the message of type {name:?}"))
+        });
+    }
     if crate::v9() && name == V9_REMOTE_ROUTER.name {
         return Ok(&V9_REMOTE_ROUTER);
     }
