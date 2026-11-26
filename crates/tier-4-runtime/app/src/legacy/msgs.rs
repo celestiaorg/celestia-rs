@@ -91,6 +91,18 @@ fn valid_positive_coin(
     Ok(coin)
 }
 
+/// `!msg.Amount.IsValid() || !msg.Amount.Amount.IsPositive()` of an
+/// undelegation or redelegation.
+fn valid_shares_amount(
+    c: Option<&celestia_proto::cosmos::base::v1beta1::Coin>,
+) -> Result<sdk::coins::Coin> {
+    let (coin, valid) = x_staking::msgs::parse_coin(c);
+    if !valid || !coin.amount.is_positive() {
+        return Err(errs::invalid_request("invalid shares amount"));
+    }
+    Ok(coin)
+}
+
 /// staking `MsgCreateValidator.ValidateBasic` (v0.46): returns the
 /// validated commission rates (at a zero update time) and minimum self
 /// delegation. (v0.46 still uses the delegator address.)
@@ -226,6 +238,17 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
         validate_create_validator(&decode(msg)?)?;
     } else if msg.type_url == staking::MsgEditValidator::type_url() {
         validate_edit_validator(&decode(msg)?, &msg.value)?;
+    } else if msg.type_url == staking::MsgUndelegate::type_url() {
+        let m: staking::MsgUndelegate = decode(msg)?;
+        acc_address(&m.delegator_address, "delegator")?;
+        val_address(&m.validator_address, "validator")?;
+        valid_shares_amount(m.amount.as_ref())?;
+    } else if msg.type_url == staking::MsgBeginRedelegate::type_url() {
+        let m: staking::MsgBeginRedelegate = decode(msg)?;
+        acc_address(&m.delegator_address, "delegator")?;
+        val_address(&m.validator_src_address, "source validator")?;
+        val_address(&m.validator_dst_address, "destination validator")?;
+        valid_shares_amount(m.amount.as_ref())?;
     }
     Ok(())
 }
@@ -255,6 +278,12 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
     }
     if msg.type_url == staking::MsgEditValidator::type_url() {
         return Ok(Any::pack(&edit_validator(ctx, &decode(msg)?, &msg.value)?));
+    }
+    if msg.type_url == staking::MsgUndelegate::type_url() {
+        return Ok(Any::pack(&undelegate(ctx, &decode(msg)?)?));
+    }
+    if msg.type_url == staking::MsgBeginRedelegate::type_url() {
+        return Ok(Any::pack(&begin_redelegate(ctx, &decode(msg)?)?));
     }
     if let Some(r) = super::ibc::route(ctx, msg) {
         return r;
@@ -517,4 +546,72 @@ fn edit_validator(
     ));
     staking_message_event(ctx, &msg.validator_address);
     Ok(staking::MsgEditValidatorResponse {})
+}
+
+/// The msg servers' `sdk.ValAddressFromBech32` / `sdk.AccAddressFromBech32`
+/// (plain Go errors after `ValidateBasic` passed).
+fn server_val(s: &str) -> Result<Vec<u8>> {
+    x_staking::addr::val_from_string(s)
+}
+
+fn server_acc(s: &str) -> Result<Vec<u8>> {
+    sdk::address::acc_from_bech32_go(s).map_err(errs::invalid_address)
+}
+
+/// Go `time.Format(time.RFC3339)` of a UTC time.
+fn rfc3339(t: &pbjson_types::Timestamp) -> String {
+    sdk::time::format_rfc3339(t)
+}
+
+/// staking `msgServer.Undelegate` (v0.46).
+fn undelegate(
+    ctx: &mut Context<'_>,
+    msg: &staking::MsgUndelegate,
+) -> Result<staking::MsgUndelegateResponse> {
+    let val = server_val(&msg.validator_address)?;
+    let del = server_acc(&msg.delegator_address)?;
+    let amount = valid_shares_amount(msg.amount.as_ref())?;
+    let shares = x_staking::delegation::validate_unbond_amount(ctx, &del, &val, &amount.amount)?;
+    check_bond_denom(ctx, &amount.denom)?;
+    let (completion, _) = x_staking::delegation::undelegate(ctx, &del, &val, &shares)?;
+    ctx.events.emit(event(
+        "unbond",
+        [
+            ("validator", msg.validator_address.clone()),
+            ("amount", amount.to_string()),
+            ("completion_time", rfc3339(&completion)),
+        ],
+    ));
+    staking_message_event(ctx, &msg.delegator_address);
+    Ok(staking::MsgUndelegateResponse {
+        completion_time: Some(completion),
+        amount: None,
+    })
+}
+
+/// staking `msgServer.BeginRedelegate` (v0.46).
+fn begin_redelegate(
+    ctx: &mut Context<'_>,
+    msg: &staking::MsgBeginRedelegate,
+) -> Result<staking::MsgBeginRedelegateResponse> {
+    let src = server_val(&msg.validator_src_address)?;
+    let del = server_acc(&msg.delegator_address)?;
+    let amount = valid_shares_amount(msg.amount.as_ref())?;
+    let shares = x_staking::delegation::validate_unbond_amount(ctx, &del, &src, &amount.amount)?;
+    check_bond_denom(ctx, &amount.denom)?;
+    let dst = server_val(&msg.validator_dst_address)?;
+    let completion = x_staking::delegation::begin_redelegation(ctx, &del, &src, &dst, &shares)?;
+    ctx.events.emit(event(
+        "redelegate",
+        [
+            ("source_validator", msg.validator_src_address.clone()),
+            ("destination_validator", msg.validator_dst_address.clone()),
+            ("amount", amount.to_string()),
+            ("completion_time", rfc3339(&completion)),
+        ],
+    ));
+    staking_message_event(ctx, &msg.delegator_address);
+    Ok(staking::MsgBeginRedelegateResponse {
+        completion_time: Some(completion),
+    })
 }
