@@ -3070,3 +3070,50 @@ fn v046_commission_below_min_rate_reads_the_param_twice() {
     assert_eq!(gas(&mut ctx, "0.06"), (true, 1141));
     assert_eq!(gas(&mut ctx, "0.01"), (false, 2 * 1141));
 }
+
+/// v0.46 `DispatchActions` of a bank `MsgSend` signed by the grantee
+/// itself (implicitly accepted) runs the send; an ibc-go v6
+/// `MsgTransfer` whose sender does not parse panics in `GetSigners`.
+#[test]
+fn v046_exec_dispatches_send_and_transfer_signers() {
+    use celestia_proto::cosmos::authz::v1beta1::MsgExec;
+    use celestia_proto::cosmos::bank::v1beta1::MsgSend;
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::ibc::applications::transfer::v1::MsgTransfer;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    write_mainnet_genesis_params(&mut ctx).unwrap();
+    let (a, b) = ([1u8; 20], [2u8; 20]);
+    let acc = x_auth::new_account_with_address(&mut ctx, &a).unwrap();
+    x_auth::set_account(&mut ctx, &acc).unwrap();
+    x_bank::set_balance(&mut ctx, &a, &sdk::coins::Coin::new("utia", 10)).unwrap();
+    let exec = |m: celestia_proto::Any| {
+        celestia_proto::Any::pack(&MsgExec {
+            grantee: x_auth::bech32(&a).unwrap(),
+            msgs: vec![m],
+        })
+    };
+    let send = celestia_proto::Any::pack(&MsgSend {
+        from_address: x_auth::bech32(&a).unwrap(),
+        to_address: x_auth::bech32(&b).unwrap(),
+        amount: vec![Coin {
+            denom: "utia".into(),
+            amount: "3".into(),
+        }],
+    });
+    let _ = take_not_ported();
+    msgs::route(&mut ctx, &exec(send)).unwrap();
+    assert!(take_not_ported().is_none());
+    assert_eq!(
+        x_bank::get_balance(&mut ctx, &b, "utia").unwrap().amount,
+        math::Int::from_u64(3)
+    );
+    let transfer = celestia_proto::Any::pack(&MsgTransfer {
+        sender: "not-an-address".into(),
+        ..MsgTransfer::default()
+    });
+    let e = sdk::error::recover(|| msgs::route(&mut ctx, &exec(transfer))).unwrap_err();
+    assert!(e.is_panic(), "{}", e.log);
+}

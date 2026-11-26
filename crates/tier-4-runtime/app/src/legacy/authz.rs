@@ -20,8 +20,11 @@ use celestia_proto::Any;
 use celestia_proto::cosmos::authz::v1beta1::{
     self as authz, EventGrant, EventRevoke, GenericAuthorization, Grant, GrantQueueItem,
 };
+use celestia_proto::cosmos::bank::v1beta1 as bank;
 use celestia_proto::cosmos::distribution::v1beta1 as distr;
+use celestia_proto::cosmos::gov;
 use celestia_proto::cosmos::staking::v1beta1 as staking;
+use celestia_proto::ibc::applications::transfer::v1 as transfer;
 use pbjson_types::Timestamp;
 use prost::{Message, Name};
 use sdk::error::sdk as errs;
@@ -529,6 +532,21 @@ fn exec_signer(msg: &Any) -> Result<Option<Vec<u8>>> {
             acc(&decode::<staking::MsgUndelegate>(msg)?.delegator_address)
         } else if u == staking::MsgBeginRedelegate::type_url() {
             acc(&decode::<staking::MsgBeginRedelegate>(msg)?.delegator_address)
+        } else if u == staking::MsgCancelUnbondingDelegation::type_url() {
+            acc(&decode::<staking::MsgCancelUnbondingDelegation>(msg)?.delegator_address)
+        } else if u == distr::MsgFundCommunityPool::type_url() {
+            acc(&decode::<distr::MsgFundCommunityPool>(msg)?.depositor)
+        } else if u == bank::MsgSend::type_url() {
+            acc(&decode::<bank::MsgSend>(msg)?.from_address)
+        } else if u == gov::v1beta1::MsgVote::type_url() {
+            acc(&decode::<gov::v1beta1::MsgVote>(msg)?.voter)
+        } else if u == gov::v1::MsgVote::type_url() {
+            acc(&decode::<gov::v1::MsgVote>(msg)?.voter)
+        } else if u == transfer::MsgTransfer::type_url() {
+            // ibc-go v6 `MsgTransfer.GetSigners` panics on a sender that
+            // does not parse.
+            let m: transfer::MsgTransfer = decode(msg)?;
+            sdk::address::acc_from_bech32_go(&m.sender).map_err(sdk::error::go_panic)?
         } else {
             return Ok(None);
         },
