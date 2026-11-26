@@ -173,6 +173,8 @@ func signBytesCorpus() ([]namedMsg, error) {
 		{"warp/MsgCreateCollateralToken", &warptypes.MsgCreateCollateralToken{Owner: alice.String(), OriginMailbox: hex32(3), OriginDenom: "utia"}, "alice"},
 		{"warp/MsgCreateSyntheticToken", &warptypes.MsgCreateSyntheticToken{Owner: alice.String(), OriginMailbox: hex32(3)}, "alice"},
 		{"warp/MsgEnrollRemoteRouter", &warptypes.MsgEnrollRemoteRouter{Owner: alice.String(), TokenId: hex32(1), RemoteRouter: &warptypes.RemoteRouter{ReceiverDomain: 2, ReceiverContract: "0x0101", Gas: math.NewInt(50_000)}}, "alice"},
+		{"warp/MsgEnrollRemoteRouter(domain0)", &warptypes.MsgEnrollRemoteRouter{Owner: alice.String(), TokenId: hex32(1), RemoteRouter: &warptypes.RemoteRouter{ReceiverDomain: 0, ReceiverContract: "0x0101", Gas: math.NewInt(50_000)}}, "alice"},
+		{"warp/MsgEnrollRemoteRouter(no router)", &warptypes.MsgEnrollRemoteRouter{Owner: alice.String(), TokenId: hex32(1)}, "alice"},
 		{"core/MsgProcessMessage", &coretypes.MsgProcessMessage{MailboxId: hex32(3), Relayer: bob.String(), Metadata: "0x00", Message: "0x0102"}, "bob"},
 		{"core/MsgCreateMailbox", &coretypes.MsgCreateMailbox{Owner: alice.String(), LocalDomain: 69420, DefaultIsm: hex32(4)}, "alice"},
 	}, nil

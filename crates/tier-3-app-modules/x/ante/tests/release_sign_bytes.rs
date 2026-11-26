@@ -51,7 +51,10 @@ fn mode(name: &str) -> i32 {
 ///
 /// - `MsgEnrollRemoteRouter` in v4.1.0 to v6.4.4 (hyperlane-cosmos
 ///   v1.0.1): `hyperlane.warp.v1.RemoteRouter: {TagNum: 1, WireType:"varint"}:
-///   unknown protobuf field`.
+///   unknown protobuf field`. Go fails on the first field present, so with
+///   `receiver_domain = 0` (`(domain0)`) it reports `{TagNum: 2,
+///   WireType:"bytes"}`. With no `remote_router` (`(no router)`) Go signs,
+///   and so does celestia-rs.
 /// - `MsgCreateVestingAccount` with a start time in v4.1.0:
 ///   `cosmos.vesting.v1beta1.MsgCreateVestingAccount: {TagNum: 6, ...}:
 ///   unknown protobuf field` (the fork's `start_time`).
@@ -59,6 +62,11 @@ const KNOWN_DIVERGENCES: &[(&str, &str, &str)] = &[
     (
         "v4",
         "warp/MsgEnrollRemoteRouter",
+        "SIGN_MODE_LEGACY_AMINO_JSON",
+    ),
+    (
+        "v4",
+        "warp/MsgEnrollRemoteRouter(domain0)",
         "SIGN_MODE_LEGACY_AMINO_JSON",
     ),
     (
@@ -72,8 +80,18 @@ const KNOWN_DIVERGENCES: &[(&str, &str, &str)] = &[
         "SIGN_MODE_LEGACY_AMINO_JSON",
     ),
     (
+        "v5",
+        "warp/MsgEnrollRemoteRouter(domain0)",
+        "SIGN_MODE_LEGACY_AMINO_JSON",
+    ),
+    (
         "v6",
         "warp/MsgEnrollRemoteRouter",
+        "SIGN_MODE_LEGACY_AMINO_JSON",
+    ),
+    (
+        "v6",
+        "warp/MsgEnrollRemoteRouter(domain0)",
         "SIGN_MODE_LEGACY_AMINO_JSON",
     ),
 ];
