@@ -34,6 +34,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/celestiaorg/celestia-app/v3/app"
@@ -455,4 +456,90 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// handoff is handoff.json: what conformance/v4-oracle needs, beside the app
+// home, to build the blocks after the last v3 block as celestia-core
+// would. Bytes are upper-case hex.
+type handoff struct {
+	ChainID         string `json:"chain_id"`
+	Height          int64  `json:"height"`
+	AppHash         string `json:"app_hash"`
+	LastResultsHash string `json:"last_results_hash"`
+	// AppVersion is the app version of the last EndBlock consensus params:
+	// the version of the next header.
+	AppVersion uint64 `json:"app_version"`
+	// BlockMaxBytes and BlockMaxGas are the block params that the header's
+	// consensus_hash commits to.
+	BlockMaxBytes int64           `json:"block_max_bytes"`
+	BlockMaxGas   int64           `json:"block_max_gas"`
+	LastBlockID   handoffBlockID  `json:"last_block_id"`
+	LastCommit    []handoffSig    `json:"last_commit"`
+	Validators    [2][]handoffVal `json:"validators"`
+}
+
+type handoffBlockID struct {
+	Hash      string `json:"hash"`
+	PartTotal uint32 `json:"part_total"`
+	PartHash  string `json:"part_hash"`
+}
+
+// handoffSig is a CommitSig of the last block. TimeNs is Unix nanoseconds.
+type handoffSig struct {
+	Flag             int32  `json:"flag"`
+	ValidatorAddress string `json:"validator_address"`
+	TimeNs           int64  `json:"time_ns"`
+	Signature        string `json:"signature"`
+}
+
+// handoffVal is an ed25519 validator in proposer-priority order.
+type handoffVal struct {
+	PubKey           string `json:"pub_key"`
+	Power            int64  `json:"power"`
+	ProposerPriority int64  `json:"proposer_priority"`
+}
+
+// writeHandoff records the state after block `height`; vals holds the
+// validator sets of heights height+1 and height+2.
+func (s *synth) writeHandoff(path string, height int64, vals map[int64]*tmtypes.ValidatorSet) error {
+	h := handoff{
+		ChainID:         s.genDoc.ChainID,
+		Height:          height,
+		AppHash:         fmt.Sprintf("%X", s.appHash),
+		LastResultsHash: fmt.Sprintf("%X", s.lastResultsHash),
+		AppVersion:      s.appVersion,
+		BlockMaxBytes:   s.genDoc.ConsensusParams.Block.MaxBytes,
+		BlockMaxGas:     s.genDoc.ConsensusParams.Block.MaxGas,
+		LastBlockID: handoffBlockID{
+			Hash:      fmt.Sprintf("%X", s.lastBlockID.Hash),
+			PartTotal: s.lastBlockID.PartSetHeader.Total,
+			PartHash:  fmt.Sprintf("%X", s.lastBlockID.PartSetHeader.Hash),
+		},
+	}
+	for _, sig := range s.lastCommit.Signatures {
+		h.LastCommit = append(h.LastCommit, handoffSig{
+			Flag:             int32(sig.BlockIDFlag),
+			ValidatorAddress: fmt.Sprintf("%X", []byte(sig.ValidatorAddress)),
+			TimeNs:           sig.Timestamp.UnixNano(),
+			Signature:        fmt.Sprintf("%X", sig.Signature),
+		})
+	}
+	for i := range h.Validators {
+		set := vals[height+1+int64(i)]
+		if set == nil {
+			return fmt.Errorf("no validator set at %d", height+1+int64(i))
+		}
+		for _, v := range set.Validators {
+			h.Validators[i] = append(h.Validators[i], handoffVal{
+				PubKey:           fmt.Sprintf("%X", v.PubKey.Bytes()),
+				Power:            v.VotingPower,
+				ProposerPriority: v.ProposerPriority,
+			})
+		}
+	}
+	bz, err := json.MarshalIndent(h, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(bz, '\n'), 0o644)
 }

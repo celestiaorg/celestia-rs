@@ -300,6 +300,7 @@ func run() error {
 	synthetic := flag.Bool("synthetic", false, "build the synthetic app version 1 to 3 chain (synthetic.go) instead of reading -genesis and -blocks; writes its genesis.json and blocks.jsonl.gz to -out")
 	govChain := flag.Bool("gov", false, "with -synthetic: build the governance chain (synthetic_gov.go)")
 	stakingChain := flag.Bool("staking", false, "with -synthetic: build the staking chain (synthetic_staking.go)")
+	handoff := flag.String("handoff", "", "with -synthetic: keep the app home (goleveldb data/application.db and data/upgrade-info.json) in this new directory and write handoff.json there, for conformance/v4-oracle to continue the chain")
 	flag.Parse()
 	if *registryOut != "" {
 		return writeRegistry(*registryOut)
@@ -312,7 +313,7 @@ func run() error {
 	if *synthetic {
 		if *out == "" || *genesisPath != "" || *blocksPath != "" || *windowsPath != "" || *from != 1 {
 			flag.Usage()
-			return errors.New("-synthetic takes -out (and -kv, -gov, -staking) only")
+			return errors.New("-synthetic takes -out (and -kv, -gov, -staking, -handoff) only")
 		}
 		scenario := ""
 		switch {
@@ -338,6 +339,7 @@ func run() error {
 			cfg.upgradeHeightV2 = stakingUpgradeHeightV2
 		}
 		cfg.src = syn
+		cfg.handoff = *handoff
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			return err
 		}
@@ -345,6 +347,10 @@ func run() error {
 		if err := syn.genDoc.SaveAs(cfg.genesisPath); err != nil {
 			return err
 		}
+	}
+	if *handoff != "" && cfg.src == nil {
+		flag.Usage()
+		return errors.New("-handoff needs -synthetic")
 	}
 	if cfg.genesisPath == "" || (cfg.blocksPath == "" && cfg.src == nil) || cfg.out == "" || cfg.heights < 1 || cfg.from < 1 || cfg.from > cfg.heights {
 		flag.Usage()
@@ -364,6 +370,9 @@ type runConfig struct {
 	// src builds the blocks (nil: read blocksPath and check each block
 	// against the next archived header).
 	src blockSource
+	// handoff, for the synthetic chain: keep the app home in this new
+	// directory and write handoff.json for conformance/v4-oracle.
+	handoff string
 }
 
 // blockSource builds a chain's blocks on the replaying app's state.
@@ -458,12 +467,19 @@ func execute(cfg runConfig) error {
 	}
 
 	// Heights 1..N.
-	home, err := os.MkdirTemp("", "v1-oracle-replay-")
+	home := cfg.handoff
+	if home == "" {
+		if home, err = os.MkdirTemp("", "v1-oracle-replay-"); err != nil {
+			return err
+		}
+		defer os.RemoveAll(home)
+	} else if err := os.Mkdir(home, 0o755); err != nil {
+		return fmt.Errorf("-handoff: %w", err)
+	}
+	replayApp, replayDB, err := newAppDB(home, *keepRecent, upgradeHeightV2, cfg.handoff != "")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(home)
-	replayApp := newApp(home, *keepRecent, upgradeHeightV2)
 	res, err := initChain(replayApp, genDoc)
 	if err != nil {
 		return err
@@ -649,6 +665,18 @@ func execute(cfg runConfig) error {
 			}
 		}
 	}
+	if cfg.handoff != "" {
+		s, ok := syn.(*synth)
+		if !ok {
+			return errors.New("-handoff needs the synthetic chain")
+		}
+		if err := replayDB.Close(); err != nil {
+			return err
+		}
+		if err := s.writeHandoff(filepath.Join(cfg.handoff, "handoff.json"), *heights, vals); err != nil {
+			return err
+		}
+	}
 	if syn != nil {
 		blocksJSONL := syn.blocksJSONL()
 		compressed, err := gzipBytes(blocksJSONL)
@@ -675,14 +703,32 @@ func execute(cfg runConfig) error {
 	return os.WriteFile(filepath.Join(*out, "store-roots.json"), append(encoded, '\n'), 0o644)
 }
 
+// newApp builds the app over a memory database.
 func newApp(home string, keepRecent uint64, upgradeHeightV2 int64) *app.App {
+	a, _, err := newAppDB(home, keepRecent, upgradeHeightV2, false)
+	if err != nil {
+		panic(err) // a memory database does not fail to open
+	}
+	return a
+}
+
+// newAppDB builds the app over a memory database or, with onDisk, over the
+// goleveldb database data/application.db of home, as celestia-appd opens it.
+func newAppDB(home string, keepRecent uint64, upgradeHeightV2 int64, onDisk bool) (*app.App, dbm.DB, error) {
+	var db dbm.DB = dbm.NewMemDB()
+	if onDisk {
+		var err error
+		if db, err = dbm.NewGoLevelDB("application", filepath.Join(home, "data")); err != nil {
+			return nil, nil, err
+		}
+	}
 	pruning := pruningtypes.NewPruningOptions(pruningtypes.PruningNothing)
 	if keepRecent > 0 {
 		pruning = pruningtypes.NewCustomPruningOptions(keepRecent, 10)
 	}
 	return app.New(
 		log.NewNopLogger(),
-		dbm.NewMemDB(),
+		db,
 		nil,
 		0,
 		encoding.MakeConfig(app.ModuleEncodingRegisters...),
@@ -692,7 +738,7 @@ func newApp(home string, keepRecent uint64, upgradeHeightV2 int64) *app.App {
 		baseapp.SetPruning(pruning),
 		// The multiplexer forces the inter-block cache on for v3 (#7770).
 		baseapp.SetInterBlockCache(store.NewCommitKVStoreCacheManager()),
-	)
+	), db, nil
 }
 
 // initChain sends Info and InitChain as the Tendermint v0.34 handshake does.

@@ -316,6 +316,36 @@ changes, store roots, app hash, transaction results, events, validator
 updates, consensus params and timeouts. `MATCHED_THROUGH` in the test is
 the last block that matches today.
 
+#### Synthetic chain across the v3 to v4 upgrade
+
+`v4-oracle` continues the synthetic chain across the v3 to v4 upgrade
+(cosmos-sdk v0.46 to v0.50), as the celestia-app v4 multiplexer does on
+mainnet at height 6,680,340. `v1-oracle -synthetic -handoff <home>`
+keeps the app home of celestia-app v3.13.0 on disk: the goleveldb
+database `data/application.db` after block 15, `data/upgrade-info.json`
+(plan `v4` at height 16) and `handoff.json` (what the next header
+commits to). `v4-oracle` opens that home with celestia-app v4.1.0. Its
+store loader adds the v4 stores at height 16, and the x/upgrade
+PreBlocker of block 16 runs the `v4` upgrade handler. It then executes
+blocks 16 to 20 with FinalizeBlock and Commit.
+
+[`fixtures/synthetic/v4`](fixtures/synthetic/v4) holds the blocks it
+built, the store roots and IAVL versions of heights 15 to 20, the
+FinalizeBlock responses, every key at height 15 (`kv-handoff.jsonl.gz`)
+and the KV changes of each block. `go test` in `v4-oracle` builds
+`v1-oracle`, makes the hand-off and requires the fixture byte for byte.
+`cargo test -p app --test synthetic_v4_oracle` checks the fixture and
+the facts of the upgrade block that the Rust hand-off must reproduce.
+To regenerate it:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -kv -out "$OUT/v1-v3" -handoff "$OUT/home"
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" \
+  -genesis "$OUT/v1-v3/genesis.json" -out ../fixtures/synthetic/v4
+```
+
 #### Governance chain for app versions 1 to 3
 
 `v1-oracle -synthetic -gov` (`synthetic_gov.go`) runs the synthetic
@@ -419,6 +449,7 @@ ibc-go simapp chains as counterparties:
   TransferAuthorization whose spend limit it uses up), and a plain
   transfer times out on B and is refunded on A. The fixture keeps its
   `ibc-v2` name.
+  executes a send over it. The fixture keeps its `ibc-v2` name.
 
 The test records A's genesis, each BeginBlock header and the
 transactions of each block. It replays them in a fresh app through the
@@ -428,6 +459,7 @@ BeginBlock when its clock moves, which no consensus engine does), so
 the clients that A hosts allow an hour of clock drift. The blocks carry
 no last commit. [`fixtures/synthetic/ibc-v2`](fixtures/synthetic/ibc-v2)
 holds heights 0 to 151; the test requires it byte for byte. To
+holds heights 0 to 124; the test requires it byte for byte. To
 regenerate it:
 
 ```sh
