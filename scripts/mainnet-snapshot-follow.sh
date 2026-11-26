@@ -23,6 +23,10 @@
 #                    heights (resumable checkpoints; default 0 = none):
 #                    format 2 up to app version 3, format 3 after.
 #   SNAPSHOT_KEEP    snapshots kept (default 0 = all)
+#   DB_CACHE_MIB     state database cache in MiB (default 4096, the
+#                    catch-up setting; follow's own default is 512).
+#                    follow has no flag yet for the IAVL node cache or the
+#                    pruning interval, so those keep their defaults.
 #
 # The restored app hash must equal header <height>+1's, then every block
 # from <height>+1 executes and must match the next header's app hash and
@@ -54,7 +58,8 @@ echo "logging to $log"
 args=(follow --home "$HOME_DIR" --chain-id celestia --rpc "$RPC"
   --snapshot "$SNAP" --snapshot-height "$HEIGHT"
   --trust-period-hours 200000 --stop-at-height "$STOP"
-  --snapshot-interval "${SNAPSHOT_INTERVAL:-0}" --snapshot-keep-recent "${SNAPSHOT_KEEP:-0}")
+  --snapshot-interval "${SNAPSHOT_INTERVAL:-0}" --snapshot-keep-recent "${SNAPSHOT_KEEP:-0}"
+  --db-cache-mib "${DB_CACHE_MIB:-4096}")
 [[ -n ${TRUST_HASH:-} ]] && args+=(--trust-hash "$TRUST_HASH")
 # A restarted run resumes from the home's state (the snapshot is used on
 # the first start only).

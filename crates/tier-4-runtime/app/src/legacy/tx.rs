@@ -378,6 +378,15 @@ fn run_msgs(
             "out of gas in location: {descriptor}; gasWanted: {gas_wanted}, gasUsed: {used}"
         )));
     }
+    // runTx's recovery middleware logs a handler's panic as
+    // "recovered: <value>\nstack:\n<goroutine stack>" wrapped in ErrPanic
+    // (the fixtures drop the stack, which depends on the run).
+    if let Err(e) = &mut result
+        && e.is_panic()
+        && !e.log.starts_with("recovered: ")
+    {
+        e.log = format!("recovered: {}: panic", e.log);
+    }
     ctx.events = outer_events;
     let mut block_gas_consumed = false;
     if result.is_ok() {

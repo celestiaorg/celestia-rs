@@ -102,7 +102,10 @@ gcs() { # gcs put FILE OBJECT | get OBJECT FILE | url OBJECT
     # XML API PUT streams the file (-T), so large files need no memory.
     put) curl -fsS --retry 5 -T "$2" -H @<(printf 'Authorization: Bearer %s\n' "$tok") -H 'Content-Type: application/octet-stream' \
       "https://storage.googleapis.com/$b/$obj" >/dev/null ;;
-    get) curl -fsS --retry 5 -H @<(printf 'Authorization: Bearer %s\n' "$tok") -o "$3" "https://storage.googleapis.com/storage/v1/b/$b/o/${obj//\//%2F}?alt=media" ;;
+    # Download beside the destination and rename on success, so a failed or
+    # partial download never leaves a file that looks complete.
+    get) curl -fsS --retry 5 -H @<(printf 'Authorization: Bearer %s\n' "$tok") -o "$3.vmxpart" "https://storage.googleapis.com/storage/v1/b/$b/o/${obj//\//%2F}?alt=media" &&
+      mv "$3.vmxpart" "$3" || { rm -f "$3.vmxpart"; return 1; } ;;
   esac
 }
 
