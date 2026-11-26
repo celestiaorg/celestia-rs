@@ -398,6 +398,58 @@ fn v046_state_takes_format_2_snapshots() {
     );
 }
 
+/// A snapshot height whose snapshot was refused because the previous one
+/// was still being written (Go `Manager.Create`'s conflict) is taken by
+/// `finish_snapshots`, which a finite replay calls before it exits.
+#[test]
+fn finish_snapshots_takes_the_snapshot_a_conflict_refused() {
+    let home = tempfile::tempdir().unwrap();
+    let options = AppOptions {
+        snapshots: snapshots::SnapshotOptions {
+            interval: 1,
+            keep_recent: 0,
+        },
+        ..AppOptions::default()
+    };
+    let mut app = App::open_with(home.path(), options).unwrap();
+    let (started_tx, started_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let release_rx = std::sync::Mutex::new(release_rx);
+    app.snapshot_manager_mut()
+        .unwrap()
+        .set_snapshot_hook(move |height| {
+            let _ = started_tx.send(height);
+            if height == 2 {
+                let _ = release_rx.lock().map(|rx| rx.recv());
+            }
+        });
+    app.set_legacy_modules(counter);
+    app.init_chain(init_request(1)).unwrap();
+    run(&mut app, 1..=1);
+    app.wait_for_snapshot();
+    run(&mut app, 2..=2);
+    assert_eq!(started_rx.recv().unwrap(), 1);
+    assert_eq!(started_rx.recv().unwrap(), 2);
+    // Snapshot 2 is blocked, so the commit of 3 cannot start one.
+    run(&mut app, 3..=3);
+    release_tx.send(()).unwrap();
+    app.finish_snapshots();
+    let heights: Vec<_> = app
+        .list_snapshots()
+        .snapshots
+        .into_iter()
+        .map(|s| (s.height, s.format))
+        .collect();
+    assert_eq!(
+        heights,
+        [
+            (3, snapshots::FORMAT_V046),
+            (2, snapshots::FORMAT_V046),
+            (1, snapshots::FORMAT_V046)
+        ]
+    );
+}
+
 /// [`Counter`], whose transaction `b"unported"` reaches a not-ported
 /// behavior after BeginBlock wrote.
 #[derive(Debug, Default)]

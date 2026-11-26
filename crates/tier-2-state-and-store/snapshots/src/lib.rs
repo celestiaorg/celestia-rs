@@ -1050,22 +1050,86 @@ pub struct Comparison {
     pub chunk_bytes_identical: bool,
 }
 
-fn chunk_files(dir: &Path) -> Result<Vec<Vec<u8>>> {
-    let mut out = Vec::new();
-    loop {
-        match fs::read(dir.join(out.len().to_string())) {
-            Ok(bytes) => out.push(bytes),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => break,
-            Err(e) => return Err(e.into()),
+/// The chunk files `<dir>/0..n` read as one stream, one file open at a
+/// time (memory does not grow with the snapshot size).
+struct ChunkStream {
+    dir: PathBuf,
+    chunks: u32,
+    next: u32,
+    current: Option<BufReader<fs::File>>,
+}
+
+impl ChunkStream {
+    fn open(dir: &Path) -> Result<Self> {
+        let mut chunks = 0u32;
+        while dir.join(chunks.to_string()).is_file() {
+            chunks += 1;
+        }
+        if chunks == 0 {
+            return Err(Error::Io(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("no chunks in {}", dir.display()),
+            )));
+        }
+        Ok(Self {
+            dir: dir.to_path_buf(),
+            chunks,
+            next: 0,
+            current: None,
+        })
+    }
+
+    fn chunks(&self) -> u32 {
+        self.chunks
+    }
+}
+
+impl Read for ChunkStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        loop {
+            if let Some(f) = &mut self.current {
+                let n = f.read(buf)?;
+                if n > 0 || buf.is_empty() {
+                    return Ok(n);
+                }
+                self.current = None;
+            }
+            if self.next == self.chunks {
+                return Ok(0);
+            }
+            self.current = Some(BufReader::new(fs::File::open(
+                self.dir.join(self.next.to_string()),
+            )?));
+            self.next += 1;
         }
     }
-    if out.is_empty() {
-        return Err(Error::Io(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("no chunks in {}", dir.display()),
-        )));
+}
+
+/// True when chunk files `0..chunks` of `a` and `b` are byte-identical,
+/// compared file by file in blocks.
+fn same_chunk_bytes(a: &Path, b: &Path, chunks: u32) -> Result<bool> {
+    for i in 0..chunks {
+        let (pa, pb) = (a.join(i.to_string()), b.join(i.to_string()));
+        if fs::metadata(&pa)?.len() != fs::metadata(&pb)?.len() {
+            return Ok(false);
+        }
+        let (mut fa, mut fb) = (
+            BufReader::new(fs::File::open(pa)?),
+            BufReader::new(fs::File::open(pb)?),
+        );
+        let (mut xa, mut xb) = (vec![0u8; 1 << 16], vec![0u8; 1 << 16]);
+        loop {
+            let n = fa.read(&mut xa)?;
+            if n == 0 {
+                break;
+            }
+            fb.read_exact(&mut xb[..n])?;
+            if xa[..n] != xb[..n] {
+                return Ok(false);
+            }
+        }
     }
-    Ok(out)
+    Ok(true)
 }
 
 fn describe(item: Option<&proto::SnapshotItem>) -> String {
@@ -1101,14 +1165,14 @@ fn hex_upper(b: &[u8]) -> String {
 /// are identical too.
 pub fn compare_dirs(a: &Path, b: &Path, height: u64, format: u32) -> Result<Comparison> {
     let sub = |root: &Path| root.join(height.to_string()).join(format.to_string());
-    let (ca, cb) = (chunk_files(&sub(a))?, chunk_files(&sub(b))?);
-    let chunks = (
-        u32::try_from(ca.len()).unwrap_or(u32::MAX),
-        u32::try_from(cb.len()).unwrap_or(u32::MAX),
+    let (da, db) = (sub(a), sub(b));
+    let (sa, sb) = (ChunkStream::open(&da)?, ChunkStream::open(&db)?);
+    let chunks = (sa.chunks(), sb.chunks());
+    let chunk_bytes_identical = chunks.0 == chunks.1 && same_chunk_bytes(&da, &db, chunks.0)?;
+    let (mut ra, mut rb) = (
+        BufReader::new(ZlibDecoder::new(sa)),
+        BufReader::new(ZlibDecoder::new(sb)),
     );
-    let chunk_bytes_identical = ca == cb;
-    let reader = |c: Vec<Vec<u8>>| BufReader::new(ZlibDecoder::new(io::Cursor::new(c.concat())));
-    let (mut ra, mut rb) = (reader(ca), reader(cb));
     let mut items = 0u64;
     let mut store = String::new();
     let mut first_difference = None;
@@ -1518,6 +1582,27 @@ mod tests {
         let d = c.first_difference.unwrap();
         assert!(d.contains("store \"bank\""), "{d}");
         assert!(compare_dirs(a.path(), b.path(), 9, FORMAT_V046).is_err());
+    }
+
+    /// The chunk files of a snapshot read as one stream, one file open at
+    /// a time; chunk byte equality is checked file by file.
+    #[test]
+    fn chunk_files_stream_in_order() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        for (dir, chunks) in [(&a, ["ab", "", "cde"]), (&b, ["ab", "", "cdf"])] {
+            for (i, c) in chunks.iter().enumerate() {
+                std::fs::write(dir.path().join(i.to_string()), c).unwrap();
+            }
+        }
+        let mut out = String::new();
+        let mut stream = ChunkStream::open(a.path()).unwrap();
+        stream.read_to_string(&mut out).unwrap();
+        assert_eq!(out, "abcde");
+        assert_eq!(stream.chunks(), 3);
+        assert!(same_chunk_bytes(a.path(), a.path(), 3).unwrap());
+        assert!(!same_chunk_bytes(a.path(), b.path(), 3).unwrap());
+        assert!(ChunkStream::open(&a.path().join("missing")).is_err());
     }
 
     /// A store pruned after every commit down to the latest version (the

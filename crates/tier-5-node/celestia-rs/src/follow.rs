@@ -1288,11 +1288,12 @@ fn follow_inner(
         let _ = t.join();
     }
     // A run that reached its stop height keeps the snapshot of its last
-    // heights (a resumable checkpoint) instead of abandoning it on exit.
+    // heights (a resumable checkpoint) instead of abandoning it on exit,
+    // and takes the stop height's own snapshot if a conflict refused it.
     if result.is_ok() && !stopped.load(Ordering::SeqCst) {
         app.lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .wait_for_snapshot();
+            .finish_snapshots();
     }
     tracing::info!(
         first = totals.first,
