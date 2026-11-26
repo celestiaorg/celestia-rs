@@ -133,11 +133,14 @@ impl Syncer {
         conn: Arc<dyn AppConn>,
         state_provider: Arc<dyn StateProvider>,
     ) -> Self {
+        let snapshots = Arc::new(SnapshotPool::with_min_height(
+            state_provider.minimum_snapshot_height(),
+        ));
         Self {
             cfg,
             state_provider,
             conn,
-            snapshots: Arc::new(SnapshotPool::new()),
+            snapshots,
             chunks: Mutex::new(None),
             on_peer_rejected: Mutex::new(None),
             stopped: AtomicBool::new(false),
@@ -255,7 +258,11 @@ impl Syncer {
             discovery_time = MINIMUM_DISCOVERY_TIME * 5;
         }
         if !discovery_time.is_zero() {
-            tracing::info!(?discovery_time, "Discovering snapshots");
+            tracing::info!(
+                ?discovery_time,
+                min_height = self.snapshots.min_height,
+                "Discovering snapshots"
+            );
         }
         self.sleep(discovery_time)?;
         let mut snapshot: Option<Snapshot> = None;

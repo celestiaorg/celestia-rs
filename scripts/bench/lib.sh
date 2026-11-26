@@ -16,6 +16,8 @@ BENCH_REF_RPCS=(https://rpc.celestia.pops.one https://celestia-rpc.polkachu.com)
 # Seeds and peers built into celestia-rs (crates/tier-5-node/celestia-rs/src/networks.rs).
 BENCH_SEEDS=8542cd7e6bf9d260fef543bc49e59be5a3fa9074@seed.publicnode.com:26656,ade4d8bc8cbe014af6ebdf3cb7b1e9ad36f412c0@seeds.polkachu.com:11656
 BENCH_PEERS=076c9cc9de3039819a98522aeea39e8c72b49682@peer.celestia.mainnet.dteam.tech:28656,8dcecfd3fb44990af00408bbd70ab141c33d4513@67.213.115.125:36656
+BENCH_BRIDGE_HEIGHTS=600
+BENCH_BRIDGE_STRIDE=20
 
 # bench_valid KIND VALUE: strict format check for every external input.
 bench_valid() {
@@ -47,12 +49,60 @@ bench_tip() {
     END { exit !found }'
 }
 
-# bench_pair_check SNAP_A SNAP_B: a pair is valid only if both sides
-# restored the same snapshot height.
+# Compare the recorded snapshot heights after verifying both runs.
 bench_pair_check() {
-  if [[ ! $1 =~ ^[0-9]+$ || ! $2 =~ ^[0-9]+$ ]]; then echo discard:missing_snapshot; return 1; fi
+  if [[ ! $1 =~ ^[1-9][0-9]*$ || ! $2 =~ ^[1-9][0-9]*$ ]]; then echo discard:missing_snapshot; return 1; fi
   if [[ $1 != "$2" ]]; then echo discard:different_snapshots; return 1; fi
   echo valid
+}
+
+# bench_pair_verdict CAMPAIGN RUST_SUMMARY GO_SUMMARY: print one verdict even
+# during an early collect, when one VM may not have published its summary yet.
+bench_pair_verdict() {
+  local campaign=$1 summary role=rs verdict
+  local -a snapshots=()
+  case $campaign in
+    genesis-prefix) echo not_applicable; return 0 ;;
+    state-sync | bridge) ;;
+    *) echo discard:unknown_campaign; return 1 ;;
+  esac
+  for summary in "$2" "$3"; do
+    if ! jq -se --arg role "$role" --arg campaign "$campaign" '
+      length == 1 and (.[0] | .role == $role and .campaign == $campaign)
+    ' "$summary" >/dev/null 2>&1; then
+      echo discard:missing_or_invalid_summary; return 1
+    fi
+    if ! jq -e '.outcome == "ok"' "$summary" >/dev/null; then
+      echo discard:incomplete_run; return 1
+    fi
+    if ! jq -e 'any(.verify[]?;
+      .match == true and .chain_id == "celestia" and
+      (.height | tostring | test("^[1-9][0-9]*$")) and
+      (.local_block_id | type == "string" and test("^[0-9a-fA-F]{64}$")) and
+      .local_block_id == .reference_block_id)' "$summary" >/dev/null 2>&1; then
+      echo discard:unverified_tip; return 1
+    fi
+    snapshots+=("$(jq -r '.snapshot // empty' "$summary")")
+    role=go
+  done
+  verdict=$(bench_pair_check "${snapshots[@]}") || { echo "$verdict"; return 1; }
+  if [[ $campaign == bridge ]]; then
+    verdict=$(jq -nr --slurpfile rs "$2" --slurpfile go "$3" \
+      --argjson heights "$BENCH_BRIDGE_HEIGHTS" --argjson stride "$BENCH_BRIDGE_STRIDE" '
+      def positive_height: type == "number" and . > 0 and . == floor;
+      def complete:
+        (.tail | positive_height) and (.start | positive_height) and (.end | positive_height) and
+        .tail <= .start and .end == .start + $heights and
+        .requests == (2 + $heights / $stride) and
+        (.digest | type == "string" and test("^[0-9a-f]{64}$"));
+      $rs[0].bridge as $r | $go[0].bridge as $g |
+      if ([$r, $g] | all(.[]; complete) | not) then "discard:incomplete_bridge_receipt"
+      elif [$r.tail, $r.start, $r.end] != [$g.tail, $g.start, $g.end] then "discard:different_da_ranges"
+      elif $r != $g then "discard:different_workloads"
+      else "valid" end') || { echo discard:incomplete_bridge_receipt; return 1; }
+  fi
+  echo "$verdict"
+  [[ $verdict == valid ]]
 }
 
 # bench_chunk FILE PREFIX [SIZE] [MAX]: gzip and base64 FILE into PREFIX.0,

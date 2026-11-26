@@ -1052,7 +1052,12 @@ blocks. Two faster routes; try A first.
 
 **Route A — state sync from Mocha peers (P2P).** The node discovers Go
 nodes' state-sync snapshots over P2P, verifies them with the light client
-against the RPC servers, restores the app state and block-syncs the rest:
+against the RPC servers, restores the app state and block-syncs the rest.
+
+Automatic state sync uses `trust_height` as the minimum snapshot height.
+If peers only advertise older snapshots, the node keeps requesting offers.
+To restore a particular historical snapshot, choose a trusted header at
+or before its height within the configured trust period.
 
 ```sh
 LATEST=$(curl -s $RPC/block | jq -r .result.block.header.height)
