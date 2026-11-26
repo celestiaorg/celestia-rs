@@ -527,6 +527,12 @@ pub fn vote_sign_bytes(chain_id: &str, c: &tm::Commit, idx: usize) -> Vec<u8> {
 
 /// `verifyCommitSingle` / `verifyCommitBatch` (identical outcomes): checks
 /// signatures until more than `needed` power is tallied.
+///
+/// The cheap checks (validator lookup, double votes) and the tally run in
+/// order first and collect the signatures the sequential loop would check
+/// before it stops; those are then verified in parallel. The first bad
+/// signature among them is reported before a later structural error, as
+/// in the sequential loop, and signatures past the stop are never checked.
 fn verify_commit_sigs(
     chain_id: &str,
     vals: &ValidatorSet,
@@ -536,6 +542,9 @@ fn verify_commit_sigs(
 ) -> LResult<()> {
     let mut tallied: i64 = 0;
     let mut seen = std::collections::BTreeSet::new();
+    let mut to_check: Vec<(usize, &Validator, Vec<u8>)> = Vec::new();
+    // What the sequential loop returns if every collected signature is good.
+    let mut outcome: Option<LResult<()>> = None;
     for (idx, sig) in commit.signatures.iter().enumerate() {
         // Light verification ignores everything but votes for the block.
         if flag(sig) != 2 {
@@ -544,11 +553,12 @@ fn verify_commit_sigs(
         let val = if by_index {
             let v = &vals.validators[idx];
             if v.address != sig.validator_address {
-                return Err(format!(
+                outcome = Some(Err(format!(
                     "validator address mismatch at index {idx}: expected {}, got {}",
                     hex::encode_upper(&v.address),
                     hex::encode_upper(&sig.validator_address)
-                ));
+                )));
+                break;
             }
             v
         } else {
@@ -556,25 +566,32 @@ fn verify_commit_sigs(
                 continue;
             };
             if !seen.insert(vi) {
-                return Err(format!("double vote from validator at index {idx}"));
+                outcome = Some(Err(format!("double vote from validator at index {idx}")));
+                break;
             }
             v
         };
-        let msg = vote_sign_bytes(chain_id, commit, idx);
-        if !val.pub_key.verify(&msg, &sig.signature) {
-            return Err(format!(
-                "wrong signature (#{idx}): {}",
-                hex::encode_upper(&sig.signature)
-            ));
-        }
+        to_check.push((idx, val, vote_sign_bytes(chain_id, commit, idx)));
         tallied = tallied.saturating_add(val.voting_power);
         if tallied > needed {
-            return Ok(());
+            outcome = Some(Ok(()));
+            break;
         }
     }
-    Err(format!(
-        "invalid commit -- insufficient voting power: got {tallied}, needed more than {needed}"
-    ))
+    if let Some(bad) = crypto::parallel::first_failure(&to_check, |(idx, val, msg)| {
+        val.pub_key.verify(msg, &commit.signatures[*idx].signature)
+    }) {
+        let idx = to_check[bad].0;
+        return Err(format!(
+            "wrong signature (#{idx}): {}",
+            hex::encode_upper(&commit.signatures[idx].signature)
+        ));
+    }
+    outcome.unwrap_or_else(|| {
+        Err(format!(
+            "invalid commit -- insufficient voting power: got {tallied}, needed more than {needed}"
+        ))
+    })
 }
 
 /// `ValidatorSet.VerifyCommitLight`.
@@ -814,6 +831,90 @@ mod tests {
             timestamp: None,
             signature: vec![2; 64],
         }
+    }
+
+    /// `n` ed25519 validators of power 10 (seeded keys) and a commit they
+    /// signed in set order, with the signatures at `bad` corrupted.
+    fn signed(n: u8, bad: &[usize]) -> (ValidatorSet, tm::Commit) {
+        let keys: Vec<_> = (0..n)
+            .map(|i| crypto::ed25519::private_key_from_seed(&[i + 1; 32]))
+            .collect();
+        let validators: Vec<Validator> = keys
+            .iter()
+            .map(|k| {
+                let pk = crypto::ed25519::public_key_from_private_key(k).unwrap();
+                Validator {
+                    address: crypto::ed25519::address(&pk).to_vec(),
+                    pub_key: PubKey::Ed25519(pk),
+                    voting_power: 10,
+                }
+            })
+            .collect();
+        let mut commit = tm::Commit {
+            height: 5,
+            round: 0,
+            block_id: Some(tm::BlockId {
+                hash: vec![3; 32],
+                part_set_header: Some(tm::PartSetHeader {
+                    total: 1,
+                    hash: vec![4; 32],
+                }),
+            }),
+            signatures: validators
+                .iter()
+                .map(|v| tm::CommitSig {
+                    block_id_flag: 2,
+                    validator_address: v.address.clone(),
+                    timestamp: None,
+                    signature: vec![0; 64],
+                })
+                .collect(),
+        };
+        for (i, k) in keys.iter().enumerate() {
+            let msg = vote_sign_bytes("c", &commit, i);
+            let mut sig = crypto::ed25519::sign(k, &msg).unwrap().to_vec();
+            if bad.contains(&i) {
+                sig[0] ^= 1;
+            }
+            commit.signatures[i].signature = sig;
+        }
+        let set = ValidatorSet {
+            proposer: validators[0].clone(),
+            total_voting_power: 10 * i64::from(n),
+            validators,
+        };
+        (set, commit)
+    }
+
+    /// Signatures are checked in order until more than `needed` power is
+    /// tallied: one after that point is never checked; the first bad one
+    /// before it is reported; a structural error after a bad signature
+    /// loses to it, and one before it wins.
+    #[test]
+    fn commit_signatures_are_checked_in_order_until_enough_power() {
+        let needed = 40 * 10 * 2 / 3;
+        let (vals, c) = signed(40, &[]);
+        assert!(verify_commit_sigs("c", &vals, &c, needed, true).is_ok());
+        // 27 signatures pass 266; the 36th is never checked.
+        let (vals, c) = signed(40, &[35]);
+        assert!(verify_commit_sigs("c", &vals, &c, needed, true).is_ok());
+        let (vals, c) = signed(40, &[20, 5]);
+        let err = verify_commit_sigs("c", &vals, &c, needed, true).unwrap_err();
+        assert!(err.starts_with("wrong signature (#5)"), "{err}");
+        // by address: a double vote at 12 after a bad signature at 4
+        let (vals, mut c) = signed(40, &[4]);
+        c.signatures[12].validator_address = c.signatures[2].validator_address.clone();
+        let err = verify_commit_sigs("c", &vals, &c, needed, false).unwrap_err();
+        assert!(err.starts_with("wrong signature (#4)"), "{err}");
+        // ... and before one at 20
+        let (vals, mut c) = signed(40, &[20]);
+        c.signatures[12].validator_address = c.signatures[2].validator_address.clone();
+        let err = verify_commit_sigs("c", &vals, &c, needed, false).unwrap_err();
+        assert_eq!(err, "double vote from validator at index 12");
+        // not enough power: every counted signature is good
+        let (vals, c) = signed(40, &[]);
+        let err = verify_commit_sigs("c", &vals, &c, 400, true).unwrap_err();
+        assert!(err.contains("insufficient voting power: got 400"), "{err}");
     }
 
     /// Go's `BlockIDFlag(csp.BlockIdFlag)` keeps the low byte of the

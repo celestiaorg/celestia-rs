@@ -320,7 +320,7 @@ pub fn migrate_escrows(ctx: &mut Context<'_>) -> Result<()> {
     let mut records = GenesisState::default();
     for (key, value) in ctx
         .prefix_iter(STORE_KEY, &[ESCROW_ACCOUNT_PREFIX])?
-        .into_items()
+        .into_items()?
     {
         let account: EscrowAccount = decode(&value)?;
         if key != escrow_key(&account.signer) {
@@ -330,7 +330,7 @@ pub fn migrate_escrows(ctx: &mut Context<'_>) -> Result<()> {
     }
     for (key, value) in ctx
         .prefix_iter(STORE_KEY, &[WITHDRAWALS_BY_SIGNER_PREFIX])?
-        .into_items()
+        .into_items()?
     {
         let withdrawal: Withdrawal = decode(&value)?;
         if key
