@@ -91,8 +91,12 @@ mount_disk() { # mount_disk DEVICE_NAME DIR: format only a disk with no filesyst
 
 setup() {
   mkdir -p "$RUN"
-  run apt-get update -q
-  run env DEBIAN_FRONTEND=noninteractive apt-get install -yq build-essential git jq curl wget ca-certificates python3
+  # The first campaign failed when unattended-upgrades' needrestart restarted
+  # this driver: the new driver failed on the apt lock and stopped the node.
+  run systemctl disable --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer
+  [[ -n $DRY ]] || { mkdir -p /etc/needrestart/conf.d && echo "\$nrconf{restart} = 'l';" >/etc/needrestart/conf.d/ckpt.conf; }
+  run apt-get -o DPkg::Lock::Timeout=900 update -q
+  run env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=900 install -yq build-essential git jq curl wget ca-certificates python3
   mount_disk data "$DATA"
   mount_disk ckpt "$CKPT"
   mkdir -p "$STATE" "$HOMEDIR" "$USERHOME" "$DATA/bin"

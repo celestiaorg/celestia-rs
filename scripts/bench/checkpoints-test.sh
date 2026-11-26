@@ -146,6 +146,10 @@ check "dry run window verify"      grep -q 'verify-replay-checkpoint.py .*/67488
 check "dry run header verify"      grep -q 'verify-replay-checkpoint.py .*/2371489/2 --app-hash' "$p"
 check "dry run egress cap"         grep -q 'tbf rate 4mbit' "$p"
 check "dry run bbr"                grep -q 'tcp_congestion_control=bbr' "$p"
+# Unattended upgrades once restarted the driver through needrestart; the
+# restarted driver then failed on the apt lock and stopped the node.
+check "dry run no unattended upgrades" grep -q 'systemctl disable --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer' "$p"
+check "dry run apt waits for the lock" grep -q 'apt-get -o DPkg::Lock::Timeout=900 update' "$p"
 check "dry run checkpoint copied"  test -s "$t/dry/ckpt/2371489/2/0"
 check "dry run frees the node copy" grep -q 'passthrough v3 snapshots delete 2371489 2 --home' "$p"
 check "dry run metadata"           jq -e '.height == 2371489 and .format == 2 and .app_version == "1" and .embedded_tag == "v3.13.0"' "$t/dry/ckpt/2371489/checkpoint.json"

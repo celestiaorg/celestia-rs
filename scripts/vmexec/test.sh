@@ -110,8 +110,17 @@ for a in "$@"; do
     --query-path=*) q=${a#*=} ;;
   esac
 done
+if [[ $1 == storage ]]; then # storage cp [--quiet] SRC DST: gs://BUCKET/OBJ is $VMX_FAKE/gcs/OBJ
+  args=()
+  for a in "${@:3}"; do [[ $a == --* ]] || args+=("$(sed -E 's,^gs://[^/]+/,'"$VMX_FAKE"'/gcs/,' <<<"$a")"); done
+  mkdir -p "$(dirname "${args[1]}")"
+  exec cp "${args[0]}" "${args[1]}"
+fi
 case $verb in
   add-metadata | remove-metadata) ;;
+  describe)
+    for f in "$VMX_FAKE/md"/*; do [[ -f $f ]] && jq -Rs --arg k "${f##*/}" '{key: $k, value: .}' "$f"; done |
+      jq -s '{metadata: {items: .}}' ;;
   get-guest-attributes)
     ns=${q%%/*} key=${q#*/}
     if [[ -n $key ]]; then
@@ -128,7 +137,8 @@ export VMX_FAKE=$F VMX_GCLOUD=$t/bin/gcloud VMX_POLL_MAX_S=1 VMX_HEARTBEAT_S=1 P
 # The fake agent's helpers: vmx-job and vmx-put on PATH, as the installer does on a VM.
 printf '#!/bin/sh\nexec %q job "$@"\n' "$here/agent.sh" >"$t/bin/vmx-job"
 printf '#!/bin/sh\nexec %q put "$@"\n' "$here/agent.sh" >"$t/bin/vmx-put"
-chmod +x "$t/bin/vmx-job" "$t/bin/vmx-put"
+printf '#!/bin/sh\nexec %q gcs "$@"\n' "$here/agent.sh" >"$t/bin/vmx-gcs"
+chmod +x "$t/bin/vmx-job" "$t/bin/vmx-put" "$t/bin/vmx-gcs"
 bash "$here/agent.sh" daemon >"$t/agent.log" 2>&1 &
 agent_pid=$!
 X="$here/vmexec"
@@ -167,6 +177,20 @@ check  "job log"             grep -q 'tick' <<<"$("$X" job vm1 logs counter 5 2>
 check  "job stopped"         grep -q '^ActiveState=inactive' <<<"$("$X" job vm1 status counter 2>/dev/null)"
 check  "heartbeat"           grep -q '^version=1' "$F/ga/vmx/agent"
 check  "status"              grep -q 'job-counter' <<<"$("$X" status vm1 2>/dev/null)"
+
+# --- with a bucket (VMs created with --gcs) ----------------------------------------------------
+printf 'test-bucket' >"$F/md/vmx-bucket"
+head -c 900000 /dev/urandom >"$t/payload2"
+"$X" push vm1 "$t/payload2" "$t/vmfs/payload2" >/dev/null 2>"$t/push2.err"
+check  "gcs push"            cmp "$t/payload2" "$t/vmfs/payload2"
+refute "gcs push in one go"  grep -q 'pushed 2/' "$t/push2.err"
+check  "gcs push object"     bash -c "ls '$F/gcs/vmexec/vm1/push/' | grep -q ."
+"$X" fetch vm1 "$t/vmfs/payload2" "$t/fetched2" >/dev/null 2>&1
+check  "gcs fetch"           cmp "$t/payload2" "$t/fetched2"
+"$X" exec vm1 -- 'seq 1 300000' >/dev/null 2>"$t/long2.err"
+check  "gcs whole output"    grep -q 'gs://test-bucket/vmexec/fake/runs/.*\.out' "$t/long2.err"
+check  "gcs output object"   bash -c "tail -n1 '$F'/gcs/vmexec/fake/runs/*.out | grep -qx 300000"
+check  "gcs invalid object"  bash -c "! '$here/agent.sh' gcs get '../x' /dev/null"
 
 echo
 if ((fails)); then echo "$fails test(s) failed"; exit 1; fi

@@ -66,6 +66,45 @@ ga_del() { # ga_del KEY
   curl -fsS -m 30 -X DELETE -H Metadata-Flavor:Google "$MD/guest-attributes/vmx/$1" >/dev/null 2>&1 || true
 }
 
+# --- Cloud Storage (VMs created with --gcs) -----------------------------------------
+# The bucket is the vmx-bucket metadata value; objects go under
+# vmexec/<instance name>/. The VM's service account token (storage scope) is
+# read from the metadata server; nothing secret is stored.
+gcs_bucket() {
+  if [[ -n $FAKE ]]; then cat "$FAKE/md/vmx-bucket" 2>/dev/null; return; fi
+  curl -fsS -m 10 -H Metadata-Flavor:Google "$MD/attributes/vmx-bucket" 2>/dev/null
+}
+gcs_prefix() {
+  local n
+  if [[ -n $FAKE ]]; then n=fake; else n=$(curl -fsS -m 10 -H Metadata-Flavor:Google "$MD/name"); fi
+  echo "vmexec/$n"
+}
+gcs_token() {
+  curl -fsS -m 10 -H Metadata-Flavor:Google "$MD/service-accounts/default/token" | sed -n 's/.*"access_token" *: *"\([^"]*\)".*/\1/p'
+}
+gcs_obj_ok() { [[ $1 =~ ^[A-Za-z0-9._/-]{1,900}$ && $1 != *..* ]]; }
+gcs() { # gcs put FILE OBJECT | get OBJECT FILE | url OBJECT
+  local b op=${1:-} obj tok
+  b=$(gcs_bucket) && [[ -n $b ]] || { echo "vmx-gcs: this VM has no bucket (create it with --gcs)" >&2; return 1; }
+  case $op in put) obj=$3 ;; get | url) obj=$2 ;; *) echo "usage: vmx-gcs put FILE OBJECT | get OBJECT FILE | url OBJECT" >&2; return 2 ;; esac
+  gcs_obj_ok "$obj" || { echo "vmx-gcs: invalid object name: $obj" >&2; return 2; }
+  if [[ -n $FAKE ]]; then
+    case $op in
+      put) mkdir -p "$(dirname "$FAKE/gcs/$obj")" && cp "$2" "$FAKE/gcs/$obj" ;;
+      get) cp "$FAKE/gcs/$obj" "$3" ;;
+      url) echo "gs://$b/$obj" ;;
+    esac
+    return
+  fi
+  [[ $op == url ]] && { echo "gs://$b/$obj"; return; }
+  tok=$(gcs_token) && [[ -n $tok ]] || { echo "vmx-gcs: no service account token" >&2; return 1; }
+  case $op in
+    put) curl -fsS --retry 5 -X POST -H "Authorization: Bearer $tok" -H 'Content-Type: application/octet-stream' \
+      --data-binary "@$2" "https://storage.googleapis.com/upload/storage/v1/b/$b/o?uploadType=media&name=${obj//\//%2F}" >/dev/null ;;
+    get) curl -fsS --retry 5 -H "Authorization: Bearer $tok" -o "$3" "https://storage.googleapis.com/storage/v1/b/$b/o/${obj//\//%2F}?alt=media" ;;
+  esac
+}
+
 # --- install (startup script) ----------------------------------------------------
 install_agent() {
   mkdir -p /usr/local/lib/vmexec "$ROOT"/{runs,jobs}
@@ -74,7 +113,8 @@ install_agent() {
   ln -sf "$SELF" /usr/local/bin/vmx-agent
   printf '#!/bin/sh\nexec %s put "$@"\n' "$SELF" >/usr/local/bin/vmx-put
   printf '#!/bin/sh\nexec %s job "$@"\n' "$SELF" >/usr/local/bin/vmx-job
-  chmod 755 /usr/local/bin/vmx-put /usr/local/bin/vmx-job
+  printf '#!/bin/sh\nexec %s gcs "$@"\n' "$SELF" >/usr/local/bin/vmx-gcs
+  chmod 755 /usr/local/bin/vmx-put /usr/local/bin/vmx-job /usr/local/bin/vmx-gcs
   # Unattended upgrades take the apt lock and needrestart restarts services
   # whose libraries changed, including transient units: keep both away from
   # long jobs (this killed the first Go checkpoint campaign's driver).
@@ -114,7 +154,7 @@ publish_result() { # publish_result ID STATE: guest attribute vmx/ID
   enc=$d/result
   while :; do
     VMX_TAIL_BYTES=$tail vmx_encode_result "$2" "$rc" "$bytes" "$d/out" "started=$(cat "$d/started" 2>/dev/null)" \
-      "ended=$(cat "$d/ended" 2>/dev/null)" "output=$d/out" >"$enc"
+      "ended=$(cat "$d/ended" 2>/dev/null)" "output=$d/out" "output_gs=$(cat "$d/output_gs" 2>/dev/null)" >"$enc"
     (($(stat -c %s "$enc") <= RESULT_MAX || tail < 1024)) && break
     tail=$((tail / 2))
   done
@@ -135,6 +175,12 @@ runone() { # runone ID: the request's script was decoded by the daemon into runs
   rc=$?
   echo "$rc" >"$d/rc"
   date -u +%FT%TZ >"$d/ended"
+  # Output beyond the result's tail goes to the bucket when the VM has one.
+  if (($(stat -c %s "$d/out") > VMX_TAIL_BYTES)) && [[ -n $(gcs_bucket) ]]; then
+    local obj
+    obj=$(gcs_prefix)/runs/$id.out
+    gcs put "$d/out" "$obj" && gcs url "$obj" >"$d/output_gs"
+  fi
   publish_result "$id" done
 }
 
@@ -319,5 +365,6 @@ case ${1:-install} in
   runone) runone "$2" ;;
   job) shift; job "$@" ;;
   put) shift; put "$@" ;;
+  gcs) shift; gcs "$@" ;;
   *) echo "usage: agent.sh [install|daemon|runone ID|job ...|put KEY FILE]" >&2; exit 2 ;;
 esac
