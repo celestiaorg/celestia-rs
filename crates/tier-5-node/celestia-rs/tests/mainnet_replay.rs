@@ -101,8 +101,7 @@ const EXPECTED_BLOCKERS: [(u64, &[&str]); 9] = [
         4,
         &[
             "pre-state stores that celestia-rs does not mount: mem_capability",
-            "celestia-rs stores absent from the pre-state: circuit, consensus, hyperlane, minfee, warp, zkism",
-            "no celestia-rs handler for upgrade plan v4 at 6680340",
+            "celestia-rs stores absent from the pre-state: circuit, consensus, hyperlane, minfee, warp",
         ],
     ),
     (
@@ -577,9 +576,15 @@ fn replay_blockers(window: &Window) -> anyhow::Result<Vec<String>> {
             plan.name,
             window.start_height
         );
-        if !app::upgrades::Handlers::at(window.app_version).has_handler(&plan.name) {
+        let handlers = app::upgrades::Handlers::at(window.app_version);
+        if !handlers.has_handler(&plan.name) {
             blockers.push(format!(
                 "no celestia-rs handler for upgrade plan {} at {}",
+                plan.name, plan.height
+            ));
+        } else if !handlers.is_ported(&plan.name) {
+            blockers.push(format!(
+                "celestia-rs does not port the upgrade handler of plan {} at {}",
                 plan.name, plan.height
             ));
         }

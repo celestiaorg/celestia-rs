@@ -180,7 +180,10 @@ pub fn default_param_filter(ctx: &Context<'_>, msg: &Any) -> Option<sdk::Result<
                     p.bond_denom
                 )));
             }
-            let (seconds, _) = governance_age_limits(ctx);
+            let seconds = ctx
+                .release()
+                .default_unbonding_time_secs()
+                .unwrap_or_else(|| governance_age_limits(ctx).0);
             let want = i128::from(seconds) * 1_000_000_000;
             let got = duration_nanos(p.unbonding_time.as_ref());
             if got != want {
@@ -203,6 +206,10 @@ pub fn default_param_filter(ctx: &Context<'_>, msg: &Any) -> Option<sdk::Result<
             };
             if validator.pub_key_types != ["ed25519"] {
                 return Err(errs::unauthorized("invalid validator parameters"));
+            }
+            if ctx.release().default_unbonding_time_secs().is_some() {
+                // celestia-app v4.1.0 and v5.0.12 check no evidence params.
+                return Ok(());
             }
             let (seconds, blocks) = governance_age_limits(ctx);
             let ev_ok = evidence.max_age_num_blocks == blocks
