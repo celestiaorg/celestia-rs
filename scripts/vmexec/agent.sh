@@ -254,12 +254,18 @@ daemon() {
 # /var/lib/vmexec/jobs/NAME/log. Every interval (default 60 s) the agent
 # publishes vmx/job-NAME: the unit state, the status command's output and
 # the log's last lines.
+# pid_alive PID (fake mode): the process runs. A killed process that nobody
+# has reaped yet (a zombie) still answers `kill -0`; it does not count.
+pid_alive() {
+  [[ -n ${1:-} ]] && kill -0 "$1" 2>/dev/null &&
+    [[ $(sed -E 's/^.*\) //; s/ .*//' "/proc/$1/stat" 2>/dev/null) != Z ]]
+}
 job_status_text() { # job_status_text NAME
   local j=$ROOT/jobs/$1 unit=vmxjob-$1
   echo "job=$1"
   echo "time=$(date -u +%FT%TZ)"
   if [[ -n $FAKE ]]; then
-    if [[ -s $j/pid ]] && kill -0 "$(cat "$j/pid")" 2>/dev/null; then echo "ActiveState=active"; else echo "ActiveState=inactive"; fi
+    if [[ -s $j/pid ]] && pid_alive "$(cat "$j/pid")"; then echo "ActiveState=active"; else echo "ActiveState=inactive"; fi
   else
     systemctl show "$unit" -p ActiveState -p SubState -p NRestarts -p ExecMainStartTimestamp -p ExecMainStatus 2>/dev/null
   fi
@@ -336,7 +342,7 @@ job() {
         pid=$(cat "$j/pid" 2>/dev/null || true)
         [[ -z $pid ]] || kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
         for ((i = 0; i < 50; i++)); do
-          if [[ -z $pid ]] || ! kill -0 "$pid" 2>/dev/null; then break; fi
+          if ! pid_alive "$pid"; then break; fi
           sleep 0.1
         done
       else

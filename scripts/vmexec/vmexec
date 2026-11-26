@@ -13,6 +13,7 @@ OWNER_LABEL=owner=claude-genesis
 BUCKET=${VMX_BUCKET:-fibreda-celestia-rs-genesis}
 GCS_SA=${VMX_SA:-claude-code-runner@fibreda.iam.gserviceaccount.com}
 POLL_MAX_S=${VMX_POLL_MAX_S:-15}
+VM_CHECK_EVERY=${VMX_VM_CHECK_EVERY:-8} # polls between checks that the VM still runs
 
 usage() {
   cat <<'EOF'
@@ -101,11 +102,25 @@ submit() {
 # await NAME ID [quiet]: wait for the result, print the output, clean up,
 # return the script's exit status.
 await() {
-  local name=$1 id=$2 r=$tmp/res.$2 delay=2 state rc bytes
+  local name=$1 id=$2 r=$tmp/res.$2 delay=2 state rc bytes polls=0 status
   while :; do
     if ga_get "$name" "$id" "$r"; then
       state=$(vmx_result_field "$r" state)
       [[ $state == "done" ]] && break
+    fi
+    # A VM that was deleted, preempted or stopped at its maximum run
+    # duration never publishes the result: stop waiting for it.
+    polls=$((polls + 1))
+    if ((polls % VM_CHECK_EVERY == 0)); then
+      status=$(gi describe "$name" --format='value(status)' 2>/dev/null) ||
+        { sleep 5; status=$(gi describe "$name" --format='value(status)' 2>/dev/null) || status=GONE; }
+      if [[ $status != RUNNING ]]; then
+        echo "vmexec: $name is ${status:-GONE}; request $id has no result" >&2
+        # A stopped VM keeps its metadata: without this, the agent would
+        # run the request again when the VM starts.
+        [[ ${status:-GONE} == GONE ]] || md_del "$name" "vmx-req-$id"
+        return 125
+      fi
     fi
     sleep "$delay"
     delay=$((delay * 2 > POLL_MAX_S ? POLL_MAX_S : delay * 2))
