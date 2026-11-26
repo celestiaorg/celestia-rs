@@ -50,6 +50,9 @@ func TestRunSynthetic(t *testing.T) {
 		t.Skip("run by TestSyntheticFixtureIsReproducible")
 	}
 	os.Args = []string{"v1-oracle", "-synthetic", "-chain", os.Getenv("V1_ORACLE_SYNTHETIC_CHAIN"), "-kv", "-out", out}
+	if h := os.Getenv("V1_ORACLE_SYNTHETIC_SNAPSHOTS"); h != "" {
+		os.Args = append(os.Args, "-snapshot-at", h)
+	}
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}

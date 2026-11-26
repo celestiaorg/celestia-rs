@@ -64,6 +64,14 @@ import (
 	tmversionpkg "github.com/tendermint/tendermint/version"
 )
 
+// ibcSnapshotHeights are the heights of the IBC chain's state-sync
+// snapshots (fixtures/synthetic/ibc-v2-snapshots): a PFM forward in flight
+// (39), the interchain account channel just opened (72), app version 3
+// with the new validator (100), the reopened account channel (120).
+var ibcSnapshotHeights = []uint64{39, 72, 100, 120}
+
+const ibcSnapshotFixtureDir = "../fixtures/synthetic/ibc-v2-snapshots"
+
 const (
 	ibcChainA             = "test"
 	ibcUpgradeHeightV2    = 3
@@ -948,11 +956,14 @@ func TestIBCFixture(t *testing.T) {
 		withKV:          true,
 		upgradeHeightV2: ibcUpgradeHeightV2,
 		src:             &recorded{rec: rec},
+		snapshotAt:      ibcSnapshotHeights,
+		snapshotDir:     filepath.Join(out, "snapshots"),
 	}))
 	must(t, os.Remove(filepath.Join(out, "kv-height-0-modules.jsonl.gz")))
 	if write {
 		return
 	}
+	requireSnapshots(t, filepath.Join(out, "snapshots"), ibcSnapshotFixtureDir, ibcSnapshotHeights)
 	for _, name := range ibcFixtureFiles {
 		want, err := os.ReadFile(filepath.Join(ibcFixtureDir, name))
 		must(t, err)

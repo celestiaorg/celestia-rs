@@ -13,7 +13,7 @@
 //! cargo run --release -p celestia-rs --example replay_bench -- \
 //!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR] \
 //!   [--iavl-cache 781250] [--db-cache-mib 512] [--pruning-interval 1] \
-//!   [--discard-abci-responses true]
+//!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl]
 //! ```
 //!
 //! `--base` holds a home after InitChain (created on first use), so later
@@ -44,6 +44,7 @@ struct Args {
     db_cache_mib: usize,
     pruning_interval: u64,
     discard_abci_responses: bool,
+    blocks_jsonl: Vec<PathBuf>,
 }
 
 fn args() -> anyhow::Result<Args> {
@@ -60,6 +61,7 @@ fn args() -> anyhow::Result<Args> {
         pruning_interval: 1,
         // config.toml `storage.discard_abci_responses` (template: true).
         discard_abci_responses: true,
+        blocks_jsonl: Vec::new(),
     };
     let mut it = std::env::args().skip(1);
     while let Some(k) = it.next() {
@@ -72,10 +74,51 @@ fn args() -> anyhow::Result<Args> {
             "--db-cache-mib" => a.db_cache_mib = v.parse()?,
             "--pruning-interval" => a.pruning_interval = v.parse()?,
             "--discard-abci-responses" => a.discard_abci_responses = v.parse()?,
+            "--blocks-jsonl" => a.blocks_jsonl.extend(v.split(',').map(PathBuf::from)),
             _ => bail!("unknown argument {k}"),
         }
     }
     Ok(a)
+}
+
+/// Blocks from `--blocks-jsonl` files (RPC `/block` results, one
+/// `{"height", "result"}` object per line, gzipped or not: the format of
+/// `conformance/fixtures/mainnet/blocks.jsonl.gz` and of the Go
+/// `v1-oracle -blocks` input), then the `.pb` cache.
+struct Blocks {
+    cache: PathBuf,
+    json: std::collections::HashMap<i64, Block>,
+}
+
+impl Blocks {
+    fn load(cache: PathBuf, files: &[PathBuf]) -> anyhow::Result<Self> {
+        use std::io::{BufRead as _, BufReader, Read};
+        let mut json = std::collections::HashMap::new();
+        for file in files {
+            let raw =
+                std::fs::File::open(file).with_context(|| format!("open {}", file.display()))?;
+            let reader: Box<dyn Read> = if file.extension().is_some_and(|e| e == "gz") {
+                Box::new(flate2::read::GzDecoder::new(raw))
+            } else {
+                Box::new(raw)
+            };
+            for line in BufReader::new(reader).lines() {
+                let row: serde_json::Value = serde_json::from_str(&line?)?;
+                let height = row["height"].as_i64().context("row without height")?;
+                let block = light::http::block_from_json(&row["result"]["block"])
+                    .map_err(|e| anyhow!("block {height} in {}: {e}", file.display()))?;
+                json.insert(height, block);
+            }
+        }
+        Ok(Self { cache, json })
+    }
+
+    fn get(&self, height: i64) -> anyhow::Result<Block> {
+        match self.json.get(&height) {
+            Some(b) => Ok(b.clone()),
+            None => cached_block(&self.cache, height),
+        }
+    }
 }
 
 fn cached_block(cache: &Path, height: i64) -> anyhow::Result<Block> {
@@ -163,7 +206,8 @@ fn main() -> anyhow::Result<()> {
     let (mut exec, mut state) = open(&home, &a)?;
     ensure!(state.last_block_height == 0, "base home is past genesis");
 
-    let mut next = cached_block(&a.cache, 1)?;
+    let blocks = Blocks::load(a.cache.clone(), &a.blocks_jsonl)?;
+    let mut next = blocks.get(1)?;
     let mut times = Vec::new();
     let mut txs = 0usize;
     // Chained SHA-256 of every FinalizeBlock response (tx results with gas
@@ -174,7 +218,7 @@ fn main() -> anyhow::Result<()> {
     let started = Instant::now();
     for h in 1..=a.blocks {
         let mut block = next;
-        next = cached_block(&a.cache, h + 1)?;
+        next = blocks.get(h + 1)?;
         txs += block.data.txs.len();
         let t = Instant::now();
         let parts = block.make_part_set(BLOCK_PART_SIZE_BYTES)?;
