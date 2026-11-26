@@ -510,7 +510,7 @@ impl Inner {
             .map_err(|e| format!("querying full-stake storage budget: {e}"))?;
         if full_stake <= 0 {
             return Err(format!(
-                "full-stake storage budget must be positive (got {full_stake}); pass --unlimited-budget to disable the limiter"
+                "full-stake storage budget must be positive (got {full_stake}); set unlimited_budget to disable the limiter"
             ));
         }
         let set = self

@@ -272,7 +272,7 @@ async fn start_errors() {
     assert_eq!(
         err,
         StartError::Other(
-            "deriving initial storage budget: full-stake storage budget must be positive (got 0); pass --unlimited-budget to disable the limiter".into()
+            "deriving initial storage budget: full-stake storage budget must be positive (got 0); set unlimited_budget to disable the limiter".into()
         )
     );
     server.stop(Duration::from_secs(1)).await.unwrap();

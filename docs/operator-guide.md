@@ -356,6 +356,201 @@ celestia-rs genesis validate --home $H      # runs InitChain in memory
 
 Gentx files are byte-identical to Go's for the same key and inputs.
 
+### Fibre server
+
+From app version 10, validators serve Fibre: clients upload blob shards
+to each validator, which checks the payment promise against the chain,
+stores its shard and signs the promise. `celestia-rs start` runs a port
+of celestia-app v11's Fibre server in the same process, so no separate
+Go `fibre` binary is needed. It is off by default.
+
+Enable it in `config/config.toml` (the section is not in the Go
+template; add it by hand or with `config set`):
+
+```toml
+[fibre]
+enable = true
+server_listen_address = "0.0.0.0:7980"
+```
+
+```sh
+celestia-rs config set config fibre.enable true      # creates [fibre]
+celestia-rs start --fibre                            # or enable for one run
+celestia-rs start --fibre-listen-address 0.0.0.0:7980   # implies --fibre
+```
+
+Precedence is defaults < `config.toml` < environment
+(`CELESTIA_RS_FIBRE=true|false`, `CELESTIA_RS_FIBRE_LISTEN_ADDRESS`) <
+flags. `--fibre=false` turns it off for one run. Unknown keys in `[fibre]`
+stop the node at start, so a typo cannot silently drop a setting; so do
+invalid values and `storage_backend = "object"`.
+
+Before you start, check:
+
+- The chain runs app version 10 or later (the `x/fibre` and `x/valaddr`
+  modules do not exist before).
+- The Fibre port (default 7980) is reachable from the internet.
+- The validator is bonded. The storage budget comes from its stake; a
+  validator outside the active set gets no budget and no traffic.
+
+#### Settings
+
+All keys go in `[fibre]` of `config.toml`; names follow Go's
+`server_config.toml`.
+
+| key | default | meaning |
+|---|---|---|
+| `enable` | `false` | Run the server. |
+| `server_listen_address` | `0.0.0.0:7980` | TCP `host:port` (`:7980` = all interfaces). |
+| `store_path` | `<home>/data/fibre` | Shard store directory (relative paths are under the home). |
+| `storage_backend` | `local` | Only `local`; `object` is refused. |
+| `min_upload_size` | `262144` | Local minimum padded upload size in bytes (1 to 128 MiB). Smaller uploads are rejected. Coordinate with other validators and clients. |
+| `max_connections` | `16` | Concurrent gRPC connections. |
+| `max_concurrent_streams` | `13` | Concurrent streams per connection. |
+| `upload_verify_workers` | CPU count | Concurrent shard verifications. |
+| `unlimited_budget` | `false` | Turn the storage limiter off (emergency switch). |
+| `[fibre.health] check_interval` | `10s` | How often the readiness checks run. |
+| `[fibre.health] probe_timeout` | `3s` | Deadline of each check. |
+| `[fibre.health] max_block_age` | `2m` | Oldest acceptable latest block before `chain_stalled`. |
+
+Changes take effect at the next start.
+
+#### Storage and memory
+
+Put `store_path` on its own disk or volume when you can, so that shard
+growth cannot fill the disk of the consensus databases (and the reverse).
+The server warns when the free space is below its storage budget. Shards
+are pruned when their payment promise expires.
+
+Each in-flight upload stream can buffer a full gRPC message of about
+132 MiB, so the worst-case memory of the server is
+
+```text
+max_connections × max_concurrent_streams × 132 MiB
+```
+
+The Go defaults (16 × 13) allow about 27 GiB, sized for a 32 GiB host. The
+start log prints the figure (`worst_case_upload_memory_mib`). On the
+16 GB reference machine the node itself budgets up to 8 GB steady and
+12 GB at peak, so keep Fibre under about 4 GiB:
+
+```toml
+[fibre]
+max_connections = 16
+max_concurrent_streams = 2   # 16 × 2 × 132 MiB ≈ 4.1 GiB
+```
+
+Raise the caps in proportion on a larger host. One client upload uses one
+connection per validator; raise `max_connections` to keep slots free for
+downloads while uploads run.
+
+#### Registration
+
+Clients only dial hosts registered on chain in `x/valaddr`. Start the
+server first, then register its public `host:port` (an IP or DNS name)
+with the validator's operator account:
+
+```sh
+celestia-rs tx valaddr set-host 203.0.113.7:7980 --from operator \
+  --keyring-backend file --home $H --fees 2000utia --wait
+celestia-rs query valaddr provider $(celestia-rs comet show-address --home $H)
+celestia-rs query valaddr providers
+```
+
+`celestia-appd tx valaddr set-host` works the same. Re-register only when
+the address changes. The registration is removed when the validator leaves
+the set for good; register again after coming back.
+
+#### Health and logs
+
+The server speaks the standard gRPC health service on its own port, over
+TLS with a self-signed certificate endorsed by the consensus key (no CA,
+nothing to renew by hand):
+
+```sh
+grpc_health_probe -addr=127.0.0.1:7980 -tls -tls-no-verify                          # readiness
+grpc_health_probe -addr=127.0.0.1:7980 -tls -tls-no-verify -service=fibre-liveness   # liveness
+```
+
+Readiness (`""` or `celestia.fibre.v1.Fibre`) is SERVING once every check
+passes. Downloads of stored shards keep working while it is not ready.
+
+| check | reason codes | what to do |
+|---|---|---|
+| `app` | `app_unreachable`, `app_syncing`, `chain_stalled`, `chain_id_mismatch` | Wait for sync; check the node log and `max_block_age`. |
+| `fibre_module` | `fibre_module_unavailable`, `app_unreachable` | The chain is below app version 10: wait for the upgrade. |
+| `signer` | `signer_unreachable`, `signer_key_changed` | With a remote signer, check that it is connected to `priv_validator_laddr`. |
+| `validator` | `validator_not_active`, `app_unreachable` | Bond the validator. |
+| `registration` | `provider_not_registered`, `provider_host_invalid`, `app_unreachable` | Run `tx valaddr set-host`. |
+| `store` | `store_failed` | Check free disk space and permissions of `store_path`. |
+
+The log has one line at start (`fibre server started` with the listen
+address, store path and validator consensus address), one line per check
+transition (`health check failed check=… reason=…`) and one line at stop.
+The server cannot check from the inside that the registered address is
+reachable: probe it from another machine.
+
+#### Metrics
+
+With `[instrumentation] prometheus = true`, the node's endpoint also
+exports the server's series, with the `chain_id` label and Go's names
+(no namespace prefix): `fibre_server_upload_shard_{in_flight,total,
+duration_seconds,bytes_total,rejected_total,last_success_timestamp_seconds,
+occupancy_bytes,budget_bytes}`, `fibre_server_download_shard_{in_flight,
+total,duration_seconds,bytes_total}`,
+`fibre_server_store_{put,get}_duration_seconds`,
+`fibre_server_sign_duration_seconds`,
+`fibre_server_prune_{entries_total,freed_bytes_total,duration_seconds}`,
+`fibre_server_budget_recompute_failures_total`,
+`fibre_server_connections_{active,accepted_total}`,
+`fibre_server_tls_handshake_failures_total`,
+`fibre_server_health_check_passing{check=…}`, `fibre_server_ready` and
+`fibre_server_live`. `*_total` RPC counters carry `grpc_code`.
+
+#### Failures and shutdown
+
+A Fibre problem never stops consensus. If the server cannot start (port
+in use, chain below app version 10, store error) the node logs
+`fibre server failed to start` with the reason and retries with backoff
+(1 s doubling to 60 s). If the listener fails later, the server is
+restarted. On SIGINT / SIGTERM readiness turns NOT_SERVING first,
+in-flight requests drain for up to 10 s, then the store is closed
+(`fibre server stopped`).
+
+#### Troubleshooting
+
+- **No uploads arrive.** Check readiness: the log names the failing
+  check. Then `query valaddr provider` (register if `found` is false),
+  check that the registered `host:port` reaches the server through your
+  firewall from outside, and that the validator is bonded.
+- **Warning `derived storage budget is 0`.** The validator has no stake in
+  the active set yet. The server runs without a limit and re-derives the
+  budget every minute.
+- **Clients report TLS identity failures.** The server's certificate is
+  endorsed by the key it signs with. With a remote signer, make sure it
+  holds the validator's consensus key, then restart the node.
+- **Uploads fail with `payment promise verification failed`.** The text
+  after it is the app's answer, as a Go server would report it. Causes
+  are on the client side (underfunded escrow, stale promise height, wrong
+  chain).
+
+#### Differences from the Go `fibre` binary
+
+- Configuration is `[fibre]` in the node's `config.toml`, not
+  `~/.celestia-fibre/config/server_config.toml`; there are no
+  `app_grpc_address` or `signer_*` settings (state and signing are in
+  process; those keys are refused).
+- No object storage: `storage_backend = "local"` only.
+- No OTLP traces or metrics, pprof or Pyroscope: metrics go to the node's
+  Prometheus endpoint; logs follow the node's `log_level` / `log_format`.
+- Shutdown waits at most 10 s for in-flight requests (Go waits until a
+  second signal).
+- A listener failure restarts the server instead of exiting the process.
+- The TLS certificate is valid for 365 days. Go needs a restart within a
+  year; the embedded server restarts itself every 360 days to renew it.
+- The in-memory payment-promise cache of a Go app node is not modelled
+  (as in the node's `ValidatePaymentPromise` query).
+
 ## 5. Migrating a Go `celestia-appd` validator
 
 The home layout is the same, so migration means pointing `celestia-rs` at
@@ -492,9 +687,11 @@ migration procedure before starting the new setup.
 | 9090 | app gRPC (+ BlockAPI) | `app.toml [grpc] address` (`enable = true`) |
 | 1317 | REST API | `app.toml [api] address` (`enable = true`) |
 | 26660 | Prometheus metrics | `[instrumentation] prometheus = true`, `prometheus_listen_addr` |
+| 7980 | Fibre server (gRPC over TLS, health) | `[fibre] enable = true`, `server_listen_address` ([Fibre server](#fibre-server)) |
 
-Only 26656 needs to be reachable from the internet; keep the others on
-localhost or behind a firewall.
+Only 26656 needs to be reachable from the internet (and 7980 on a
+validator that serves Fibre); keep the others on localhost or behind a
+firewall.
 
 ## 7. Pruning and disk
 
