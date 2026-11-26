@@ -4,7 +4,8 @@
 // tell which store, and which key, differs from Go.
 //
 //	v1-oracle -genesis genesis.json -blocks blocks.jsonl.gz \
-//	  [-windows replay-windows.json] [-from 1] -heights 10 -out <dir> [-kv] [-keep-recent N]
+//	  [-windows replay-windows.json] [-from 1] -heights 10 -out <dir> [-kv] [-keep-recent N] \
+//	  [-db memdb|goleveldb] [-timing]
 //	v1-oracle -registry-out <dir>
 //
 // celestia-app v3.13.0 is the binary that the Go multiplexer runs for app
@@ -42,6 +43,12 @@
 // records only heights F..N: no height 0 or genesis dump, and the KV diffs
 // of blocks F..N (from the state at F-1). The blocks file must hold every
 // height from 1 to N+1.
+//
+// With -db goleveldb the replaying app stores its state on disk as
+// celestia-appd does (the default memdb keeps it in memory), and -timing
+// prints the mean time per block of BeginBlock, DeliverTx, EndBlock and
+// Commit every 100 blocks: a Go reference for celestia-rs replay timings.
+// Neither changes the outputs.
 //
 // Keys and values are hex; stores are sorted by name and keys by bytes.
 // store-roots.json records the SHA-256 of each uncompressed dump and of
@@ -297,8 +304,17 @@ func run() error {
 	withKV := flag.Bool("kv", false, "also write the KV dump at height 0 and the per-block KV diffs")
 	registryOut := flag.String("registry-out", "", "only write the Rust v1 registry and schema tables (registry.go) to this directory")
 	keepRecent := flag.Uint64("keep-recent", 0, "prune all but this many recent IAVL versions (0: keep every version); bounds memory on long runs")
+	dbBackend := flag.String("db", "memdb", "application database: memdb, or goleveldb in a temporary directory (the celestia-appd default; for timing)")
+	timing := flag.Bool("timing", false, "print the mean time per block of BeginBlock, DeliverTx, EndBlock and Commit every 100 blocks (stderr)")
 	synthetic := flag.Bool("synthetic", false, "build the synthetic app version 1 to 3 chain (synthetic.go) instead of reading -genesis and -blocks; writes its genesis.json and blocks.jsonl.gz to -out")
 	flag.Parse()
+	switch *dbBackend {
+	case "memdb", "goleveldb":
+		appDB = *dbBackend
+	default:
+		return fmt.Errorf("-db %q: want memdb or goleveldb", *dbBackend)
+	}
+	printTiming = *timing
 	if *registryOut != "" {
 		return writeRegistry(*registryOut)
 	}
@@ -493,11 +509,13 @@ func execute(cfg runConfig) error {
 			return err
 		}
 
+		blockStart := time.Now()
 		begin := replayApp.BeginBlock(abci.RequestBeginBlock{
 			Hash:           blockHash,
 			Header:         *header,
 			LastCommitInfo: lastCommit,
 		})
+		blockTimes.begin += time.Since(blockStart)
 		var results []*abci.ResponseDeliverTx
 		txResults := [][3]int64{}
 		txData := []string{}
@@ -514,7 +532,10 @@ func execute(cfg runConfig) error {
 			if blobTx, isBlobTx := tmtypes.UnmarshalBlobTx(tx); isBlobTx {
 				tx = blobTx.Tx
 			}
+			deliverStart := time.Now()
 			r := replayApp.DeliverTx(abci.RequestDeliverTx{Tx: tx})
+			blockTimes.deliver += time.Since(deliverStart)
+			blockTimes.txs++
 			results = append(results, &r)
 			txResults = append(txResults, [3]int64{int64(r.Code), r.GasWanted, r.GasUsed})
 			txData = append(txData, hex.EncodeToString(r.Data))
@@ -531,8 +552,16 @@ func execute(cfg runConfig) error {
 				Events:    events(r.Events),
 			})
 		}
+		endStart := time.Now()
 		end := replayApp.EndBlock(abci.RequestEndBlock{Height: height})
+		commitStart := time.Now()
 		commit := replayApp.Commit()
+		blockTimes.end += commitStart.Sub(endStart)
+		blockTimes.commit += time.Since(commitStart)
+		blockTimes.blocks++
+		if printTiming && height%100 == 0 {
+			blockTimes.print(height)
+		}
 
 		got := upper(commit.Data)
 		if syn != nil {
@@ -608,6 +637,9 @@ func execute(cfg runConfig) error {
 		fmt.Fprintf(os.Stderr, "height %d: %s (%d txs, %d validator updates)\n", height, got, len(results), len(updates))
 	}
 
+	if printTiming && blockTimes.blocks%100 != 0 {
+		blockTimes.print(*heights)
+	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return err
 	}
@@ -656,6 +688,40 @@ func execute(cfg runConfig) error {
 	return os.WriteFile(filepath.Join(*out, "store-roots.json"), append(encoded, '\n'), 0o644)
 }
 
+// appDB is the application database backend (-db).
+var appDB = "memdb"
+
+// printTiming reports block execution times (-timing).
+var printTiming bool
+
+// blockTimes sums the ABCI call times of the replayed blocks (-timing):
+// the work celestia-appd does per block, without this program's checks
+// and dumps.
+var blockTimes abciTimes
+
+type abciTimes struct {
+	begin, deliver, end, commit time.Duration
+	blocks, txs                 int64
+}
+
+func (t *abciTimes) print(height int64) {
+	ms := func(d time.Duration) float64 { return float64(d.Microseconds()) / 1e3 / float64(t.blocks) }
+	total := t.begin + t.deliver + t.end + t.commit
+	fmt.Fprintf(os.Stderr, "timing through height %d (%s): %.1f ms/block (BeginBlock %.1f, DeliverTx %.1f, EndBlock %.1f, Commit %.1f), %d txs\n",
+		height, appDB, ms(total), ms(t.begin), ms(t.deliver), ms(t.end), ms(t.commit), t.txs)
+}
+
+func newDB(home string) dbm.DB {
+	if appDB == "goleveldb" {
+		db, err := dbm.NewGoLevelDB("application", home)
+		if err != nil {
+			panic(fmt.Sprintf("open goleveldb in %s: %v", home, err))
+		}
+		return db
+	}
+	return dbm.NewMemDB()
+}
+
 func newApp(home string, keepRecent uint64, upgradeHeightV2 int64) *app.App {
 	pruning := pruningtypes.NewPruningOptions(pruningtypes.PruningNothing)
 	if keepRecent > 0 {
@@ -663,7 +729,7 @@ func newApp(home string, keepRecent uint64, upgradeHeightV2 int64) *app.App {
 	}
 	return app.New(
 		log.NewNopLogger(),
-		dbm.NewMemDB(),
+		newDB(home),
 		nil,
 		0,
 		encoding.MakeConfig(app.ModuleEncodingRegisters...),
