@@ -13,6 +13,32 @@ type Res<T> = Result<T, String>;
 
 /// `SignModeHandler.GetSignBytes` for `SIGN_MODE_LEGACY_AMINO_JSON`.
 pub fn sign_bytes(sd: &SignerData, tx: &Tx) -> Res<Vec<u8>> {
+    let v046 = sdk::version::is_sdk_v046(0);
+    // cosmos-sdk v0.46 `signModeLegacyAminoJSONHandler.GetSignBytes`: the
+    // unknown non-critical fields and extension options checks, then
+    // `legacytx.StdSignBytes`, which panics on a message that is not a
+    // `LegacyMsg` ([`V046_NOT_LEGACY_MSG`]). x/tx's checks below are not
+    // v0.46's (they cannot resolve every v0.46 type).
+    if v046
+        && tx.body.messages.iter().any(|m| {
+            V046_NOT_LEGACY_MSG
+                .binary_search(&m.type_url.as_str())
+                .is_ok()
+        })
+    {
+        if tx.body_has_unknown_non_criticals {
+            return Err("unknown field found in TxBody".into());
+        }
+        if !tx.body.extension_options.is_empty()
+            || !tx.body.non_critical_extension_options.is_empty()
+        {
+            return Err(
+                "SIGN_MODE_LEGACY_AMINO_JSON does not support protobuf extension options: invalid request"
+                    .into(),
+            );
+        }
+        return Err(V046_NOT_LEGACY_PANIC.into());
+    }
     // decode.RejectUnknownFields(body, allowUnknownNonCriticals=false) over
     // x/tx's descriptors (the interface registry's file resolver).
     if tx.body_has_unknown_non_criticals {
@@ -34,17 +60,6 @@ pub fn sign_bytes(sd: &SignerData, tx: &Tx) -> Res<Vec<u8>> {
         return Err(
             "got empty address in SIGN_MODE_LEGACY_AMINO_JSON handler: invalid request".into(),
         );
-    }
-    // cosmos-sdk v0.46 `legacytx.StdSignBytes` panics on a message that
-    // is not a `LegacyMsg` ([`V046_NOT_LEGACY_MSG`]).
-    if sdk::version::is_sdk_v046(0)
-        && body.messages.iter().any(|m| {
-            V046_NOT_LEGACY_MSG
-                .binary_search(&m.type_url.as_str())
-                .is_ok()
-        })
-    {
-        return Err(V046_NOT_LEGACY_PANIC.into());
     }
     let Some(fee) = &tx.auth_info.fee else {
         return Err("fee cannot be nil when tipper is not signer".into());
@@ -101,7 +116,11 @@ pub fn sign_bytes(sd: &SignerData, tx: &Tx) -> Res<Vec<u8>> {
             if i > 0 {
                 w.push(',');
             }
-            enc.marshal_any(&m.type_url, &m.value, &mut w)?;
+            if v046 && let Some(json) = v046_proto_json(&m.type_url, &m.value) {
+                w.push_str(&json?);
+            } else {
+                enc.marshal_any(&m.type_url, &m.value, &mut w)?;
+            }
         }
         w.push(']');
     }
@@ -164,6 +183,91 @@ const V046_NOT_LEGACY_MSG: &[&str] = &[
 /// [`V046_NOT_LEGACY_MSG`]; the caller raises it as a panic.
 pub const V046_NOT_LEGACY_PANIC: &str = "expected *legacytx.LegacyMsg when using amino JSON";
 
+/// The Go panic of go-amino for a tendermint `PublicKey` (a oneof: a Go
+/// interface no module amino codec registers) nested in a v0.46 message
+/// marshaled with a module codec, e.g. the validator set of a client
+/// update's header in `MsgExec`; the caller raises it as a panic.
+pub const V046_UNREGISTERED_PUBKEY_PANIC: &str = "Unregistered interface crypto.isPublicKey_Sum";
+
+/// Whether a [`sign_bytes`] error is a Go panic of cosmos-sdk v0.46.
+#[must_use]
+pub fn is_v046_panic(e: &str) -> bool {
+    e == V046_NOT_LEGACY_PANIC || e == V046_UNREGISTERED_PUBKEY_PANIC
+}
+
+/// `GetSignBytes` of the celestia-app v1 to v3 messages whose `ModuleCdc`
+/// is a `ProtoCodec` (blob, signal): `sdk.MustSortJSON` of gogo jsonpb
+/// (`OrigName`, `EmitDefaults`): proto field names, every field, `uint64`
+/// as a string, `uint32` as a number, bytes in standard base64; keys
+/// sorted. `None` for any other message.
+fn v046_proto_json(type_url: &str, value: &[u8]) -> Option<Res<String>> {
+    use celestia_proto::celestia::{blob::v1 as blob, signal::v1 as signal};
+    use prost::{Message as _, Name as _};
+    let b64 = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
+    let mut w = String::new();
+    let decode_err = |e: prost::DecodeError| e.to_string();
+    if type_url == blob::MsgPayForBlobs::type_url() {
+        let m = match blob::MsgPayForBlobs::decode(value) {
+            Ok(m) => m,
+            Err(e) => return Some(Err(decode_err(e))),
+        };
+        let nums = |v: &[u32]| v.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+        let strs = |v: &[Vec<u8>]| {
+            v.iter()
+                .map(|b| format!("\"{}\"", b64(b)))
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        w.push_str(&format!("{{\"blob_sizes\":[{}]", nums(&m.blob_sizes)));
+        w.push_str(&format!(",\"namespaces\":[{}]", strs(&m.namespaces)));
+        w.push_str(&format!(
+            ",\"share_commitments\":[{}]",
+            strs(&m.share_commitments)
+        ));
+        w.push_str(&format!(
+            ",\"share_versions\":[{}]",
+            nums(&m.share_versions)
+        ));
+        w.push_str(",\"signer\":");
+        json_string(&mut w, &m.signer);
+        w.push('}');
+    } else if type_url == signal::MsgSignalVersion::type_url() {
+        let m = match signal::MsgSignalVersion::decode(value) {
+            Ok(m) => m,
+            Err(e) => return Some(Err(decode_err(e))),
+        };
+        w.push_str("{\"validator_address\":");
+        json_string(&mut w, &m.validator_address);
+        w.push_str(&format!(",\"version\":\"{}\"}}", m.version));
+    } else if type_url == signal::MsgTryUpgrade::type_url() {
+        let m = match signal::MsgTryUpgrade::decode(value) {
+            Ok(m) => m,
+            Err(e) => return Some(Err(decode_err(e))),
+        };
+        w.push_str("{\"signer\":");
+        json_string(&mut w, &m.signer);
+        w.push('}');
+    } else {
+        return None;
+    }
+    Some(Ok(w))
+}
+
+/// Concrete types registered on cosmos-sdk v0.46 vesting's `ModuleCdc`:
+/// not `MsgCreatePeriodicVestingAccount`, which it writes bare.
+const V046_VESTING_AMINO: &[&str] = &[
+    "/cosmos.crypto.ed25519.PubKey",
+    "/cosmos.crypto.multisig.LegacyAminoPubKey",
+    "/cosmos.crypto.secp256k1.PubKey",
+    "/cosmos.vesting.v1beta1.BaseVestingAccount",
+    "/cosmos.vesting.v1beta1.ContinuousVestingAccount",
+    "/cosmos.vesting.v1beta1.DelayedVestingAccount",
+    "/cosmos.vesting.v1beta1.MsgCreatePermanentLockedAccount",
+    "/cosmos.vesting.v1beta1.MsgCreateVestingAccount",
+    "/cosmos.vesting.v1beta1.PeriodicVestingAccount",
+    "/cosmos.vesting.v1beta1.PermanentLockedAccount",
+];
+
 /// Concrete types registered on cosmos-sdk v0.46 gov v1beta1's
 /// `ModuleCdc` (its own types and crypto; no proposal content of another
 /// module).
@@ -208,6 +312,8 @@ fn v046_codec(type_url: &str) -> Option<&'static [&'static str]> {
         Some(V046_GOV_V1BETA1_AMINO)
     } else if type_url.starts_with("/cosmos.gov.v1.Msg") {
         Some(V046_GOV_V1_AMINO)
+    } else if type_url.starts_with("/cosmos.vesting.v1beta1.Msg") {
+        Some(V046_VESTING_AMINO)
     } else {
         None
     }
@@ -528,8 +634,15 @@ impl Encoder {
         if !sdk::version::is_sdk_v046(0) {
             return self.begin_marshal(&msg, w, true);
         }
-        self.codec.set(v046_codec(type_url));
-        let r = self.begin_marshal(&msg, w, true);
+        let codec = v046_codec(type_url);
+        self.codec.set(codec);
+        // A top-level message its own codec does not register is written
+        // bare (vesting `MsgCreatePeriodicVestingAccount`).
+        let r = if codec.is_some_and(|c| c.binary_search(&type_url).is_err()) {
+            self.marshal_message(&msg, w)
+        } else {
+            self.begin_marshal(&msg, w, true)
+        };
         self.codec.set(None);
         r
     }
@@ -619,6 +732,12 @@ impl Encoder {
 
     fn marshal_message(&self, msg: &DynamicMessage, w: &mut String) -> Res<()> {
         let desc = msg.descriptor();
+        if self.codec.get().is_some()
+            && desc.full_name() == "tendermint.crypto.PublicKey"
+            && desc.oneofs().any(|o| o.fields().any(|f| msg.has_field(&f)))
+        {
+            return Err(V046_UNREGISTERED_PUBKEY_PANIC.into());
+        }
         match desc.full_name() {
             "google.protobuf.Timestamp" => return marshal_timestamp(msg, w),
             "google.protobuf.Duration" => return marshal_duration(msg, w),

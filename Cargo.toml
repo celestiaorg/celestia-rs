@@ -76,6 +76,7 @@ members = [
     "crates/tier-4-runtime/statesync",
     "crates/tier-4-runtime/rpc",
     "crates/tier-4-runtime/propagation",
+    "crates/tier-4-runtime/fibre-server",
     "crates/devnet-conformance",
     "crates/fuzz-diff",
     "crates/tier-5-node/celestia-rs",

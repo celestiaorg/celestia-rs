@@ -61,6 +61,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -576,7 +577,7 @@ func execute(cfg runConfig) error {
 				GasWanted: r.GasWanted,
 				GasUsed:   r.GasUsed,
 				Data:      hex.EncodeToString(r.Data),
-				Log:       r.Log,
+				Log:       stableLog(r.Log),
 				Info:      r.Info,
 				Events:    events(r.Events),
 			})
@@ -1179,3 +1180,33 @@ func sha256Hex(b []byte) string {
 }
 
 func upper(b []byte) string { return strings.ToUpper(hex.EncodeToString(b)) }
+
+// stableLog drops what in a log depends on Go's runtime or the machine
+// (the log is not part of consensus):
+//
+//   - from the log of a recovered panic (code 111222, "recovered: <value>
+//     ...: panic"), celestia's HandlePanicDecorator dump of each message
+//     ("\ncaused by transaction:\n%T{%s}") and baseapp's goroutine stack
+//     ("\nstack:\n..."), whose addresses change from run to run; the log
+//     keeps "recovered: <value>: panic";
+//   - the stack frames ("<func>\n\t<file>:<line>") that a `%+v` of an
+//     error with a recorded stack prints (gov's "failed to run legacy
+//     handler" of ibc client proposals), which name the build's paths.
+func stableLog(log string) string {
+	cut := -1
+	for _, marker := range []string{"\ncaused by transaction:\n", "\nstack:\n"} {
+		if i := strings.Index(log, marker); i >= 0 && (cut < 0 || i < cut) {
+			cut = i
+		}
+	}
+	if cut >= 0 {
+		suffix := ""
+		if strings.HasSuffix(log, ": panic") {
+			suffix = ": panic"
+		}
+		log = log[:cut] + suffix
+	}
+	return stackFrame.ReplaceAllString(log, "")
+}
+
+var stackFrame = regexp.MustCompile(`(?m)^[^\t\n][^\n]*\n\t[^\n]+\.go:\d+\n`)

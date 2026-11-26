@@ -106,13 +106,7 @@ const EXPECTED_BLOCKERS: [(u64, &[&str]); 9] = [
     ),
     (5, &[]),
     (6, &[]),
-    (
-        8,
-        &[
-            "celestia-rs stores absent from the pre-state: zkism",
-            "no celestia-rs handler for upgrade plan v8 at 10960600",
-        ],
-    ),
+    (8, &["celestia-rs stores absent from the pre-state: zkism"]),
     (9, &[]),
     (10, &[]),
 ];

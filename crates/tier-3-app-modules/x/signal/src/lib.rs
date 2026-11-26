@@ -452,7 +452,7 @@ mod tests {
             for v in (0..=14).chain([u64::MAX]) {
                 let want = if v == 4 {
                     upgrade_height_delay_v4(chain)
-                } else if matches!(v, 5 | 6) {
+                } else if matches!(v, 5 | 6 | 8) {
                     upgrade_height_delay_v5(chain)
                 } else if (1..=9).contains(&v) {
                     upgrade_height_delay_v9(chain)
