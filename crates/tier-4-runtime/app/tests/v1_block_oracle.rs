@@ -449,6 +449,70 @@ fn v1_app_runs_blocks_1_to_10_across_a_reopen() {
     }
 }
 
+/// Rolling a v1 [`app::App`] back three heights (what `celestia-rs
+/// rollback` does to the app state) and executing the blocks again
+/// reproduces the oracle's app hashes, across a reopen of the home.
+#[test]
+#[ignore = "needs the mainnet genesis: CELESTIA_MAINNET_GENESIS=<genesis.json>"]
+fn v1_app_rolls_back_and_re_executes() {
+    let genesis = common::mainnet_genesis();
+    let archive = common::archive();
+    let results = common::oracle_results();
+    let roots = common::oracle_roots();
+    let home = tempfile::tempdir().unwrap();
+    let mut app = app::App::open(home.path()).unwrap();
+    let init = app.init_chain(common::init_request(&genesis)).unwrap();
+    drop(genesis);
+    let mut vals: BTreeMap<i64, common::ValidatorSet> = BTreeMap::new();
+    let mut genesis_set = update_set(&init.validators);
+    common::sort_validators(&mut genesis_set);
+    vals.insert(1, genesis_set.clone());
+    vals.insert(2, genesis_set);
+    for h in 1..=9 {
+        let next = common::apply_updates(&vals[&(h + 1)], &common::oracle_updates(&results[&h]));
+        vals.insert(h + 2, next);
+    }
+    let root_hash = |h: i64| {
+        roots["heights"][usize::try_from(h).unwrap()]["app_hash"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let run = |app: &mut app::App, h: i64| {
+        let last = if h == 1 {
+            Vec::new()
+        } else {
+            vals[&(h - 1)].clone()
+        };
+        let res = app
+            .finalize_block(common::finalize_request(&archive[&h], &last))
+            .unwrap();
+        app.commit().unwrap();
+        assert_eq!(
+            hex::encode_upper(&res.app_hash),
+            root_hash(h),
+            "app hash at {h}"
+        );
+    };
+    for h in 1..=10 {
+        run(&mut app, h);
+    }
+    app.rollback_to(7).unwrap();
+    assert_eq!(app.info().last_block_height, 7);
+    assert_eq!(
+        hex::encode_upper(app.info().last_block_app_hash),
+        root_hash(7)
+    );
+    drop(app);
+    let mut app = app::App::open(home.path()).unwrap();
+    assert!(app.is_sdk_v046_state());
+    assert_eq!(app.info().last_block_height, 7);
+    assert_eq!(app.info().app_version, 1);
+    for h in 8..=10 {
+        run(&mut app, h);
+    }
+}
+
 /// The oracle state at height 0 from the full dump, every IAVL store.
 fn full_height_0(path: &str) -> BTreeMap<String, Kv> {
     common::gz_lines(path)

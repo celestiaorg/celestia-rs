@@ -118,8 +118,10 @@ fn gatekeeper_order(msgs: &[Any], depth: usize, out: &mut Vec<String>) -> Result
                     "max depth exceeded",
                 )));
             }
+            // Read as gogoproto decodes it (`decode_v1` accepted it).
+            let view = msgs::gogo_view(msg)?;
             let exec =
-                celestia_proto::cosmos::authz::v1beta1::MsgExec::decode(msg.value.as_slice())
+                celestia_proto::cosmos::authz::v1beta1::MsgExec::decode(view.value.as_slice())
                     .map_err(|e| errs::tx_decode(e.to_string()))?;
             gatekeeper_order(&exec.msgs, depth + 1, out)?;
         }

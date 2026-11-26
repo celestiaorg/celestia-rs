@@ -888,9 +888,10 @@ fn v046_distribution_pays_the_proposer_reward() {
 
 /// cosmos-sdk v0.46 slashing stores one `BoolValue` key per missed index
 /// (an empty value once signed again), counts a jailed validator, and
-/// does not port downtime jailing.
+/// jails for downtime.
 #[test]
 fn v046_slashing_tracks_missed_blocks_per_index() {
+    crate::modules::install_staking_hooks();
     let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = v1_store();
     let (mut ctx, cons) = v046_two_validators(&mut ms, 1);
@@ -948,15 +949,224 @@ fn v046_slashing_tracks_missed_blocks_per_index() {
     );
     assert_eq!(counter(&mut ctx), 0);
     // Past the first window, two misses in a row exceed the one allowed:
-    // downtime jailing is not ported.
+    // v0.46 slashes (by a zero fraction, which still records a
+    // distribution slash event), jails and resets the window.
     v.jailed = false;
     x_staking::store::set_validator(&mut ctx, &v).unwrap();
+    ctx.events.take();
     for h in [4, 5] {
         ctx.header.height = h;
         ctx.vote_infos = vec![vote(&cons[0], false)];
-        let r = x_slashing::begin_block(&mut ctx);
-        assert_eq!(r.is_err(), h == 5, "height {h}");
+        x_slashing::begin_block(&mut ctx).unwrap();
     }
+    let v = x_staking::store::validator(&mut ctx, &[1; 20]).unwrap();
+    assert!(v.jailed);
+    assert_eq!(v.tokens, math::Int::from_u64(100_000_000));
+    assert_eq!(
+        ctx.get(
+            x_staking::STORE_KEY,
+            &x_staking::keys::power_index(100, &[1; 20])
+        )
+        .unwrap(),
+        None
+    );
+    let info = x_slashing::get_signing_info(&mut ctx, &cons[0])
+        .unwrap()
+        .unwrap();
+    assert_eq!((info.missed_blocks_counter, info.index_offset), (0, 0));
+    assert_eq!(info.jailed_until.seconds, ctx.header.time.seconds + 60);
+    for i in 0..2 {
+        assert_eq!(ctx.get(x_slashing::STORE_KEY, &key(i)).unwrap(), None);
+    }
+    let slash_events =
+        x_distribution::store::slash_events_between(&mut ctx, &[1; 20], 0, 100).unwrap();
+    assert_eq!(slash_events.len(), 1, "{slash_events:?}");
+    assert_eq!(slash_events[0].0, 5);
+    assert!(slash_events[0].2.is_zero());
+    let events = ctx.events.take();
+    let slash = events.iter().find(|e| e.r#type == "slash").unwrap();
+    let burned = slash
+        .attributes
+        .iter()
+        .find(|a| a.key == "burned_coins")
+        .unwrap();
+    assert_eq!(burned.value, "0");
+    // Jailed, the validator is no longer slashed.
+    ctx.header.height = 6;
+    x_slashing::begin_block(&mut ctx).unwrap();
+}
+
+/// cosmos-sdk v0.46 `CancelUnbondingDelegation`: delegates part of an
+/// unbonding entry back (from the not-bonded pool to the bonded pool of a
+/// bonded validator), shrinking the entry, and removes the unbonding
+/// delegation with its last entry. A missing entry or a jailed validator
+/// fails.
+#[test]
+fn v046_cancel_unbonding_delegation() {
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::cosmos::staking::v1beta1::MsgCancelUnbondingDelegation;
+    crate::modules::install_staking_hooks();
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let (mut ctx, _) = v046_two_validators(&mut ms, 10);
+    x_distribution::store::set_fee_pool(&mut ctx, &sdk::dec_coins::DecCoins::new()).unwrap();
+    ctx.header.time = pbjson_types::Timestamp {
+        seconds: 1_000,
+        nanos: 0,
+    };
+    let del = [9u8; 20];
+    let val = [1u8; 20];
+    x_staking::delegation::set_ubd_entry(
+        &mut ctx,
+        &del,
+        &val,
+        3,
+        pbjson_types::Timestamp {
+            seconds: 2_000,
+            nanos: 0,
+        },
+        &math::Int::from_u64(100),
+    )
+    .unwrap();
+    let pool = |name: &str| x_auth::module_address(name);
+    x_bank::set_balance(
+        &mut ctx,
+        &pool(x_staking::NOT_BONDED_POOL),
+        &sdk::coins::Coin::new("utia", 100),
+    )
+    .unwrap();
+    let cancel = |amount: &str, height: i64| {
+        celestia_proto::Any::pack(&MsgCancelUnbondingDelegation {
+            delegator_address: x_auth::bech32(&del).unwrap(),
+            validator_address: x_staking::addr::val_to_string(&val).unwrap(),
+            amount: Some(Coin {
+                denom: "utia".into(),
+                amount: amount.into(),
+            }),
+            creation_height: height,
+        })
+    };
+    msgs::validate_basic(&cancel("40", 3)).unwrap();
+    let e = msgs::validate_basic(&cancel("40", 0)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18));
+    let e = msgs::route(&mut ctx, &cancel("40", 4)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 38), "{}", e.log);
+    let e = msgs::route(&mut ctx, &cancel("101", 3)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18), "{}", e.log);
+
+    msgs::route(&mut ctx, &cancel("40", 3)).unwrap();
+    let ubd = x_staking::store::get_ubd(&mut ctx, &del, &val)
+        .unwrap()
+        .unwrap();
+    assert_eq!(ubd.entries.len(), 1);
+    assert_eq!(ubd.entries[0].balance, math::Int::from_u64(60));
+    assert_eq!(ubd.entries[0].initial_balance, math::Int::from_u64(60));
+    let d = x_staking::store::get_delegation(&mut ctx, &del, &val)
+        .unwrap()
+        .unwrap();
+    assert_eq!(d.shares, math::LegacyDec::new(40));
+    let bal = |ctx: &mut sdk::Context<'_>, name: &str| {
+        x_bank::get_balance(ctx, &pool(name), "utia")
+            .unwrap()
+            .amount
+    };
+    assert_eq!(
+        bal(&mut ctx, x_staking::NOT_BONDED_POOL),
+        math::Int::from_u64(60)
+    );
+    assert_eq!(
+        bal(&mut ctx, x_staking::BONDED_POOL),
+        math::Int::from_u64(40)
+    );
+    let ev = ctx.events.take();
+    assert!(ev.iter().any(|e| e.r#type == "cancel_unbonding_delegation"));
+    // Only the pool transfer's `message` (bank's sender): the msg server
+    // emits no `message` event of its own.
+    assert!(
+        !ev.iter()
+            .any(|e| e.r#type == "message" && e.attributes.iter().any(|a| a.key == "module"))
+    );
+
+    msgs::route(&mut ctx, &cancel("60", 3)).unwrap();
+    assert!(
+        x_staking::store::get_ubd(&mut ctx, &del, &val)
+            .unwrap()
+            .is_none()
+    );
+
+    let mut v = x_staking::store::validator(&mut ctx, &val).unwrap();
+    v.jailed = true;
+    x_staking::store::set_validator(&mut ctx, &v).unwrap();
+    let e = msgs::route(&mut ctx, &cancel("1", 3)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("staking", 7), "{}", e.log);
+}
+
+/// cosmos-sdk v0.46 `Unjail`: needs the validator's self-delegation at
+/// its minimum, a jailed validator, and the jail time to have passed;
+/// then the validator is back in the power index.
+#[test]
+fn v046_unjail() {
+    use celestia_proto::cosmos::slashing::v1beta1::MsgUnjail;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let (mut ctx, cons) = v046_two_validators(&mut ms, 10);
+    let val = [1u8; 20];
+    let unjail = celestia_proto::Any::pack(&MsgUnjail {
+        validator_addr: x_staking::addr::val_to_string(&val).unwrap(),
+    });
+    msgs::validate_basic(&unjail).unwrap();
+    let e = msgs::route(&mut ctx, &unjail).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("slashing", 6), "{}", e.log);
+    x_staking::store::set_delegation(
+        &mut ctx,
+        &x_staking::types::Delegation {
+            delegator_address: x_auth::bech32(&val).unwrap(),
+            validator_address: x_staking::addr::val_to_string(&val).unwrap(),
+            shares: math::LegacyDec::new(100_000_000),
+        },
+    )
+    .unwrap();
+    let e = msgs::route(&mut ctx, &unjail).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("slashing", 5), "{}", e.log);
+    x_staking::jail(&mut ctx, &cons[0]).unwrap();
+    let mut info = x_slashing::SigningInfo {
+        address: x_staking::addr::cons_to_string(&cons[0]).unwrap(),
+        start_height: 0,
+        index_offset: 0,
+        jailed_until: pbjson_types::Timestamp {
+            seconds: 60,
+            nanos: 0,
+        },
+        tombstoned: false,
+        missed_blocks_counter: 0,
+    };
+    x_slashing::set_signing_info(&mut ctx, &cons[0], &info).unwrap();
+    ctx.header.time = pbjson_types::Timestamp {
+        seconds: 59,
+        nanos: 0,
+    };
+    let e = msgs::route(&mut ctx, &unjail).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("slashing", 4), "{}", e.log);
+    info.tombstoned = true;
+    x_slashing::set_signing_info(&mut ctx, &cons[0], &info).unwrap();
+    ctx.header.time.seconds = 60;
+    let e = msgs::route(&mut ctx, &unjail).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("slashing", 4), "{}", e.log);
+    info.tombstoned = false;
+    x_slashing::set_signing_info(&mut ctx, &cons[0], &info).unwrap();
+    msgs::route(&mut ctx, &unjail).unwrap();
+    assert!(!x_staking::store::validator(&mut ctx, &val).unwrap().jailed);
+    assert!(
+        ctx.get(
+            x_staking::STORE_KEY,
+            &x_staking::keys::power_index(100, &val)
+        )
+        .unwrap()
+        .is_some()
+    );
+    let ev = ctx.events.take();
+    let m = ev.iter().find(|e| e.r#type == "message").unwrap();
+    assert_eq!(m.attributes[0].value, "slashing");
 }
 
 /// cosmos-sdk v0.46 staking stores `HistoricalInfo` under the decimal
@@ -2516,4 +2726,474 @@ fn v6_timeout_validate_basic() {
     assert_eq!((e.codespace, e.code), ("sdk", 3), "{}", e.log);
     let e = timeout(1, vec![1], 1, 0).unwrap_err();
     assert_eq!((e.codespace, e.code), ("channel", 13), "{}", e.log);
+}
+
+/// cosmos-sdk v0.46 gov votes (v1beta1 and v1): `ValidateBasic` checks
+/// the voter and the option; a vote on a proposal that does not exist
+/// fails with `ErrUnknownProposal`; a vote on an existing proposal is
+/// not ported.
+#[test]
+fn v046_gov_vote_on_unknown_proposal() {
+    use celestia_proto::cosmos::gov::{v1, v1beta1};
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    let voter = x_auth::bech32(&[3; 20]).unwrap();
+    let old = |option: i32| {
+        celestia_proto::Any::pack(&v1beta1::MsgVote {
+            proposal_id: 1,
+            voter: voter.clone(),
+            option,
+        })
+    };
+    let new = |option: i32| {
+        celestia_proto::Any::pack(&v1::MsgVote {
+            proposal_id: 1,
+            voter: voter.clone(),
+            option,
+            metadata: String::new(),
+        })
+    };
+    let builders: [&dyn Fn(i32) -> celestia_proto::Any; 2] = [&old, &new];
+    for vote in builders {
+        for bad in [0, 5] {
+            let e = msgs::validate_basic(&vote(bad)).unwrap_err();
+            assert_eq!((e.codespace, e.code), ("gov", 7), "{}", e.log);
+        }
+        msgs::validate_basic(&vote(1)).unwrap();
+        let _ = take_not_ported();
+        let e = msgs::route(&mut ctx, &vote(1)).unwrap_err();
+        assert_eq!((e.codespace, e.code), ("gov", 2), "{}", e.log);
+        assert!(take_not_ported().is_none());
+    }
+    let mut key = vec![0x00];
+    key.extend_from_slice(&1u64.to_be_bytes());
+    ctx.set(x_gov::STORE_KEY, key, vec![1]).unwrap();
+    assert!(msgs::route(&mut ctx, &old(1)).is_err());
+    assert!(take_not_ported().is_some());
+}
+
+/// `Grant.expiration` (nullable stdtime) sent twice: gogoproto's
+/// `StdTimeUnmarshal` keeps the last timestamp, prost would merge the
+/// two (keeping the first one's nanos). The stored grant is Go's.
+#[test]
+fn v1_messages_are_read_as_gogoproto_decodes_them() {
+    use celestia_proto::cosmos::authz::v1beta1::{GenericAuthorization, Grant, MsgGrant};
+    use prost::Message as _;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    let (giver, taker) = ([1u8; 20], [2u8; 20]);
+    let at = |seconds: i64, nanos: i32| pbjson_types::Timestamp { seconds, nanos };
+    let grant = |exp| MsgGrant {
+        granter: x_auth::bech32(&giver).unwrap(),
+        grantee: x_auth::bech32(&taker).unwrap(),
+        grant: Some(Grant {
+            authorization: Some(celestia_proto::Any::pack(&GenericAuthorization {
+                msg: "/cosmos.bank.v1beta1.MsgSend".into(),
+            })),
+            expiration: Some(exp),
+        }),
+    };
+    // MsgGrant field 3 (grant) twice: prost merges the two `Grant`s
+    // (authorization from the first, expiration merged field by field);
+    // gogoproto merges the `Grant`s too but replaces the expiration.
+    let mut value = grant(at(2_000_000_000, 7)).encode_to_vec();
+    let mut second = Vec::new();
+    prost::encoding::message::encode(
+        3,
+        &Grant {
+            authorization: None,
+            expiration: Some(at(2_000_000_001, 0)),
+        },
+        &mut second,
+    );
+    value.extend_from_slice(&second);
+    let msg = celestia_proto::Any {
+        type_url: "/cosmos.authz.v1beta1.MsgGrant".into(),
+        value,
+    };
+    msgs::validate_basic(&msg).unwrap();
+    msgs::route(&mut ctx, &msg).unwrap();
+    let key = x_authz::grant_key(&taker, &giver, "/cosmos.bank.v1beta1.MsgSend");
+    let stored = ctx.get(x_authz::STORE_KEY, &key).unwrap().unwrap();
+    let stored = Grant::decode(stored.as_slice()).unwrap();
+    assert_eq!(stored.expiration, Some(at(2_000_000_001, 0)));
+
+    // A non-critical unknown field whose key is past `u32::MAX`: gogoproto
+    // skips it (as Go's decoder accepted it), prost fails. The MsgSend's
+    // own `ValidateBasic` decides (no coins: invalid coins).
+    let mut value = celestia_proto::cosmos::bank::v1beta1::MsgSend {
+        from_address: x_auth::bech32(&giver).unwrap(),
+        to_address: x_auth::bech32(&taker).unwrap(),
+        amount: Vec::new(),
+    }
+    .encode_to_vec();
+    value.extend_from_slice(&[0xf8, 0xff, 0xff, 0xff, 0x3f, 0x00]);
+    let send = celestia_proto::Any {
+        type_url: "/cosmos.bank.v1beta1.MsgSend".into(),
+        value,
+    };
+    let e = msgs::validate_basic(&send).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 10), "{}", e.log);
+}
+
+/// The ibc-go v6 tendermint `ClientState.trusting_period` (non-nullable
+/// stdduration) sent twice inside `MsgCreateClient`'s client state `Any`:
+/// the handlers see gogoproto's last value, not prost's merge.
+#[test]
+fn v1_nested_std_durations_are_read_as_gogoproto_decodes_them() {
+    use celestia_proto::ibc::core::client::v1::MsgCreateClient;
+    use celestia_proto::ibc::lightclients::tendermint::v1::ClientState;
+    use prost::Message as _;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let d = |seconds: i64, nanos: i32| pbjson_types::Duration { seconds, nanos };
+    let mut cs = ClientState {
+        chain_id: "x".into(),
+        trusting_period: Some(d(100, 5)),
+        ..ClientState::default()
+    }
+    .encode_to_vec();
+    prost::encoding::message::encode(3, &d(200, 0), &mut cs);
+    let msg = celestia_proto::Any::pack(&MsgCreateClient {
+        client_state: Some(celestia_proto::Any {
+            type_url: "/ibc.lightclients.tendermint.v1.ClientState".into(),
+            value: cs,
+        }),
+        consensus_state: None,
+        signer: String::new(),
+    });
+    let view = msgs::gogo_view(&msg).unwrap();
+    let m = MsgCreateClient::decode(view.value.as_slice()).unwrap();
+    let cs = ClientState::decode(m.client_state.unwrap().value.as_slice()).unwrap();
+    assert_eq!(cs.trusting_period, Some(d(200, 0)));
+}
+
+/// cosmos-sdk v0.46 `CreateVestingAccount`: a continuous account starts
+/// at the block time when its start time is 0, takes the next account
+/// number and receives the coins; an existing account or `end <= start`
+/// fails.
+#[test]
+fn v046_create_vesting_account() {
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::cosmos::vesting::v1beta1::MsgCreateVestingAccount;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    write_mainnet_genesis_params(&mut ctx).unwrap();
+    ctx.header.time = pbjson_types::Timestamp {
+        seconds: 1_700_000_000,
+        nanos: 5,
+    };
+    let (from, to) = ([1u8; 20], [2u8; 20]);
+    let acc = x_auth::new_account_with_address(&mut ctx, &from).unwrap();
+    x_auth::set_account(&mut ctx, &acc).unwrap();
+    x_bank::set_balance(&mut ctx, &from, &sdk::coins::Coin::new("utia", 1000)).unwrap();
+    let msg = |start: i64, end: i64| {
+        celestia_proto::Any::pack(&MsgCreateVestingAccount {
+            from_address: x_auth::bech32(&from).unwrap(),
+            to_address: x_auth::bech32(&to).unwrap(),
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: "400".into(),
+            }],
+            end_time: end,
+            delayed: false,
+            start_time: start,
+        })
+    };
+    let e = msgs::validate_basic(&msg(0, 0)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18), "{}", e.log);
+    let e = msgs::route(&mut ctx, &msg(10, 10)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18), "{}", e.log);
+    msgs::validate_basic(&msg(0, 1_800_000_000)).unwrap();
+    msgs::route(&mut ctx, &msg(0, 1_800_000_000)).unwrap();
+    let Some(x_auth::Account::ContinuousVesting(v)) = x_auth::get_account(&mut ctx, &to).unwrap()
+    else {
+        panic!("not a continuous vesting account")
+    };
+    assert_eq!(v.start_time, 1_700_000_000);
+    let bva = v.base_vesting_account.unwrap();
+    assert_eq!(bva.end_time, 1_800_000_000);
+    assert_eq!(bva.base_account.unwrap().account_number, 1);
+    let bal = x_bank::get_balance(&mut ctx, &to, "utia").unwrap().amount;
+    assert_eq!(bal, math::Int::from_u64(400));
+    let e = msgs::route(&mut ctx, &msg(0, 1_800_000_000)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18), "{}", e.log);
+}
+
+/// cosmos-sdk v0.46 feegrant: granting creates the grantee account and
+/// queues the expiration; a duplicate fails; using the allowance stores
+/// it through `UpdateAllowance` (`update_feegrant`, no account read);
+/// revoking deletes only the grant, not its queue entry.
+#[test]
+fn v046_feegrant_grant_use_revoke() {
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::cosmos::feegrant::v1beta1::{
+        BasicAllowance, MsgGrantAllowance, MsgRevokeAllowance,
+    };
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.header.time = pbjson_types::Timestamp {
+        seconds: 1_000,
+        nanos: 0,
+    };
+    let (from, to) = ([1u8; 20], [2u8; 20]);
+    let exp = pbjson_types::Timestamp {
+        seconds: 5_000,
+        nanos: 0,
+    };
+    let grant = celestia_proto::Any::pack(&MsgGrantAllowance {
+        granter: x_auth::bech32(&from).unwrap(),
+        grantee: x_auth::bech32(&to).unwrap(),
+        allowance: Some(celestia_proto::Any::pack(&BasicAllowance {
+            spend_limit: vec![Coin {
+                denom: "utia".into(),
+                amount: "100".into(),
+            }],
+            expiration: Some(exp),
+        })),
+    });
+    msgs::validate_basic(&grant).unwrap();
+    msgs::route(&mut ctx, &grant).unwrap();
+    assert!(x_auth::get_account(&mut ctx, &to).unwrap().is_some());
+    let key = x_feegrant::allowance_key(&from, &to);
+    let queue = x_feegrant::queue_key(&exp, &key[1..]);
+    assert!(ctx.get(x_feegrant::STORE_KEY, &queue).unwrap().is_some());
+    let e = msgs::route(&mut ctx, &grant).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18), "{}", e.log);
+
+    ctx.events.take();
+    x_feegrant::use_granted_fees(
+        &mut ctx,
+        &from,
+        &to,
+        &sdk::coins::Coins::from_proto(&[Coin {
+            denom: "utia".into(),
+            amount: "40".into(),
+        }])
+        .unwrap(),
+        &[],
+    )
+    .unwrap();
+    let types: Vec<String> = ctx.events.take().into_iter().map(|e| e.r#type).collect();
+    assert_eq!(types, ["use_feegrant", "update_feegrant"]);
+    let left = x_feegrant::get_allowance(&mut ctx, &from, &to).unwrap();
+    let x_feegrant::Allowance::Basic(b) = left else {
+        panic!("not basic")
+    };
+    assert_eq!(b.spend_limit[0].amount, "60");
+
+    let revoke = celestia_proto::Any::pack(&MsgRevokeAllowance {
+        granter: x_auth::bech32(&from).unwrap(),
+        grantee: x_auth::bech32(&to).unwrap(),
+    });
+    msgs::route(&mut ctx, &revoke).unwrap();
+    assert!(ctx.get(x_feegrant::STORE_KEY, &key).unwrap().is_none());
+    assert!(ctx.get(x_feegrant::STORE_KEY, &queue).unwrap().is_some());
+    let e = msgs::route(&mut ctx, &revoke).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 38), "{}", e.log);
+}
+
+/// cosmos-sdk v0.46 `FundCommunityPool`: the coins move to the
+/// distribution module account and into the community pool;
+/// `ValidateBasic` rejects invalid coins and an empty depositor.
+#[test]
+fn v046_fund_community_pool() {
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::cosmos::distribution::v1beta1::MsgFundCommunityPool;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    x_distribution::store::set_fee_pool(&mut ctx, &sdk::dec_coins::DecCoins::new()).unwrap();
+    let from = [7u8; 20];
+    let acc = x_auth::new_account_with_address(&mut ctx, &from).unwrap();
+    x_auth::set_account(&mut ctx, &acc).unwrap();
+    x_bank::set_balance(&mut ctx, &from, &sdk::coins::Coin::new("utia", 50)).unwrap();
+    let fund = |depositor: String, amount: &str| {
+        celestia_proto::Any::pack(&MsgFundCommunityPool {
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: amount.into(),
+            }],
+            depositor,
+        })
+    };
+    let e = msgs::validate_basic(&fund(String::new(), "1")).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 7), "{}", e.log);
+    let e = msgs::validate_basic(&fund(x_auth::bech32(&from).unwrap(), "-1")).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 10), "{}", e.log);
+    let ok = fund(x_auth::bech32(&from).unwrap(), "20");
+    msgs::validate_basic(&ok).unwrap();
+    msgs::route(&mut ctx, &ok).unwrap();
+    assert_eq!(
+        x_distribution::store::get_fee_pool(&mut ctx)
+            .unwrap()
+            .to_string(),
+        "20.000000000000000000utia"
+    );
+    let distr = x_auth::module_address("distribution");
+    assert_eq!(
+        x_bank::get_balance(&mut ctx, &distr, "utia")
+            .unwrap()
+            .amount,
+        math::Int::from_u64(20)
+    );
+}
+
+/// cosmos-sdk v0.46 `UpdateValidatorCommission` below the minimum rate
+/// reads `MinCommissionRate` again for its error message: two metered
+/// reads of the parameter (1141 gas each on mainnet) instead of one.
+#[test]
+fn v046_commission_below_min_rate_reads_the_param_twice() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let (mut ctx, _) = v046_two_validators(&mut ms, 10);
+    ctx.header.time = pbjson_types::Timestamp {
+        seconds: 1_000_000,
+        nanos: 0,
+    };
+    let mut v = x_staking::store::validator(&mut ctx, &[1; 20]).unwrap();
+    v.commission.max_rate = math::LegacyDec::one();
+    v.commission.max_change_rate = math::LegacyDec::one();
+    let gas = |ctx: &mut sdk::Context<'_>, rate: &str| {
+        ctx.gas = kvstore::GasMeter::infinite();
+        let r = x_staking::validator::update_validator_commission(
+            ctx,
+            &v,
+            &math::LegacyDec::from_str_go(rate).unwrap(),
+        );
+        (r.is_ok(), ctx.gas.consumed())
+    };
+    assert_eq!(gas(&mut ctx, "0.06"), (true, 1141));
+    assert_eq!(gas(&mut ctx, "0.01"), (false, 2 * 1141));
+}
+
+/// v0.46 `DispatchActions` of a bank `MsgSend` signed by the grantee
+/// itself (implicitly accepted) runs the send; an ibc-go v6
+/// `MsgTransfer` whose sender does not parse panics in `GetSigners`.
+#[test]
+fn v046_exec_dispatches_send_and_transfer_signers() {
+    use celestia_proto::cosmos::authz::v1beta1::MsgExec;
+    use celestia_proto::cosmos::bank::v1beta1::MsgSend;
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::ibc::applications::transfer::v1::MsgTransfer;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
+    write_mainnet_genesis_params(&mut ctx).unwrap();
+    let (a, b) = ([1u8; 20], [2u8; 20]);
+    let acc = x_auth::new_account_with_address(&mut ctx, &a).unwrap();
+    x_auth::set_account(&mut ctx, &acc).unwrap();
+    x_bank::set_balance(&mut ctx, &a, &sdk::coins::Coin::new("utia", 10)).unwrap();
+    let exec = |m: celestia_proto::Any| {
+        celestia_proto::Any::pack(&MsgExec {
+            grantee: x_auth::bech32(&a).unwrap(),
+            msgs: vec![m],
+        })
+    };
+    let send = celestia_proto::Any::pack(&MsgSend {
+        from_address: x_auth::bech32(&a).unwrap(),
+        to_address: x_auth::bech32(&b).unwrap(),
+        amount: vec![Coin {
+            denom: "utia".into(),
+            amount: "3".into(),
+        }],
+    });
+    let _ = take_not_ported();
+    msgs::route(&mut ctx, &exec(send)).unwrap();
+    assert!(take_not_ported().is_none());
+    assert_eq!(
+        x_bank::get_balance(&mut ctx, &b, "utia").unwrap().amount,
+        math::Int::from_u64(3)
+    );
+    let transfer = celestia_proto::Any::pack(&MsgTransfer {
+        sender: "not-an-address".into(),
+        ..MsgTransfer::default()
+    });
+    let e = sdk::error::recover(|| msgs::route(&mut ctx, &exec(transfer))).unwrap_err();
+    assert!(e.is_panic(), "{}", e.log);
+}
+
+/// v0.46 `DispatchActions` of a nested authz `MsgGrant` (signer: its
+/// granter) under a `GenericAuthorization` for `MsgGrant`: the nested
+/// grant is stored (mainnet block 45631).
+#[test]
+fn v046_exec_dispatches_a_nested_grant() {
+    use celestia_proto::cosmos::authz::v1beta1::{GenericAuthorization, Grant, MsgExec, MsgGrant};
+    use prost::Message as _;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    let (owner, agent, voter) = ([1u8; 20], [2u8; 20], [3u8; 20]);
+    let grant = |granter: &[u8], grantee: &[u8], msg: &str| MsgGrant {
+        granter: x_auth::bech32(granter).unwrap(),
+        grantee: x_auth::bech32(grantee).unwrap(),
+        grant: Some(Grant {
+            authorization: Some(celestia_proto::Any::pack(&GenericAuthorization {
+                msg: msg.into(),
+            })),
+            expiration: None,
+        }),
+    };
+    let outer = celestia_proto::Any::pack(&grant(&owner, &agent, "/cosmos.authz.v1beta1.MsgGrant"));
+    msgs::route(&mut ctx, &outer).unwrap();
+    let nested = celestia_proto::Any::pack(&grant(&owner, &voter, "/cosmos.gov.v1beta1.MsgVote"));
+    let exec = celestia_proto::Any::pack(&MsgExec {
+        grantee: x_auth::bech32(&agent).unwrap(),
+        msgs: vec![nested],
+    });
+    let _ = take_not_ported();
+    msgs::route(&mut ctx, &exec).unwrap();
+    assert!(take_not_ported().is_none());
+    let key = x_authz::grant_key(&voter, &owner, "/cosmos.gov.v1beta1.MsgVote");
+    let stored = ctx.get(x_authz::STORE_KEY, &key).unwrap().unwrap();
+    assert!(Grant::decode(stored.as_slice()).is_ok());
+}
+
+/// celestia's router runs a `MsgExec`-dispatched `MsgDelegate` whose
+/// `ValidateBasic` fails on a zero amount: the delegation of 0 tokens
+/// succeeds (mainnet block 52698). A nil amount panics in `IsZero`.
+#[test]
+fn v046_exec_runs_a_zero_amount_delegate() {
+    use celestia_proto::cosmos::authz::v1beta1::MsgExec;
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::cosmos::staking::v1beta1::MsgDelegate;
+    crate::modules::install_staking_hooks();
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let (mut ctx, _) = v046_two_validators(&mut ms, 10);
+    x_distribution::store::set_fee_pool(&mut ctx, &sdk::dec_coins::DecCoins::new()).unwrap();
+    let del = [9u8; 20];
+    let acc = x_auth::new_account_with_address(&mut ctx, &del).unwrap();
+    x_auth::set_account(&mut ctx, &acc).unwrap();
+    let delegate = |amount: Option<Coin>| {
+        celestia_proto::Any::pack(&MsgExec {
+            grantee: x_auth::bech32(&del).unwrap(),
+            msgs: vec![celestia_proto::Any::pack(&MsgDelegate {
+                delegator_address: x_auth::bech32(&del).unwrap(),
+                validator_address: x_staking::addr::val_to_string(&[1; 20]).unwrap(),
+                amount,
+            })],
+        })
+    };
+    let _ = take_not_ported();
+    msgs::route(
+        &mut ctx,
+        &delegate(Some(Coin {
+            denom: "utia".into(),
+            amount: "0".into(),
+        })),
+    )
+    .unwrap();
+    assert!(take_not_ported().is_none());
+    let d = x_staking::store::get_delegation(&mut ctx, &del, &[1; 20])
+        .unwrap()
+        .unwrap();
+    assert!(d.shares.is_zero());
+    let e = sdk::error::recover(|| msgs::route(&mut ctx, &delegate(None))).unwrap_err();
+    assert!(e.is_panic(), "{}", e.log);
 }

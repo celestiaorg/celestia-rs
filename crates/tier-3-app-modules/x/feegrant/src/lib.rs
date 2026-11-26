@@ -213,6 +213,9 @@ pub fn use_granted_fees(
     fee: &Coins,
     msgs: &[Any],
 ) -> Result<()> {
+    if ctx.is_sdk_v046() {
+        return v046::use_granted_fees(ctx, granter, grantee, fee, msgs);
+    }
     let mut grant = get_allowance(ctx, granter, grantee)?;
     let (remove, res) = grant.accept(ctx, fee, msgs);
     let use_event = |ctx: &mut Context<'_>| {
@@ -461,5 +464,112 @@ mod tests {
             assert_eq!(stored.allowance, Some(inner));
             assert!(get_allowance(&mut ctx, &granter, &grantee).is_ok());
         }
+    }
+}
+
+/// cosmos-sdk v0.46 `x/feegrant` keeper flows (celestia-app v1 to v3):
+/// granting creates the grantee's account without the blocked-address
+/// check and moves the pruning-queue entry when the expiration changes;
+/// revoking leaves the queue entry.
+pub mod v046 {
+    use super::{
+        Allowance, Any, Coins, Context, Result, STORE_KEY, allowance_key, bech32, event, get_grant,
+        new_grant, queue_key,
+    };
+    use prost::Message as _;
+
+    /// `Keeper.GrantAllowance`. `raw` is the allowance as the tx carried it
+    /// (see [`new_grant`]).
+    pub fn grant_allowance(
+        ctx: &mut Context<'_>,
+        granter: &[u8],
+        grantee: &[u8],
+        a: &Allowance,
+        raw: Option<&Any>,
+    ) -> Result<()> {
+        if x_auth::get_account(ctx, grantee)?.is_none() {
+            let acc = x_auth::new_account_with_address(ctx, grantee)?;
+            x_auth::set_account(ctx, &acc)?;
+        }
+        let key = allowance_key(granter, grantee);
+        // `getGrant`: only `ErrNotFound` is not an error here.
+        let old_exp = match get_grant(ctx, granter, grantee) {
+            Ok(g) if g.allowance.is_some() => Allowance::from_grant(&g)?.expires_at()?,
+            Ok(_) => None,
+            Err(e) if e.codespace == "sdk" && e.code == 38 => None,
+            Err(e) => return Err(e),
+        };
+        let new_exp = a.expires_at()?;
+        if let Some(exp) = &new_exp
+            && sdk::time::before(exp, &ctx.header.time)
+        {
+            return Err(sdk::error::sdk::invalid_request(
+                "expiration is before current block time",
+            ));
+        }
+        match (&old_exp, &new_exp) {
+            (None, Some(new)) => ctx.set(STORE_KEY, queue_key(new, &key[1..]), Vec::new())?,
+            (Some(old), None) => ctx.delete(STORE_KEY, &queue_key(old, &key[1..]))?,
+            (Some(old), Some(new)) if old != new => {
+                ctx.delete(STORE_KEY, &queue_key(old, &key[1..]))?;
+                ctx.set(STORE_KEY, queue_key(new, &key[1..]), Vec::new())?;
+            }
+            _ => {}
+        }
+        let grant = new_grant(granter, grantee, a, raw);
+        ctx.set(STORE_KEY, key, grant.encode_to_vec())?;
+        ctx.events.emit(event(
+            "set_feegrant",
+            [("granter", grant.granter), ("grantee", grant.grantee)],
+        ));
+        Ok(())
+    }
+
+    /// `Keeper.revokeAllowance`: the grant only (its pruning-queue entry
+    /// stays; `RemoveExpiredAllowances` deletes both later).
+    pub fn revoke_allowance(ctx: &mut Context<'_>, granter: &[u8], grantee: &[u8]) -> Result<()> {
+        get_grant(ctx, granter, grantee)?;
+        ctx.delete(STORE_KEY, &allowance_key(granter, grantee))?;
+        ctx.events.emit(event(
+            "revoke_feegrant",
+            [("granter", bech32(granter)), ("grantee", bech32(grantee))],
+        ));
+        Ok(())
+    }
+
+    /// `Keeper.UseGrantedFees`.
+    pub fn use_granted_fees(
+        ctx: &mut Context<'_>,
+        granter: &[u8],
+        grantee: &[u8],
+        fee: &Coins,
+        msgs: &[Any],
+    ) -> Result<()> {
+        let g = get_grant(ctx, granter, grantee)?;
+        let mut grant = Allowance::from_grant(&g)?;
+        let (remove, res) = grant.accept(ctx, fee, msgs);
+        let use_event = |ctx: &mut Context<'_>| {
+            ctx.events.emit(event(
+                "use_feegrant",
+                [("granter", bech32(granter)), ("grantee", bech32(grantee))],
+            ));
+        };
+        if remove {
+            // Go ignores the revoke error; a store gas panic still unwinds.
+            if let Err(e) = revoke_allowance(ctx, granter, grantee)
+                && (e.is_panic() || (e.codespace == "sdk" && e.code == 11))
+            {
+                return Err(e);
+            }
+            res?;
+            use_event(ctx);
+            return Ok(());
+        }
+        res?;
+        use_event(ctx);
+        // `UpdateAllowance`: reads the grant again and stores the used
+        // allowance (`update_feegrant`), without `GrantAllowance`'s
+        // account and queue handling.
+        super::update_allowance(ctx, granter, grantee, &grant)
     }
 }

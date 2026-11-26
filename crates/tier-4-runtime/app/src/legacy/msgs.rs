@@ -6,6 +6,7 @@
 use celestia_proto::Any;
 use celestia_proto::cosmos::bank::v1beta1 as bank;
 use celestia_proto::cosmos::distribution::v1beta1 as distr;
+use celestia_proto::cosmos::slashing::v1beta1 as slashing;
 use celestia_proto::cosmos::staking::v1beta1 as staking;
 use prost::{Message, Name};
 use sdk::coins::Coins;
@@ -25,7 +26,9 @@ pub(super) fn acc_address(s: &str, what: &str) -> Result<Vec<u8>> {
 
 /// `Coins.IsValid() && Coins.IsAllPositive()` of decoded coins, failing
 /// with `ErrInvalidCoins` wrapping their string.
-fn valid_positive_coins(coins: &[celestia_proto::cosmos::base::v1beta1::Coin]) -> Result<Coins> {
+pub(super) fn valid_positive_coins(
+    coins: &[celestia_proto::cosmos::base::v1beta1::Coin],
+) -> Result<Coins> {
     let invalid = || errs::invalid_coins("").wrap(sdk::coins::raw_coins_string(coins));
     if !sdk::coins::raw_coins_is_valid(coins)? {
         return Err(invalid());
@@ -205,8 +208,27 @@ pub fn commission_yaml(c: &x_staking::types::Commission) -> String {
     )
 }
 
+/// The message as Go's handlers hold it: gogoproto's decoding under the
+/// v1 schema, re-encoded so prost reads the same struct (nested `Any`s
+/// too, except a `MsgExec`'s messages, which are read so when they run;
+/// see `txdecode::prost_compatible`). prost alone merges a repeated
+/// stdtime / stdduration that gogoproto replaces, and fails on keys past
+/// `u32::MAX`, over-long varints and mismatched groups that gogoproto
+/// skips. The transaction's bytes (sign bytes, size, hash) are not
+/// touched. `decode_v1` already unpacked every message with gogoproto,
+/// so one that gogoproto cannot decode here is not ported.
+pub(super) fn gogo_view(msg: &Any) -> Result<Any> {
+    txdecode::prost_compatible(msg).ok_or_else(|| {
+        super::not_ported(errs::tx_decode(format!(
+            "gogoproto cannot decode the {} the v1 decoder accepted",
+            msg.type_url
+        )))
+    })
+}
+
 /// `msg.ValidateBasic()` of a v0.46 message.
 pub fn validate_basic(msg: &Any) -> Result<()> {
+    let msg = &gogo_view(msg)?;
     if let Some(r) = super::ibc_channel::validate_basic(msg) {
         return r;
     }
@@ -223,6 +245,15 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
         return r;
     }
     if let Some(r) = super::qgb::validate_basic(msg) {
+        return r;
+    }
+    if let Some(r) = super::gov::validate_basic(msg) {
+        return r;
+    }
+    if let Some(r) = super::vesting::validate_basic(msg) {
+        return r;
+    }
+    if let Some(r) = super::feegrant::validate_basic(msg) {
         return r;
     }
     if let Some(r) = super::blob::validate_basic(msg) {
@@ -262,6 +293,16 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
     } else if msg.type_url == distr::MsgWithdrawValidatorCommission::type_url() {
         let m: distr::MsgWithdrawValidatorCommission = decode(msg)?;
         val_address(&m.validator_address, "validator")?;
+    } else if msg.type_url == distr::MsgFundCommunityPool::type_url() {
+        let m: distr::MsgFundCommunityPool = decode(msg)?;
+        // v0.46 checks validity only (empty coins pass), then a non-empty
+        // depositor string.
+        if !sdk::coins::raw_coins_is_valid(&m.amount)? {
+            return Err(errs::invalid_coins("").wrap(sdk::coins::raw_coins_string(&m.amount)));
+        }
+        if m.depositor.is_empty() {
+            return Err(errs::invalid_address(""));
+        }
     } else if msg.type_url == staking::MsgUndelegate::type_url() {
         let m: staking::MsgUndelegate = decode(msg)?;
         acc_address(&m.delegator_address, "delegator")?;
@@ -273,6 +314,12 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
         val_address(&m.validator_src_address, "source validator")?;
         val_address(&m.validator_dst_address, "destination validator")?;
         valid_shares_amount(m.amount.as_ref())?;
+    } else if msg.type_url == staking::MsgCancelUnbondingDelegation::type_url() {
+        validate_cancel_unbonding(&decode(msg)?)?;
+    } else if msg.type_url == slashing::MsgUnjail::type_url() {
+        let m: slashing::MsgUnjail = decode(msg)?;
+        x_staking::addr::val_from_string(&m.validator_addr)
+            .map_err(|e| errs::invalid_address(format!("validator input address: {}", e.log)))?;
     } else {
         // Every other message of the v1 registry: its `ValidateBasic`
         // runs before the gatekeeper and the ante handler.
@@ -295,6 +342,7 @@ pub fn validate_basic_tx_msgs(msgs: &[Any]) -> Result<()> {
 /// Executes `msg` through its v0.46 msg server, returning its packed
 /// response. Events go to `ctx.events` (a fresh manager per message).
 pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
+    let msg = &gogo_view(msg)?;
     if msg.type_url == bank::MsgSend::type_url() {
         return Ok(Any::pack(&send(ctx, &decode(msg)?)?));
     }
@@ -328,6 +376,15 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
     if msg.type_url == staking::MsgBeginRedelegate::type_url() {
         return Ok(Any::pack(&begin_redelegate(ctx, &decode(msg)?)?));
     }
+    if msg.type_url == distr::MsgFundCommunityPool::type_url() {
+        return Ok(Any::pack(&fund_community_pool(ctx, &decode(msg)?)?));
+    }
+    if msg.type_url == staking::MsgCancelUnbondingDelegation::type_url() {
+        return Ok(Any::pack(&cancel_unbonding_delegation(ctx, &decode(msg)?)?));
+    }
+    if msg.type_url == slashing::MsgUnjail::type_url() {
+        return Ok(Any::pack(&unjail(ctx, &decode(msg)?)?));
+    }
     if let Some(r) = super::ibc::route(ctx, msg) {
         return r;
     }
@@ -344,6 +401,15 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
         return r;
     }
     if let Some(r) = super::qgb::route(ctx, msg) {
+        return r;
+    }
+    if let Some(r) = super::gov::route(ctx, msg) {
+        return r;
+    }
+    if let Some(r) = super::vesting::route(ctx, msg) {
+        return r;
+    }
+    if let Some(r) = super::feegrant::route(ctx, msg) {
         return r;
     }
     if let Some(r) = super::blob::route(ctx, msg) {
@@ -457,16 +523,36 @@ fn check_bond_denom(ctx: &mut Context<'_>, denom: &str) -> Result<()> {
     Ok(())
 }
 
+/// staking `msgServer.Delegate` (v0.46) on a `MsgDelegate` with a zero
+/// amount whose `ValidateBasic` failed: celestia's router runs the
+/// handler anyway when the message is dispatched by `MsgExec`.
+pub(super) fn delegate_zero_amount(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
+    let m: staking::MsgDelegate = decode(&gogo_view(msg)?)?;
+    let (coin, _) = x_staking::msgs::parse_coin(m.amount.as_ref());
+    Ok(Any::pack(&delegate_amount(ctx, &m, coin)?))
+}
+
 /// staking `msgServer.Delegate` (v0.46).
 fn delegate(
     ctx: &mut Context<'_>,
     msg: &staking::MsgDelegate,
 ) -> Result<staking::MsgDelegateResponse> {
-    let val = val_address(&msg.validator_address, "validator")?;
+    let amount = valid_positive_coin(msg.amount.as_ref())?;
+    delegate_amount(ctx, msg, amount)
+}
+
+/// The body of staking `msgServer.Delegate` (v0.46) for `amount`. The
+/// address errors are plain Go errors (`ValidateBasic` checked them
+/// before, except on the zero-amount path).
+fn delegate_amount(
+    ctx: &mut Context<'_>,
+    msg: &staking::MsgDelegate,
+    amount: sdk::coins::Coin,
+) -> Result<staking::MsgDelegateResponse> {
+    let val = server_val(&msg.validator_address)?;
     let v = x_staking::store::get_validator(ctx, &val)?
         .ok_or_else(x_staking::errors::no_validator_found)?;
-    let del = acc_address(&msg.delegator_address, "delegator")?;
-    let amount = valid_positive_coin(msg.amount.as_ref())?;
+    let del = server_acc(&msg.delegator_address)?;
     check_bond_denom(ctx, &amount.denom)?;
     let shares = x_staking::delegation::delegate(
         ctx,
@@ -644,6 +730,143 @@ fn undelegate(
     })
 }
 
+/// staking `MsgCancelUnbondingDelegation.ValidateBasic` (v0.46): returns
+/// the amount.
+fn validate_cancel_unbonding(
+    m: &staking::MsgCancelUnbondingDelegation,
+) -> Result<sdk::coins::Coin> {
+    acc_address(&m.delegator_address, "delegator")?;
+    val_address(&m.validator_address, "validator")?;
+    let (coin, valid) = x_staking::msgs::parse_coin(m.amount.as_ref());
+    if !valid || !coin.amount.is_positive() {
+        return Err(errs::invalid_request("invalid amount"));
+    }
+    if m.creation_height <= 0 {
+        return Err(errs::invalid_request("invalid height"));
+    }
+    Ok(coin)
+}
+
+/// staking `msgServer.CancelUnbondingDelegation` (v0.46): delegates the
+/// amount back from the unbonding entry created at `creation_height`
+/// (tokens move from the not-bonded pool), shrinking or removing the
+/// entry. No `message` event.
+fn cancel_unbonding_delegation(
+    ctx: &mut Context<'_>,
+    msg: &staking::MsgCancelUnbondingDelegation,
+) -> Result<staking::MsgCancelUnbondingDelegationResponse> {
+    use x_staking::store;
+    let val = server_val(&msg.validator_address)?;
+    let del = server_acc(&msg.delegator_address)?;
+    // `ValidateBasic` already accepted the amount.
+    let amount = validate_cancel_unbonding(msg)?;
+    check_bond_denom(ctx, &amount.denom)?;
+    let v = store::get_validator(ctx, &val)?.ok_or_else(x_staking::errors::no_validator_found)?;
+    if v.invalid_ex_rate() {
+        return Err(x_staking::errors::delegator_share_ex_rate_invalid());
+    }
+    if v.jailed {
+        return Err(x_staking::errors::validator_jailed());
+    }
+    // A gRPC `NotFound` status: not a registered error (`undefined`/1).
+    let mut ubd = store::get_ubd(ctx, &del, &val)?.ok_or_else(|| {
+        sdk::error::internal(format!(
+            "rpc error: code = NotFound desc = unbonding delegation with delegator {} not found for validator {}",
+            msg.delegator_address, msg.validator_address
+        ))
+    })?;
+    let idx = ubd
+        .entries
+        .iter()
+        .position(|e| e.creation_height == msg.creation_height)
+        .ok_or_else(|| {
+            errs::not_found(format!(
+                "unbonding delegation entry is not found at block height {}",
+                msg.creation_height
+            ))
+        })?;
+    let mut entry = ubd.entries[idx].clone();
+    if entry.balance < amount.amount {
+        return Err(errs::invalid_request(
+            "amount is greater than the unbonding delegation entry balance",
+        ));
+    }
+    if sdk::time::before(&entry.completion_time, &ctx.header.time) {
+        return Err(errs::invalid_request(
+            "unbonding delegation is already processed",
+        ));
+    }
+    x_staking::delegation::delegate(
+        ctx,
+        &del,
+        &amount.amount,
+        x_staking::types::BondStatus::Unbonding,
+        &v,
+        false,
+    )?;
+    let math = |e: math::MathError| sdk::error::go_panic(e.to_string());
+    let rest = entry.balance.checked_sub(&amount.amount).map_err(math)?;
+    if rest.is_zero() {
+        ubd.entries.remove(idx);
+    } else {
+        entry.balance = rest;
+        entry.initial_balance = entry
+            .initial_balance
+            .checked_sub(&amount.amount)
+            .map_err(math)?;
+        ubd.entries[idx] = entry;
+    }
+    if ubd.entries.is_empty() {
+        store::remove_ubd(ctx, &ubd)?;
+    } else {
+        store::set_ubd(ctx, &ubd)?;
+    }
+    ctx.events.emit(event(
+        "cancel_unbonding_delegation",
+        [
+            ("amount", amount.to_string()),
+            ("validator", msg.validator_address.clone()),
+            ("delegator", msg.delegator_address.clone()),
+            ("creation_height", msg.creation_height.to_string()),
+        ],
+    ));
+    Ok(staking::MsgCancelUnbondingDelegationResponse {})
+}
+
+/// slashing `msgServer.Unjail` and keeper `Unjail` (v0.46): the
+/// validator, its self-delegation and its signing info decide; then the
+/// staking keeper unjails it by consensus address.
+fn unjail(ctx: &mut Context<'_>, msg: &slashing::MsgUnjail) -> Result<slashing::MsgUnjailResponse> {
+    let val = server_val(&msg.validator_addr)?;
+    let v = x_staking::store::get_validator(ctx, &val)?
+        .ok_or_else(x_slashing::errors::no_validator_for_address)?;
+    let self_del = x_staking::store::get_delegation(ctx, &val, &val)?
+        .ok_or_else(x_slashing::errors::missing_self_delegation)?;
+    let tokens = v.tokens_from_shares(&self_del.shares)?.truncate_int();
+    if tokens < v.min_self_delegation {
+        return Err(x_slashing::errors::self_delegation_too_low_to_unjail()
+            .wrap(format!("{tokens} less than {}", v.min_self_delegation)));
+    }
+    if !v.jailed {
+        return Err(x_slashing::errors::validator_not_jailed());
+    }
+    let cons = v.cons_addr()?;
+    if let Some(info) = x_slashing::get_signing_info(ctx, &cons)?
+        && (info.tombstoned || sdk::time::before(&ctx.header.time, &info.jailed_until))
+    {
+        return Err(x_slashing::errors::validator_jailed());
+    }
+    x_staking::unjail(ctx, &cons)?;
+    ctx.events.emit(event(
+        "message",
+        [
+            ("module", "slashing"),
+            ("sender", msg.validator_addr.as_str()),
+        ],
+    ));
+    Ok(slashing::MsgUnjailResponse {})
+}
+
 /// staking `msgServer.BeginRedelegate` (v0.46).
 fn begin_redelegate(
     ctx: &mut Context<'_>,
@@ -742,4 +965,18 @@ fn withdraw_validator_commission(
     Ok(distr::MsgWithdrawValidatorCommissionResponse {
         amount: amount.to_proto(),
     })
+}
+
+/// distribution `msgServer.FundCommunityPool` and keeper
+/// `FundCommunityPool` (v0.46): the coins go to the distribution module
+/// account and into the fee pool's community pool.
+fn fund_community_pool(
+    ctx: &mut Context<'_>,
+    msg: &distr::MsgFundCommunityPool,
+) -> Result<distr::MsgFundCommunityPoolResponse> {
+    let depositor = server_acc(&msg.depositor)?;
+    let amount = Coins::from_proto(&msg.amount)?;
+    x_distribution::keeper::fund_community_pool(ctx, &amount, &depositor)?;
+    distribution_message_event(ctx, &msg.depositor);
+    Ok(distr::MsgFundCommunityPoolResponse {})
 }

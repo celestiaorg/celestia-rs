@@ -25,7 +25,9 @@ pub mod authz;
 pub mod blob;
 pub mod blockers;
 pub mod consensus_params;
+pub mod feegrant;
 pub mod genesis;
+pub mod gov;
 pub mod ibc;
 pub mod ibc_channel;
 pub mod ibc_timeout;
@@ -34,6 +36,7 @@ pub mod msgs;
 pub mod params;
 pub mod qgb;
 pub mod tx;
+pub mod vesting;
 
 use celestia_proto::celestia_core_proto::abci::{
     self, ExecTxResult, ResponseFinalizeBlock, ResponseInitChain, TimeoutInfo, ValidatorUpdate,

@@ -21,6 +21,16 @@ use prost::Message;
 pub const MAX_ROLLBACK_DEPTH: i64 = 100;
 
 fn app_version_at(view: &sdk::MultiStore) -> anyhow::Result<u64> {
+    // A cosmos-sdk v0.46 state (app versions 1 to 3) has no `consensus`
+    // store: its app version lives in the x/params subspace `baseapp`.
+    if view.root().get_store(x_consensus::STORE_KEY).is_err() {
+        return match app::legacy::app_version(view) {
+            0 => Err(anyhow!(
+                "historical app version: unreadable baseapp/VersionParams"
+            )),
+            v => Ok(v),
+        };
+    }
     let params = view
         .get(x_consensus::STORE_KEY, x_consensus::PARAMS_KEY)
         .map_err(|e| anyhow!("historical consensus params: {e}"))?
@@ -381,4 +391,20 @@ pub fn rollback(
     app_options: app::AppOptions,
 ) -> anyhow::Result<(i64, Vec<u8>)> {
     rollback_to_height(home, 0, remove_block, false, app_options)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::app_version_at;
+
+    /// A v1 (cosmos-sdk v0.46) state has no `consensus` store; its app
+    /// version is read from the x/params subspace `baseapp` (1 while
+    /// unset).
+    #[test]
+    fn app_version_of_a_v1_state() {
+        let mut ms = sdk::MultiStore::new();
+        let v1 = sdk::version::Release::for_app_version(1).unwrap();
+        app::stores::mount_release(&mut ms, v1).unwrap();
+        assert_eq!(app_version_at(&ms).unwrap(), 1);
+    }
 }

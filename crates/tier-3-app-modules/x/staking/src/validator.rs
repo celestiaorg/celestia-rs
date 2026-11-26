@@ -107,8 +107,14 @@ pub fn update_validator_commission(
     let mut c = v.commission.clone();
     let block_time = ctx.header.time;
     c.validate_new_rate(new_rate, &block_time)?;
-    let min = store::min_commission_rate(ctx)?;
+    let mut min = store::min_commission_rate(ctx)?;
     if *new_rate < min {
+        if ctx.is_sdk_v046() {
+            // cosmos-sdk v0.46 reads the parameter again for the error
+            // message (`k.MinCommissionRate(ctx)` in `fmt.Errorf`): a
+            // second metered read.
+            min = store::min_commission_rate(ctx)?;
+        }
         return Err(sdk::error::internal(format!(
             "cannot set validator commission to less than minimum rate of {min}"
         )));

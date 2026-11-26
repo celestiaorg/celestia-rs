@@ -528,10 +528,42 @@ fn v046_set_missed_block(
     ctx.set(STORE_KEY, v046_missed_block_key(cons, index), v)
 }
 
+/// A cosmos-sdk v0.46 slashing parameter (`k.paramspace.Get`: one
+/// metered read per call, as Go reads them).
+fn v046_window(ctx: &mut Context<'_>) -> Result<i64> {
+    x_params::v046::get_i64(ctx, "slashing", "SignedBlocksWindow")
+}
+
+fn v046_slash_fraction_downtime(ctx: &mut Context<'_>) -> Result<LegacyDec> {
+    x_params::v046::get_dec(ctx, "slashing", "SlashFractionDowntime")
+}
+
+/// cosmos-sdk v0.46 `MinSignedPerWindow`: reads `MinSignedPerWindow`,
+/// then `SignedBlocksWindow`.
+fn v046_min_signed_per_window(ctx: &mut Context<'_>) -> Result<i64> {
+    let min = x_params::v046::get_dec(ctx, "slashing", "MinSignedPerWindow")?;
+    let window = v046_window(ctx)?;
+    min.checked_mul_int64(window)
+        .and_then(|d| d.round_int64())
+        .map_err(math_err)
+}
+
+/// cosmos-sdk v0.46 `clearValidatorMissedBlockBitArray`: deletes every
+/// per-index key of `cons`.
+fn v046_clear_missed_blocks(ctx: &mut Context<'_>, cons: &[u8]) -> Result<()> {
+    let prefix = lp_key(V046_MISSED_BLOCK_BIT_ARRAY, cons);
+    let mut it = ctx.prefix_iter(STORE_KEY, &prefix)?;
+    while let Some((k, _)) = it.next(ctx)? {
+        ctx.delete(STORE_KEY, &k)?;
+    }
+    Ok(())
+}
+
 /// cosmos-sdk v0.46 `HandleValidatorSignature`: unlike v0.50 it requires
 /// the validator's pubkey rather than the validator, does not skip a
-/// jailed validator, and stores one key per missed index. Jailing for
-/// downtime is not ported.
+/// jailed validator, and stores one key per missed index. The store reads
+/// follow Go's order (each parameter getter is its own metered read;
+/// the BeginBlocker's gas lands on the block context's meter).
 fn v046_handle_validator_signature(
     ctx: &mut Context<'_>,
     cons: &[u8],
@@ -540,7 +572,8 @@ fn v046_handle_validator_signature(
 ) -> Result<()> {
     let height = ctx.header.height;
     let cons_str = cons_to_string(cons)?;
-    if !ctx.has(STORE_KEY, &addr_pubkey_key(cons))? {
+    // `GetPubkey`: a read; an absent relation fails to unmarshal (panic).
+    if ctx.get(STORE_KEY, &addr_pubkey_key(cons))?.is_none() {
         return Err(errs::logic(format!(
             "Validator consensus-address {cons_str} not found"
         )));
@@ -550,8 +583,7 @@ fn v046_handle_validator_signature(
             "Expected signing info for validator {cons_str} but not found"
         ))
     })?;
-    let params = get_params(ctx)?;
-    let window = params.signed_blocks_window;
+    let window = v046_window(ctx)?;
     if window == 0 {
         return Err(errs::logic("integer divide by zero"));
     }
@@ -566,7 +598,7 @@ fn v046_handle_validator_signature(
         v046_set_missed_block(ctx, cons, index, false)?;
         info.missed_blocks_counter -= 1;
     }
-    let min_signed = params.min_signed_per_window_blocks()?;
+    let min_signed = v046_min_signed_per_window(ctx)?;
     if missed {
         ctx.events.emit(event(
             "liveness",
@@ -577,15 +609,42 @@ fn v046_handle_validator_signature(
             ],
         ));
     }
-    let min_height = info.start_height + window;
-    let max_missed = window - min_signed;
+    let min_height = info.start_height + v046_window(ctx)?;
+    let max_missed = v046_window(ctx)? - min_signed;
     if height > min_height && info.missed_blocks_counter > max_missed {
         let v = x_staking::store::get_validator_by_cons_addr(ctx, cons)?;
         // A missing or jailed validator is only logged in Go.
         if v.is_some_and(|v| !v.jailed) {
-            return Err(errs::not_supported(format!(
-                "cosmos-sdk v0.46 downtime slashing and jailing of {cons_str} (power {power})"
-            )));
+            // `height - ValidatorUpdateDelay - 1`.
+            let distribution_height = height - 1 - 1;
+            let fraction = v046_slash_fraction_downtime(ctx)?;
+            let burned = x_staking::slash(ctx, cons, distribution_height, power, &fraction)?;
+            ctx.events.emit(event(
+                "slash",
+                [
+                    ("address", cons_str.clone()),
+                    ("power", power.to_string()),
+                    ("reason", "missing_signature".to_owned()),
+                    ("jailed", cons_str.clone()),
+                    ("burned_coins", burned.to_string()),
+                ],
+            ));
+            // `sk.Jail`: `mustGetValidatorByConsAddr`, then `jailValidator`
+            // (a Go panic for an already jailed validator).
+            x_staking::jail(ctx, cons)?;
+            let jail = x_params::v046::get_i64(ctx, "slashing", "DowntimeJailDuration")?;
+            let jail = Duration {
+                seconds: jail / 1_000_000_000,
+                nanos: i32::try_from(jail % 1_000_000_000)
+                    .map_err(|e| errs::logic(e.to_string()))?,
+            };
+            info.jailed_until = sdk::time::add_duration(&ctx.header.time, &jail);
+            info.missed_blocks_counter = 0;
+            info.index_offset = 0;
+            v046_clear_missed_blocks(ctx, cons)?;
+            // The log line's `SlashFractionDowntime(ctx).String()` argument
+            // is evaluated (a metered read) whatever the log level.
+            v046_slash_fraction_downtime(ctx)?;
         }
     }
     set_signing_info(ctx, cons, &info)

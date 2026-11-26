@@ -17,6 +17,9 @@ pub fn slash(
     power: i64,
     slash_factor: &LegacyDec,
 ) -> Result<Int> {
+    if ctx.is_sdk_v046() {
+        return slash_v046(ctx, cons, infraction_height, power, slash_factor);
+    }
     if slash_factor.is_negative() {
         return Err(sdk::error::internal(format!(
             "attempted to slash with a negative slash factor: {slash_factor}"
@@ -206,6 +209,161 @@ pub fn slash_redelegation(
         }
         let tokens_to_burn = unbond(ctx, &del, &dst, &shares_to_unbond)?;
         let dst_v = store::validator(ctx, &dst)?;
+        match dst_v.status {
+            BondStatus::Bonded => {
+                bonded_burned = bonded_burned
+                    .checked_add(&tokens_to_burn)
+                    .map_err(math_err)?;
+            }
+            BondStatus::Unbonded | BondStatus::Unbonding => {
+                not_bonded_burned = not_bonded_burned
+                    .checked_add(&tokens_to_burn)
+                    .map_err(math_err)?;
+            }
+            BondStatus::Unspecified => {
+                return Err(sdk::error::go_panic("unknown validator status"));
+            }
+        }
+    }
+    burn_bonded_tokens(ctx, &bonded_burned)?;
+    burn_not_bonded_tokens(ctx, &not_bonded_burned)?;
+    Ok(total)
+}
+
+/// cosmos-sdk v0.46 `Slash`: unlike v0.50 it runs the before-slashed hook
+/// and rewrites the validator even when nothing is burned (a zero
+/// fraction still records a distribution slash event), its hook errors
+/// are dropped (the distribution hook fails only by panicking), and
+/// redelegation slashing only unbonds from the destination.
+fn slash_v046(
+    ctx: &mut Context<'_>,
+    cons: &[u8],
+    infraction_height: i64,
+    power: i64,
+    slash_factor: &LegacyDec,
+) -> Result<Int> {
+    if slash_factor.is_negative() {
+        return Err(sdk::error::go_panic(format!(
+            "attempted to slash with a negative slash factor: {slash_factor}"
+        )));
+    }
+    let amount = types::tokens_from_consensus_power(power)?;
+    let slash_amount = LegacyDec::from_int(&amount)
+        .checked_mul(slash_factor)
+        .map_err(math_err)?
+        .truncate_int();
+    let Some(validator) = store::get_validator_by_cons_addr(ctx, cons)? else {
+        // Go logs a warning and ignores the slash.
+        return Ok(Int::zero());
+    };
+    if validator.is_unbonded() {
+        return Err(sdk::error::go_panic(format!(
+            "should not be slashing unbonded validator: {}",
+            validator.operator_address
+        )));
+    }
+    let op = validator.operator()?;
+    let h = hooks::hooks();
+    keep_panic(h.before_validator_modified(ctx, &op))?;
+
+    let mut remaining = slash_amount;
+    let height = ctx.header.height;
+    if infraction_height > height {
+        return Err(sdk::error::go_panic(format!(
+            "impossible attempt to slash future infraction at height {infraction_height} but we are at height {height}"
+        )));
+    } else if infraction_height < height {
+        for ubd in store::get_ubds_from_validator(ctx, &op)? {
+            let slashed = slash_unbonding_delegation(ctx, ubd, infraction_height, slash_factor)?;
+            if slashed.is_zero() {
+                continue;
+            }
+            remaining = remaining.checked_sub(&slashed).map_err(math_err)?;
+        }
+        for red in store::get_reds_from_src_validator(ctx, &op)? {
+            let slashed = slash_redelegation_v046(ctx, red, infraction_height, slash_factor)?;
+            if slashed.is_zero() {
+                continue;
+            }
+            remaining = remaining.checked_sub(&slashed).map_err(math_err)?;
+        }
+    }
+
+    // `MinInt(remaining, tokens)`, then `MaxInt(.., 0)`.
+    let mut to_burn = if remaining < validator.tokens {
+        remaining
+    } else {
+        validator.tokens.clone()
+    };
+    if to_burn.is_negative() {
+        to_burn = Int::zero();
+    }
+    if validator.tokens.is_positive() {
+        let mut fraction = LegacyDec::from_int(&to_burn)
+            .checked_quo_round_up(&LegacyDec::from_int(&validator.tokens))
+            .map_err(math_err)?;
+        if fraction > LegacyDec::one() {
+            fraction = LegacyDec::one();
+        }
+        keep_panic(h.before_validator_slashed(ctx, &op, &fraction))?;
+    }
+    let validator = remove_validator_tokens(ctx, validator, &to_burn)?;
+    match validator.status {
+        BondStatus::Bonded => burn_bonded_tokens(ctx, &to_burn)?,
+        BondStatus::Unbonding | BondStatus::Unbonded => burn_not_bonded_tokens(ctx, &to_burn)?,
+        BondStatus::Unspecified => return Err(sdk::error::go_panic("invalid validator status")),
+    }
+    Ok(to_burn)
+}
+
+/// A hook's result in a v0.46 `Slash`: Go drops the returned error, but a
+/// Go panic inside the hook still unwinds.
+fn keep_panic(r: Result<()>) -> Result<()> {
+    match r {
+        Err(e) if e.is_panic() => Err(e),
+        _ => Ok(()),
+    }
+}
+
+/// cosmos-sdk v0.46 `SlashRedelegation`: unbonds the slashed share of
+/// each eligible entry from the destination validator.
+fn slash_redelegation_v046(
+    ctx: &mut Context<'_>,
+    red: Redelegation,
+    infraction_height: i64,
+    slash_factor: &LegacyDec,
+) -> Result<Int> {
+    let now = ctx.header.time;
+    let mut total = Int::zero();
+    let mut bonded_burned = Int::zero();
+    let mut not_bonded_burned = Int::zero();
+    for entry in &red.entries {
+        if entry.creation_height < infraction_height || entry.is_mature(&now) {
+            continue;
+        }
+        let slash_amount = slash_factor
+            .checked_mul_int(&entry.initial_balance)
+            .map_err(math_err)?
+            .truncate_int();
+        total = total.checked_add(&slash_amount).map_err(math_err)?;
+        let mut shares_to_unbond = slash_factor
+            .checked_mul(&entry.shares_dst)
+            .map_err(math_err)?;
+        if shares_to_unbond.is_zero() {
+            continue;
+        }
+        let dst = crate::addr::val_from_string(&red.validator_dst_address)?;
+        let del = crate::addr::acc_from_string(&red.delegator_address)?;
+        let Some(d) = store::get_delegation(ctx, &del, &dst)? else {
+            continue;
+        };
+        if shares_to_unbond > d.shares {
+            shares_to_unbond = d.shares;
+        }
+        let tokens_to_burn = unbond(ctx, &del, &dst, &shares_to_unbond)
+            .map_err(|e| sdk::error::go_panic(format!("error unbonding delegator: {}", e.log)))?;
+        let dst_v = store::get_validator(ctx, &dst)?
+            .ok_or_else(|| sdk::error::go_panic("destination validator not found"))?;
         match dst_v.status {
             BondStatus::Bonded => {
                 bonded_burned = bonded_burned

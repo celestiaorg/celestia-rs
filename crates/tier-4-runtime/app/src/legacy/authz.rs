@@ -20,8 +20,12 @@ use celestia_proto::Any;
 use celestia_proto::cosmos::authz::v1beta1::{
     self as authz, EventGrant, EventRevoke, GenericAuthorization, Grant, GrantQueueItem,
 };
+use celestia_proto::cosmos::bank::v1beta1 as bank;
 use celestia_proto::cosmos::distribution::v1beta1 as distr;
+use celestia_proto::cosmos::feegrant::v1beta1 as feegrant;
+use celestia_proto::cosmos::gov;
 use celestia_proto::cosmos::staking::v1beta1 as staking;
+use celestia_proto::ibc::applications::transfer::v1 as transfer;
 use pbjson_types::Timestamp;
 use prost::{Message, Name};
 use sdk::error::sdk as errs;
@@ -401,6 +405,43 @@ struct Accepted {
 }
 
 /// `StakeAuthorization.Accept` (v0.46) of a nested staking message.
+/// A gogoproto `math.Int` customtype from its wire text: empty is a nil
+/// `Int`, whose arithmetic dereferences nil (a Go panic).
+fn wire_int_or_nil(s: &str) -> Result<math::Int> {
+    if s.is_empty() {
+        return Err(sdk::error::go_panic(
+            "runtime error: invalid memory address or nil pointer dereference",
+        ));
+    }
+    x_staking::msgs::wire_int(s)
+}
+
+/// v0.46 `Coin.SafeSub` of the stake authorization's `MaxTokens` by the
+/// message amount: plain errors for a denom mismatch and a negative
+/// result (`Int.Sub` panics past 256 bits).
+fn safe_sub(
+    max: &celestia_proto::cosmos::base::v1beta1::Coin,
+    amount: Option<&celestia_proto::cosmos::base::v1beta1::Coin>,
+) -> Result<celestia_proto::cosmos::base::v1beta1::Coin> {
+    let amount = amount.cloned().unwrap_or_default();
+    if max.denom != amount.denom {
+        return Err(sdk::error::internal(format!(
+            "invalid coin denoms: {}, {}",
+            max.denom, amount.denom
+        )));
+    }
+    let left = wire_int_or_nil(&max.amount)?
+        .checked_sub(&wire_int_or_nil(&amount.amount)?)
+        .map_err(|e| sdk::error::go_panic(e.to_string()))?;
+    if left.is_negative() {
+        return Err(sdk::error::internal("negative coin amount"));
+    }
+    Ok(celestia_proto::cosmos::base::v1beta1::Coin {
+        denom: max.denom.clone(),
+        amount: left.to_string(),
+    })
+}
+
 fn accept_stake(
     ctx: &mut Context<'_>,
     a: &staking::StakeAuthorization,
@@ -445,12 +486,22 @@ fn accept_stake(
             "cannot delegate/undelegate to {validator} validator"
         )));
     }
-    if a.max_tokens.is_some() {
-        // `Coin.SafeSub` of the spend limit is not ported.
-        let _ = amount;
-        return Err(super::not_ported(errs::invalid_request(
-            "the cosmos-sdk v0.46 StakeAuthorization max tokens are not ported",
-        )));
+    if let Some(max) = &a.max_tokens {
+        let left = safe_sub(max, amount.as_ref())?;
+        if left.amount == "0" {
+            return Ok(Accepted {
+                delete: true,
+                updated: None,
+            });
+        }
+        return Ok(Accepted {
+            delete: false,
+            updated: Some(Authorization::Stake(staking::StakeAuthorization {
+                max_tokens: Some(left),
+                policy: a.policy.clone(),
+                authorization_type: a.authorization_type,
+            })),
+        });
     }
     Ok(Accepted {
         delete: false,
@@ -482,19 +533,44 @@ fn exec_signer(msg: &Any) -> Result<Option<Vec<u8>>> {
             acc(&decode::<staking::MsgUndelegate>(msg)?.delegator_address)
         } else if u == staking::MsgBeginRedelegate::type_url() {
             acc(&decode::<staking::MsgBeginRedelegate>(msg)?.delegator_address)
+        } else if u == staking::MsgCancelUnbondingDelegation::type_url() {
+            acc(&decode::<staking::MsgCancelUnbondingDelegation>(msg)?.delegator_address)
+        } else if u == distr::MsgFundCommunityPool::type_url() {
+            acc(&decode::<distr::MsgFundCommunityPool>(msg)?.depositor)
+        } else if u == bank::MsgSend::type_url() {
+            acc(&decode::<bank::MsgSend>(msg)?.from_address)
+        } else if u == gov::v1beta1::MsgVote::type_url() {
+            acc(&decode::<gov::v1beta1::MsgVote>(msg)?.voter)
+        } else if u == gov::v1::MsgVote::type_url() {
+            acc(&decode::<gov::v1::MsgVote>(msg)?.voter)
+        } else if u == authz::MsgGrant::type_url() {
+            acc(&decode::<authz::MsgGrant>(msg)?.granter)
+        } else if u == authz::MsgRevoke::type_url() {
+            acc(&decode::<authz::MsgRevoke>(msg)?.granter)
+        } else if u == feegrant::MsgGrantAllowance::type_url() {
+            acc(&decode::<feegrant::MsgGrantAllowance>(msg)?.granter)
+        } else if u == feegrant::MsgRevokeAllowance::type_url() {
+            acc(&decode::<feegrant::MsgRevokeAllowance>(msg)?.granter)
+        } else if u == transfer::MsgTransfer::type_url() {
+            // ibc-go v6 `MsgTransfer.GetSigners` panics on a sender that
+            // does not parse.
+            let m: transfer::MsgTransfer = decode(msg)?;
+            sdk::address::acc_from_bech32_go(&m.sender).map_err(sdk::error::go_panic)?
         } else {
             return Ok(None);
         },
     ))
 }
 
-/// The router's `ValidateBasic` of a dispatched message: a failure is
-/// returned unless the message has a zero `GetAmount()` (celestia's
-/// exception), in which case its handler runs on the invalid message,
-/// which is not ported.
-fn router_validate_basic(msg: &Any) -> Result<()> {
+/// The router's `ValidateBasic` of a dispatched message (celestia's
+/// cosmos-sdk fork, `baseapp/msg_service_router.go`): a failure is
+/// returned unless the message has a `GetAmount() sdk.Coin` whose amount
+/// is zero, in which case its handler runs on the invalid message
+/// (`Ok(true)`). A nil amount panics in `IsZero`. Only `MsgDelegate`'s
+/// handler is ported for that case.
+fn router_validate_basic(msg: &Any) -> Result<bool> {
     let Err(e) = msgs::validate_basic(msg) else {
-        return Ok(());
+        return Ok(false);
     };
     let amount = if msg.type_url == staking::MsgDelegate::type_url() {
         Some(decode::<staking::MsgDelegate>(msg)?.amount)
@@ -502,23 +578,28 @@ fn router_validate_basic(msg: &Any) -> Result<()> {
         Some(decode::<staking::MsgUndelegate>(msg)?.amount)
     } else if msg.type_url == staking::MsgBeginRedelegate::type_url() {
         Some(decode::<staking::MsgBeginRedelegate>(msg)?.amount)
+    } else if msg.type_url == staking::MsgCancelUnbondingDelegation::type_url() {
+        Some(decode::<staking::MsgCancelUnbondingDelegation>(msg)?.amount)
     } else {
         None
     };
-    match amount {
-        Some(c)
-            if c.as_ref().is_none_or(|c| {
-                c.amount.is_empty()
-                    || x_staking::msgs::wire_int(&c.amount).is_ok_and(|a| a.is_zero())
-            }) =>
-        {
-            Err(super::not_ported(errs::invalid_request(format!(
-                "the cosmos-sdk v0.46 handler of {} on a zero amount its ValidateBasic rejects is not ported",
-                msg.type_url
-            ))))
-        }
-        _ => Err(e),
+    let Some(coin) = amount else { return Err(e) };
+    let raw = coin.map(|c| c.amount).unwrap_or_default();
+    if raw.is_empty() {
+        return Err(sdk::error::go_panic(
+            "runtime error: invalid memory address or nil pointer dereference",
+        ));
     }
+    if !x_staking::msgs::wire_int(&raw).is_ok_and(|a| a.is_zero()) {
+        return Err(e);
+    }
+    if msg.type_url == staking::MsgDelegate::type_url() {
+        return Ok(true);
+    }
+    Err(super::not_ported(errs::invalid_request(format!(
+        "the cosmos-sdk v0.46 handler of {} on a zero amount its ValidateBasic rejects is not ported",
+        msg.type_url
+    ))))
 }
 
 /// `fmt.Sprintf("%v", msg)` of a dispatched message.
@@ -533,6 +614,9 @@ fn exec(ctx: &mut Context<'_>, msg: &authz::MsgExec) -> Result<authz::MsgExecRes
     let now = ctx.header.time;
     let mut results = Vec::with_capacity(msg.msgs.len());
     for (i, m) in msg.msgs.iter().enumerate() {
+        // The nested message as Go holds it (the `MsgExec` keeps them as
+        // received).
+        let m = &msgs::gogo_view(m)?;
         let Some(granter) = exec_signer(m)? else {
             return Err(super::not_ported(errs::unknown_request(format!(
                 "the cosmos-sdk v0.46 dispatch of {} by MsgExec is not ported",
@@ -575,9 +659,13 @@ fn exec(ctx: &mut Context<'_>, msg: &authz::MsgExec) -> Result<authz::MsgExecRes
         // The router's handler: a fresh event manager, `ValidateBasic`,
         // the circuit breaker (the gatekeeper already accepted every
         // nested message), then the msg server.
-        router_validate_basic(m).map_err(|e| wrap_failed(e, m))?;
+        let zero_amount = router_validate_basic(m).map_err(|e| wrap_failed(e, m))?;
         let outer = std::mem::take(&mut ctx.events);
-        let resp = msgs::route(ctx, m);
+        let resp = if zero_amount {
+            msgs::delegate_zero_amount(ctx, m)
+        } else {
+            msgs::route(ctx, m)
+        };
         let nested = std::mem::replace(&mut ctx.events, outer).take();
         let resp = resp.map_err(|e| wrap_failed(e, m))?;
         let before = ctx.events.len();
@@ -596,4 +684,61 @@ fn wrap_failed(e: SdkError, msg: &Any) -> SdkError {
         "failed to execute message; message {}",
         msg_text(msg)
     ))
+}
+
+#[cfg(test)]
+mod stake_max_tokens_tests {
+    use super::*;
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+
+    fn coin(denom: &str, amount: &str) -> Coin {
+        Coin {
+            denom: denom.into(),
+            amount: amount.into(),
+        }
+    }
+
+    fn accept(max: Coin, amount: Coin) -> Result<Accepted> {
+        let mut ms = sdk::MultiStore::new();
+        let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        let a = staking::StakeAuthorization {
+            max_tokens: Some(max),
+            policy: None,
+            authorization_type: 1,
+        };
+        let msg = Any::pack(&staking::MsgDelegate {
+            delegator_address: String::new(),
+            validator_address: "v".into(),
+            amount: Some(amount),
+        });
+        accept_stake(&mut ctx, &a, &msg)
+    }
+
+    /// v0.46 `StakeAuthorization.Accept` with `MaxTokens`: the limit
+    /// shrinks by the amount (`SafeSub`); exhausting it deletes the grant;
+    /// exceeding it or another denom is a plain error; a nil limit amount
+    /// panics.
+    #[test]
+    fn max_tokens_shrink_and_delete() {
+        let r = accept(coin("utia", "100"), coin("utia", "40")).unwrap();
+        assert!(!r.delete);
+        let Some(Authorization::Stake(u)) = r.updated else {
+            panic!("no update")
+        };
+        assert_eq!(u.max_tokens, Some(coin("utia", "60")));
+        assert_eq!(u.authorization_type, 1);
+        let r = accept(coin("utia", "100"), coin("utia", "100")).unwrap();
+        assert!(r.delete && r.updated.is_none());
+        for (max, amount) in [
+            (coin("utia", "100"), coin("utia", "101")),
+            (coin("uatom", "100"), coin("utia", "1")),
+        ] {
+            let e = accept(max, amount).err().unwrap();
+            assert_eq!((e.codespace, e.code), ("undefined", 1), "{}", e.log);
+        }
+        let e = sdk::error::recover(|| accept(coin("utia", ""), coin("utia", "1")))
+            .err()
+            .unwrap();
+        assert!(e.is_panic(), "{}", e.log);
+    }
 }
