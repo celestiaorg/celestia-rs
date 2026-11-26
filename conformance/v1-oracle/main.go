@@ -298,6 +298,7 @@ func run() error {
 	registryOut := flag.String("registry-out", "", "only write the Rust v1 registry and schema tables (registry.go) to this directory")
 	keepRecent := flag.Uint64("keep-recent", 0, "prune all but this many recent IAVL versions (0: keep every version); bounds memory on long runs")
 	synthetic := flag.Bool("synthetic", false, "build the synthetic app version 1 to 3 chain (synthetic.go) instead of reading -genesis and -blocks; writes its genesis.json and blocks.jsonl.gz to -out")
+	chain := flag.String("chain", "v1-v3", "with -synthetic: the synthetic chain, v1-v3 (synthetic.go) or v3-rich (rich.go)")
 	handoff := flag.String("handoff", "", "with -synthetic: keep the app home (goleveldb data/application.db and data/upgrade-info.json) in this new directory and write handoff.json there, for conformance/v4-oracle to continue the chain")
 	flag.Parse()
 	if *registryOut != "" {
@@ -313,13 +314,18 @@ func run() error {
 			flag.Usage()
 			return errors.New("-synthetic takes -out (and -kv) only")
 		}
-		syn, err := newSynth()
+		spec, ok := chainSpecs[*chain]
+		if !ok {
+			return fmt.Errorf("unknown -chain %q", *chain)
+		}
+		syn, err := newSynth(spec)
 		if err != nil {
 			return err
 		}
-		cfg.heights = syntheticHeights
-		cfg.upgradeHeightV2 = syntheticUpgradeHeightV2
+		cfg.heights = spec.heights
+		cfg.upgradeHeightV2 = spec.upgradeHeightV2
 		cfg.src = syn
+		cfg.chain = *chain
 		cfg.handoff = *handoff
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			return err
@@ -351,9 +357,10 @@ type runConfig struct {
 	// src builds the blocks (nil: read blocksPath and check each block
 	// against the next archived header).
 	src blockSource
-	// handoff, for the synthetic chain: keep the app home in this new
-	// directory and write handoff.json for conformance/v4-oracle.
-	handoff string
+	// handoff, for a synthetic chain: keep the app home in this new
+	// directory and write handoff.json for conformance/v4-oracle; chain is
+	// the chain's -chain name.
+	handoff, chain string
 }
 
 // blockSource builds a chain's blocks on the replaying app's state.
@@ -649,12 +656,12 @@ func execute(cfg runConfig) error {
 	if cfg.handoff != "" {
 		s, ok := syn.(*synth)
 		if !ok {
-			return errors.New("-handoff needs the synthetic chain")
+			return errors.New("-handoff needs a synthetic chain")
 		}
 		if err := replayDB.Close(); err != nil {
 			return err
 		}
-		if err := s.writeHandoff(filepath.Join(cfg.handoff, "handoff.json"), *heights, vals); err != nil {
+		if err := s.writeHandoff(filepath.Join(cfg.handoff, "handoff.json"), cfg.chain, *heights, vals); err != nil {
 			return err
 		}
 	}

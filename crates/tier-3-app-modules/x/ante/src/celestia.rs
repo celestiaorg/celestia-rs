@@ -250,26 +250,29 @@ pub fn fibre_signature_gas(ctx: &mut Context<'_>, tx: &Tx) -> R<()> {
     Ok(())
 }
 
-/// `GasToConsume` (uint64 arithmetic wraps like Go).
-fn pfb_gas(pfb: &MsgPayForBlobs) -> R<u64> {
+/// `GasToConsume` (uint64 arithmetic wraps like Go). `counts_signer`:
+/// share version 1 blobs count their signer bytes (go-square v3 and later,
+/// [`sdk::version::Release::blob_shares_count_signer`]); go-square v2 reads
+/// only the sizes.
+fn pfb_gas(pfb: &MsgPayForBlobs, counts_signer: bool) -> R<u64> {
     let mut shares: u64 = 0;
     for (i, size) in pfb.blob_sizes.iter().enumerate() {
-        let v = *idx(&pfb.share_versions, i)?;
-        shares = shares.wrapping_add(sparse_shares_needed(*size, v == 1));
+        let signer = counts_signer && *idx(&pfb.share_versions, i)? == 1;
+        shares = shares.wrapping_add(sparse_shares_needed(*size, signer));
     }
     Ok(shares
         .wrapping_mul(SHARE_SIZE)
         .wrapping_mul(GAS_PER_BLOB_BYTE))
 }
 
-fn validate_pfb_has_enough_gas(msgs: &[Any], tx_gas: u64) -> R<()> {
+fn validate_pfb_has_enough_gas(msgs: &[Any], tx_gas: u64, counts_signer: bool) -> R<()> {
     for m in msgs {
         if let Some(nested) = txview::msg_exec_msgs(m)? {
-            validate_pfb_has_enough_gas(&nested, tx_gas)?;
+            validate_pfb_has_enough_gas(&nested, tx_gas, counts_signer)?;
         }
         if is_type::<MsgPayForBlobs>(m) {
             let pfb: MsgPayForBlobs = decode(m)?;
-            let need = pfb_gas(&pfb)?;
+            let need = pfb_gas(&pfb, counts_signer)?;
             if need > tx_gas {
                 return Err(errs::insufficient_fee(format!(
                     "not enough gas to pay for blobs (minimum: {need}, got: {tx_gas})"
@@ -287,7 +290,8 @@ pub fn min_gas_pfb(ctx: &mut Context<'_>, tx: &Tx) -> R<()> {
         return Ok(());
     }
     let remaining = ctx.gas.remaining().unwrap_or(u64::MAX);
-    validate_pfb_has_enough_gas(tx.msgs(), remaining)
+    let counts_signer = ctx.release().blob_shares_count_signer();
+    validate_pfb_has_enough_gas(tx.msgs(), remaining, counts_signer)
 }
 
 /// `blobtypes.ErrBlobsTooLarge`.
@@ -295,17 +299,17 @@ fn blobs_too_large(log: String) -> SdkError {
     SdkError::new("blob", 11139, format!("{log}: blob(s) too large"))
 }
 
-fn validate_blob_shares(msgs: &[Any], tx_size: u32, max_shares: u64) -> R<()> {
+fn validate_blob_shares(msgs: &[Any], tx_size: u32, max_shares: u64, counts_signer: bool) -> R<()> {
     for m in msgs {
         if let Some(nested) = txview::msg_exec_msgs(m)? {
-            validate_blob_shares(&nested, tx_size, max_shares)?;
+            validate_blob_shares(&nested, tx_size, max_shares, counts_signer)?;
         }
         if is_type::<MsgPayForBlobs>(m) {
             let pfb: MsgPayForBlobs = decode(m)?;
             let mut need = compact_shares_needed(tx_size);
             for (i, size) in pfb.blob_sizes.iter().enumerate() {
-                let v = *idx(&pfb.share_versions, i)?;
-                need += sparse_shares_needed(*size, v == 1);
+                let signer = counts_signer && *idx(&pfb.share_versions, i)? == 1;
+                need += sparse_shares_needed(*size, signer);
             }
             if need > max_shares {
                 return Err(blobs_too_large(format!(
@@ -327,8 +331,14 @@ pub fn blob_share(ctx: &mut Context<'_>, tx: &Tx, deps: &impl AnteDeps) -> R<()>
         return Err(blobs_too_large("the tx size exceeds the max uint32".into()).into());
     };
     let gov_max = deps.blob_gov_max_square_size(ctx)?;
-    let square = gov_max.min(SQUARE_SIZE_UPPER_BOUND);
-    validate_blob_shares(tx.msgs(), tx_size, square * square)
+    let release = ctx.release();
+    let square = gov_max.min(release.square_size_upper_bound());
+    validate_blob_shares(
+        tx.msgs(),
+        tx_size,
+        square * square,
+        release.blob_shares_count_signer(),
+    )
 }
 
 fn with_infinite_gas<T>(
@@ -691,6 +701,61 @@ mod tests {
                     );
                 }
             }
+        }
+        sdk::version::set_app_version(previous);
+    }
+
+    /// celestia-app v4.1.0 and v5.0.12: the staking filter requires
+    /// `DefaultUnbondingTime` (21 days) and the consensus filter checks only
+    /// the validator params (v6.4.10 added the evidence check).
+    #[test]
+    fn v4_governance_filters() {
+        use celestia_proto::celestia_core_proto::tendermint::types::{
+            BlockParams, EvidenceParams, ValidatorParams, VersionParams,
+        };
+        use celestia_proto::cosmos::{consensus, staking};
+
+        let previous = sdk::version::app_version();
+        sdk::version::set_app_version(4);
+        let mut ms = MultiStore::new();
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        ctx.consensus_params.version = Some(VersionParams { app: 4 });
+        let check = |m| {
+            param_filter(
+                &ctx,
+                &tx_of(vec![msg_exec(vec![submit_proposal(vec![m])])]),
+                &crate::deps::StoreDeps::default(),
+            )
+        };
+        for (duration, ok) in [(21 * 24 * 3600, true), (337 * 3600, false)] {
+            let staking = Any::pack(&staking::v1beta1::MsgUpdateParams {
+                params: Some(staking::v1beta1::Params {
+                    bond_denom: "utia".into(),
+                    unbonding_time: Some(pbjson_types::Duration {
+                        seconds: duration,
+                        nanos: 0,
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
+            assert_eq!(check(staking).is_ok(), ok, "{duration}");
+        }
+        for (pub_key_types, ok) in [(vec!["ed25519".to_owned()], true), (vec![], false)] {
+            let consensus = Any::pack(&consensus::v1::MsgUpdateParams {
+                block: Some(BlockParams::default()),
+                evidence: Some(EvidenceParams {
+                    max_age_num_blocks: 1,
+                    max_age_duration: Some(pbjson_types::Duration {
+                        seconds: 1,
+                        nanos: 0,
+                    }),
+                    max_bytes: 1,
+                }),
+                validator: Some(ValidatorParams { pub_key_types }),
+                ..Default::default()
+            });
+            assert_eq!(check(consensus).is_ok(), ok);
         }
         sdk::version::set_app_version(previous);
     }

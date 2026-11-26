@@ -136,8 +136,8 @@ fn synthetic_blocks_match_the_oracle() {
 /// chain with the oracle's app hashes, reopening after the v1 to v2
 /// upgrade (block 5), inside app version 2 (block 8) and inside app
 /// version 3 (block 12). After block 15 the state is at app version 4
-/// with the v4 plan scheduled, and the next block stops: app version 4
-/// runs on the cosmos-sdk v0.50 app.
+/// with the v4 plan scheduled, and the next block runs on the cosmos-sdk
+/// v0.50 app.
 #[test]
 fn synthetic_app_runs_the_chain_across_reopens() {
     let genesis: serde_json::Value = serde_json::from_slice(&read("genesis.json")).unwrap();
@@ -195,12 +195,12 @@ fn synthetic_app_runs_the_chain_across_reopens() {
         }
     }
     assert_eq!(app.info().app_version, 4);
+    // Block 16 is the scheduled v4 upgrade: the app hands off to the
+    // cosmos-sdk v0.50 app (`tests/v4_handoff_oracle.rs` checks that block
+    // against the Go oracle).
     let mut next = common::finalize_request(&blocks[&15], &vals[&15]);
     next.height = 16;
-    let e = app.finalize_block(next).unwrap_err();
-    assert!(
-        e.log.contains("block execution at app version 4"),
-        "{}",
-        e.log
-    );
+    app.finalize_block(next)
+        .unwrap_or_else(|e| panic!("height 16: {}", e.log));
+    assert!(!app.is_sdk_v046_state());
 }

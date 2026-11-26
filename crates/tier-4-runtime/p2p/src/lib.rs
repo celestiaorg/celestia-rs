@@ -16,6 +16,7 @@
 //!   lifecycle, broadcast and persistent peers with backoff.
 //! - [`pex`]: the address book (`addrbook.json`) and PEX reactor.
 
+pub mod flap;
 pub mod flowrate;
 pub mod key;
 pub mod mconnection;
