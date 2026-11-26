@@ -34,7 +34,7 @@ use ctypes::proto::types as pb;
 use prost::Message;
 
 mod remote;
-pub use remote::RemotePv;
+pub use remote::{RemotePv, RemoteRawBytesSigner};
 
 /// `stepNone`: the initial state.
 pub const STEP_NONE: i8 = 0;
