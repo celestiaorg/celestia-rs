@@ -516,7 +516,7 @@ fn accept_stake(
 /// The single signer `msg.GetSigners()` returns in v0.46 for a message
 /// `MsgExec` can dispatch (an address that does not parse is empty).
 /// `None` for a message whose dispatch is not ported.
-fn exec_signer(msg: &Any) -> Result<Option<Vec<u8>>> {
+pub(super) fn exec_signer(msg: &Any) -> Result<Option<Vec<u8>>> {
     let acc = |s: &str| sdk::address::acc_from_bech32_go(s).unwrap_or_default();
     let u = msg.type_url.as_str();
     Ok(Some(

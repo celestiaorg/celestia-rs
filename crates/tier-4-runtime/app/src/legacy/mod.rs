@@ -36,6 +36,7 @@ pub mod ibc;
 pub mod ibc_channel;
 pub mod ibc_timeout;
 pub mod ibc_transfer;
+pub mod ica_host;
 pub mod migrate;
 pub mod msgs;
 pub mod params;
@@ -422,12 +423,15 @@ pub(crate) fn timeouts(app_version: u64) -> TimeoutInfo {
 /// The v0.34 BeginBlock header the multiplexer builds from FinalizeBlock
 /// (`remote_v1.go`): the block's header fields with protocol version
 /// `{11, app_version}` and celestia-rs's chain ID.
+/// Also hands the header's data hash to the interchain accounts host
+/// ([`ica_host::set_data_hash`]), whose account addresses hash it.
 fn begin_block_header(
     chain_id: &str,
     app_version: u64,
     req: &abci::RequestFinalizeBlock,
     h: &TmHeader,
 ) -> TmHeader {
+    ica_host::set_data_hash(&h.data_hash);
     TmHeader {
         version: Some(Consensus {
             block: BLOCK_PROTOCOL,

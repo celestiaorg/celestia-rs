@@ -16,8 +16,11 @@
 //!   (block 56), timed out again (block 58: A gives up, as above).
 //!
 //! Then it opens an interchain account channel for a controller on B
-//! (blocks 69 and 72) and executes the account's delegate, send and
-//! withdraw-rewards messages (block 75).
+//! (blocks 69 and 72, which create the account), executes the account's
+//! delegate, send and withdraw-rewards messages (block 75), and receives
+//! two transactions that fail with error acknowledgements: one signed by
+//! another account (block 78) and one whose send exceeds the balance
+//! (block 81, which rolls back its delegation too).
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::print_stdout)]
 
@@ -29,9 +32,8 @@ fn fix() -> Fixture {
     Fixture::synthetic("ibc-v2")
 }
 
-/// The last block that celestia-rs executes as Go does: block 69 opens
-/// the interchain account host channel, which is not ported yet.
-const MATCHED_THROUGH: i64 = 68;
+/// The last block that celestia-rs executes as Go does: every block.
+const MATCHED_THROUGH: i64 = 83;
 
 /// The fixture files are the ones the oracle wrote.
 #[test]
@@ -55,7 +57,7 @@ fn ibc_fixture_files_match_their_record() {
         r["kv"]["kv-diffs.jsonl"],
         sha(&f.gunzip("kv-diffs.jsonl.gz"))
     );
-    assert_eq!(f.last_height(), 77);
+    assert_eq!(f.last_height(), 83);
 }
 
 #[test]

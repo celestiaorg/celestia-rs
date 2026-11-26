@@ -787,7 +787,7 @@ fn recv_packet(
 }
 
 /// `NewErrorAcknowledgement` (v6): only the ABCI code of `e`.
-fn error_ack(e: &sdk::SdkError) -> channel::AckResponse {
+pub(super) fn error_ack(e: &sdk::SdkError) -> channel::AckResponse {
     channel::AckResponse::Error(format!(
         "ABCI code: {}: error handling packet: see events for details",
         e.code
@@ -930,7 +930,8 @@ fn recv_packet_msg(ctx: &mut Context<'_>, m: &chpb::MsgRecvPacket) -> Result<Any
     let (module, cap) =
         channel::lookup_module_by_channel(ctx, &p.destination_port, &p.destination_channel)
             .map_err(|e| e.wrap("could not retrieve module from port-id"))?;
-    if module != x_transfer::MODULE_NAME {
+    let ica = module == super::ica_host::MODULE;
+    if module != x_transfer::MODULE_NAME && !ica {
         return Err(super::not_ported(errs::not_supported(format!(
             "the ibc-go v6 packet callbacks of module {module} are not ported"
         ))));
@@ -967,7 +968,11 @@ fn recv_packet_msg(ctx: &mut Context<'_>, m: &chpb::MsgRecvPacket) -> Result<Any
     let outer = std::mem::take(&mut ctx.events);
     let base = ctx.multistore().depth();
     let cp = ctx.branch();
-    let ack = on_recv_packet(ctx, &p);
+    let ack = if ica {
+        super::ica_host::on_recv_packet(ctx, &p).map(Some)
+    } else {
+        on_recv_packet(ctx, &p)
+    };
     let mut cached = std::mem::replace(&mut ctx.events, outer);
     let ack = match ack {
         Ok(a) => a,

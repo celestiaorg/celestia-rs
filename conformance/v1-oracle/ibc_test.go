@@ -508,6 +508,28 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 	icaPacket, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
 	must(t, err)
 	must(t, icaPath.RelayPacket(icaPacket))
+
+	// Two transactions that fail on A, each with an error
+	// acknowledgement: a message signed by another account (rejected
+	// before execution), then a send of more than the account holds
+	// (after a delegation that is rolled back with it).
+	sendICA := func(msgs ...proto.Message) {
+		data, err := icatypes.SerializeCosmosTx(chainA.App.AppCodec(), msgs)
+		must(t, err)
+		res, err := chainB.SendMsgs(icacontrollertypes.NewMsgSendTx(owner, icaPath.EndpointA.ConnectionID, uint64(time.Hour), icatypes.InterchainAccountPacketData{
+			Type: icatypes.EXECUTE_TX,
+			Data: data,
+		}))
+		must(t, err)
+		p, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+		must(t, err)
+		must(t, icaPath.RelayPacket(p))
+	}
+	sendICA(banktypes.NewMsgSend(chainA.SenderAccount.GetAddress(), icaAcc, sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 1))))
+	sendICA(
+		stakingtypes.NewMsgDelegate(icaAcc, val, sdk.NewInt64Coin(appconsts.BondDenom, 1_000_000)),
+		banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 1_000_000_000))),
+	)
 	// A last empty block commits the relayed acknowledgement's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc
