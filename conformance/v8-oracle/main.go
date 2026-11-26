@@ -162,6 +162,7 @@ func run() error {
 	genesisPath := flag.String("genesis", "", "the genesis.json of the synthetic chain")
 	heights := flag.Int64("heights", 5, "number of blocks to execute after the hand-off height")
 	out := flag.String("out", "", "output directory")
+	nextHandoff := flag.Bool("next-handoff", false, "after the last block, require plan \"v9\" at the next height and rewrite handoff.json in the -handoff home for conformance/v9-oracle")
 	flag.Parse()
 	if *home == "" || *genesisPath == "" || *out == "" || *heights < 1 {
 		flag.Usage()
@@ -336,6 +337,19 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "height %d: %s (%d txs, %d validator updates, app version %d)\n", height, got, len(res.TxResults), len(updates), s.appVersion)
 	}
 
+	if *nextHandoff {
+		last := ho.Height + *heights
+		plan, err := a.UpgradeKeeper.ReadUpgradeInfoFromDisk()
+		if err != nil {
+			return err
+		}
+		if plan.Name != "v9" || s.appVersion != 9 {
+			return fmt.Errorf("after height %d: upgrade-info.json plan %q, app version %d; want plan v9 and app version 9", last, plan.Name, s.appVersion)
+		}
+		if err := s.writeHandoff(filepath.Join(*home, "handoff.json")); err != nil {
+			return err
+		}
+	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return err
 	}

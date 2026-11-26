@@ -128,6 +128,7 @@ updates:
       - /conformance/devnet-oracle
       - /conformance/evidencevectors
       - /conformance/fibre-client
+      - /conformance/fibre-server
       - /conformance/fixturegen
       - /conformance/fuzzoracle/v9
       - /conformance/fuzzoracle/v10
@@ -151,6 +152,7 @@ updates:
       - /conformance/v5-oracle
       - /conformance/v6-oracle
       - /conformance/v8-oracle
+      - /conformance/v9-oracle
       - /conformance/v11-frozen
       - /conformance/websocket-lifecycle
     schedule:

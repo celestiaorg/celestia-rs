@@ -2318,6 +2318,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64cd1e32ddd350061ae6edb1b082d7c54915b5c672c389143b9a63403a109f24"
 
 [[package]]
+name = "fibre-server"
+version = "0.0.1"
+dependencies = [
+ "celestia-proto 0.0.1",
+ "chacha8rand",
+ "crypto",
+ "getrandom 0.3.4",
+ "hash",
+ "hex",
+ "pbjson-types",
+ "prost 0.13.5",
+ "redb",
+ "rsema1d",
+ "rustix",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "x-fibre",
+ "x509-parser 0.18.1",
+ "zstd",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"

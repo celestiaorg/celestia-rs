@@ -448,6 +448,35 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json
   -out ../fixtures/synthetic/v8
 ```
 
+#### Synthetic chain across the v8 to v9 upgrade
+
+`v8-oracle -heights 10 -next-handoff` runs the chain on to block 56: the
+validators signal version 9, a `MsgTryUpgrade` in block 53 reaches
+quorum, and the EndBlocker of block 56 sets app version 9 and schedules
+plan `v9` at 57. [`fixtures/synthetic/v8-to-v9`](fixtures/synthetic/v8-to-v9)
+holds its outputs (blocks 47 to 51 are those of `fixtures/synthetic/v8`).
+`v9-oracle` opens the home with celestia-app v9.0.8, built without the
+`fibre` build tag as the release binaries are (so no store is added). The
+PreBlocker of block 57 runs the `v9` handler (BlockMaxBytes 32 MiB,
+evidence MaxAgeNumBlocks 559,940, blob GovMaxSquareSize 256, IBC
+MaxExpectedTimePerBlock 13 s), and the program executes blocks 57 to 61.
+Its `tx-results.jsonl.gz` also records each block's whole `timeout_info`,
+which has more fields in celestia-core v0.40.
+[`fixtures/synthetic/v9`](fixtures/synthetic/v9) holds the outputs from
+height 56. `go test` in `v8-oracle` rebuilds `v8-to-v9`; `go test` in
+`v9-oracle` runs the whole chain from genesis and rebuilds `v9`.
+`cargo test -p app --test synthetic_v9_oracle` checks the fixtures'
+facts. To regenerate, after the v6 to v8 commands (on a fresh home):
+
+```sh
+cd conformance/v8-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v8-to-v9 -heights 10 -next-handoff
+cd ../v9-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v9
+```
+
 #### Rich synthetic chain for the v3 to v4 migrations
 
 `v1-oracle -synthetic -chain v3-rich` builds a second chain (genesis at
@@ -538,6 +567,47 @@ Blocks 14 and 32 check the jail and the queues against the plan.
 holds heights 0 to 32 (regenerate it as the governance chain, with
 `-chain staking-v1-v3`). `cargo test -p app --test staking_oracle` compares each
 block.
+
+#### Amino JSON chains for app versions 1 to 3
+
+`v1-oracle -synthetic -chain amino-v1-v3` (`synthetic_amino.go`) signs
+every transaction in `SIGN_MODE_LEGACY_AMINO_JSON` with the cosmos-sdk
+v0.46 client (`client/tx.Sign`), so that celestia-rs must build Go's amino
+JSON sign bytes for each message it executes. In v0.46 each message's sign
+bytes come from its own module's codec, and a nested value whose type that
+codec does not register is written bare (without `{"type","value"}`);
+[`amino-sign-bytes-v046.md`](amino-sign-bytes-v046.md) lists the codec of
+every message and which nested values are bare. The same matrix runs at
+app version 1 (blocks 2 to 4), 2 (blocks 6 to 8, after
+`--v2-upgrade-height 6`) and 3 (blocks 14 to 16, after the signals of
+blocks 9 and 10):
+
+- authz grants of every authorization type (generic for each inner
+  message, send, stake, ibc transfer) and `MsgExec` of each inner message
+  mainnet used, fee allowances (basic, periodic, allowed-msg) and
+  fee-granted transactions, gov proposals of every content type through
+  v1beta1 and v1 (`MsgExecLegacyContent`), votes and deposits;
+- staking (a new validator with an ed25519 key `Any`), distribution, bank,
+  the three vesting messages, crisis (an unknown invariant route), evidence
+  (celestia-app sets no evidence router: the handler panics), slashing,
+  signal, blobstream, `MsgPayForBlobs`, ibc transfer and relayer messages
+  (client creation and an update with a signed header, packets,
+  handshakes), which have no amino sign bytes: Go's ante handler panics;
+- 2-of-3 multisig accounts with amino, direct and mixed sub-signatures;
+- transactions signed over the wrapped form of a value the module codec
+  writes bare, and a corrupted signature, which Go rejects.
+
+[`fixtures/synthetic/amino-v1-v3`](fixtures/synthetic/amino-v1-v3) holds
+heights 0 to 17 (regenerate it as the governance chain, with
+`-chain amino-v1-v3`). `cargo test -p app --test amino_oracle` compares
+every block, and checks that the app version 4 and later sign bytes of
+its transactions do not change.
+
+The oracle writes a transaction's log without what depends on Go's
+runtime or the machine (the log is not consensus data): the goroutine
+stack and celestia's "caused by transaction" dump of a recovered panic
+(the log keeps `recovered: <value>: panic`), and the stack frames a `%+v`
+of an error with a recorded stack prints.
 
 #### State-sync snapshots of the v0.46 chains
 
