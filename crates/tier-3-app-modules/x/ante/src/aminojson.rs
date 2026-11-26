@@ -117,9 +117,59 @@ struct Exts {
 /// numbers, no map support).
 pub struct Encoder {
     ext: Exts,
-    /// Inside a cosmos-sdk v0.46 authz message, whose `GetSignBytes`
-    /// marshals with the authz amino codec ([`V046_AUTHZ_AMINO`]).
-    authz_amino: std::cell::Cell<bool>,
+    /// Inside a cosmos-sdk v0.46 message whose `GetSignBytes` marshals
+    /// with a module amino codec: the concrete types it registers
+    /// ([`v046_codec`]).
+    codec: std::cell::Cell<Option<&'static [&'static str]>>,
+}
+
+/// Concrete types registered on cosmos-sdk v0.46 gov v1beta1's
+/// `ModuleCdc` (its own types and crypto; no proposal content of another
+/// module).
+const V046_GOV_V1BETA1_AMINO: &[&str] = &[
+    "/cosmos.crypto.ed25519.PubKey",
+    "/cosmos.crypto.multisig.LegacyAminoPubKey",
+    "/cosmos.crypto.secp256k1.PubKey",
+    "/cosmos.gov.v1beta1.MsgDeposit",
+    "/cosmos.gov.v1beta1.MsgSubmitProposal",
+    "/cosmos.gov.v1beta1.MsgVote",
+    "/cosmos.gov.v1beta1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.TextProposal",
+];
+
+/// Concrete types registered on cosmos-sdk v0.46 gov v1's `ModuleCdc`
+/// (gov v1 and v1beta1 types, crypto).
+const V046_GOV_V1_AMINO: &[&str] = &[
+    "/cosmos.crypto.ed25519.PubKey",
+    "/cosmos.crypto.multisig.LegacyAminoPubKey",
+    "/cosmos.crypto.secp256k1.PubKey",
+    "/cosmos.gov.v1.MsgDeposit",
+    "/cosmos.gov.v1.MsgExecLegacyContent",
+    "/cosmos.gov.v1.MsgSubmitProposal",
+    "/cosmos.gov.v1.MsgVote",
+    "/cosmos.gov.v1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.MsgDeposit",
+    "/cosmos.gov.v1beta1.MsgSubmitProposal",
+    "/cosmos.gov.v1beta1.MsgVote",
+    "/cosmos.gov.v1beta1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.TextProposal",
+];
+
+/// The module amino codec a top-level cosmos-sdk v0.46 message's
+/// `GetSignBytes` marshals with, as the concrete types it registers, when
+/// that codec lacks some packable type: authz (`authzcodec.ModuleCdc`)
+/// and gov (each version's `ModuleCdc`). `None`: every packed type the
+/// message can hold is registered on its codec.
+fn v046_codec(type_url: &str) -> Option<&'static [&'static str]> {
+    if type_url.starts_with("/cosmos.authz.v1beta1.Msg") {
+        Some(V046_AUTHZ_AMINO)
+    } else if type_url.starts_with("/cosmos.gov.v1beta1.Msg") {
+        Some(V046_GOV_V1BETA1_AMINO)
+    } else if type_url.starts_with("/cosmos.gov.v1.Msg") {
+        Some(V046_GOV_V1_AMINO)
+    } else {
+        None
+    }
 }
 
 /// The concrete types registered on cosmos-sdk v0.46's `authzcodec.Amino`
@@ -398,7 +448,7 @@ impl Encoder {
                 scalar: ext("cosmos_proto.scalar")?,
                 customtype: ext("gogoproto.customtype")?,
             },
-            authz_amino: std::cell::Cell::new(false),
+            codec: std::cell::Cell::new(None),
         })
     }
 
@@ -425,20 +475,21 @@ impl Encoder {
             value
         };
         let msg = DynamicMessage::decode(desc, value.as_slice()).map_err(|e| e.to_string())?;
-        // cosmos-sdk v0.46: an authz message's `GetSignBytes` marshals with
-        // the authz amino codec, which writes a concrete type it does not
-        // register as its bare value.
-        let v046 = sdk::version::is_sdk_v046(0);
-        if v046 && self.authz_amino.get() {
-            if V046_AUTHZ_AMINO.binary_search(&type_url).is_err() {
+        // cosmos-sdk v0.46: a message's `GetSignBytes` marshals with its
+        // module's amino codec, which writes a packed concrete type it does
+        // not register as its bare value (go-amino).
+        if let Some(registered) = self.codec.get() {
+            if registered.binary_search(&type_url).is_err() {
                 return self.marshal_message(&msg, w);
             }
             return self.begin_marshal(&msg, w, true);
         }
-        let authz = v046 && type_url.starts_with("/cosmos.authz.v1beta1.Msg");
-        self.authz_amino.set(authz);
+        if !sdk::version::is_sdk_v046(0) {
+            return self.begin_marshal(&msg, w, true);
+        }
+        self.codec.set(v046_codec(type_url));
         let r = self.begin_marshal(&msg, w, true);
-        self.authz_amino.set(false);
+        self.codec.set(None);
         r
     }
 
@@ -1116,10 +1167,12 @@ mod tests {
         assert_eq!(format_rfc3339(-1, 0), "1969-12-31T23:59:59Z");
     }
 
-    /// [`V046_AUTHZ_AMINO`] is searched by bisection.
+    /// The v0.46 codec registries are searched by bisection.
     #[test]
-    fn v046_authz_amino_is_sorted() {
-        assert!(V046_AUTHZ_AMINO.windows(2).all(|w| w[0] < w[1]));
+    fn v046_amino_registries_are_sorted() {
+        for r in [V046_AUTHZ_AMINO, V046_GOV_V1BETA1_AMINO, V046_GOV_V1_AMINO] {
+            assert!(r.windows(2).all(|w| w[0] < w[1]));
+        }
     }
 
     #[test]
