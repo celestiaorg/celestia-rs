@@ -660,7 +660,7 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 Err(e) => return c.put("vk", &format!("err:{e}")),
             };
             c.put("vk", "ok");
-            let verify = if sdk::version::is_v9(sdk::version::app_version()) {
+            let verify = if sdk::version::release(0).before_v10() {
                 groth16::sp1_verify_v5
             } else {
                 groth16::sp1_verify
@@ -723,7 +723,7 @@ fn run(op: &str, m: &BTreeMap<u64, Vec<Vec<u8>>>, c: &mut Res) {
                 Err(e) => return c.put("unmarshal", &format!("err:{e}")),
             };
             c.put("unmarshal", "ok");
-            let app_v9 = sdk::version::is_v9(sdk::version::app_version());
+            let app_v9 = sdk::version::release(0).before_v10();
             let want = match proto.sum.as_ref() {
                 Some(ctypes::proto::propagation::message::Sum::WantParts(w)) => {
                     Some(want_parts_from_proto(w, app_v9).map(Msg::WantParts))

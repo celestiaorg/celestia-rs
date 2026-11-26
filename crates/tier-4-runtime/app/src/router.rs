@@ -27,7 +27,7 @@ macro_rules! routes {
             // `MsgServiceRouter.HandlerByTypeURL` is nil at app version 9
             // (e.g. authz `MsgGrant` of a `GenericAuthorization` for one:
             // "<type> doesn't exist.", ADR 0004).
-            if sdk::version::is_v9(sdk::version::app_version())
+            if sdk::version::release(0).v9_registry()
                 && txdecode::added_in_v10(type_url)
             {
                 return false;

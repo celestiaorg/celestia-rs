@@ -84,7 +84,7 @@ pub fn increment_validator_period(ctx: &mut Context<'_>, v: &Validator) -> Resul
     // cosmos-sdk v0.52.8 (app version 9) adds without `recover`: the
     // overflow stays a panic (a halt in BeginBlock); v0.52.12's
     // `addDecCoins` recovers it into an error.
-    let new_ratio = if sdk::version::is_v9(sdk::version::app_version()) {
+    let new_ratio = if sdk::version::release(0).sdk_before_v0_52_12() {
         historical.cumulative_reward_ratio.add(&current)?
     } else {
         sdk::error::recover(|| historical.cumulative_reward_ratio.add(&current))

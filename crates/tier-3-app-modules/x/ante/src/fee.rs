@@ -154,7 +154,7 @@ fn validate_tx_fee(
     gas: u64,
     deps: &impl AnteDeps,
 ) -> R<i64> {
-    let v9 = crate::is_v9(ctx);
+    let v9 = ctx.release().before_v10();
     for c in coins {
         if !v9 && c.denom != BOND_DENOM {
             return Err(errs::invalid_coins(format!(

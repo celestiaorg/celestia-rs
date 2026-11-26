@@ -335,7 +335,7 @@ pub fn pay_for_gas_without_quote(
     if amount.is_zero() {
         // v1.1.0 (app version 9) refuses a zero payment; v1.3.0 charges
         // nothing.
-        if crate::is_v9(ctx) {
+        if crate::upstream(ctx) {
             return Err(internal("amount must be greater than zero"));
         }
         return Ok(());
@@ -377,7 +377,7 @@ pub fn pay_for_gas(
     // hyperlane-cosmos v1.1.0 (app version 9): `requiredPayment.IsAllGT(
     // maxFee)`, which passes a max fee in another denom; v1.3.0:
     // `!maxFee.IsAllGTE(requiredPayment)`.
-    let exceeds = if crate::is_v9(ctx) {
+    let exceeds = if crate::upstream(ctx) {
         required.is_all_gt(max_fee)
     } else {
         !max_fee.is_all_gte(&required)
@@ -672,7 +672,7 @@ pub fn pay_for_gas_msg(
             "runtime error: invalid memory address or nil pointer dereference",
         ));
     }
-    if crate::is_v9(ctx) {
+    if crate::upstream(ctx) {
         // hyperlane-cosmos v1.1.0: pays exactly `sdk.NewCoins(req.Amount)`
         // without a quote.
         let coins = Coins::new([amount])?;

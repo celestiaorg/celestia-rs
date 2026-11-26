@@ -40,6 +40,7 @@ use celestia_proto::celestia_core_proto::abci::{
 use celestia_proto::celestia_core_proto::tendermint::types::{ConsensusParams, VersionParams};
 use multistore::kvdb::{self, DbOptions, KvBackend};
 use pbjson_types::Duration;
+use sdk::version::Release;
 use sdk::{Context, ExecMode, Header, MultiStore, Result, SdkError};
 
 /// `baseapp.InitialAppVersion` is 0; celestia genesis files carry the app
@@ -763,7 +764,7 @@ impl App {
         self.check_header = header.clone();
         sdk::version::set_app_version(genesis_app_version);
         // celestia-app v9.0.8 has no fibre / valaddr stores (ADR 0004).
-        if stores::is_v9(genesis_app_version) {
+        if !Release::executing(genesis_app_version).has_fibre() {
             for name in stores::ADDED_IN_V10 {
                 if self.ms.is_mounted(name) {
                     self.ms.unmount_iavl(name).map_err(store_err)?;
@@ -907,7 +908,7 @@ impl App {
 
         // cosmos-sdk v0.52.8 (celestia-app v9) delivers each tx in turn;
         // v0.52.12 (v10) runs every ante handler before any message.
-        let tx_results = if stores::is_v9(app_version) {
+        let tx_results = if Release::executing(app_version).sdk_before_v0_52_12() {
             execute_txs_sequential(&mut ctx, &req.txs)
         } else {
             execute_txs_phased(&mut ctx, &req.txs)
@@ -997,8 +998,8 @@ impl App {
     fn mount_upgrade_stores(&mut self) -> Result<()> {
         let consensus_version = self.app_version();
         let next_height = self.last_height.saturating_add(1);
-        let signal_switch =
-            !stores::is_v9(consensus_version) && consensus_version != INITIAL_APP_VERSION;
+        let signal_switch = !Release::executing(consensus_version).before_v10()
+            && consensus_version != INITIAL_APP_VERSION;
         let governance_switch = self.upgrade_store_height == Some(next_height);
         if !signal_switch && !governance_switch {
             return Ok(());
@@ -1128,15 +1129,16 @@ impl App {
                 .and_then(|snapshot| manager.begin_restore(snapshot))
                 {
                     Ok(()) => {
-                        self.snapshot_optional_v10_stores = stores::is_v9(req.app_version);
+                        let v10_stores = Release::executing(req.app_version).has_fibre();
+                        self.snapshot_optional_v10_stores = !v10_stores;
                         // Only accepted offers select stores. A later offer
                         // may replace an abandoned restore of another version.
                         if self.last_height == 0 {
                             for name in stores::ADDED_IN_V10 {
                                 let mounted = self.ms.is_mounted(name);
-                                let result = if stores::is_v9(req.app_version) && mounted {
+                                let result = if !v10_stores && mounted {
                                     self.ms.unmount_iavl(name)
-                                } else if !stores::is_v9(req.app_version) && !mounted {
+                                } else if v10_stores && !mounted {
                                     self.ms.mount(name, sdk::Kind::Iavl)
                                 } else {
                                     Ok(())
