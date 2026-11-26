@@ -1,9 +1,11 @@
-//! ibc-go v6 (celestiaorg `v6.3.0`) channel handshake of celestia-app v1:
-//! `MsgChannelOpenInit`, `MsgChannelOpenTry`, `MsgChannelOpenAck` and
-//! `MsgChannelOpenConfirm` with their v6 `ValidateBasic`, the 04-channel
-//! keeper steps, port and channel capabilities, and the ICS-20 transfer
-//! callbacks (behind celestia-app's token filter, which only filters
-//! received packets). Built on the store helpers of `x-ibc`; proofs go
+//! ibc-go v6 (celestiaorg `v6.3.0`) channel handshake of celestia-app v1
+//! to v3: `MsgChannelOpenInit`, `MsgChannelOpenTry`, `MsgChannelOpenAck`,
+//! `MsgChannelOpenConfirm` and `MsgChannelCloseConfirm` with their v6
+//! `ValidateBasic`, the 04-channel keeper steps, port and channel
+//! capabilities, and the callbacks of the ICS-20 transfer stack (behind
+//! celestia-app's token filter, which only filters received packets) and
+//! of the interchain accounts host ([`super::ica_host`], app versions 2
+//! and 3). Built on the store helpers of `x-ibc`; proofs go
 //! through the v6 connection verification of [`super::ibc`].
 
 // A capability is its 8-byte index, passed by reference as in `x-ibc`.
@@ -167,6 +169,17 @@ pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
             check_signer(&m.signer)
         }));
     }
+    if msg.type_url == chpb::MsgChannelCloseConfirm::type_url() {
+        return Some(decode(msg).and_then(|m: chpb::MsgChannelCloseConfirm| {
+            port_id(&m.port_id)?;
+            if !channel::is_valid_channel_id(&m.channel_id) {
+                return Err(cherr::invalid_channel_identifier(""));
+            }
+            non_empty_proof(&m.proof_init, "cannot submit an empty proof init")?;
+            non_zero_proof_height(m.proof_height.as_ref())?;
+            check_signer(&m.signer)
+        }));
+    }
     None
 }
 
@@ -183,6 +196,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
     }
     if msg.type_url == chpb::MsgChannelOpenConfirm::type_url() {
         return Some(decode(msg).and_then(|m| chan_open_confirm_msg(ctx, &m)));
+    }
+    if msg.type_url == chpb::MsgChannelCloseConfirm::type_url() {
+        return Some(decode(msg).and_then(|m| chan_close_confirm_msg(ctx, &m)));
     }
     None
 }
@@ -617,4 +633,60 @@ fn chan_open_confirm_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelOpenConfirm)
     channel::set_channel(ctx, port, chan, &ch)?;
     channel_events(ctx, "channel_open_confirm", port, chan, &ch, false);
     Ok(Any::pack(&chpb::MsgChannelOpenConfirmResponse {}))
+}
+
+/// `MsgChannelCloseConfirm` (core msg server, then 04-channel
+/// `ChanCloseConfirm`). The callback runs first: in v6 both transfer's
+/// and the interchain accounts host's `OnChanCloseConfirm` do nothing.
+fn chan_close_confirm_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelCloseConfirm) -> Result<Any> {
+    let (port, chan) = (&m.port_id, &m.channel_id);
+    let (module, cap) = lookup_channel(ctx, port, chan)?;
+    route_to(&module)?;
+    let proof_height = m.proof_height.unwrap_or_default();
+    let ch = (|| -> Result<Channel> {
+        if !x_ibc::port::SCOPED_KEEPER.authenticate_capability(
+            ctx,
+            &cap,
+            &host::channel_capability_path(port, chan),
+        )? {
+            // Go's `Wrap` keeps the format verbs.
+            return Err(cherr::channel_capability_not_found(
+                "caller does not own capability for channel, port ID (%s) channel ID (%s)",
+            ));
+        }
+        let mut ch = get_channel(ctx, port, chan)?;
+        if ch.state == State::Closed as i32 {
+            return Err(cherr::invalid_channel_state("channel is already CLOSED"));
+        }
+        let hop = ch.connection_hops.first().cloned().unwrap_or_default();
+        let conn = connection_end(ctx, &hop)?;
+        connection_open(&conn)?;
+        let cp = ch.counterparty.clone().unwrap_or_default();
+        let expected = Channel {
+            state: State::Closed as i32,
+            ordering: ch.ordering,
+            counterparty: Some(Counterparty {
+                port_id: port.clone(),
+                channel_id: chan.clone(),
+            }),
+            connection_hops: vec![conn.counterparty.clone().unwrap_or_default().connection_id],
+            version: ch.version.clone(),
+            upgrade_sequence: 0,
+        };
+        verify_channel_state(
+            ctx,
+            &conn,
+            &proof_height,
+            &m.proof_init,
+            &cp.port_id,
+            &cp.channel_id,
+            &expected,
+        )?;
+        ch.state = State::Closed as i32;
+        channel::set_channel(ctx, port, chan, &ch)?;
+        Ok(ch)
+    })()
+    .map_err(|e| e.wrap("channel handshake close confirm failed"))?;
+    channel_events(ctx, "channel_close_confirm", port, chan, &ch, false);
+    Ok(Any::pack(&chpb::MsgChannelCloseConfirmResponse {}))
 }

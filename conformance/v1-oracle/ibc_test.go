@@ -567,6 +567,59 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 	)
 
 	runV3(t, coord, chainA, chainB, chainC, pathAB, pathAC, voucher, timeout, sendICA, icaAcc)
+
+	// An interchain account packet times out on B: the ordered channel
+	// closes on B (MsgTimeout) and on A (MsgChannelCloseConfirm). B
+	// registers again, and A reopens the same account on a new channel.
+	data, err = icatypes.SerializeCosmosTx(chainA.App.AppCodec(), []proto.Message{
+		banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 1))),
+	})
+	must(t, err)
+	res, err = chainB.SendMsgs(icacontrollertypes.NewMsgSendTx(owner, icaPath.EndpointA.ConnectionID, uint64(time.Minute), icatypes.InterchainAccountPacketData{
+		Type: icatypes.EXECUTE_TX,
+		Data: data,
+	}))
+	must(t, err)
+	lost, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	coord.IncrementTimeBy(2 * time.Minute)
+	coord.CommitBlock(chainA)
+	must(t, icaPath.EndpointA.UpdateClient())
+	nextRecvKey := host.NextSequenceRecvKey(lost.GetDestPort(), lost.GetDestChannel())
+	proof, proofHeight := chainA.QueryProof(nextRecvKey)
+	nextRecv, found := chainA.App.GetIBCKeeper().ChannelKeeper.GetNextSequenceRecv(chainA.GetContext(), lost.GetDestPort(), lost.GetDestChannel())
+	if !found {
+		t.Fatal("no next sequence receive on A")
+	}
+	_, err = chainB.SendMsgs(channeltypes.NewMsgTimeout(lost, nextRecv, proof, proofHeight, chainB.SenderAccount.GetAddress().String()))
+	must(t, err)
+	if ch := icaPath.EndpointA.GetChannel(); ch.State != channeltypes.CLOSED {
+		t.Fatalf("controller channel is %s after the timeout", ch.State)
+	}
+	must(t, icaPath.EndpointB.UpdateClient())
+	proof, proofHeight = chainB.QueryProof(host.ChannelKey(icaPath.EndpointA.ChannelConfig.PortID, icaPath.EndpointA.ChannelID))
+	_, err = chainA.SendMsgs(channeltypes.NewMsgChannelCloseConfirm(icatypes.HostPortID, icaPath.EndpointB.ChannelID, proof, proofHeight, chainA.SenderAccount.GetAddress().String()))
+	must(t, err)
+	res, err = chainB.SendMsgs(icacontrollertypes.NewMsgRegisterInterchainAccount(icaPath.EndpointA.ConnectionID, owner, version))
+	must(t, err)
+	icaPath.EndpointA.ChannelID, err = ibctesting.ParseChannelIDFromEvents(res.GetEvents())
+	must(t, err)
+	// The new channel starts from the version without an address, and A's
+	// end gets a new channel ID.
+	icaPath.EndpointA.ChannelConfig.Version = version
+	icaPath.EndpointB.ChannelConfig.Version = version
+	closedHostChannel := icaPath.EndpointB.ChannelID
+	icaPath.EndpointB.ChannelID = ""
+	must(t, icaPath.EndpointB.ChanOpenTry())
+	must(t, icaPath.EndpointA.ChanOpenAck())
+	must(t, icaPath.EndpointB.ChanOpenConfirm())
+	if icaPath.EndpointB.ChannelID == closedHostChannel {
+		t.Fatal("the host reused the closed channel")
+	}
+	if addr, _ := chainA.App.(*recApp).ICAHostKeeper.GetInterchainAccountAddress(chainA.GetContext(), icaPath.EndpointB.ConnectionID, controllerPort); addr != icaAddr {
+		t.Fatalf("reopened account %s, want %s", addr, icaAddr)
+	}
+	sendICA(banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 2))))
 	// A last empty block commits the last transaction's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc
