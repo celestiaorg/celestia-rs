@@ -52,6 +52,20 @@ impl Handlers {
     const fn names(self) -> &'static [&'static str] {
         Release::executing(self.app_version).upgrade_handlers
     }
+
+    /// Whether [`x_upgrade::UpgradeHandlers::apply`] runs plan `name` here.
+    /// A release can register a plan (Go's `HasHandler`, which x/upgrade's
+    /// PreBlocker checks) before celestia-rs ports its handler (`v4` to
+    /// `v8`).
+    #[must_use]
+    pub fn is_ported(&self, name: &str) -> bool {
+        use x_upgrade::UpgradeHandlers as _;
+        match name {
+            "v9" => true,
+            "v10" | "v11" | "v12" => self.has_handler(name),
+            _ => false,
+        }
+    }
 }
 
 impl x_upgrade::UpgradeHandlers for Handlers {
