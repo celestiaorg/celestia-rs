@@ -15,6 +15,7 @@ use x_upgrade::VersionMap;
 mod v10;
 mod v11;
 mod v12;
+pub mod v4;
 mod v9;
 
 /// `appconsts.Version`.
@@ -40,16 +41,40 @@ pub const EVIDENCE_MAX_AGE_NUM_BLOCKS: i64 = 404_400;
 pub struct Handlers {
     /// App version being executed (0: current).
     pub app_version: u64,
+    /// Whether the handler set is that of `app_version`'s own mainnet
+    /// release ([`Release::for_app_version`]) rather than the release that
+    /// executes it ([`Release::executing`]).
+    pub own_release: bool,
 }
 
 impl Handlers {
     /// The handlers of the binary executing `app_version`.
     #[must_use]
     pub const fn at(app_version: u64) -> Self {
-        Self { app_version }
+        Self {
+            app_version,
+            own_release: false,
+        }
+    }
+
+    /// The handlers of the mainnet release of `app_version` (its
+    /// [`Release::upgrade_handlers`]), whichever release executes it: app
+    /// version 4's binary, celestia-app v4.1.0, knows `v4`.
+    #[must_use]
+    pub const fn of_release(app_version: u64) -> Self {
+        Self {
+            app_version,
+            own_release: true,
+        }
     }
 
     const fn names(self) -> &'static [&'static str] {
+        if self.own_release {
+            return match Release::for_app_version(self.app_version) {
+                Some(r) => r.upgrade_handlers,
+                None => &[],
+            };
+        }
         Release::executing(self.app_version).upgrade_handlers
     }
 }
@@ -61,6 +86,17 @@ impl x_upgrade::UpgradeHandlers for Handlers {
 
     fn apply(&self, ctx: &mut Context<'_>, plan: &Plan, from: VersionMap) -> Result<VersionMap> {
         match plan.name.as_str() {
+            "v4" if self.has_handler("v4") => {
+                let versions = v4::handler(ctx, &from)?;
+                // celestiaorg x/upgrade v0.1.0 `ApplyUpgrade` (celestia-app
+                // v4.1.0): after the handler, the app version is raised by
+                // one through the consensus version modifier.
+                let current = x_consensus::get_params(ctx)?
+                    .and_then(|cp| cp.version)
+                    .map_or(0, |v| v.app);
+                set_app_version(ctx, current + 1)?;
+                Ok(versions)
+            }
             "v10" if self.has_handler("v10") => v10::handler(ctx, from),
             "v11" if self.has_handler("v11") => v11::handler(ctx, from),
             "v12" if self.has_handler("v12") => v12::handler(ctx, from),
@@ -169,6 +205,20 @@ mod tests {
             assert!(v10.has_handler("v10"));
             assert!(!v10.has_handler("v9"));
         }
+    }
+
+    /// A release's own handler set, whatever executes its app version:
+    /// celestia-app v4.1.0 registers `v4` (and v5.0.12 still does).
+    #[test]
+    fn own_release_handlers_follow_the_mainnet_release() {
+        assert!(Handlers::of_release(4).has_handler("v4"));
+        assert!(!Handlers::of_release(4).has_handler("v9"));
+        assert!(Handlers::of_release(5).has_handler("v4"));
+        assert!(Handlers::of_release(5).has_handler("v5"));
+        assert!(!Handlers::of_release(3).has_handler("v4"));
+        assert!(!Handlers::of_release(13).has_handler("v4"));
+        // The executing release's set is unchanged.
+        assert!(!Handlers::at(4).has_handler("v4"));
     }
 
     /// The release table keeps the handler sets of the hand-written table

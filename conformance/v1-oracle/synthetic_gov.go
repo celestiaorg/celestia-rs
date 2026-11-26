@@ -1,6 +1,6 @@
 package main
 
-// The governance chain (`-synthetic -gov`): the synthetic chain's genesis
+// The governance chain (`-synthetic -chain gov-v1-v3`): the synthetic chain's genesis
 // with 40 second deposit and voting periods (about 3 blocks), so that
 // celestia-rs can check cosmos-sdk v0.46 governance at app version 1 and
 // again at app version 3.
@@ -28,7 +28,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"encoding/json"
@@ -65,6 +64,21 @@ const (
 	govMinDeposit = 10_000_000_000
 	govPeriod     = 40 * time.Second
 )
+
+// govSpec is the governance chain (fixtures/synthetic/gov-v1-v3).
+var govSpec = &chainSpec{
+	heights:         govHeights,
+	upgradeHeightV2: govUpgradeHeightV2,
+	appVersion:      1,
+	validators:      syntheticValidators,
+	stakes:          syntheticStakes,
+	users:           syntheticUsers,
+	userBalance:     1_000_000_000_000,
+	// The fourth validator misses every third height.
+	absent:   func(height int64, i, n int) bool { return i == n-1 && height%3 == 0 },
+	modifier: govGenesis,
+	rawTxs:   func(s *synth, a *app.App, height int64) ([][]byte, error) { return s.govTxs(a, height) },
+}
 
 // govGenesis shortens the deposit and voting periods of celestia-app's
 // gov genesis (10,000 TIA minimum deposit, default tally params).
@@ -114,7 +128,7 @@ func checkGov(a *app.App) error {
 // govTxs are the governance chain's transactions of block `height`: at
 // most one per account.
 func (s *synth) govTxs(a *app.App, height int64) ([][]byte, error) {
-	if height == govHeights && os.Getenv("V1_ORACLE_GOV_NOCHECK") == "" {
+	if height == govHeights {
 		if err := checkGov(a); err != nil {
 			return nil, err
 		}

@@ -1,6 +1,6 @@
 package main
 
-// The staking chain (`-synthetic -staking`): the synthetic chain's
+// The staking chain (`-synthetic -chain staking-v1-v3`): the synthetic chain's
 // genesis with a 60 second unbonding time and a 10 block signing window
 // (half of it signed, a 60 second downtime jail), so that celestia-rs
 // can check the staking, slashing, authz, feegrant and vesting paths
@@ -26,7 +26,6 @@ package main
 // Blocks 14 and 32 check the jail and the queues against the plan.
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -45,9 +44,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/feegrant"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
-	"github.com/tendermint/tendermint/crypto/ed25519"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	tmtypes "github.com/tendermint/tendermint/types"
 )
 
 const (
@@ -62,6 +59,24 @@ const (
 	stakingPeriod    = 60 * time.Second
 	tia              = 1_000_000
 )
+
+// stakingSpec is the staking chain (fixtures/synthetic/staking-v1-v3).
+var stakingSpec = &chainSpec{
+	heights:         stakingHeights,
+	upgradeHeightV2: stakingUpgradeHeightV2,
+	appVersion:      1,
+	validators:      syntheticValidators,
+	stakes:          syntheticStakes,
+	users:           syntheticUsers,
+	userBalance:     1_000_000_000_000,
+	// val3, the validator with the least power and so the last, misses
+	// the commits up to stakingMissUntil (it is jailed at block 11 and
+	// leaves the set at block 13).
+	absent:      func(height int64, i, n int) bool { return i == n-1 && height <= stakingMissUntil },
+	modifier:    stakingGenesis,
+	newAccounts: stakingNewAccounts,
+	rawTxs:      func(s *synth, a *app.App, height int64) ([][]byte, error) { return s.stakingTxs(a, height) },
+}
 
 // stakingNewAccounts are created by the staking chain's vesting
 // transactions (their keys are in the keyring from the start).
@@ -82,14 +97,6 @@ func stakingGenesis(cdc codec.Codec) genesis.Modifier {
 		state[slashingtypes.ModuleName] = cdc.MustMarshalJSON(&sl)
 		return state
 	}
-}
-
-var val3ConsAddress = ed25519.GenPrivKeyFromSecret([]byte("consensus val3")).PubKey().Address()
-
-// stakingAbsent: val3 misses the commits of blocks up to
-// stakingMissUntil.
-func stakingAbsent(height int64, v *tmtypes.Validator) bool {
-	return height <= stakingMissUntil && bytes.Equal(v.Address, val3ConsAddress)
 }
 
 // checkStaking compares the committed state with the plan before block

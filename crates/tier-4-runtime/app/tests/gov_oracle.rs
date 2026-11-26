@@ -1,5 +1,5 @@
 //! The governance chain against the Go oracle (`conformance/v1-oracle
-//! -synthetic -gov`, fixture `conformance/fixtures/synthetic/gov-v1-v3`).
+//! -synthetic -chain gov-v1-v3`, fixture `conformance/fixtures/synthetic/gov-v1-v3`).
 //!
 //! celestia-app v3.13.0 runs the synthetic chain's genesis with 40 second
 //! deposit and voting periods (about 3 blocks). At app version 1 (blocks

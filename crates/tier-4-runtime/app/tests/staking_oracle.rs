@@ -1,5 +1,5 @@
 //! The staking chain against the Go oracle (`conformance/v1-oracle
-//! -synthetic -staking`, fixture
+//! -synthetic -chain staking-v1-v3`, fixture
 //! `conformance/fixtures/synthetic/staking-v1-v3`).
 //!
 //! celestia-app v3.13.0 runs the synthetic chain's genesis with a 60
