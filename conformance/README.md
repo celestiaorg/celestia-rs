@@ -357,11 +357,27 @@ ibc-go simapp chains as counterparties:
 - Chain ID `test`, genesis at app version 1, `--v2-upgrade-height 3`,
   the inter-block cache on (as celestia nodes run). Keys come from fixed
   seeds and memos are empty, so the run is reproducible.
-- A opens transfer channels to B and C, sends utia to B, receives it back
-  with a `forward` memo that PFM forwards to C, and acknowledges the
-  forward (which writes the acknowledgement of B's packet).
+- A opens transfer channels to B and C, sends utia to B, and receives it
+  back three times with a `forward` memo that PFM forwards to C: C
+  accepts the first forward (A writes the acknowledgement of B's
+  packet), rejects the second (A moves the utia back to the A-B escrow
+  and writes an error acknowledgement), and the third times out twice
+  (with one retry, A sends it again once, then gives up).
 - B registers an interchain account on A, funds it, and executes
-  delegate, send and withdraw-rewards through it.
+  delegate, send and withdraw-rewards through it, then (in one
+  transaction) a withdraw address, an undelegation, a redelegation and
+  an IBC transfer to B. Then two of its
+  transactions fail on A with error acknowledgements: a message signed
+  by another account, and a send of more than the account holds (after
+  a delegation that is rolled back with it).
+- A sender creates a validator with 100 times the genesis validators'
+  power and signals version 3 (chain ID `test` has a 3 block upgrade
+  delay), so A reaches app version 3 at block 95. Then a transfer to B,
+  a PFM forward from B to C and an interchain account delegation run at
+  app version 3. Then an interchain account packet times out on B: the
+  ordered channel closes on B and on A (`MsgChannelCloseConfirm`), B
+  registers again, and A reopens the same account on a new channel and
+  executes a send over it. The fixture keeps its `ibc-v2` name.
 
 The test records A's genesis, each BeginBlock header and the
 transactions of each block. It replays them in a fresh app through the
@@ -370,7 +386,7 @@ run's. Each block gets one BeginBlock at one time (ibctesting re-runs
 BeginBlock when its clock moves, which no consensus engine does), so
 the clients that A hosts allow an hour of clock drift. The blocks carry
 no last commit. [`fixtures/synthetic/ibc-v2`](fixtures/synthetic/ibc-v2)
-holds heights 0 to 61; the test requires it byte for byte. To
+holds heights 0 to 124; the test requires it byte for byte. To
 regenerate it:
 
 ```sh
