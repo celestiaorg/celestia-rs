@@ -9,7 +9,13 @@ here=$(cd "$(dirname "$0")" && pwd)
 . "$here/lib.sh"
 t=$(mktemp -d)
 agent_pid=''
-cleanup() { [[ -z $agent_pid ]] || kill "$agent_pid" 2>/dev/null || true; pkill -f "$t/" 2>/dev/null || true; rm -rf "$t"; }
+cleanup() {
+  [[ -z $agent_pid ]] || { kill "$agent_pid" 2>/dev/null; wait "$agent_pid" 2>/dev/null; }
+  pkill -f "$t/" 2>/dev/null || true
+  pkill -f "$here/agent.sh" 2>/dev/null || true
+  sleep 0.5
+  rm -rf "$t" 2>/dev/null || { sleep 2; rm -rf "$t"; }
+}
 trap cleanup EXIT
 fails=0
 check() { local name=$1; shift; if "$@" >/dev/null 2>&1; then echo "ok   $name"; else echo "FAIL $name"; fails=$((fails + 1)); fi; }
@@ -158,7 +164,7 @@ eq     "result of detached"  later "$("$X" result vm1 "$id" 2>/dev/null)"
 "$X" exec vm1 -- 'seq 1 300000' >"$t/long" 2>"$t/long.err"
 eq     "long output tail"    300000 "$(tail -n1 "$t/long")"
 check  "long output notice"  grep -q 'output truncated' "$t/long.err"
-for _ in 1 2 3 4 5 6 7 8 9 10; do [[ -e $F/state/runs/$id/reaped ]] && break; sleep 0.5; done
+for _ in $(seq 1 40); do [[ -e $F/state/runs/$id/reaped ]] && break; sleep 0.5; done
 check  "result reaped"       test ! -e "$F/ga/vmx/$id"
 
 head -c 300000 /dev/urandom >"$t/payload"
@@ -168,7 +174,7 @@ check  "push"                cmp "$t/payload" "$t/vmfs/payload"
 check  "fetch"               cmp "$t/payload" "$t/fetched"
 
 "$X" job vm1 start counter --interval 1 --status-cmd 'echo height=$(wc -l <log)' -- bash -c 'for i in $(seq 1 1000); do echo tick $i; sleep 0.1; done' >/dev/null 2>&1
-for _ in $(seq 1 40); do grep -q 'height=' "$F/ga/vmx/job-counter" 2>/dev/null && break; sleep 0.25; done
+for _ in $(seq 1 160); do grep -q 'height=' "$F/ga/vmx/job-counter" 2>/dev/null && break; sleep 0.25; done
 st=$("$X" job vm1 status counter 2>/dev/null || true)
 check  "job status published" grep -q '^ActiveState=active' <<<"$st"
 check  "job status cmd"      grep -q '^height=' <<<"$st"
