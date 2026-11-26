@@ -10,7 +10,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 t=$(mktemp -d)
 agent_pid=''
 cleanup() {
-  [[ -z $agent_pid ]] || { kill "$agent_pid" 2>/dev/null; wait "$agent_pid" 2>/dev/null; }
+  # The killed agent makes `wait` return 143; under `set -e` that would become
+  # the exit status of the whole test.
+  [[ -z $agent_pid ]] || { kill "$agent_pid" 2>/dev/null || true; wait "$agent_pid" 2>/dev/null || true; }
   pkill -f "$t/" 2>/dev/null || true
   pkill -f "$here/agent.sh" 2>/dev/null || true
   sleep 0.5
@@ -125,6 +127,7 @@ fi
 case $verb in
   add-metadata | remove-metadata) ;;
   describe)
+    if [[ " $* " == *" --format=value(status) "* ]]; then cat "$VMX_FAKE/status" 2>/dev/null || echo RUNNING; exit 0; fi
     for f in "$VMX_FAKE/md"/*; do [[ -f $f ]] && jq -Rs --arg k "${f##*/}" '{key: $k, value: .}' "$f"; done |
       jq -s '{metadata: {items: .}}' ;;
   get-guest-attributes)
@@ -153,6 +156,13 @@ out=$("$X" exec vm1 -- "echo hi; echo err >&2" 2>/dev/null)
 eq     "exec output"         $'hi\nerr' "$out"
 rc=0; "$X" exec vm1 -- 'exit 7' >/dev/null 2>&1 || rc=$?
 eq     "exec exit status"    7 "$rc"
+# A VM that stopped while a request runs: the client gives up instead of
+# polling for ever.
+echo TERMINATED >"$F/status"
+rc=0; err=$(VMX_VM_CHECK_EVERY=1 timeout 60 "$X" exec vm1 -- 'sleep 4' 2>&1 >/dev/null) || rc=$?
+rm -f "$F/status"
+eq     "exec on a stopped VM" 125 "$rc"
+check  "stopped VM message"  grep -q 'vm1 is TERMINATED' <<<"$err"
 eq     "exec request removed" "" "$(ls "$F/md")"
 out=$(printf 'cd /\npwd\necho "$VMX_ID" | wc -c\n' | "$X" exec vm1 -f - 2>/dev/null)
 eq     "exec script stdin"   $'/\n19' "$out"

@@ -31,6 +31,14 @@ ref() { # ref PATH JQ: value both archive RPCs agree on
   local a b
   a=$(curl -fsS -m 30 "${REF[0]}/$1" | jq -r "$2") && b=$(curl -fsS -m 30 "${REF[1]}/$1" | jq -r "$2") && [ "$a" = "$b" ] && echo "$a"
 }
+put_retry() { # put_retry FILE OBJECT: upload, five tries
+  local i
+  for i in 1 2 3 4 5; do
+    vmx-gcs put "$1" "$2" && return 0
+    sleep $((i * 5))
+  done
+  return 1
+}
 for hv in $HEIGHTS; do
   h=${hv%%:*} v=${hv#*:} fmt=$([ $v = v046 ] && echo 2 || echo 3)
   d=$OUT/$h-$v
@@ -57,14 +65,23 @@ for hv in $HEIGHTS; do
     '$ARGS.named' > $d/checkpoint.tmp
   name=$([ $vrc = 0 ] && echo checkpoint.json || echo failed.json)
   mv $d/checkpoint.tmp $d/$name
-  for f in $(cd $d && find snapshots/$h -type f | sort) $name export.log verify.log; do
+  # The metadata object goes last: it marks a complete upload. A failed
+  # upload leaves no local done-marker, so the next run exports this
+  # height again instead of skipping it.
+  uploaded=1
+  for f in $(cd $d && find snapshots/$h -type f | sort) export.log verify.log $name; do
     # gs://<bucket>/go-snapshots/<height>/<format>/<chunk> and .../<format>/metadata.json
     case $f in
       snapshots/*) obj=go-snapshots/$h/${f#snapshots/"$h"/} ;;
       "$name") obj=go-snapshots/$h/$fmt/$([ "$name" = checkpoint.json ] && echo metadata.json || echo failed.json) ;;
       *) obj=go-snapshots/$h/$fmt/$f ;;
     esac
-    vmx-gcs put $d/$f "$obj" || echo "upload $f failed"
+    put_retry $d/$f "$obj" || { echo "upload $f failed"; uploaded=0; break; }
   done
+  if [ $uploaded = 0 ]; then
+    mv $d/$name $d/upload-failed.json
+    echo "$h $v upload incomplete; the next run exports it again"
+    continue
+  fi
   echo "$h $v -> $name, $chunks chunks, $bytes bytes"
 done
