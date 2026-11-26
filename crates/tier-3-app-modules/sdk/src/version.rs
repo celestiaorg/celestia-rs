@@ -669,6 +669,20 @@ impl Release {
         }
     }
 
+    /// `appconsts.MaxAgeNumBlocks` where it differs from the governance
+    /// default (`Some(242_640)`: celestia-app v6.4.x to v8.0.8, whose
+    /// consensus param filter requires it). `None` elsewhere: v4.1.0 and
+    /// v5.0.12 check no evidence params, and later releases keep their
+    /// own limits.
+    #[must_use]
+    pub const fn gov_max_age_num_blocks(&self) -> Option<i64> {
+        if matches!(self.app_version, 6..=8) {
+            Some(242_640)
+        } else {
+            None
+        }
+    }
+
     /// go-square v4.0.0-rc4: the square layout counts signer bytes and
     /// classifies fibre transactions (app version 9 only).
     #[must_use]
@@ -903,6 +917,7 @@ mod tests {
             assert!(!r.has_token_filter(), "v{v}");
             assert!(!r.legacy_insufficient_fee_message(), "v{v}");
             assert_eq!(r.default_unbonding_time_secs(), None, "v{v}");
+            assert_eq!(r.gov_max_age_num_blocks(), None, "v{v}");
         }
     }
 
@@ -944,6 +959,8 @@ mod tests {
                 assert_eq!(r.legacy_insufficient_fee_message(), v <= 6, "v{v}");
                 let unbonding = v4_v5.then_some(21 * 24 * 3600);
                 assert_eq!(r.default_unbonding_time_secs(), unbonding, "v{v}");
+                let max_age = (v >= 6).then_some(242_640);
+                assert_eq!(r.gov_max_age_num_blocks(), max_age, "v{v}");
             }
         }
         let deps = |v| {
