@@ -48,6 +48,14 @@ fn v1_store() -> MultiStore {
     ms
 }
 
+/// The stores of app versions 2 and 3.
+fn v2_store() -> MultiStore {
+    let mut ms = MultiStore::new();
+    let v2 = Release::for_app_version(2).expect("v2");
+    crate::stores::mount_release(&mut ms, v2).expect("mount v2");
+    ms
+}
+
 fn init_request() -> abci::RequestInitChain {
     abci::RequestInitChain {
         chain_id: "celestia".to_owned(),
@@ -280,7 +288,7 @@ fn deliver_tx_results_are_shaped_like_v046() {
 /// `baseapp` once written (v2 and later), else 1 (Go `App.Info`).
 #[test]
 fn app_version_reads_subspace_baseapp() {
-    let mut ms = v1_store();
+    let mut ms = v2_store();
     let mut driver = Driver::new(NoModules);
     let mut req = init_request();
     req.consensus_params.as_mut().unwrap().version = Some(VersionParams { app: 2 });
@@ -1335,7 +1343,7 @@ fn driver_scopes_sdk_v046_semantics_to_its_calls() {
     };
     sdk::version::set_app_version(7);
 
-    let mut ms = v1_store();
+    let mut ms = v2_store();
     let mut driver = Driver::new(Probe::default());
     let mut req = init_request();
     req.consensus_params.as_mut().unwrap().version = Some(VersionParams { app: 2 });
@@ -2233,7 +2241,8 @@ fn not_ported_in_genesis_and_blockers_is_not_lost() {
 /// later release's bank `MsgUpdateParams`) fails the transaction as Go
 /// does (a decode error, no gas wanted, no record); blobstream's
 /// `MsgRegisterEVMAddress` decodes and fails its `ValidateBasic`; a
-/// registered message whose `ValidateBasic` is not ported (x/signal)
+/// registered message whose `ValidateBasic` is not ported (crisis
+/// `MsgVerifyInvariant`)
 /// aborts the block before any ante handler state change.
 #[test]
 fn v1_run_tx_decodes_with_the_v1_registry() {
@@ -2268,16 +2277,14 @@ fn v1_run_tx_decodes_with_the_v1_registry() {
     assert!(out.result.is_err());
     assert!(record.is_none());
 
-    let signal =
-        celestia_proto::Any::pack(&celestia_proto::celestia::signal::v1::MsgSignalVersion {
-            validator_address: "celestiavaloper1".to_owned(),
-            version: 2,
-        });
-    let (out, record) = run(signal);
+    let crisis = celestia_proto::Any::pack(
+        &celestia_proto::cosmos::crisis::v1beta1::MsgVerifyInvariant::default(),
+    );
+    let (out, record) = run(crisis);
     assert!(out.result.is_err());
     let what = record.expect("not recorded");
     assert!(
-        what.contains("ValidateBasic of /celestia.signal.v1.MsgSignalVersion"),
+        what.contains("ValidateBasic of /cosmos.crisis.v1beta1.MsgVerifyInvariant"),
         "{what}"
     );
 }

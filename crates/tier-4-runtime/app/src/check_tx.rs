@@ -56,7 +56,7 @@ impl App {
         }
         let version = self.execution_version();
         sdk::version::set_app_version(version);
-        if crate::stores::is_v9(version) {
+        if sdk::version::Release::executing(version).v9_registry() {
             return self.check_tx_v9(req);
         }
         let raw = &req.tx;
@@ -145,7 +145,9 @@ impl App {
         };
         // Txs repeating a top-level TxRaw field are rejected with an error.
         let sdk_bytes = blob.as_ref().map_or(raw.as_slice(), |u| u.tx.as_slice());
-        if txdecode::has_duplicate_tx_raw_field(sdk_bytes) {
+        if sdk::version::release(0).rejects_duplicate_tx_raw_fields()
+            && txdecode::has_duplicate_tx_raw_field(sdk_bytes)
+        {
             return Err("transaction contains a duplicate TxRaw field".into());
         }
         if let Some(u) = blob {

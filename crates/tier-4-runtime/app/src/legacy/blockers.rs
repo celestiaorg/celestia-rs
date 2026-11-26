@@ -9,9 +9,8 @@
 //! staking's full-header `HistoricalInfo` and unbonding without IDs.
 //! Paths that no v1 block has reached in the oracle and whose v0.46
 //! behavior is not ported return not-supported instead of running v0.50
-//! code: evidence, downtime jailing, governance proposal processing, the
-//! ibc-go v6 upgrade and localhost client paths, and the v1 to v2
-//! upgrade.
+//! code: evidence, downtime jailing, governance proposal
+//! processing, and the ibc-go v6 upgrade and localhost client paths.
 
 use celestia_proto::celestia_core_proto::abci::ValidatorUpdate;
 use celestia_proto::celestia_core_proto::tendermint::types::Header as TmHeader;
@@ -62,14 +61,6 @@ pub const V1_END_BLOCKERS: &[&str] = &[
     "params",
     "authz",
     "vesting",
-];
-
-/// The last app version 1 height of each chain whose v1 to v2 upgrade
-/// height celestia-app knows (`appconsts.*UpgradeHeightV2 - 1`).
-const V2_UPGRADE_END_HEIGHTS: &[(&str, i64)] = &[
-    ("celestia", 2_371_494),
-    ("mocha-4", 2_585_030),
-    ("arabica-11", 1_751_706),
 ];
 
 /// Not ported: the v0.46 behavior of `what`.
@@ -154,8 +145,8 @@ pub fn begin_block(ctx: &mut Context<'_>, header: &TmHeader) -> Result<()> {
 }
 
 /// celestia-app v1 `EndBlocker`: the module manager's EndBlock (at most
-/// one module may return validator updates), then the height-based v1 to
-/// v2 upgrade, which is not ported.
+/// one module may return validator updates). The app version change
+/// that follows is the driver's ([`super::upgrade`]).
 pub fn end_block(ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
     let mut updates = Vec::new();
     for &module in V1_END_BLOCKERS {
@@ -168,10 +159,6 @@ pub fn end_block(ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
             }
             updates = u;
         }
-    }
-    let chain = ctx.header.chain_id.as_str();
-    if V2_UPGRADE_END_HEIGHTS.contains(&(chain, ctx.header.height)) {
-        return Err(not_ported("the v1 to v2 upgrade"));
     }
     Ok(updates)
 }

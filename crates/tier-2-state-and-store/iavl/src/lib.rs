@@ -61,6 +61,9 @@ pub struct Tree {
     orphans: Vec<NodeKey>,
     /// Committed versions still available, with their roots.
     versions: BTreeMap<Version, Option<Link>>,
+    /// iavl v0.19 versioning of the first commit
+    /// ([`Self::set_initial_version_v019`]).
+    v019_first_nodes: bool,
 }
 
 impl Default for Tree {
@@ -73,6 +76,7 @@ impl Default for Tree {
             dirty: false,
             orphans: Vec::new(),
             versions: BTreeMap::new(),
+            v019_first_nodes: false,
         }
     }
 }
@@ -126,6 +130,32 @@ impl Tree {
         }
         self.initial_version = initial_version;
         Ok(())
+    }
+
+    /// [`Self::set_initial_version`] for a tree that iavl v0.19 (cosmos-sdk
+    /// v0.46) creates mid-chain: v0.19 versions each new node at `Set` time
+    /// as the tree's version plus one, so the nodes of the first commit
+    /// carry version 1 while the commit itself is `initial_version`.
+    /// Later commits version their nodes as usual.
+    pub fn set_initial_version_v019(&mut self, initial_version: Version) -> Result<()> {
+        if !self.versions.is_empty() {
+            return Err(Error::InvalidVersion {
+                version: initial_version,
+            });
+        }
+        self.set_initial_version(initial_version)?;
+        self.v019_first_nodes = true;
+        Ok(())
+    }
+
+    /// The version new nodes are hashed and stored with when committed as
+    /// `next_version`.
+    fn node_version(&self, next_version: Version) -> Version {
+        if self.v019_first_nodes && self.version == 0 {
+            1
+        } else {
+            next_version
+        }
     }
 
     /// Make committed `version` the working tree, discarding uncommitted
@@ -281,14 +311,15 @@ impl Tree {
     /// version back from storage. In-memory trees leave `batch` untouched.
     pub fn save_version_to(&mut self, batch: &mut WriteBatch) -> Result<CommitInfo> {
         let next_version = self.next_version()?;
+        let node_version = self.node_version(next_version);
         let root = match self.root.take() {
             None => None,
             Some(root) => Some(match &self.ndb {
                 Some(ndb) => {
                     let mut node_index = 0u32;
-                    Link::Stored(persist(ndb, root, next_version, &mut node_index, batch)?)
+                    Link::Stored(persist(ndb, root, node_version, &mut node_index, batch)?)
                 }
-                None => assign_hashes(root, next_version),
+                None => assign_hashes(root, node_version),
             }),
         };
         if let Some(ndb) = &self.ndb {
@@ -305,11 +336,12 @@ impl Tree {
         }
         let root_hash = root
             .as_ref()
-            .map_or_else(|| hash::sha256(&[]), |root| root.hash_for(next_version));
+            .map_or_else(|| hash::sha256(&[]), |root| root.hash_for(node_version));
         self.root = root;
         self.versions.insert(next_version, self.root.clone());
         self.version = next_version;
         self.dirty = false;
+        self.v019_first_nodes = false;
         self.orphans.clear();
         Ok(CommitInfo {
             version: self.version,
@@ -432,6 +464,7 @@ impl Tree {
                 .range(..=version)
                 .map(|(v, r)| (*v, r.clone()))
                 .collect(),
+            v019_first_nodes: false,
         })
     }
 
@@ -490,8 +523,10 @@ impl Tree {
 
     fn hash_version(&self) -> Version {
         if self.dirty {
-            self.next_version()
-                .unwrap_or_else(|_| self.version.saturating_add(1).max(1))
+            let next = self
+                .next_version()
+                .unwrap_or_else(|_| self.version.saturating_add(1).max(1));
+            self.node_version(next)
         } else {
             self.version.max(1)
         }
@@ -1376,6 +1411,29 @@ mod tests {
         assert_eq!(tree.remove(b"missing")?, None);
         assert_eq!(tree.get(b"a")?, None);
 
+        Ok(())
+    }
+
+    #[test]
+    fn v019_initial_version_versions_first_nodes_as_one() -> Result<(), Error> {
+        let mut v1 = Tree::new();
+        v1.set(b"port/icahost".to_vec(), vec![1])?;
+        let want = v1.root_hash();
+        let mut tree = Tree::new();
+        tree.set_initial_version_v019(5)?;
+        tree.set(b"port/icahost".to_vec(), vec![1])?;
+        assert_eq!(tree.root_hash(), want, "working hash");
+        let info = tree.save_version()?;
+        assert_eq!((info.version, info.root_hash), (5, want));
+        // The next commit versions its nodes 6.
+        tree.set(b"k".to_vec(), vec![2])?;
+        let next = tree.save_version()?;
+        let mut plain = Tree::with_initial_version(5)?;
+        plain.set(b"port/icahost".to_vec(), vec![1])?;
+        plain.save_version()?;
+        plain.set(b"k".to_vec(), vec![2])?;
+        assert_eq!(next.version, 6);
+        assert_ne!(next.root_hash, plain.save_version()?.root_hash);
         Ok(())
     }
 
