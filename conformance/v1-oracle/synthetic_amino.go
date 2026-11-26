@@ -138,7 +138,7 @@ var aminoUsers = []string{
 	"vester-permanent", "vester-periodic", "crisis", "evidence",
 	"newval-0", "newval-1", "newval-2", "try-upgrade", "blobber",
 	// ibc
-	"ibc-transfer", "relay-create", "relay-update", "relay-recv", "relay-ack",
+	"ibc-transfer", "ibc-memo", "relay-create", "relay-update", "relay-recv", "relay-ack",
 	"relay-timeout", "relay-timeout-close", "relay-connection", "relay-channel",
 	// multisig funding and negative cases
 	"ms-funder", "neg-exec-transfer", "neg-exec-pfb", "neg-exec-periodic",
@@ -981,6 +981,20 @@ func (b *aminoBuilder) round(p, r int) error {
 		add(func() error { return b.pfb("blobber", appVersion) })
 		// ibc
 		add(func() error { return b.tx("ibc-transfer", transfer("ibc-transfer")) })
+		// A packet-forward memo and a timeout timestamp: amino JSON escapes
+		// '<', '>' and '&' in strings, and writes a non-zero uint64 as a
+		// string. The tx memo carries the same characters.
+		add(func() error {
+			m := transfertypes.NewMsgTransfer("transfer", "channel-0", aminoCoin(1), b.addr("ibc-memo").String(), "receiver",
+				clienttypes.NewHeight(1, 1000), 1_900_000_000_000_000_000,
+				`{"forward":{"receiver":"a<b>&c","port":"transfer","channel":"channel-1","timeout":"10m"}}`)
+			bz, err := b.sign("ibc-memo", func(f clienttx.Factory) clienttx.Factory { return f.WithMemo(`memo <&> "q" \ é`) }, m)
+			if err != nil {
+				return err
+			}
+			b.out = append(b.out, bz)
+			return nil
+		})
 		add(func() error {
 			header, err := ibcHeader(b.height)
 			if err != nil {

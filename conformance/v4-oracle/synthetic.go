@@ -272,8 +272,15 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 		}
 		steps = s.richSteps(height-s.handoffHeight-1, addr, valAddr, utia, tx, txWith, send, pfb)
 	}
+	if s.chain == "v3-ibc" {
+		more, err := s.ibcSteps(a, height-s.handoffHeight-1, addr, send, func(bz []byte) { out = append(out, bz) })
+		if err != nil {
+			return nil, err
+		}
+		steps = more
+	}
 	switch offset := height - s.handoffHeight - 1; {
-	case s.chain == "v3-rich":
+	case s.chain == "v3-rich", s.chain == "v3-ibc":
 	case offset == 0:
 		// The upgrade block: the x/upgrade PreBlocker runs plan v4 first.
 		steps = append(steps, func() error { return send("alice", "bob", 1_000) })
