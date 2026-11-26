@@ -17,6 +17,7 @@ mod v11;
 mod v12;
 pub mod v4;
 pub mod v6;
+mod v8;
 mod v9;
 
 /// `appconsts.Version`.
@@ -88,7 +89,7 @@ impl Handlers {
         use x_upgrade::UpgradeHandlers as _;
         match name {
             "v9" => true,
-            "v4" | "v5" | "v6" | "v10" | "v11" | "v12" => self.has_handler(name),
+            "v4" | "v5" | "v6" | "v8" | "v10" | "v11" | "v12" => self.has_handler(name),
             _ => false,
         }
     }
@@ -104,6 +105,7 @@ impl x_upgrade::UpgradeHandlers for Handlers {
             // celestia-app v5.0.12's `v5` handler returns `fromVM`.
             "v5" if self.has_handler("v5") => Ok(from),
             "v6" if self.has_handler("v6") => v6::handler(ctx, from),
+            "v8" if self.has_handler("v8") => v8::handler(ctx, from),
             "v4" if self.has_handler("v4") => {
                 let versions = v4::handler(ctx, &from)?;
                 // celestiaorg x/upgrade v0.1.0 `ApplyUpgrade` (celestia-app
@@ -129,12 +131,13 @@ impl x_upgrade::UpgradeHandlers for Handlers {
 /// The module manager's version map of the release that runs as app
 /// version `app_version`, where celestia-rs does not derive it from
 /// [`crate::modules::VERSION_MAP`]: celestia-app v4.1.0 (no capability,
-/// ICA host or forwarding module), v5.0.12 (v4.1.0's plus capability) and
-/// v6.4.x (v5.0.12's plus interchain accounts).
+/// ICA host or forwarding module), v5.0.12 (v4.1.0's plus capability),
+/// v6.4.x (v5.0.12's plus interchain accounts) and v8.0.8 (v6.4.x's plus
+/// forwarding and zkism).
 #[must_use]
 pub fn release_version_map(app_version: u64) -> Option<Vec<(&'static str, u64)>> {
     let mut versions: Vec<(&'static str, u64)> = match app_version {
-        4..=6 => v4::VERSION_MAP.to_vec(),
+        4..=6 | 8 => v4::VERSION_MAP.to_vec(),
         _ => return None,
     };
     if app_version >= 5 {
@@ -142,6 +145,9 @@ pub fn release_version_map(app_version: u64) -> Option<Vec<(&'static str, u64)>>
     }
     if app_version >= 6 {
         versions.push(("interchainaccounts", 3));
+    }
+    if app_version >= 8 {
+        versions.extend([("forwarding", 1), ("zkism", 1)]);
     }
     versions.sort_unstable();
     Some(versions)
@@ -218,6 +224,9 @@ fn run_migrations_to(
                         ..Default::default()
                     },
                 )?,
+                // celestia-app v8.0.8: x/forwarding has no store and
+                // x/zkism's default genesis writes no key.
+                "forwarding" | "zkism" => {}
                 _ => {
                     return Err(sdk::error::sdk::not_supported(format!(
                         "adding module {name} during an upgrade"
@@ -316,6 +325,7 @@ mod tests {
                 4 => &["v4"],
                 5 => &["v4", "v5"],
                 6 => &["v6"],
+                8 => &["v8"],
                 2..=9 => &["v9"],
                 11 => &["v11"],
                 12 => &["v12"],

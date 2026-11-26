@@ -41,10 +41,10 @@ pub const ADDED_IN_V10: &[&str] = &["fibre", "valaddr"];
 /// Whether module or store `name` exists in the state machine celestia-rs
 /// runs for `app_version` ([`sdk::version::Release::executing`]). Names
 /// that are not stores (most module names) always exist. App versions 2,
-/// 3 and 5 to 8 run as 9, so this is the v9 store set for them, not their
+/// 3 and 7 run as 9, so this is the v9 store set for them, not their
 /// mainnet one ([`sdk::version::Release::stores`]); app version 1 runs as
-/// itself (its own 17 stores, on the v0.46 driver) and app version 4 too
-/// (no `zkism`).
+/// itself (its own 17 stores, on the v0.46 driver) and app versions 4 to 6
+/// (no `zkism`) and 8 too.
 #[must_use]
 pub fn exists_at(name: &str, app_version: u64) -> bool {
     !IAVL_STORES.contains(&name) || sdk::version::Release::executing(app_version).has_store(name)

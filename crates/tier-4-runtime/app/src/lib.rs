@@ -234,6 +234,14 @@ pub fn snapshot_dir(home: &Path) -> PathBuf {
     home.join("data").join("snapshots")
 }
 
+/// Whether `release` adds the stores it lists but has not committed through
+/// its upgrade store loader at the first block it executes: celestia-app
+/// v8.0.8 (`UpgradeStoreLoader(H+1, Added: zkism)`). The v10 loader is
+/// [`App::mount_upgrade_stores`]'s own path; v4.1.0 to v6.4.x add none.
+const fn adds_release_stores_on_upgrade(release: &Release) -> bool {
+    release.app_version == 8
+}
+
 fn store_err(e: impl std::fmt::Display) -> SdkError {
     sdk::error::sdk::logic(format!("store: {e}"))
 }
@@ -534,10 +542,13 @@ impl App {
             return Ok(());
         };
         let release = Release::executing(self.app_version());
+        // celestia-app v8.0.8 adds the stores it lists but has not
+        // committed at the next height ([`Self::mount_upgrade_stores`]).
+        let loads_added = adds_release_stores_on_upgrade(release);
         let absent: Vec<&'static str> = stores::IAVL_STORES
             .iter()
             .copied()
-            .filter(|s| info.store_info(s).is_none() && !release.has_store(s))
+            .filter(|s| info.store_info(s).is_none() && (loads_added || !release.has_store(s)))
             .filter(|s| self.ms.is_mounted(s))
             .collect();
         for name in absent {
@@ -1079,6 +1090,21 @@ impl App {
     fn mount_upgrade_stores(&mut self) -> Result<()> {
         let consensus_version = self.app_version();
         let next_height = self.last_height.saturating_add(1);
+        // celestia-app v8.0.8's store loader (`UpgradeStoreLoader(H+1,
+        // Added: zkism)`) mounts each store it lists and has not committed
+        // at the next height.
+        let release = Release::executing(consensus_version);
+        if adds_release_stores_on_upgrade(release) {
+            for name in release.stores {
+                if !self.ms.is_mounted(name) {
+                    tracing::info!(store = name, height = next_height, "adding store");
+                    self.ms
+                        .mount_iavl_at(name, next_height)
+                        .map_err(store_err)?;
+                }
+            }
+            return Ok(());
+        }
         let signal_switch = !Release::executing(consensus_version).before_v10()
             && consensus_version != INITIAL_APP_VERSION;
         let governance_switch = self.upgrade_store_height == Some(next_height);
