@@ -58,6 +58,19 @@ The authors read every Rust site they cite. The tables were made against `main` 
 | corto-1 v10 upgrade-height override | 9 (corto-1) | `x/signal/keeper.go:371-390` reads 1,480,080 as 1,280,695 | Missing | corto-1 only. | B |
 | Capability keeper v1.0.1 pointer bug | 9, 10.4 | Pointer replaced in discarded branches | Matches v1.0.2 (v10.6.0) | A Go node would have split on its own mempool. Low risk. | — |
 
+### What mainnet used (see [`mainnet-usage-v4-v9.md`](mainnet-usage-v4-v9.md))
+
+Eras by header `version.app`: v4 6,680,340–6,748,821; v5 6,748,822–8,662,012; v6 8,662,013–10,960,599; v8 10,960,600–11,771,698; v9 11,771,699–15,116,658. Points that bear on the gaps above:
+
+- **v4 had no working IBC packets.** In v4 no `MsgRecvPacket`, `MsgAcknowledgement`, `MsgTransfer` or `MsgTimeout` succeeded. A sampled v4 `MsgTransfer` failed with code 9, "channel capability not found". 960 `MsgUpdateClient` txs did succeed. A v4 replay must reproduce this failure.
+- **ICA host executions start at v6.** That fits Go v4/v5 having no ICA module in the module manager (the ICA gap above). The executions carry `MsgWithdrawDelegatorReward` (up to 27 per packet), `MsgSend` and `MsgTransfer`.
+- **Hyperlane is used in every era, and mostly amino-signed.** The mailbox, IGP, hooks and routing ISM were created around 6.71M. `MsgProcessMessage` (~4.5k txs) and `MsgRemoteTransfer` (~3.1k) start at v5. 107 of 120 sampled `MsgRemoteTransfer` txs use `LEGACY_AMINO_JSON`, and routing-ISM admin messages come from amino multisigs.
+- **Sign modes:** only `DIRECT` and `LEGACY_AMINO_JSON` appear (5,035 sampled txs). There is no `TEXTUAL` or `DIRECT_AUX`. All 73 multisig signers are `LegacyAminoPubKey` with amino sub-signatures.
+- **Signalling:** one successful `MsgTryUpgrade` per era. The delay to the next version was 2 blocks (v4→v5), 100,801 blocks (v5→v6, v6→v8 and v8→v9) and 232,617 blocks (v9→v10).
+- **Governance:** proposals 7 (slashing params), 8 (blob and consensus params for 256 squares / 32 MiB blocks) and 9 (`MsgRecoverClient`) passed. Proposal 10 was cancelled (`MsgCancelProposal`). Most of the ~7.0k votes are gov v1beta1 `MsgVote`, amino-signed. So the gov consensus-param filter gap above matters only for proposal 8 (in the v6 era).
+- **Never used in v4–v9:** zkism, fibre, minfee, circuit, software-upgrade or community-pool-spend proposals, 08-wasm and the ICA controller. `MsgForward` was used: 25 txs at v8 and 1,334 at v9.
+- **Coverage:** antevectors covers only 43 of the 101 (message, sign mode) pairs mainnet used, and almost all of those only at app version 10. `conformance/fixtures/signbytes` (#680) now checks the v4–v9 sign bytes for the amino and aux paths of 40 message types.
+
 Some Go limits apply only outside FinalizeBlock, so they cannot diverge in a replay. These are the v6 change of MaxTxSize from 2 to 8 MiB and of SquareSizeUpperBound from 128 to 512. Go checks them only in CheckTx, PrepareProposal and ProcessProposal. FinalizeBlock uses the upper bound only through `min(GovMaxSquareSize, bound)` in the blob share decorator. Rust gates them with `max_tx_size` and `square_size_upper_bound`, used in `app/src/proposal.rs`, `app/src/check_tx.rs` and `x/ante/src/celestia.rs:335`.
 
 `docs/replay-coverage-inventory.md` still says the v9 upgrade handler is not implemented. `app/src/upgrades/v9.rs` implements it (#659).
