@@ -264,6 +264,20 @@ fn timeout_info_at(version: u64) -> TimeoutInfo {
             ..TimeoutInfo::default()
         };
     }
+    // celestia-app v6.4.x to v8.0.8 (`pkg/appconsts`).
+    if matches!(Release::executing(version).app_version, 6..=8) {
+        return TimeoutInfo {
+            timeout_propose: dur(8, 500_000_000),
+            timeout_propose_delta: dur(0, 500_000_000),
+            timeout_prevote: dur(3, 0),
+            timeout_prevote_delta: dur(0, 500_000_000),
+            timeout_precommit: dur(3, 0),
+            timeout_precommit_delta: dur(0, 500_000_000),
+            timeout_commit: dur(0, 1_000_000),
+            delayed_precommit_timeout: dur(5, 850_000_000),
+            ..TimeoutInfo::default()
+        };
+    }
     let v12 = sdk::version::is_v12(version);
     TimeoutInfo {
         timeout_propose: dur(3, 0),
@@ -2118,8 +2132,9 @@ mod node_options_tests {
             "../../../../conformance/fixtures/devnet/empty/genesis.json"
         ))
         .unwrap();
-        // celestia-app v5.0.12's module manager adds the capability module.
-        for version in [4, 5] {
+        // celestia-app v5.0.12's module manager adds the capability module,
+        // v6.4.x's the interchain accounts module.
+        for version in [4, 5, 6] {
             let home = tempfile::tempdir().unwrap();
             let mut app = App::open(home.path()).unwrap();
             app.init_chain(abci::RequestInitChain {
@@ -2176,10 +2191,13 @@ mod node_options_tests {
                 .iter()
                 .map(|(n, v)| ((*n).to_owned(), *v))
                 .collect();
-            if version == 5 {
+            if version >= 5 {
                 want.push(("capability".to_owned(), 1));
-                want.sort();
             }
+            if version >= 6 {
+                want.push(("interchainaccounts".to_owned(), 3));
+            }
+            want.sort();
             assert_eq!(versions, want, "v{version}");
         }
     }

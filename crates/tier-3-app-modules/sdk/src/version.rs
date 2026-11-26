@@ -358,10 +358,10 @@ const fn entry(
         hyperlane,
         go_square,
         // App version 1 executes as itself (the cosmos-sdk v0.46 driver)
-        // and app versions 4 and 5 as celestia-app v4.1.0 and v5.0.12;
-        // historical execution of app versions 2, 3 and 6 to 8 is not
+        // and app versions 4 to 6 as celestia-app v4.1.0, v5.0.12 and
+        // v6.4.x; historical execution of app versions 2, 3, 7 and 8 is not
         // ported yet.
-        runs_as: if matches!(app_version, 2 | 3 | 6..=8) {
+        runs_as: if matches!(app_version, 2 | 3 | 7 | 8) {
             9
         } else {
             app_version
@@ -866,15 +866,15 @@ mod tests {
     /// run as 9.
     #[test]
     fn executing_release_predicates_keep_the_v9_split() {
-        // App versions 4 and 5 run as themselves (their own answers:
+        // App versions 4 to 6 run as themselves (their own answers:
         // `historical_releases_record_their_own_features`).
-        for own in [4, 5] {
+        for own in [4, 5, 6] {
             assert_eq!(
                 Release::executing(own),
                 Release::for_app_version(own).expect("known app version")
             );
         }
-        for v in (0..=14).chain([u64::MAX]).filter(|v| !matches!(v, 4 | 5)) {
+        for v in (0..=14).chain([u64::MAX]).filter(|v| !matches!(v, 4..=6)) {
             let old_v9 = matches!(v, 1..=9);
             let r = Release::executing(v);
             assert_eq!(r.upstream_hyperlane(), old_v9, "v{v}");
@@ -982,7 +982,8 @@ mod tests {
             (1, "v0.52.8"),
             (4, "v1.29.4-sdk-v0.50.14"),
             (5, "v1.31.0-sdk-v0.50.14"),
-            (6, "v0.52.8"),
+            (6, "v0.51.8"),
+            (7, "v0.52.8"),
             (9, "v0.52.8"),
             (10, "v0.52.12"),
             (13, "v0.52.12"),
@@ -1003,7 +1004,7 @@ mod tests {
     fn release_follows_the_executing_app_version() {
         let prev = app_version();
         set_app_version(0);
-        assert_eq!(release(6).app_version, 9);
+        assert_eq!(release(7).app_version, 9);
         assert_eq!(release(0).app_version, CURRENT_APP_VERSION);
         set_app_version(1);
         assert_eq!(release(10).app_version, 1);
@@ -1013,13 +1014,13 @@ mod tests {
     }
 
     /// App version 1 executes as itself (the v0.46 driver) and app versions
-    /// 4 and 5 as celestia-app v4.1.0 and v5.0.12; app versions 2, 3 and 6
-    /// to 8 keep running as v9.
+    /// 4 to 6 as celestia-app v4.1.0, v5.0.12 and v6.4.x; app versions 2,
+    /// 3, 7 and 8 keep running as v9.
     #[test]
-    fn historical_versions_run_as_v9_except_v1_v4_and_v5() {
+    fn historical_versions_run_as_v9_except_v1_and_v4_to_v6() {
         for v in 1..=12 {
             let r = Release::for_app_version(v).expect("known app version");
-            let runs_as = if matches!(v, 1 | 4 | 5) { v } else { v.max(9) };
+            let runs_as = if matches!(v, 1 | 4..=6) { v } else { v.max(9) };
             assert_eq!(r.runs_as, runs_as, "v{v}");
         }
         assert_eq!(Release::executing(1).app_version, 1);
