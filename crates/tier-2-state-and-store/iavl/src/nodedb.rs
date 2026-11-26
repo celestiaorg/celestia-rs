@@ -46,7 +46,10 @@ struct EncodedNode {
 
 /// Bounded LRU cache of persisted nodes, shareable by many trees.
 pub struct NodeCache {
-    lru: Mutex<LruCache<(u64, NodeKey), CachedNode>>,
+    /// Keyed by (tree id, node key). foldhash (seeded per process) instead
+    /// of SipHash: the keys are small integers and every node visit hashes
+    /// one; the cache only decides which reads go to the database.
+    lru: Mutex<LruCache<(u64, NodeKey), CachedNode, foldhash::fast::RandomState>>,
     hits: AtomicU64,
     misses: AtomicU64,
 }
@@ -79,8 +82,9 @@ impl NodeCache {
     #[must_use]
     pub fn new(capacity: usize) -> Arc<Self> {
         Arc::new(Self {
-            lru: Mutex::new(LruCache::new(
+            lru: Mutex::new(LruCache::with_hasher(
                 NonZeroUsize::new(capacity).unwrap_or(NonZeroUsize::MIN),
+                foldhash::fast::RandomState::default(),
             )),
             hits: AtomicU64::new(0),
             misses: AtomicU64::new(0),
