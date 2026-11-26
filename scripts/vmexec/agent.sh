@@ -181,14 +181,14 @@ runone() { # runone ID: the request's script was decoded by the daemon into runs
     obj=$(gcs_prefix)/runs/$id.out
     gcs put "$d/out" "$obj" && gcs url "$obj" >"$d/output_gs"
   fi
-  publish_result "$id" done
+  publish_result "$id" "done"
 }
 
 start_request() { # start_request ID: fetch, decode and launch one request
   local id=$1 d=$ROOT/runs/$1 timeout
   mkdir "$d" 2>/dev/null || return 0 # claimed already
   if ! md_get "vmx-req-$id" "$d/req" || ! timeout=$(vmx_decode_request "$d/req" "$d/script"); then
-    echo "undecodable request" >"$d/out"; echo 125 >"$d/rc"; publish_result "$id" done; return 0
+    echo "undecodable request" >"$d/out"; echo 125 >"$d/rc"; publish_result "$id" "done"; return 0
   fi
   echo "$timeout" >"$d/timeout"
   log "request $id (timeout ${timeout}s)"
@@ -196,7 +196,7 @@ start_request() { # start_request ID: fetch, decode and launch one request
     setsid "$SELF" runone "$id" >>"$ROOT/agent.log" 2>&1 </dev/null &
   else
     systemd-run --quiet --collect --unit="vmx-run-$id" --setenv=HOME=/root "$SELF" runone "$id" ||
-      { echo "systemd-run failed" >"$d/out"; echo 126 >"$d/rc"; publish_result "$id" done; }
+      { echo "systemd-run failed" >"$d/out"; echo 126 >"$d/rc"; publish_result "$id" "done"; }
   fi
 }
 
@@ -315,7 +315,7 @@ job() {
       mkdir -p "$j" && rm -f "$j/removed"
       if [[ -z $FAKE ]] && systemctl is-active --quiet "$unit"; then echo "job $name is already running" >&2; return 1; fi
       printf '#!/bin/bash\n%s\n' "$(vmx_shell_quote "$@")" >"$j/cmd"
-      [[ -n $status_cmd ]] && printf '%s\n' "$status_cmd" >"$j/status_cmd" || rm -f "$j/status_cmd"
+      if [[ -n $status_cmd ]]; then printf "%s\n" "$status_cmd" >"$j/status_cmd"; else rm -f "$j/status_cmd"; fi
       echo "$interval" >"$j/interval"
       echo "=== $(date -u +%FT%TZ) start: $*" >>"$j/log"
       if [[ -n $FAKE ]]; then
@@ -332,7 +332,10 @@ job() {
         local pid i
         pid=$(cat "$j/pid" 2>/dev/null || true)
         [[ -z $pid ]] || kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
-        for ((i = 0; i < 50; i++)); do [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+        for ((i = 0; i < 50; i++)); do
+          if [[ -z $pid ]] || ! kill -0 "$pid" 2>/dev/null; then break; fi
+          sleep 0.1
+        done
       else
         systemctl disable --now "$unit" >/dev/null 2>&1
       fi

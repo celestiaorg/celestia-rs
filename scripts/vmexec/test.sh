@@ -44,8 +44,8 @@ printf 'vmx9 60\nabc' >"$t/badreq"
 refute "request bad header"  vmx_decode_request "$t/badreq" "$t/x"
 
 seq 1 100000 >"$t/out" # 588,895 bytes
-vmx_encode_result done 0 "$(stat -c %s "$t/out")" "$t/out" started=x >"$t/res"
-eq     "result state"        done "$(vmx_result_field "$t/res" state)"
+vmx_encode_result "done" 0 "$(stat -c %s "$t/out")" "$t/out" started=x >"$t/res"
+eq     "result state"        "done" "$(vmx_result_field "$t/res" state)"
 eq     "result rc"           0 "$(vmx_result_field "$t/res" rc)"
 eq     "result truncated"    1 "$(vmx_result_field "$t/res" truncated)"
 eq     "result extra field"  x "$(vmx_result_field "$t/res" started)"
@@ -143,7 +143,7 @@ bash "$here/agent.sh" daemon >"$t/agent.log" 2>&1 &
 agent_pid=$!
 X="$here/vmexec"
 
-out=$("$X" exec vm1 -- 'echo hi; echo err >&2' 2>/dev/null)
+out=$("$X" exec vm1 -- "echo hi; echo err >&2" 2>/dev/null)
 eq     "exec output"         $'hi\nerr' "$out"
 rc=0; "$X" exec vm1 -- 'exit 7' >/dev/null 2>&1 || rc=$?
 eq     "exec exit status"    7 "$rc"

@@ -127,6 +127,8 @@ jobs:
           shellcheck -x scripts/bench/*.sh
           bash scripts/bench/test.sh
           bash scripts/bench/checkpoints-test.sh
+          shellcheck -x -S warning scripts/vmexec/*.sh scripts/vmexec/vmexec
+          bash scripts/vmexec/test.sh
       - name: Mixed devnet crash-boundary checks
         run: python3 -m unittest discover -s conformance/devnet/tests -v
       - name: gRPC limit evidence integrity

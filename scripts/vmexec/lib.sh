@@ -97,9 +97,9 @@ vmx_split_raw() {
 
 # vmx_shell_quote ARG...: one shell-quoted word per argument, space separated.
 vmx_shell_quote() {
-  local a out=()
-  for a in "$@"; do out+=("$(printf '%q' "$a")"); done
-  printf '%s\n' "${out[*]}"
+  local a words=()
+  for a in "$@"; do words+=("$(printf '%q' "$a")"); done
+  printf '%s\n' "${words[*]}"
 }
 
 # vmx_label_ok "k=v,k=v": every label is a valid GCE label.

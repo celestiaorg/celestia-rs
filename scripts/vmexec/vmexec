@@ -105,7 +105,7 @@ await() {
   while :; do
     if ga_get "$name" "$id" "$r"; then
       state=$(vmx_result_field "$r" state)
-      [[ $state == done ]] && break
+      [[ $state == "done" ]] && break
     fi
     sleep "$delay"
     delay=$((delay * 2 > POLL_MAX_S ? POLL_MAX_S : delay * 2))
