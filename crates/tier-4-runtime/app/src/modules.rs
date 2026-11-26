@@ -227,6 +227,8 @@ pub fn begin_block(ctx: &mut Context<'_>, module: &str) -> Result<()> {
     match module {
         "mint" => x_mint::begin_block(ctx),
         "fibre" => x_fibre::begin_block(ctx),
+        // celestia-app v4.1.0 registers no capability module.
+        "capability" if !ctx.release().has_capability_module() => Ok(()),
         "capability" => x_capability::begin_block(ctx),
         "ibc" => x_ibc::begin_block(ctx),
         "distribution" => x_distribution::begin_block(ctx),
@@ -365,4 +367,37 @@ pub fn app_end_block(ctx: &mut Context<'_>) -> Result<()> {
         x_signal::reset_tally(ctx)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+    use sdk::{ExecMode, Header, MultiStore};
+
+    /// celestia-app v4.1.0 registers no capability module: its BeginBlock
+    /// (`InitMemStore`) does not run, so the in-memory capabilities stay
+    /// empty. v5.0.12 and later run it.
+    #[test]
+    fn capability_begin_block_follows_the_release() {
+        for (version, runs) in [(4, false), (9, true), (10, true)] {
+            let mut ms = MultiStore::new();
+            crate::stores::mount_release(
+                &mut ms,
+                sdk::version::Release::for_app_version(version).unwrap(),
+            )
+            .unwrap();
+            let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+            ctx.consensus_params.version = Some(VersionParams { app: version });
+            begin_block(&mut ctx, "capability").unwrap();
+            let initialized = ctx
+                .get(
+                    x_capability::MEM_STORE_KEY,
+                    x_capability::KEY_MEM_INITIALIZED,
+                )
+                .unwrap()
+                .is_some();
+            assert_eq!(initialized, runs, "v{version}");
+        }
+    }
 }

@@ -357,9 +357,10 @@ const fn entry(
         cosmos_sdk,
         hyperlane,
         go_square,
-        // App version 1 executes as itself (the cosmos-sdk v0.46 driver);
-        // historical execution of app versions 2 to 8 is not ported yet.
-        runs_as: if app_version > 1 && app_version < 9 {
+        // App version 1 executes as itself (the cosmos-sdk v0.46 driver)
+        // and app version 4 as celestia-app v4.1.0; historical execution
+        // of app versions 2, 3 and 5 to 8 is not ported yet.
+        runs_as: if matches!(app_version, 2 | 3 | 5..=8) {
             9
         } else {
             app_version
@@ -566,6 +567,107 @@ impl Release {
         }
     }
 
+    /// Share version 1 blobs count their signer bytes when x/blob and the
+    /// blob ante decorators size them (`SparseSharesNeeded(size,
+    /// containsSigner)`, go-square v3 and later: celestia-app v6.4.10 on).
+    /// go-square v2 (v4.1.0, v5.0.12) counts none. App version 1 keeps
+    /// v9's answer.
+    #[must_use]
+    pub const fn blob_shares_count_signer(&self) -> bool {
+        !matches!(self.go_square, GoSquare::V1 | GoSquare::V2) || self.keeps_v9_rules()
+    }
+
+    /// x/blob `validateGovMaxSquareSize` caps the gov max square size at
+    /// `SquareSizeUpperBound` (celestia-app v9.0.8 on; v4.1.0 to v8.0.8
+    /// accept any power of two). App version 1 keeps v9's answer.
+    #[must_use]
+    pub const fn caps_gov_max_square_size(&self) -> bool {
+        self.app_version >= 9 || self.keeps_v9_rules()
+    }
+
+    /// The consensus-critical square size upper bound
+    /// (`appconsts.SquareSizeUpperBound`): 128 in celestia-app v4.1.0 and
+    /// v5.0.12, 512 from v6.4.10 on. App version 1 keeps v9's.
+    #[must_use]
+    pub const fn square_size_upper_bound(&self) -> u64 {
+        if matches!(self.app_version, 4 | 5) {
+            128
+        } else {
+            512
+        }
+    }
+
+    /// `appconsts.MaxTxSize` in bytes: 2 MiB in celestia-app v4.1.0 and
+    /// v5.0.12, 8 MiB from v6.4.10 on. App version 1 keeps v9's.
+    #[must_use]
+    pub const fn max_tx_size(&self) -> usize {
+        if matches!(self.app_version, 4 | 5) {
+            2_097_152
+        } else {
+            8_388_608
+        }
+    }
+
+    /// `app.BlockedAddresses` hashes each module address's bech32 string
+    /// again, so it blocks no module account (celestia-app v4.1.0 to
+    /// v6.4.10; v7.0.3 fixed it). App version 1 keeps v9's answer.
+    #[must_use]
+    pub const fn double_hashes_blocked_addresses(&self) -> bool {
+        matches!(self.app_version, 4..=6)
+    }
+
+    /// The release registers x/forwarding and its module account
+    /// (celestia-app v7 on). App version 1 keeps v9's answer.
+    #[must_use]
+    pub const fn has_forwarding(&self) -> bool {
+        self.app_version >= 7 || self.keeps_v9_rules()
+    }
+
+    /// The release registers x/zkism (celestia-app v7 on). App version 1
+    /// keeps v9's answer.
+    #[must_use]
+    pub const fn has_zkism(&self) -> bool {
+        self.app_version >= 7 || self.keeps_v9_rules()
+    }
+
+    /// The module manager registers the capability module (its BeginBlock
+    /// `InitMemStore`, genesis and version map entry). celestia-app v4.1.0
+    /// does not; v5.0.12 adds it back.
+    #[must_use]
+    pub const fn has_capability_module(&self) -> bool {
+        self.app_version != 4
+    }
+
+    /// The transfer stack's outermost middleware is `x/tokenfilter`
+    /// (celestia-app v4.1.0 and v5.0.12; v6.4.10 removed it). The
+    /// cosmos-sdk v0.46 driver has its own (app versions 1 to 3).
+    #[must_use]
+    pub const fn has_token_filter(&self) -> bool {
+        matches!(self.app_version, 4 | 5)
+    }
+
+    /// The ante fee decorator's insufficient fee error quotes the provided
+    /// gas price, the ceiled min fee and the min gas price as decimals
+    /// (celestia-app v4.1.0 to v6.4.10; v7.0.3 quotes utia amounts).
+    #[must_use]
+    pub const fn legacy_insufficient_fee_message(&self) -> bool {
+        matches!(self.app_version, 4..=6)
+    }
+
+    /// The unbonding time the governance param filter requires, in
+    /// seconds, where it is `appconsts.DefaultUnbondingTime` (21 days,
+    /// celestia-app v4.1.0 and v5.0.12, whose consensus filter also checks
+    /// no evidence params). `None` from v6.4.10 on (`UnbondingTime`, 337
+    /// hours, with the evidence check).
+    #[must_use]
+    pub const fn default_unbonding_time_secs(&self) -> Option<i64> {
+        if matches!(self.app_version, 4 | 5) {
+            Some(21 * 24 * 3600)
+        } else {
+            None
+        }
+    }
+
     /// go-square v4.0.0-rc4: the square layout counts signer bytes and
     /// classifies fibre transactions (app version 9 only).
     #[must_use]
@@ -763,7 +865,13 @@ mod tests {
     /// run as 9.
     #[test]
     fn executing_release_predicates_keep_the_v9_split() {
-        for v in (0..=14).chain([u64::MAX]) {
+        // App version 4 runs as itself (its own answers:
+        // `historical_releases_record_their_own_features`).
+        assert_eq!(
+            Release::executing(4),
+            Release::for_app_version(4).expect("v4")
+        );
+        for v in (0..=14).chain([u64::MAX]).filter(|v| *v != 4) {
             let old_v9 = matches!(v, 1..=9);
             let r = Release::executing(v);
             assert_eq!(r.upstream_hyperlane(), old_v9, "v{v}");
@@ -773,10 +881,25 @@ mod tests {
             assert_eq!(r.before_v10(), old_v9, "v{v}");
             assert_eq!(r.go_square_v4_rc4(), old_v9, "v{v}");
             assert_eq!(r.rejects_duplicate_tx_raw_fields(), old_v9, "v{v}");
-            // Gates added for app versions 4 to 8 stay off while they run
+            // Gates added for app versions 4 to 8 stay off where they run
             // as 9.
             assert!(!r.cip29_inflation(), "v{v}");
             assert_eq!(r.max_commission_rate_pct(), 60, "v{v}");
+            assert!(r.blob_shares_count_signer(), "v{v}");
+            assert_eq!(
+                r.caps_gov_max_square_size(),
+                old_v9 || v >= 10 || v == 0,
+                "v{v}"
+            );
+            assert_eq!(r.square_size_upper_bound(), 512, "v{v}");
+            assert_eq!(r.max_tx_size(), 8_388_608, "v{v}");
+            assert!(!r.double_hashes_blocked_addresses(), "v{v}");
+            assert!(r.has_forwarding(), "v{v}");
+            assert!(r.has_zkism(), "v{v}");
+            assert!(r.has_capability_module(), "v{v}");
+            assert!(!r.has_token_filter(), "v{v}");
+            assert!(!r.legacy_insufficient_fee_message(), "v{v}");
+            assert_eq!(r.default_unbonding_time_secs(), None, "v{v}");
         }
     }
 
@@ -799,6 +922,26 @@ mod tests {
             assert_eq!(r.cip29_inflation(), matches!(v, 4 | 5), "v{v}");
             let pct = if matches!(v, 4..=6) { 25 } else { 60 };
             assert_eq!(r.max_commission_rate_pct(), pct, "v{v}");
+            // celestia-app v4.1.0 and v5.0.12: go-square v2, square size
+            // upper bound 128, MaxTxSize 2 MiB; v4 to v8 do not cap the gov
+            // max square size.
+            if v >= 4 {
+                let v4_v5 = matches!(v, 4 | 5);
+                assert_eq!(r.blob_shares_count_signer(), !v4_v5, "v{v}");
+                assert!(!r.caps_gov_max_square_size(), "v{v}");
+                let bound = if v4_v5 { 128 } else { 512 };
+                assert_eq!(r.square_size_upper_bound(), bound, "v{v}");
+                let max_tx = if v4_v5 { 2_097_152 } else { 8_388_608 };
+                assert_eq!(r.max_tx_size(), max_tx, "v{v}");
+                assert_eq!(r.double_hashes_blocked_addresses(), v <= 6, "v{v}");
+                assert_eq!(r.has_forwarding(), v >= 7, "v{v}");
+                assert_eq!(r.has_zkism(), v >= 7, "v{v}");
+                assert_eq!(r.has_capability_module(), v != 4, "v{v}");
+                assert_eq!(r.has_token_filter(), v4_v5, "v{v}");
+                assert_eq!(r.legacy_insufficient_fee_message(), v <= 6, "v{v}");
+                let unbonding = v4_v5.then_some(21 * 24 * 3600);
+                assert_eq!(r.default_unbonding_time_secs(), unbonding, "v{v}");
+            }
         }
         let deps = |v| {
             let r = Release::for_app_version(v).expect("known app version");
@@ -864,13 +1007,14 @@ mod tests {
         set_app_version(prev);
     }
 
-    /// App version 1 executes as itself (the v0.46 driver); app versions
-    /// 2 to 8 keep running as v9 (no behavior change).
+    /// App version 1 executes as itself (the v0.46 driver) and app version
+    /// 4 as celestia-app v4.1.0; app versions 2, 3 and 5 to 8 keep running
+    /// as v9.
     #[test]
-    fn historical_versions_run_as_v9_except_v1() {
+    fn historical_versions_run_as_v9_except_v1_and_v4() {
         for v in 1..=12 {
             let r = Release::for_app_version(v).expect("known app version");
-            let runs_as = if v == 1 { 1 } else { v.max(9) };
+            let runs_as = if matches!(v, 1 | 4) { v } else { v.max(9) };
             assert_eq!(r.runs_as, runs_as, "v{v}");
         }
         assert_eq!(Release::executing(1).app_version, 1);

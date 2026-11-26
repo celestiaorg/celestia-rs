@@ -113,6 +113,20 @@ pub fn default_params() -> Params {
 
 /// `Params.Validate` (plain errors, as in Go).
 pub fn validate_params(p: &Params) -> core::result::Result<(), String> {
+    validate_params_capped(p, true)
+}
+
+/// `Params.Validate` of the executing `release`: the gov max square size
+/// cap exists from celestia-app v9.0.8 on
+/// ([`sdk::version::Release::caps_gov_max_square_size`]).
+pub fn validate_params_for(
+    release: &sdk::version::Release,
+    p: &Params,
+) -> core::result::Result<(), String> {
+    validate_params_capped(p, release.caps_gov_max_square_size())
+}
+
+fn validate_params_capped(p: &Params, cap: bool) -> core::result::Result<(), String> {
     if p.gas_per_blob_byte == 0 {
         return Err("gas per blob byte cannot be 0".into());
     }
@@ -123,7 +137,7 @@ pub fn validate_params(p: &Params) -> core::result::Result<(), String> {
     if !s.is_power_of_two() {
         return Err(format!("gov max square size must be a power of two: {s}"));
     }
-    if s > SQUARE_SIZE_UPPER_BOUND {
+    if cap && s > SQUARE_SIZE_UPPER_BOUND {
         return Err(format!(
             "gov max square size {s} exceeds the upper bound {SQUARE_SIZE_UPPER_BOUND}"
         ));
@@ -183,7 +197,7 @@ fn legacy_params(ctx: &mut Context<'_>) -> Result<Params> {
 /// `Migrator.MigrateParams` (blob module version 2 to 3).
 pub fn migrate_params(ctx: &mut Context<'_>) -> Result<()> {
     let params = legacy_params(ctx)?;
-    validate_params(&params).map_err(undefined)?;
+    validate_params_for(ctx.release(), &params).map_err(undefined)?;
     set_params(ctx, &params)
 }
 
@@ -203,7 +217,7 @@ pub fn set_params(ctx: &mut Context<'_>, p: &Params) -> Result<()> {
 /// `InitGenesis`.
 pub fn init_genesis(ctx: &mut Context<'_>, gs: &GenesisState) -> Result<()> {
     let params = gs.params.unwrap_or_default();
-    validate_params(&params)
+    validate_params_for(ctx.release(), &params)
         .map_err(|e| undefined(format!("invalid blob genesis state parameters: {e}")))?;
     set_params(ctx, &params)
 }
@@ -247,6 +261,26 @@ pub fn gas_to_consume(msg: &MsgPayForBlobs, gas_per_byte: u32) -> u64 {
         })
         .fold(0u64, u64::wrapping_add);
     total_shares
+        .wrapping_mul(SHARE_SIZE)
+        .wrapping_mul(u64::from(gas_per_byte))
+}
+
+/// `GasToConsume` of the executing `release`: go-square v2 (celestia-app
+/// v4.1.0 and v5.0.12) counts no signer bytes in share version 1 blobs
+/// ([`sdk::version::Release::blob_shares_count_signer`]).
+#[must_use]
+pub fn gas_to_consume_for(
+    release: &sdk::version::Release,
+    msg: &MsgPayForBlobs,
+    gas_per_byte: u32,
+) -> u64 {
+    if release.blob_shares_count_signer() {
+        return gas_to_consume(msg, gas_per_byte);
+    }
+    msg.blob_sizes
+        .iter()
+        .map(|size| sparse_shares_needed(*size, false))
+        .fold(0u64, u64::wrapping_add)
         .wrapping_mul(SHARE_SIZE)
         .wrapping_mul(u64::from(gas_per_byte))
 }
@@ -325,7 +359,7 @@ pub fn pay_for_blobs(
     ctx: &mut Context<'_>,
     msg: &MsgPayForBlobs,
 ) -> Result<MsgPayForBlobsResponse> {
-    let gas = gas_to_consume(msg, GAS_PER_BLOB_BYTE);
+    let gas = gas_to_consume_for(ctx.release(), msg, GAS_PER_BLOB_BYTE);
     ctx.gas
         .consume(gas, PAY_FOR_BLOB_GAS_DESCRIPTOR)
         .map_err(|_| {
@@ -357,7 +391,7 @@ pub fn update_blob_params(
         )));
     }
     let params = msg.params.unwrap_or_default();
-    validate_params(&params)
+    validate_params_for(ctx.release(), &params)
         .map_err(|e| sdkerr::invalid_request(format!("invalid parameters: {e}")))?;
     set_params(ctx, &params)?;
     let ev = typed_event(&EventUpdateBlobParams {
@@ -611,6 +645,48 @@ mod tests {
         assert_eq!(
             estimate_gas(&msg, 8, 10),
             4 * 512 * 8 + 10 * 70 * 2 + 75_000
+        );
+    }
+
+    /// celestia-app v4.1.0 and v5.0.12 (go-square v2) count no signer
+    /// bytes: a 478-byte share version 1 blob takes 1 share there and 2
+    /// from v6.4.10 (go-square v3) on.
+    #[test]
+    fn signer_bytes_count_from_go_square_v3() {
+        use sdk::version::Release;
+        let msg = MsgPayForBlobs {
+            blob_sizes: vec![478],
+            share_versions: vec![1],
+            ..Default::default()
+        };
+        for v in 4..=12 {
+            let r = Release::for_app_version(v).expect("known app version");
+            let shares = if matches!(v, 4 | 5) { 1 } else { 2 };
+            assert_eq!(gas_to_consume_for(r, &msg, 8), shares * 512 * 8, "v{v}");
+        }
+        assert_eq!(
+            gas_to_consume_for(Release::executing(9), &msg, 8),
+            gas_to_consume(&msg, 8)
+        );
+    }
+
+    /// `validateGovMaxSquareSize` caps the gov max square size at
+    /// `SquareSizeUpperBound` only from celestia-app v9.0.8 on: v4.1.0 to
+    /// v8.0.8 accept any power of two.
+    #[test]
+    fn gov_max_square_size_cap_from_v9() {
+        use sdk::version::Release;
+        let p = Params {
+            gas_per_blob_byte: 8,
+            gov_max_square_size: 1024,
+        };
+        for v in 4..=12 {
+            let r = Release::for_app_version(v).expect("known app version");
+            assert_eq!(validate_params_for(r, &p).is_ok(), v < 9, "v{v}");
+        }
+        assert_eq!(
+            validate_params_for(Release::executing(9), &p),
+            validate_params(&p)
         );
     }
 

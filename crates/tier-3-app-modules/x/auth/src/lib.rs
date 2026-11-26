@@ -58,13 +58,18 @@ pub const MODULE_ACCOUNT_PERMS: &[(&str, &[&str])] = &[
 
 /// The module accounts (`maccPerms`) of the current app version:
 /// celestia-app v9.0.8 (app version 9) has no `fibre` account (ADR 0004),
-/// so its address is neither a module account nor blocked there.
+/// so its address is neither a module account nor blocked there; v4.1.0 to
+/// v6.4.10 have no `forwarding` account either.
 pub fn module_account_perms()
 -> impl Iterator<Item = &'static (&'static str, &'static [&'static str])> {
-    let v9 = !sdk::version::release(0).has_fibre();
-    MODULE_ACCOUNT_PERMS
-        .iter()
-        .filter(move |(n, _)| !(v9 && *n == "fibre"))
+    let release = sdk::version::release(0);
+    let no_fibre = !release.has_fibre();
+    let no_forwarding = !release.has_forwarding();
+    MODULE_ACCOUNT_PERMS.iter().filter(move |(n, _)| match *n {
+        "fibre" => !no_fibre,
+        "forwarding" => !no_forwarding,
+        _ => true,
+    })
 }
 
 /// A 20-byte (or 32-byte for some module-derived) account address.

@@ -164,7 +164,7 @@ fn validate_blob_tx_with_commitments(
 /// `MaxEffectiveSquareSize`.
 fn max_effective_square_size(ctx: &mut Context<'_>) -> Result<usize, Abort> {
     let gov = x_blob::get_params(ctx)?.gov_max_square_size;
-    let size = gov.min(SQUARE_SIZE_UPPER_BOUND);
+    let size = gov.min(ctx.release().square_size_upper_bound());
     usize::try_from(size).map_err(|e| Abort(e.to_string()))
 }
 
@@ -797,10 +797,11 @@ fn fill_v9(
     }
     // separateTxs (v9): no fibre txs exist at app version 9.
     let rejects_duplicates = ctx.release().rejects_duplicate_tx_raw_fields();
+    let max_tx_size = ctx.release().max_tx_size();
     let mut normal: Vec<&[u8]> = Vec::new();
     let mut blobs: Vec<UnwrappedBlobTx> = Vec::new();
     for raw in within_bytes {
-        if raw.len() > MAX_TX_SIZE {
+        if raw.len() > max_tx_size {
             continue;
         }
         let b = txdecode::unmarshal_blob_tx_v9(raw);
@@ -892,8 +893,9 @@ fn process_v9(
     version: u64,
 ) -> Result<bool, Abort> {
     let (mut sdk_msgs, mut blob_msgs) = (0usize, 0usize);
+    let max_tx_size = ctx.release().max_tx_size();
     for raw in &req.txs {
-        if raw.len() > MAX_TX_SIZE {
+        if raw.len() > max_tx_size {
             return Ok(false);
         }
         let blob = match txdecode::unmarshal_blob_tx_v9(raw) {

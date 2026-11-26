@@ -367,10 +367,10 @@ fn v046_state_rejects_mempool_proposals_queries_and_snapshots() {
     }
 }
 
-/// A node configured to take state-sync snapshots keeps committing a v1
-/// state and takes none.
+/// A node configured to take state-sync snapshots writes format 2
+/// (cosmos-sdk v0.46) snapshots of a v1 state, as Go v0.46 does.
 #[test]
-fn v046_state_takes_no_snapshot() {
+fn v046_state_takes_format_2_snapshots() {
     let home = tempfile::tempdir().unwrap();
     let options = AppOptions {
         snapshots: snapshots::SnapshotOptions {
@@ -382,9 +382,20 @@ fn v046_state_takes_no_snapshot() {
     let mut app = App::open_with(home.path(), options).unwrap();
     app.set_legacy_modules(counter);
     app.init_chain(init_request(1)).unwrap();
-    run(&mut app, 1..=3);
-    app.wait_for_snapshot();
-    assert!(app.list_snapshots().snapshots.is_empty());
+    for h in 1..=3 {
+        run(&mut app, h..=h);
+        app.wait_for_snapshot();
+    }
+    let listed: Vec<_> = app
+        .list_snapshots()
+        .snapshots
+        .into_iter()
+        .map(|s| (s.height, s.format))
+        .collect();
+    assert_eq!(
+        listed,
+        [(3, snapshots::FORMAT_V046), (2, snapshots::FORMAT_V046)]
+    );
 }
 
 /// [`Counter`], whose transaction `b"unported"` reaches a not-ported
