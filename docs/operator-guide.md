@@ -966,6 +966,30 @@ The RPC servers must still hold height `H` (archive nodes for old
 heights). The script sets a long `--trust-period-hours`, because the light
 client measures the trusting period from now and an old header is years
 old; the trust itself comes from `TRUST_HASH` (or the primary's header).
+With a height, `follow` verifies the light-client data at `H` (validator
+sets, consensus params, commit, header `H+1`'s app hash) before it reads
+the snapshot. Run the script with an empty snapshot directory to check
+the RPC servers and the trust hash ahead of time: it logs
+`light-client data at the snapshot height verified` and then stops at the
+missing snapshot.
+
+`follow --snapshot-interval N` (`SNAPSHOT_INTERVAL=N` in the script)
+writes a state-sync snapshot to `<home>/data/snapshots` every `N`
+executed heights: format 2 at app versions 1 to 3, as Go cosmos-sdk v0.46
+does, and format 3 after. A run that ends at its stop height waits for
+the last snapshot. Each one restores with `--snapshot`, so a long replay
+can resume from its checkpoints. To check a snapshot against Go's
+snapshot of the same height:
+
+```sh
+celestia-rs compare-snapshots --height <H> --format 2 <rust-snapshot-dir> <go-snapshot-dir>
+```
+
+It decodes both item streams (the chunk files `<dir>/<H>/<format>/0..n`)
+and fails at the first item that differs, naming its store and IAVL node.
+Expect equal items in the same order, and different chunk bytes: Go and
+celestia-rs use different zlib encoders, so the compressed chunks differ
+even when the state is the same.
 
 - **Archive peers.** Block sync asks a peer only for heights inside the
   `[base, height]` range it reports. Most public peers prune old blocks,

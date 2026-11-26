@@ -57,11 +57,17 @@ impl Chain {
         Fixture::synthetic(self.fixture)
     }
 
-    /// The snapshot's chunks, in order.
-    fn chunks(&self, height: u64) -> Vec<Vec<u8>> {
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    /// The Go snapshot directory (`<height>/<format>/<chunk>`).
+    fn go_snapshots(&self) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../../conformance/fixtures/synthetic")
             .join(self.snapshots)
+    }
+
+    /// The snapshot's chunks, in order.
+    fn chunks(&self, height: u64) -> Vec<Vec<u8>> {
+        let dir = self
+            .go_snapshots()
             .join(height.to_string())
             .join(snapshots::FORMAT_V046.to_string());
         let mut out = Vec::new();
@@ -91,6 +97,16 @@ impl Chain {
         let mut a = app::App::open(home.path()).unwrap();
         a.set_v2_upgrade_height(fix.roots()["upgrade_height_v2"].as_i64().unwrap());
         let chunks = self.chunks(height);
+        // Go's StreamWriter closes its zlib writer twice: the stream ends
+        // with the Adler-32 trailer written a second time, as on mainnet.
+        let all = chunks.concat();
+        let n = all.len();
+        assert_eq!(
+            all[n - 4..],
+            all[n - 8..n - 4],
+            "{} snapshot {height}: Go's duplicated Adler-32 trailer",
+            self.fixture
+        );
         let mut total = hash::Sha256Hasher::new();
         let mut chunk_hashes = Vec::new();
         for c in &chunks {
@@ -213,6 +229,131 @@ impl Chain {
     }
 }
 
+impl Chain {
+    /// Replays the chain from genesis with a snapshot after every commit
+    /// and requires, at each of `heights` (Go's snapshot heights), a format
+    /// 2 snapshot with the same items as Go's, in the same order; then
+    /// restores that Rust snapshot into a fresh app.
+    fn export_like_go(&self, heights: &[u64]) {
+        let f = self.fix();
+        let home = tempfile::tempdir().unwrap();
+        let mut a = app::App::open_with(
+            home.path(),
+            app::AppOptions {
+                snapshots: snapshots::SnapshotOptions {
+                    interval: 1,
+                    keep_recent: 0,
+                },
+                ..app::AppOptions::default()
+            },
+        )
+        .unwrap();
+        a.set_v2_upgrade_height(f.roots()["upgrade_height_v2"].as_i64().unwrap());
+        a.init_chain(common::init_request(&f.genesis())).unwrap();
+        let blocks = f.blocks();
+        let vals = f.validator_sets(&self.genesis_validators());
+        let last = i64::try_from(*heights.iter().max().unwrap()).unwrap();
+        for h in 1..=last {
+            let prev = vals.get(&(h - 1)).cloned().unwrap_or_default();
+            a.finalize_block(common::finalize_request(&blocks[&h], &prev))
+                .unwrap_or_else(|e| panic!("{} height {h}: {}", self.fixture, e.log));
+            a.commit().unwrap();
+            a.wait_for_snapshot();
+        }
+        let listed = a.list_snapshots().snapshots;
+        let rust = home.path().join("data/snapshots");
+        for &h in heights {
+            let s = listed
+                .iter()
+                .find(|s| s.height == h)
+                .unwrap_or_else(|| panic!("{}: no Rust snapshot at {h}", self.fixture));
+            assert_eq!(
+                s.format,
+                snapshots::FORMAT_V046,
+                "{} snapshot {h}",
+                self.fixture
+            );
+            let c = snapshots::compare_dirs(&rust, &self.go_snapshots(), h, snapshots::FORMAT_V046)
+                .unwrap();
+            assert!(
+                c.first_difference.is_none(),
+                "{} snapshot {h}: {}",
+                self.fixture,
+                c.first_difference.unwrap()
+            );
+            assert!(c.items > 0);
+            println!(
+                "{} snapshot {h}: {} items equal to Go's (chunk bytes identical: {})",
+                self.fixture, c.items, c.chunk_bytes_identical
+            );
+            self.restore_rust(&rust, h, &listed);
+        }
+    }
+
+    /// Restores a Rust format 2 snapshot into a fresh app.
+    fn restore_rust(&self, dir: &std::path::Path, height: u64, listed: &[abci::Snapshot]) {
+        let s = listed.iter().find(|s| s.height == height).unwrap().clone();
+        let fix = self.fix();
+        let want = hex::decode(
+            fix.roots()["heights"][usize::try_from(height).unwrap()]["app_hash"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let mut b = app::App::open(home.path()).unwrap();
+        b.set_v2_upgrade_height(fix.roots()["upgrade_height_v2"].as_i64().unwrap());
+        let chunks = s.chunks;
+        let offer = b.offer_snapshot(abci::RequestOfferSnapshot {
+            snapshot: Some(s),
+            app_hash: want.clone(),
+            app_version: self.app_version_after(i64::try_from(height).unwrap()),
+        });
+        assert_eq!(
+            offer.result,
+            abci::response_offer_snapshot::Result::Accept as i32
+        );
+        for i in 0..chunks {
+            let chunk = std::fs::read(
+                dir.join(height.to_string())
+                    .join(snapshots::FORMAT_V046.to_string())
+                    .join(i.to_string()),
+            )
+            .unwrap();
+            let r = b.apply_snapshot_chunk(abci::RequestApplySnapshotChunk {
+                index: i,
+                chunk,
+                sender: String::new(),
+            });
+            assert_eq!(
+                r.result,
+                abci::response_apply_snapshot_chunk::Result::Accept as i32
+            );
+        }
+        assert_eq!(
+            b.info().last_block_app_hash,
+            want,
+            "{} Rust snapshot {height}",
+            self.fixture
+        );
+    }
+}
+
+#[test]
+fn exports_synthetic_chain_snapshots_like_go() {
+    SYNTHETIC.export_like_go(&[3, 5, 7, 12]);
+}
+
+#[test]
+fn exports_staking_chain_snapshots_like_go() {
+    STAKING.export_like_go(&[9, 13, 27]);
+}
+
+#[test]
+fn exports_ibc_chain_snapshots_like_go() {
+    IBC.export_like_go(&[39, 72, 100, 120]);
+}
+
 #[test]
 fn restores_an_app_version_1_snapshot() {
     SYNTHETIC.restore_and_replay(3);
@@ -284,5 +425,41 @@ fn refuses_other_formats_and_held_states() {
     assert_eq!(
         offer(&mut restored, snapshots::FORMAT_V046),
         R::Reject as i32
+    );
+}
+
+/// The out-of-block memory store rebuild (after a restore or a reopen)
+/// leaves InitChain and block 1 unchanged: InitGenesis already rebuilds the
+/// capability memory store, so every validator's first block after
+/// InitChain finds it initialized and its BeginBlocker charges only the
+/// `mem_initialized` read, as on every later block. A fresh home (height 0)
+/// never runs the out-of-block rebuild.
+#[test]
+fn init_chain_leaves_the_memory_store_initialized_for_block_1() {
+    use sdk::{Context, ExecMode, Header};
+    let mut ms = sdk::MultiStore::new();
+    app::stores::mount_release(&mut ms, sdk::version::Release::for_app_version(1).unwrap())
+        .unwrap();
+    let mut driver = Driver::new(V1Modules);
+    driver
+        .init_chain(&mut ms, &common::init_request(&SYNTHETIC.fix().genesis()))
+        .unwrap();
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    ms.select(sdk::store::Stack::Finalize);
+    let gas = |ms: &mut sdk::MultiStore, rebuild: bool| {
+        let mut ctx = Context::new(ms, Header::default(), ExecMode::Finalize);
+        if rebuild {
+            x_capability::init_mem_store(&mut ctx).unwrap();
+        } else {
+            assert!(x_capability::is_initialized(&mut ctx).unwrap());
+        }
+        ctx.gas.consumed_to_limit()
+    };
+    let read = gas(&mut ms, false);
+    assert!(read > 0, "the mem_initialized read costs gas at v0.46");
+    assert_eq!(
+        gas(&mut ms, true),
+        read,
+        "block 1 does not rebuild the memory store"
     );
 }
