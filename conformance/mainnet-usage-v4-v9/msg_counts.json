@@ -1,0 +1,2295 @@
+{
+ "celestia.blob.v1.MsgPayForBlobs": {
+  "total": 37231698,
+  "total_exact": false,
+  "eras": {
+   "4": {
+    "count": 136964,
+    "first": 6680342,
+    "estimated": true
+   },
+   "5": {
+    "count": 4284272,
+    "first": 6748822,
+    "estimated": true
+   },
+   "6": {
+    "count": 10791099,
+    "first": 8662014,
+    "estimated": true
+   },
+   "8": {
+    "count": 5315469,
+    "first": 10960600,
+    "estimated": true
+   },
+   "9": {
+    "count": 16703894,
+    "first": 11771699,
+    "estimated": true
+   }
+  }
+ },
+ "celestia.blob.v1.MsgUpdateBlobParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "celestia.fibre.v1.MsgDepositToEscrow": {
+  "total": 0,
+  "eras": {}
+ },
+ "celestia.fibre.v1.MsgPayForFibre": {
+  "total": 0,
+  "eras": {}
+ },
+ "celestia.fibre.v1.MsgPaymentPromiseTimeout": {
+  "total": 0,
+  "eras": {}
+ },
+ "celestia.fibre.v1.MsgRequestWithdrawal": {
+  "total": 0,
+  "eras": {}
+ },
+ "celestia.fibre.v1.MsgUpdateFibreParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "celestia.forwarding.v1.MsgForward": {
+  "total": 1359,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 25,
+    "first": 11002262,
+    "estimated": false
+   },
+   "9": {
+    "count": 1334,
+    "first": 11797658,
+    "estimated": false
+   }
+  }
+ },
+ "celestia.minfee.v1.MsgUpdateMinfeeParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "celestia.signal.v1.MsgSignalVersion": {
+  "total": 432,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 76,
+    "first": 6722800,
+    "estimated": false
+   },
+   "5": {
+    "count": 147,
+    "first": 6761657,
+    "estimated": false
+   },
+   "6": {
+    "count": 69,
+    "first": 8662220,
+    "estimated": false
+   },
+   "8": {
+    "count": 73,
+    "first": 11357965,
+    "estimated": false
+   },
+   "9": {
+    "count": 67,
+    "first": 14736959,
+    "estimated": false
+   }
+  }
+ },
+ "celestia.signal.v1.MsgTryUpgrade": {
+  "total": 5,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 1,
+    "first": 6748820,
+    "estimated": false
+   },
+   "5": {
+    "count": 1,
+    "first": 8561212,
+    "estimated": false
+   },
+   "6": {
+    "count": 1,
+    "first": 10859799,
+    "estimated": false
+   },
+   "8": {
+    "count": 1,
+    "first": 11670898,
+    "estimated": false
+   },
+   "9": {
+    "count": 1,
+    "first": 14884042,
+    "estimated": false
+   }
+  }
+ },
+ "celestia.valaddr.v1.MsgSetFibreProviderInfo": {
+  "total": 0,
+  "eras": {}
+ },
+ "celestia.zkism.v1.MsgCreateInterchainSecurityModule": {
+  "total": 0,
+  "eras": {}
+ },
+ "celestia.zkism.v1.MsgSubmitMessages": {
+  "total": 0,
+  "eras": {}
+ },
+ "celestia.zkism.v1.MsgUpdateInterchainSecurityModule": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.auth.v1beta1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.authz.v1beta1.MsgExec": {
+  "total": 13956,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 91,
+    "first": 6680359,
+    "estimated": false
+   },
+   "5": {
+    "count": 8307,
+    "first": 6749842,
+    "estimated": false
+   },
+   "6": {
+    "count": 4149,
+    "first": 8662128,
+    "estimated": false
+   },
+   "8": {
+    "count": 385,
+    "first": 10964872,
+    "estimated": false
+   },
+   "9": {
+    "count": 1024,
+    "first": 11777793,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.authz.v1beta1.MsgGrant": {
+  "total": 1160,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 43,
+    "first": 6681326,
+    "estimated": false
+   },
+   "5": {
+    "count": 606,
+    "first": 6748846,
+    "estimated": false
+   },
+   "6": {
+    "count": 278,
+    "first": 8679672,
+    "estimated": false
+   },
+   "8": {
+    "count": 74,
+    "first": 10972038,
+    "estimated": false
+   },
+   "9": {
+    "count": 159,
+    "first": 11781073,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.authz.v1beta1.MsgPruneExpiredGrants": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.authz.v1beta1.MsgRevoke": {
+  "total": 49,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 2,
+    "first": 6682955,
+    "estimated": false
+   },
+   "5": {
+    "count": 38,
+    "first": 6795309,
+    "estimated": false
+   },
+   "6": {
+    "count": 7,
+    "first": 8831954,
+    "estimated": false
+   },
+   "8": {
+    "count": 2,
+    "first": 11457871,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.bank.v1beta1.MsgMultiSend": {
+  "total": 5597,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 10,
+    "first": 7273551,
+    "estimated": false
+   },
+   "6": {
+    "count": 5569,
+    "first": 8694701,
+    "estimated": false
+   },
+   "8": {
+    "count": 10,
+    "first": 11342005,
+    "estimated": false
+   },
+   "9": {
+    "count": 8,
+    "first": 11911641,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.bank.v1beta1.MsgSend": {
+  "total": 433812,
+  "total_exact": false,
+  "eras": {
+   "4": {
+    "count": 6348,
+    "first": 6680342,
+    "estimated": false
+   },
+   "5": {
+    "count": 134242,
+    "first": 6748829,
+    "estimated": true
+   },
+   "6": {
+    "count": 153622,
+    "first": 8662032,
+    "estimated": true
+   },
+   "8": {
+    "count": 58485,
+    "first": 10960623,
+    "estimated": false
+   },
+   "9": {
+    "count": 81115,
+    "first": 11771820,
+    "estimated": true
+   }
+  }
+ },
+ "cosmos.bank.v1beta1.MsgSetSendEnabled": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.bank.v1beta1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.circuit.v1.MsgAuthorizeCircuitBreaker": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.circuit.v1.MsgResetCircuitBreaker": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.circuit.v1.MsgTripCircuitBreaker": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.consensus.v1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.crisis.v1beta1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.crisis.v1beta1.MsgVerifyInvariant": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.distribution.v1beta1.MsgCommunityPoolSpend": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.distribution.v1beta1.MsgDepositValidatorRewardsPool": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+  "total": 38,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 4,
+    "first": 6729189,
+    "estimated": false
+   },
+   "5": {
+    "count": 4,
+    "first": 8342449,
+    "estimated": false
+   },
+   "6": {
+    "count": 20,
+    "first": 8785718,
+    "estimated": false
+   },
+   "8": {
+    "count": 1,
+    "first": 11758198,
+    "estimated": false
+   },
+   "9": {
+    "count": 9,
+    "first": 11825078,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.distribution.v1beta1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward": {
+  "total": 465021,
+  "total_exact": false,
+  "eras": {
+   "4": {
+    "count": 8991,
+    "first": 6680347,
+    "estimated": false
+   },
+   "5": {
+    "count": 167723,
+    "first": 6748827,
+    "estimated": true
+   },
+   "6": {
+    "count": 175841,
+    "first": 8662032,
+    "estimated": true
+   },
+   "8": {
+    "count": 43337,
+    "first": 10960619,
+    "estimated": false
+   },
+   "9": {
+    "count": 69129,
+    "first": 11771813,
+    "estimated": true
+   }
+  }
+ },
+ "cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+  "total": 5398,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 37,
+    "first": 6680366,
+    "estimated": false
+   },
+   "5": {
+    "count": 1136,
+    "first": 6755360,
+    "estimated": false
+   },
+   "6": {
+    "count": 1955,
+    "first": 8663858,
+    "estimated": false
+   },
+   "8": {
+    "count": 767,
+    "first": 10960699,
+    "estimated": false
+   },
+   "9": {
+    "count": 1503,
+    "first": 11771813,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.evidence.v1beta1.MsgSubmitEvidence": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+  "total": 343,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 104,
+    "first": 8053382,
+    "estimated": false
+   },
+   "6": {
+    "count": 5,
+    "first": 8840139,
+    "estimated": false
+   },
+   "8": {
+    "count": 30,
+    "first": 11759295,
+    "estimated": false
+   },
+   "9": {
+    "count": 204,
+    "first": 11802272,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.feegrant.v1beta1.MsgPruneAllowances": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.gov.v1.MsgCancelProposal": {
+  "total": 1,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 1,
+    "first": 14706587,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.gov.v1.MsgDeposit": {
+  "total": 11,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 7,
+    "first": 8223702,
+    "estimated": false
+   },
+   "6": {
+    "count": 4,
+    "first": 8691934,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.gov.v1.MsgExecLegacyContent": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.gov.v1.MsgSubmitProposal": {
+  "total": 4,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 1,
+    "first": 8223584,
+    "estimated": false
+   },
+   "6": {
+    "count": 2,
+    "first": 8691664,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 1,
+    "first": 14684658,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.gov.v1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.gov.v1.MsgVote": {
+  "total": 90,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 29,
+    "first": 8231313,
+    "estimated": false
+   },
+   "6": {
+    "count": 61,
+    "first": 8696105,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.gov.v1.MsgVoteWeighted": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.gov.v1beta1.MsgDeposit": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.gov.v1beta1.MsgSubmitProposal": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.gov.v1beta1.MsgVote": {
+  "total": 7038,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 2724,
+    "first": 8231257,
+    "estimated": false
+   },
+   "6": {
+    "count": 4314,
+    "first": 8696115,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.gov.v1beta1.MsgVoteWeighted": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgCreateGroup": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgCreateGroupPolicy": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgCreateGroupWithPolicy": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgExec": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgLeaveGroup": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgSubmitProposal": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgUpdateGroupAdmin": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgUpdateGroupMembers": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgUpdateGroupMetadata": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgUpdateGroupPolicyAdmin": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgUpdateGroupPolicyDecisionPolicy": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgUpdateGroupPolicyMetadata": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgVote": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.group.v1.MsgWithdrawProposal": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.mint.v1beta1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.slashing.v1beta1.MsgUnjail": {
+  "total": 69,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 1,
+    "first": 6683014,
+    "estimated": false
+   },
+   "5": {
+    "count": 10,
+    "first": 6784484,
+    "estimated": false
+   },
+   "6": {
+    "count": 23,
+    "first": 8738485,
+    "estimated": false
+   },
+   "8": {
+    "count": 10,
+    "first": 10964338,
+    "estimated": false
+   },
+   "9": {
+    "count": 25,
+    "first": 11773332,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.slashing.v1beta1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.staking.v1beta1.MsgBeginRedelegate": {
+  "total": 20704,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 152,
+    "first": 6680695,
+    "estimated": false
+   },
+   "5": {
+    "count": 8999,
+    "first": 6749253,
+    "estimated": false
+   },
+   "6": {
+    "count": 5263,
+    "first": 8662235,
+    "estimated": false
+   },
+   "8": {
+    "count": 1215,
+    "first": 10961945,
+    "estimated": false
+   },
+   "9": {
+    "count": 5075,
+    "first": 11771799,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+  "total": 1186,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 31,
+    "first": 6680785,
+    "estimated": false
+   },
+   "5": {
+    "count": 582,
+    "first": 6750486,
+    "estimated": false
+   },
+   "6": {
+    "count": 332,
+    "first": 8666751,
+    "estimated": false
+   },
+   "8": {
+    "count": 99,
+    "first": 10990584,
+    "estimated": false
+   },
+   "9": {
+    "count": 142,
+    "first": 11817820,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.staking.v1beta1.MsgCreateValidator": {
+  "total": 45,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 2,
+    "first": 6681796,
+    "estimated": false
+   },
+   "5": {
+    "count": 7,
+    "first": 7467486,
+    "estimated": false
+   },
+   "6": {
+    "count": 17,
+    "first": 8674339,
+    "estimated": false
+   },
+   "8": {
+    "count": 9,
+    "first": 10970532,
+    "estimated": false
+   },
+   "9": {
+    "count": 10,
+    "first": 12178289,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.staking.v1beta1.MsgDelegate": {
+  "total": 151246,
+  "total_exact": false,
+  "eras": {
+   "4": {
+    "count": 3324,
+    "first": 6680348,
+    "estimated": false
+   },
+   "5": {
+    "count": 73660,
+    "first": 6748849,
+    "estimated": false
+   },
+   "6": {
+    "count": 38675,
+    "first": 8662037,
+    "estimated": false
+   },
+   "8": {
+    "count": 13366,
+    "first": 10960718,
+    "estimated": false
+   },
+   "9": {
+    "count": 22221,
+    "first": 11771979,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.staking.v1beta1.MsgEditValidator": {
+  "total": 363,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 51,
+    "first": 6680930,
+    "estimated": false
+   },
+   "5": {
+    "count": 179,
+    "first": 6749213,
+    "estimated": false
+   },
+   "6": {
+    "count": 89,
+    "first": 8691829,
+    "estimated": false
+   },
+   "8": {
+    "count": 28,
+    "first": 10963723,
+    "estimated": false
+   },
+   "9": {
+    "count": 16,
+    "first": 12360281,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.staking.v1beta1.MsgUndelegate": {
+  "total": 74641,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 1305,
+    "first": 6680367,
+    "estimated": false
+   },
+   "5": {
+    "count": 36497,
+    "first": 6748968,
+    "estimated": false
+   },
+   "6": {
+    "count": 18163,
+    "first": 8662187,
+    "estimated": false
+   },
+   "8": {
+    "count": 7614,
+    "first": 10960753,
+    "estimated": false
+   },
+   "9": {
+    "count": 11062,
+    "first": 11772479,
+    "estimated": false
+   }
+  }
+ },
+ "cosmos.staking.v1beta1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.upgrade.v1beta1.MsgCancelUpgrade": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.upgrade.v1beta1.MsgSoftwareUpgrade": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.vesting.v1beta1.MsgCreatePeriodicVestingAccount": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.vesting.v1beta1.MsgCreatePermanentLockedAccount": {
+  "total": 0,
+  "eras": {}
+ },
+ "cosmos.vesting.v1beta1.MsgCreateVestingAccount": {
+  "total": 83,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 28,
+    "first": 6818818,
+    "estimated": false
+   },
+   "6": {
+    "count": 24,
+    "first": 8775460,
+    "estimated": false
+   },
+   "8": {
+    "count": 18,
+    "first": 11196005,
+    "estimated": false
+   },
+   "9": {
+    "count": 13,
+    "first": 11824345,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.interchain_security.v1.MsgAnnounceValidator": {
+  "total": 9,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 4,
+    "first": 6710957,
+    "estimated": false
+   },
+   "5": {
+    "count": 2,
+    "first": 6792443,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 2,
+    "first": 10963179,
+    "estimated": false
+   },
+   "9": {
+    "count": 1,
+    "first": 12854778,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.interchain_security.v1.MsgCreateMerkleRootMultisigIsm": {
+  "total": 19,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 8,
+    "first": 6913426,
+    "estimated": false
+   },
+   "6": {
+    "count": 6,
+    "first": 9695781,
+    "estimated": false
+   },
+   "8": {
+    "count": 1,
+    "first": 11370216,
+    "estimated": false
+   },
+   "9": {
+    "count": 4,
+    "first": 12836832,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.interchain_security.v1.MsgCreateMessageIdMultisigIsm": {
+  "total": 36,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 35,
+    "first": 7545655,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 1,
+    "first": 11370200,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.interchain_security.v1.MsgCreateNoopIsm": {
+  "total": 0,
+  "eras": {}
+ },
+ "hyperlane.core.interchain_security.v1.MsgCreateRoutingIsm": {
+  "total": 3,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 1,
+    "first": 6709845,
+    "estimated": false
+   },
+   "5": {
+    "count": 2,
+    "first": 7578757,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.interchain_security.v1.MsgRemoveRoutingIsmDomain": {
+  "total": 3,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 1,
+    "first": 9811519,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 2,
+    "first": 12836259,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.interchain_security.v1.MsgSetRoutingIsmDomain": {
+  "total": 12,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 6,
+    "first": 6914300,
+    "estimated": false
+   },
+   "6": {
+    "count": 3,
+    "first": 9781658,
+    "estimated": false
+   },
+   "8": {
+    "count": 1,
+    "first": 11559392,
+    "estimated": false
+   },
+   "9": {
+    "count": 2,
+    "first": 12836259,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.interchain_security.v1.MsgUpdateRoutingIsmOwner": {
+  "total": 5,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 1,
+    "first": 7642242,
+    "estimated": false
+   },
+   "6": {
+    "count": 4,
+    "first": 9781612,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.post_dispatch.v1.MsgClaim": {
+  "total": 1,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 1,
+    "first": 13082018,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.post_dispatch.v1.MsgCreateIgp": {
+  "total": 3,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 1,
+    "first": 6709951,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 1,
+    "first": 11454154,
+    "estimated": false
+   },
+   "9": {
+    "count": 1,
+    "first": 12002419,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.post_dispatch.v1.MsgCreateMerkleTreeHook": {
+  "total": 1,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 1,
+    "first": 6709932,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.post_dispatch.v1.MsgCreateNoopHook": {
+  "total": 1,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 1,
+    "first": 9266304,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.post_dispatch.v1.MsgPayForGas": {
+  "total": 1,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 1,
+    "first": 7308525,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.post_dispatch.v1.MsgSetDestinationGasConfig": {
+  "total": 39,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 27,
+    "first": 6916181,
+    "estimated": false
+   },
+   "6": {
+    "count": 1,
+    "first": 9696527,
+    "estimated": false
+   },
+   "8": {
+    "count": 10,
+    "first": 11454156,
+    "estimated": false
+   },
+   "9": {
+    "count": 1,
+    "first": 12002435,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.post_dispatch.v1.MsgSetIgpOwner": {
+  "total": 0,
+  "eras": {}
+ },
+ "hyperlane.core.v1.MsgCreateMailbox": {
+  "total": 1,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 1,
+    "first": 6709910,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.v1.MsgProcessMessage": {
+  "total": 4509,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 794,
+    "first": 7033457,
+    "estimated": false
+   },
+   "6": {
+    "count": 517,
+    "first": 8665997,
+    "estimated": false
+   },
+   "8": {
+    "count": 191,
+    "first": 10978120,
+    "estimated": false
+   },
+   "9": {
+    "count": 3007,
+    "first": 11773447,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.core.v1.MsgSetMailbox": {
+  "total": 5,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 1,
+    "first": 6710014,
+    "estimated": false
+   },
+   "5": {
+    "count": 4,
+    "first": 7578872,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.warp.v1.MsgCreateCollateralToken": {
+  "total": 15,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 9,
+    "first": 6864972,
+    "estimated": false
+   },
+   "6": {
+    "count": 6,
+    "first": 9610338,
+    "estimated": false
+   },
+   "8": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.warp.v1.MsgCreateSyntheticToken": {
+  "total": 7,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 6,
+    "first": 9800785,
+    "estimated": false
+   },
+   "8": {
+    "count": 1,
+    "first": 11741453,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.warp.v1.MsgEnrollRemoteRouter": {
+  "total": 22,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 10,
+    "first": 6917549,
+    "estimated": false
+   },
+   "6": {
+    "count": 10,
+    "first": 9610989,
+    "estimated": false
+   },
+   "8": {
+    "count": 2,
+    "first": 11459595,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.warp.v1.MsgRemoteTransfer": {
+  "total": 3132,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 2008,
+    "first": 6932050,
+    "estimated": false
+   },
+   "6": {
+    "count": 774,
+    "first": 8662765,
+    "estimated": false
+   },
+   "8": {
+    "count": 104,
+    "first": 10960988,
+    "estimated": false
+   },
+   "9": {
+    "count": 246,
+    "first": 11799257,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.warp.v1.MsgSetToken": {
+  "total": 15,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 8,
+    "first": 7219228,
+    "estimated": false
+   },
+   "6": {
+    "count": 6,
+    "first": 9912406,
+    "estimated": false
+   },
+   "8": {
+    "count": 1,
+    "first": 11459602,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "hyperlane.warp.v1.MsgUnrollRemoteRouter": {
+  "total": 2,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 1,
+    "first": 8218552,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 1,
+    "first": 11459592,
+    "estimated": false
+   },
+   "9": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.applications.fee.v1.MsgPayPacketFee": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.applications.fee.v1.MsgPayPacketFeeAsync": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.applications.fee.v1.MsgRegisterCounterpartyPayee": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.applications.fee.v1.MsgRegisterPayee": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.applications.interchain_accounts.controller.v1.MsgRegisterInterchainAccount": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.applications.interchain_accounts.controller.v1.MsgSendTx": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.applications.interchain_accounts.controller.v1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.applications.interchain_accounts.host.v1.MsgModuleQuerySafe": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.applications.interchain_accounts.host.v1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.applications.transfer.v1.MsgTransfer": {
+  "total": 105239,
+  "total_exact": false,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 60925,
+    "first": 6748823,
+    "estimated": false
+   },
+   "6": {
+    "count": 26664,
+    "first": 8662034,
+    "estimated": false
+   },
+   "8": {
+    "count": 5909,
+    "first": 10960694,
+    "estimated": false
+   },
+   "9": {
+    "count": 11741,
+    "first": 11772301,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.applications.transfer.v1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.channel.v1.MsgAcknowledgement": {
+  "total": 126786,
+  "total_exact": false,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 72374,
+    "first": 6748825,
+    "estimated": false
+   },
+   "6": {
+    "count": 33349,
+    "first": 8662038,
+    "estimated": false
+   },
+   "8": {
+    "count": 7236,
+    "first": 10960697,
+    "estimated": false
+   },
+   "9": {
+    "count": 13827,
+    "first": 11771954,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.channel.v1.MsgChannelCloseConfirm": {
+  "total": 298,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 3,
+    "first": 6755505,
+    "estimated": false
+   },
+   "6": {
+    "count": 80,
+    "first": 8672305,
+    "estimated": false
+   },
+   "8": {
+    "count": 43,
+    "first": 10962016,
+    "estimated": false
+   },
+   "9": {
+    "count": 172,
+    "first": 11771848,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.channel.v1.MsgChannelCloseInit": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.channel.v1.MsgChannelOpenAck": {
+  "total": 7,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 5,
+    "first": 11360166,
+    "estimated": false
+   },
+   "9": {
+    "count": 2,
+    "first": 12015053,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.channel.v1.MsgChannelOpenConfirm": {
+  "total": 317,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 91,
+    "first": 8668659,
+    "estimated": false
+   },
+   "8": {
+    "count": 48,
+    "first": 10962646,
+    "estimated": false
+   },
+   "9": {
+    "count": 178,
+    "first": 11805565,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.channel.v1.MsgChannelOpenInit": {
+  "total": 7,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 5,
+    "first": 11360162,
+    "estimated": false
+   },
+   "9": {
+    "count": 2,
+    "first": 12015041,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.channel.v1.MsgChannelOpenTry": {
+  "total": 587,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 154,
+    "first": 8668644,
+    "estimated": false
+   },
+   "8": {
+    "count": 91,
+    "first": 10962640,
+    "estimated": false
+   },
+   "9": {
+    "count": 342,
+    "first": 11805562,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.channel.v1.MsgChannelUpgradeAck": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.channel.v1.MsgChannelUpgradeCancel": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.channel.v1.MsgChannelUpgradeConfirm": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.channel.v1.MsgChannelUpgradeInit": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.channel.v1.MsgChannelUpgradeOpen": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.channel.v1.MsgChannelUpgradeTimeout": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.channel.v1.MsgChannelUpgradeTry": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.channel.v1.MsgPruneAcknowledgements": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.channel.v1.MsgRecvPacket": {
+  "total": 139295,
+  "total_exact": false,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 76092,
+    "first": 6748825,
+    "estimated": false
+   },
+   "6": {
+    "count": 39628,
+    "first": 8662044,
+    "estimated": false
+   },
+   "8": {
+    "count": 8107,
+    "first": 10960665,
+    "estimated": false
+   },
+   "9": {
+    "count": 15468,
+    "first": 11771816,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.channel.v1.MsgTimeout": {
+  "total": 3823,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 1176,
+    "first": 6749156,
+    "estimated": false
+   },
+   "6": {
+    "count": 2438,
+    "first": 8664498,
+    "estimated": false
+   },
+   "8": {
+    "count": 69,
+    "first": 10961802,
+    "estimated": false
+   },
+   "9": {
+    "count": 140,
+    "first": 11786101,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.channel.v1.MsgTimeoutOnClose": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.channel.v1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.client.v1.MsgCreateClient": {
+  "total": 31,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 1,
+    "first": 9019439,
+    "estimated": false
+   },
+   "8": {
+    "count": 22,
+    "first": 10998510,
+    "estimated": false
+   },
+   "9": {
+    "count": 8,
+    "first": 11795514,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.client.v1.MsgIBCSoftwareUpgrade": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.client.v1.MsgRecoverClient": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.client.v1.MsgSubmitMisbehaviour": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.client.v1.MsgUpdateClient": {
+  "total": 463282,
+  "total_exact": false,
+  "eras": {
+   "4": {
+    "count": 960,
+    "first": 6680475,
+    "estimated": false
+   },
+   "5": {
+    "count": 260512,
+    "first": 6748825,
+    "estimated": true
+   },
+   "6": {
+    "count": 98306,
+    "first": 8662038,
+    "estimated": false
+   },
+   "8": {
+    "count": 36501,
+    "first": 10960602,
+    "estimated": false
+   },
+   "9": {
+    "count": 67003,
+    "first": 11771706,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.client.v1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.client.v1.MsgUpgradeClient": {
+  "total": 0,
+  "eras": {}
+ },
+ "ibc.core.connection.v1.MsgConnectionOpenAck": {
+  "total": 8,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 2,
+    "first": 7545349,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 4,
+    "first": 11360157,
+    "estimated": false
+   },
+   "9": {
+    "count": 2,
+    "first": 12014979,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.connection.v1.MsgConnectionOpenConfirm": {
+  "total": 9,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 4,
+    "first": 10998525,
+    "estimated": false
+   },
+   "9": {
+    "count": 5,
+    "first": 11795551,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.connection.v1.MsgConnectionOpenInit": {
+  "total": 8,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 2,
+    "first": 7545340,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 4,
+    "first": 11360150,
+    "estimated": false
+   },
+   "9": {
+    "count": 2,
+    "first": 12014967,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.connection.v1.MsgConnectionOpenTry": {
+  "total": 10,
+  "total_exact": true,
+  "eras": {
+   "4": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "5": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "6": {
+    "count": 0,
+    "first": null,
+    "estimated": false
+   },
+   "8": {
+    "count": 4,
+    "first": 10998516,
+    "estimated": false
+   },
+   "9": {
+    "count": 6,
+    "first": 11795543,
+    "estimated": false
+   }
+  }
+ },
+ "ibc.core.connection.v1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ },
+ "packetforward.v1.MsgUpdateParams": {
+  "total": 0,
+  "eras": {}
+ }
+}
