@@ -89,7 +89,7 @@ pub(super) fn handler(ctx: &mut Context<'_>, from: VersionMap) -> Result<Version
         if v.commission.max_rate < min {
             v.commission.max_rate = min.clone();
         }
-        v.commission.update_time = ctx.header.time.clone();
+        v.commission.update_time = ctx.header.time;
         x_staking::store::set_validator(ctx, &v)?;
     }
 
