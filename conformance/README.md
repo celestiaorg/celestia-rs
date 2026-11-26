@@ -351,6 +351,38 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/home" \
   -genesis "$OUT/v1-v3/genesis.json" -out ../fixtures/synthetic/v4
 ```
 
+#### Synthetic chain across the v4 to v5 upgrade
+
+`v4-oracle -heights 10 -next-handoff` runs the same chain on to block
+25: all four validators signal version 5 (block 18 and 21), a
+`MsgTryUpgrade` in block 22 reaches quorum, and the EndBlocker of block
+25 (22 plus chain `test`'s delay of 3) sets app version 5, schedules
+plan `v5` at 26 and writes `data/upgrade-info.json`. The program then
+rewrites `handoff.json` in the home.
+[`fixtures/synthetic/v4-to-v5`](fixtures/synthetic/v4-to-v5) holds its
+outputs: blocks 16 to 20 are those of `fixtures/synthetic/v4`.
+`v5-oracle` opens the home with celestia-app v5.0.12, as the
+multiplexer does: the x/upgrade PreBlocker of block 26 runs the `v5`
+handler (a no-op that returns the module versions it is given; no store
+is added or deleted), and the program executes blocks 26 to 30.
+[`fixtures/synthetic/v5`](fixtures/synthetic/v5) holds the same kinds of
+files as `fixtures/synthetic/v4`, from height 25. `go test` in
+`v4-oracle` rebuilds `v4-to-v5`; `go test` in `v5-oracle` runs the
+whole chain and rebuilds `v5`.
+`cargo test -p app --test synthetic_v5_oracle` checks the fixture's
+facts. To regenerate:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -kv -out "$OUT/v1-v3" -handoff "$OUT/home"
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v4-to-v5 -heights 10 -next-handoff
+cd ../v5-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v5
+```
+
 #### Rich synthetic chain for the v3 to v4 migrations
 
 `v1-oracle -synthetic -chain v3-rich` builds a second chain (genesis at
