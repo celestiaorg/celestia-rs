@@ -46,7 +46,6 @@ import (
 	"github.com/celestiaorg/celestia-app/v3/app"
 	"github.com/celestiaorg/celestia-app/v3/app/encoding"
 	"github.com/celestiaorg/celestia-app/v3/pkg/appconsts"
-	"github.com/celestiaorg/celestia-app/v3/pkg/user"
 	blobtypes "github.com/celestiaorg/celestia-app/v3/x/blob/types"
 	blobstreamtypes "github.com/celestiaorg/celestia-app/v3/x/blobstream/types"
 	signaltypes "github.com/celestiaorg/celestia-app/v3/x/signal/types"
@@ -163,18 +162,9 @@ var aminoSpec = &chainSpec{
 	// Every validator signs every commit.
 	absent:      func(int64, int, int) bool { return false },
 	newAccounts: aminoMultisigMembers,
-	rawTxs:      func(s *synth, a *app.App, height int64) ([][]byte, error) { return s.aminoTxs(a, height, true) },
+	rawTxs:      func(s *synth, a *app.App, height int64) ([][]byte, error) { return s.aminoTxs(a, height) },
 	noHandoff:   true,
 }
-
-// aminoCoreSpec is the amino chain without the cases celestia-rs does not
-// sign as Go yet (aminoBuilder.pending), with the signals of blocks 9
-// and 10 signed in DIRECT mode (fixtures/synthetic/amino-core-v1-v3).
-var aminoCoreSpec = func() *chainSpec {
-	c := *aminoSpec
-	c.rawTxs = func(s *synth, a *app.App, height int64) ([][]byte, error) { return s.aminoTxs(a, height, false) }
-	return &c
-}()
 
 // aminoBuilder signs one block's transactions in amino JSON mode at the
 // committed account numbers and sequences.
@@ -182,12 +172,8 @@ type aminoBuilder struct {
 	s      *synth
 	a      *app.App
 	height int64
-	// pending: also the cases whose amino sign bytes celestia-rs does
-	// not build as Go yet (top-level periodic vesting, MsgPayForBlobs and
-	// signal messages, MsgRegisterEVMAddress, MsgExec of a client update).
-	pending bool
-	used    map[string]bool
-	out     [][]byte
+	used   map[string]bool
+	out    [][]byte
 }
 
 func (b *aminoBuilder) key(name string) (sdk.AccAddress, cryptotypes.PubKey) {
@@ -271,27 +257,6 @@ func (b *aminoBuilder) sign(signer string, edit func(clienttx.Factory) clienttx.
 // tx adds a transaction of msgs signed by signer.
 func (b *aminoBuilder) tx(signer string, msgs ...sdk.Msg) error {
 	bz, err := b.sign(signer, nil, msgs...)
-	if err != nil {
-		return err
-	}
-	b.out = append(b.out, bz)
-	return nil
-}
-
-// signalTx adds a signal transaction: amino-signed (proto-JSON sign
-// bytes) with the pending cases, else in DIRECT mode.
-func (b *aminoBuilder) signalTx(signer string, msgs ...sdk.Msg) error {
-	if b.pending {
-		return b.tx(signer, msgs...)
-	}
-	if err := b.claim(signer); err != nil {
-		return err
-	}
-	sg, err := b.s.signer(b.a)
-	if err != nil {
-		return err
-	}
-	bz, err := sg.CreateTx(msgs, user.SetGasLimit(aminoGasLimit), user.SetFee(aminoFee))
 	if err != nil {
 		return err
 	}
@@ -656,18 +621,18 @@ func ibcPacket() channeltypes.Packet {
 }
 
 // aminoTxs are the amino chain's transactions of block `height`.
-func (s *synth) aminoTxs(a *app.App, height int64, pending bool) ([][]byte, error) {
-	b := &aminoBuilder{s: s, a: a, height: height, pending: pending, used: map[string]bool{}}
+func (s *synth) aminoTxs(a *app.App, height int64) ([][]byte, error) {
+	b := &aminoBuilder{s: s, a: a, height: height, used: map[string]bool{}}
 	var err error
 	switch height {
 	case 9:
 		for _, v := range []string{"val0", "val1", "val2"} {
-			if err = b.signalTx(v, signaltypes.NewMsgSignalVersion(b.valAddr(v), 3)); err != nil {
+			if err = b.tx(v, signaltypes.NewMsgSignalVersion(b.valAddr(v), 3)); err != nil {
 				return nil, err
 			}
 		}
 	case 10:
-		err = b.signalTx("alice", signaltypes.NewMsgTryUpgrade(b.addr("alice")))
+		err = b.tx("alice", signaltypes.NewMsgTryUpgrade(b.addr("alice")))
 	default:
 		if r, ok := aminoRounds[height]; ok {
 			err = b.round(r[0], r[1])
@@ -684,11 +649,6 @@ func (b *aminoBuilder) round(p, r int) error {
 	appVersion := uint64(p + 1)
 	var steps []func() error
 	add := func(f func() error) { steps = append(steps, f) }
-	addPending := func(f func() error) {
-		if b.pending {
-			add(f)
-		}
-	}
 	grant := func(granter, grantee string, auth authz.Authorization) (sdk.Msg, error) {
 		return authz.NewMsgGrant(b.addr(granter), b.addr(grantee), auth, nil)
 	}
@@ -991,7 +951,7 @@ func (b *aminoBuilder) round(p, r int) error {
 		add(func() error {
 			return b.tx("vester-permanent", vestingtypes.NewMsgCreatePermanentLockedAccount(b.addr("vester-permanent"), freshAddr(fmt.Sprintf("permanent %d", p)), aminoCoins(tia)))
 		})
-		addPending(func() error {
+		add(func() error {
 			return b.tx("vester-periodic", vestingtypes.NewMsgCreatePeriodicVestingAccount(b.addr("vester-periodic"), freshAddr(fmt.Sprintf("periodic %d", p)), start, vestingtypes.Periods{
 				{Length: 600, Amount: aminoCoins(tia / 2)}, {Length: 600, Amount: aminoCoins(tia / 2)},
 			}))
@@ -1011,14 +971,14 @@ func (b *aminoBuilder) round(p, r int) error {
 			return b.tx("evidence", m)
 		})
 		// celestia
-		addPending(func() error {
+		add(func() error {
 			return b.tx("val2", signaltypes.NewMsgSignalVersion(b.valAddr("val2"), appVersion+1))
 		})
-		addPending(func() error { return b.tx("try-upgrade", signaltypes.NewMsgTryUpgrade(b.addr("try-upgrade"))) })
-		addPending(func() error {
+		add(func() error { return b.tx("try-upgrade", signaltypes.NewMsgTryUpgrade(b.addr("try-upgrade"))) })
+		add(func() error {
 			return b.unsignable("val3", blobstreamtypes.NewMsgRegisterEVMAddress(b.valAddr("val3"), common.HexToAddress(fmt.Sprintf("0x%040x", 0xa11ce+p))))
 		})
-		addPending(func() error { return b.pfb("blobber", appVersion) })
+		add(func() error { return b.pfb("blobber", appVersion) })
 		// ibc
 		add(func() error { return b.tx("ibc-transfer", transfer("ibc-transfer")) })
 		add(func() error {
@@ -1130,7 +1090,7 @@ func (b *aminoBuilder) round(p, r int) error {
 		})
 		// MsgExec of a client update: its header's public key oneof does
 		// not marshal on the authz codec.
-		addPending(func() error {
+		add(func() error {
 			header, err := ibcHeader(b.height)
 			if err != nil {
 				return err

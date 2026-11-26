@@ -1,6 +1,6 @@
-//! The amino chains against the Go oracle (`conformance/v1-oracle
-//! -synthetic -chain amino-v1-v3` and `amino-core-v1-v3`, fixtures
-//! `conformance/fixtures/synthetic/amino-v1-v3` and `amino-core-v1-v3`).
+//! The amino chain against the Go oracle (`conformance/v1-oracle
+//! -synthetic -chain amino-v1-v3`, fixture
+//! `conformance/fixtures/synthetic/amino-v1-v3`).
 //!
 //! Every transaction is signed in `SIGN_MODE_LEGACY_AMINO_JSON` by the
 //! cosmos-sdk v0.46 client, at app versions 1 (blocks 2 to 4), 2 (blocks
@@ -15,13 +15,12 @@
 //! writes bare, which Go rejects. celestia-rs must accept and reject
 //! exactly the signatures Go does, with Go's results.
 //!
-//! The core chain leaves out the cases celestia-rs does not sign as Go
-//! yet and signs the version signals in DIRECT mode; the full chain adds
-//! them (top-level periodic vesting, `MsgPayForBlobs` and signal
-//! messages, whose sign bytes are bare amino or proto-JSON, blobstream
-//! `MsgRegisterEVMAddress` and `MsgExec` of a client update, whose sign
-//! bytes panic in Go). `conformance/amino-sign-bytes-v046.md` lists the
-//! codec of every message's sign bytes.
+//! Among them: top-level periodic vesting (bare amino JSON),
+//! `MsgPayForBlobs` and the signal messages (proto3 JSON: their
+//! `ModuleCdc` is a `ProtoCodec`), and blobstream `MsgRegisterEVMAddress`
+//! and `MsgExec` of a client update, whose sign bytes panic in Go.
+//! `conformance/amino-sign-bytes-v046.md` lists the codec of every
+//! message's sign bytes.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -56,19 +55,63 @@ fn check_record(name: &str) {
 #[test]
 fn amino_fixture_files_match_their_record() {
     check_record("amino-v1-v3");
-    check_record("amino-core-v1-v3");
 }
-
-#[test]
-fn amino_core_blocks_match_the_oracle() {
-    Fixture::synthetic("amino-core-v1-v3").run_blocks(17);
-}
-
-/// The last block of the full chain that celestia-rs executes as Go does:
-/// block 3 holds the first of the cases the core chain leaves out.
-const FULL_MATCHED_THROUGH: i64 = 2;
 
 #[test]
 fn amino_blocks_match_the_oracle() {
-    Fixture::synthetic("amino-v1-v3").run_blocks(FULL_MATCHED_THROUGH);
+    Fixture::synthetic("amino-v1-v3").run_blocks(17);
+}
+
+/// The SHA-256 of the app version 4 and later (cosmos-sdk v0.50, x/tx)
+/// amino JSON sign bytes, or error, of every transaction of the full
+/// chain, captured before the v0.46 sign bytes changes: those changes
+/// stay behind the v0.46 gate.
+const V4_SIGN_BYTES_SHA256: &str =
+    "49ebbc079203c94db78d8087d0ae4d900b398227cb3c9e4eb42dc17fd6242411";
+
+#[test]
+fn amino_sign_bytes_from_app_version_4_are_unchanged() {
+    use base64::Engine as _;
+    use prost::Message as _;
+    use std::fmt::Write as _;
+    let f = Fixture::synthetic("amino-v1-v3");
+    let sd = x_ante::signing::SignerData {
+        address: "celestia1qqqsyqcyq5rqwzqfpg9scrgwpugpzysn7hzdtn".into(),
+        chain_id: "test".into(),
+        account_number: 7,
+        sequence: 3,
+        pub_key: celestia_proto::Any::default(),
+    };
+    let mut all = String::new();
+    for (h, block) in f.blocks() {
+        let txs = block["block"]["data"]["txs"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        for (i, t) in txs.iter().enumerate() {
+            let mut raw = base64::engine::general_purpose::STANDARD
+                .decode(t.as_str().unwrap())
+                .unwrap();
+            if let Ok(b) = celestia_proto::celestia_core_proto::tendermint::types::BlobTx::decode(
+                raw.as_slice(),
+            ) && b.type_id == "BLOB"
+            {
+                raw = b.tx;
+            }
+            let out = match txdecode::decode(&raw) {
+                Ok(tx) => match x_ante::aminojson::sign_bytes(&sd, &tx) {
+                    Ok(b) => hex::encode(hash::sha256(&b)),
+                    Err(e) => format!("sign bytes: {e}"),
+                },
+                Err(e) => format!("decode: {}", e.log),
+            };
+            writeln!(all, "{h}:{i}:{out}").unwrap();
+        }
+    }
+    assert!(!sdk::version::is_sdk_v046(0));
+    assert_eq!(
+        hex::encode(hash::sha256(all.as_bytes())),
+        V4_SIGN_BYTES_SHA256,
+        "{all}"
+    );
 }

@@ -568,16 +568,11 @@ blocks 9 and 10):
 - transactions signed over the wrapped form of a value the module codec
   writes bare, and a corrupted signature, which Go rejects.
 
-`v1-oracle -synthetic -chain amino-core-v1-v3` is the same chain without
-the cases celestia-rs does not sign as Go yet (top-level periodic vesting,
-`MsgPayForBlobs` and signal messages, blobstream `MsgRegisterEVMAddress`,
-`MsgExec` of a client update), with the signals of blocks 9 and 10 signed
-in DIRECT mode. [`fixtures/synthetic/amino-v1-v3`](fixtures/synthetic/amino-v1-v3)
-and [`fixtures/synthetic/amino-core-v1-v3`](fixtures/synthetic/amino-core-v1-v3)
-hold heights 0 to 17 (regenerate them as the governance chain, with
-`-chain amino-v1-v3` and `-chain amino-core-v1-v3`). `cargo test -p app
---test amino_oracle` compares every block of the core chain and the full
-chain up to its first case left out.
+[`fixtures/synthetic/amino-v1-v3`](fixtures/synthetic/amino-v1-v3) holds
+heights 0 to 17 (regenerate it as the governance chain, with
+`-chain amino-v1-v3`). `cargo test -p app --test amino_oracle` compares
+every block, and checks that the app version 4 and later sign bytes of
+its transactions do not change.
 
 The oracle writes a transaction's log without what depends on Go's
 runtime or the machine (the log is not consensus data): the goroutine
