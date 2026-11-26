@@ -233,6 +233,41 @@ fn create_client(ctx: &mut Context<'_>, m: &clpb::MsgCreateClient) -> Result<Any
     Ok(Any::pack(&clpb::MsgCreateClientResponse {}))
 }
 
+/// A 07-tendermint header as gogoproto marshals it after decoding: the
+/// non-nullable fields an encoder may leave out are present (empty
+/// messages; `stdtime` timestamps as Go's zero time).
+pub(super) fn gogo_header(mut h: tmpb::Header) -> tmpb::Header {
+    use celestia_proto::celestia_core_proto::tendermint::types::BlockId;
+    let fill_block_id = |b: &mut Option<BlockId>| {
+        b.get_or_insert_with(BlockId::default)
+            .part_set_header
+            .get_or_insert_with(Default::default);
+    };
+    if let Some(sh) = h.signed_header.as_mut() {
+        if let Some(hd) = sh.header.as_mut() {
+            hd.version.get_or_insert_with(Default::default);
+            hd.time.get_or_insert_with(sdk::time::go_zero);
+            fill_block_id(&mut hd.last_block_id);
+        }
+        if let Some(c) = sh.commit.as_mut() {
+            fill_block_id(&mut c.block_id);
+            for sig in &mut c.signatures {
+                sig.timestamp.get_or_insert_with(sdk::time::go_zero);
+            }
+        }
+    }
+    for vs in [h.validator_set.as_mut(), h.trusted_validators.as_mut()]
+        .into_iter()
+        .flatten()
+    {
+        for v in vs.validators.iter_mut().chain(vs.proposer.as_mut()) {
+            v.pub_key.get_or_insert_with(Default::default);
+        }
+    }
+    h.trusted_height.get_or_insert_with(Height::default);
+    h
+}
+
 /// `exported.Frozen` of a 07-tendermint client: `FrozenHeight` `0-1`.
 const FROZEN: Height = Height {
     revision_number: 0,
@@ -277,7 +312,9 @@ fn update_client(ctx: &mut Context<'_>, m: &clpb::MsgUpdateClient) -> Result<Any
     }
     let (new_cs, new_cons) = check_header_and_update_state(ctx, client_id, cs, &header)
         .map_err(|e| e.wrap(format!("cannot update client with ID {client_id}")))?;
-    let header_str = hex::encode(header_any.encode_to_vec());
+    // `MustMarshalClientMessage`: the decoded header marshaled again
+    // (gogoproto encodes non-nullable fields the input may have left out).
+    let header_str = hex::encode(Any::pack(&gogo_header(header.clone())).encode_to_vec());
     let consensus_height = tmc::header_height(&header)?;
     tmc::set_client_state(ctx, client_id, &new_cs)?;
     let frozen = !height::is_zero(&new_cs.frozen_height.unwrap_or_default());

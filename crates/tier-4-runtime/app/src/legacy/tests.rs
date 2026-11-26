@@ -2194,3 +2194,33 @@ fn v6_channel_validate_basic() {
     let e = ack(0).unwrap_err();
     assert_eq!((e.codespace, e.code), ("sdk", 26), "{}", e.log);
 }
+
+/// The `update_client` event's header is the decoded header marshaled
+/// again as gogoproto does: an absent vote's missing timestamp becomes
+/// Go's zero time and missing non-nullable messages are written empty.
+#[test]
+fn v6_update_client_event_header_is_gogo_encoded() {
+    use celestia_proto::celestia_core_proto::tendermint::types::{
+        BlockIdFlag, Commit, CommitSig, SignedHeader,
+    };
+    use celestia_proto::ibc::lightclients::tendermint::v1 as tmpb;
+    let h = tmpb::Header {
+        signed_header: Some(SignedHeader {
+            header: None,
+            commit: Some(Commit {
+                height: 5,
+                signatures: vec![CommitSig {
+                    block_id_flag: BlockIdFlag::Absent as i32,
+                    ..CommitSig::default()
+                }],
+                ..Commit::default()
+            }),
+        }),
+        ..tmpb::Header::default()
+    };
+    let g = ibc::gogo_header(h);
+    let c = g.signed_header.unwrap().commit.unwrap();
+    assert_eq!(c.signatures[0].timestamp, Some(sdk::time::go_zero()));
+    assert!(c.block_id.unwrap().part_set_header.is_some());
+    assert!(g.trusted_height.is_some());
+}
