@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/store/rootmulti"
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	protoio "github.com/gogo/protobuf/io"
+	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/tendermint/tendermint/libs/log"
 	tmdb "github.com/tendermint/tm-db"
 
@@ -45,6 +47,8 @@ func main() {
 	height := flag.Int64("height", 0, "height to export")
 	out := flag.String("out", "", "snapshot directory")
 	list := flag.Bool("list", false, "only print the stores of the height's commit info")
+	flag.StringVar(&backend, "backend", "pebbledb", "database backend of application.db: pebbledb or goleveldb")
+	flag.BoolVar(&recoverDB, "recover", false, "goleveldb: rebuild the manifest first (crash-consistent copies)")
 	flag.Parse()
 	if *dir == "" || *height <= 0 || (*out == "" && !*list) {
 		flag.Usage()
@@ -56,8 +60,32 @@ func main() {
 	}
 }
 
+var (
+	backend   string
+	recoverDB bool
+)
+
+func openDB(dir string) (tmdb.DB, error) {
+	switch backend {
+	case "pebbledb":
+		return appdb.NewPebbleDB("application", dir)
+	case "goleveldb":
+		if recoverDB {
+			// Rebuild the manifest of a crash-consistent copy (e.g. a disk
+			// snapshot of a running node); this rewrites the copy's manifest.
+			ldb, err := leveldb.RecoverFile(filepath.Join(dir, "application.db"), nil)
+			if err != nil {
+				return nil, fmt.Errorf("recover: %w", err)
+			}
+			_ = ldb.Close()
+		}
+		return tmdb.NewGoLevelDB("application", dir)
+	}
+	return nil, fmt.Errorf("unknown backend %q", backend)
+}
+
 func run(dir string, height int64, out string, list bool) error {
-	db, err := appdb.NewPebbleDB("application", dir)
+	db, err := openDB(dir)
 	if err != nil {
 		return err
 	}
