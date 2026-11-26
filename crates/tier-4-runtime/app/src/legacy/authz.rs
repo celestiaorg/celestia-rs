@@ -9,10 +9,10 @@
 //! `MsgExec` messages are validated by the router (`ValidateBasic`, with
 //! celestia's zero-amount exception) rather than by authz.
 //!
-//! Authorizations: `GenericAuthorization` and staking `StakeAuthorization`
-//! as v0.46 defines them. bank `SendAuthorization` and ibc-go's
-//! `TransferAuthorization`, and any authorization type the v1 interface
-//! registry does not know (a decode failure in Go), are not ported.
+//! Authorizations: `GenericAuthorization`, staking `StakeAuthorization`
+//! and bank `SendAuthorization` as v0.46 defines them, and ibc-go v6
+//! `TransferAuthorization`. Any authorization type the v1 interface
+//! registry does not know (a decode failure in Go) is not ported.
 
 #![allow(clippy::similar_names)] // granter / grantee
 
@@ -21,6 +21,7 @@ use celestia_proto::cosmos::authz::v1beta1::{
     self as authz, EventGrant, EventRevoke, GenericAuthorization, Grant, GrantQueueItem,
 };
 use celestia_proto::cosmos::bank::v1beta1 as bank;
+use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
 use celestia_proto::cosmos::distribution::v1beta1 as distr;
 use celestia_proto::cosmos::feegrant::v1beta1 as feegrant;
 use celestia_proto::cosmos::gov;
@@ -44,6 +45,8 @@ const STAKE_GAS_PER_ITERATION: u64 = 10;
 enum Authorization {
     Generic(GenericAuthorization),
     Stake(staking::StakeAuthorization),
+    Transfer(transfer::TransferAuthorization),
+    Send(bank::SendAuthorization),
 }
 
 fn decode<M: Message + Default>(msg: &Any) -> Result<M> {
@@ -76,6 +79,36 @@ impl Authorization {
                 }
                 Ok(Some(Self::Stake(a)))
             }
+            u if u == transfer::TransferAuthorization::type_url() => {
+                let mut a =
+                    transfer::TransferAuthorization::decode(v).map_err(|_| not_ported(u))?;
+                for al in &mut a.allocations {
+                    // ibc-go v6 has no `allowed_packet_data` (field 5):
+                    // gogoproto skips it.
+                    al.allowed_packet_data.clear();
+                    // gogoproto decodes each amount as a `math.Int`
+                    // customtype.
+                    if al.spend_limit.iter().any(|c| {
+                        !c.amount.is_empty() && x_staking::msgs::wire_int(&c.amount).is_err()
+                    }) {
+                        return Err(not_ported(u));
+                    }
+                }
+                Ok(Some(Self::Transfer(a)))
+            }
+            u if u == bank::SendAuthorization::type_url() => {
+                let mut a = bank::SendAuthorization::decode(v).map_err(|_| not_ported(u))?;
+                // cosmos-sdk v0.46 has no `allow_list` (field 2): gogoproto
+                // skips it.
+                a.allow_list.clear();
+                if a.spend_limit
+                    .iter()
+                    .any(|c| !c.amount.is_empty() && x_staking::msgs::wire_int(&c.amount).is_err())
+                {
+                    return Err(not_ported(u));
+                }
+                Ok(Some(Self::Send(a)))
+            }
             other => Err(not_ported(other)),
         }
     }
@@ -98,6 +131,32 @@ impl Authorization {
                 }
                 Ok(())
             }
+            Self::Transfer(a) => validate_transfer_authorization(a),
+            Self::Send(a) => {
+                // gogoproto leaves an empty repeated field nil.
+                if a.spend_limit.is_empty() {
+                    return Err(errs::invalid_coins("").wrap("spend limit cannot be nil"));
+                }
+                for c in &a.spend_limit {
+                    if !sdk::coins::raw_is_positive(c)? {
+                        return Err(errs::invalid_coins("").wrap("spend limit must be positive"));
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// `Authorization.Accept` of a dispatched message.
+    fn accept(&self, ctx: &mut Context<'_>, msg: &Any) -> Result<Accepted> {
+        match self {
+            Self::Generic(_) => Ok(Accepted {
+                delete: false,
+                updated: None,
+            }),
+            Self::Stake(a) => accept_stake(ctx, a, msg),
+            Self::Transfer(a) => accept_transfer(ctx, a, msg),
+            Self::Send(a) => accept_send(a, msg),
         }
     }
 
@@ -114,6 +173,8 @@ impl Authorization {
                     errors::unknown_authorization_type().log
                 ))),
             },
+            Self::Transfer(_) => Ok(transfer::MsgTransfer::type_url()),
+            Self::Send(_) => Ok(bank::MsgSend::type_url()),
         }
     }
 
@@ -122,6 +183,8 @@ impl Authorization {
         let any = match self {
             Self::Generic(a) => Any::pack(a),
             Self::Stake(a) => Any::pack(a),
+            Self::Transfer(a) => Any::pack(a),
+            Self::Send(a) => Any::pack(a),
         };
         txdecode::gogo_repack(&any)
     }
@@ -398,6 +461,226 @@ fn update(
     ctx.set(x_authz::STORE_KEY, key, grant.encode_to_vec())
 }
 
+/// `KVGasConfig().IterNextCostFlat`, which `TransferAuthorization`
+/// charges per allow-list entry it looks at.
+const ITER_NEXT_COST_FLAT: u64 = 30;
+
+/// ibc-go v6 transfer `ErrInvalidAuthorization`.
+fn invalid_transfer_authorization(msg: &str) -> SdkError {
+    SdkError::new("transfer", 10, "invalid transfer authorization").wrap(msg)
+}
+
+/// ibc-go v6 `TransferAuthorization.ValidateBasic`.
+fn validate_transfer_authorization(a: &transfer::TransferAuthorization) -> Result<()> {
+    if a.allocations.is_empty() {
+        return Err(invalid_transfer_authorization(
+            "allocations cannot be empty",
+        ));
+    }
+    let mut channels = std::collections::HashSet::new();
+    for al in &a.allocations {
+        if !channels.insert(al.source_channel.as_str()) {
+            return Err(x_ibc::errors::channel::invalid_channel(format!(
+                "duplicate source channel ID: {}",
+                al.source_channel
+            )));
+        }
+        // gogoproto leaves an empty repeated field nil.
+        if al.spend_limit.is_empty() {
+            return Err(errs::invalid_coins("").wrap("spend limit cannot be nil"));
+        }
+        if let Err(e) = sdk::coins::raw_coins_validate(&al.spend_limit)? {
+            return Err(errs::invalid_coins("").wrap(e));
+        }
+        x_ibc::host::port_identifier_validator(&al.source_port)
+            .map_err(|e| e.wrap("invalid source port ID"))?;
+        x_ibc::host::channel_identifier_validator(&al.source_channel)
+            .map_err(|e| e.wrap("invalid source channel ID"))?;
+        let mut seen = std::collections::HashSet::new();
+        for addr in &al.allow_list {
+            if !seen.insert(addr.as_str()) {
+                // Go's `Wrapf` lacks the argument.
+                return Err(invalid_transfer_authorization(
+                    "duplicate entry in allow list %!s(MISSING)",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `math.Int` of a gogoproto coin amount, panicking on nil as Go does.
+fn coin_int(c: &celestia_proto::cosmos::base::v1beta1::Coin) -> Result<math::Int> {
+    wire_int_or_nil(&c.amount)
+}
+
+/// v0.46 `Coins.SafeSub(coinsB...)` of a valid coin set: `NewCoins(coinsB)`
+/// (zeros dropped, sorted; an invalid set panics), then the sorted
+/// difference without zero coins, and whether any coin is negative.
+fn safe_sub_coins(limit: &[PbCoin], sub: &[PbCoin]) -> Result<(Vec<PbCoin>, bool)> {
+    let mut b: Vec<(String, math::Int)> = Vec::with_capacity(sub.len());
+    for c in sub {
+        let v = coin_int(c)?;
+        if !v.is_zero() {
+            b.push((c.denom.clone(), v));
+        }
+    }
+    b.sort_by(|x, y| x.0.cmp(&y.0));
+    let invalid = b
+        .iter()
+        .any(|(d, v)| !sdk::coins::is_valid_denom(d) || !v.is_positive())
+        || b.windows(2).any(|w| w[0].0 == w[1].0);
+    if invalid {
+        let text: Vec<String> = b.iter().map(|(d, v)| format!("{v}{d}")).collect();
+        return Err(sdk::error::go_panic(format!(
+            "invalid coin set {}",
+            text.join(",")
+        )));
+    }
+    let mut merged: std::collections::BTreeMap<String, math::Int> =
+        std::collections::BTreeMap::new();
+    for c in limit {
+        let v = coin_int(c)?;
+        let e = merged
+            .entry(c.denom.clone())
+            .or_insert_with(math::Int::zero);
+        *e = e
+            .checked_add(&v)
+            .map_err(|e| sdk::error::go_panic(e.to_string()))?;
+    }
+    for (d, v) in b {
+        let e = merged.entry(d).or_insert_with(math::Int::zero);
+        *e = e
+            .checked_sub(&v)
+            .map_err(|e| sdk::error::go_panic(e.to_string()))?;
+    }
+    let mut negative = false;
+    let left = merged
+        .into_iter()
+        .filter(|(_, v)| !v.is_zero())
+        .map(|(denom, v)| {
+            negative |= v.is_negative();
+            PbCoin {
+                denom,
+                amount: v.to_string(),
+            }
+        })
+        .collect();
+    Ok((left, negative))
+}
+
+/// cosmos-sdk v0.46 bank `SendAuthorization.Accept` (no allow list).
+fn accept_send(a: &bank::SendAuthorization, msg: &Any) -> Result<Accepted> {
+    if msg.type_url != bank::MsgSend::type_url() {
+        return Err(errs::invalid_type("type mismatch"));
+    }
+    let m: bank::MsgSend = decode(msg)?;
+    let (left, negative) = safe_sub_coins(&a.spend_limit, &m.amount)?;
+    if negative {
+        return Err(errs::insufficient_funds(
+            "requested amount is more than spend limit",
+        ));
+    }
+    if left.is_empty() {
+        return Ok(Accepted {
+            delete: true,
+            updated: None,
+        });
+    }
+    Ok(Accepted {
+        delete: false,
+        updated: Some(Authorization::Send(bank::SendAuthorization {
+            spend_limit: left,
+            allow_list: vec![],
+        })),
+    })
+}
+
+/// ibc-go v6 `isAllowedAddress`: `IterNextCostFlat` per entry looked at.
+fn is_allowed_address(ctx: &mut Context<'_>, receiver: &str, allowed: &[String]) -> Result<bool> {
+    if allowed.is_empty() {
+        return Ok(true);
+    }
+    for addr in allowed {
+        consume(ctx, ITER_NEXT_COST_FLAT, "transfer authorization")?;
+        if addr == receiver {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// ibc-go v6 `TransferAuthorization.Accept` (`Coins.SafeSub` of v0.46:
+/// the token's coin set is sanitized, zero results are dropped).
+fn accept_transfer(
+    ctx: &mut Context<'_>,
+    a: &transfer::TransferAuthorization,
+    msg: &Any,
+) -> Result<Accepted> {
+    if msg.type_url != transfer::MsgTransfer::type_url() {
+        return Err(errs::invalid_type("").wrap("type mismatch"));
+    }
+    let m: transfer::MsgTransfer = decode(msg)?;
+    let token = m.token.clone().unwrap_or_default();
+    let mut allocations = a.allocations.clone();
+    let Some(index) = allocations
+        .iter()
+        .position(|al| al.source_channel == m.source_channel && al.source_port == m.source_port)
+    else {
+        return Err(
+            errs::not_found("").wrap("requested port and channel allocation does not exist")
+        );
+    };
+    let al = allocations[index].clone();
+    if !is_allowed_address(ctx, &m.receiver, &al.allow_list)? {
+        return Err(errs::invalid_address("").wrap("not allowed receiver address for transfer"));
+    }
+    // `SpendLimit.AmountOf(denom)` validates the denom (a panic).
+    if !sdk::coins::is_valid_denom(&token.denom) {
+        return Err(sdk::error::go_panic(format!(
+            "invalid denom: {}",
+            token.denom
+        )));
+    }
+    let unbounded = math::Int::parse(
+        "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+    )
+    .map_err(|e| sdk::error::go_panic(e.to_string()))?;
+    let mut limit_of_denom = math::Int::zero();
+    for c in &al.spend_limit {
+        if c.denom == token.denom {
+            limit_of_denom = coin_int(c)?;
+        }
+    }
+    if limit_of_denom == unbounded {
+        return Ok(Accepted {
+            delete: false,
+            updated: None,
+        });
+    }
+    let (left, negative) = safe_sub_coins(&al.spend_limit, std::slice::from_ref(&token))?;
+    if negative {
+        return Err(errs::insufficient_funds("").wrap("requested amount is more than spend limit"));
+    }
+    if left.is_empty() {
+        allocations.remove(index);
+        if allocations.is_empty() {
+            return Ok(Accepted {
+                delete: true,
+                updated: None,
+            });
+        }
+    } else {
+        allocations[index].spend_limit = left;
+    }
+    Ok(Accepted {
+        delete: false,
+        updated: Some(Authorization::Transfer(transfer::TransferAuthorization {
+            allocations,
+        })),
+    })
+}
+
 /// What `Authorization.Accept` returns.
 struct Accepted {
     delete: bool,
@@ -543,6 +826,18 @@ pub(super) fn exec_signer(msg: &Any) -> Result<Option<Vec<u8>>> {
             acc(&decode::<gov::v1beta1::MsgVote>(msg)?.voter)
         } else if u == gov::v1::MsgVote::type_url() {
             acc(&decode::<gov::v1::MsgVote>(msg)?.voter)
+        } else if u == gov::v1beta1::MsgVoteWeighted::type_url() {
+            acc(&decode::<gov::v1beta1::MsgVoteWeighted>(msg)?.voter)
+        } else if u == gov::v1::MsgVoteWeighted::type_url() {
+            acc(&decode::<gov::v1::MsgVoteWeighted>(msg)?.voter)
+        } else if u == gov::v1beta1::MsgDeposit::type_url() {
+            acc(&decode::<gov::v1beta1::MsgDeposit>(msg)?.depositor)
+        } else if u == gov::v1::MsgDeposit::type_url() {
+            acc(&decode::<gov::v1::MsgDeposit>(msg)?.depositor)
+        } else if u == gov::v1beta1::MsgSubmitProposal::type_url() {
+            acc(&decode::<gov::v1beta1::MsgSubmitProposal>(msg)?.proposer)
+        } else if u == gov::v1::MsgSubmitProposal::type_url() {
+            acc(&decode::<gov::v1::MsgSubmitProposal>(msg)?.proposer)
         } else if u == authz::MsgGrant::type_url() {
             acc(&decode::<authz::MsgGrant>(msg)?.granter)
         } else if u == authz::MsgRevoke::type_url() {
@@ -643,13 +938,7 @@ fn exec(ctx: &mut Context<'_>, msg: &authz::MsgExec) -> Result<authz::MsgExecRes
                 Some(any) => Authorization::from_any(any)?
                     .ok_or_else(|| errs::invalid_type("expected <nil>, got <nil>"))?,
             };
-            let resp = match &auth {
-                Authorization::Generic(_) => Accepted {
-                    delete: false,
-                    updated: None,
-                },
-                Authorization::Stake(a) => accept_stake(ctx, a, m)?,
-            };
+            let resp = auth.accept(ctx, m)?;
             if resp.delete {
                 delete_grant(ctx, &grantee, &granter, &m.type_url)?;
             } else if let Some(u) = &resp.updated {
@@ -740,5 +1029,293 @@ mod stake_max_tokens_tests {
             .err()
             .unwrap();
         assert!(e.is_panic(), "{}", e.log);
+    }
+}
+
+#[cfg(test)]
+mod transfer_authorization_tests {
+    use super::*;
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+
+    fn coin(denom: &str, amount: &str) -> Coin {
+        Coin {
+            denom: denom.into(),
+            amount: amount.into(),
+        }
+    }
+
+    fn alloc(channel: &str, limit: Vec<Coin>, allow: &[&str]) -> transfer::Allocation {
+        transfer::Allocation {
+            source_port: "transfer".into(),
+            source_channel: channel.into(),
+            spend_limit: limit,
+            allow_list: allow.iter().map(|s| (*s).to_owned()).collect(),
+            allowed_packet_data: vec![],
+        }
+    }
+
+    fn msg(channel: &str, token: Coin, receiver: &str) -> Any {
+        Any::pack(&transfer::MsgTransfer {
+            source_port: "transfer".into(),
+            source_channel: channel.into(),
+            token: Some(token),
+            sender: String::new(),
+            receiver: receiver.into(),
+            ..Default::default()
+        })
+    }
+
+    fn accept(a: Vec<transfer::Allocation>, m: &Any) -> (Result<Accepted>, u64) {
+        let mut ms = sdk::MultiStore::new();
+        let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        let r = Authorization::Transfer(transfer::TransferAuthorization { allocations: a })
+            .accept(&mut ctx, m);
+        (r, ctx.gas.consumed())
+    }
+
+    fn updated(r: Accepted) -> Vec<transfer::Allocation> {
+        assert!(!r.delete);
+        match r.updated {
+            Some(Authorization::Transfer(t)) => t.allocations,
+            _ => panic!("no transfer update"),
+        }
+    }
+
+    /// ibc-go v6 `TransferAuthorization.Accept`: the matching allocation's
+    /// spend limit shrinks; an exhausted allocation is removed and the
+    /// grant deleted when none is left; the allow list costs
+    /// `IterNextCostFlat` (30) per entry looked at; the max-uint256
+    /// sentinel is never reduced.
+    #[test]
+    #[allow(clippy::many_single_char_names)]
+    fn accept_spends_removes_and_deletes() {
+        let a = vec![
+            alloc("channel-0", vec![coin("utia", "100")], &[]),
+            alloc(
+                "channel-1",
+                vec![coin("uatom", "5"), coin("utia", "10")],
+                &[],
+            ),
+        ];
+        let (r, _) = accept(a.clone(), &msg("channel-0", coin("utia", "40"), "r"));
+        let u = updated(r.unwrap());
+        assert_eq!(u[0].spend_limit, vec![coin("utia", "60")]);
+        assert_eq!(u[1], a[1]);
+        // Exhausting channel-0 removes it; channel-1 remains.
+        let (r, _) = accept(a.clone(), &msg("channel-0", coin("utia", "100"), "r"));
+        assert_eq!(updated(r.unwrap()), vec![a[1].clone()]);
+        // Exhausting one denom of channel-1 keeps the other.
+        let (r, _) = accept(a.clone(), &msg("channel-1", coin("utia", "10"), "r"));
+        assert_eq!(u[0].source_channel, "channel-0");
+        assert_eq!(updated(r.unwrap())[1].spend_limit, vec![coin("uatom", "5")]);
+        // The last allocation exhausted: delete.
+        let one = vec![alloc("channel-0", vec![coin("utia", "7")], &[])];
+        let (r, _) = accept(one, &msg("channel-0", coin("utia", "7"), "r"));
+        let r = r.unwrap();
+        assert!(r.delete && r.updated.is_none());
+        // Sentinel: accepted without an update.
+        let max = "115792089237316195423570985008687907853269984665640564039457584007913129639935";
+        let s = vec![alloc("channel-0", vec![coin("utia", max)], &[])];
+        let (r, _) = accept(s, &msg("channel-0", coin("utia", "7"), "r"));
+        let r = r.unwrap();
+        assert!(!r.delete && r.updated.is_none());
+        // Allow list: gas per entry looked at.
+        let l = vec![alloc(
+            "channel-0",
+            vec![coin("utia", "9")],
+            &["a", "b", "c"],
+        )];
+        let (r, gas) = accept(l.clone(), &msg("channel-0", coin("utia", "1"), "b"));
+        assert!(r.is_ok());
+        assert_eq!(gas, 60);
+        let (r, gas) = accept(l, &msg("channel-0", coin("utia", "1"), "z"));
+        let e = r.err().unwrap();
+        assert_eq!((e.codespace, e.code), ("sdk", 7), "{}", e.log);
+        assert_eq!(
+            e.log,
+            "not allowed receiver address for transfer: invalid address"
+        );
+        assert_eq!(gas, 90);
+    }
+
+    #[test]
+    fn accept_failures() {
+        let a = vec![alloc("channel-0", vec![coin("utia", "10")], &[])];
+        let e = accept(a.clone(), &msg("channel-9", coin("utia", "1"), "r"))
+            .0
+            .err()
+            .unwrap();
+        assert_eq!((e.codespace, e.code), ("sdk", 38), "{}", e.log);
+        assert_eq!(
+            e.log,
+            "requested port and channel allocation does not exist: not found"
+        );
+        for token in [coin("utia", "11"), coin("uatom", "1")] {
+            let e = accept(a.clone(), &msg("channel-0", token, "r"))
+                .0
+                .err()
+                .unwrap();
+            assert_eq!((e.codespace, e.code), ("sdk", 5), "{}", e.log);
+            assert_eq!(
+                e.log,
+                "requested amount is more than spend limit: insufficient funds"
+            );
+        }
+        let other = Any::pack(&bank::MsgSend::default());
+        let e = accept(a, &other).0.err().unwrap();
+        assert_eq!(e.log, "type mismatch: invalid type");
+    }
+
+    /// `TransferAuthorization.ValidateBasic` (v6).
+    #[test]
+    fn validate_basic_errors() {
+        let v = |a: Vec<transfer::Allocation>| {
+            Authorization::Transfer(transfer::TransferAuthorization { allocations: a })
+                .validate_basic()
+                .err()
+                .map(|e| (e.codespace, e.code, e.log))
+        };
+        let ok = alloc("channel-0", vec![coin("utia", "1")], &["x"]);
+        assert_eq!(v(vec![ok.clone()]), None);
+        assert_eq!(
+            v(vec![]),
+            Some((
+                "transfer",
+                10,
+                "allocations cannot be empty: invalid transfer authorization".into()
+            ))
+        );
+        assert_eq!(
+            v(vec![ok.clone(), ok.clone()]),
+            Some((
+                "channel",
+                4,
+                "duplicate source channel ID: channel-0: invalid channel".into()
+            ))
+        );
+        assert_eq!(
+            v(vec![alloc("channel-0", vec![], &[])]),
+            Some(("sdk", 10, "spend limit cannot be nil: invalid coins".into()))
+        );
+        assert_eq!(
+            v(vec![alloc("channel-0", vec![coin("utia", "0")], &[])]),
+            Some((
+                "sdk",
+                10,
+                "coin 0utia amount is not positive: invalid coins".into()
+            ))
+        );
+        assert_eq!(
+            v(vec![alloc(
+                "channel-0",
+                vec![coin("utia", "1")],
+                &["x", "x"]
+            )]),
+            Some((
+                "transfer",
+                10,
+                "duplicate entry in allow list %!s(MISSING): invalid transfer authorization".into()
+            ))
+        );
+        let mut bad_port = ok;
+        bad_port.source_port = "a".into();
+        let e = v(vec![bad_port]).unwrap();
+        assert!(
+            e.2.starts_with("invalid source port ID: identifier a has invalid length"),
+            "{}",
+            e.2
+        );
+    }
+}
+
+#[cfg(test)]
+mod send_authorization_tests {
+    use super::*;
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+
+    fn coin(denom: &str, amount: &str) -> Coin {
+        Coin {
+            denom: denom.into(),
+            amount: amount.into(),
+        }
+    }
+
+    fn send(amount: Vec<Coin>) -> Any {
+        Any::pack(&bank::MsgSend {
+            from_address: String::new(),
+            to_address: String::new(),
+            amount,
+        })
+    }
+
+    fn accept(limit: Vec<Coin>, m: &Any) -> Result<Accepted> {
+        let mut ms = sdk::MultiStore::new();
+        let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        Authorization::Send(bank::SendAuthorization {
+            spend_limit: limit,
+            allow_list: vec![],
+        })
+        .accept(&mut ctx, m)
+    }
+
+    /// v0.46 `SendAuthorization.Accept`: `SpendLimit.SafeSub(amount...)`;
+    /// an exhausted limit deletes the grant; more than the limit is
+    /// `ErrInsufficientFunds`.
+    #[test]
+    fn accept_spends_and_deletes() {
+        let limit = vec![coin("uatom", "3"), coin("utia", "10")];
+        let r = accept(limit.clone(), &send(vec![coin("utia", "4")])).unwrap();
+        assert!(!r.delete);
+        let Some(Authorization::Send(left)) = r.updated else {
+            panic!("no update")
+        };
+        assert_eq!(
+            left.spend_limit,
+            vec![coin("uatom", "3"), coin("utia", "6")]
+        );
+        let r = accept(
+            limit.clone(),
+            &send(vec![coin("uatom", "3"), coin("utia", "10")]),
+        )
+        .unwrap();
+        assert!(r.delete && r.updated.is_none());
+        for amount in [vec![coin("utia", "11")], vec![coin("ufoo", "1")]] {
+            let e = accept(limit.clone(), &send(amount)).err().unwrap();
+            assert_eq!((e.codespace, e.code), ("sdk", 5), "{}", e.log);
+        }
+        // `NewCoins` sorts the amount, then panics on a duplicate denom.
+        let r = accept(
+            limit.clone(),
+            &send(vec![coin("utia", "1"), coin("uatom", "1")]),
+        )
+        .unwrap();
+        assert!(!r.delete);
+        let e = accept(limit, &send(vec![coin("utia", "1"), coin("utia", "1")]))
+            .err()
+            .unwrap();
+        assert!(e.is_panic(), "{}", e.log);
+    }
+
+    /// v0.46 `SendAuthorization.ValidateBasic`.
+    #[test]
+    fn validate_basic() {
+        let v = |limit: Vec<Coin>| {
+            Authorization::Send(bank::SendAuthorization {
+                spend_limit: limit,
+                allow_list: vec![],
+            })
+            .validate_basic()
+            .err()
+            .map(|e| (e.code, e.log))
+        };
+        assert_eq!(v(vec![coin("utia", "1")]), None);
+        assert_eq!(
+            v(vec![]),
+            Some((10, "spend limit cannot be nil: invalid coins".into()))
+        );
+        assert_eq!(
+            v(vec![coin("utia", "0")]),
+            Some((10, "spend limit must be positive: invalid coins".into()))
+        );
     }
 }

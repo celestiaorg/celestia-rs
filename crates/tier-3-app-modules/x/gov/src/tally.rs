@@ -46,8 +46,32 @@ fn add_weighted(
     Ok(())
 }
 
-/// `Tally`: deletes the proposal's votes as they are counted.
-pub fn tally(ctx: &mut Context<'_>, proposal: &Proposal) -> Result<Tally> {
+/// The votes of a proposal weighted by stake: per option (index 1 yes,
+/// 2 abstain, 3 no, 4 no with veto) and in total.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Counted {
+    /// Voting power per option.
+    pub results: [LegacyDec; 5],
+    /// Total voting power that voted.
+    pub total: LegacyDec,
+}
+
+impl Counted {
+    /// `NewTallyResultFromMap`.
+    #[must_use]
+    pub fn result(&self) -> TallyResult {
+        TallyResult {
+            yes_count: self.results[1].truncate_int().to_string(),
+            abstain_count: self.results[2].truncate_int().to_string(),
+            no_count: self.results[3].truncate_int().to_string(),
+            no_with_veto_count: self.results[4].truncate_int().to_string(),
+        }
+    }
+}
+
+/// The counting part of `Tally` (the same in cosmos-sdk v0.46 and v0.50):
+/// deletes the proposal's votes as they are counted.
+pub fn count_votes(ctx: &mut Context<'_>, proposal_id: u64) -> Result<Counted> {
     let mut results: [LegacyDec; 5] = Default::default();
     let mut total = LegacyDec::zero();
     // Go keys `currValidators` by the operator address string exactly as stored
@@ -72,7 +96,7 @@ pub fn tally(ctx: &mut Context<'_>, proposal: &Proposal) -> Result<Tally> {
     }
 
     let mut prefix = vec![VOTES_PREFIX];
-    prefix.extend_from_slice(&proposal.id.to_be_bytes());
+    prefix.extend_from_slice(&proposal_id.to_be_bytes());
     let mut it = ctx.prefix_iter(STORE_KEY, &prefix)?;
     while let Some((key, value)) = it.next(ctx)? {
         let vote: celestia_proto::cosmos::gov::v1::Vote = decode(&value)?;
@@ -120,6 +144,12 @@ pub fn tally(ctx: &mut Context<'_>, proposal: &Proposal) -> Result<Tally> {
         total = total.checked_add(&power).map_err(math_err)?;
     }
 
+    Ok(Counted { results, total })
+}
+
+/// `Tally`: deletes the proposal's votes as they are counted.
+pub fn tally(ctx: &mut Context<'_>, proposal: &Proposal) -> Result<Tally> {
+    let Counted { results, total } = count_votes(ctx, proposal.id)?;
     let params = get_params(ctx)?;
     // Option order: 1 yes, 2 abstain, 3 no, 4 no with veto.
     let result = TallyResult {

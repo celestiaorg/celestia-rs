@@ -39,6 +39,7 @@ pub mod ibc_transfer;
 pub mod ica_host;
 pub mod migrate;
 pub mod msgs;
+pub mod param_change;
 pub mod params;
 pub mod pfm;
 pub mod qgb;
