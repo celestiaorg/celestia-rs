@@ -2224,3 +2224,35 @@ fn v6_update_client_event_header_is_gogo_encoded() {
     assert!(c.block_id.unwrap().part_set_header.is_some());
     assert!(g.trusted_height.is_some());
 }
+
+/// ibc-go v6 `MsgTransfer.ValidateBasic` fails with SDK error codes
+/// (ibc-go v8 uses its own codespace) and has no receiver length limit.
+#[test]
+fn v6_transfer_validate_basic() {
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::ibc::applications::transfer::v1 as trpb;
+    use celestia_proto::ibc::core::client::v1::Height;
+    let transfer = |amount: &str, receiver: String| {
+        msgs::validate_basic(&celestia_proto::Any::pack(&trpb::MsgTransfer {
+            source_port: "transfer".into(),
+            source_channel: "channel-0".into(),
+            token: Some(Coin {
+                denom: "utia".into(),
+                amount: amount.into(),
+            }),
+            sender: x_auth::bech32(&[1; 20]).unwrap(),
+            receiver,
+            timeout_height: Some(Height {
+                revision_number: 1,
+                revision_height: 10,
+            }),
+            timeout_timestamp: 0,
+            memo: String::new(),
+        }))
+    };
+    transfer("1", "x".repeat(4096)).unwrap();
+    let e = transfer("0", "r".into()).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 5), "{}", e.log);
+    let e = transfer("1", " ".into()).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 7), "{}", e.log);
+}

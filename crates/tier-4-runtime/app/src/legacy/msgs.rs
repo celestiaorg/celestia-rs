@@ -197,6 +197,9 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
     if let Some(r) = super::ibc_channel::validate_basic(msg) {
         return r;
     }
+    if let Some(r) = super::ibc_transfer::validate_basic(msg) {
+        return r;
+    }
     if let Some(r) = super::ibc::validate_basic(msg) {
         return r;
     }
@@ -259,6 +262,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
     if let Some(r) = super::ibc_channel::route(ctx, msg) {
         return r;
     }
+    if let Some(r) = super::ibc_transfer::route(ctx, msg) {
+        return r;
+    }
     Err(super::not_ported(errs::unknown_request(format!(
         "the cosmos-sdk v0.46 handler of {} is not ported",
         msg.type_url
@@ -267,7 +273,7 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
 
 /// v0.46 bank `IsSendEnabledCoins`: each coin reads the params
 /// (`SendEnabledDenom`: the denom's entry, else the default).
-fn is_send_enabled_coins(ctx: &mut Context<'_>, coins: &Coins) -> Result<()> {
+pub(super) fn is_send_enabled_coins(ctx: &mut Context<'_>, coins: &Coins) -> Result<()> {
     for c in coins {
         #[allow(deprecated)]
         let p = x_bank::get_params(ctx)?;
