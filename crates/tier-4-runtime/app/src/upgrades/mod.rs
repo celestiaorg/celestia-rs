@@ -32,10 +32,10 @@ pub const EVIDENCE_MAX_AGE_NUM_BLOCKS: i64 = 404_400;
 /// `app_version` (ADR 0004): celestia-app registers one handler,
 /// `v{appconsts.Version}`, so app version 9 (v9.0.8) knows `v9` and app
 /// version 10 knows `v10`. `x/upgrade`'s first `PreBlocker` checks the
-/// last completed plan against this set (mainnet's is `v9`). App versions
-/// 2 to 8 run as 9 ([`Release::runs_as`]), so they know `v9` too; app
-/// version 1 runs on the v0.46 driver, whose binary (celestia-app
-/// v3.13.0) registers none.
+/// last completed plan against this set (mainnet's is `v9`). App version
+/// 4 runs as itself and knows `v4`; app versions 2, 3 and 5 to 8 run as 9
+/// ([`Release::runs_as`]), so they know `v9` too; app version 1 runs on
+/// the v0.46 driver, whose binary (celestia-app v3.13.0) registers none.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Handlers {
     /// App version being executed (0: current).
@@ -172,14 +172,16 @@ mod tests {
     }
 
     /// The release table keeps the handler sets of the hand-written table
-    /// it replaced: v9 for app versions 2 to 9 (2 to 8 run as 9), v11 and
-    /// v12 for theirs, v10 otherwise (0 and unknown versions). App
-    /// version 1 runs as itself: celestia-app v3.13.0 registers none.
+    /// it replaced: v9 for app versions 2, 3 and 5 to 9 (they run as 9),
+    /// v11 and v12 for theirs, v10 otherwise (0 and unknown versions). App
+    /// versions 1 and 4 run as themselves: celestia-app v3.13.0 registers
+    /// none, v4.1.0 `v4`.
     #[test]
     fn handler_names_are_unchanged_for_every_app_version() {
         for v in 0..=13 {
             let expected: &[&str] = match v {
                 1 => &[],
+                4 => &["v4"],
                 2..=9 => &["v9"],
                 11 => &["v11"],
                 12 => &["v12"],
