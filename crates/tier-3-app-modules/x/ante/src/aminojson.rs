@@ -35,6 +35,17 @@ pub fn sign_bytes(sd: &SignerData, tx: &Tx) -> Res<Vec<u8>> {
             "got empty address in SIGN_MODE_LEGACY_AMINO_JSON handler: invalid request".into(),
         );
     }
+    // cosmos-sdk v0.46 `legacytx.StdSignBytes` panics on a message that
+    // is not a `LegacyMsg` ([`V046_NOT_LEGACY_MSG`]).
+    if sdk::version::is_sdk_v046(0)
+        && body.messages.iter().any(|m| {
+            V046_NOT_LEGACY_MSG
+                .binary_search(&m.type_url.as_str())
+                .is_ok()
+        })
+    {
+        return Err(V046_NOT_LEGACY_PANIC.into());
+    }
     let Some(fee) = &tx.auth_info.fee else {
         return Err("fee cannot be nil when tipper is not signer".into());
     };
@@ -122,6 +133,36 @@ pub struct Encoder {
     /// ([`v046_codec`]).
     codec: std::cell::Cell<Option<&'static [&'static str]>>,
 }
+
+/// The messages of celestia-app v1 to v3 without `GetSignBytes` (not a
+/// `legacytx.LegacyMsg`): ibc-go v6's core messages, gov v1
+/// `MsgExecLegacyContent` and blobstream's `MsgRegisterEVMAddress`.
+const V046_NOT_LEGACY_MSG: &[&str] = &[
+    "/celestia.qgb.v1.MsgRegisterEVMAddress",
+    "/cosmos.gov.v1.MsgExecLegacyContent",
+    "/ibc.core.channel.v1.MsgAcknowledgement",
+    "/ibc.core.channel.v1.MsgChannelCloseConfirm",
+    "/ibc.core.channel.v1.MsgChannelCloseInit",
+    "/ibc.core.channel.v1.MsgChannelOpenAck",
+    "/ibc.core.channel.v1.MsgChannelOpenConfirm",
+    "/ibc.core.channel.v1.MsgChannelOpenInit",
+    "/ibc.core.channel.v1.MsgChannelOpenTry",
+    "/ibc.core.channel.v1.MsgRecvPacket",
+    "/ibc.core.channel.v1.MsgTimeout",
+    "/ibc.core.channel.v1.MsgTimeoutOnClose",
+    "/ibc.core.client.v1.MsgCreateClient",
+    "/ibc.core.client.v1.MsgSubmitMisbehaviour",
+    "/ibc.core.client.v1.MsgUpdateClient",
+    "/ibc.core.client.v1.MsgUpgradeClient",
+    "/ibc.core.connection.v1.MsgConnectionOpenAck",
+    "/ibc.core.connection.v1.MsgConnectionOpenConfirm",
+    "/ibc.core.connection.v1.MsgConnectionOpenInit",
+    "/ibc.core.connection.v1.MsgConnectionOpenTry",
+];
+
+/// The error [`sign_bytes`] returns for the Go panic of
+/// [`V046_NOT_LEGACY_MSG`]; the caller raises it as a panic.
+pub const V046_NOT_LEGACY_PANIC: &str = "expected *legacytx.LegacyMsg when using amino JSON";
 
 /// Concrete types registered on cosmos-sdk v0.46 gov v1beta1's
 /// `ModuleCdc` (its own types and crypto; no proposal content of another
@@ -1170,7 +1211,12 @@ mod tests {
     /// The v0.46 codec registries are searched by bisection.
     #[test]
     fn v046_amino_registries_are_sorted() {
-        for r in [V046_AUTHZ_AMINO, V046_GOV_V1BETA1_AMINO, V046_GOV_V1_AMINO] {
+        for r in [
+            V046_AUTHZ_AMINO,
+            V046_GOV_V1BETA1_AMINO,
+            V046_GOV_V1_AMINO,
+            V046_NOT_LEGACY_MSG,
+        ] {
             assert!(r.windows(2).all(|w| w[0] < w[1]));
         }
     }

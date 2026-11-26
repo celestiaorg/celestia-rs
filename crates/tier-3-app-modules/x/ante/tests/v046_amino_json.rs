@@ -288,3 +288,47 @@ fn v046_amino_json_writes_unregistered_gov_content_bare() {
         );
     }
 }
+
+/// cosmos-sdk v0.46 `legacytx.StdSignBytes` panics on a message that is
+/// not a `LegacyMsg` (no `GetSignBytes`): ibc-go v6's core messages, gov
+/// v1 `MsgExecLegacyContent`, blobstream's `MsgRegisterEVMAddress`. A
+/// `SIGN_MODE_LEGACY_AMINO_JSON` signature over a tx holding one is a Go
+/// panic, not sign bytes.
+#[test]
+fn v046_amino_json_panics_on_a_message_without_legacy_sign_bytes() {
+    use celestia_proto::cosmos::tx::v1beta1::{Fee, TxBody};
+    let body = TxBody {
+        messages: vec![celestia_proto::Any::pack(
+            &celestia_proto::ibc::core::client::v1::MsgUpdateClient {
+                client_id: "07-tendermint-0".into(),
+                client_message: None,
+                signer: "celestia1jkuw8rxxrsgn9pq009987kzelkp46cgcczuxp5".into(),
+            },
+        )],
+        ..TxBody::default()
+    };
+    let tx = sdk::tx::Tx {
+        body_bytes: body.encode_to_vec(),
+        body,
+        auth_info: AuthInfo {
+            fee: Some(Fee::default()),
+            ..AuthInfo::default()
+        },
+        ..sdk::tx::Tx::default()
+    };
+    let sd = x_ante::signing::SignerData {
+        address: "celestia1jkuw8rxxrsgn9pq009987kzelkp46cgcczuxp5".into(),
+        chain_id: "celestia".into(),
+        account_number: 1,
+        sequence: 0,
+        pub_key: celestia_proto::Any::default(),
+    };
+    let scope = sdk::version::SdkV046Scope::enter(1);
+    assert!(x_ante::signing::get_sign_bytes(127, &sd, &tx).is_err());
+    drop(scope);
+    // From app version 4 (x/tx) the encoder writes it.
+    assert!(matches!(
+        x_ante::signing::get_sign_bytes(127, &sd, &tx),
+        Ok(Ok(_))
+    ));
+}
