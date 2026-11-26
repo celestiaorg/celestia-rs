@@ -35,6 +35,17 @@ pub fn sign_bytes(sd: &SignerData, tx: &Tx) -> Res<Vec<u8>> {
             "got empty address in SIGN_MODE_LEGACY_AMINO_JSON handler: invalid request".into(),
         );
     }
+    // cosmos-sdk v0.46 `legacytx.StdSignBytes` panics on a message that
+    // is not a `LegacyMsg` ([`V046_NOT_LEGACY_MSG`]).
+    if sdk::version::is_sdk_v046(0)
+        && body.messages.iter().any(|m| {
+            V046_NOT_LEGACY_MSG
+                .binary_search(&m.type_url.as_str())
+                .is_ok()
+        })
+    {
+        return Err(V046_NOT_LEGACY_PANIC.into());
+    }
     let Some(fee) = &tx.auth_info.fee else {
         return Err("fee cannot be nil when tipper is not signer".into());
     };
@@ -117,7 +128,152 @@ struct Exts {
 /// numbers, no map support).
 pub struct Encoder {
     ext: Exts,
+    /// Inside a cosmos-sdk v0.46 message whose `GetSignBytes` marshals
+    /// with a module amino codec: the concrete types it registers
+    /// ([`v046_codec`]).
+    codec: std::cell::Cell<Option<&'static [&'static str]>>,
 }
+
+/// The messages of celestia-app v1 to v3 without `GetSignBytes` (not a
+/// `legacytx.LegacyMsg`): ibc-go v6's core messages, gov v1
+/// `MsgExecLegacyContent` and blobstream's `MsgRegisterEVMAddress`.
+const V046_NOT_LEGACY_MSG: &[&str] = &[
+    "/celestia.qgb.v1.MsgRegisterEVMAddress",
+    "/cosmos.gov.v1.MsgExecLegacyContent",
+    "/ibc.core.channel.v1.MsgAcknowledgement",
+    "/ibc.core.channel.v1.MsgChannelCloseConfirm",
+    "/ibc.core.channel.v1.MsgChannelCloseInit",
+    "/ibc.core.channel.v1.MsgChannelOpenAck",
+    "/ibc.core.channel.v1.MsgChannelOpenConfirm",
+    "/ibc.core.channel.v1.MsgChannelOpenInit",
+    "/ibc.core.channel.v1.MsgChannelOpenTry",
+    "/ibc.core.channel.v1.MsgRecvPacket",
+    "/ibc.core.channel.v1.MsgTimeout",
+    "/ibc.core.channel.v1.MsgTimeoutOnClose",
+    "/ibc.core.client.v1.MsgCreateClient",
+    "/ibc.core.client.v1.MsgSubmitMisbehaviour",
+    "/ibc.core.client.v1.MsgUpdateClient",
+    "/ibc.core.client.v1.MsgUpgradeClient",
+    "/ibc.core.connection.v1.MsgConnectionOpenAck",
+    "/ibc.core.connection.v1.MsgConnectionOpenConfirm",
+    "/ibc.core.connection.v1.MsgConnectionOpenInit",
+    "/ibc.core.connection.v1.MsgConnectionOpenTry",
+];
+
+/// The error [`sign_bytes`] returns for the Go panic of
+/// [`V046_NOT_LEGACY_MSG`]; the caller raises it as a panic.
+pub const V046_NOT_LEGACY_PANIC: &str = "expected *legacytx.LegacyMsg when using amino JSON";
+
+/// Concrete types registered on cosmos-sdk v0.46 gov v1beta1's
+/// `ModuleCdc` (its own types and crypto; no proposal content of another
+/// module).
+const V046_GOV_V1BETA1_AMINO: &[&str] = &[
+    "/cosmos.crypto.ed25519.PubKey",
+    "/cosmos.crypto.multisig.LegacyAminoPubKey",
+    "/cosmos.crypto.secp256k1.PubKey",
+    "/cosmos.gov.v1beta1.MsgDeposit",
+    "/cosmos.gov.v1beta1.MsgSubmitProposal",
+    "/cosmos.gov.v1beta1.MsgVote",
+    "/cosmos.gov.v1beta1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.TextProposal",
+];
+
+/// Concrete types registered on cosmos-sdk v0.46 gov v1's `ModuleCdc`
+/// (gov v1 and v1beta1 types, crypto).
+const V046_GOV_V1_AMINO: &[&str] = &[
+    "/cosmos.crypto.ed25519.PubKey",
+    "/cosmos.crypto.multisig.LegacyAminoPubKey",
+    "/cosmos.crypto.secp256k1.PubKey",
+    "/cosmos.gov.v1.MsgDeposit",
+    "/cosmos.gov.v1.MsgExecLegacyContent",
+    "/cosmos.gov.v1.MsgSubmitProposal",
+    "/cosmos.gov.v1.MsgVote",
+    "/cosmos.gov.v1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.MsgDeposit",
+    "/cosmos.gov.v1beta1.MsgSubmitProposal",
+    "/cosmos.gov.v1beta1.MsgVote",
+    "/cosmos.gov.v1beta1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.TextProposal",
+];
+
+/// The module amino codec a top-level cosmos-sdk v0.46 message's
+/// `GetSignBytes` marshals with, as the concrete types it registers, when
+/// that codec lacks some packable type: authz (`authzcodec.ModuleCdc`)
+/// and gov (each version's `ModuleCdc`). `None`: every packed type the
+/// message can hold is registered on its codec.
+fn v046_codec(type_url: &str) -> Option<&'static [&'static str]> {
+    if type_url.starts_with("/cosmos.authz.v1beta1.Msg") {
+        Some(V046_AUTHZ_AMINO)
+    } else if type_url.starts_with("/cosmos.gov.v1beta1.Msg") {
+        Some(V046_GOV_V1BETA1_AMINO)
+    } else if type_url.starts_with("/cosmos.gov.v1.Msg") {
+        Some(V046_GOV_V1_AMINO)
+    } else {
+        None
+    }
+}
+
+/// The concrete types registered on cosmos-sdk v0.46's `authzcodec.Amino`
+/// (each module's `RegisterLegacyAminoCodec(authzcodec.Amino)`, crypto and
+/// evidence). go-amino writes any other concrete type packed in an authz
+/// message as its bare value, without `{"type","value"}`: e.g. ibc-go v6's
+/// `MsgTransfer` and `TransferAuthorization`, celestia's messages.
+const V046_AUTHZ_AMINO: &[&str] = &[
+    "/cosmos.auth.v1beta1.BaseAccount",
+    "/cosmos.auth.v1beta1.ModuleAccount",
+    "/cosmos.authz.v1beta1.GenericAuthorization",
+    "/cosmos.authz.v1beta1.MsgExec",
+    "/cosmos.authz.v1beta1.MsgGrant",
+    "/cosmos.authz.v1beta1.MsgRevoke",
+    "/cosmos.bank.v1beta1.MsgMultiSend",
+    "/cosmos.bank.v1beta1.MsgSend",
+    "/cosmos.bank.v1beta1.SendAuthorization",
+    "/cosmos.crisis.v1beta1.MsgVerifyInvariant",
+    "/cosmos.crypto.ed25519.PubKey",
+    "/cosmos.crypto.multisig.LegacyAminoPubKey",
+    "/cosmos.crypto.secp256k1.PubKey",
+    "/cosmos.distribution.v1beta1.CommunityPoolSpendProposal",
+    "/cosmos.distribution.v1beta1.MsgFundCommunityPool",
+    "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress",
+    "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward",
+    "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission",
+    "/cosmos.evidence.v1beta1.Equivocation",
+    "/cosmos.evidence.v1beta1.MsgSubmitEvidence",
+    "/cosmos.feegrant.v1beta1.AllowedMsgAllowance",
+    "/cosmos.feegrant.v1beta1.BasicAllowance",
+    "/cosmos.feegrant.v1beta1.MsgGrantAllowance",
+    "/cosmos.feegrant.v1beta1.MsgRevokeAllowance",
+    "/cosmos.feegrant.v1beta1.PeriodicAllowance",
+    "/cosmos.gov.v1.MsgDeposit",
+    "/cosmos.gov.v1.MsgExecLegacyContent",
+    "/cosmos.gov.v1.MsgSubmitProposal",
+    "/cosmos.gov.v1.MsgVote",
+    "/cosmos.gov.v1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.MsgDeposit",
+    "/cosmos.gov.v1beta1.MsgSubmitProposal",
+    "/cosmos.gov.v1beta1.MsgVote",
+    "/cosmos.gov.v1beta1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.TextProposal",
+    "/cosmos.slashing.v1beta1.MsgUnjail",
+    "/cosmos.staking.v1beta1.MsgBeginRedelegate",
+    "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation",
+    "/cosmos.staking.v1beta1.MsgCreateValidator",
+    "/cosmos.staking.v1beta1.MsgDelegate",
+    "/cosmos.staking.v1beta1.MsgEditValidator",
+    "/cosmos.staking.v1beta1.MsgUndelegate",
+    "/cosmos.staking.v1beta1.StakeAuthorization",
+    "/cosmos.upgrade.v1beta1.CancelSoftwareUpgradeProposal",
+    "/cosmos.upgrade.v1beta1.MsgCancelUpgrade",
+    "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+    "/cosmos.upgrade.v1beta1.SoftwareUpgradeProposal",
+    "/cosmos.vesting.v1beta1.BaseVestingAccount",
+    "/cosmos.vesting.v1beta1.ContinuousVestingAccount",
+    "/cosmos.vesting.v1beta1.DelayedVestingAccount",
+    "/cosmos.vesting.v1beta1.MsgCreatePermanentLockedAccount",
+    "/cosmos.vesting.v1beta1.MsgCreateVestingAccount",
+    "/cosmos.vesting.v1beta1.PeriodicVestingAccount",
+    "/cosmos.vesting.v1beta1.PermanentLockedAccount",
+];
 
 fn ext(name: &str) -> Res<ExtensionDescriptor> {
     pool()
@@ -333,6 +489,7 @@ impl Encoder {
                 scalar: ext("cosmos_proto.scalar")?,
                 customtype: ext("gogoproto.customtype")?,
             },
+            codec: std::cell::Cell::new(None),
         })
     }
 
@@ -359,7 +516,22 @@ impl Encoder {
             value
         };
         let msg = DynamicMessage::decode(desc, value.as_slice()).map_err(|e| e.to_string())?;
-        self.begin_marshal(&msg, w, true)
+        // cosmos-sdk v0.46: a message's `GetSignBytes` marshals with its
+        // module's amino codec, which writes a packed concrete type it does
+        // not register as its bare value (go-amino).
+        if let Some(registered) = self.codec.get() {
+            if registered.binary_search(&type_url).is_err() {
+                return self.marshal_message(&msg, w);
+            }
+            return self.begin_marshal(&msg, w, true);
+        }
+        if !sdk::version::is_sdk_v046(0) {
+            return self.begin_marshal(&msg, w, true);
+        }
+        self.codec.set(v046_codec(type_url));
+        let r = self.begin_marshal(&msg, w, true);
+        self.codec.set(None);
+        r
     }
 
     fn begin_marshal(&self, msg: &DynamicMessage, w: &mut String, is_any: bool) -> Res<()> {
@@ -1034,6 +1206,19 @@ mod tests {
             "2023-11-14T22:13:20.5Z"
         );
         assert_eq!(format_rfc3339(-1, 0), "1969-12-31T23:59:59Z");
+    }
+
+    /// The v0.46 codec registries are searched by bisection.
+    #[test]
+    fn v046_amino_registries_are_sorted() {
+        for r in [
+            V046_AUTHZ_AMINO,
+            V046_GOV_V1BETA1_AMINO,
+            V046_GOV_V1_AMINO,
+            V046_NOT_LEGACY_MSG,
+        ] {
+            assert!(r.windows(2).all(|w| w[0] < w[1]));
+        }
     }
 
     #[test]

@@ -421,7 +421,7 @@ mod tests {
 
     /// The schedule follows the release: CIP-29 for app versions 4 and 5,
     /// CIP-41 for 6 and later, and the v1 schedule only on the v0.46
-    /// paths. App version 5 still runs as 9 (CIP-41).
+    /// paths.
     #[test]
     fn schedule_follows_the_release() -> Result<()> {
         use sdk::version::Release;
@@ -437,8 +437,8 @@ mod tests {
             };
             assert_eq!(rate(r, false)?.to_string(), want, "v{v}");
             assert_eq!(rate(r, true)?, v1_initial_inflation_rate(), "v{v}");
-            // App version 4 runs as itself; 5 to 8 still run as 9.
-            let executing = if v == 4 {
+            // App versions 4 and 5 run as themselves; 6 to 8 still run as 9.
+            let executing = if matches!(v, 4 | 5) {
                 cip29_initial_inflation_rate()
             } else {
                 initial_inflation_rate()

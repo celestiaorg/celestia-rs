@@ -29,7 +29,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 
 use flate2::Compression;
-use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 use prost::Message;
 
@@ -498,6 +497,77 @@ impl Read for ChunkReader {
     }
 }
 
+/// Adler-32 of everything read through it (the zlib trailer's checksum).
+struct Adler32<R> {
+    inner: R,
+    a: u32,
+    b: u32,
+}
+
+impl<R: Read> Read for Adler32<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        const MOD: u32 = 65_521;
+        let n = self.inner.read(buf)?;
+        for block in buf[..n].chunks(5552) {
+            for &x in block {
+                self.a += u32::from(x);
+                self.b += self.a;
+            }
+            self.a %= MOD;
+            self.b %= MOD;
+        }
+        Ok(n)
+    }
+}
+
+/// The decompressed item stream of a snapshot's chunks. After the zlib
+/// stream only Go's duplicated Adler-32 trailer may follow: cosmos-sdk
+/// `StreamWriter.Close` closes its zlib writer twice (the delimited
+/// writer closes it, then `Close` closes it again), so every Go snapshot
+/// ends with the 4 trailer bytes written a second time. Go's reader stops
+/// at the end of the zlib stream; any other trailing bytes are refused.
+struct ItemStream<R: Read> {
+    decoder: BufReader<Adler32<flate2::bufread::ZlibDecoder<BufReader<R>>>>,
+}
+
+impl<R: Read> ItemStream<R> {
+    fn new(chunks: R) -> Self {
+        Self {
+            decoder: BufReader::new(Adler32 {
+                inner: flate2::bufread::ZlibDecoder::new(BufReader::new(chunks)),
+                a: 1,
+                b: 0,
+            }),
+        }
+    }
+
+    /// Checks what follows the zlib stream, once every item was read.
+    fn finish(self) -> Result<()> {
+        let adler = self.decoder.into_inner();
+        let checksum = (adler.b << 16) | adler.a;
+        let mut rest = Vec::new();
+        adler.inner.into_inner().take(5).read_to_end(&mut rest)?;
+        if rest.is_empty() || rest == checksum.to_be_bytes() {
+            Ok(())
+        } else {
+            Err(Error::Decode(format!(
+                "{} trailing bytes after the zlib stream (only Go's duplicated Adler-32 trailer {checksum:08x} is accepted)",
+                if rest.len() > 4 {
+                    "more than 4".to_string()
+                } else {
+                    rest.len().to_string()
+                }
+            )))
+        }
+    }
+}
+
+impl<R: Read> Read for ItemStream<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.decoder.read(buf)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Manager
 // ---------------------------------------------------------------------------
@@ -624,11 +694,24 @@ impl Manager {
     /// snapshots per the policy. Blocks until done; the node uses
     /// [`Self::snapshot_in_background`].
     pub fn create(&self, store: &multistore::Store, height: u64) -> Result<Snapshot> {
+        self.create_with_format(store, height, CURRENT_FORMAT)
+    }
+
+    /// [`Self::create`] labelled `format`: [`CURRENT_FORMAT`], or
+    /// [`FORMAT_V046`] for a cosmos-sdk v0.46 state (the same item stream).
+    pub fn create_with_format(
+        &self,
+        store: &multistore::Store,
+        height: u64,
+        format: u32,
+    ) -> Result<Snapshot> {
+        check_format(format)?;
         let snapshot = write_snapshot(
-            &self.snapshot_dir(height, CURRENT_FORMAT),
+            &self.snapshot_dir(height, format),
             self.chunk_size,
             store,
             height,
+            format,
             &Arc::new(AtomicBool::new(false)),
         )?;
         if self.options.keep_recent > 0 {
@@ -650,6 +733,19 @@ impl Manager {
     /// another snapshot or a restore is in progress (`begin(opSnapshot)`)
     /// or a snapshot of this or a later height exists.
     pub fn snapshot_in_background(&mut self, store: &multistore::Store, height: u64) -> Result<()> {
+        self.snapshot_in_background_with_format(store, height, CURRENT_FORMAT)
+    }
+
+    /// [`Self::snapshot_in_background`] labelled `format`: [`FORMAT_V046`]
+    /// for a cosmos-sdk v0.46 state, whose snapshots Go writes as format 2
+    /// with the same item stream.
+    pub fn snapshot_in_background_with_format(
+        &mut self,
+        store: &multistore::Store,
+        height: u64,
+        format: u32,
+    ) -> Result<()> {
+        check_format(format)?;
         self.reap_finished();
         if let Some(f) = &self.in_flight {
             return Err(Error::Conflict(format!(
@@ -674,7 +770,8 @@ impl Manager {
         let cancel = Arc::new(AtomicBool::new(false));
         let worker = Worker {
             root: self.dir.clone(),
-            dir: self.snapshot_dir(height, CURRENT_FORMAT),
+            dir: self.snapshot_dir(height, format),
+            format,
             chunk_size: self.chunk_size,
             keep_recent: self.options.keep_recent,
             cancel: Arc::clone(&cancel),
@@ -892,20 +989,20 @@ fn restore_from(
     height: u64,
     paths: Vec<PathBuf>,
 ) -> Result<multistore::CommitId> {
-    let reader = ChunkReader {
+    let mut stream = ItemStream::new(ChunkReader {
         paths: paths.into_iter(),
         current: None,
-    };
-    let mut decoder = BufReader::new(ZlibDecoder::new(reader));
-    read_items(store, height, &mut decoder)
+    });
+    let id = read_items(store, height, &mut stream)?;
+    stream.finish()?;
+    Ok(id)
 }
 
 fn snapshot_store_names(paths: Vec<PathBuf>) -> Result<BTreeSet<String>> {
-    let reader = ChunkReader {
+    let mut decoder = ItemStream::new(ChunkReader {
         paths: paths.into_iter(),
         current: None,
-    };
-    let mut decoder = BufReader::new(ZlibDecoder::new(reader));
+    });
     let mut names = BTreeSet::new();
     while let Some(item) = read_item(&mut decoder)? {
         if let Some(Item::Store(store)) = item.item
@@ -917,6 +1014,7 @@ fn snapshot_store_names(paths: Vec<PathBuf>) -> Result<BTreeSet<String>> {
             )));
         }
     }
+    decoder.finish()?;
     Ok(names)
 }
 
@@ -999,6 +1097,185 @@ fn remove_incomplete(root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn check_format(format: u32) -> Result<()> {
+    if format == CURRENT_FORMAT || format == FORMAT_V046 {
+        Ok(())
+    } else {
+        Err(Error::UnknownFormat(format))
+    }
+}
+
+/// The result of [`compare_dirs`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Comparison {
+    /// Items compared (equal ones, plus the first different one).
+    pub items: u64,
+    /// The first item that differs, `None` when both streams are equal.
+    pub first_difference: Option<String>,
+    /// Chunk counts of the two snapshots.
+    pub chunks: (u32, u32),
+    /// True when every chunk file is byte-identical. Two snapshots of the
+    /// same state written by different zlib encoders (Go's
+    /// `compress/zlib` and this crate's) hold equal items but different
+    /// chunk bytes.
+    pub chunk_bytes_identical: bool,
+}
+
+/// The chunk files `<dir>/0..n` read as one stream, one file open at a
+/// time (memory does not grow with the snapshot size).
+struct ChunkStream {
+    dir: PathBuf,
+    chunks: u32,
+    next: u32,
+    current: Option<BufReader<fs::File>>,
+}
+
+impl ChunkStream {
+    fn open(dir: &Path) -> Result<Self> {
+        let mut chunks = 0u32;
+        while dir.join(chunks.to_string()).is_file() {
+            chunks += 1;
+        }
+        if chunks == 0 {
+            return Err(Error::Io(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("no chunks in {}", dir.display()),
+            )));
+        }
+        Ok(Self {
+            dir: dir.to_path_buf(),
+            chunks,
+            next: 0,
+            current: None,
+        })
+    }
+
+    fn chunks(&self) -> u32 {
+        self.chunks
+    }
+}
+
+impl Read for ChunkStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        loop {
+            if let Some(f) = &mut self.current {
+                let n = f.read(buf)?;
+                if n > 0 || buf.is_empty() {
+                    return Ok(n);
+                }
+                self.current = None;
+            }
+            if self.next == self.chunks {
+                return Ok(0);
+            }
+            self.current = Some(BufReader::new(fs::File::open(
+                self.dir.join(self.next.to_string()),
+            )?));
+            self.next += 1;
+        }
+    }
+}
+
+/// True when chunk files `0..chunks` of `a` and `b` are byte-identical,
+/// compared file by file in blocks.
+fn same_chunk_bytes(a: &Path, b: &Path, chunks: u32) -> Result<bool> {
+    for i in 0..chunks {
+        let (pa, pb) = (a.join(i.to_string()), b.join(i.to_string()));
+        if fs::metadata(&pa)?.len() != fs::metadata(&pb)?.len() {
+            return Ok(false);
+        }
+        let (mut fa, mut fb) = (
+            BufReader::new(fs::File::open(pa)?),
+            BufReader::new(fs::File::open(pb)?),
+        );
+        let (mut xa, mut xb) = (vec![0u8; 1 << 16], vec![0u8; 1 << 16]);
+        loop {
+            let n = fa.read(&mut xa)?;
+            if n == 0 {
+                break;
+            }
+            fb.read_exact(&mut xb[..n])?;
+            if xa[..n] != xb[..n] {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+fn describe(item: Option<&proto::SnapshotItem>) -> String {
+    match item.and_then(|i| i.item.as_ref()) {
+        None => "end of stream".into(),
+        Some(Item::Store(s)) => format!("store item {:?}", s.name),
+        Some(Item::Iavl(n)) => format!(
+            "node key {} version {} height {} value {} bytes (sha256 {})",
+            hex_upper(&n.key),
+            n.version,
+            n.height,
+            n.value.len(),
+            hex_upper(&hash::sha256(&n.value))
+        ),
+        Some(_) => "other item".into(),
+    }
+}
+
+fn hex_upper(b: &[u8]) -> String {
+    use std::fmt::Write as _;
+    b.iter()
+        .fold(String::with_capacity(b.len() * 2), |mut s, x| {
+            let _ = write!(s, "{x:02X}");
+            s
+        })
+}
+
+/// Compares the snapshots `<a>/<height>/<format>` and
+/// `<b>/<height>/<format>` (Go's layout; only the chunk files `0..n` are
+/// read) item by item: the decompressed streams of length-delimited
+/// `SnapshotItem`s must be equal, in the same order. Reports the first
+/// difference with its store and position, and whether the chunk bytes
+/// are identical too.
+pub fn compare_dirs(a: &Path, b: &Path, height: u64, format: u32) -> Result<Comparison> {
+    let sub = |root: &Path| root.join(height.to_string()).join(format.to_string());
+    let (da, db) = (sub(a), sub(b));
+    let (sa, sb) = (ChunkStream::open(&da)?, ChunkStream::open(&db)?);
+    let chunks = (sa.chunks(), sb.chunks());
+    let chunk_bytes_identical = chunks.0 == chunks.1 && same_chunk_bytes(&da, &db, chunks.0)?;
+    let (mut ra, mut rb) = (ItemStream::new(sa), ItemStream::new(sb));
+    let mut items = 0u64;
+    let mut store = String::new();
+    let mut first_difference = None;
+    loop {
+        let (x, y) = (read_item(&mut ra)?, read_item(&mut rb)?);
+        if x.is_none() && y.is_none() {
+            ra.finish()?;
+            rb.finish()?;
+            break;
+        }
+        items += 1;
+        if x != y {
+            first_difference = Some(format!(
+                "item {} (in store {store:?}): {} vs {}",
+                items - 1,
+                describe(x.as_ref()),
+                describe(y.as_ref())
+            ));
+            break;
+        }
+        if let Some(proto::SnapshotItem {
+            item: Some(Item::Store(s)),
+        }) = &x
+        {
+            store.clone_from(&s.name);
+        }
+    }
+    Ok(Comparison {
+        items,
+        first_difference,
+        chunks,
+        chunk_bytes_identical,
+    })
+}
+
 /// Writes the snapshot of `store` at `height` into `dir` (Go
 /// `Manager.Create` + `Store.Save`): chunks first, metadata last, so an
 /// interrupted snapshot is never listed. On failure the directory is
@@ -1008,6 +1285,7 @@ fn write_snapshot(
     chunk_size: usize,
     store: &multistore::Store,
     height: u64,
+    format: u32,
     cancel: &Arc<AtomicBool>,
 ) -> Result<Snapshot> {
     let result = (|| {
@@ -1024,7 +1302,7 @@ fn write_snapshot(
         let (chunk_hashes, hash) = encoder.finish()?.finish()?;
         let snapshot = Snapshot {
             height,
-            format: CURRENT_FORMAT,
+            format,
             chunks: u32::try_from(chunk_hashes.len())
                 .map_err(|_| Error::InvalidMetadata("too many chunks".into()))?,
             hash,
@@ -1055,6 +1333,7 @@ fn write_snapshot(
 struct Worker {
     root: PathBuf,
     dir: PathBuf,
+    format: u32,
     chunk_size: usize,
     keep_recent: u32,
     cancel: Arc<AtomicBool>,
@@ -1067,8 +1346,14 @@ impl Worker {
         if let Some(hook) = &self.hook {
             hook(height);
         }
-        let snapshot = match write_snapshot(&self.dir, self.chunk_size, view, height, &self.cancel)
-        {
+        let snapshot = match write_snapshot(
+            &self.dir,
+            self.chunk_size,
+            view,
+            height,
+            self.format,
+            &self.cancel,
+        ) {
             Ok(snapshot) => snapshot,
             Err(Error::Cancelled) => {
                 tracing::info!(height, "state snapshot abandoned");
@@ -1314,6 +1599,133 @@ mod tests {
             manager.restore_chunk(&mut dst, b"x"),
             Err(Error::NoRestore)
         ));
+    }
+
+    /// A format 2 (cosmos-sdk v0.46) snapshot holds the same item stream
+    /// as format 3; `compare_dirs` compares two snapshot directories item
+    /// by item, whatever their chunking.
+    #[test]
+    fn format_2_snapshots_and_item_comparison() {
+        let mut src = store(Arc::new(kvdb::MemBackend::new()));
+        fill(&mut src, 4);
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let mut ma = Manager::new(a.path(), SnapshotOptions::default()).unwrap();
+        ma.snapshot_in_background_with_format(&src, 4, FORMAT_V046)
+            .unwrap();
+        let snap = ma.wait_for_snapshot().unwrap().unwrap();
+        assert_eq!(snap.format, FORMAT_V046);
+        assert_eq!(ma.list().unwrap(), vec![snap.clone()]);
+        assert!(ma.load_chunk(4, FORMAT_V046, 0).unwrap().is_some());
+        let mut dst = store(Arc::new(kvdb::MemBackend::new()));
+        assert_eq!(
+            ma.restore_local(&mut dst, 4, FORMAT_V046).unwrap(),
+            src.last_commit_id().unwrap()
+        );
+
+        // The same items cut into other chunks.
+        let mut mb = Manager::new(b.path(), SnapshotOptions::default()).unwrap();
+        mb.set_chunk_size(1024);
+        let other = mb.create_with_format(&src, 4, FORMAT_V046).unwrap();
+        assert!(other.chunks > snap.chunks);
+        let c = compare_dirs(a.path(), b.path(), 4, FORMAT_V046).unwrap();
+        assert_eq!(c.first_difference, None);
+        assert!(c.items > 0);
+        assert!(!c.chunk_bytes_identical);
+        assert!(
+            compare_dirs(a.path(), a.path(), 4, FORMAT_V046)
+                .unwrap()
+                .chunk_bytes_identical
+        );
+
+        // A later height differs at the first changed node.
+        src.get_store_mut("bank")
+            .unwrap()
+            .set(b"k0001".to_vec(), b"x".to_vec())
+            .unwrap();
+        src.commit().unwrap();
+        let later = mb.create_with_format(&src, 5, FORMAT_V046).unwrap();
+        std::fs::rename(b.path().join("5"), b.path().join("4.later")).unwrap();
+        std::fs::remove_dir_all(b.path().join("4")).unwrap();
+        std::fs::rename(b.path().join("4.later"), b.path().join("4")).unwrap();
+        assert!(later.chunks > 0);
+        let c = compare_dirs(a.path(), b.path(), 4, FORMAT_V046).unwrap();
+        let d = c.first_difference.unwrap();
+        assert!(d.contains("store \"bank\""), "{d}");
+        assert!(compare_dirs(a.path(), b.path(), 9, FORMAT_V046).is_err());
+    }
+
+    /// The chunk files of a snapshot read as one stream, one file open at
+    /// a time; chunk byte equality is checked file by file.
+    #[test]
+    fn chunk_files_stream_in_order() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        for (dir, chunks) in [(&a, ["ab", "", "cde"]), (&b, ["ab", "", "cdf"])] {
+            for (i, c) in chunks.iter().enumerate() {
+                std::fs::write(dir.path().join(i.to_string()), c).unwrap();
+            }
+        }
+        let mut out = String::new();
+        let mut stream = ChunkStream::open(a.path()).unwrap();
+        stream.read_to_string(&mut out).unwrap();
+        assert_eq!(out, "abcde");
+        assert_eq!(stream.chunks(), 3);
+        assert!(same_chunk_bytes(a.path(), a.path(), 3).unwrap());
+        assert!(!same_chunk_bytes(a.path(), b.path(), 3).unwrap());
+        assert!(ChunkStream::open(&a.path().join("missing")).is_err());
+    }
+
+    /// Go cosmos-sdk `StreamWriter.Close` closes its zlib writer twice, so
+    /// every Go snapshot stream ends with the Adler-32 trailer written a
+    /// second time. Restores and comparisons accept exactly that, and no
+    /// other bytes after the zlib stream.
+    #[test]
+    fn go_duplicated_adler32_trailer_and_nothing_else() {
+        let mut src = store(Arc::new(kvdb::MemBackend::new()));
+        fill(&mut src, 3);
+        let dir = tempfile::tempdir().unwrap();
+        let manager = Manager::new(dir.path(), SnapshotOptions::default()).unwrap();
+        let snap = manager.create_with_format(&src, 3, FORMAT_V046).unwrap();
+        let chunk_dir = dir.path().join("3").join(FORMAT_V046.to_string());
+        let last = chunk_dir.join((snap.chunks - 1).to_string());
+        let original = std::fs::read(&last).unwrap();
+        let trailer = original[original.len() - 4..].to_vec();
+        let plain = tempfile::tempdir().unwrap();
+        let plain_dir = plain.path().join("3").join(FORMAT_V046.to_string());
+        std::fs::create_dir_all(&plain_dir).unwrap();
+        for i in 0..snap.chunks {
+            std::fs::copy(chunk_dir.join(i.to_string()), plain_dir.join(i.to_string())).unwrap();
+        }
+        let with = |extra: &[u8]| {
+            let mut bytes = original.clone();
+            bytes.extend_from_slice(extra);
+            std::fs::write(&last, bytes).unwrap();
+        };
+        let restore = |m: &Manager| {
+            let mut dst = store(Arc::new(kvdb::MemBackend::new()));
+            m.restore_local(&mut dst, 3, FORMAT_V046)
+        };
+
+        with(&trailer);
+        assert_eq!(restore(&manager).unwrap(), src.last_commit_id().unwrap());
+        let c = compare_dirs(dir.path(), plain.path(), 3, FORMAT_V046).unwrap();
+        assert_eq!(c.first_difference, None);
+        assert!(!c.chunk_bytes_identical);
+
+        let mut wrong = trailer.clone();
+        wrong[0] ^= 1;
+        let mut longer = trailer.clone();
+        longer.push(0);
+        for bad in [wrong, longer, vec![0u8], trailer[..3].to_vec()] {
+            with(&bad);
+            let e = restore(&manager).unwrap_err().to_string();
+            assert!(e.contains("trailing"), "{bad:?}: {e}");
+            let e = compare_dirs(dir.path(), plain.path(), 3, FORMAT_V046)
+                .unwrap_err()
+                .to_string();
+            assert!(e.contains("trailing"), "{bad:?}: {e}");
+        }
     }
 
     /// A store pruned after every commit down to the latest version (the

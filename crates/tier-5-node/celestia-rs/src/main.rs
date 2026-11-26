@@ -109,6 +109,23 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Compare two state-sync snapshots (`<dir>/<height>/<format>/<chunk>`,
+    /// Go's layout) item by item; exits non-zero at the first difference.
+    /// Snapshots of the same state from Go and celestia-rs hold equal
+    /// items in the same order, but their zlib chunk bytes differ.
+    CompareSnapshots {
+        /// Snapshot height.
+        #[arg(long)]
+        height: u64,
+        /// Snapshot format (2: cosmos-sdk v0.46, app versions 1 to 3;
+        /// 3: from app version 4).
+        #[arg(long, default_value_t = snapshots::CURRENT_FORMAT)]
+        format: u32,
+        /// First snapshot directory.
+        a: PathBuf,
+        /// Second snapshot directory.
+        b: PathBuf,
+    },
     /// Serve the state machine to celestia-core over ABCI (socket).
     Abci(Box<AbciArgs>),
     /// Manage keys (test / file keyrings, Go-compatible).
@@ -364,6 +381,14 @@ struct FollowArgs {
     /// State database cache in MiB.
     #[arg(long, default_value_t = 512)]
     db_cache_mib: usize,
+    /// Write a state-sync snapshot to `<home>/data/snapshots` every N
+    /// executed heights (0 = never): format 2 at app versions 1 to 3,
+    /// format 3 from app version 4, restorable with `--snapshot`.
+    #[arg(long, default_value_t = 0)]
+    snapshot_interval: u64,
+    /// Snapshots kept (0 = all).
+    #[arg(long, default_value_t = 2)]
+    snapshot_keep_recent: u32,
     /// Upgrade heights to skip while executing followed blocks.
     #[arg(
         long = "unsafe-skip-upgrades",
@@ -1025,6 +1050,25 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
         Cmd::Start(args) => start(&home, *args).await,
         Cmd::Follow(args) => follow(&home, *args).await,
         Cmd::ExportBlocks { out } => node::export_blocks(&home, &out),
+        Cmd::CompareSnapshots {
+            height,
+            format,
+            a,
+            b,
+        } => {
+            let c = snapshots::compare_dirs(&a, &b, height, format)?;
+            util::out(format!(
+                "snapshot {height} format {format}: chunks {} and {}, chunk bytes identical: {}",
+                c.chunks.0, c.chunks.1, c.chunk_bytes_identical
+            ));
+            match c.first_difference {
+                None => {
+                    util::out(format!("{} items equal, in the same order", c.items));
+                    Ok(())
+                }
+                Some(d) => bail!("first difference: {d}"),
+            }
+        }
         Cmd::Abci(args) => abci(&home, cli.home.is_some(), *args).await,
         Cmd::Keys(cmd) => keys_cmd(&home, cmd),
         Cmd::Genesis(cmd) => genesis_cmd(&home, cmd),
@@ -1246,11 +1290,11 @@ fn prepare_network(home: &Path, name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn follow(home: &Path, a: FollowArgs) -> anyhow::Result<()> {
-    anyhow::ensure!(
-        !a.light_only || a.unsafe_skip_upgrades.is_empty(),
-        "--unsafe-skip-upgrades requires block execution; remove --light-only"
-    );
+/// App options of the follower: snapshots only when asked (resumable
+/// checkpoints of a replay); blocks below `height - keep_blocks` are
+/// pruned (the follower does not serve the network, so Go's 3000 floor is
+/// moot).
+fn follow_app_options(a: &FollowArgs) -> app::AppOptions {
     let mut app = app::AppOptions::default();
     app.store.pruning = multistore::PruningOptions {
         keep_recent: a.pruning_keep_recent,
@@ -1258,14 +1302,23 @@ async fn follow(home: &Path, a: FollowArgs) -> anyhow::Result<()> {
         interval: 1,
     };
     app.db.cache_size = a.db_cache_mib << 20;
-    // No snapshots; blocks below `height - keep_blocks` are pruned (the
-    // follower does not serve the network, so Go's 3000 floor is moot).
     app.snapshots = snapshots::SnapshotOptions {
-        interval: 0,
-        keep_recent: 0,
+        interval: a.snapshot_interval,
+        keep_recent: a.snapshot_keep_recent,
     };
     app.node.min_retain_blocks = a.keep_blocks;
-    app.node.unsafe_skip_upgrades = a.unsafe_skip_upgrades.clone();
+    app.node
+        .unsafe_skip_upgrades
+        .clone_from(&a.unsafe_skip_upgrades);
+    app
+}
+
+async fn follow(home: &Path, a: FollowArgs) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !a.light_only || a.unsafe_skip_upgrades.is_empty(),
+        "--unsafe-skip-upgrades requires block execution; remove --light-only"
+    );
+    let app = follow_app_options(&a);
     let trust_hash = if a.trust_hash.is_empty() {
         None
     } else {
@@ -1998,6 +2051,23 @@ mod cli_tests {
         };
         assert!(o.go_node_stopped && !o.dry_run && !o.not_a_validator);
         assert_eq!(o.statesync_rpc, ["https://a:443", "https://b"]);
+    }
+
+    #[test]
+    fn follow_snapshot_flags() {
+        let parse = |args: &str| {
+            let cli = Cli::try_parse_from(args.split(' ')).unwrap();
+            let Cmd::Follow(a) = cli.command else {
+                panic!("not follow");
+            };
+            follow_app_options(&a).snapshots
+        };
+        let off = parse("celestia-rs follow --rpc http://a");
+        assert_eq!((off.interval, off.keep_recent), (0, 2));
+        let on = parse(
+            "celestia-rs follow --rpc http://a --snapshot-interval 10000 --snapshot-keep-recent 0",
+        );
+        assert_eq!((on.interval, on.keep_recent), (10_000, 0));
     }
 
     fn skip_heights(args: &[&str]) -> Vec<i64> {

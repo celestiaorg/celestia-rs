@@ -34,6 +34,8 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		// The same chain on to the v5 hand-off (conformance/v5-oracle).
 		{"v1-v3-to-v5", "v1-v3", "v1-v3", "v4-to-v5", []string{"-heights", "10", "-next-handoff"}},
 		{"v3-rich", "v3-rich", "v3-rich", "v3-rich-v4", nil},
+		// Only the history chain's genesis is committed on the v3 side.
+		{"v3-history", "v3-history", "v3-history", "v3-history-v4", nil},
 	} {
 		t.Run(c.name, func(t *testing.T) { requireReproducible(t, v1, c.chain, c.v1Dir, c.v4Dir, c.args) })
 	}
@@ -47,7 +49,11 @@ func requireReproducible(t *testing.T, v1, chain, v1Dir, v4Dir string, args []st
 	}
 	v1Fixture := filepath.Join("..", "fixtures", "synthetic", v1Dir)
 	for _, name := range []string{"genesis.json", "store-roots.json"} {
-		requireSame(t, filepath.Join(v1Fixture, name), filepath.Join(v1Out, name))
+		want := filepath.Join(v1Fixture, name)
+		if _, err := os.Stat(want); os.IsNotExist(err) && name != "genesis.json" {
+			continue
+		}
+		requireSame(t, want, filepath.Join(v1Out, name))
 	}
 
 	out := filepath.Join(tmp, "v4")

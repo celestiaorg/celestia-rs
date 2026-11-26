@@ -604,7 +604,7 @@ mod tests {
 
     /// celestiaorg/cosmos-sdk `types.MaxCommissionRate`: 25% through
     /// v0.51.8 (celestia-app v4 to v6), 60% from v0.52.1 (v7 on). Executing
-    /// releases other than app version 4 keep 60% (5 and 6 still run as 9).
+    /// releases other than app versions 4 to 6 keep 60%.
     #[test]
     fn max_commission_rate_follows_the_release() {
         for v in 1..=12 {
@@ -616,10 +616,10 @@ mod tests {
             };
             assert_eq!(max_commission_rate_for(r).to_string(), want, "v{v}");
         }
-        // App version 4 runs as itself; 5 and 6 still run as 9.
+        // App versions 4 to 6 run as themselves.
         for v in (0..=14).chain([u64::MAX]) {
-            let want = if v == 4 {
-                max_commission_rate_for(Release::for_app_version(4).expect("v4"))
+            let want = if matches!(v, 4..=6) {
+                max_commission_rate_for(Release::for_app_version(v).expect("known app version"))
             } else {
                 max_commission_rate()
             };
