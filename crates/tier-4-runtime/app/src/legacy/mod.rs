@@ -697,21 +697,28 @@ impl<M: Modules> Driver<M> {
         let cp = consensus_params::load(&mut ctx, app_version)?;
         drop(ctx);
 
-        ms.flush()?;
         if let Some(to) = upgraded {
             // `BaseApp.Commit`: the header's app version is below the new
             // one, so the store and module migrations run before the
-            // commit.
-            migrate::stores(ms, block_version, to)?;
-            let _scope = sdk::version::SdkV046Scope::enter(to);
-            let mut ctx = Context::new(ms, header.clone(), ExecMode::Finalize);
-            ctx.consensus_params = cp.clone();
-            migrate::modules(&mut ctx, block_version, to)?;
-            drop(ctx);
-            self.phase_not_ported(req.height, "Commit migrations")?;
-            ms.flush()?;
+            // commit. They run on the block's branch, before the flush,
+            // so that a failure leaves no writes and no store changes.
+            let added = migrate::add_stores(ms, block_version, to)?;
+            let migrated = (|| {
+                let _scope = sdk::version::SdkV046Scope::enter(to);
+                let mut ctx = Context::new(ms, header.clone(), ExecMode::Finalize);
+                ctx.consensus_params = cp.clone();
+                migrate::modules(&mut ctx, block_version, to)?;
+                drop(ctx);
+                self.phase_not_ported(req.height, "Commit migrations")
+            })();
+            if let Err(e) = migrated {
+                migrate::unmount_added(ms, &added);
+                return Err(e);
+            }
+            migrate::remove_stores(ms, block_version, to)?;
             self.app_version = to;
         }
+        ms.flush()?;
         let app_hash = ms.working_hash()?.to_vec();
         self.finalized = Some(header);
         Ok(ResponseFinalizeBlock {
