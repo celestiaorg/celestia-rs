@@ -5,9 +5,9 @@
 #   an ignored dependency gets an alert but no pull request. Rust
 #   advisories are additionally caught by `cargo deny check advisories`
 #   (ci.yml on every push, nightly.yml daily).
-# - Security pull requests are grouped per ecosystem, so one advisory that
-#   hits many Go modules raises one pull request instead of one per
-#   directory.
+# - Every entry has a seven-day cooldown: a new release must be public for
+#   a week before a version update proposes it.
+# - Go modules raise alerts only, never pull requests (see the gomod entry).
 version: 2
 updates:
   # Rust workspace (the node binary). Minor / patch updates are grouped
@@ -95,6 +95,12 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: getrandom
         update-types: ["version-update:semver-major"]
+      # secp256k1 (transaction signatures) and tendermint-proto (pinned
+      # with `=`; 0.41 moves to prost 0.14, which is deferred above).
+      - dependency-name: secp256k1
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tendermint*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
@@ -109,14 +115,12 @@ updates:
   # Go conformance modules: test-only generators and oracles, never shipped.
   # Every conformance/**/go.mod must be listed here or in the frozen entry
   # below (xtask/tests/dependabot.rs); an unlisted module falls back to the
-  # repository defaults, which ignore none of the pinned modules.
-  # No version updates (limit 0): several reproduce celestia-app v10.4.0 /
-  # v9.0.8 / v6.4.10 and celestia-core module graphs exactly, and their
-  # outputs are committed fixtures. Security updates still open (grouped
-  # into one pull request) for everything except the pinned reference
-  # modules ignored below, which must not move away from the versions the
-  # parity target ships; their remaining alerts are documented in
-  # docs/security.md.
+  # repository defaults, which ignore nothing.
+  # No pull requests at all (limit 0 stops version updates, ignoring "*"
+  # stops security updates): many modules reproduce celestia-app / celestia-core
+  # module graphs exactly and their outputs are committed fixtures, so a
+  # bump is done by hand and the fixtures regenerated. Alerts still show;
+  # docs/security.md ("Dependabot") describes how they are triaged.
   - package-ecosystem: gomod
     directories:
       - /conformance/antereplay
@@ -158,23 +162,11 @@ updates:
       - /conformance/websocket-lifecycle
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 0
-    groups:
-      go-security:
-        applies-to: security-updates
-        patterns: ["*"]
     ignore:
-      - dependency-name: "github.com/celestiaorg/*"
-      - dependency-name: "github.com/cosmos/cosmos-sdk"
-      - dependency-name: "cosmossdk.io/*"
-      - dependency-name: "github.com/cometbft/*"
-      - dependency-name: "github.com/tendermint/tendermint"
-      - dependency-name: "github.com/cosmos/ibc-go*"
-      - dependency-name: "github.com/cosmos/ibc-apps/*"
-      - dependency-name: "github.com/cosmos/gogoproto"
-      - dependency-name: "github.com/cosmos/iavl"
-      - dependency-name: "github.com/cosmos/cosmos-db"
-      - dependency-name: "github.com/bcp-innovations/hyperlane-cosmos"
+      - dependency-name: "*"
 
   # Frozen evidence: byte-exact copies of module sources recorded with a
   # capture. They must never change, so every dependency is ignored (alerts
@@ -188,6 +180,8 @@ updates:
       - /conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/capture-sources/conformance/provider-client
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 0
     ignore:
       - dependency-name: "*"

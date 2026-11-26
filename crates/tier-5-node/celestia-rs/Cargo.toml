@@ -104,6 +104,8 @@ txdecode = { path = "../../tier-3-app-modules/txdecode" }
 x-blob = { path = "../../tier-3-app-modules/x/blob" }
 x-consensus = { path = "../../tier-3-app-modules/x/consensus" }
 x-valaddr = { path = "../../tier-3-app-modules/x/valaddr" }
+# Wipes the validator key buffers the Fibre signer reads.
+zeroize = "1"
 tracing = "0.1"
 clap = { workspace = true, features = ["env"] }
 math = { path = "../../tier-0-primitives/math" }

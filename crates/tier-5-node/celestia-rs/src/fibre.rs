@@ -45,6 +45,10 @@ pub const DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 const MIN_BACKOFF: Duration = Duration::from_secs(1);
 /// Longest retry delay.
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
+/// A server that ran this long resets the backoff.
+const STABLE_UPTIME: Duration = Duration::from_secs(60);
+/// Extra time, beyond the drain, that a stop waits for the server.
+const JOIN_MARGIN: Duration = Duration::from_secs(5);
 /// The server re-issues its TLS certificate (valid 365 days) by restarting
 /// after this long.
 const CERT_RENEWAL: Duration = Duration::from_secs(360 * 24 * 3600);
@@ -70,6 +74,7 @@ pub const KEYS: &[(&str, KeyKind)] = &[
     ("min_upload_size", KeyKind::Int),
     ("max_connections", KeyKind::Int),
     ("max_concurrent_streams", KeyKind::Int),
+    ("max_inflight_upload_bytes", KeyKind::Int),
     ("upload_verify_workers", KeyKind::Int),
     ("unlimited_budget", KeyKind::Bool),
     ("storage_backend", KeyKind::Str),
@@ -166,6 +171,7 @@ pub fn options(files: &ConfigFiles, flags: &FibreFlags) -> anyhow::Result<Option
                     "min_upload_size" => cfg.min_upload_size = i,
                     "max_connections" => cfg.max_connections = i,
                     "max_concurrent_streams" => cfg.max_concurrent_streams = i,
+                    "max_inflight_upload_bytes" => cfg.max_inflight_upload_bytes = i,
                     _ => cfg.upload_verify_workers = i,
                 }
             }
@@ -193,7 +199,7 @@ pub fn options(files: &ConfigFiles, flags: &FibreFlags) -> anyhow::Result<Option
     if let Some(e) = flags.enable {
         enable = e;
     }
-    cfg.server_listen_address = listen_address(&cfg.server_listen_address)?;
+    cfg.server_listen_address = listen_address(&cfg.server_listen_address, enable)?;
     cfg.store.path = match store_path.as_deref() {
         None | Some("") => files.home().join(DEFAULT_STORE_DIR),
         Some(p) if Path::new(p).is_absolute() => PathBuf::from(p),
@@ -205,35 +211,107 @@ pub fn options(files: &ConfigFiles, flags: &FibreFlags) -> anyhow::Result<Option
 }
 
 /// Checks a `host:port` listen address (Go's `:7980` means every
-/// interface).
-fn listen_address(addr: &str) -> anyhow::Result<String> {
+/// interface). Only an enabled server's address is resolved: a disabled
+/// section never waits on DNS.
+fn listen_address(addr: &str, resolve: bool) -> anyhow::Result<String> {
     let addr = match addr.strip_prefix(':') {
         Some(port) => format!("0.0.0.0:{port}"),
         None => addr.to_owned(),
     };
-    let resolved = addr.to_socket_addrs().is_ok_and(|mut a| a.next().is_some());
-    if !resolved {
+    let syntax = addr
+        .rsplit_once(':')
+        .is_some_and(|(host, port)| !host.is_empty() && port.parse::<u16>().is_ok());
+    let ok = syntax && (!resolve || addr.to_socket_addrs().is_ok_and(|mut a| a.next().is_some()));
+    if !ok {
         bail!("fibre server_listen_address {addr:?} is not a host:port address");
     }
     Ok(addr)
 }
 
 /// Worst-case memory of buffered uploads: `max_connections ×
-/// max_concurrent_streams × ~132 MiB`.
+/// max_concurrent_streams × ~132 MiB`, capped by `max_inflight_upload_bytes`.
 #[must_use]
 pub fn worst_case_upload_bytes(cfg: &ServerConfig) -> u64 {
     u64::try_from(cfg.max_connections)
         .unwrap_or(0)
         .saturating_mul(u64::try_from(cfg.max_concurrent_streams).unwrap_or(0))
         .saturating_mul(PER_STREAM_BYTES)
+        .min(u64::try_from(cfg.max_inflight_upload_bytes).unwrap_or(0))
 }
 
 // ------------------------------------------------------------------ state
 
+/// Most module queries that may prepare a view (and so wait on the app
+/// lock) at once; more wait without holding a blocking thread.
+pub const MAX_VIEW_PREPARATIONS: usize = 2;
+
+/// Module queries on detached views of the latest committed state.
+pub struct DetachedQueries {
+    app: Arc<Mutex<app::App>>,
+    prepare: Arc<tokio::sync::Semaphore>,
+    preparing: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl DetachedQueries {
+    /// Queries against `app`.
+    #[must_use]
+    pub fn new(app: Arc<Mutex<app::App>>) -> Self {
+        Self {
+            app,
+            prepare: Arc::new(tokio::sync::Semaphore::new(MAX_VIEW_PREPARATIONS)),
+            preparing: Arc::default(),
+        }
+    }
+
+    /// Queries preparing a view now (waiting for or holding the app lock).
+    #[must_use]
+    pub fn preparing(&self) -> usize {
+        self.preparing.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Runs module query `path` like Go's app gRPC client would see it:
+    /// the view is built under the app lock (at most
+    /// [`MAX_VIEW_PREPARATIONS`] queries at once), the handler runs
+    /// without it.
+    pub async fn query<Req, Resp>(&self, path: &'static str, req: &Req) -> Result<Resp, StateError>
+    where
+        Req: prost::Message,
+        Resp: prost::Message + Default,
+    {
+        let data = req.encode_to_vec();
+        let app = Arc::clone(&self.app);
+        let permit = Arc::clone(&self.prepare)
+            .acquire_owned()
+            .await
+            .map_err(|e| StateError::other(format!("query limiter closed: {e}")))?;
+        let preparing = Arc::clone(&self.preparing);
+        let res = tokio::task::spawn_blocking(move || {
+            preparing.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let prepared = app
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .detached_grpc_query(path);
+            preparing.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            drop(permit);
+            prepared.and_then(|q| q.run(&data))
+        })
+        .await
+        .map_err(|e| StateError::other(format!("query task failed: {e}")))?;
+        match res {
+            Ok((bytes, _)) => Resp::decode(bytes.as_slice()).map_err(|e| {
+                StateError::other(format!(
+                    "rpc error: code = Internal desc = grpc: failed to unmarshal the received message: {e}"
+                ))
+            }),
+            Err(e) => Err(grpc_error(&e)),
+        }
+    }
+}
+
 /// [`ChainState`] over the node's own stores and app.
 pub struct NodeChainState {
     chain_id: String,
-    app: Arc<Mutex<app::App>>,
+    queries: DetachedQueries,
     block_store: BlockStore,
     state_store: StateStore,
     env: Arc<rpc::Environment>,
@@ -252,39 +330,19 @@ impl NodeChainState {
     ) -> Self {
         Self {
             chain_id: chain_id.to_owned(),
-            app,
+            queries: DetachedQueries::new(app),
             block_store,
             state_store,
             env,
         }
     }
 
-    /// Runs module query `path` like Go's app gRPC client would see it:
-    /// the view is built under the app lock, the handler runs without it.
     async fn query<Req, Resp>(&self, path: &'static str, req: &Req) -> Result<Resp, StateError>
     where
         Req: prost::Message,
         Resp: prost::Message + Default,
     {
-        let data = req.encode_to_vec();
-        let app = Arc::clone(&self.app);
-        let res = tokio::task::spawn_blocking(move || {
-            let prepared = app
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .detached_grpc_query(path);
-            prepared.and_then(|q| q.run(&data))
-        })
-        .await
-        .map_err(|e| StateError::other(format!("query task failed: {e}")))?;
-        match res {
-            Ok((bytes, _)) => Resp::decode(bytes.as_slice()).map_err(|e| {
-                StateError::other(format!(
-                    "rpc error: code = Internal desc = grpc: failed to unmarshal the received message: {e}"
-                ))
-            }),
-            Err(e) => Err(grpc_error(&e)),
-        }
+        self.queries.query(path, req).await
     }
 
     async fn validators_at(&self, height: Option<u64>) -> Result<ValidatorSet, StateError> {
@@ -475,11 +533,14 @@ pub enum NodeSigner {
 impl NodeSigner {
     /// The signer of a `priv_validator_key.json` key.
     pub fn from_key_file(path: &Path) -> anyhow::Result<Self> {
-        let bz = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
-        let key = privval::FilePvKey::from_json(&bz).map_err(|e| anyhow!("{e}"))?;
-        let seed: [u8; 32] = key.priv_key[..32]
-            .try_into()
-            .map_err(|_| anyhow!("short validator key"))?;
+        use zeroize::{Zeroize as _, Zeroizing};
+        let bz = Zeroizing::new(
+            std::fs::read(path).with_context(|| format!("read {}", path.display()))?,
+        );
+        let mut key = privval::FilePvKey::from_json(&bz).map_err(|e| anyhow!("{e}"))?;
+        let mut seed = Zeroizing::new([0u8; 32]);
+        seed.copy_from_slice(&key.priv_key[..32]);
+        key.priv_key.zeroize();
         let signer = fibre_server::tlsid::Ed25519RawBytesSigner::from_seed(&seed);
         if signer.public_key() != key.pub_key {
             bail!(
@@ -491,10 +552,28 @@ impl NodeSigner {
     }
 }
 
+impl NodeSigner {
+    /// Why the signer cannot sign raw bytes until the node restarts (the
+    /// remote signer's raw-bytes path was disabled); `None` otherwise.
+    #[must_use]
+    pub fn disabled(&self) -> Option<String> {
+        match self {
+            Self::File(_) => None,
+            Self::Remote(r) => r.disabled(),
+        }
+    }
+}
+
 impl Signer for NodeSigner {
+    /// With the raw-bytes path disabled this fails, so the `signer` health
+    /// check reports it (`signer_unreachable`, with the reason).
     fn public_key(&self) -> BoxFuture<'_, Result<[u8; 32], SignerError>> {
         let res = match self {
             Self::File(s) => Ok(s.public_key()),
+            Self::Remote(r) if r.disabled().is_some() => Err(SignerError(format!(
+                "remote signer raw-bytes signing is disabled: {}",
+                r.disabled().unwrap_or_default()
+            ))),
             Self::Remote(r) => match r.pub_key() {
                 ctypes::PubKey::Ed25519(pk) => Ok(pk),
                 ctypes::PubKey::Secp256k1(_) => Err(SignerError(
@@ -536,6 +615,10 @@ impl Signer for NodeSigner {
 
 // ------------------------------------------------------------- supervisor
 
+/// Reports a failure that retrying cannot fix (the remote signer's
+/// raw-bytes path is disabled); the supervisor then stops retrying.
+pub type FatalCheck = Arc<dyn Fn() -> Option<String> + Send + Sync>;
+
 /// The current server's metrics, for the node's Prometheus endpoint.
 pub type MetricsSlot = Arc<Mutex<Option<Arc<ServerMetrics>>>>;
 
@@ -546,6 +629,10 @@ pub type MetricsSlot = Arc<Mutex<Option<Arc<ServerMetrics>>>>;
 pub struct Supervisor {
     stop: CancellationToken,
     thread: Option<std::thread::JoinHandle<()>>,
+    /// Signalled when the supervisor thread is about to end.
+    finished: std::sync::mpsc::Receiver<()>,
+    /// How long dropping the supervisor waits for the thread.
+    join_timeout: Duration,
     metrics: MetricsSlot,
 }
 
@@ -562,6 +649,7 @@ impl Supervisor {
         state: Arc<dyn ChainState>,
         signer: Arc<dyn Signer>,
         validator: String,
+        fatal: FatalCheck,
     ) -> anyhow::Result<Self> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -571,19 +659,32 @@ impl Supervisor {
             .context("start the fibre runtime")?;
         let stop = CancellationToken::new();
         let metrics: MetricsSlot = Arc::default();
+        let (done, finished) = std::sync::mpsc::channel();
         let thread = {
             let (stop, metrics) = (stop.clone(), Arc::clone(&metrics));
+            let inputs = Inputs {
+                cfg,
+                state,
+                signer,
+                validator,
+                stop,
+                metrics,
+                fatal,
+            };
             std::thread::Builder::new()
                 .name("fibre-supervisor".into())
                 .spawn(move || {
-                    runtime.block_on(supervise(cfg, state, signer, validator, stop, metrics));
+                    runtime.block_on(supervise_forever(inputs));
                     runtime.shutdown_timeout(Duration::from_secs(1));
+                    let _ = done.send(());
                 })
                 .context("start the fibre supervisor thread")?
         };
         Ok(Self {
             stop,
             thread: Some(thread),
+            finished,
+            join_timeout: DRAIN_TIMEOUT + JOIN_MARGIN,
             metrics,
         })
     }
@@ -602,10 +703,63 @@ impl Supervisor {
 }
 
 impl Drop for Supervisor {
+    /// Stops the server and waits for it, at most the drain timeout plus a
+    /// margin; a server stuck beyond that is left behind (logged), so the
+    /// node's shutdown never hangs on Fibre.
     fn drop(&mut self) {
         self.stop.cancel();
-        if let Some(t) = self.thread.take() {
-            let _ = t.join();
+        let Some(t) = self.thread.take() else { return };
+        match self.finished.recv_timeout(self.join_timeout) {
+            Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                let _ = t.join();
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => tracing::error!(
+                timeout = ?self.join_timeout,
+                "the fibre server did not stop in time; leaving it behind"
+            ),
+        }
+    }
+}
+
+/// What the supervisor runs with.
+#[derive(Clone)]
+struct Inputs {
+    cfg: ServerConfig,
+    state: Arc<dyn ChainState>,
+    signer: Arc<dyn Signer>,
+    validator: String,
+    stop: CancellationToken,
+    metrics: MetricsSlot,
+    fatal: FatalCheck,
+}
+
+/// The backoff after a server ran for `uptime`: a server that failed
+/// before [`STABLE_UPTIME`] keeps the grown backoff (no restart loop, each
+/// minting a new certificate), a stable one starts over.
+fn backoff_after_run(backoff: Duration, uptime: Duration) -> Duration {
+    if uptime >= STABLE_UPTIME {
+        MIN_BACKOFF
+    } else {
+        backoff
+    }
+}
+
+/// Runs [`supervise`]; a panic in it is logged and the supervisor starts
+/// again after a backoff.
+async fn supervise_forever(inputs: Inputs) {
+    let mut backoff = MIN_BACKOFF;
+    loop {
+        let run = tokio::spawn(supervise(inputs.clone()));
+        match run.await {
+            Ok(()) => return,
+            Err(e) => {
+                let d = backoff;
+                backoff = (backoff * 2).min(MAX_BACKOFF);
+                tracing::error!(error = %e, retry_in = ?d, "fibre supervisor panicked; restarting it");
+                if wait(&inputs.stop, d).await {
+                    return;
+                }
+            }
         }
     }
 }
@@ -618,14 +772,27 @@ async fn wait(stop: &CancellationToken, d: Duration) -> bool {
     }
 }
 
-async fn supervise(
-    cfg: ServerConfig,
-    state: Arc<dyn ChainState>,
-    signer: Arc<dyn Signer>,
-    validator: String,
-    stop: CancellationToken,
-    metrics: MetricsSlot,
-) {
+#[allow(clippy::too_many_lines)]
+async fn supervise(inputs: Inputs) {
+    let Inputs {
+        cfg,
+        state,
+        signer,
+        validator,
+        stop,
+        metrics,
+        fatal,
+    } = inputs;
+    // A failure retrying cannot fix: log once, then wait for shutdown.
+    let give_up = |stop: CancellationToken, fatal: FatalCheck| async move {
+        let reason = fatal()?;
+        tracing::error!(
+            reason,
+            "the fibre server stays off until the node restarts; consensus is not affected"
+        );
+        stop.cancelled().await;
+        Some(())
+    };
     let mut backoff = MIN_BACKOFF;
     let retry = |backoff: &mut Duration| {
         let d = *backoff;
@@ -660,9 +827,12 @@ async fn supervise(
             Some(Err(e)) => {
                 // Closes a store the failed start opened.
                 let _ = server.stop(Duration::ZERO).await;
+                drop(server);
+                if give_up(stop.clone(), Arc::clone(&fatal)).await.is_some() {
+                    break;
+                }
                 let d = retry(&mut backoff);
                 tracing::error!(error = %e, retry_in = ?d, "fibre server failed to start; consensus is not affected");
-                drop(server);
                 if wait(&stop, d).await {
                     break;
                 }
@@ -670,7 +840,7 @@ async fn supervise(
             }
             Some(Ok(())) => {}
         }
-        backoff = MIN_BACKOFF;
+        let started_at = std::time::Instant::now();
         *metrics.lock().unwrap_or_else(PoisonError::into_inner) = Some(server.metrics());
         tracing::info!(
             listen = %server.listen_address(),
@@ -694,13 +864,19 @@ async fn supervise(
             () = done.cancelled() => {
                 let reason = server.serve_error().unwrap_or_else(|| "unknown".into());
                 let _ = server.stop(Duration::ZERO).await;
+                tracing::error!(error = %reason, "fibre server stopped serving");
+                if give_up(stop.clone(), Arc::clone(&fatal)).await.is_some() {
+                    break;
+                }
+                backoff = backoff_after_run(backoff, started_at.elapsed());
                 let d = retry(&mut backoff);
-                tracing::error!(error = %reason, retry_in = ?d, "fibre server stopped serving; restarting");
+                tracing::error!(retry_in = ?d, "restarting the fibre server");
                 if wait(&stop, d).await {
                     break;
                 }
             }
             () = tokio::time::sleep(CERT_RENEWAL) => {
+                backoff = MIN_BACKOFF;
                 tracing::info!("restarting the fibre server to renew its TLS certificate");
                 if let Err(e) = server.stop(DRAIN_TIMEOUT).await {
                     tracing::error!(error = %e, "fibre server stopped with an error");
@@ -713,6 +889,233 @@ async fn supervise(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A chain the server never gets past: start fails at the TLS
+    /// certificate's signature first.
+    struct NoChain;
+
+    impl ChainState for NoChain {
+        fn chain_id(&self) -> String {
+            "c".into()
+        }
+        fn validator_set(&self, _: u64) -> BoxFuture<'_, Result<ValidatorSet, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn head_validator_set(&self) -> BoxFuture<'_, Result<ValidatorSet, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn verify_promise<'a>(
+            &'a self,
+            _: &'a PaymentPromise,
+        ) -> BoxFuture<'a, Result<VerifiedPromise, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn full_stake_storage_budget(&self) -> BoxFuture<'_, Result<i64, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn node_status(&self) -> BoxFuture<'_, Result<NodeStatus, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn provider_registration<'a>(
+            &'a self,
+            _: &'a [u8; 20],
+        ) -> BoxFuture<'a, Result<ProviderRegistration, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+    }
+
+    /// A signer whose raw-bytes path is broken; counts signing attempts.
+    #[derive(Default)]
+    struct BrokenSigner {
+        attempts: std::sync::atomic::AtomicUsize,
+    }
+
+    impl Signer for BrokenSigner {
+        fn public_key(&self) -> BoxFuture<'_, Result<[u8; 32], SignerError>> {
+            Box::pin(async { Ok([1; 32]) })
+        }
+        fn sign_raw_bytes<'a>(
+            &'a self,
+            _: &'a str,
+            _: &'a str,
+            _: &'a [u8],
+        ) -> BoxFuture<'a, Result<Vec<u8>, SignerError>> {
+            self.attempts
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Box::pin(async { Err(SignerError("remote signer connection: hung up".into())) })
+        }
+    }
+
+    /// A server that failed soon after starting keeps the grown backoff;
+    /// one that ran for [`STABLE_UPTIME`] starts over.
+    #[test]
+    fn backoff_resets_only_after_a_stable_run() {
+        let grown = Duration::from_secs(16);
+        assert_eq!(backoff_after_run(grown, Duration::from_secs(1)), grown);
+        assert_eq!(backoff_after_run(grown, Duration::from_secs(59)), grown);
+        assert_eq!(backoff_after_run(grown, STABLE_UPTIME), MIN_BACKOFF);
+    }
+
+    /// A chain whose `chain_id` panics the first `panics` times and blocks
+    /// forever when `block` is set.
+    struct PanickyChain {
+        calls: std::sync::atomic::AtomicUsize,
+        panics: usize,
+        block: bool,
+    }
+
+    impl ChainState for PanickyChain {
+        fn chain_id(&self) -> String {
+            let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if self.block {
+                std::thread::sleep(Duration::from_secs(3600));
+            }
+            assert!(n >= self.panics, "chain_id panic {n}");
+            "c".into()
+        }
+        fn validator_set(&self, h: u64) -> BoxFuture<'_, Result<ValidatorSet, StateError>> {
+            NoChain.validator_set(h)
+        }
+        fn head_validator_set(&self) -> BoxFuture<'_, Result<ValidatorSet, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn verify_promise<'a>(
+            &'a self,
+            _: &'a PaymentPromise,
+        ) -> BoxFuture<'a, Result<VerifiedPromise, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn full_stake_storage_budget(&self) -> BoxFuture<'_, Result<i64, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn node_status(&self) -> BoxFuture<'_, Result<NodeStatus, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+        fn provider_registration<'a>(
+            &'a self,
+            _: &'a [u8; 20],
+        ) -> BoxFuture<'a, Result<ProviderRegistration, StateError>> {
+            Box::pin(async { Err(StateError::other("no chain")) })
+        }
+    }
+
+    fn panicky(dir: &Path, chain: Arc<PanickyChain>, join_timeout: Duration) -> Supervisor {
+        let cfg = ServerConfig {
+            server_listen_address: "127.0.0.1:0".into(),
+            store: fibre_server::store::StoreConfig::new(dir.join("fibre")),
+            ..ServerConfig::default()
+        };
+        let mut sup = Supervisor::start(
+            cfg,
+            chain,
+            Arc::new(BrokenSigner::default()),
+            "v".into(),
+            Arc::new(|| None),
+        )
+        .unwrap();
+        sup.join_timeout = join_timeout;
+        sup
+    }
+
+    /// A panic in the supervisor itself is logged and the supervisor
+    /// starts again after a backoff.
+    #[test]
+    fn a_supervisor_panic_restarts_the_supervisor() {
+        let dir = tempfile::tempdir().unwrap();
+        let chain = Arc::new(PanickyChain {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            panics: 1,
+            block: false,
+        });
+        let sup = panicky(dir.path(), Arc::clone(&chain), DRAIN_TIMEOUT);
+        std::thread::sleep(Duration::from_millis(1600));
+        // The panicking call, then the restarted supervisor's start.
+        assert!(chain.calls.load(std::sync::atomic::Ordering::SeqCst) >= 2);
+        drop(sup);
+    }
+
+    /// Dropping the supervisor never waits longer than its join timeout,
+    /// even when the server is stuck.
+    #[test]
+    fn drop_is_bounded_when_the_server_is_stuck() {
+        let dir = tempfile::tempdir().unwrap();
+        let chain = Arc::new(PanickyChain {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            panics: 0,
+            block: true,
+        });
+        let sup = panicky(dir.path(), Arc::clone(&chain), Duration::from_millis(300));
+        std::thread::sleep(Duration::from_millis(200));
+        let t = std::time::Instant::now();
+        drop(sup);
+        assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
+    }
+
+    /// At most [`MAX_VIEW_PREPARATIONS`] queries wait on the app lock at
+    /// once; the rest wait in async code, holding no blocking thread.
+    #[test]
+    fn view_preparations_are_bounded() {
+        let app = Arc::new(Mutex::new(app::App::new()));
+        let queries = Arc::new(DetachedQueries::new(Arc::clone(&app)));
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let held = app.lock().unwrap();
+        let tasks: Vec<_> = (0..8)
+            .map(|_| {
+                let q = Arc::clone(&queries);
+                rt.spawn(async move {
+                    q.query::<_, fibre_pb::QueryParamsResponse>(
+                        "/celestia.fibre.v1.Query/Params",
+                        &fibre_pb::QueryParamsRequest {},
+                    )
+                    .await
+                })
+            })
+            .collect();
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(queries.preparing(), MAX_VIEW_PREPARATIONS);
+        drop(held);
+        for t in tasks {
+            // No block is committed: every query fails like Go's would.
+            assert!(rt.block_on(t).unwrap().is_err());
+        }
+        assert_eq!(queries.preparing(), 0);
+    }
+
+    /// Once the signer reports a permanent failure, the supervisor stops
+    /// retrying (each retry would cost another signer request).
+    #[test]
+    fn a_permanent_signer_failure_stops_the_retries() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = ServerConfig {
+            server_listen_address: "127.0.0.1:0".into(),
+            store: fibre_server::store::StoreConfig::new(dir.path().join("fibre")),
+            ..ServerConfig::default()
+        };
+        let signer = Arc::new(BrokenSigner::default());
+        let fatal: FatalCheck = {
+            let s = Arc::clone(&signer);
+            Arc::new(move || {
+                (s.attempts.load(std::sync::atomic::Ordering::SeqCst) > 0)
+                    .then(|| "the signer cannot sign raw bytes".to_owned())
+            })
+        };
+        let sup = Supervisor::start(
+            cfg,
+            Arc::new(NoChain),
+            Arc::clone(&signer) as Arc<dyn Signer>,
+            "v".into(),
+            fatal,
+        )
+        .unwrap();
+        // Without the check, the 1 s and 2 s backoffs would retry twice.
+        std::thread::sleep(Duration::from_millis(3500));
+        assert_eq!(signer.attempts.load(std::sync::atomic::Ordering::SeqCst), 1);
+        drop(sup);
+    }
 
     fn files(config: &str) -> (tempfile::TempDir, ConfigFiles) {
         let dir = tempfile::tempdir().unwrap();
@@ -750,13 +1153,15 @@ mod tests {
         assert_eq!(cfg.min_upload_size, 262_144);
         assert!(!cfg.unlimited_budget);
         assert_eq!(cfg.health.check_interval, "10s");
-        assert_eq!(worst_case_upload_bytes(&cfg), 16 * 13 * (132 << 20));
+        assert_eq!(cfg.max_inflight_upload_bytes, 2 << 30);
+        // The memory budget, not the connection caps, bounds the worst case.
+        assert_eq!(worst_case_upload_bytes(&cfg), 2 << 30);
     }
 
     #[test]
     fn file_values_and_flag_precedence() {
         let toml = "\n[fibre]\nenable = true\nserver_listen_address = \"127.0.0.1:7999\"\n\
-            min_upload_size = 33554432\nmax_connections = 20\nmax_concurrent_streams = 2\n\
+            min_upload_size = 33554432\nmax_connections = 20\nmax_concurrent_streams = 2\nmax_inflight_upload_bytes = 1073741824\n\
             upload_verify_workers = 3\nunlimited_budget = true\nstorage_backend = \"local\"\n\
             store_path = \"/mnt/fibre\"\n[fibre.health]\ncheck_interval = \"1s\"\n\
             probe_timeout = \"500ms\"\nmax_block_age = \"30s\"\n";
@@ -766,6 +1171,8 @@ mod tests {
         assert_eq!(cfg.min_upload_size, 32 << 20);
         assert_eq!(cfg.max_connections, 20);
         assert_eq!(cfg.max_concurrent_streams, 2);
+        assert_eq!(cfg.max_inflight_upload_bytes, 1 << 30);
+        assert_eq!(worst_case_upload_bytes(&cfg), 1 << 30);
         assert_eq!(cfg.upload_verify_workers, 3);
         assert!(cfg.unlimited_budget);
         assert_eq!(cfg.store.path, PathBuf::from("/mnt/fibre"));
@@ -795,6 +1202,34 @@ mod tests {
             .unwrap(),
             None
         );
+    }
+
+    /// A disabled section is only checked for syntax: no DNS lookup can
+    /// fail or stall `start`.
+    #[test]
+    fn disabled_listen_address_is_not_resolved() {
+        let (_dir, f) =
+            files("\n[fibre]\nserver_listen_address = \"fibre.example.invalid:7980\"\n");
+        assert_eq!(options(&f, &FibreFlags::default()).unwrap(), None);
+        // Enabled, it must resolve.
+        let on = FibreFlags {
+            enable: Some(true),
+            ..FibreFlags::default()
+        };
+        assert!(
+            options(&f, &on)
+                .unwrap_err()
+                .to_string()
+                .contains("not a host:port")
+        );
+        // Bad syntax still fails while disabled.
+        for bad in ["nonsense", "host:", "host:port", ":99999"] {
+            let (_dir, f) = files(&format!("\n[fibre]\nserver_listen_address = \"{bad}\"\n"));
+            assert!(
+                options(&f, &FibreFlags::default()).is_err(),
+                "{bad} should be refused"
+            );
+        }
     }
 
     #[test]
@@ -895,6 +1330,11 @@ mod tests {
         assert_eq!(
             err("\n[fibre]\nmax_connections = \"16\"\n", &on),
             "fibre.max_connections in config.toml must be an integer, got \"16\""
+        );
+        assert!(
+            err("\n[fibre]\nmax_inflight_upload_bytes = 1\n", &on).starts_with(
+                "invalid [fibre] configuration: max_inflight_upload_bytes must be at least "
+            )
         );
         assert_eq!(
             err("\n[fibre]\nmax_connections = 0\n", &on),

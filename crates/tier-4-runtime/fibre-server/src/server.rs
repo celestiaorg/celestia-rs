@@ -51,6 +51,9 @@ pub(crate) struct Inner {
     pub(crate) verifier: ShardVerifier,
     /// Go's verifier pool: caps concurrent verifications.
     pub(crate) verify_slots: Arc<Semaphore>,
+    /// `max_inflight_upload_bytes`, one permit per byte (see
+    /// [`crate::transport`]).
+    pub(crate) upload_memory: Arc<Semaphore>,
     pub(crate) health: HealthManager,
     pub(crate) codec_limits: CodecLimits,
     min_upload_size: AtomicI64,
@@ -185,6 +188,11 @@ impl Server {
             uploads: UploadCoordinator::new(),
             verifier: ShardVerifier::new(&BlobConfig::default_v0()),
             verify_slots: Arc::new(Semaphore::new(workers)),
+            upload_memory: Arc::new(Semaphore::new(
+                usize::try_from(cfg.max_inflight_upload_bytes)
+                    .unwrap_or(usize::MAX)
+                    .min(Semaphore::MAX_PERMITS),
+            )),
             health: HealthManager::new(health_settings, Arc::clone(&metrics)),
             metrics,
             codec_limits: CodecLimits {

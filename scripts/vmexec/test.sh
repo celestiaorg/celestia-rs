@@ -23,6 +23,13 @@ fails=0
 check() { local name=$1; shift; if "$@" >/dev/null 2>&1; then echo "ok   $name"; else echo "FAIL $name"; fails=$((fails + 1)); fi; }
 refute() { local name=$1; shift; if "$@" >/dev/null 2>&1; then echo "FAIL $name"; fails=$((fails + 1)); else echo "ok   $name"; fi; }
 eq() { if [[ $2 == "$3" ]]; then echo "ok   $1"; else echo "FAIL $1: want '$2' got '$3'"; fails=$((fails + 1)); fi; }
+# wait_until SECONDS COMMAND...: poll until COMMAND succeeds or the deadline
+# passes (generous deadlines: CI machines can be fully loaded).
+wait_until() {
+  local deadline=$((SECONDS + $1))
+  shift
+  until "$@" >/dev/null 2>&1; do ((SECONDS < deadline)) || return 1; sleep 0.2; done
+}
 
 # --- validation -------------------------------------------------------------------
 check  "id ok"               vmx_valid id 2611261200001a2b3c
@@ -159,7 +166,8 @@ eq     "exec exit status"    7 "$rc"
 # A VM that stopped while a request runs: the client gives up instead of
 # polling for ever.
 echo TERMINATED >"$F/status"
-rc=0; err=$(VMX_VM_CHECK_EVERY=1 timeout 60 "$X" exec vm1 -- 'sleep 4' 2>&1 >/dev/null) || rc=$?
+# The request outlives the client's first status check by far.
+rc=0; err=$(VMX_VM_CHECK_EVERY=1 timeout 120 "$X" exec vm1 -- 'sleep 60' 2>&1 >/dev/null) || rc=$?
 rm -f "$F/status"
 eq     "exec on a stopped VM" 125 "$rc"
 check  "stopped VM message"  grep -q 'vm1 is TERMINATED' <<<"$err"
@@ -174,7 +182,7 @@ eq     "result of detached"  later "$("$X" result vm1 "$id" 2>/dev/null)"
 "$X" exec vm1 -- 'seq 1 300000' >"$t/long" 2>"$t/long.err"
 eq     "long output tail"    300000 "$(tail -n1 "$t/long")"
 check  "long output notice"  grep -q 'output truncated' "$t/long.err"
-for _ in $(seq 1 40); do [[ -e $F/state/runs/$id/reaped ]] && break; sleep 0.5; done
+wait_until 120 test -e "$F/state/runs/$id/reaped"
 check  "result reaped"       test ! -e "$F/ga/vmx/$id"
 
 head -c 300000 /dev/urandom >"$t/payload"
@@ -184,13 +192,18 @@ check  "push"                cmp "$t/payload" "$t/vmfs/payload"
 check  "fetch"               cmp "$t/payload" "$t/fetched"
 
 "$X" job vm1 start counter --interval 1 --status-cmd 'echo height=$(wc -l <log)' -- bash -c 'for i in $(seq 1 1000); do echo tick $i; sleep 0.1; done' >/dev/null 2>&1
-for _ in $(seq 1 160); do grep -q 'height=' "$F/ga/vmx/job-counter" 2>/dev/null && break; sleep 0.25; done
+job_shows() { grep -q "$1" "$F/ga/vmx/job-counter" && grep -q "$2" "$F/ga/vmx/job-counter"; }
+wait_until 120 job_shows '^height=' '^ActiveState=active'
 st=$("$X" job vm1 status counter 2>/dev/null || true)
 check  "job status published" grep -q '^ActiveState=active' <<<"$st"
 check  "job status cmd"      grep -q '^height=' <<<"$st"
 check  "job log"             grep -q 'tick' <<<"$("$X" job vm1 logs counter 5 2>/dev/null)"
 "$X" job vm1 stop counter >/dev/null 2>&1
+# The agent republishes every interval; a status computed just before the
+# stop may land after it, so wait for the stopped state to show.
+wait_until 120 grep -q '^ActiveState=inactive' "$F/ga/vmx/job-counter"
 check  "job stopped"         grep -q '^ActiveState=inactive' <<<"$("$X" job vm1 status counter 2>/dev/null)"
+wait_until 60 test -s "$F/ga/vmx/agent"
 check  "heartbeat"           grep -q '^version=1' "$F/ga/vmx/agent"
 check  "status"              grep -q 'job-counter' <<<"$("$X" status vm1 2>/dev/null)"
 

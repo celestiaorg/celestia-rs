@@ -111,26 +111,35 @@ from repository-level security updates):
   "Deferred majors" are ignored (migrated by hand).
 - **github-actions**: monthly with a seven-day version update cooldown
   and one group for version update pull requests.
-- **gomod** (every live `conformance/` module in one entry): monthly; no version
-  updates (`open-pull-requests-limit: 0`); security updates grouped into
-  one pull request; the pinned reference modules (`github.com/celestiaorg/*`,
-  cosmos-sdk, `cosmossdk.io/*`, cometbft, tendermint, ibc-go, ibc-apps,
-  gogoproto, iavl, cosmos-db, hyperlane-cosmos) are ignored.
+- **gomod** (every live `conformance/` module in one entry): no pull
+  requests. `open-pull-requests-limit: 0` stops version updates and
+  ignoring `"*"` stops security updates. Many of these modules reproduce
+  celestia-app / celestia-core module graphs exactly, and their outputs
+  are committed fixtures. Security pull requests rewrote those graphs
+  (for example go-square v3 → v4-rc) and arrived as several overlapping
+  pull requests per advisory batch, so Go bumps are done by hand with the
+  advisory tooling at the top of this page, and the fixtures regenerated.
+  Alerts still show.
 - **gomod** (frozen evidence: source snapshots kept under `capture-source*`,
   `sources/` and `dump-sources`): every dependency is ignored, so these
   byte-exact copies raise alerts but never pull requests.
 
+Every entry has a seven-day `cooldown`: a release must be public for a
+week before a version update proposes it. Security updates skip both the
+schedule and the cooldown; they open when an advisory is published.
+
 `xtask/tests/dependabot.rs` fails when a `conformance/**/go.mod` is in
-neither entry, when an entry is not monthly, or when cargo majors lose
-their group. Security updates ignore the schedule: they open when an
-advisory is published, grouped per ecosystem. An unlisted module falls back to the repository-level
-security updates, which are not grouped and ignore nothing.
+neither entry, when an entry is not monthly or has no seven-day cooldown,
+when a gomod entry can open pull requests, when cargo majors lose their
+group, or when secp256k1 / tendermint majors are no longer deferred. An
+unlisted module falls back to the repository-level security updates,
+which are not grouped and ignore nothing.
 
 How `ignore` and security updates interact: `ignore` conditions apply to
 security updates too (an ignored dependency still gets an *alert*, but no
 pull request), and `open-pull-requests-limit: 0` disables only version
-updates. So: pinned oracle modules raise alerts but no pull requests;
-every other Go and Rust advisory raises a grouped pull request. An
+updates. So: Go modules raise alerts but no pull requests; every Rust
+advisory raises a grouped pull request. An
 advisory whose only fix is an ignored Rust major still shows up as an
 alert and fails `cargo deny check advisories` in CI (`ci.yml` on every
 push, `nightly.yml` job `advisories` daily, which catches new advisories
@@ -190,6 +199,8 @@ or by its expiry. [RustSec advisory](https://rustsec.org/advisories/RUSTSEC-2026
 | rocksdb 0.24, redb 2 | 0.25, 4 | Storage engine of the node (on-disk format, compaction behavior); redb 4 needs rustc 1.90. |
 | bech32 0.9 | 0.12 | Address encoding; the API was rewritten (and Go's btcutil rules are ported in `encoding::bech32`). |
 | num-bigint 0.4, ark-* 0.5 | 0.5, 0.6 | `math` (cosmossdk.io/math port), `legacy-amino`, `x/warp`, `x/zkism` (Groth16 verification). |
+| secp256k1 0.31 | 0.33 | Transaction signature verification (libsecp256k1); 0.32 removed the context API. |
+| tendermint-proto 0.40.4 (exact) | 0.41 | Generated CometBFT types; 0.41 moves to prost 0.14, so it lands with the prost migration. |
 | rand 0.8 / 0.9, getrandom 0.2, bip39 2 | 0.10, 0.4, 3 | Key generation and mnemonics (Go keyring compatibility); rand 0.8 / 0.9 are both in use. |
 | axum 0.7.9 (exact), tokio-tungstenite 0.24, base64 0.22 | 0.8, 0.30, 0.23 | RPC / REST / gRPC-web surface at Go parity; tungstenite and base64 follow axum and tonic (taking them alone adds a second / third copy). |
 | toml 0.8 | 1.1 | Operator config files (TOML 1.1 parsing / serialization differences); bump with a config round-trip test. |

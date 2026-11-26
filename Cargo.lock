@@ -1261,6 +1261,7 @@ dependencies = [
  "x-upgrade",
  "x-valaddr",
  "x509-parser 0.18.1",
+ "zeroize",
 ]
 
 [[package]]
@@ -2344,6 +2345,8 @@ dependencies = [
  "hash",
  "hex",
  "http",
+ "http-body",
+ "http-body-util",
  "hyper",
  "hyper-util",
  "k256",
@@ -2366,6 +2369,7 @@ dependencies = [
  "tracing",
  "x-fibre",
  "x509-parser 0.18.1",
+ "zeroize",
  "zstd",
 ]
 
@@ -3183,10 +3187,10 @@ dependencies = [
 name = "iavl"
 version = "0.0.1"
 dependencies = [
+ "foldhash 0.2.0",
  "hash",
  "hex",
  "kvdb",
- "lru",
  "serde",
  "serde_json",
 ]
@@ -4373,12 +4377,6 @@ checksum = "52d3a9855747c17eaf4383823f135220716ab49bea5fbea7dd42cc9a92f8aa31"
 dependencies = [
  "logos-codegen 0.16.1",
 ]
-
-[[package]]
-name = "lru"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a9f71e3591c7ec44d3e563e87bf14ddc2bada8519dca046e5b0e560cd004e2d"
 
 [[package]]
 name = "lru-slab"
