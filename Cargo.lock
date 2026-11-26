@@ -2320,6 +2320,19 @@ checksum = "64cd1e32ddd350061ae6edb1b082d7c54915b5c672c389143b9a63403a109f24"
 [[package]]
 name = "fibre-server"
 version = "0.0.1"
+dependencies = [
+ "chacha8rand",
+ "crypto",
+ "hash",
+ "hex",
+ "rsema1d",
+ "rustls",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "x509-parser 0.18.1",
+ "zstd",
+]
 
 [[package]]
 name = "find-msvc-tools"

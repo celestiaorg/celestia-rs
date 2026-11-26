@@ -1,0 +1,12 @@
+{
+  "scenario": "fibre-server-shard-verify",
+  "source_chain": "n/a (deterministic inputs in conformance/fibre-server/main.go)",
+  "source_heights": [],
+  "app_version": "v11",
+  "celestia_app_commit": "v11.0.0",
+  "go_version": "1.26.10",
+  "go_packages": [
+    "github.com/celestiaorg/celestia-app/v11 v11.0.0"
+  ],
+  "regen_command": "cd conformance/fibre-server && GOMAXPROCS=4 GOTOOLCHAIN=auto GOFLAGS=-mod=mod go run . -out ../fixtures/fibre-server"
+}
