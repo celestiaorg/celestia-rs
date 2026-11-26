@@ -813,12 +813,12 @@ impl App {
         };
         self.check_header = header.clone();
         sdk::version::set_app_version(genesis_app_version);
-        // celestia-app v9.0.8 has no fibre / valaddr stores (ADR 0004).
-        if !Release::executing(genesis_app_version).has_fibre() {
-            for name in stores::ADDED_IN_V10 {
-                if self.ms.is_mounted(name) {
-                    self.ms.unmount_iavl(name).map_err(store_err)?;
-                }
+        // Only the executing release's stores: celestia-app v9.0.8 has no
+        // fibre / valaddr stores (ADR 0004), v4.1.0 no zkism either.
+        let release = Release::executing(genesis_app_version);
+        for name in stores::IAVL_STORES {
+            if !release.has_store(name) && self.ms.is_mounted(name) {
+                self.ms.unmount_iavl(name).map_err(store_err)?;
             }
         }
         let mut ctx = Context::new(&mut self.ms, header.clone(), ExecMode::Finalize);
@@ -837,14 +837,22 @@ impl App {
         let genesis: serde_json::Value = serde_json::from_slice(&req.app_state_bytes)
             .map_err(|e| sdk::error::sdk::json_unmarshal(e.to_string()))?;
         let app_state = &genesis;
-        x_upgrade::set_module_version_map(
-            &mut ctx,
-            modules::version_map(genesis_app_version)
-                .filter(|(m, _)| stores::exists_at(m, genesis_app_version)),
-        )?;
+        if release.app_version == 4 {
+            // celestia-app v4.1.0's module manager: no capability, ICA host
+            // or forwarding module.
+            x_upgrade::set_module_version_map(&mut ctx, upgrades::v4::VERSION_MAP.iter().copied())?;
+        } else {
+            x_upgrade::set_module_version_map(
+                &mut ctx,
+                modules::version_map(genesis_app_version)
+                    .filter(|(m, _)| stores::exists_at(m, genesis_app_version)),
+            )?;
+        }
         let mut validators = Vec::new();
         for module in modules::INIT_GENESIS {
-            if !stores::exists_at(module, genesis_app_version) {
+            if !stores::exists_at(module, genesis_app_version)
+                || (*module == "capability" && !release.has_capability_module())
+            {
                 continue;
             }
             let updates = modules::init_genesis(&mut ctx, module, &app_state[*module])?;
@@ -2092,6 +2100,74 @@ mod node_options_tests {
             }
             assert!(app.ms.is_mounted(x_consensus::STORE_KEY), "v{version}");
         }
+    }
+
+    /// A genesis at app version 4 commits celestia-app v4.1.0's store set
+    /// (no `zkism`) and its module version map (no `capability`, no
+    /// interchain accounts, no forwarding).
+    #[test]
+    fn v4_genesis_commits_the_v4_store_set_and_version_map() {
+        let genesis: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../conformance/fixtures/devnet/empty/genesis.json"
+        ))
+        .unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let mut app = App::open(home.path()).unwrap();
+        app.init_chain(abci::RequestInitChain {
+            chain_id: genesis["chain_id"].as_str().unwrap().into(),
+            consensus_params: Some(ConsensusParams {
+                version: Some(VersionParams { app: 4 }),
+                ..Default::default()
+            }),
+            app_state_bytes: serde_json::to_vec(&genesis["app_state"]).unwrap(),
+            ..Default::default()
+        })
+        .unwrap();
+        app.finalize_block(abci::RequestFinalizeBlock {
+            height: 1,
+            time: Some(pbjson_types::Timestamp {
+                seconds: 1_700_000_000,
+                nanos: 0,
+            }),
+            ..Default::default()
+        })
+        .unwrap();
+        app.commit().unwrap();
+        let mut committed: Vec<String> = app
+            .ms
+            .root()
+            .last_commit_info()
+            .unwrap()
+            .store_infos
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
+        committed.sort();
+        let mut want: Vec<String> = Release::for_app_version(4)
+            .unwrap()
+            .stores
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        want.sort();
+        assert_eq!(committed, want);
+        let versions: Vec<(String, u64)> = app
+            .ms
+            .range(x_upgrade::STORE_KEY, Some(&[0x02]), Some(&[0x03]), false)
+            .unwrap()
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    String::from_utf8(k[1..].to_vec()).unwrap(),
+                    u64::from_be_bytes(v[..].try_into().unwrap()),
+                )
+            })
+            .collect();
+        let want: Vec<(String, u64)> = upgrades::v4::VERSION_MAP
+            .iter()
+            .map(|(n, v)| ((*n).to_owned(), *v))
+            .collect();
+        assert_eq!(versions, want);
     }
 
     #[test]

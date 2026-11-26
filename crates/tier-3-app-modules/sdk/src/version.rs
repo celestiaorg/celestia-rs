@@ -623,6 +623,13 @@ impl Release {
         self.app_version >= 7 || self.keeps_v9_rules()
     }
 
+    /// The release registers x/zkism (celestia-app v7 on). App version 1
+    /// keeps v9's answer.
+    #[must_use]
+    pub const fn has_zkism(&self) -> bool {
+        self.app_version >= 7 || self.keeps_v9_rules()
+    }
+
     /// The module manager registers the capability module (its BeginBlock
     /// `InitMemStore`, genesis and version map entry). celestia-app v4.1.0
     /// does not; v5.0.12 adds it back.
@@ -888,6 +895,7 @@ mod tests {
             assert_eq!(r.max_tx_size(), 8_388_608, "v{v}");
             assert!(!r.double_hashes_blocked_addresses(), "v{v}");
             assert!(r.has_forwarding(), "v{v}");
+            assert!(r.has_zkism(), "v{v}");
             assert!(r.has_capability_module(), "v{v}");
             assert!(!r.has_token_filter(), "v{v}");
             assert!(!r.legacy_insufficient_fee_message(), "v{v}");
@@ -927,6 +935,7 @@ mod tests {
                 assert_eq!(r.max_tx_size(), max_tx, "v{v}");
                 assert_eq!(r.double_hashes_blocked_addresses(), v <= 6, "v{v}");
                 assert_eq!(r.has_forwarding(), v >= 7, "v{v}");
+                assert_eq!(r.has_zkism(), v >= 7, "v{v}");
                 assert_eq!(r.has_capability_module(), v != 4, "v{v}");
                 assert_eq!(r.has_token_filter(), v4_v5, "v{v}");
                 assert_eq!(r.legacy_insufficient_fee_message(), v <= 6, "v{v}");
