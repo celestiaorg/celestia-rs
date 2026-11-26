@@ -6,6 +6,7 @@ require (
 	github.com/celestiaorg/celestia-app/v3 v3.13.0
 	github.com/cosmos/cosmos-sdk v0.46.16
 	github.com/gogo/protobuf v1.3.3
+	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/tendermint/tendermint v0.34.29
 	github.com/tendermint/tm-db v0.6.7
 )
@@ -61,7 +62,6 @@ require (
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/sasha-s/go-deadlock v0.3.1 // indirect
-	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d // indirect
 	github.com/tendermint/go-amino v0.16.0 // indirect
 	github.com/tidwall/btree v1.5.0 // indirect
 	go.etcd.io/bbolt v1.4.0 // indirect
