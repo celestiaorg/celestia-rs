@@ -6,6 +6,7 @@
 use celestia_proto::Any;
 use celestia_proto::cosmos::bank::v1beta1 as bank;
 use celestia_proto::cosmos::distribution::v1beta1 as distr;
+use celestia_proto::cosmos::slashing::v1beta1 as slashing;
 use celestia_proto::cosmos::staking::v1beta1 as staking;
 use prost::{Message, Name};
 use sdk::coins::Coins;
@@ -273,6 +274,12 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
         val_address(&m.validator_src_address, "source validator")?;
         val_address(&m.validator_dst_address, "destination validator")?;
         valid_shares_amount(m.amount.as_ref())?;
+    } else if msg.type_url == staking::MsgCancelUnbondingDelegation::type_url() {
+        validate_cancel_unbonding(&decode(msg)?)?;
+    } else if msg.type_url == slashing::MsgUnjail::type_url() {
+        let m: slashing::MsgUnjail = decode(msg)?;
+        x_staking::addr::val_from_string(&m.validator_addr)
+            .map_err(|e| errs::invalid_address(format!("validator input address: {}", e.log)))?;
     } else {
         // Every other message of the v1 registry: its `ValidateBasic`
         // runs before the gatekeeper and the ante handler.
@@ -327,6 +334,12 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
     }
     if msg.type_url == staking::MsgBeginRedelegate::type_url() {
         return Ok(Any::pack(&begin_redelegate(ctx, &decode(msg)?)?));
+    }
+    if msg.type_url == staking::MsgCancelUnbondingDelegation::type_url() {
+        return Ok(Any::pack(&cancel_unbonding_delegation(ctx, &decode(msg)?)?));
+    }
+    if msg.type_url == slashing::MsgUnjail::type_url() {
+        return Ok(Any::pack(&unjail(ctx, &decode(msg)?)?));
     }
     if let Some(r) = super::ibc::route(ctx, msg) {
         return r;
@@ -642,6 +655,143 @@ fn undelegate(
         completion_time: Some(completion),
         amount: None,
     })
+}
+
+/// staking `MsgCancelUnbondingDelegation.ValidateBasic` (v0.46): returns
+/// the amount.
+fn validate_cancel_unbonding(
+    m: &staking::MsgCancelUnbondingDelegation,
+) -> Result<sdk::coins::Coin> {
+    acc_address(&m.delegator_address, "delegator")?;
+    val_address(&m.validator_address, "validator")?;
+    let (coin, valid) = x_staking::msgs::parse_coin(m.amount.as_ref());
+    if !valid || !coin.amount.is_positive() {
+        return Err(errs::invalid_request("invalid amount"));
+    }
+    if m.creation_height <= 0 {
+        return Err(errs::invalid_request("invalid height"));
+    }
+    Ok(coin)
+}
+
+/// staking `msgServer.CancelUnbondingDelegation` (v0.46): delegates the
+/// amount back from the unbonding entry created at `creation_height`
+/// (tokens move from the not-bonded pool), shrinking or removing the
+/// entry. No `message` event.
+fn cancel_unbonding_delegation(
+    ctx: &mut Context<'_>,
+    msg: &staking::MsgCancelUnbondingDelegation,
+) -> Result<staking::MsgCancelUnbondingDelegationResponse> {
+    use x_staking::store;
+    let val = server_val(&msg.validator_address)?;
+    let del = server_acc(&msg.delegator_address)?;
+    // `ValidateBasic` already accepted the amount.
+    let amount = validate_cancel_unbonding(msg)?;
+    check_bond_denom(ctx, &amount.denom)?;
+    let v = store::get_validator(ctx, &val)?.ok_or_else(x_staking::errors::no_validator_found)?;
+    if v.invalid_ex_rate() {
+        return Err(x_staking::errors::delegator_share_ex_rate_invalid());
+    }
+    if v.jailed {
+        return Err(x_staking::errors::validator_jailed());
+    }
+    // A gRPC `NotFound` status: not a registered error (`undefined`/1).
+    let mut ubd = store::get_ubd(ctx, &del, &val)?.ok_or_else(|| {
+        sdk::error::internal(format!(
+            "rpc error: code = NotFound desc = unbonding delegation with delegator {} not found for validator {}",
+            msg.delegator_address, msg.validator_address
+        ))
+    })?;
+    let idx = ubd
+        .entries
+        .iter()
+        .position(|e| e.creation_height == msg.creation_height)
+        .ok_or_else(|| {
+            errs::not_found(format!(
+                "unbonding delegation entry is not found at block height {}",
+                msg.creation_height
+            ))
+        })?;
+    let mut entry = ubd.entries[idx].clone();
+    if entry.balance < amount.amount {
+        return Err(errs::invalid_request(
+            "amount is greater than the unbonding delegation entry balance",
+        ));
+    }
+    if sdk::time::before(&entry.completion_time, &ctx.header.time) {
+        return Err(errs::invalid_request(
+            "unbonding delegation is already processed",
+        ));
+    }
+    x_staking::delegation::delegate(
+        ctx,
+        &del,
+        &amount.amount,
+        x_staking::types::BondStatus::Unbonding,
+        &v,
+        false,
+    )?;
+    let math = |e: math::MathError| sdk::error::go_panic(e.to_string());
+    let rest = entry.balance.checked_sub(&amount.amount).map_err(math)?;
+    if rest.is_zero() {
+        ubd.entries.remove(idx);
+    } else {
+        entry.balance = rest;
+        entry.initial_balance = entry
+            .initial_balance
+            .checked_sub(&amount.amount)
+            .map_err(math)?;
+        ubd.entries[idx] = entry;
+    }
+    if ubd.entries.is_empty() {
+        store::remove_ubd(ctx, &ubd)?;
+    } else {
+        store::set_ubd(ctx, &ubd)?;
+    }
+    ctx.events.emit(event(
+        "cancel_unbonding_delegation",
+        [
+            ("amount", amount.to_string()),
+            ("validator", msg.validator_address.clone()),
+            ("delegator", msg.delegator_address.clone()),
+            ("creation_height", msg.creation_height.to_string()),
+        ],
+    ));
+    Ok(staking::MsgCancelUnbondingDelegationResponse {})
+}
+
+/// slashing `msgServer.Unjail` and keeper `Unjail` (v0.46): the
+/// validator, its self-delegation and its signing info decide; then the
+/// staking keeper unjails it by consensus address.
+fn unjail(ctx: &mut Context<'_>, msg: &slashing::MsgUnjail) -> Result<slashing::MsgUnjailResponse> {
+    let val = server_val(&msg.validator_addr)?;
+    let v = x_staking::store::get_validator(ctx, &val)?
+        .ok_or_else(x_slashing::errors::no_validator_for_address)?;
+    let self_del = x_staking::store::get_delegation(ctx, &val, &val)?
+        .ok_or_else(x_slashing::errors::missing_self_delegation)?;
+    let tokens = v.tokens_from_shares(&self_del.shares)?.truncate_int();
+    if tokens < v.min_self_delegation {
+        return Err(x_slashing::errors::self_delegation_too_low_to_unjail()
+            .wrap(format!("{tokens} less than {}", v.min_self_delegation)));
+    }
+    if !v.jailed {
+        return Err(x_slashing::errors::validator_not_jailed());
+    }
+    let cons = v.cons_addr()?;
+    if let Some(info) = x_slashing::get_signing_info(ctx, &cons)?
+        && (info.tombstoned || sdk::time::before(&ctx.header.time, &info.jailed_until))
+    {
+        return Err(x_slashing::errors::validator_jailed());
+    }
+    x_staking::unjail(ctx, &cons)?;
+    ctx.events.emit(event(
+        "message",
+        [
+            ("module", "slashing"),
+            ("sender", msg.validator_addr.as_str()),
+        ],
+    ));
+    Ok(slashing::MsgUnjailResponse {})
 }
 
 /// staking `msgServer.BeginRedelegate` (v0.46).

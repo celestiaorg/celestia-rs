@@ -888,9 +888,10 @@ fn v046_distribution_pays_the_proposer_reward() {
 
 /// cosmos-sdk v0.46 slashing stores one `BoolValue` key per missed index
 /// (an empty value once signed again), counts a jailed validator, and
-/// does not port downtime jailing.
+/// jails for downtime.
 #[test]
 fn v046_slashing_tracks_missed_blocks_per_index() {
+    crate::modules::install_staking_hooks();
     let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = v1_store();
     let (mut ctx, cons) = v046_two_validators(&mut ms, 1);
@@ -948,15 +949,224 @@ fn v046_slashing_tracks_missed_blocks_per_index() {
     );
     assert_eq!(counter(&mut ctx), 0);
     // Past the first window, two misses in a row exceed the one allowed:
-    // downtime jailing is not ported.
+    // v0.46 slashes (by a zero fraction, which still records a
+    // distribution slash event), jails and resets the window.
     v.jailed = false;
     x_staking::store::set_validator(&mut ctx, &v).unwrap();
+    ctx.events.take();
     for h in [4, 5] {
         ctx.header.height = h;
         ctx.vote_infos = vec![vote(&cons[0], false)];
-        let r = x_slashing::begin_block(&mut ctx);
-        assert_eq!(r.is_err(), h == 5, "height {h}");
+        x_slashing::begin_block(&mut ctx).unwrap();
     }
+    let v = x_staking::store::validator(&mut ctx, &[1; 20]).unwrap();
+    assert!(v.jailed);
+    assert_eq!(v.tokens, math::Int::from_u64(100_000_000));
+    assert_eq!(
+        ctx.get(
+            x_staking::STORE_KEY,
+            &x_staking::keys::power_index(100, &[1; 20])
+        )
+        .unwrap(),
+        None
+    );
+    let info = x_slashing::get_signing_info(&mut ctx, &cons[0])
+        .unwrap()
+        .unwrap();
+    assert_eq!((info.missed_blocks_counter, info.index_offset), (0, 0));
+    assert_eq!(info.jailed_until.seconds, ctx.header.time.seconds + 60);
+    for i in 0..2 {
+        assert_eq!(ctx.get(x_slashing::STORE_KEY, &key(i)).unwrap(), None);
+    }
+    let slash_events =
+        x_distribution::store::slash_events_between(&mut ctx, &[1; 20], 0, 100).unwrap();
+    assert_eq!(slash_events.len(), 1, "{slash_events:?}");
+    assert_eq!(slash_events[0].0, 5);
+    assert!(slash_events[0].2.is_zero());
+    let events = ctx.events.take();
+    let slash = events.iter().find(|e| e.r#type == "slash").unwrap();
+    let burned = slash
+        .attributes
+        .iter()
+        .find(|a| a.key == "burned_coins")
+        .unwrap();
+    assert_eq!(burned.value, "0");
+    // Jailed, the validator is no longer slashed.
+    ctx.header.height = 6;
+    x_slashing::begin_block(&mut ctx).unwrap();
+}
+
+/// cosmos-sdk v0.46 `CancelUnbondingDelegation`: delegates part of an
+/// unbonding entry back (from the not-bonded pool to the bonded pool of a
+/// bonded validator), shrinking the entry, and removes the unbonding
+/// delegation with its last entry. A missing entry or a jailed validator
+/// fails.
+#[test]
+fn v046_cancel_unbonding_delegation() {
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::cosmos::staking::v1beta1::MsgCancelUnbondingDelegation;
+    crate::modules::install_staking_hooks();
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let (mut ctx, _) = v046_two_validators(&mut ms, 10);
+    x_distribution::store::set_fee_pool(&mut ctx, &sdk::dec_coins::DecCoins::new()).unwrap();
+    ctx.header.time = pbjson_types::Timestamp {
+        seconds: 1_000,
+        nanos: 0,
+    };
+    let del = [9u8; 20];
+    let val = [1u8; 20];
+    x_staking::delegation::set_ubd_entry(
+        &mut ctx,
+        &del,
+        &val,
+        3,
+        pbjson_types::Timestamp {
+            seconds: 2_000,
+            nanos: 0,
+        },
+        &math::Int::from_u64(100),
+    )
+    .unwrap();
+    let pool = |name: &str| x_auth::module_address(name);
+    x_bank::set_balance(
+        &mut ctx,
+        &pool(x_staking::NOT_BONDED_POOL),
+        &sdk::coins::Coin::new("utia", 100),
+    )
+    .unwrap();
+    let cancel = |amount: &str, height: i64| {
+        celestia_proto::Any::pack(&MsgCancelUnbondingDelegation {
+            delegator_address: x_auth::bech32(&del).unwrap(),
+            validator_address: x_staking::addr::val_to_string(&val).unwrap(),
+            amount: Some(Coin {
+                denom: "utia".into(),
+                amount: amount.into(),
+            }),
+            creation_height: height,
+        })
+    };
+    msgs::validate_basic(&cancel("40", 3)).unwrap();
+    let e = msgs::validate_basic(&cancel("40", 0)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18));
+    let e = msgs::route(&mut ctx, &cancel("40", 4)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 38), "{}", e.log);
+    let e = msgs::route(&mut ctx, &cancel("101", 3)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 18), "{}", e.log);
+
+    msgs::route(&mut ctx, &cancel("40", 3)).unwrap();
+    let ubd = x_staking::store::get_ubd(&mut ctx, &del, &val)
+        .unwrap()
+        .unwrap();
+    assert_eq!(ubd.entries.len(), 1);
+    assert_eq!(ubd.entries[0].balance, math::Int::from_u64(60));
+    assert_eq!(ubd.entries[0].initial_balance, math::Int::from_u64(60));
+    let d = x_staking::store::get_delegation(&mut ctx, &del, &val)
+        .unwrap()
+        .unwrap();
+    assert_eq!(d.shares, math::LegacyDec::new(40));
+    let bal = |ctx: &mut sdk::Context<'_>, name: &str| {
+        x_bank::get_balance(ctx, &pool(name), "utia")
+            .unwrap()
+            .amount
+    };
+    assert_eq!(
+        bal(&mut ctx, x_staking::NOT_BONDED_POOL),
+        math::Int::from_u64(60)
+    );
+    assert_eq!(
+        bal(&mut ctx, x_staking::BONDED_POOL),
+        math::Int::from_u64(40)
+    );
+    let ev = ctx.events.take();
+    assert!(ev.iter().any(|e| e.r#type == "cancel_unbonding_delegation"));
+    // Only the pool transfer's `message` (bank's sender): the msg server
+    // emits no `message` event of its own.
+    assert!(
+        !ev.iter()
+            .any(|e| e.r#type == "message" && e.attributes.iter().any(|a| a.key == "module"))
+    );
+
+    msgs::route(&mut ctx, &cancel("60", 3)).unwrap();
+    assert!(
+        x_staking::store::get_ubd(&mut ctx, &del, &val)
+            .unwrap()
+            .is_none()
+    );
+
+    let mut v = x_staking::store::validator(&mut ctx, &val).unwrap();
+    v.jailed = true;
+    x_staking::store::set_validator(&mut ctx, &v).unwrap();
+    let e = msgs::route(&mut ctx, &cancel("1", 3)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("staking", 7), "{}", e.log);
+}
+
+/// cosmos-sdk v0.46 `Unjail`: needs the validator's self-delegation at
+/// its minimum, a jailed validator, and the jail time to have passed;
+/// then the validator is back in the power index.
+#[test]
+fn v046_unjail() {
+    use celestia_proto::cosmos::slashing::v1beta1::MsgUnjail;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let (mut ctx, cons) = v046_two_validators(&mut ms, 10);
+    let val = [1u8; 20];
+    let unjail = celestia_proto::Any::pack(&MsgUnjail {
+        validator_addr: x_staking::addr::val_to_string(&val).unwrap(),
+    });
+    msgs::validate_basic(&unjail).unwrap();
+    let e = msgs::route(&mut ctx, &unjail).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("slashing", 6), "{}", e.log);
+    x_staking::store::set_delegation(
+        &mut ctx,
+        &x_staking::types::Delegation {
+            delegator_address: x_auth::bech32(&val).unwrap(),
+            validator_address: x_staking::addr::val_to_string(&val).unwrap(),
+            shares: math::LegacyDec::new(100_000_000),
+        },
+    )
+    .unwrap();
+    let e = msgs::route(&mut ctx, &unjail).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("slashing", 5), "{}", e.log);
+    x_staking::jail(&mut ctx, &cons[0]).unwrap();
+    let mut info = x_slashing::SigningInfo {
+        address: x_staking::addr::cons_to_string(&cons[0]).unwrap(),
+        start_height: 0,
+        index_offset: 0,
+        jailed_until: pbjson_types::Timestamp {
+            seconds: 60,
+            nanos: 0,
+        },
+        tombstoned: false,
+        missed_blocks_counter: 0,
+    };
+    x_slashing::set_signing_info(&mut ctx, &cons[0], &info).unwrap();
+    ctx.header.time = pbjson_types::Timestamp {
+        seconds: 59,
+        nanos: 0,
+    };
+    let e = msgs::route(&mut ctx, &unjail).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("slashing", 4), "{}", e.log);
+    info.tombstoned = true;
+    x_slashing::set_signing_info(&mut ctx, &cons[0], &info).unwrap();
+    ctx.header.time.seconds = 60;
+    let e = msgs::route(&mut ctx, &unjail).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("slashing", 4), "{}", e.log);
+    info.tombstoned = false;
+    x_slashing::set_signing_info(&mut ctx, &cons[0], &info).unwrap();
+    msgs::route(&mut ctx, &unjail).unwrap();
+    assert!(!x_staking::store::validator(&mut ctx, &val).unwrap().jailed);
+    assert!(
+        ctx.get(
+            x_staking::STORE_KEY,
+            &x_staking::keys::power_index(100, &val)
+        )
+        .unwrap()
+        .is_some()
+    );
+    let ev = ctx.events.take();
+    let m = ev.iter().find(|e| e.r#type == "message").unwrap();
+    assert_eq!(m.attributes[0].value, "slashing");
 }
 
 /// cosmos-sdk v0.46 staking stores `HistoricalInfo` under the decimal
