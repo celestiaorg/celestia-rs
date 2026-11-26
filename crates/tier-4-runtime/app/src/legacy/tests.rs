@@ -2957,10 +2957,12 @@ fn v046_gov_community_pool_spend_proposal_lifecycle() {
 }
 
 /// A text proposal has no route in celestia-app v1: its submission fails
-/// (gov code 9) and nothing is stored; a parameter change is not ported.
+/// (gov code 9) and nothing is stored. A parameter change is validated and
+/// submitted; its dry run changes nothing.
 #[test]
 fn v046_gov_text_proposal_has_no_handler() {
     use celestia_proto::cosmos::gov::v1beta1;
+    use celestia_proto::cosmos::params::v1beta1::{ParamChange, ParameterChangeProposal};
     let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = v1_store();
     let (mut ctx, _) = v046_two_validators(&mut ms, 2);
@@ -2978,15 +2980,33 @@ fn v046_gov_text_proposal_has_no_handler() {
     let e = msgs::route(&mut ctx, &text).unwrap_err();
     assert_eq!((e.codespace, e.code), ("gov", 9), "{}", e.log);
     assert!(take_not_ported().is_none());
-    let change = celestia_proto::Any::pack(&v1beta1::MsgSubmitProposal {
-        content: Some(celestia_proto::Any::pack(
-            &celestia_proto::cosmos::params::v1beta1::ParameterChangeProposal::default(),
-        )),
-        initial_deposit: vec![],
-        proposer,
-    });
-    let _ = msgs::validate_basic(&change);
-    assert!(take_not_ported().is_some());
+    // A parameter change: a blank title fails `ValidateBasic`; a valid
+    // one is submitted (its dry run sets nothing).
+    let change = |title: &str| {
+        celestia_proto::Any::pack(&v1beta1::MsgSubmitProposal {
+            content: Some(celestia_proto::Any::pack(&ParameterChangeProposal {
+                title: title.into(),
+                description: "d".into(),
+                changes: vec![ParamChange {
+                    subspace: "slashing".into(),
+                    key: "SignedBlocksWindow".into(),
+                    value: "\"10000\"".into(),
+                }],
+            })),
+            initial_deposit: vec![],
+            proposer: proposer.clone(),
+        })
+    };
+    let e = msgs::validate_basic(&change("")).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("gov", 5), "{}", e.log);
+    msgs::validate_basic(&change("t")).unwrap();
+    let before = x_params::get_raw(&mut ctx, "slashing", b"SignedBlocksWindow").unwrap();
+    msgs::route(&mut ctx, &change("t")).unwrap();
+    assert!(take_not_ported().is_none());
+    assert_eq!(
+        x_params::get_raw(&mut ctx, "slashing", b"SignedBlocksWindow").unwrap(),
+        before
+    );
 }
 
 /// `Grant.expiration` (nullable stdtime) sent twice: gogoproto's

@@ -10,10 +10,10 @@
 //!
 //! Proposal content: celestia-app v1's legacy router has the routes
 //! `params` (parameter changes behind the param filter), `distribution`
-//! (community pool spends) and `ibc` (client proposals). Only the
-//! community pool spend runs here; a proposal that would run anything else
-//! (a parameter change, an IBC client proposal, a v1 message other than
-//! `MsgExecLegacyContent`) is not ported. A text proposal has no route in
+//! (community pool spends) and `ibc` (client proposals). Community pool
+//! spends and parameter changes ([`super::param_change`]) run here; an IBC
+//! client proposal or a v1 message other than `MsgExecLegacyContent` is
+//! not ported. A text proposal has no route in
 //! celestia-app v1, so its submission fails as in Go.
 
 use celestia_proto::Any;
@@ -55,6 +55,7 @@ const WRITE_COST_PER_BYTE: u64 = 30;
 
 const COMMUNITY_POOL_SPEND: &str = "/cosmos.distribution.v1beta1.CommunityPoolSpendProposal";
 const TEXT_PROPOSAL: &str = "/cosmos.gov.v1beta1.TextProposal";
+const PARAMETER_CHANGE: &str = "/cosmos.params.v1beta1.ParameterChangeProposal";
 
 // ---- keys ---------------------------------------------------------------
 
@@ -353,6 +354,12 @@ fn validate_content(content: &Any) -> Result<()> {
             let c: v1beta1::TextProposal = decode(content)?;
             abstract_(&c.title, &c.description)
         }
+        PARAMETER_CHANGE => {
+            let c: celestia_proto::cosmos::params::v1beta1::ParameterChangeProposal =
+                decode(content)?;
+            abstract_(&c.title, &c.description)?;
+            super::param_change::validate_changes(&c)
+        }
         other => Err(not_ported(format!("gov proposal content {other}"))),
     }
 }
@@ -462,6 +469,7 @@ fn run_legacy_content(ctx: &mut Context<'_>, content: &Any) -> Result<()> {
                 &recipient,
             )
         }
+        PARAMETER_CHANGE => super::param_change::handle(ctx, content),
         other => Err(not_ported(format!("gov proposal content {other}"))),
     }
 }
@@ -471,6 +479,7 @@ fn content_route(content: &Any) -> Result<&'static str> {
     match content.type_url.as_str() {
         COMMUNITY_POOL_SPEND => Ok("distribution"),
         TEXT_PROPOSAL => Ok("gov"),
+        PARAMETER_CHANGE => Ok("params"),
         other => Err(not_ported(format!("gov proposal content {other}"))),
     }
 }
@@ -491,7 +500,7 @@ fn exec_legacy_content(
         }
         let content = m.content.clone().unwrap_or_default();
         let route = content_route(&content)?;
-        if route != "distribution" {
+        if route != "distribution" && route != "params" {
             return Err(gerr::no_proposal_handler_exists().wrap(route));
         }
         run_legacy_content(ctx, &content).map_err(|e| {
