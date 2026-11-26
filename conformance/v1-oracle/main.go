@@ -4,7 +4,7 @@
 // tell which store, and which key, differs from Go.
 //
 //	v1-oracle -genesis genesis.json -blocks blocks.jsonl.gz \
-//	  [-windows replay-windows.json] [-from 1] -heights 10 -out <dir> [-kv]
+//	  [-windows replay-windows.json] [-from 1] -heights 10 -out <dir> [-kv] [-keep-recent N]
 //	v1-oracle -registry-out <dir>
 //
 // celestia-app v3.13.0 is the binary that the Go multiplexer runs for app
@@ -289,6 +289,7 @@ func run() error {
 	out := flag.String("out", "", "output directory")
 	withKV := flag.Bool("kv", false, "also write the KV dump at height 0 and the per-block KV diffs")
 	registryOut := flag.String("registry-out", "", "only write the Rust v1 registry and schema tables (registry.go) to this directory")
+	keepRecent := flag.Uint64("keep-recent", 0, "prune all but this many recent IAVL versions (0: keep every version); bounds memory on long runs")
 	flag.Parse()
 	if *registryOut != "" {
 		return writeRegistry(*registryOut)
@@ -337,7 +338,7 @@ func run() error {
 			return err
 		}
 		defer os.RemoveAll(home)
-		genesisApp := newApp(home)
+		genesisApp := newApp(home, 0)
 		if _, err := initChain(genesisApp, genDoc); err != nil {
 			return err
 		}
@@ -370,7 +371,7 @@ func run() error {
 		return err
 	}
 	defer os.RemoveAll(home)
-	replayApp := newApp(home)
+	replayApp := newApp(home, *keepRecent)
 	res, err := initChain(replayApp, genDoc)
 	if err != nil {
 		return err
@@ -556,7 +557,11 @@ func run() error {
 	return os.WriteFile(filepath.Join(*out, "store-roots.json"), append(encoded, '\n'), 0o644)
 }
 
-func newApp(home string) *app.App {
+func newApp(home string, keepRecent uint64) *app.App {
+	pruning := pruningtypes.NewPruningOptions(pruningtypes.PruningNothing)
+	if keepRecent > 0 {
+		pruning = pruningtypes.NewCustomPruningOptions(keepRecent, 10)
+	}
 	return app.New(
 		log.NewNopLogger(),
 		dbm.NewMemDB(),
@@ -566,7 +571,7 @@ func newApp(home string) *app.App {
 		appconsts.MainnetUpgradeHeightV2,
 		0,
 		appOptions{flags.FlagHome: home},
-		baseapp.SetPruning(pruningtypes.NewPruningOptions(pruningtypes.PruningNothing)),
+		baseapp.SetPruning(pruning),
 		// The multiplexer forces the inter-block cache on for v3 (#7770).
 		baseapp.SetInterBlockCache(store.NewCommitKVStoreCacheManager()),
 	)

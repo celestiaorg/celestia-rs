@@ -213,6 +213,9 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
     if let Some(r) = super::ibc_transfer::validate_basic(msg) {
         return r;
     }
+    if let Some(r) = super::ibc_timeout::validate_basic(msg) {
+        return r;
+    }
     if let Some(r) = super::ibc::validate_basic(msg) {
         return r;
     }
@@ -220,6 +223,9 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
         return r;
     }
     if let Some(r) = super::qgb::validate_basic(msg) {
+        return r;
+    }
+    if let Some(r) = super::blob::validate_basic(msg) {
         return r;
     }
     if msg.type_url == bank::MsgSend::type_url() {
@@ -331,10 +337,16 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
     if let Some(r) = super::ibc_transfer::route(ctx, msg) {
         return r;
     }
+    if let Some(r) = super::ibc_timeout::route(ctx, msg) {
+        return r;
+    }
     if let Some(r) = super::authz::route(ctx, msg) {
         return r;
     }
     if let Some(r) = super::qgb::route(ctx, msg) {
+        return r;
+    }
+    if let Some(r) = super::blob::route(ctx, msg) {
         return r;
     }
     Err(super::not_ported(errs::unknown_request(format!(

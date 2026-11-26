@@ -246,10 +246,11 @@ fn update_set(v: &[ValidatorUpdate]) -> Vec<(Vec<u8>, i64)> {
 #[allow(clippy::too_many_lines)]
 fn v1_blocks_match_the_oracle() {
     let genesis = common::mainnet_genesis();
-    let oracle = common::Oracle::load();
+    let mut oracle = common::OracleStream::open();
     let last_height = oracle.last_to_run();
-    let archive = common::archive_to(last_height);
-    let (diffs, results, roots) = (&oracle.diffs, &oracle.results, &oracle.roots);
+    let mut blocks = common::block_stream(last_height);
+    let updates = common::OracleStream::updates(last_height);
+    let roots = oracle.roots.clone();
     let stores = iavl_stores();
 
     let mut ms = v1_store();
@@ -270,7 +271,7 @@ fn v1_blocks_match_the_oracle() {
     vals.insert(1, genesis_set.clone());
     vals.insert(2, genesis_set);
     for h in 1..last_height {
-        let next = common::apply_updates(&vals[&(h + 1)], &common::oracle_updates(&results[&h]));
+        let next = common::apply_updates(&vals[&(h + 1)], &updates[&h]);
         vals.insert(h + 2, next);
     }
 
@@ -278,7 +279,6 @@ fn v1_blocks_match_the_oracle() {
         .iter()
         .map(|s| (s.clone(), contents(&ms, s)))
         .collect();
-    let empty = BTreeMap::new();
     println!("height app-hash roots kv txs events updates");
     for height in 1..=last_height {
         let last = if height == 1 {
@@ -286,14 +286,18 @@ fn v1_blocks_match_the_oracle() {
         } else {
             vals[&(height - 1)].clone()
         };
-        let req = common::finalize_request(&archive[&height], &last);
+        let (h, block) = blocks.next().unwrap();
+        assert_eq!(h, height);
+        let req = common::finalize_request(&block, &last);
+        drop(block);
+        let want_diffs = oracle.diffs(height);
+        let result = oracle.result(height);
         let res = driver
             .finalize_block(&mut ms, &req)
             .unwrap_or_else(|e| panic!("height {height}: {}", e.log));
         let id = driver.commit(&mut ms).unwrap();
 
         let mut failures = Vec::new();
-        let want_diffs = diffs.get(&height).unwrap_or(&empty);
         let hr = &roots[&height];
         assert_eq!(hr["height"], height);
         let info = ms.root().last_commit_info().unwrap().clone();
@@ -348,10 +352,10 @@ fn v1_blocks_match_the_oracle() {
         if !app_ok {
             failures.push(format!("app hash {app_hash}, want {}", hr["app_hash"]));
         }
-        let tx_failures = check_tx_results(&res, &results[&height]);
+        let tx_failures = check_tx_results(&res, &result);
         let tx_ok = tx_failures.is_empty();
         failures.extend(tx_failures);
-        let response = check_response(&res, &results[&height]);
+        let response = check_response(&res, &result);
         let events_ok = !response.iter().any(|f| f.starts_with("events"));
         let updates_ok = !response.iter().any(|f| f.starts_with("validator updates"));
         failures.extend(response);

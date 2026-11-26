@@ -22,11 +22,13 @@
 mod app;
 pub(crate) use app::{AppDriver, AppModules, v1_modules};
 pub mod authz;
+pub mod blob;
 pub mod blockers;
 pub mod consensus_params;
 pub mod genesis;
 pub mod ibc;
 pub mod ibc_channel;
+pub mod ibc_timeout;
 pub mod ibc_transfer;
 pub mod msgs;
 pub mod params;

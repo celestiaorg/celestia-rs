@@ -594,6 +594,44 @@ pub(super) fn verify_with_delay(
     wrap: &str,
     delay: bool,
 ) -> Result<()> {
+    verify_path(
+        ctx,
+        conn,
+        proof_height,
+        proof,
+        path,
+        Some(value),
+        wrap,
+        delay,
+    )
+}
+
+/// [`verify_with_delay`] of the absence of `path` (`VerifyNonMembership`,
+/// e.g. `VerifyPacketReceiptAbsence`).
+pub(super) fn verify_absence_with_delay(
+    ctx: &mut Context<'_>,
+    conn: &ConnectionEnd,
+    proof_height: &Height,
+    proof: &[u8],
+    path: &[u8],
+    wrap: &str,
+) -> Result<()> {
+    verify_path(ctx, conn, proof_height, proof, path, None, wrap, true)
+}
+
+/// The membership (`value`) or non-membership proof of a tendermint
+/// client at `proof_height`, after `produceVerificationArgs`.
+#[allow(clippy::too_many_arguments)]
+fn verify_path(
+    ctx: &mut Context<'_>,
+    conn: &ConnectionEnd,
+    proof_height: &Height,
+    proof: &[u8],
+    path: &[u8],
+    value: Option<&[u8]>,
+    wrap: &str,
+    delay: bool,
+) -> Result<()> {
     let client_id = &conn.client_id;
     let cs = match client::client_state(ctx, client_id)? {
         Some(client::ClientState::Tendermint(cs)) => *cs,
@@ -637,7 +675,12 @@ pub(super) fn verify_with_delay(
         let path =
             commitment::apply_prefix(Some(prefix), &[gostr::from_go_bytes(path).into_owned()])?;
         let root = proving.root.unwrap_or_default().hash;
-        commitment::verify_membership(&merkle_proof, &cs.proof_specs, &root, &path, value)
+        match value {
+            Some(v) => {
+                commitment::verify_membership(&merkle_proof, &cs.proof_specs, &root, &path, v)
+            }
+            None => commitment::verify_non_membership(&merkle_proof, &cs.proof_specs, &root, &path),
+        }
     })();
     r.map_err(|e| e.wrap(format!("{wrap} ({client_id})")))
 }

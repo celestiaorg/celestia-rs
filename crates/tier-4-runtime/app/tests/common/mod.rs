@@ -453,3 +453,184 @@ pub fn first_event_difference(got: &[Event], want: &[Event]) -> Option<String> {
     }
     (got.len() != want.len()).then(|| format!("event count rs {} go {}", got.len(), want.len()))
 }
+
+/// The oracle's record read as a stream, for runs over many heights
+/// (holding every height's results and diffs takes several GB): the
+/// store roots by height (height, app hash and store roots only), and the
+/// results and KV diffs of the committed fixture then [`ORACLE_EXT_ENV`],
+/// read in height order.
+pub struct OracleStream {
+    /// `store-roots.json` heights (`height`, `app_hash`, `stores`).
+    pub roots: BTreeMap<i64, serde_json::Value>,
+    results: std::iter::Peekable<Box<dyn Iterator<Item = serde_json::Value>>>,
+    diffs: std::iter::Peekable<Box<dyn Iterator<Item = serde_json::Value>>>,
+}
+
+fn oracle_dirs() -> Vec<String> {
+    let mut dirs = vec![ORACLE.to_owned()];
+    if let Ok(dir) = std::env::var(ORACLE_EXT_ENV) {
+        dirs.push(dir);
+    }
+    dirs
+}
+
+fn chained(file: &'static str) -> Box<dyn Iterator<Item = serde_json::Value>> {
+    Box::new(
+        oracle_dirs()
+            .into_iter()
+            .flat_map(move |d| gz_lines_owned(&format!("{d}/{file}"))),
+    )
+}
+
+impl OracleStream {
+    /// The committed fixture and, when [`ORACLE_EXT_ENV`] is set, the
+    /// extended output (its heights must start right after the fixture's).
+    pub fn open() -> Self {
+        let mut roots = BTreeMap::new();
+        for d in oracle_dirs() {
+            let r: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(format!("{d}/store-roots.json")).unwrap())
+                    .unwrap();
+            let mut first = true;
+            for h in r["heights"].as_array().unwrap() {
+                let height = h["height"].as_i64().unwrap();
+                if first && let Some((&last, _)) = roots.last_key_value() {
+                    assert_eq!(height, last + 1, "{d} must start at height {}", last + 1);
+                }
+                first = false;
+                let compact = serde_json::json!({
+                    "height": h["height"],
+                    "app_hash": h["app_hash"],
+                    "stores": h["stores"],
+                });
+                roots.insert(height, compact);
+            }
+        }
+        Self {
+            roots,
+            results: chained("tx-results.jsonl.gz").peekable(),
+            diffs: chained("kv-diffs.jsonl.gz").peekable(),
+        }
+    }
+
+    /// The last height recorded.
+    pub fn last(&self) -> i64 {
+        *self.roots.keys().next_back().unwrap()
+    }
+
+    /// The last height to run: [`LAST_HEIGHT_ENV`] or [`Self::last`].
+    pub fn last_to_run(&self) -> i64 {
+        std::env::var(LAST_HEIGHT_ENV).map_or(self.last(), |s| {
+            let h: i64 = s.parse().unwrap();
+            assert!(
+                h <= self.last(),
+                "the oracle records heights up to {}",
+                self.last()
+            );
+            h
+        })
+    }
+
+    /// Every height's EndBlock validator updates up to `last` (a separate
+    /// pass over the results).
+    pub fn updates(last: i64) -> BTreeMap<i64, Vec<(Vec<u8>, i64)>> {
+        chained("tx-results.jsonl.gz")
+            .map(|d| (d["height"].as_i64().unwrap(), d))
+            .take_while(|(h, _)| *h <= last)
+            .map(|(h, d)| (h, oracle_updates(&d)))
+            .collect()
+    }
+
+    /// The results of `height` (heights are read in order).
+    pub fn result(&mut self, height: i64) -> serde_json::Value {
+        let found = self
+            .results
+            .by_ref()
+            .find(|d| d["height"].as_i64().unwrap() >= height);
+        let d = found.unwrap_or_else(|| unreachable!("no oracle results for height {height}"));
+        assert_eq!(d["height"].as_i64().unwrap(), height, "no oracle results");
+        d
+    }
+
+    /// The KV diffs of `height`, by store (heights are read in order).
+    pub fn diffs(&mut self, height: i64) -> BTreeMap<String, Diff> {
+        let mut out = BTreeMap::new();
+        while let Some(d) = self.diffs.peek() {
+            let h = d["height"].as_i64().unwrap();
+            if h > height {
+                break;
+            }
+            let d = self.diffs.next().unwrap();
+            if h < height {
+                continue;
+            }
+            out.insert(d["store"].as_str().unwrap().to_owned(), diff_of(&d));
+        }
+        out
+    }
+}
+
+fn diff_of(d: &serde_json::Value) -> Diff {
+    Diff {
+        set: d["set"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| (hex_field(&p[0]), hex_field(&p[1])))
+            .collect(),
+        delete: d["delete"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(hex_field)
+            .collect(),
+    }
+}
+
+/// The archived blocks 1 to `last + 1` in height order: the committed
+/// ones (1 to 11), then those of [`BLOCKS_ENV`].
+pub fn block_stream(last: i64) -> impl Iterator<Item = (i64, serde_json::Value)> {
+    let committed = archive().into_iter();
+    let ext: Box<dyn Iterator<Item = serde_json::Value>> = if last >= 11 {
+        let path = std::env::var(BLOCKS_ENV).expect("set CELESTIA_V1_BLOCKS for heights past 10");
+        Box::new(lines_owned(path))
+    } else {
+        Box::new(std::iter::empty())
+    };
+    let ext = ext
+        .map(|d| (d["height"].as_i64().unwrap(), d["result"].clone()))
+        .filter(move |(h, _)| (12..=last + 1).contains(h));
+    let mut next = 1;
+    committed
+        .filter(move |(h, _)| *h <= last + 1)
+        .chain(ext)
+        .inspect(move |(h, _)| {
+            assert_eq!(*h, next, "no archived block {next}");
+            next += 1;
+        })
+}
+
+/// [`gz_lines`] owning its file.
+fn gz_lines_owned(path: &str) -> Box<dyn Iterator<Item = serde_json::Value>> {
+    let f = std::fs::File::open(path).unwrap();
+    Box::new(
+        BufReader::new(GzDecoder::new(f))
+            .lines()
+            .map(|l| serde_json::from_str(&l.unwrap()).unwrap()),
+    )
+}
+
+fn lines_owned(path: String) -> Box<dyn Iterator<Item = serde_json::Value>> {
+    if std::path::Path::new(&path)
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("gz"))
+    {
+        gz_lines_owned(&path)
+    } else {
+        Box::new(
+            BufReader::new(std::fs::File::open(path).unwrap())
+                .lines()
+                .map(|l| serde_json::from_str(&l.unwrap()).unwrap()),
+        )
+    }
+}
