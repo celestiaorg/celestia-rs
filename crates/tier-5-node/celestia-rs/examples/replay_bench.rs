@@ -11,7 +11,9 @@
 //!
 //! ```sh
 //! cargo run --release -p celestia-rs --example replay_bench -- \
-//!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR]
+//!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR] \
+//!   [--iavl-cache 781250] [--db-cache-mib 512] [--pruning-interval 1] \
+//!   [--discard-abci-responses false]
 //! ```
 //!
 //! `--base` holds a home after InitChain (created on first use), so later
@@ -38,6 +40,10 @@ struct Args {
     blocks: i64,
     base: PathBuf,
     cache: PathBuf,
+    iavl_cache: usize,
+    db_cache_mib: usize,
+    pruning_interval: u64,
+    discard_abci_responses: bool,
 }
 
 fn args() -> anyhow::Result<Args> {
@@ -47,6 +53,12 @@ fn args() -> anyhow::Result<Args> {
         base: target.join("replay-base"),
         cache: std::env::var_os("CELESTIA_MAINNET_CACHE")
             .map_or_else(|| target.join("mainnet-cache"), PathBuf::from),
+        // `celestia-rs start` defaults: app.toml `iavl-cache-size`,
+        // `--db-cache-mib`.
+        iavl_cache: 781_250,
+        db_cache_mib: 512,
+        pruning_interval: 1,
+        discard_abci_responses: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(k) = it.next() {
@@ -55,6 +67,10 @@ fn args() -> anyhow::Result<Args> {
             "--blocks" => a.blocks = v.parse()?,
             "--base" => a.base = v.into(),
             "--cache" => a.cache = v.into(),
+            "--iavl-cache" => a.iavl_cache = v.parse()?,
+            "--db-cache-mib" => a.db_cache_mib = v.parse()?,
+            "--pruning-interval" => a.pruning_interval = v.parse()?,
+            "--discard-abci-responses" => a.discard_abci_responses = v.parse()?,
             _ => bail!("unknown argument {k}"),
         }
     }
@@ -71,7 +87,7 @@ fn cached_block(cache: &Path, height: i64) -> anyhow::Result<Block> {
 
 /// Opens the node at `home` as `celestia-rs start` does (app, stores,
 /// evidence pool, handshake: InitChain on a fresh home).
-fn open(home: &Path) -> anyhow::Result<(BlockExecutor, State)> {
+fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State)> {
     let genesis = node::load_genesis(home)?;
     let mut opts = app::AppOptions {
         chain_id: Some(genesis.chain_id.clone()),
@@ -79,10 +95,12 @@ fn open(home: &Path) -> anyhow::Result<(BlockExecutor, State)> {
         ..app::AppOptions::default()
     };
     opts.node.home = Some(home.to_path_buf());
-    // `celestia-rs start` defaults (app.toml `iavl-cache-size`).
-    opts.store.node_cache_size = 781_250;
+    opts.store.node_cache_size = a.iavl_cache;
+    opts.db.cache_size = a.db_cache_mib << 20;
+    opts.store.pruning.interval = a.pruning_interval;
     let app = app::App::open_with(home, opts).map_err(|e| anyhow!("open app: {}", e.log))?;
-    let (bs, ss) = node::open_stores(home)?;
+    let (bs, mut ss) = node::open_stores(home)?;
+    ss.discard_abci_responses = a.discard_abci_responses;
     let state = ss.load_from_db_or_genesis(&genesis)?;
     let evpool = sync::open_evidence_pool(home, &ss, &bs, &state)?;
     let mut exec = BlockExecutor::new(
@@ -135,13 +153,13 @@ fn main() -> anyhow::Result<()> {
         std::fs::create_dir_all(a.base.join("data"))?;
         std::fs::copy(&genesis, a.base.join("config/genesis.json"))?;
         let t = Instant::now();
-        drop(open(&a.base)?);
+        drop(open(&a.base, &a)?);
         println!("init_chain_secs: {:.1}", t.elapsed().as_secs_f64());
     }
     let tmp = tempfile::tempdir_in(a.base.parent().unwrap_or(Path::new(".")))?;
     let home = tmp.path().join("home");
     copy_dir(&a.base, &home)?;
-    let (mut exec, mut state) = open(&home)?;
+    let (mut exec, mut state) = open(&home, &a)?;
     ensure!(state.last_block_height == 0, "base home is past genesis");
 
     let mut next = cached_block(&a.cache, 1)?;
