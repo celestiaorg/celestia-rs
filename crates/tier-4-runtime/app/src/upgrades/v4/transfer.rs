@@ -12,6 +12,30 @@ const PORT: &str = "transfer";
 /// subspace `transfer`. 4 to 5 (`MigrateDenomMetadata`): bank metadata for
 /// every denom trace that has none.
 pub fn migrate_transfer(ctx: &mut Context<'_>) -> Result<()> {
+    set_total_escrow_from_balances(ctx)?;
+
+    let params = Params {
+        send_enabled: x_params::v046::get_bool(ctx, PORT, "SendEnabled")?,
+        receive_enabled: x_params::v046::get_bool(ctx, PORT, "ReceiveEnabled")?,
+    };
+    x_transfer::set_params(ctx, &params)?;
+
+    for trace in x_transfer::get_all_denom_traces(ctx)? {
+        let denom = x_transfer::ibc_denom(&trace);
+        // bank `HasDenomMetaData` (`DenomMetadataPrefix || denom`).
+        let metadata_key = sdk::codec::key(&[&[0x01], denom.as_bytes()]);
+        if !ctx.has(x_bank::STORE_KEY, &metadata_key)? {
+            x_bank::set_denom_metadata(ctx, &x_transfer::denom_metadata(&trace))?;
+        }
+    }
+    Ok(())
+}
+
+/// The total escrow of each denom from the bank balances of the escrow
+/// accounts of every channel whose port starts with the bound port
+/// (transfer `MigrateTotalEscrowForDenom`, and packet-forward-middleware
+/// v8.2.0 `migrations/v3.Migrate`).
+pub fn set_total_escrow_from_balances(ctx: &mut Context<'_>) -> Result<()> {
     let port = x_transfer::get_port(ctx)?;
     // `GetAllChannelsWithPortPrefix`: every port when the prefix is blank.
     let prefix = if port.trim().is_empty() {
@@ -44,21 +68,6 @@ pub fn migrate_transfer(ctx: &mut Context<'_>) -> Result<()> {
                 amount: coin.amount.to_string(),
             },
         )?;
-    }
-
-    let params = Params {
-        send_enabled: x_params::v046::get_bool(ctx, PORT, "SendEnabled")?,
-        receive_enabled: x_params::v046::get_bool(ctx, PORT, "ReceiveEnabled")?,
-    };
-    x_transfer::set_params(ctx, &params)?;
-
-    for trace in x_transfer::get_all_denom_traces(ctx)? {
-        let denom = x_transfer::ibc_denom(&trace);
-        // bank `HasDenomMetaData` (`DenomMetadataPrefix || denom`).
-        let metadata_key = sdk::codec::key(&[&[0x01], denom.as_bytes()]);
-        if !ctx.has(x_bank::STORE_KEY, &metadata_key)? {
-            x_bank::set_denom_metadata(ctx, &x_transfer::denom_metadata(&trace))?;
-        }
     }
     Ok(())
 }

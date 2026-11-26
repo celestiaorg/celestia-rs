@@ -298,6 +298,7 @@ func run() error {
 	registryOut := flag.String("registry-out", "", "only write the Rust v1 registry and schema tables (registry.go) to this directory")
 	keepRecent := flag.Uint64("keep-recent", 0, "prune all but this many recent IAVL versions (0: keep every version); bounds memory on long runs")
 	synthetic := flag.Bool("synthetic", false, "build the synthetic app version 1 to 3 chain (synthetic.go) instead of reading -genesis and -blocks; writes its genesis.json and blocks.jsonl.gz to -out")
+	chain := flag.String("chain", "v1-v3", "with -synthetic: the synthetic chain, v1-v3 (synthetic.go) or v3-rich (rich.go)")
 	handoff := flag.String("handoff", "", "with -synthetic: keep the app home (goleveldb data/application.db and data/upgrade-info.json) in this new directory and write handoff.json there, for conformance/v4-oracle to continue the chain")
 	flag.Parse()
 	if *registryOut != "" {
@@ -310,10 +311,14 @@ func run() error {
 			flag.Usage()
 			return errors.New("-synthetic takes -out (and -kv) only")
 		}
-		*heights = syntheticHeights
-		upgradeHeightV2 = syntheticUpgradeHeightV2
+		spec, ok := chainSpecs[*chain]
+		if !ok {
+			return fmt.Errorf("unknown -chain %q", *chain)
+		}
+		*heights = spec.heights
+		upgradeHeightV2 = spec.upgradeHeightV2
 		var err error
-		if syn, err = newSynth(); err != nil {
+		if syn, err = newSynth(spec); err != nil {
 			return err
 		}
 		if err := os.MkdirAll(*out, 0o755); err != nil {
@@ -606,7 +611,7 @@ func run() error {
 		if err := replayDB.Close(); err != nil {
 			return err
 		}
-		if err := syn.writeHandoff(filepath.Join(*handoff, "handoff.json"), *heights, vals); err != nil {
+		if err := syn.writeHandoff(filepath.Join(*handoff, "handoff.json"), *chain, *heights, vals); err != nil {
 			return err
 		}
 	}

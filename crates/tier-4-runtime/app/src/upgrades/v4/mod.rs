@@ -16,7 +16,7 @@ mod handler;
 mod ibc;
 mod params;
 mod staking;
-mod transfer;
+pub(super) mod transfer;
 
 pub use auth::migrate_auth;
 pub use gov::migrate_gov;

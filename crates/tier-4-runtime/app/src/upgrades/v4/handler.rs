@@ -123,6 +123,12 @@ fn migrate(ctx: &mut Context<'_>, name: &str, from: u64, to: u64) -> Result<()> 
         ("distribution", 2, 4) => super::migrate_distribution(ctx),
         ("gov", 3, 5) => super::migrate_gov(ctx),
         ("ibc", 2, 6) => super::migrate_ibc(ctx),
+        // A chain that started at app version 2 or 3 recorded minfee 1 and
+        // packetfowardmiddleware 1; mainnet (from app version 1) did not.
+        ("minfee", 1, 2) => x_minfee::migrate_params(ctx),
+        // 1 to 2 is celestia-app's no-op override; 2 to 3 recomputes the
+        // total escrow per denom.
+        ("packetfowardmiddleware", 1, 3) => super::transfer::set_total_escrow_from_balances(ctx),
         ("slashing", 2, 4) => super::migrate_slashing(ctx),
         ("staking", 3, 5) => super::migrate_staking(ctx),
         ("transfer", 2, 5) => super::migrate_transfer(ctx),
