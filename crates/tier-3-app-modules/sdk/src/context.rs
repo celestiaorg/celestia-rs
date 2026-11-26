@@ -276,10 +276,11 @@ impl<'a> Context<'a> {
         rev: bool,
     ) -> Result<Iter> {
         let config = self.config(store)?;
-        let items = self.ms.range(store, start, end, rev)?;
+        let mut items = self.ms.lazy_range(store, start, end, rev)?;
+        let cur = items.next().transpose()?;
         let it = Iter {
             items,
-            pos: 0,
+            cur,
             config,
             started: false,
         };
@@ -288,19 +289,21 @@ impl<'a> Context<'a> {
     }
 }
 
-/// Gas-metered iterator snapshot. Use as
-/// `while let Some((k, v)) = it.next(ctx)? { … }`.
+/// Gas-metered iterator over the state at its creation (committed entries
+/// are read lazily, so stopping early does not read the rest of the
+/// range). Use as `while let Some((k, v)) = it.next(ctx)? { … }`.
 #[derive(Debug)]
 pub struct Iter {
-    items: Vec<(Vec<u8>, Vec<u8>)>,
-    pos: usize,
+    items: crate::store::LazyRange,
+    /// The entry the iterator is positioned at (`None`: past the end).
+    cur: Option<(Vec<u8>, Vec<u8>)>,
     config: GasConfig,
     started: bool,
 }
 
 impl Iter {
     fn seek_gas(&self, ctx: &mut Context<'_>) -> Result<()> {
-        if let Some((k, v)) = self.items.get(self.pos) {
+        if let Some((k, v)) = &self.cur {
             ctx.consume_bytes(self.config.read_cost_per_byte, k.len(), "ValuePerByte")?;
             ctx.consume_bytes(self.config.read_cost_per_byte, v.len(), "ValuePerByte")?;
         }
@@ -310,22 +313,26 @@ impl Iter {
     /// Returns the next element, charging gas like `Next()` + `Valid()`.
     pub fn next(&mut self, ctx: &mut Context<'_>) -> Result<Option<(Vec<u8>, Vec<u8>)>> {
         if self.started {
-            if self.pos >= self.items.len() {
+            if self.cur.is_none() {
                 return Ok(None);
             }
             self.seek_gas(ctx)?;
-            self.pos += 1;
+            self.cur = self.items.next().transpose()?;
         }
         self.started = true;
-        Ok(self.items.get(self.pos).cloned())
+        Ok(self.cur.clone())
     }
 
-    /// Remaining elements without charging further gas (for callers that
-    /// in Go read the whole iterator without `Next` charges, e.g. un-metered
-    /// stores). Prefer [`Self::next`].
-    #[must_use]
-    pub fn into_items(self) -> Vec<(Vec<u8>, Vec<u8>)> {
-        self.items
+    /// Every element without charging further gas (for callers that in Go
+    /// read the whole iterator without `Next` charges, e.g. un-metered
+    /// stores). Call it on a fresh iterator; prefer [`Self::next`].
+    pub fn into_items(self) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
+        debug_assert!(!self.started, "into_items after next");
+        let mut out: Vec<_> = self.cur.into_iter().collect();
+        for e in self.items {
+            out.push(e?);
+        }
+        Ok(out)
     }
 }
 
@@ -396,6 +403,40 @@ mod tests {
         assert_eq!(n, 2);
         // creation (a) + Next past a + Next past b
         assert_eq!(ctx.gas.consumed() - base, 36 * 3);
+        Ok(())
+    }
+
+    /// Over committed entries: stopping after two elements charges only
+    /// what was moved past, and writes made while iterating are not seen
+    /// (the iterator works on the state at its creation, as before).
+    #[test]
+    fn iterator_over_committed_state_stops_early_and_ignores_new_writes() -> Result<()> {
+        let mut ms = setup();
+        for i in 0u8..50 {
+            ms.set("s", vec![b'k', i], vec![i]).unwrap();
+        }
+        ms.flush().unwrap();
+        ms.commit().unwrap();
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        let base = ctx.gas.consumed();
+        let mut it = ctx.prefix_iter("s", b"k")?;
+        assert_eq!(it.next(&mut ctx)?, Some((vec![b'k', 0], vec![0])));
+        ctx.set("s", vec![b'k', 0, 1], vec![7])?;
+        ctx.delete("s", &[b'k', 1])?;
+        let after_writes = ctx.gas.consumed();
+        // creation charged k0 (2 + 1 bytes, 3 gas each, + 30 flat); then
+        // the set (2000 + 30 × 4 bytes) and the delete (1000)
+        assert_eq!(after_writes - base, 39 + 2000 + 30 * 4 + 1000);
+        assert_eq!(it.next(&mut ctx)?, Some((vec![b'k', 1], vec![1])));
+        // Next past k0
+        assert_eq!(ctx.gas.consumed() - after_writes, 39);
+        // into_items on a fresh iterator: the whole range, without gas
+        // beyond creation; it sees the new layered writes
+        let fresh = ctx.prefix_iter("s", b"k")?;
+        let all = fresh.into_items()?;
+        assert_eq!(all.len(), 50);
+        assert_eq!(all[1], (vec![b'k', 0, 1], vec![7]));
+        assert_eq!(all[2], (vec![b'k', 2], vec![2]));
         Ok(())
     }
 

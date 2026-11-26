@@ -351,6 +351,38 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/home" \
   -genesis "$OUT/v1-v3/genesis.json" -out ../fixtures/synthetic/v4
 ```
 
+#### Synthetic chain across the v4 to v5 upgrade
+
+`v4-oracle -heights 10 -next-handoff` runs the same chain on to block
+25: all four validators signal version 5 (block 18 and 21), a
+`MsgTryUpgrade` in block 22 reaches quorum, and the EndBlocker of block
+25 (22 plus chain `test`'s delay of 3) sets app version 5, schedules
+plan `v5` at 26 and writes `data/upgrade-info.json`. The program then
+rewrites `handoff.json` in the home.
+[`fixtures/synthetic/v4-to-v5`](fixtures/synthetic/v4-to-v5) holds its
+outputs: blocks 16 to 20 are those of `fixtures/synthetic/v4`.
+`v5-oracle` opens the home with celestia-app v5.0.12, as the
+multiplexer does: the x/upgrade PreBlocker of block 26 runs the `v5`
+handler (a no-op that returns the module versions it is given; no store
+is added or deleted), and the program executes blocks 26 to 30.
+[`fixtures/synthetic/v5`](fixtures/synthetic/v5) holds the same kinds of
+files as `fixtures/synthetic/v4`, from height 25. `go test` in
+`v4-oracle` rebuilds `v4-to-v5`; `go test` in `v5-oracle` runs the
+whole chain and rebuilds `v5`.
+`cargo test -p app --test synthetic_v5_oracle` checks the fixture's
+facts. To regenerate:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -kv -out "$OUT/v1-v3" -handoff "$OUT/home"
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v4-to-v5 -heights 10 -next-handoff
+cd ../v5-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v5
+```
+
 #### Rich synthetic chain for the v3 to v4 migrations
 
 `v1-oracle -synthetic -chain v3-rich` builds a second chain (genesis at
@@ -441,6 +473,36 @@ Blocks 14 and 32 check the jail and the queues against the plan.
 holds heights 0 to 32 (regenerate it as the governance chain, with
 `-chain staking-v1-v3`). `cargo test -p app --test staking_oracle` compares each
 block.
+
+#### State-sync snapshots of the v0.46 chains
+
+`v1-oracle -snapshot-at h1,h2,...` writes a cosmos-sdk v0.46 state-sync
+snapshot of each height right after it commits, with that height's store
+set, through the SDK's own snapshot manager (format 2: the multistore's
+IAVL export as delimited `SnapshotItem`s, zlib level 7, 10 MB chunks), as
+`celestia-appd` and `snapshots export` write them. Chunk `i` of height `h`
+is `<dir>/<h>/2/<i>` (`-snapshot-dir`, default `<out>/snapshots`); the
+store's `metadata.db` index is not part of the fixtures. The flag does not
+change any other output.
+
+[`fixtures/synthetic/v1-v3-snapshots`](fixtures/synthetic/v1-v3-snapshots)
+(heights 3, 5, 7, 12),
+[`staking-v1-v3-snapshots`](fixtures/synthetic/staking-v1-v3-snapshots)
+(9, 13, 27) and [`ibc-v2-snapshots`](fixtures/synthetic/ibc-v2-snapshots)
+(39, 72, 100, 120, written by `TestIBCFixture`) hold them;
+`TestSnapshotFixturesAreReproducible` and `TestIBCFixture` require them
+byte for byte. `cargo test -p app --test snapshot_v046_oracle` restores
+each into a fresh app through `OfferSnapshot` and `ApplySnapshotChunk`,
+requires the oracle's app hash at the snapshot height, and executes every
+later block of the chain with the oracle's app hash and transaction
+results. To regenerate the synthetic ones:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -chain v1-v3 -out "$OUT/a" -snapshot-at 3,5,7,12
+GOFLAGS=-mod=mod go run . -synthetic -chain staking-v1-v3 -out "$OUT/b" -snapshot-at 9,13,27
+# copy "$OUT"/a/snapshots/<h>/2/* to ../fixtures/synthetic/v1-v3-snapshots/<h>/2/, and so on
+```
 
 #### IBC chain for app version 2
 

@@ -35,6 +35,12 @@ use prost::Message;
 
 /// Snapshot format produced and accepted (Go `types.CurrentFormat`).
 pub const CURRENT_FORMAT: u32 = 3;
+/// Snapshot format of cosmos-sdk v0.46 (celestia-app v1 to v3): accepted
+/// for restore only. Its item stream is format 3's (store items, then each
+/// store's IAVL export nodes, through zlib in 10 MB chunks); the nodes are
+/// iavl v0.19's, whose versions the restore keeps, so the store roots are
+/// the exporter's.
+pub const FORMAT_V046: u32 = 2;
 /// Chunk size in bytes (Go `snapshotChunkSize`).
 pub const CHUNK_SIZE: usize = 10_000_000;
 /// zlib level (Go `snapshotCompressionLevel`).
@@ -757,7 +763,7 @@ impl Manager {
     /// Starts restoring `snapshot` (ABCI `OfferSnapshot`). Replaces any
     /// restore in progress.
     pub fn begin_restore(&mut self, snapshot: Snapshot) -> Result<()> {
-        if snapshot.format != CURRENT_FORMAT {
+        if snapshot.format != CURRENT_FORMAT && snapshot.format != FORMAT_V046 {
             return Err(Error::UnknownFormat(snapshot.format));
         }
         if snapshot.chunks == 0 {
@@ -1286,11 +1292,16 @@ mod tests {
             src.last_commit_id().unwrap()
         );
 
+        // Format 2 (cosmos-sdk v0.46) is restorable; format 1 is not.
+        let mut v046 = snap.clone();
+        v046.format = FORMAT_V046;
+        manager.begin_restore(v046).unwrap();
+        manager.abort_restore().unwrap();
         let mut bad = snap.clone();
-        bad.format = 2;
+        bad.format = 1;
         assert!(matches!(
             manager.begin_restore(bad),
-            Err(Error::UnknownFormat(2))
+            Err(Error::UnknownFormat(1))
         ));
         let mut bad = snap.clone();
         bad.chunk_hashes.pop();

@@ -75,9 +75,10 @@ var govSpec = &chainSpec{
 	users:           syntheticUsers,
 	userBalance:     1_000_000_000_000,
 	// The fourth validator misses every third height.
-	absent:   func(height int64, i, n int) bool { return i == n-1 && height%3 == 0 },
-	modifier: govGenesis,
-	rawTxs:   func(s *synth, a *app.App, height int64) ([][]byte, error) { return s.govTxs(a, height) },
+	absent:    func(height int64, i, n int) bool { return i == n-1 && height%3 == 0 },
+	modifier:  govGenesis,
+	rawTxs:    func(s *synth, a *app.App, height int64) ([][]byte, error) { return s.govTxs(a, height) },
+	noHandoff: true,
 }
 
 // govGenesis shortens the deposit and voting periods of celestia-app's
