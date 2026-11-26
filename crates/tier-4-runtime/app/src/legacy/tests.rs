@@ -3204,3 +3204,33 @@ fn v046_exec_runs_a_zero_amount_delegate() {
     let e = sdk::error::recover(|| msgs::route(&mut ctx, &delegate(None))).unwrap_err();
     assert!(e.is_panic(), "{}", e.log);
 }
+
+/// A v1 to v2 upgrade block whose module migrations fail (here the
+/// `icahost` port capability is already taken) leaves no trace: the
+/// app version 1 store set, no new stores, the app version, and the
+/// same failure when the block is retried.
+#[test]
+fn failed_upgrade_migrations_leave_the_store_set_unchanged() {
+    let mut ms = v1_store();
+    let mut driver = Driver::new(NoModules);
+    driver.set_upgrade_height_v2(2);
+    driver.init_chain(&mut ms, &init_request()).unwrap();
+    {
+        let _v046 = sdk::version::SdkV046Scope::enter(1);
+        let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        x_ibc::port::bind_port(&mut ctx, "icahost").unwrap();
+    }
+    for _ in 0..2 {
+        assert!(
+            driver
+                .finalize_block(&mut ms, &finalize_request(1))
+                .is_err()
+        );
+        assert!(ms.is_mounted("qgb"));
+        for s in ["icahost", "packetfowardmiddleware", "signal"] {
+            assert!(!ms.is_mounted(s), "{s}");
+        }
+        assert_eq!(driver.app_version(), 1);
+        assert_eq!(app_version(&ms), 1);
+    }
+}

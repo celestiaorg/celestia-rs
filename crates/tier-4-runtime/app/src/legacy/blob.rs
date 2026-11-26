@@ -3,7 +3,8 @@
 //!
 //! `ValidateBasic` is [`x_blob::validate_basic`] (unchanged since). The
 //! handler charges `GasToConsume` with the `GasPerBlobByte` parameter of
-//! subspace `blob` (app versions 1 and 2): go-square v2.3.0's
+//! subspace `blob` (app versions 1 and 2; the constant 8 from app version
+//! 3): go-square v2.3.0's
 //! `SparseSharesNeeded` has no signer variant, so every blob counts as
 //! share version 0. It emits the typed `EventPayForBlobs`.
 
@@ -14,6 +15,9 @@ use celestia_proto::celestia::blob::v1::{
 use prost::{Message as _, Name as _};
 use sdk::error::sdk as errs;
 use sdk::{Context, Result};
+
+/// celestia-app v3 `appconsts.GasPerBlobByte`.
+const GAS_PER_BLOB_BYTE_V3: u32 = 8;
 
 /// go-square v2.3.0 `ShareSize`.
 const SHARE_SIZE: u64 = 512;
@@ -44,7 +48,14 @@ pub fn gas_to_consume(blob_sizes: &[u32], gas_per_byte: u32) -> u64 {
 pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
     (msg.type_url == MsgPayForBlobs::type_url()).then(|| {
         let m = decode(msg)?;
-        let per_byte = x_params::v046::get_u32(ctx, "blob", "GasPerBlobByte")?;
+        // `Keeper.GasPerBlobByte`: the `blob` subspace parameter at app
+        // versions 1 and 2, `appconsts.GasPerBlobByte` (8) from 3.
+        let version = ctx.consensus_params.version.as_ref().map_or(1, |v| v.app);
+        let per_byte = if version >= 3 {
+            GAS_PER_BLOB_BYTE_V3
+        } else {
+            x_params::v046::get_u32(ctx, "blob", "GasPerBlobByte")?
+        };
         let gas = gas_to_consume(&m.blob_sizes, per_byte);
         ctx.gas
             .consume(gas, x_blob::PAY_FOR_BLOB_GAS_DESCRIPTOR)

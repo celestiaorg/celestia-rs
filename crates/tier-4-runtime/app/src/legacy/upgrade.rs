@@ -6,7 +6,9 @@
 //!   version 2 in the consensus params (`SetInitialAppVersionInConsensusParams`
 //!   then `SetAppVersion`). The params keeper's `DeleteSubspace("blobstream")`
 //!   only drops an in-memory subspace: no state changes.
-//! - Later versions: the signalled upgrade, once its height is reached.
+//! - Later versions: the signalled upgrade, once its height is reached;
+//!   from app version 3 it also schedules the `v4` upgrade plan at the
+//!   next height.
 //!
 //! The store and module migrations that the new version brings run in
 //! `Commit` in Go, before the commit ([`super::migrate`]).
@@ -53,13 +55,48 @@ pub fn end_blocker(
         return Ok(None);
     }
     if current == 3 {
-        return Err(super::not_ported(sdk::error::sdk::not_supported(
-            "app version 3: scheduling the v4 upgrade plan",
-        )));
+        // v3 to v4 schedules the v4 upgrade at the block after the upgrade
+        // height (the upgrade handler runs on the v0.50 app). The plan's
+        // `upgrade-info.json` dump is for cosmovisor, not state.
+        schedule_upgrade_v046(
+            ctx,
+            &x_upgrade::canonical_plan(&celestia_proto::cosmos::upgrade::v1beta1::Plan {
+                name: format!("v{}", upgrade.app_version),
+                height: upgrade.upgrade_height + 1,
+                ..Default::default()
+            }),
+        )?;
     }
     consensus_params::set_app_version(ctx, upgrade.app_version)?;
     x_signal::reset_tally(ctx)?;
     Ok(Some(upgrade.app_version))
+}
+
+/// cosmos-sdk v0.46 upgrade `Keeper.ScheduleUpgrade`: a valid plan, not
+/// in the past, not done (v0.46 keys a done upgrade as `0x01 || name`);
+/// the IBC state of a replaced plan is cleared.
+fn schedule_upgrade_v046(
+    ctx: &mut Context<'_>,
+    plan: &celestia_proto::cosmos::upgrade::v1beta1::Plan,
+) -> Result<()> {
+    use prost::Message as _;
+    x_upgrade::validate_plan(plan)?;
+    if plan.height < ctx.header.height {
+        return Err(sdk::error::sdk::invalid_request(
+            "upgrade cannot be scheduled in the past",
+        ));
+    }
+    let done = [&[0x01][..], plan.name.as_bytes()].concat();
+    if ctx.get(x_upgrade::STORE_KEY, &done)?.is_some() {
+        return Err(sdk::error::sdk::invalid_request(format!(
+            "upgrade with name {} has already been completed",
+            plan.name
+        )));
+    }
+    if let Some(old) = x_upgrade::get_upgrade_plan(ctx)? {
+        x_upgrade::clear_ibc_state(ctx, old.height)?;
+    }
+    ctx.set(x_upgrade::STORE_KEY, vec![0x00], plan.encode_to_vec())
 }
 
 #[cfg(test)]

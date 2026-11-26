@@ -8,8 +8,8 @@
 use celestia_proto::Any;
 use celestia_proto::celestia::signal::v1::{MsgSignalVersion, MsgTryUpgrade};
 use prost::Name as _;
-use sdk::Result;
 use sdk::error::sdk as errs;
+use sdk::{Context, Result};
 
 fn decode<M: prost::Message + Default>(msg: &Any) -> Result<M> {
     M::decode(msg.value.as_slice()).map_err(|e| errs::tx_decode(e.to_string()))
@@ -24,6 +24,26 @@ pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
         Some(decode(msg).and_then(|m| x_signal::validate_basic_signal_version(&m)))
     } else if msg.type_url == MsgTryUpgrade::type_url() {
         Some(decode(msg).and_then(|m| x_signal::validate_basic_try_upgrade(&m)))
+    } else {
+        None
+    }
+}
+
+/// The msg server (app versions 2 and 3; v1's gatekeeper rejects both
+/// messages first); `None` for any other message.
+pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
+    if msg.type_url == MsgSignalVersion::type_url() {
+        Some(
+            decode(msg)
+                .and_then(|m| crate::modules::handle_signal_version(ctx, &m))
+                .map(|r| Any::pack(&r)),
+        )
+    } else if msg.type_url == MsgTryUpgrade::type_url() {
+        Some(
+            decode(msg)
+                .and_then(|m| crate::modules::handle_try_upgrade(ctx, &m))
+                .map(|r| Any::pack(&r)),
+        )
     } else {
         None
     }

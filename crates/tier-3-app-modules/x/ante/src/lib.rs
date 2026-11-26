@@ -237,8 +237,8 @@ pub fn ante_handle_in_place(
 /// branch, panic and out-of-gas handling.
 ///
 /// `MsgVersioningGateKeeper` is the caller's (the legacy driver's), and
-/// the CheckTx-only `MaxTotalBlobSize` of app version 1 and `MaxTxSize`
-/// (a no-op below v3) are not ported ([`run_chain_v046`]).
+/// the CheckTx-only `MaxTotalBlobSize` of app version 1 is not ported
+/// ([`run_chain_v046`]).
 ///
 /// Fails without running when cosmos-sdk v0.46 semantics are not active
 /// ([`Context::is_sdk_v046`]).
@@ -397,10 +397,8 @@ pub fn is_v12(ctx: &Context<'_>) -> bool {
 /// celestia-app v3.13.0 `NewAnteHandler` in order. `HandlePanicDecorator`
 /// is [`run_ante_with`]'s panic handling; `MsgVersioningGateKeeper` (before
 /// `SetUpContextDecorator`, it neither reads state nor uses gas) is the
-/// caller's; `MaxTxSizeDecorator` is a no-op below app version 3 and
-/// `MaxTotalBlobSizeDecorator` acts in CheckTx at app version 1 only, so
-/// neither is ported yet: the chain only runs in DeliverTx at app
-/// version 1.
+/// caller's; `MaxTotalBlobSizeDecorator` acts in CheckTx at app version
+/// 1 only, so it is not ported: the chain runs in DeliverTx only.
 fn run_chain_v046<D: AnteDeps>(
     ctx: &mut Context<'_>,
     tx: &sdk::tx::Tx,
@@ -409,6 +407,7 @@ fn run_chain_v046<D: AnteDeps>(
     _: Option<&PendingNextSequence<'_>>,
 ) -> R<i64> {
     setup::set_up_context(ctx, tx, simulate)?;
+    v046::max_tx_size(ctx)?;
     basic::extension_options(tx)?;
     basic::validate_basic(ctx, tx)?;
     basic::timeout_height(ctx, tx)?;
