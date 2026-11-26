@@ -277,6 +277,45 @@ cosmos-sdk v0.46 message schema. The oracle generates both tables
 ./v1-oracle -registry-out ../../crates/tier-3-app-modules/txdecode/src
 ```
 
+#### Synthetic chain for app versions 1 to 3
+
+No public pre-state exists for the v1 to v2 upgrade (mainnet height
+2,371,494) or the v2 to v3 upgrade (2,993,219). `v1-oracle -synthetic`
+builds a small chain that crosses both instead. celestia-app v3.13.0
+runs it in process, as for mainnet:
+
+- Chain ID `test` (signal upgrade delay of 3 blocks), genesis at app
+  version 1, four validators and three accounts. Keys come from fixed
+  seeds, so the output is reproducible.
+- `--v2-upgrade-height 6`: the EndBlocker of block 5 sets app version 2,
+  and Commit runs the v1 to v2 store and module migrations into block 5.
+- Signals and a `MsgTryUpgrade` in block 7 set app version 3 in the
+  EndBlocker of block 10. A second round in block 12 schedules the
+  upgrade plan `v4` at height 16 in the EndBlocker of block 15.
+- The transactions exercise the version-gated rules: fees under the
+  network minimum gas price, signal messages at app versions 1 to 3, and
+  blobs of share versions 0 and 1.
+
+The oracle writes its genesis and blocks next to the usual outputs.
+[`fixtures/synthetic/v1-v3`](fixtures/synthetic/v1-v3) holds them for
+heights 0 to 15. `store-roots.json` also records `upgrade_height_v2`
+and the SHA-256 of `blocks.jsonl`. `go test` in `v1-oracle` rebuilds the
+chain and requires the fixture byte for byte. To regenerate it:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -kv -out "$OUT"
+cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
+  "$OUT"/tx-results.jsonl.gz "$OUT"/kv-diffs.jsonl.gz \
+  "$OUT"/kv-height-0.jsonl.gz ../fixtures/synthetic/v1-v3/
+```
+
+`cargo test -p app --test synthetic_oracle` runs the chain through the
+cosmos-sdk v0.46 driver and compares each block with the oracle: KV
+changes, store roots, app hash, transaction results, events, validator
+updates, consensus params and timeouts. `MATCHED_THROUGH` in the test is
+the last block that matches today.
+
 #### Where checkpoints come from
 
 The QubeLabs archive (`celestia_2026-11-03.tar`, ETag
