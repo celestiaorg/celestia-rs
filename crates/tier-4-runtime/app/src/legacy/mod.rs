@@ -21,6 +21,7 @@
 
 mod app;
 pub(crate) use app::{AppDriver, AppModules, v1_modules};
+pub mod authz;
 pub mod blockers;
 pub mod consensus_params;
 pub mod genesis;

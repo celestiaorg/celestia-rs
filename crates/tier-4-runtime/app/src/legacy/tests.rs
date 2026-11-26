@@ -2324,3 +2324,77 @@ fn v6_recv_packet_validate_basic() {
     let e = recv(1, Vec::new()).unwrap_err();
     assert_eq!((e.codespace, e.code), ("commitment", 2), "{}", e.log);
 }
+
+/// v0.46 authz `ValidateBasic`: addresses, granter == grantee, and the
+/// grant's authorization (a nil one panics, an empty type URL is an
+/// invalid type, a stake authorization needs a type); a not-ported
+/// authorization type aborts the block.
+#[test]
+fn v046_authz_validate_basic() {
+    use celestia_proto::Any;
+    use celestia_proto::cosmos::authz::v1beta1 as authz;
+    use celestia_proto::cosmos::staking::v1beta1 as staking;
+    let a = x_auth::bech32(&[1; 20]).unwrap();
+    let b = x_auth::bech32(&[2; 20]).unwrap();
+    let grant = |granter: &str, grantee: &str, auth: Option<Any>| {
+        msgs::validate_basic(&Any::pack(&authz::MsgGrant {
+            granter: granter.into(),
+            grantee: grantee.into(),
+            grant: Some(authz::Grant {
+                authorization: auth,
+                expiration: None,
+            }),
+        }))
+    };
+    let generic = Any::pack(&authz::GenericAuthorization { msg: "x".into() });
+    grant(&a, &b, Some(generic.clone())).unwrap();
+    let e = grant(&a, &a, Some(generic.clone())).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("authz", 7));
+    let e = grant("x", &b, Some(generic)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 7));
+    assert!(e.log.starts_with("invalid granter address"), "{}", e.log);
+    let e = sdk::error::recover(|| grant(&a, &b, None)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("undefined", 111_222));
+    let empty = Any {
+        type_url: String::new(),
+        value: Vec::new(),
+    };
+    let e = grant(&a, &b, Some(empty)).unwrap_err();
+    assert_eq!(e.log, "expected <nil>, got <nil>: invalid type");
+    let stake = |t: i32| {
+        Some(Any::pack(&staking::StakeAuthorization {
+            max_tokens: None,
+            authorization_type: t,
+            policy: None,
+        }))
+    };
+    grant(&a, &b, stake(1)).unwrap();
+    let e = grant(&a, &b, stake(0)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("authz", 4));
+    let _ = take_not_ported();
+    let send = Any::pack(&celestia_proto::cosmos::bank::v1beta1::SendAuthorization::default());
+    grant(&a, &b, Some(send)).unwrap_err();
+    assert!(take_not_ported().is_some());
+
+    let exec = |grantee: &str, n: usize| {
+        msgs::validate_basic(&Any::pack(&authz::MsgExec {
+            grantee: grantee.into(),
+            msgs: vec![Any::pack(&authz::GenericAuthorization::default()); n],
+        }))
+    };
+    exec(&a, 1).unwrap();
+    assert_eq!(exec(&a, 0).unwrap_err().code, 18);
+    assert_eq!(exec("x", 1).unwrap_err().code, 7);
+    let revoke = |t: &str| {
+        msgs::validate_basic(&Any::pack(&authz::MsgRevoke {
+            granter: a.clone(),
+            grantee: b.clone(),
+            msg_type_url: t.into(),
+        }))
+    };
+    revoke("x").unwrap();
+    assert_eq!(
+        revoke("").unwrap_err().log,
+        "missing method name: invalid request"
+    );
+}
