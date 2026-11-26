@@ -103,6 +103,33 @@ impl statesync::AppConn for SnapshotConn {
     }
 }
 
+/// Block sync's data check for committed blocks of historical app
+/// versions ([`app::proposal::verify_committed_block_data`]): the txs must
+/// rebuild the committed data root. Blocks of app version 9 and later go
+/// to ProcessProposal.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct HistoricalDataRoot;
+
+impl blocksync::CommittedDataCheck for HistoricalDataRoot {
+    fn check(&self, block: &ctypes::Block) -> Option<Result<(), String>> {
+        let version = block.header.version.app;
+        if !(1..=app::proposal::LAST_DATA_ROOT_ONLY_APP_VERSION).contains(&version) {
+            return None;
+        }
+        let txs: Vec<Vec<u8>> = block.data.txs.iter().map(|tx| tx.0.clone()).collect();
+        app::proposal::verify_committed_block_data(version, &txs, &block.header.data_hash)
+    }
+}
+
+/// The node's block sync options.
+pub(crate) fn blocksync_options(local_addr: Option<Vec<u8>>) -> blocksync::ReactorOptions {
+    blocksync::ReactorOptions {
+        local_addr,
+        committed_data_check: Some(Arc::new(HistoricalDataRoot)),
+        ..blocksync::ReactorOptions::default()
+    }
+}
+
 /// Creates the block sync, evidence and state sync reactors and adds them
 /// to the switch.
 #[allow(clippy::too_many_arguments)]
@@ -122,10 +149,7 @@ pub fn add_sync_reactors(
             bs.clone(),
             ss.clone(),
             0,
-            blocksync::ReactorOptions {
-                local_addr,
-                ..blocksync::ReactorOptions::default()
-            },
+            blocksync_options(local_addr),
         )
         .map_err(|e| anyhow!("{e}"))?,
     );
@@ -247,6 +271,36 @@ pub fn block_sync(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Block sync checks committed v1 to v8 blocks by data root and asks
+    /// ProcessProposal for v9 and later.
+    #[test]
+    fn historical_data_root_check() {
+        use blocksync::CommittedDataCheck as _;
+        let empty_root =
+            hex::decode("3d96b7d238e7e0456f6af8e7cdf0a67bd6cf9c2089ecb559c659dcaa1f880353")
+                .unwrap();
+        let mut block = ctypes::Block::default();
+        block.header.data_hash.clone_from(&empty_root);
+        for v in [1, 3, 4, 8] {
+            block.header.version.app = v;
+            assert_eq!(HistoricalDataRoot.check(&block), Some(Ok(())), "v{v}");
+        }
+        block.header.data_hash = vec![0; 32];
+        block.header.version.app = 1;
+        assert!(matches!(HistoricalDataRoot.check(&block), Some(Err(_))));
+        for v in [9, 10] {
+            block.header.version.app = v;
+            assert_eq!(HistoricalDataRoot.check(&block), None, "v{v}");
+        }
+    }
+
+    #[test]
+    fn sync_reactor_options_use_historical_data_root() {
+        let opts = blocksync_options(None);
+        assert!(opts.verify_data);
+        assert!(opts.committed_data_check.is_some());
+    }
 
     struct NoApp;
 
