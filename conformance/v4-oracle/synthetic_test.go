@@ -1,7 +1,11 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
+	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,10 +36,13 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 	}{
 		{"v1-v3", "v1-v3", "v1-v3", "v4", nil},
 		// The same chain on to the v5 hand-off (conformance/v5-oracle).
+		// It leaves the committed home-25, which v5-oracle starts from.
 		{"v1-v3-to-v5", "v1-v3", "v1-v3", "v4-to-v5", []string{"-heights", "10", "-next-handoff"}},
 		{"v3-rich", "v3-rich", "v3-rich", "v3-rich-v4", nil},
 		// Only the history chain's genesis is committed on the v3 side.
 		{"v3-history", "v3-history", "v3-history", "v3-history-v4", nil},
+		// A transfer channel opened at app version 3, used at version 4.
+		{"v3-ibc", "v3-ibc", "v3-ibc", "v3-ibc-v4", nil},
 	} {
 		t.Run(c.name, func(t *testing.T) { requireReproducible(t, v1, c.chain, c.v1Dir, c.v4Dir, c.args) })
 	}
@@ -69,6 +76,78 @@ func requireReproducible(t *testing.T, v1, chain, v1Dir, v4Dir string, args []st
 	}
 	for _, name := range fixtureFiles {
 		requireSame(t, filepath.Join("..", "fixtures", "synthetic", v4Dir, name), filepath.Join(out, name))
+	}
+	if len(args) > 0 {
+		requireHome(t, filepath.Join("..", "fixtures", "synthetic", "homes", "home-25.tar.gz"), home)
+	}
+}
+
+// requireHome requires the home that a -next-handoff run left to hold the
+// committed home's handoff.json and data/upgrade-info.json: handoff.json
+// records the app hash, which commits to every store.
+func requireHome(t *testing.T, archive, home string) {
+	t.Helper()
+	want := t.TempDir()
+	if err := untar(archive, want); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"handoff.json", filepath.Join("data", "upgrade-info.json")} {
+		w, err := os.ReadFile(filepath.Join(want, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, err := os.ReadFile(filepath.Join(home, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(g, w) {
+			t.Errorf("%s in %s differs from the home this run left; regenerate it (conformance/README.md)", name, archive)
+		}
+	}
+}
+
+// untar extracts a .tar.gz of regular files and directories into dir.
+func untar(archive, dir string) error {
+	f, err := os.Open(archive)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	tr := tar.NewReader(gz)
+	for {
+		h, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(dir, filepath.Clean("/"+h.Name))
+		switch h.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(path, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				return err
+			}
+			out, err := os.Create(path)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(out, tr); err != nil {
+				out.Close()
+				return err
+			}
+			if err := out.Close(); err != nil {
+				return err
+			}
+		}
 	}
 }
 
