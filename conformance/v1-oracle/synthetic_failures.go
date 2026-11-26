@@ -16,7 +16,8 @@ package main
 //     reward withdrawal without a delegation, an undelegation of more
 //     than the delegation, a delegation to a non-validator, a redelegation to the
 //     same validator, a send to a blocked module account, an eighth
-//     unbonding entry);
+//     unbonding entry, out of gas in MsgDelegate and MsgUndelegate, a
+//     delegation above the balance, a vote on an unknown proposal);
 //   - round 2: a transitive redelegation, MsgExec of an expired grant, a
 //     fee allowance spent past its limit and an expired one.
 //
@@ -39,6 +40,7 @@ import (
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	"github.com/cosmos/cosmos-sdk/x/feegrant"
+	govv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
@@ -52,12 +54,12 @@ var failUsers = append([]string{
 	"f-memo", "f-timeout",
 	// message failures
 	"f-rollback", "f-noauth", "f-nofeegrant", "f-dist", "f-del-unknown",
-	"f-blocked",
+	"f-blocked", "f-oog-del", "f-del-poor", "f-vote-unknown",
 }, failPhaseUsers()...)
 
 // failPerPhase are cases whose grant or delegation of round 0 must be
 // fresh in each phase: one account per phase.
-var failPerPhase = []string{"f-grantee", "f-fee-limit", "f-fee-expire", "f-redel-self", "f-undel"}
+var failPerPhase = []string{"f-grantee", "f-fee-limit", "f-fee-expire", "f-redel-self", "f-undel", "f-oog-undel"}
 
 func failPhaseUsers() []string {
 	var out []string
@@ -144,6 +146,7 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 		tx("f-unbond", stakingtypes.NewMsgDelegate(b.addr("f-unbond"), val0, coin(10*tia)))
 		tx(ph("f-redel-self"), stakingtypes.NewMsgDelegate(b.addr(ph("f-redel-self")), val0, coin(tia)))
 		tx(ph("f-undel"), stakingtypes.NewMsgDelegate(b.addr(ph("f-undel")), val0, coin(tia)))
+		tx(ph("f-oog-undel"), stakingtypes.NewMsgDelegate(b.addr(ph("f-oog-undel")), val0, coin(tia)))
 		add(func() error {
 			g, err := authz.NewMsgGrant(b.addr("f-granter"), b.addr(ph("f-grantee")),
 				authz.NewGenericAuthorization(sdk.MsgTypeURL(&banktypes.MsgSend{})), &expiry)
@@ -208,6 +211,13 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 		tx("f-del-unknown", stakingtypes.NewMsgDelegate(b.addr("f-del-unknown"), b.valAddr("alice"), coin(tia)))
 		tx(ph("f-redel-self"), stakingtypes.NewMsgBeginRedelegate(b.addr(ph("f-redel-self")), val0, val0, coin(tia)))
 		tx("f-blocked", banktypes.NewMsgSend(b.addr("f-blocked"), authtypes.NewModuleAddress(distrtypes.ModuleName), coins(1)))
+		// Mainnet's out-of-gas staking messages had a 100,000 gas limit.
+		with("f-oog-del", func(f clienttx.Factory) clienttx.Factory { return f.WithGas(100_000) },
+			stakingtypes.NewMsgDelegate(b.addr("f-oog-del"), val0, coin(tia)))
+		with(ph("f-oog-undel"), func(f clienttx.Factory) clienttx.Factory { return f.WithGas(100_000) },
+			stakingtypes.NewMsgUndelegate(b.addr(ph("f-oog-undel")), val0, coin(tia/2)))
+		tx("f-del-poor", stakingtypes.NewMsgDelegate(b.addr("f-del-poor"), val0, coin(1_000_000*tia)))
+		tx("f-vote-unknown", govv1beta1.NewMsgVote(b.addr("f-vote-unknown"), 999, govv1beta1.OptionYes))
 		undel := make([]sdk.Msg, 8)
 		for i := range undel {
 			undel[i] = stakingtypes.NewMsgUndelegate(b.addr("f-unbond"), val0, coin(tia/10))

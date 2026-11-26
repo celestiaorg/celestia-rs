@@ -621,8 +621,10 @@ fail at the same point of the ante handler or message handler as Go:
   limit and an expired one, a reward withdrawal without a delegation, an
   undelegation of more than the delegation, a delegation to an account
   that is not a validator, a redelegation to the same validator, a
-  transitive redelegation, a send to a blocked module account, and an
-  eighth unbonding entry.
+  transitive redelegation, a send to a blocked module account, an eighth
+  unbonding entry, out of gas in `MsgDelegate` and `MsgUndelegate` (at
+  100,000 gas, as mainnet had), a delegation above the balance, and a
+  vote on an unknown proposal.
 
 Blob transactions that fail `ValidateBasic` are not in it: ProcessProposal
 rejects a block that holds one. [`fixtures/synthetic/failures-v1-v3`](fixtures/synthetic/failures-v1-v3)
@@ -706,8 +708,10 @@ ibc-go simapp chains as counterparties:
   transfer times out on B and is refunded on A. Last come redundant
   relays, as racing relayers send them: the timeout again, an
   acknowledgement of an acknowledged packet, and a packet from B that A
-  receives twice. ibc-go v6 gives each a `NOOP` result (code 0). The
-  fixture keeps its `ibc-v2` name.
+  receives twice. ibc-go v6 gives each a `NOOP` result (code 0). Then
+  three failures that mainnet has: a transfer of more than the balance, a
+  transfer whose timeout height B has passed, and an open-ack of an open
+  channel. The fixture keeps its `ibc-v2` name.
 
 The test records A's genesis, each BeginBlock header and the
 transactions of each block. It replays them in a fresh app through the

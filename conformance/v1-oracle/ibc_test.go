@@ -55,6 +55,7 @@ import (
 	host "github.com/cosmos/ibc-go/v6/modules/core/24-host"
 	ibctesting "github.com/cosmos/ibc-go/v6/testing"
 	"github.com/cosmos/ibc-go/v6/testing/mock"
+	ibcsimapp "github.com/cosmos/ibc-go/v6/testing/simapp"
 	proto "github.com/gogo/protobuf/proto"
 	abci "github.com/tendermint/tendermint/abci/types"
 	tmjson "github.com/tendermint/tendermint/libs/json"
@@ -1065,4 +1066,32 @@ func runTransferAuthzAndTimeout(t *testing.T, coord *ibctesting.Coordinator, cha
 		_, err = chainA.SendMsgs(recv)
 		must(t, err)
 	}
+
+	// Failures mainnet has: a transfer of more than the balance (sdk 5),
+	// a transfer whose timeout height B has passed (channel 14), and an
+	// open-ack of an open channel (channel 5).
+	sendFailing(t, chainA, transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		sdk.NewInt64Coin(appconsts.BondDenom, 1_000_000_000_000_000), chainA.SenderAccount.GetAddress().String(),
+		chainB.SenderAccount.GetAddress().String(), clienttypes.NewHeight(1, 10_000), 0, ""))
+	sendFailing(t, chainA, transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		sdk.NewInt64Coin(appconsts.BondDenom, 1_000), chainA.SenderAccount.GetAddress().String(),
+		chainB.SenderAccount.GetAddress().String(), clienttypes.NewHeight(0, 1), 0, ""))
+	sendFailing(t, chainA, channeltypes.NewMsgChannelOpenAck(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		pathAB.EndpointB.ChannelID, transfertypes.Version, []byte{1}, clienttypes.NewHeight(0, 1),
+		chainA.SenderAccount.GetAddress().String()))
+}
+
+// sendFailing delivers a transaction whose messages fail after the ante
+// handler, then moves the chain on as SendMsgs does after a success.
+func sendFailing(t *testing.T, chain *ibctesting.TestChain, msgs ...sdk.Msg) {
+	chain.Coordinator.UpdateTimeForChain(chain)
+	_, _, err := ibcsimapp.SignAndDeliver(t, chain.TxConfig, chain.App.GetBaseApp(), chain.GetContext().BlockHeader(),
+		msgs, chain.ChainID, []uint64{chain.SenderAccount.GetAccountNumber()},
+		[]uint64{chain.SenderAccount.GetSequence()}, true, false, chain.SenderPrivKey)
+	if err == nil {
+		t.Fatal("transaction passed")
+	}
+	chain.NextBlock()
+	must(t, chain.SenderAccount.SetSequence(chain.SenderAccount.GetSequence()+1))
+	chain.Coordinator.IncrementTime()
 }
