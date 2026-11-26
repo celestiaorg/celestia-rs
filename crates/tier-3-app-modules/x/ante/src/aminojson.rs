@@ -117,7 +117,72 @@ struct Exts {
 /// numbers, no map support).
 pub struct Encoder {
     ext: Exts,
+    /// Inside a cosmos-sdk v0.46 authz message, whose `GetSignBytes`
+    /// marshals with the authz amino codec ([`V046_AUTHZ_AMINO`]).
+    authz_amino: std::cell::Cell<bool>,
 }
+
+/// The concrete types registered on cosmos-sdk v0.46's `authzcodec.Amino`
+/// (each module's `RegisterLegacyAminoCodec(authzcodec.Amino)`, crypto and
+/// evidence). go-amino writes any other concrete type packed in an authz
+/// message as its bare value, without `{"type","value"}`: e.g. ibc-go v6's
+/// `MsgTransfer` and `TransferAuthorization`, celestia's messages.
+const V046_AUTHZ_AMINO: &[&str] = &[
+    "/cosmos.auth.v1beta1.BaseAccount",
+    "/cosmos.auth.v1beta1.ModuleAccount",
+    "/cosmos.authz.v1beta1.GenericAuthorization",
+    "/cosmos.authz.v1beta1.MsgExec",
+    "/cosmos.authz.v1beta1.MsgGrant",
+    "/cosmos.authz.v1beta1.MsgRevoke",
+    "/cosmos.bank.v1beta1.MsgMultiSend",
+    "/cosmos.bank.v1beta1.MsgSend",
+    "/cosmos.bank.v1beta1.SendAuthorization",
+    "/cosmos.crisis.v1beta1.MsgVerifyInvariant",
+    "/cosmos.crypto.ed25519.PubKey",
+    "/cosmos.crypto.multisig.LegacyAminoPubKey",
+    "/cosmos.crypto.secp256k1.PubKey",
+    "/cosmos.distribution.v1beta1.CommunityPoolSpendProposal",
+    "/cosmos.distribution.v1beta1.MsgFundCommunityPool",
+    "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress",
+    "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward",
+    "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission",
+    "/cosmos.evidence.v1beta1.Equivocation",
+    "/cosmos.evidence.v1beta1.MsgSubmitEvidence",
+    "/cosmos.feegrant.v1beta1.AllowedMsgAllowance",
+    "/cosmos.feegrant.v1beta1.BasicAllowance",
+    "/cosmos.feegrant.v1beta1.MsgGrantAllowance",
+    "/cosmos.feegrant.v1beta1.MsgRevokeAllowance",
+    "/cosmos.feegrant.v1beta1.PeriodicAllowance",
+    "/cosmos.gov.v1.MsgDeposit",
+    "/cosmos.gov.v1.MsgExecLegacyContent",
+    "/cosmos.gov.v1.MsgSubmitProposal",
+    "/cosmos.gov.v1.MsgVote",
+    "/cosmos.gov.v1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.MsgDeposit",
+    "/cosmos.gov.v1beta1.MsgSubmitProposal",
+    "/cosmos.gov.v1beta1.MsgVote",
+    "/cosmos.gov.v1beta1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.TextProposal",
+    "/cosmos.slashing.v1beta1.MsgUnjail",
+    "/cosmos.staking.v1beta1.MsgBeginRedelegate",
+    "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation",
+    "/cosmos.staking.v1beta1.MsgCreateValidator",
+    "/cosmos.staking.v1beta1.MsgDelegate",
+    "/cosmos.staking.v1beta1.MsgEditValidator",
+    "/cosmos.staking.v1beta1.MsgUndelegate",
+    "/cosmos.staking.v1beta1.StakeAuthorization",
+    "/cosmos.upgrade.v1beta1.CancelSoftwareUpgradeProposal",
+    "/cosmos.upgrade.v1beta1.MsgCancelUpgrade",
+    "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+    "/cosmos.upgrade.v1beta1.SoftwareUpgradeProposal",
+    "/cosmos.vesting.v1beta1.BaseVestingAccount",
+    "/cosmos.vesting.v1beta1.ContinuousVestingAccount",
+    "/cosmos.vesting.v1beta1.DelayedVestingAccount",
+    "/cosmos.vesting.v1beta1.MsgCreatePermanentLockedAccount",
+    "/cosmos.vesting.v1beta1.MsgCreateVestingAccount",
+    "/cosmos.vesting.v1beta1.PeriodicVestingAccount",
+    "/cosmos.vesting.v1beta1.PermanentLockedAccount",
+];
 
 fn ext(name: &str) -> Res<ExtensionDescriptor> {
     pool()
@@ -333,6 +398,7 @@ impl Encoder {
                 scalar: ext("cosmos_proto.scalar")?,
                 customtype: ext("gogoproto.customtype")?,
             },
+            authz_amino: std::cell::Cell::new(false),
         })
     }
 
@@ -359,7 +425,21 @@ impl Encoder {
             value
         };
         let msg = DynamicMessage::decode(desc, value.as_slice()).map_err(|e| e.to_string())?;
-        self.begin_marshal(&msg, w, true)
+        // cosmos-sdk v0.46: an authz message's `GetSignBytes` marshals with
+        // the authz amino codec, which writes a concrete type it does not
+        // register as its bare value.
+        let v046 = sdk::version::is_sdk_v046(0);
+        if v046 && self.authz_amino.get() {
+            if V046_AUTHZ_AMINO.binary_search(&type_url).is_err() {
+                return self.marshal_message(&msg, w);
+            }
+            return self.begin_marshal(&msg, w, true);
+        }
+        let authz = v046 && type_url.starts_with("/cosmos.authz.v1beta1.Msg");
+        self.authz_amino.set(authz);
+        let r = self.begin_marshal(&msg, w, true);
+        self.authz_amino.set(false);
+        r
     }
 
     fn begin_marshal(&self, msg: &DynamicMessage, w: &mut String, is_any: bool) -> Res<()> {
@@ -1034,6 +1114,12 @@ mod tests {
             "2023-11-14T22:13:20.5Z"
         );
         assert_eq!(format_rfc3339(-1, 0), "1969-12-31T23:59:59Z");
+    }
+
+    /// [`V046_AUTHZ_AMINO`] is searched by bisection.
+    #[test]
+    fn v046_authz_amino_is_sorted() {
+        assert!(V046_AUTHZ_AMINO.windows(2).all(|w| w[0] < w[1]));
     }
 
     #[test]

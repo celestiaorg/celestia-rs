@@ -55,3 +55,53 @@ fn v046_amino_json_writes_an_unset_non_nullable_message_as_empty() {
     let pk = x_ante::pubkey::PubKey::from_any(&pk_any).unwrap();
     assert!(pk.verify_signature(&bytes, &raw_tx.signatures[0]).unwrap());
 }
+
+/// Mainnet block 558496, tx 2: a `MsgExec` of an ibc-go v6 `MsgTransfer`
+/// (with `timeout_height` and a memo), signed with
+/// `SIGN_MODE_LEGACY_AMINO_JSON` by account 259624 at sequence 1375 (Go
+/// accepted it).
+const EXEC_TRANSFER_TX: &[&str] = &[
+    "0a9f030a9c030a1d2f636f736d6f732e617574687a2e763162657461312e4d73674578656312fa020a2f63656c657374",
+    "696131666c38357168397077346a7534387a793265717238683068366438687767707135383830776412c6020a292f69",
+    "62632e6170706c69636174696f6e732e7472616e736665722e76312e4d73675472616e736665721298020a087472616e",
+    "7366657212096368616e6e656c2d321a100a047574696112083330363233333339222f63656c65737469613176723030",
+    "656772636b38613064617836386667676c726d336e387634797a39776a6a37636a322a3f6f736d6f3166357666637068",
+    "32647666657163716b6865747776373566646136397a3765356332646c646d336b76676a323363726b76367771636e34",
+    "3761303207080110e9efa90642747b227761736d223a7b22636f6e7472616374223a226f736d6f316635766663706832",
+    "647666657163716b6865747776373566646136397a3765356332646c646d336b76676a323363726b76367771636e3437",
+    "6130222c226d7367223a7b22726563656976655f72657761726473223a7b7d7d7d7d12670a510a460a1f2f636f736d6f",
+    "732e63727970746f2e736563703235366b312e5075624b657912230a21034c2b762207b57e9de1c299e47fb238fa8728",
+    "0a601ea93919a0a0741aeca5c13412040a02087f18df0a12120a0c0a047574696112043234373710b7c7071a40240c57",
+    "73d496abfea2ef5d72ebb53bf42be5cfff53d41a517d234443a430cf4074c90667f8a97dfc8e2f0da099e9d6e7e9d278",
+    "419f13158c5c83e3a94c777fbc",
+];
+
+/// v0.46 `MsgExec.GetSignBytes` marshals its messages with the authz
+/// amino codec, where ibc-go v6 does not register `MsgTransfer`: go-amino
+/// writes an unregistered concrete type as its bare value, without the
+/// `{"type","value"}` wrapper. The mainnet signature verifies.
+#[test]
+fn v046_amino_json_writes_an_unregistered_exec_message_bare() {
+    let raw = hex::decode(EXEC_TRANSFER_TX.concat()).unwrap();
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let tx = txdecode::decode_v1(&raw).unwrap();
+    let sd = x_ante::signing::SignerData {
+        address: "celestia1fl85qh9pw4ju48zy2eqr8h0h6d8hwgpq5880wd".into(),
+        chain_id: "celestia".into(),
+        account_number: 259_624,
+        sequence: 1375,
+        pub_key: celestia_proto::Any::default(),
+    };
+    let bytes = x_ante::aminojson::sign_bytes(&sd, &tx).unwrap();
+    let text = String::from_utf8(bytes.clone()).unwrap();
+    assert!(text.contains(r#""type":"cosmos-sdk/MsgExec""#), "{text}");
+    assert!(!text.contains("cosmos-sdk/MsgTransfer"), "{text}");
+    let raw_tx = TxRaw::decode(raw.as_slice()).unwrap();
+    let auth = AuthInfo::decode(raw_tx.auth_info_bytes.as_slice()).unwrap();
+    let pk_any = auth.signer_infos[0].public_key.clone().unwrap();
+    let pk = x_ante::pubkey::PubKey::from_any(&pk_any).unwrap();
+    assert!(
+        pk.verify_signature(&bytes, &raw_tx.signatures[0]).unwrap(),
+        "{text}"
+    );
+}
