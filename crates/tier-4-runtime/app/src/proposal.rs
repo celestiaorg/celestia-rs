@@ -767,6 +767,7 @@ fn fill_v9(
         within_bytes.push(tx);
     }
     // separateTxs (v9): no fibre txs exist at app version 9.
+    let rejects_duplicates = ctx.release().rejects_duplicate_tx_raw_fields();
     let mut normal: Vec<&[u8]> = Vec::new();
     let mut blobs: Vec<UnwrappedBlobTx> = Vec::new();
     for raw in within_bytes {
@@ -778,7 +779,7 @@ fn fill_v9(
             Some(Ok(u)) => u.tx.as_slice(),
             _ => raw,
         };
-        if txdecode::has_duplicate_tx_raw_field(sdk_bytes) {
+        if rejects_duplicates && txdecode::has_duplicate_tx_raw_field(sdk_bytes) {
             continue;
         }
         match b {
