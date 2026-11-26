@@ -12,11 +12,13 @@
 //! and the thread's previous state is restored when the call returns.
 //! [`crate::App`] routes InitChain, FinalizeBlock and Commit here for a
 //! cosmos-sdk v0.46 state ([`app`]); only releases that run as themselves
-//! execute ([`executes`]: app version 1). The EndBlocker's app version
-//! change ([`upgrade`]) and the migrations that `Commit` runs for it in
-//! Go ([`migrate`]) are part of the block here, before its app hash. App
-//! versions 2 and 3 still run as v9 elsewhere and stop with an error on
-//! a v0.46 state; app versions 4 and later never come here.
+//! start from genesis ([`executes`]: app version 1); blocks execute at
+//! app versions 1 to 3. The EndBlocker's app version change
+//! ([`upgrade`]) and the migrations that `Commit` runs for it in Go
+//! ([`migrate`]) are part of the block here, before its app hash. App
+//! version 4 (scheduled by the last app version 3 block) runs on the
+//! cosmos-sdk v0.50 app; a v0.46 state at app version 4 stops with an
+//! error.
 //!
 //! Reference: cosmos-sdk `v1.31.2-sdk-v0.46.16` `baseapp/abci.go` and
 //! `baseapp/baseapp.go`, celestia-app v3.13.0 `app/app.go`.
@@ -37,6 +39,7 @@ pub mod ibc_transfer;
 pub mod migrate;
 pub mod msgs;
 pub mod params;
+pub mod pfm;
 pub mod qgb;
 pub mod signal;
 pub mod tx;

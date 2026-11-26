@@ -16,6 +16,26 @@ fn app_version(ctx: &Context<'_>) -> u64 {
     ctx.consensus_params.version.as_ref().map_or(0, |v| v.app)
 }
 
+/// celestia-app v3 `appconsts.MaxTxSize` (2 MiB).
+pub const MAX_TX_SIZE_V3: usize = 2_097_152;
+
+/// `MaxTxSizeDecorator`: from app version 3, a transaction larger than
+/// `MaxTxSize` fails (also in DeliverTx), with a plain Go error.
+pub fn max_tx_size(ctx: &Context<'_>) -> R<()> {
+    if app_version(ctx) < 3 {
+        return Ok(());
+    }
+    let size = ctx.tx_bytes.len();
+    if size > MAX_TX_SIZE_V3 {
+        return Err(sdk::error::internal(format!(
+            "tx size {size} bytes is larger than the application's configured threshold of {MAX_TX_SIZE_V3} bytes. Please reduce the size by {} bytes",
+            size - MAX_TX_SIZE_V3
+        ))
+        .into());
+    }
+    Ok(())
+}
+
 /// `ValidateMemoDecorator`: reads the auth params for every tx.
 pub fn validate_memo(ctx: &mut Context<'_>, tx: &Tx) -> R<()> {
     let params = x_auth::get_params(ctx)?;
@@ -173,4 +193,29 @@ pub fn gov_proposal(tx: &Tx) -> R<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use celestia_proto::celestia_core_proto::tendermint::types::{ConsensusParams, VersionParams};
+    use sdk::{ExecMode, Header, MultiStore};
+
+    #[test]
+    fn max_tx_size_applies_from_app_version_3() {
+        let mut ms = MultiStore::new();
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        for (app, size, ok) in [
+            (2, MAX_TX_SIZE_V3 + 1, true),
+            (3, MAX_TX_SIZE_V3, true),
+            (3, MAX_TX_SIZE_V3 + 1, false),
+        ] {
+            ctx.consensus_params = ConsensusParams {
+                version: Some(VersionParams { app }),
+                ..ConsensusParams::default()
+            };
+            ctx.tx_bytes = vec![0; size];
+            assert_eq!(max_tx_size(&ctx).is_ok(), ok, "app {app} size {size}");
+        }
+    }
 }

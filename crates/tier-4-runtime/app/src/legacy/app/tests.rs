@@ -236,24 +236,24 @@ fn v2_and_v3_genesis_is_not_supported() {
     }
 }
 
-/// A v0.46 state whose app version became 2 stops at the next block with
+/// A v0.46 state whose app version became 4 stops at the next block with
 /// a clear error.
 #[test]
-fn v046_state_at_app_version_2_does_not_execute() {
+fn v046_state_at_app_version_4_does_not_execute() {
     let mut app = App::new();
     app.set_legacy_modules(counter);
     app.init_chain(init_request(1)).unwrap();
     run(&mut app, 1..=1);
     let mut ctx = Context::new(&mut app.ms, sdk::Header::default(), sdk::ExecMode::Finalize);
-    super::super::consensus_params::set_initial_app_version(&mut ctx, 2).unwrap();
+    super::super::consensus_params::set_initial_app_version(&mut ctx, 4).unwrap();
     drop(ctx);
     app.ms.flush().unwrap();
     app.ms.commit().unwrap();
     app.load_committed_state().unwrap();
-    assert_eq!(app.info().app_version, 2);
+    assert_eq!(app.info().app_version, 4);
     let e = app.finalize_block(finalize_request(3)).unwrap_err();
     assert!(
-        e.log.contains("block execution at app version 2"),
+        e.log.contains("block execution at app version 4"),
         "{}",
         e.log
     );
