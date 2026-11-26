@@ -44,57 +44,13 @@ fn mode(name: &str) -> i32 {
 }
 
 /// Known divergences from Go, as `(release, vector name, sign mode)`:
-/// Go's x/tx amino-JSON encoder fails on these and celestia-rs signs. They
-/// are rule gaps (owned by the rules workstream), not oracle errors. The
-/// test asserts this list exactly: a new divergence fails it, and so does a
-/// fix that leaves its entry here (delete the entry with the fix).
-///
-/// - `MsgEnrollRemoteRouter` in v4.1.0 to v6.4.4 (hyperlane-cosmos
-///   v1.0.1): `hyperlane.warp.v1.RemoteRouter: {TagNum: 1, WireType:"varint"}:
-///   unknown protobuf field`. Go fails on the first field present, so with
-///   `receiver_domain = 0` (`(domain0)`) it reports `{TagNum: 2,
-///   WireType:"bytes"}`. With no `remote_router` (`(no router)`) Go signs,
-///   and so does celestia-rs.
-/// - `MsgCreateVestingAccount` with a start time in v4.1.0:
-///   `cosmos.vesting.v1beta1.MsgCreateVestingAccount: {TagNum: 6, ...}:
-///   unknown protobuf field` (the fork's `start_time`).
-const KNOWN_DIVERGENCES: &[(&str, &str, &str)] = &[
-    (
-        "v4",
-        "warp/MsgEnrollRemoteRouter",
-        "SIGN_MODE_LEGACY_AMINO_JSON",
-    ),
-    (
-        "v4",
-        "warp/MsgEnrollRemoteRouter(domain0)",
-        "SIGN_MODE_LEGACY_AMINO_JSON",
-    ),
-    (
-        "v4",
-        "vesting/MsgCreateVestingAccount",
-        "SIGN_MODE_LEGACY_AMINO_JSON",
-    ),
-    (
-        "v5",
-        "warp/MsgEnrollRemoteRouter",
-        "SIGN_MODE_LEGACY_AMINO_JSON",
-    ),
-    (
-        "v5",
-        "warp/MsgEnrollRemoteRouter(domain0)",
-        "SIGN_MODE_LEGACY_AMINO_JSON",
-    ),
-    (
-        "v6",
-        "warp/MsgEnrollRemoteRouter",
-        "SIGN_MODE_LEGACY_AMINO_JSON",
-    ),
-    (
-        "v6",
-        "warp/MsgEnrollRemoteRouter(domain0)",
-        "SIGN_MODE_LEGACY_AMINO_JSON",
-    ),
-];
+/// vectors where celestia-rs and Go's x/tx encoder disagree. The test
+/// asserts this list exactly: a new divergence fails it, and so does a fix
+/// that leaves its entry here (delete the entry with the fix). It is empty
+/// since the per-release amino JSON fixes for `MsgEnrollRemoteRouter`
+/// (v4.1.0 to v6.4.4) and `MsgCreateVestingAccount` with a start time
+/// (v4.1.0).
+const KNOWN_DIVERGENCES: &[(&str, &str, &str)] = &[];
 
 /// Runs every vector of `release` at `app_version` and requires the vectors
 /// whose outcome differs from Go to be exactly the release's
