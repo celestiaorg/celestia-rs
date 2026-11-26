@@ -2,7 +2,9 @@
 //! InitChain and blocks 1 to 15 of `conformance/fixtures/synthetic/v1-v3`
 //! on the cosmos-sdk v0.46 driver, then the first cosmos-sdk v0.50 block
 //! (16, `conformance/fixtures/synthetic/v4`), where the app switches its
-//! store set and runs plan `v4`.
+//! store set and runs plan `v4`, and the v4 blocks 17 to 20. Every block's
+//! app hash must equal Go's, so the app syncs the synthetic chain from
+//! genesis to block 20.
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
@@ -24,14 +26,8 @@ const V4: &str = concat!(
 );
 const HANDOFF: i64 = 15;
 const UPGRADE: i64 = 16;
-
-/// Stores of block 16 that depend on app version 4's own rules, which run
-/// once app version 4 executes as itself (`Release::runs_as`, workstream
-/// B): the mint BeginBlocker's CIP-29 inflation (5.36% at v4 and v5;
-/// celestia-rs runs app version 4 as v9, with CIP-41's 2.67%), which
-/// changes the minted provision, the supply, the fee collector and the
-/// distribution rewards. Every other store must match Go now.
-const PENDING_V4_RULES: &[&str] = &["bank", "distribution", "mint"];
+/// The last block of the v4 fixture.
+const LAST: i64 = 20;
 
 fn json(path: &str) -> serde_json::Value {
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
@@ -52,8 +48,8 @@ fn by_height(path: &str, field: &str) -> BTreeMap<i64, serde_json::Value> {
 
 /// The v4 oracle's state at `height` (hand-off state plus each block's
 /// changes), by store.
-fn v4_state(height: i64) -> BTreeMap<String, Kv> {
-    let mut state: BTreeMap<String, Kv> = common::gz_lines(&format!("{V4}/kv-handoff.jsonl.gz"))
+fn v4_state(v4: &str, height: i64) -> BTreeMap<String, Kv> {
+    let mut state: BTreeMap<String, Kv> = common::gz_lines(&format!("{v4}/kv-handoff.jsonl.gz"))
         .map(|d| {
             let kv = d["kv"]
                 .as_array()
@@ -70,7 +66,7 @@ fn v4_state(height: i64) -> BTreeMap<String, Kv> {
         })
         .collect();
     state.remove("mem_capability");
-    for (h, stores) in common::diffs_in(&format!("{V4}/kv-diffs.jsonl.gz")) {
+    for (h, stores) in common::diffs_in(&format!("{v4}/kv-diffs.jsonl.gz")) {
         if h > height {
             break;
         }
@@ -87,11 +83,11 @@ fn v4_state(height: i64) -> BTreeMap<String, Kv> {
 
 /// The app after InitChain and blocks 1 to 15 of the v1-v3 chain, each
 /// at the oracle's app hash, with the validator sets of heights 1 to 17.
-fn app_at_handoff() -> (App, BTreeMap<i64, common::ValidatorSet>) {
-    let genesis = json(&format!("{V1_V3}/genesis.json"));
-    let roots = json(&format!("{V1_V3}/store-roots.json"));
-    let results = by_height(&format!("{V1_V3}/tx-results.jsonl.gz"), "");
-    let blocks = by_height(&format!("{V1_V3}/blocks.jsonl.gz"), "result");
+fn app_at_handoff(v1: &str, handoff: i64) -> (App, BTreeMap<i64, common::ValidatorSet>) {
+    let genesis = json(&format!("{v1}/genesis.json"));
+    let roots = json(&format!("{v1}/store-roots.json"));
+    let results = by_height(&format!("{v1}/tx-results.jsonl.gz"), "");
+    let blocks = by_height(&format!("{v1}/blocks.jsonl.gz"), "result");
 
     let mut app = App::new();
     app.set_v2_upgrade_height(roots["upgrade_height_v2"].as_i64().unwrap());
@@ -101,11 +97,11 @@ fn app_at_handoff() -> (App, BTreeMap<i64, common::ValidatorSet>) {
     common::sort_validators(&mut genesis_set);
     vals.insert(1, genesis_set.clone());
     vals.insert(2, genesis_set);
-    for h in 1..=HANDOFF {
+    for h in 1..=handoff {
         let next = common::apply_updates(&vals[&(h + 1)], &common::oracle_updates(&results[&h]));
         vals.insert(h + 2, next);
     }
-    for height in 1..=HANDOFF {
+    for height in 1..=handoff {
         let last = if height == 1 {
             Vec::new()
         } else {
@@ -129,11 +125,11 @@ fn app_at_handoff() -> (App, BTreeMap<i64, common::ValidatorSet>) {
 
 /// Block 16 runs on the v0.50 app with the v4 store set and plan `v4`:
 /// the commit info lists Go's stores at Go's IAVL versions (the added
-/// stores start at 16, `mem_capability` is gone), and every store outside
-/// [`PENDING_V4_RULES`] holds Go's state after the block.
+/// stores start at 16, `mem_capability` is gone), and every store holds
+/// Go's state after the block.
 #[test]
 fn v4_handoff_block_matches_go() {
-    let (mut app, mut vals) = app_at_handoff();
+    let (mut app, mut vals) = app_at_handoff(V1_V3, HANDOFF);
     let v4_results = by_height(&format!("{V4}/tx-results.jsonl.gz"), "");
     let v4_blocks = by_height(&format!("{V4}/blocks.jsonl.gz"), "result");
     let v4_roots = json(&format!("{V4}/store-roots.json"));
@@ -146,28 +142,13 @@ fn v4_handoff_block_matches_go() {
     );
 
     let req = common::finalize_request(&v4_blocks[&UPGRADE], &vals[&HANDOFF]);
-    let res = app.finalize_block(req);
-    let res = res.unwrap_or_else(|e| panic!("height {UPGRADE}: {}", e.log));
+    app.finalize_block(req)
+        .unwrap_or_else(|e| panic!("height {UPGRADE}: {}", e.log));
     app.commit().unwrap();
     assert!(!app.is_sdk_v046_state());
 
-    let want = v4_state(UPGRADE);
-    let mut failures = Vec::new();
-    for (store, w) in &want {
-        if PENDING_V4_RULES.contains(&store.as_str()) {
-            continue;
-        }
-        let got = contents(app.multistore(), store);
-        if got != *w {
-            failures.push(format!("{store}: rs vs go {}", describe(&diff(w, &got))));
-        }
-    }
-    let h16 = v4_roots["heights"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|h| h["height"] == UPGRADE)
-        .unwrap();
+    let mut failures = store_failures(&app, V4, UPGRADE);
+    let h16 = oracle_height(&v4_roots, UPGRADE);
     let info = app.multistore().root().last_commit_info().unwrap().clone();
     let got_versions: BTreeMap<String, i64> = info
         .store_infos
@@ -189,9 +170,6 @@ fn v4_handoff_block_matches_go() {
         failures.push(format!("commit info {got_versions:?} vs {want_versions:?}"));
     }
     for (store, root) in h16["stores"].as_object().unwrap() {
-        if PENDING_V4_RULES.contains(&store.as_str()) {
-            continue;
-        }
         let got = info
             .store_info(store)
             .and_then(|s| s.commit_id.as_ref())
@@ -200,7 +178,73 @@ fn v4_handoff_block_matches_go() {
             failures.push(format!("{store} root {got:?} vs {root}"));
         }
     }
-    // The app hash covers the pending stores too.
-    let _ = res;
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+    assert_eq!(
+        hex::encode_upper(app.info().last_block_app_hash),
+        h16["app_hash"].as_str().unwrap()
+    );
+}
+
+/// Genesis to block 20 inside one [`App`]: the v0.46 blocks, the hand-off
+/// block and the v4 blocks 17 to 20, each at Go's app hash with Go's state.
+#[test]
+fn app_syncs_the_synthetic_chain_from_genesis_to_block_20() {
+    sync(V1_V3, V4, HANDOFF, LAST);
+}
+
+/// Runs InitChain and the blocks of `v1` to `handoff`, then the blocks of
+/// `v4` to `last`, requiring Go's state and app hash after each v4 block.
+fn sync(v1: &str, v4: &str, handoff: i64, last: i64) {
+    let (mut app, mut vals) = app_at_handoff(v1, handoff);
+    let v4_results = by_height(&format!("{v4}/tx-results.jsonl.gz"), "");
+    let v4_blocks = by_height(&format!("{v4}/blocks.jsonl.gz"), "result");
+    let v4_roots = json(&format!("{v4}/store-roots.json"));
+    for height in handoff + 1..=last {
+        vals.insert(
+            height + 2,
+            common::apply_updates(
+                &vals[&(height + 1)],
+                &common::oracle_updates(&v4_results[&height]),
+            ),
+        );
+        let req = common::finalize_request(&v4_blocks[&height], &vals[&(height - 1)]);
+        app.finalize_block(req)
+            .unwrap_or_else(|e| panic!("height {height}: {}", e.log));
+        app.commit().unwrap();
+        let failures = store_failures(&app, v4, height);
+        assert!(
+            failures.is_empty(),
+            "height {height}:\n{}",
+            failures.join("\n")
+        );
+        assert_eq!(
+            hex::encode_upper(app.info().last_block_app_hash),
+            oracle_height(&v4_roots, height)["app_hash"]
+                .as_str()
+                .unwrap(),
+            "height {height}"
+        );
+    }
+}
+
+fn oracle_height(roots: &serde_json::Value, height: i64) -> serde_json::Value {
+    roots["heights"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|h| h["height"] == height)
+        .unwrap()
+        .clone()
+}
+
+/// The stores whose contents differ from Go's state after `height`.
+fn store_failures(app: &App, v4: &str, height: i64) -> Vec<String> {
+    let mut failures = Vec::new();
+    for (store, w) in &v4_state(v4, height) {
+        let got = contents(app.multistore(), store);
+        if got != *w {
+            failures.push(format!("{store}: rs vs go {}", describe(&diff(w, &got))));
+        }
+    }
+    failures
 }
