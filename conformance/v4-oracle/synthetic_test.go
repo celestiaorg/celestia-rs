@@ -39,7 +39,7 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		// It leaves the committed home-25, which v5-oracle starts from.
 		{"v1-v3-to-v5", "v1-v3", "v1-v3", "v4-to-v5", []string{"-heights", "10", "-next-handoff"}},
 		// The probe blocks of probes.go after the usual five.
-		{"v1-v3-probes", "v1-v3", "v1-v3", "v4-probes", []string{"-heights", "8", "-probes"}},
+		{"v1-v3-probes", "v1-v3", "v1-v3", "v4-probes", []string{"-heights", "14", "-probes"}},
 		{"v3-rich", "v3-rich", "v3-rich", "v3-rich-v4", nil},
 		// Only the history chain's genesis is committed on the v3 side.
 		{"v3-history", "v3-history", "v3-history", "v3-history-v4", nil},

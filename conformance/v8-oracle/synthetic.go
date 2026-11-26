@@ -274,7 +274,18 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 			out = append(out, bz)
 			return nil
 		}
+		aminoTx := func(name string, msg sdk.Msg, opts ...user.TxOption) error {
+			bz, err := s.aminoTx(a, name, msg, opts...)
+			if err != nil {
+				return err
+			}
+			out = append(out, bz)
+			return nil
+		}
 		probe, err := s.probeSteps(height-s.handoffHeight-1, addr, probeTx)
+		if err == nil && probe == nil {
+			probe, err = s.warpProbeSteps(a, height-s.handoffHeight-1, addr, probeTx, aminoTx)
+		}
 		if err != nil {
 			return nil, err
 		}
