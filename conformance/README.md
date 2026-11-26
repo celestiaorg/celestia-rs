@@ -418,6 +418,36 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json
   -out ../fixtures/synthetic/v6
 ```
 
+#### Synthetic chain across the v6 to v8 upgrade
+
+Mainnet skipped v7: its v6 chain signalled version 8. `v6-oracle -heights
+10 -next-handoff` runs the chain on to block 46 (`to_v8.go`): accounts
+send to the fee collector, distribution, gov and bonded pool module
+accounts (v6's `BlockedAddresses` hashes module addresses twice, so it
+blocks none), bob becomes a validator at 25% commission with a 30% max,
+the validators signal version 8, a `MsgTryUpgrade` in block 43 reaches
+quorum, and the EndBlocker of block 46 sets app version 8 and schedules
+plan `v8` at 47. [`fixtures/synthetic/v6-to-v8`](fixtures/synthetic/v6-to-v8)
+holds its outputs (blocks 37 to 41 are those of `fixtures/synthetic/v6`).
+`v8-oracle` opens the home with celestia-app v8.0.8: its store loader adds
+`zkism` at 47 and the PreBlocker runs the `v8` handler (20% minimum
+commission, 60% minimum max rate). In blocks 47 to 51 the sends to module
+accounts fail except the ones to gov. [`fixtures/synthetic/v8`](fixtures/synthetic/v8)
+holds the outputs from height 46. `go test` in `v6-oracle` rebuilds
+`v6-to-v8`; `go test` in `v8-oracle` runs the whole chain and rebuilds
+`v8`. `cargo test -p app --test synthetic_v8_oracle` checks the fixtures'
+facts. To regenerate, after the v5 to v6 commands (on a fresh home, as
+`v6-oracle` modifies it in place):
+
+```sh
+cd conformance/v6-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v6-to-v8 -heights 10 -next-handoff
+cd ../v8-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v8
+```
+
 #### Rich synthetic chain for the v3 to v4 migrations
 
 `v1-oracle -synthetic -chain v3-rich` builds a second chain (genesis at

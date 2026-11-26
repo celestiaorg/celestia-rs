@@ -5,10 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-// fixtureFiles are the outputs that conformance/fixtures/synthetic/v6 holds.
+// fixtureFiles are the outputs that each fixture directory holds.
 var fixtureFiles = []string{
 	"blocks.jsonl.gz", "store-roots.json", "tx-results.jsonl.gz",
 	"kv-handoff.jsonl.gz", "kv-upgrade.jsonl.gz", "kv-diffs.jsonl.gz",
@@ -16,8 +17,8 @@ var fixtureFiles = []string{
 
 // TestSyntheticFixtureIsReproducible runs the v1-v3 synthetic chain through
 // v1-oracle, v4-oracle -next-handoff and v5-oracle -next-handoff, continues
-// it across the v6 upgrade and requires the committed fixtures byte for
-// byte.
+// it across the v6 upgrade (and on to the v8 hand-off) and requires the
+// committed fixtures byte for byte.
 func TestSyntheticFixtureIsReproducible(t *testing.T) {
 	tmp := t.TempDir()
 	bin := map[string]string{}
@@ -47,18 +48,33 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 	}
 	requireSame(t, filepath.Join(fixtures, "v5-to-v6", "store-roots.json"), filepath.Join(v5Out, "store-roots.json"))
 
-	out := filepath.Join(tmp, "v6")
-	cmd := exec.Command(os.Args[0], "-test.run=TestRunSynthetic", "-test.v")
-	cmd.Env = append(os.Environ(),
-		"V6_ORACLE_HANDOFF="+home,
-		"V6_ORACLE_GENESIS="+genesis,
-		"V6_ORACLE_OUT="+out,
-	)
-	if bz, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("synthetic run: %v\n%s", err, bz)
+	// v6 (blocks 37 to 41) and, on a copy of the home, v6-to-v8 (blocks
+	// 37 to 46, on to the v8 hand-off).
+	home8 := filepath.Join(tmp, "home-v8")
+	if err := os.CopyFS(home8, os.DirFS(home)); err != nil {
+		t.Fatal(err)
 	}
-	for _, name := range fixtureFiles {
-		requireSame(t, filepath.Join(fixtures, "v6", name), filepath.Join(out, name))
+	for _, c := range []struct {
+		home, dir string
+		args      []string
+	}{
+		{home, "v6", nil},
+		{home8, "v6-to-v8", []string{"-heights", "10", "-next-handoff"}},
+	} {
+		out := filepath.Join(tmp, c.dir)
+		cmd := exec.Command(os.Args[0], "-test.run=TestRunSynthetic", "-test.v")
+		cmd.Env = append(os.Environ(),
+			"V6_ORACLE_HANDOFF="+c.home,
+			"V6_ORACLE_GENESIS="+genesis,
+			"V6_ORACLE_OUT="+out,
+			"V6_ORACLE_ARGS="+strings.Join(c.args, " "),
+		)
+		if bz, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("synthetic run %s: %v\n%s", c.dir, err, bz)
+		}
+		for _, name := range fixtureFiles {
+			requireSame(t, filepath.Join(fixtures, c.dir, name), filepath.Join(out, name))
+		}
 	}
 }
 
@@ -89,6 +105,7 @@ func TestRunSynthetic(t *testing.T) {
 		"-genesis", os.Getenv("V6_ORACLE_GENESIS"),
 		"-out", out,
 	}
+	os.Args = append(os.Args, strings.Fields(os.Getenv("V6_ORACLE_ARGS"))...)
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}
