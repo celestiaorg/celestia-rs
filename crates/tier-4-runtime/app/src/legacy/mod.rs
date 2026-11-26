@@ -26,6 +26,7 @@ pub mod blob;
 pub mod blockers;
 pub mod consensus_params;
 pub mod genesis;
+pub mod gov;
 pub mod ibc;
 pub mod ibc_channel;
 pub mod ibc_timeout;

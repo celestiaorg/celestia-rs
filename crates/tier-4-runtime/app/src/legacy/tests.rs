@@ -2727,3 +2727,48 @@ fn v6_timeout_validate_basic() {
     let e = timeout(1, vec![1], 1, 0).unwrap_err();
     assert_eq!((e.codespace, e.code), ("channel", 13), "{}", e.log);
 }
+
+/// cosmos-sdk v0.46 gov votes (v1beta1 and v1): `ValidateBasic` checks
+/// the voter and the option; a vote on a proposal that does not exist
+/// fails with `ErrUnknownProposal`; a vote on an existing proposal is
+/// not ported.
+#[test]
+fn v046_gov_vote_on_unknown_proposal() {
+    use celestia_proto::cosmos::gov::{v1, v1beta1};
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    let voter = x_auth::bech32(&[3; 20]).unwrap();
+    let old = |option: i32| {
+        celestia_proto::Any::pack(&v1beta1::MsgVote {
+            proposal_id: 1,
+            voter: voter.clone(),
+            option,
+        })
+    };
+    let new = |option: i32| {
+        celestia_proto::Any::pack(&v1::MsgVote {
+            proposal_id: 1,
+            voter: voter.clone(),
+            option,
+            metadata: String::new(),
+        })
+    };
+    let builders: [&dyn Fn(i32) -> celestia_proto::Any; 2] = [&old, &new];
+    for vote in builders {
+        for bad in [0, 5] {
+            let e = msgs::validate_basic(&vote(bad)).unwrap_err();
+            assert_eq!((e.codespace, e.code), ("gov", 7), "{}", e.log);
+        }
+        msgs::validate_basic(&vote(1)).unwrap();
+        let _ = take_not_ported();
+        let e = msgs::route(&mut ctx, &vote(1)).unwrap_err();
+        assert_eq!((e.codespace, e.code), ("gov", 2), "{}", e.log);
+        assert!(take_not_ported().is_none());
+    }
+    let mut key = vec![0x00];
+    key.extend_from_slice(&1u64.to_be_bytes());
+    ctx.set(x_gov::STORE_KEY, key, vec![1]).unwrap();
+    assert!(msgs::route(&mut ctx, &old(1)).is_err());
+    assert!(take_not_ported().is_some());
+}
