@@ -162,8 +162,12 @@ func run() error {
 	genesisPath := flag.String("genesis", "", "the genesis.json of the synthetic chain")
 	heights := flag.Int64("heights", 5, "number of blocks to execute after the hand-off height")
 	out := flag.String("out", "", "output directory")
+	signBytes := flag.String("signbytes", "", "write the sign-bytes vectors (signbytes.go) to this file and exit")
 	nextHandoff := flag.Bool("next-handoff", false, "after the last block, require plan \"v9\" at the next height and rewrite handoff.json in the -handoff home for conformance/v9-oracle")
 	flag.Parse()
+	if *signBytes != "" {
+		return writeSignBytes(*signBytes, "v8.0.8")
+	}
 	if *home == "" || *genesisPath == "" || *out == "" || *heights < 1 {
 		flag.Usage()
 		return errors.New("missing arguments")

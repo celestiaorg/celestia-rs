@@ -351,6 +351,31 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/home" \
   -genesis "$OUT/v1-v3/genesis.json" -out ../fixtures/synthetic/v4
 ```
 
+#### Sign bytes per release
+
+`go run . -signbytes <out.json>` in `v4-oracle`, `v5-oracle`, `v6-oracle`,
+`v8-oracle` and `v9-oracle` (`signbytes.go`) writes this release's sign
+bytes for a fixed corpus of the messages mainnet signs:
+
+- bank, staking, distribution, slashing;
+- gov v1 and v1beta1;
+- authz, including `MsgExec` of send, delegate and transfer;
+- feegrant, vesting, blob, signal;
+- IBC transfer and core;
+- hyperlane warp and core.
+
+It covers these modes:
+
+- `SIGN_MODE_LEGACY_AMINO_JSON`;
+- `SIGN_MODE_DIRECT_AUX`, with and without an explicit fee payer;
+- `SIGN_MODE_TEXTUAL`, which these releases reject.
+
+When Go fails to make sign bytes, the file records the error.
+[`fixtures/signbytes`](fixtures/signbytes) holds the outputs, gzipped. Each
+module's `go test` requires its file byte for byte.
+`cargo test -p x-ante --test release_sign_bytes` requires Rust to produce the
+same bytes, or an error where Go errs, at each app version.
+
 #### Synthetic chain across the v4 to v5 upgrade
 
 `v4-oracle -heights 10 -next-handoff` runs the same chain on to block

@@ -8560,6 +8560,7 @@ dependencies = [
  "celestia-proto 0.0.1",
  "crypto",
  "encoding",
+ "flate2",
  "gostr",
  "hash",
  "hex",
