@@ -286,3 +286,39 @@ fn refuses_other_formats_and_held_states() {
         R::Reject as i32
     );
 }
+
+/// The out-of-block memory store rebuild (after a restore or a reopen)
+/// leaves InitChain and block 1 unchanged: InitGenesis already rebuilds the
+/// capability memory store, so every validator's first block after
+/// InitChain finds it initialized and its BeginBlocker charges only the
+/// `mem_initialized` read, as on every later block. A fresh home (height 0)
+/// never runs the out-of-block rebuild.
+#[test]
+fn init_chain_leaves_the_memory_store_initialized_for_block_1() {
+    use sdk::{Context, ExecMode, Header};
+    let mut ms = sdk::MultiStore::new();
+    app::stores::mount_release(&mut ms, sdk::version::Release::for_app_version(1).unwrap())
+        .unwrap();
+    let mut driver = Driver::new(V1Modules);
+    driver
+        .init_chain(&mut ms, &common::init_request(&SYNTHETIC.fix().genesis()))
+        .unwrap();
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    ms.select(sdk::store::Stack::Finalize);
+    let gas = |ms: &mut sdk::MultiStore, rebuild: bool| {
+        let mut ctx = Context::new(ms, Header::default(), ExecMode::Finalize);
+        if rebuild {
+            x_capability::init_mem_store(&mut ctx).unwrap();
+        } else {
+            assert!(x_capability::is_initialized(&mut ctx).unwrap());
+        }
+        ctx.gas.consumed_to_limit()
+    };
+    let read = gas(&mut ms, false);
+    assert!(read > 0, "the mem_initialized read costs gas at v0.46");
+    assert_eq!(
+        gas(&mut ms, true),
+        read,
+        "block 1 does not rebuild the memory store"
+    );
+}
