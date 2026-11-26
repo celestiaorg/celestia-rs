@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"cosmossdk.io/log"
 	"cosmossdk.io/store/metrics"
@@ -81,6 +82,12 @@ func run(dir string, height int64, out string, list bool) error {
 	rs := rootmulti.NewStore(db, log.NewLogger(os.Stderr), metrics.NewNoOpMetrics())
 	rs.SetIAVLDisableFastNode(true)
 	for _, n := range names {
+		// v0.46 also commits the capability module's memory store; it has
+		// no persisted tree and is not part of a snapshot.
+		if strings.HasPrefix(n, "mem_") {
+			rs.MountStoreWithDB(storetypes.NewMemoryStoreKey(n), storetypes.StoreTypeMemory, nil)
+			continue
+		}
 		rs.MountStoreWithDB(storetypes.NewKVStoreKey(n), storetypes.StoreTypeIAVL, nil)
 	}
 	if err := rs.LoadVersion(height); err != nil {
