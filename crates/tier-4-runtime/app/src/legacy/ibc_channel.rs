@@ -1,9 +1,11 @@
-//! ibc-go v6 (celestiaorg `v6.3.0`) channel handshake of celestia-app v1:
-//! `MsgChannelOpenInit`, `MsgChannelOpenTry`, `MsgChannelOpenAck` and
-//! `MsgChannelOpenConfirm` with their v6 `ValidateBasic`, the 04-channel
-//! keeper steps, port and channel capabilities, and the ICS-20 transfer
-//! callbacks (behind celestia-app's token filter, which only filters
-//! received packets). Built on the store helpers of `x-ibc`; proofs go
+//! ibc-go v6 (celestiaorg `v6.3.0`) channel handshake of celestia-app v1
+//! to v3: `MsgChannelOpenInit`, `MsgChannelOpenTry`, `MsgChannelOpenAck`,
+//! `MsgChannelOpenConfirm` and `MsgChannelCloseConfirm` with their v6
+//! `ValidateBasic`, the 04-channel keeper steps, port and channel
+//! capabilities, and the callbacks of the ICS-20 transfer stack (behind
+//! celestia-app's token filter, which only filters received packets) and
+//! of the interchain accounts host ([`super::ica_host`], app versions 2
+//! and 3). Built on the store helpers of `x-ibc`; proofs go
 //! through the v6 connection verification of [`super::ibc`].
 
 // A capability is its 8-byte index, passed by reference as in `x-ibc`.
@@ -167,6 +169,17 @@ pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
             check_signer(&m.signer)
         }));
     }
+    if msg.type_url == chpb::MsgChannelCloseConfirm::type_url() {
+        return Some(decode(msg).and_then(|m: chpb::MsgChannelCloseConfirm| {
+            port_id(&m.port_id)?;
+            if !channel::is_valid_channel_id(&m.channel_id) {
+                return Err(cherr::invalid_channel_identifier(""));
+            }
+            non_empty_proof(&m.proof_init, "cannot submit an empty proof init")?;
+            non_zero_proof_height(m.proof_height.as_ref())?;
+            check_signer(&m.signer)
+        }));
+    }
     None
 }
 
@@ -184,14 +197,21 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
     if msg.type_url == chpb::MsgChannelOpenConfirm::type_url() {
         return Some(decode(msg).and_then(|m| chan_open_confirm_msg(ctx, &m)));
     }
+    if msg.type_url == chpb::MsgChannelCloseConfirm::type_url() {
+        return Some(decode(msg).and_then(|m| chan_close_confirm_msg(ctx, &m)));
+    }
     None
 }
 
-/// The app module a port or channel capability routes to. Only the
-/// transfer stack is ported; app version 1 binds no other port.
-fn route_to(module: &str) -> Result<()> {
+/// The app module a port or channel capability routes to: `true` for the
+/// interchain accounts host (bound from app version 2), `false` for the
+/// transfer stack. No other module is ported.
+fn route_to(module: &str) -> Result<bool> {
     if module == x_transfer::MODULE_NAME {
-        return Ok(());
+        return Ok(false);
+    }
+    if module == super::ica_host::MODULE {
+        return Ok(true);
     }
     Err(super::not_ported(errs::not_supported(format!(
         "the ibc-go v6 channel callbacks of module {module} are not ported"
@@ -338,7 +358,7 @@ fn lookup_channel(ctx: &mut Context<'_>, port: &str, chan: &str) -> Result<(Stri
 /// `MsgChannelOpenInit` (core msg server and 04-channel `ChanOpenInit`).
 fn chan_open_init_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelOpenInit) -> Result<Any> {
     let (module, port_cap) = lookup_port(ctx, &m.port_id)?;
-    route_to(&module)?;
+    let ica = route_to(&module)?;
     let ch = m.channel.clone().unwrap_or_default();
     let port = &m.port_id;
     let (chan, cap) = (|| -> Result<(String, Capability)> {
@@ -355,6 +375,9 @@ fn chan_open_init_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelOpenInit) -> Re
     })()
     .map_err(|e| e.wrap("channel handshake open init failed"))?;
     let version = (|| -> Result<String> {
+        if ica {
+            return Err(super::ica_host::on_chan_open_init());
+        }
         transfer_channel_params(ctx, ch.ordering, port, &chan)?;
         let version = if ch.version.trim().is_empty() {
             ICS20_VERSION
@@ -396,7 +419,7 @@ fn chan_open_init_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelOpenInit) -> Re
 /// `MsgChannelOpenTry` (core msg server and 04-channel `ChanOpenTry`).
 fn chan_open_try_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelOpenTry) -> Result<Any> {
     let (module, port_cap) = lookup_port(ctx, &m.port_id)?;
-    route_to(&module)?;
+    let ica = route_to(&module)?;
     let ch = m.channel.clone().unwrap_or_default();
     let cp = ch.counterparty.clone().unwrap_or_default();
     let port = &m.port_id;
@@ -442,6 +465,18 @@ fn chan_open_try_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelOpenTry) -> Resu
     })()
     .map_err(|e| e.wrap("channel handshake open try failed"))?;
     let version = (|| -> Result<String> {
+        if ica {
+            return super::ica_host::on_chan_open_try(
+                ctx,
+                ch.ordering,
+                &ch.connection_hops,
+                port,
+                &chan,
+                &cap,
+                &cp,
+                &m.counterparty_version,
+            );
+        }
         transfer_channel_params(ctx, ch.ordering, port, &chan)?;
         if m.counterparty_version != ICS20_VERSION {
             return Err(x_transfer::relay::errors::invalid_version(&format!(
@@ -480,7 +515,7 @@ fn chan_open_try_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelOpenTry) -> Resu
 fn chan_open_ack_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelOpenAck) -> Result<Any> {
     let (port, chan) = (&m.port_id, &m.channel_id);
     let (module, cap) = lookup_channel(ctx, port, chan)?;
-    route_to(&module)?;
+    let ica = route_to(&module)?;
     let proof_height = m.proof_height.unwrap_or_default();
     (|| -> Result<()> {
         let ch = get_channel(ctx, port, chan)?;
@@ -516,6 +551,11 @@ fn chan_open_ack_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelOpenAck) -> Resu
         )
     })()
     .map_err(|e| e.wrap("channel handshake open ack failed"))?;
+    if ica {
+        return Err(super::ica_host::on_chan_open_ack().wrap(format!(
+            "channel open ack callback failed for port ID: {port}, channel ID: {chan}"
+        )));
+    }
     if m.counterparty_version != ICS20_VERSION {
         return Err(x_transfer::relay::errors::invalid_version(&format!(
             "invalid counterparty version: {}, expected {ICS20_VERSION}",
@@ -542,7 +582,7 @@ fn chan_open_ack_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelOpenAck) -> Resu
 fn chan_open_confirm_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelOpenConfirm) -> Result<Any> {
     let (port, chan) = (&m.port_id, &m.channel_id);
     let (module, cap) = lookup_channel(ctx, port, chan)?;
-    route_to(&module)?;
+    let ica = route_to(&module)?;
     let proof_height = m.proof_height.unwrap_or_default();
     (|| -> Result<()> {
         let ch = get_channel(ctx, port, chan)?;
@@ -579,11 +619,74 @@ fn chan_open_confirm_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelOpenConfirm)
         )
     })()
     .map_err(|e| e.wrap("channel handshake open confirm failed"))?;
-    // `OnChanOpenConfirm` of transfer does nothing; `WriteOpenConfirmChannel`
-    // reads the channel again.
+    // `OnChanOpenConfirm`: the host sets the active channel; transfer does
+    // nothing. `WriteOpenConfirmChannel` reads the channel again.
+    if ica {
+        super::ica_host::on_chan_open_confirm(ctx, port, chan).map_err(|e| {
+            e.wrap(format!(
+                "channel open confirm callback failed for port ID: {port}, channel ID: {chan}"
+            ))
+        })?;
+    }
     let mut ch = get_channel(ctx, port, chan)?;
     ch.state = State::Open as i32;
     channel::set_channel(ctx, port, chan, &ch)?;
     channel_events(ctx, "channel_open_confirm", port, chan, &ch, false);
     Ok(Any::pack(&chpb::MsgChannelOpenConfirmResponse {}))
+}
+
+/// `MsgChannelCloseConfirm` (core msg server, then 04-channel
+/// `ChanCloseConfirm`). The callback runs first: in v6 both transfer's
+/// and the interchain accounts host's `OnChanCloseConfirm` do nothing.
+fn chan_close_confirm_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelCloseConfirm) -> Result<Any> {
+    let (port, chan) = (&m.port_id, &m.channel_id);
+    let (module, cap) = lookup_channel(ctx, port, chan)?;
+    route_to(&module)?;
+    let proof_height = m.proof_height.unwrap_or_default();
+    let ch = (|| -> Result<Channel> {
+        if !x_ibc::port::SCOPED_KEEPER.authenticate_capability(
+            ctx,
+            &cap,
+            &host::channel_capability_path(port, chan),
+        )? {
+            // Go's `Wrap` keeps the format verbs.
+            return Err(cherr::channel_capability_not_found(
+                "caller does not own capability for channel, port ID (%s) channel ID (%s)",
+            ));
+        }
+        let mut ch = get_channel(ctx, port, chan)?;
+        if ch.state == State::Closed as i32 {
+            return Err(cherr::invalid_channel_state("channel is already CLOSED"));
+        }
+        let hop = ch.connection_hops.first().cloned().unwrap_or_default();
+        let conn = connection_end(ctx, &hop)?;
+        connection_open(&conn)?;
+        let cp = ch.counterparty.clone().unwrap_or_default();
+        let expected = Channel {
+            state: State::Closed as i32,
+            ordering: ch.ordering,
+            counterparty: Some(Counterparty {
+                port_id: port.clone(),
+                channel_id: chan.clone(),
+            }),
+            connection_hops: vec![conn.counterparty.clone().unwrap_or_default().connection_id],
+            version: ch.version.clone(),
+            upgrade_sequence: 0,
+        };
+        verify_channel_state(
+            ctx,
+            &conn,
+            &proof_height,
+            &m.proof_init,
+            &cp.port_id,
+            &cp.channel_id,
+            &expected,
+        )?;
+        ch.state = State::Closed as i32;
+        channel::set_channel(ctx, port, chan, &ch)?;
+        Ok(ch)
+    })()
+    .map_err(|e| e.wrap("channel handshake close confirm failed"))?;
+    channel_events(ctx, "channel_close_confirm", port, chan, &ch, false);
+    Ok(Any::pack(&chpb::MsgChannelCloseConfirmResponse {}))
 }

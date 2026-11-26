@@ -236,16 +236,17 @@ impl StateStore {
         height: i64,
         resp: &abci::ResponseFinalizeBlock,
     ) -> Result<()> {
+        // Encode the response once (it holds every tx result and event)
+        // and wrap the same bytes for the last-response record.
+        let encoded = resp.encode_to_vec();
         let mut batch = WriteBatch::new();
+        batch.put(
+            LAST_ABCI_RESPONSE_KEY.to_vec(),
+            last_response_info_bytes(height, &encoded),
+        );
         if !self.discard_abci_responses {
-            batch.put(abci_responses_key(height), resp.encode_to_vec());
+            batch.put(abci_responses_key(height), encoded);
         }
-        let info = pbs::AbciResponsesInfo {
-            legacy_abci_responses: None,
-            height,
-            response_finalize_block: Some(resp.clone()),
-        };
-        batch.put(LAST_ABCI_RESPONSE_KEY.to_vec(), info.encode_to_vec());
         self.db.write(batch).map_err(kv_err)
     }
 
@@ -355,5 +356,78 @@ impl StateStore {
         }
         self.db.write(batch).map_err(kv_err)?;
         Ok(pruned)
+    }
+}
+
+/// prost's encoding of `ABCIResponsesInfo { height, response_finalize_block:
+/// Some(resp) }` from the already encoded `resp`: field 2 (varint, left out
+/// when 0) then field 3 (length-delimited, always present).
+fn last_response_info_bytes(height: i64, encoded_resp: &[u8]) -> Vec<u8> {
+    use prost::encoding::{WireType, encode_key, encode_varint};
+    let mut out = Vec::with_capacity(encoded_resp.len() + 24);
+    if height != 0 {
+        encode_key(2, WireType::Varint, &mut out);
+        #[allow(clippy::cast_sign_loss)]
+        encode_varint(height as u64, &mut out);
+    }
+    encode_key(3, WireType::LengthDelimited, &mut out);
+    encode_varint(encoded_resp.len() as u64, &mut out);
+    out.extend_from_slice(encoded_resp);
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn response(n: usize) -> abci::ResponseFinalizeBlock {
+        abci::ResponseFinalizeBlock {
+            tx_results: (0..n)
+                .map(|i| abci::ExecTxResult {
+                    code: u32::try_from(i % 3).unwrap_or(0),
+                    data: vec![7; i * 50],
+                    gas_used: i64::try_from(i).unwrap_or(0) * 1000,
+                    ..Default::default()
+                })
+                .collect(),
+            app_hash: vec![1; 32],
+            ..Default::default()
+        }
+    }
+
+    /// The last-response record is byte-identical to prost's encoding of
+    /// `ABCIResponsesInfo` (heights and response sizes across varint
+    /// length boundaries, and an empty response).
+    #[test]
+    fn last_response_info_bytes_match_prost() {
+        for (height, n) in [
+            (1, 0),
+            (0, 1),
+            (127, 2),
+            (128, 3),
+            (300, 40),
+            (i64::MAX, 400),
+        ] {
+            let resp = response(n);
+            let want = pbs::AbciResponsesInfo {
+                legacy_abci_responses: None,
+                height,
+                response_finalize_block: Some(resp.clone()),
+            }
+            .encode_to_vec();
+            assert_eq!(
+                last_response_info_bytes(height, &resp.encode_to_vec()),
+                want,
+                "height {height}, {n} txs"
+            );
+        }
+        let empty = abci::ResponseFinalizeBlock::default();
+        let want = pbs::AbciResponsesInfo {
+            legacy_abci_responses: None,
+            height: 5,
+            response_finalize_block: Some(empty.clone()),
+        }
+        .encode_to_vec();
+        assert_eq!(last_response_info_bytes(5, &empty.encode_to_vec()), want);
     }
 }
