@@ -29,6 +29,11 @@ use ctypes::{BLOCK_PART_SIZE_BYTES, Block, BlockId};
 use nodestore::{BlockExecutor, Handshaker, State};
 use prost::Message as _;
 
+/// The node binary's allocator (`celestia-rs` default feature `jemalloc`).
+#[cfg(feature = "jemalloc")]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 struct Args {
     blocks: i64,
     base: PathBuf,
@@ -74,6 +79,8 @@ fn open(home: &Path) -> anyhow::Result<(BlockExecutor, State)> {
         ..app::AppOptions::default()
     };
     opts.node.home = Some(home.to_path_buf());
+    // `celestia-rs start` defaults (app.toml `iavl-cache-size`).
+    opts.store.node_cache_size = 781_250;
     let app = app::App::open_with(home, opts).map_err(|e| anyhow!("open app: {}", e.log))?;
     let (bs, ss) = node::open_stores(home)?;
     let state = ss.load_from_db_or_genesis(&genesis)?;
