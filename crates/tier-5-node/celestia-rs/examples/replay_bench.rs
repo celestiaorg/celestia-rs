@@ -166,6 +166,11 @@ fn main() -> anyhow::Result<()> {
     let mut next = cached_block(&a.cache, 1)?;
     let mut times = Vec::new();
     let mut txs = 0usize;
+    // Chained SHA-256 of every FinalizeBlock response (tx results with gas
+    // and events, block events, updates): equal digests mean identical
+    // results. Gas and codes are also checked against the network through
+    // each next header's last_results_hash in validate_block.
+    let mut digest = [0u8; 32];
     let started = Instant::now();
     for h in 1..=a.blocks {
         let mut block = next;
@@ -184,6 +189,13 @@ fn main() -> anyhow::Result<()> {
             .apply_verified_block(&state, id, &mut block)
             .map_err(|e| anyhow!("execute {h}: {e}"))?;
         times.push(t.elapsed());
+        let resp = exec
+            .state_store
+            .load_last_finalize_block_response(h)
+            .map_err(|e| anyhow!("response {h}: {e}"))?;
+        let mut buf = digest.to_vec();
+        buf.extend_from_slice(&resp.encode_to_vec());
+        digest = hash::sha256(&buf);
         ensure!(
             state.app_hash == next.header.app_hash,
             "app hash after block {h}: ours {}, network {}",
@@ -212,5 +224,6 @@ fn main() -> anyhow::Result<()> {
     println!("max_ms: {:.1}", percentile(&sorted, 1.0));
     println!("wall_secs: {:.1}", total.as_secs_f64());
     println!("app_hash_mismatches: 0");
+    println!("responses_digest: {}", hex::encode(digest));
     Ok(())
 }
