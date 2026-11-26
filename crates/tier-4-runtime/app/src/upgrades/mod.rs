@@ -174,7 +174,12 @@ pub fn set_app_version(ctx: &mut Context<'_>, version: u64) -> Result<()> {
 /// name). Run the migrations required by the target release. Modules added
 /// in v10 run `InitGenesis` when missing from the previous version map.
 fn run_migrations(ctx: &mut Context<'_>, from: &VersionMap, target: u64) -> Result<VersionMap> {
-    run_migrations_to(ctx, from, crate::modules::version_map(target).collect())
+    // The target release's module manager: v9.0.8 has no fibre or
+    // valaddr module.
+    let versions = crate::modules::version_map(target)
+        .filter(|(name, _)| crate::stores::exists_at(name, target))
+        .collect();
+    run_migrations_to(ctx, from, versions)
 }
 
 /// `ModuleManager.RunMigrations` to the module versions `versions` (the

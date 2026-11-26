@@ -156,5 +156,5 @@ func (s *synth) v6Steps(
 			func() error { return pfb("carol", share.ShareVersionZero, 600) },
 		}, nil
 	}
-	return nil, nil
+	return s.toV8Steps(offset, addr, txWith, send, pfb), nil
 }

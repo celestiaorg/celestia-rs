@@ -45,6 +45,7 @@ func main() {
 	height := flag.Int64("height", 0, "height to export")
 	out := flag.String("out", "", "snapshot directory")
 	list := flag.Bool("list", false, "only print the stores of the height's commit info")
+	flag.StringVar(&backend, "backend", "pebbledb", "database backend of application.db: pebbledb or goleveldb")
 	flag.Parse()
 	if *dir == "" || *height <= 0 || (*out == "" && !*list) {
 		flag.Usage()
@@ -56,8 +57,10 @@ func main() {
 	}
 }
 
+var backend string
+
 func run(dir string, height int64, out string, list bool) error {
-	db, err := dbm.NewPebbleDB("application", dir, nil)
+	db, err := dbm.NewDB("application", dbm.BackendType(backend), dir)
 	if err != nil {
 		return err
 	}
