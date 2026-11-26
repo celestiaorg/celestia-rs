@@ -383,6 +383,41 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json
   -out ../fixtures/synthetic/v5
 ```
 
+`v5-oracle` modifies the home in place: run the v5 to v6 commands below
+on a fresh home made by the first two commands.
+
+#### Synthetic chain across the v5 to v6 upgrade
+
+`v5-oracle -heights 11 -next-handoff` runs the chain on to block 36
+(`to_v6.go`): alice and carol become validators below v6's 10% minimum
+commission (6% with max 20%, 7% with max 8%); a solo machine
+(06-solomachine, whose proofs are signatures by a fixed key) opens an IBC
+client, connection and transfer channel, and its `uatom` transfer gets an
+error acknowledgement from x/tokenfilter; the validators signal version
+6, a `MsgTryUpgrade` in block 33 reaches quorum, and the EndBlocker of
+block 36 sets app version 6 and schedules plan `v6` at 37.
+[`fixtures/synthetic/v5-to-v6`](fixtures/synthetic/v5-to-v6) holds its
+outputs (blocks 26 to 30 are those of `fixtures/synthetic/v5`).
+`v6-oracle` opens the home with celestia-app v6.4.4 (the v6 release that
+the v8 and v9 multiplexers embed; v6.4.10 changes only CheckTx,
+ProcessProposal and the tx cache). The PreBlocker of block 37 runs the
+`v6` handler; blocks 37 to 41 receive a second `uatom` transfer (now a
+voucher), send the voucher, return part of it to the solo machine and
+take its acknowledgement. [`fixtures/synthetic/v6`](fixtures/synthetic/v6)
+holds the outputs from height 36. `go test` in `v5-oracle` rebuilds
+`v5-to-v6`; `go test` in `v6-oracle` runs the whole chain and rebuilds
+`v6`. `cargo test -p app --test synthetic_v6_oracle` checks the fixtures'
+facts. To regenerate, after the v4 to v5 commands above (on a fresh home):
+
+```sh
+cd conformance/v5-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v5-to-v6 -heights 11 -next-handoff
+cd ../v6-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v6
+```
+
 #### Rich synthetic chain for the v3 to v4 migrations
 
 `v1-oracle -synthetic -chain v3-rich` builds a second chain (genesis at
