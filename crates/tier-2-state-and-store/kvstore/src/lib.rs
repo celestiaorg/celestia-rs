@@ -130,6 +130,32 @@ impl Store {
         ))
     }
 
+    /// Lazy iterator over the half-open range `[start, end)`, ascending or
+    /// descending: it loads only the nodes it walks, so a caller that stops
+    /// after a few entries does not read the rest of the range. It owns
+    /// what it reads (the tree as of the call).
+    pub fn lazy_iter(
+        &self,
+        start: Option<&[u8]>,
+        end: Option<&[u8]>,
+        reverse: bool,
+    ) -> Result<impl Iterator<Item = Result<Entry>> + Send + 'static> {
+        validate_range(start, end)?;
+        let it = if reverse {
+            self.tree.reverse_iter(start, end)
+        } else {
+            self.tree.iter(start, end)
+        };
+        Ok(it.map(|entry| {
+            entry
+                .map(|e| Entry {
+                    key: e.key,
+                    value: e.value,
+                })
+                .map_err(Into::into)
+        }))
+    }
+
     /// Iterate backward over the half-open range `[start, end)`.
     pub fn reverse_iter(&self, start: Option<&[u8]>, end: Option<&[u8]>) -> Result<Iter> {
         validate_range(start, end)?;
