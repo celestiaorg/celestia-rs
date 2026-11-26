@@ -112,25 +112,25 @@ configuration, data retention and trust inputs.
 The current operator benchmark target is [celestia-app v11.0.0](https://github.com/celestiaorg/celestia-app/releases/tag/v11.0.0).
 The [operator comparison protocol](docs/benchmarks/operator-sync.md) covers snapshot and genesis sync to tip, RAM and disk usage. The [first cloud runs](docs/benchmarks/operator-sync-2026-11-25.md) give two valid mainnet state-sync pairs against Go v11.0.0. celestia-rs reached the tip in 482 s and 520 s, and Go in 1,535 s and 2,052 s, with about half of the peak memory and 35% of the disk. In an earlier run, which the protocol discards as a pair, celestia-rs took 3,308 s because snapshot discovery took about 50 minutes, and in one bridge run it did not sync in 60 minutes: the node took up a snapshot 4.6 million heights old. With its integrated DA bridge, celestia-rs peaked at 6.0 GB of memory over the whole run against 27.7 GB for celestia-app plus a celestia-node bridge, but the celestia-node bridge was filling in older DA history, so the two did not do equal work. A third valid pair is pending.
 
-### Historical Mac Mini M4 results
+### Mac Mini M4 results
 
-The October 20 reference run used release builds on the same Mac Mini M4
-(16 GB RAM, 256 GB SSD) with Go celestia-appd v10.4.0 and celestia-rs
-`fb42fd2`. The recorded workload covered 511 heights and 386,980
-transactions, with blocks up to 28.2 MiB. Both implementations matched
-every recorded app hash. See the [benchmark report](docs/benchmarks/README.md#results-mac-mini-m4-2026-10-20-b1-reference)
+The November 25 run used release builds on the same Mac Mini M4 (16 GB
+RAM, 256 GB SSD) with Go celestia-appd v11.0.0 and celestia-rs `9ebb74f`.
+The recorded workload covered 511 heights and 386,980 transactions, with
+blocks up to 28.2 MiB. Both implementations matched every recorded app
+hash. See the [benchmark report](docs/benchmarks/README.md#results-mac-mini-m4-2026-11-25-go-v1100)
 for the method and caveats.
 
 | | Go | Rust | |
 |---|---|---|---|
-| Block execution (FinalizeBlock + Commit) | 1,189 tx/s | 4,765 tx/s | 4.0x faster |
-| CheckTx, new txs | 6,391 tx/s | 13,178 tx/s | 2.1x faster |
-| State sync to first block | 40.8 s | 11.6 s | 3.5x faster |
-| Block sync (511 heights) | 186.6 s | 134.4 s | 28% less time |
-| Memory (RSS after block sync) | 2,373 MB | 1,381 MB | 42% less |
-| App state on disk after replay | 456 MB | 487 MB | 7% larger |
-| PrepareProposal, max-size squares (median) | 205.6 ms | 211.6 ms | 3% slower |
-| ProcessProposal, max-size squares (median) | 211.9 ms | 58.1 ms | 3.6x faster |
+| Block execution (FinalizeBlock + Commit) | 1,112 tx/s | 4,759 tx/s | 4.3x faster |
+| CheckTx, new txs | 6,338 tx/s | 13,288 tx/s | 2.1x faster |
+| State sync to first block | 47.7 s | 10.9 s | 4.4x faster |
+| Block sync (511 heights) | 192.4 s | 128.7 s | 33% less time |
+| Memory (RSS after block sync) | 2,148 MB | 1,260 MB | 41% less |
+| App state on disk after replay | 443 MB | 307 MB | 31% smaller |
+| PrepareProposal, max-size squares (median) | 221.1 ms | 100.1 ms | 2.2x faster |
+| ProcessProposal, max-size squares (median) | 213.5 ms | 56.8 ms | 3.8x faster |
 
 ## Getting started
 

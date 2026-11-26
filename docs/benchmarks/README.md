@@ -1,7 +1,8 @@
 # B1 benchmarks: Go celestia-appd vs celestia-rs
 
-> **Status (2026-10-20): B1 reference run done on the target Mac Mini M4**
-> ("Results: Mac Mini M4" below). The older Linux runs further down were
+> **Status (2026-11-25): rerun on the target Mac Mini M4 against Go
+> celestia-appd v11.0.0** ("Results: Mac Mini M4 (2026-11-25, Go v11.0.0)"
+> below). The 2026-10-20 B1 reference run against v10.4.0 follows it. The older Linux runs further down were
 > taken on a shared, oversubscribed 4-vCPU cloud VM (load average 10-15
 > from other jobs): their absolute latencies are inflated and noisy, and
 > only their Go/Rust ratios of measurements taken back to back are
@@ -118,6 +119,74 @@ The same bounded node cache retains those records for traversal. In a
 20,000-key lookup after reopening the 200-height store, the backend served
 52,557 point reads, up from 46,278 with the original format. Repeating the
 lookup with a warm node cache issued zero backend reads in either build.
+
+## Results: Mac Mini M4 (2026-11-25, Go v11.0.0)
+
+Machine: Mac Mini M4 (4 performance + 6 efficiency cores), 16 GB, 256 GB
+SSD, macOS 26.2, rustc 1.99.1, go1.26.10; celestia-rs `9ebb74f`, Go
+celestia-appd v11.0.0 / celestia-core v0.42.8, built by
+`APP_VERSION=v11.0.0 CORE_VERSION=v0.42.8 GOTOOLCHAIN=go1.26.10
+conformance/devnet/build-bins.sh`. The Mac's mainnet validator and a
+second celestia-rs node kept running (about half of one core together),
+and every benchmark process ran under `nice -n 10`. Chain: 511 heights,
+386,980 txs, 25 blocks over 2 MiB (up to 28.2 MiB), a 3.6 GB recording
+made with the v11.0.0 validator; `gen-chain.sh` took 22 minutes and
+`run.sh` 26 minutes.
+
+This run replaces the two rows of the 2026-10-20 table where Rust was
+behind Go:
+
+- **PrepareProposal on max-size squares.** `sha2` 0.10 hashes in software
+  on aarch64 unless its `asm` feature is on. With the feature on (`hash`
+  crate, #610), the data availability header of a 256x256 square takes
+  about 37 ms where it took about 135 ms. Before that change the same
+  replay gave 233.5 ms for Rust and 225.5 ms for Go. The DAH change of the
+  "PrepareProposal on max-size squares" section below is also included.
+- **App state on disk.** The compact IAVL encoding of `4d84c7c` is
+  included.
+
+`BENCH_FULL=1 scripts/autoresearch-bench.sh` repeats the PrepareProposal
+and disk rows for one app. Two such Rust replays before #610 agreed
+within 0.2% on PrepareProposal p50 and exactly on disk.
+
+### A. App-only replay
+
+| metric | Go celestia-appd | celestia-rs | Rust/Go |
+|---|---|---|---|
+| FinalizeBlock+Commit p50 / p99 | 363.1 / 5984.8 ms | 153.4 / 458.0 ms | 0.42x / 0.08x |
+| FinalizeBlock+Commit, max-size squares p50 / p99 | 395.4 / 500.2 ms | 179.6 / 199.0 ms | 0.45x / 0.40x |
+| FinalizeBlock p50 / p99 | 301.0 / 437.0 ms | 121.4 / 165.8 ms | 0.40x / 0.38x |
+| Commit p50 / p99 | 49.6 / 5643.0 ms | 29.0 / 333.3 ms | 0.59x / 0.06x |
+| PrepareProposal, max-size squares p50 / p99 | 221.1 / 306.8 ms | 100.1 / 163.0 ms | 0.45x / 0.53x |
+| ProcessProposal, max-size squares p50 / p99 | 213.5 / 319.4 ms | 56.8 / 96.5 ms | 0.27x / 0.30x |
+| PrepareProposal, light blocks p50 / p99 | 105.4 / 159.1 ms | 33.0 / 37.3 ms | 0.31x / 0.23x |
+| ProcessProposal, light blocks p50 / p99 | 94.3 / 136.5 ms | 32.4 / 38.1 ms | 0.34x / 0.28x |
+| execution throughput | 1.47 blocks/s, 1112 tx/s | 6.28 blocks/s, 4759 tx/s | 4.3x faster |
+| CheckTx (new txs) | 6338 tx/s | 13288 tx/s | 2.1x faster |
+| CheckTx (recheck) | 16532 tx/s | 16755 tx/s | 0.99x |
+| app RSS at end (peak) | 2805 MB (2812) | 1310 MB (1634) | 0.47x |
+| app state on disk at end | 443 MB | 307 MB | 0.69x |
+| app hash mismatches vs the recording | 0 / 511 | 0 / 511 | |
+
+The "max-size squares" rows mix two block sizes: 13 blocks of 8.0 MB and
+12 of 29.6 MB. Both build a 256x256 square. The median falls between the
+two groups.
+
+### B-D. Full nodes
+
+| metric | Go | Rust | Rust/Go |
+|---|---|---|---|
+| B. block sync of 511 heights from the Go validator | 192.4 s (2.7 blocks/s) | 128.7 s (4.0 blocks/s) | 0.67x |
+| B. RSS after block sync (peak) | 2148 MB (2372) | 1260 MB (1533) | 0.59x |
+| B. data/ after block sync | 1925 MB | 932 MB | 0.48x |
+| C. restart: RPC answering | 0.60 s | 0.09 s | 0.15x |
+| C. restart: first new height committed | 7.91 s | 6.11 s | 0.77x |
+| D. state sync of snapshot 600: restored | 44.5 s | 7.7 s | 0.17x |
+| D. state sync: first block after the snapshot | 47.7 s | 10.9 s | 0.23x |
+| D. RSS / data/ after state sync | 1242 MB / 230 MB | 484 MB / 111 MB | 0.39x / 0.48x |
+
+Each measurement ran once. No row has Rust behind Go; CheckTx recheck is
+even.
 
 ## Results: Mac Mini M4 (2026-10-20, B1 reference)
 
