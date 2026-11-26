@@ -36,6 +36,8 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		args []string
 	}{
 		{"v9", nil},
+		// The probe blocks of probes.go after the usual five.
+		{"v9-probes", []string{"-heights", "8", "-probes"}},
 	} {
 		home := filepath.Join(tmp, "home-"+c.dir)
 		if err := untar(filepath.Join(homes, "home-56.tar.gz"), home); err != nil {

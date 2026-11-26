@@ -370,6 +370,28 @@ tar -C "$OUT/home" --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -c
   | gzip -n -9 > conformance/fixtures/synthetic/homes/home-25.tar.gz
 ```
 
+#### Probe blocks per release
+
+`-heights 8 -probes` (in `v4-oracle` to `v9-oracle`, `probes.go`) runs each
+release's usual five blocks and then three probe blocks of transactions
+whose outcome differs between releases: an ICA host `MsgModuleQuerySafe`, a
+warp `MsgCreateSyntheticToken`, a `MsgWithdrawDelegatorReward` without a
+delegation, and gov proposals of an ICA host `MsgUpdateParams` and of
+consensus `MsgUpdateParams` with evidence `MaxAgeNumBlocks` 242,640, 404,400
+and 559,940. With `-probes` the tx results also record `signers` (absent on
+v4, whose celestia-core has no such field). The fixtures are
+`fixtures/synthetic/v{4,5,6,8,9}-probes`; v4 starts from the v3 hand-off,
+the others from the previous stage's home. `cargo test -p app --test
+synthetic_probes_oracle` pins Go's code and log for each probe and release.
+For example, for v6:
+
+```sh
+cd conformance/v6-oracle
+tar -C "$OUT/home" -xzf ../fixtures/synthetic/homes/home-36.tar.gz
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -heights 8 -probes \
+  -genesis ../fixtures/synthetic/v1-v3/genesis.json -out ../fixtures/synthetic/v6-probes
+```
+
 #### Synthetic chain across the v4 to v5 upgrade
 
 `v4-oracle -heights 10 -next-handoff` runs the same chain on to block

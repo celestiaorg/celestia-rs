@@ -122,6 +122,8 @@ type synth struct {
 	lastResultsHash []byte
 	appVersion      uint64
 	params          cmttypes.ConsensusParams
+	// probes replaces the blocks after the usual five with probes.go's.
+	probes bool
 	// ids are the IBC identifiers that the blocks created, by event type
 	// (to_v6.go).
 	ids map[string]string
@@ -298,6 +300,21 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 			return nil, err
 		}
 		steps = append(steps, more...)
+	}
+	if s.probes && height-s.handoffHeight-1 >= 5 {
+		probeTx := func(msg sdk.Msg, opts ...user.TxOption) error {
+			bz, _, err := sg.CreateTx([]sdk.Msg{msg}, opts...)
+			if err != nil {
+				return err
+			}
+			out = append(out, bz)
+			return nil
+		}
+		probe, err := s.probeSteps(height-s.handoffHeight-1, addr, probeTx)
+		if err != nil {
+			return nil, err
+		}
+		steps = probe
 	}
 	for _, step := range steps {
 		if err := step(); err != nil {
