@@ -3042,3 +3042,31 @@ fn v046_fund_community_pool() {
         math::Int::from_u64(20)
     );
 }
+
+/// cosmos-sdk v0.46 `UpdateValidatorCommission` below the minimum rate
+/// reads `MinCommissionRate` again for its error message: two metered
+/// reads of the parameter (1141 gas each on mainnet) instead of one.
+#[test]
+fn v046_commission_below_min_rate_reads_the_param_twice() {
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let (mut ctx, _) = v046_two_validators(&mut ms, 10);
+    ctx.header.time = pbjson_types::Timestamp {
+        seconds: 1_000_000,
+        nanos: 0,
+    };
+    let mut v = x_staking::store::validator(&mut ctx, &[1; 20]).unwrap();
+    v.commission.max_rate = math::LegacyDec::one();
+    v.commission.max_change_rate = math::LegacyDec::one();
+    let gas = |ctx: &mut sdk::Context<'_>, rate: &str| {
+        ctx.gas = kvstore::GasMeter::infinite();
+        let r = x_staking::validator::update_validator_commission(
+            ctx,
+            &v,
+            &math::LegacyDec::from_str_go(rate).unwrap(),
+        );
+        (r.is_ok(), ctx.gas.consumed())
+    };
+    assert_eq!(gas(&mut ctx, "0.06"), (true, 1141));
+    assert_eq!(gas(&mut ctx, "0.01"), (false, 2 * 1141));
+}
