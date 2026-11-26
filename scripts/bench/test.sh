@@ -232,6 +232,17 @@ env BENCH_DRY_RUN="$t/trap" bash -c '
   exit 0' _ "$here" >/dev/null 2>&1 || rc=$?
 check "trap fires in main shell" test "$rc" -eq 1 -a -e "$t/trap/finish-main"
 
+# GCE may start the metadata script concurrently. Exactly one process must
+# claim the detached driver; a check followed by touch is racy here.
+driver_claim_fixture() (
+  STATE=$t/driver-claim
+  mkdir -p "$STATE"
+  for _ in {1..20}; do (bench_claim_driver "$STATE" && echo won) & done
+  wait
+)
+driver_claim_fixture >"$t/claims"
+eq "one startup driver wins" 1 "$(wc -l <"$t/claims")"
+
 # Exercise the fixed-height runner, including JSON-RPC share validation and
 # the head/tail checks. The mock advances on WaitForHeight like a live bridge.
 bridge_fixture() (

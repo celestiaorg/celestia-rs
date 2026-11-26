@@ -19,6 +19,10 @@ BENCH_PEERS=076c9cc9de3039819a98522aeea39e8c72b49682@peer.celestia.mainnet.dteam
 BENCH_BRIDGE_HEIGHTS=600
 BENCH_BRIDGE_STRIDE=20
 
+# bench_claim_driver STATE: cross-process test-and-set for a VM startup script.
+# The guest agent can invoke the same metadata script concurrently at boot.
+bench_claim_driver() { mkdir "$1/started" 2>/dev/null; }
+
 # bench_valid KIND VALUE: strict format check for every external input.
 bench_valid() {
   local peer='[0-9a-f]{40}@[A-Za-z0-9.-]{1,253}:[0-9]{1,5}'
