@@ -325,7 +325,7 @@ about ten hours). The scripts and the index are in
 `gs://fibreda-celestia-rs-genesis/tools/` and
 `gs://fibreda-celestia-rs-genesis/archive/qubelabs-celestia_2026-11-03/`;
 exported checkpoints go to
-`gs://fibreda-celestia-rs-genesis/checkpoints/archive-qubelabs/<height>-<exporter>/`
+`gs://fibreda-celestia-rs-genesis/go-snapshots/<height>/<format>/` (chunks, `metadata.json`)
 after `verify-replay-checkpoint.py` checked them.
 
 ##### Go checkpoint campaign
