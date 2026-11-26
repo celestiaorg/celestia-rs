@@ -76,6 +76,7 @@ var stakingSpec = &chainSpec{
 	modifier:    stakingGenesis,
 	newAccounts: stakingNewAccounts,
 	rawTxs:      func(s *synth, a *app.App, height int64) ([][]byte, error) { return s.stakingTxs(a, height) },
+	noHandoff:   true,
 }
 
 // stakingNewAccounts are created by the staking chain's vesting

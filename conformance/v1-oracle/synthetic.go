@@ -113,6 +113,9 @@ type chainSpec struct {
 	// rawTxs, when set, builds a block's transactions in place of txs,
 	// with the committed app state at hand.
 	rawTxs func(s *synth, a *app.App, height int64) ([][]byte, error)
+	// noHandoff: the chain never schedules the v4 upgrade, so -handoff
+	// would leave conformance/v4-oracle no plan to continue with.
+	noHandoff bool
 }
 
 // accounts are the spec's key names: validators, then users.
