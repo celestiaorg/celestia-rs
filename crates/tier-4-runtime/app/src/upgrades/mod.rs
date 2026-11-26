@@ -150,7 +150,11 @@ pub fn set_app_version(ctx: &mut Context<'_>, version: u64) -> Result<()> {
 /// in v10 run `InitGenesis` when missing from the previous version map.
 fn run_migrations(ctx: &mut Context<'_>, from: &VersionMap, target: u64) -> Result<VersionMap> {
     let mut out = VersionMap::new();
-    for (name, to) in crate::modules::version_map(target) {
+    // The target release's module manager: v9.0.8 has no fibre or
+    // valaddr module.
+    for (name, to) in crate::modules::version_map(target)
+        .filter(|(name, _)| crate::stores::exists_at(name, target))
+    {
         match from.get(name).copied() {
             Some(v) if v == to => {}
             Some(2) if name == "blob" && to == 3 => x_blob::migrate_params(ctx)?,
