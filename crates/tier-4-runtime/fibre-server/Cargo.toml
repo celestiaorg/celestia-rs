@@ -57,6 +57,12 @@ x-fibre = { path = "../../tier-3-app-modules/x/fibre" }
 x509-parser = "0.18"
 
 [dev-dependencies]
+async-trait = "0.1"
+# lumina's Rust Fibre client (the revision the node pins) against the server.
+celestia-fibre = { version = "=1.3.0", git = "https://github.com/celestiaorg/lumina", rev = "ccdbed9dbcd23fe31c7fb4b7001648a45262bc33" }
+ed25519-dalek = "3"
+k256 = { version = "0.14", features = ["ecdsa"] }
+lumina-types = { package = "celestia-types", version = "=1.3.0", git = "https://github.com/celestiaorg/lumina", rev = "ccdbed9dbcd23fe31c7fb4b7001648a45262bc33", default-features = false }
 # TLS 1.2 client in tests: the server must refuse it even when another crate
 # of the node enables rustls' tls12 feature.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

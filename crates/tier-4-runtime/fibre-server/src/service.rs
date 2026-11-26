@@ -172,12 +172,33 @@ pub(crate) fn budget_exceeded(prune_interval: Duration) -> Status {
     )
 }
 
-/// Runs a blocking closure on the blocking pool; a panic there becomes an
-/// error text.
+/// Borrowed views of a shard's rows for the verifier.
+fn shard_rows(shard: &BlobShard) -> Vec<ShardRow<'_>> {
+    shard
+        .rows
+        .iter()
+        .map(|r| ShardRow {
+            index: r.index,
+            data: &r.data,
+            proof: &r.proof,
+        })
+        .collect()
+}
+
+/// Runs a blocking closure on the blocking pool. A panic there resumes on
+/// the calling task, where the transport's recovery turns it into
+/// `Internal` (as Go's interceptor recovers a panicking handler).
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
-    tokio::task::spawn_blocking(f)
-        .await
-        .map_err(|e| format!("blocking task failed: {e}"))
+    match tokio::task::spawn_blocking(f).await {
+        Ok(v) => Ok(v),
+        Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
+        Err(e) => Err(format!("blocking task failed: {e}")),
+    }
+}
+
+#[cfg(test)]
+pub(crate) async fn blocking_for_test(f: impl FnOnce() + Send + 'static) -> Result<(), Status> {
+    blocking(f).await.map_err(Status::unknown)
 }
 
 impl Inner {
@@ -481,14 +502,20 @@ impl Inner {
         shard_map.verify(index, &rows).map_err(|e| e.to_string())
     }
 
-    /// Go `verifyShard`: waits for a verification slot (cancellable), then
-    /// verifies on the blocking pool.
+    /// Go `verifyShard`: the shape checks, then a verification slot
+    /// (cancellable), then the proofs on the blocking pool.
     async fn verify_shard(
         &self,
         ctx: &CallContext,
         v: &Verified,
         shard: &Arc<BlobShard>,
     ) -> Result<(), String> {
+        {
+            let rows = shard_rows(shard);
+            self.verifier
+                .check_shape(v.promise.blob_size, &rows, &shard.rlcs)
+                .map_err(|e| e.to_string())?;
+        }
         let permit = tokio::select! {
             biased;
             p = Arc::clone(&self.verify_slots).acquire_owned() => {
@@ -504,15 +531,7 @@ impl Inner {
         let upload_size = v.promise.blob_size;
         blocking(move || {
             let _permit = permit;
-            let rows: Vec<ShardRow<'_>> = shard
-                .rows
-                .iter()
-                .map(|r| ShardRow {
-                    index: r.index,
-                    data: &r.data,
-                    proof: &r.proof,
-                })
-                .collect();
+            let rows = shard_rows(&shard);
             verifier
                 .verify_shard(&commitment, upload_size, &rows, &shard.rlcs)
                 .map_err(|e| e.to_string())

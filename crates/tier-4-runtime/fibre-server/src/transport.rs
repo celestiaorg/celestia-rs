@@ -295,6 +295,10 @@ impl Connection {
                     if activity.idle_for().is_some_and(|d| d >= tuning.max_connection_idle) {
                         conn.as_mut().graceful_shutdown();
                         draining = true;
+                        // hyper finishes a pending HTTP/2 handshake before it
+                        // honours the GOAWAY: a peer that completed TLS but
+                        // never sent the preface would keep its slot.
+                        close_at = Some(tokio::time::Instant::now() + tuning.connection_timeout);
                     }
                 }
             }
@@ -521,6 +525,35 @@ mod tests {
             "unknown method Nope for service celestia.fibre.v1.Fibre"
         );
         assert_eq!(unknown_method("/x.Y/Z").message(), "unknown service x.Y");
+    }
+
+    // Go TestRecoverUnaryInterceptor(+Passthrough).
+    #[tokio::test]
+    #[allow(clippy::panic, clippy::manual_assert)]
+    async fn panics_become_internal() {
+        let err = recovering("/test/Panic", async {
+            if true {
+                panic!("boom");
+            }
+            Ok::<(), Status>(())
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Internal);
+        assert_eq!(err.message(), "internal error");
+        // A panic on the blocking pool resumes on the handler's task.
+        let err = recovering("/test/BlockingPanic", async {
+            crate::service::blocking_for_test(|| panic!("boom")).await
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Internal);
+        assert_eq!(
+            recovering("/test/Ok", async { Ok::<_, Status>("ok") })
+                .await
+                .ok(),
+            Some("ok")
+        );
     }
 
     #[test]

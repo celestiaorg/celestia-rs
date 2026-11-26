@@ -515,6 +515,41 @@ async fn connection_cap() {
     t.server.stop(Duration::from_secs(1)).await.unwrap();
 }
 
+/// Peers that stall the TLS handshake or never speak HTTP/2 lose their
+/// connection slot (Go's connectionTimeout and MaxConnectionIdle).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stalled_peers_release_their_slot() {
+    let t = start_with(|cfg, _| {
+        cfg.max_connections = 1;
+        cfg.tuning.connection_timeout = Duration::from_millis(200);
+        cfg.tuning.max_connection_idle = Duration::from_millis(200);
+    })
+    .await;
+    let addr = t.server.listen_address();
+    let m = t.server.metrics();
+
+    // TCP only: the TLS handshake times out.
+    let raw = tokio::net::TcpStream::connect(addr).await.unwrap();
+    assert!(eventually(Duration::from_secs(5), async || m.connections_active() == 1).await);
+    assert!(eventually(Duration::from_secs(5), async || m.connections_active() == 0).await);
+    assert!(
+        m.render("")
+            .contains("fibre_server_tls_handshake_failures_total{} 1")
+    );
+    drop(raw);
+
+    // TLS but no HTTP/2 preface.
+    let tls = tls_connect(addr, t.fixture.validator_key()).await.unwrap();
+    assert!(eventually(Duration::from_secs(5), async || m.connections_active() == 1).await);
+    assert!(eventually(Duration::from_secs(5), async || m.connections_active() == 0).await);
+    drop(tls);
+
+    // The slot serves a real client again.
+    let ch = channel(addr, t.fixture.validator_key()).await.unwrap();
+    health(&ch, "fibre-liveness").await.unwrap();
+    t.server.stop(Duration::from_secs(1)).await.unwrap();
+}
+
 /// max_concurrent_streams bounds the requests one connection runs at once.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn stream_cap() {
