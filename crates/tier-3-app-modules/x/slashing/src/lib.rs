@@ -668,6 +668,63 @@ fn v046_begin_block(ctx: &mut Context<'_>) -> Result<()> {
     Ok(())
 }
 
+/// slashing v0.46 missed-block bit array prefix (and v0.50 bitmap prefix).
+const LEGACY_MISSED_BLOCKS_PREFIX: u8 = 0x02;
+/// `Migrate3to4` and `RemoveLegacyValidatorMissedBlocks` handle at most 10
+/// signing infos per call.
+const MISSED_BLOCKS_MIGRATION_LIMIT: usize = 10;
+
+/// `migrations/v4.Migrate(ctx, store, index, 10)` of celestiaorg cosmos-sdk
+/// v1.29.4-sdk-v0.50.14: from `index` (a signing-info key without its
+/// 0x01 prefix, or the start), each signing info's v0.46 missed-block
+/// entries are deleted; after 10 the next key goes to the cursor 0xFF, and
+/// when the walk ends first the cursor is deleted.
+///
+/// The iterator runs over the store prefixed with 0x01, so each key is
+/// `len || address`, but `ValidatorSigningInfoAddress` drops two bytes
+/// (`key[2:]`): the address loses its first byte, and the deleted prefix
+/// (`0x02 || len(short) || short`) matches no v0.46 entry, whose length
+/// byte is the full address length.
+pub fn remove_legacy_missed_blocks(ctx: &mut Context<'_>, index: Option<&[u8]>) -> Result<()> {
+    // The signing infos to walk and the next one, whose key becomes the
+    // cursor; the iterator starts at `index`.
+    let first = [&[0x01][..], index.unwrap_or_default()].concat();
+    let end = sdk::context::prefix_end(&[0x01]);
+    let mut keys = Vec::new();
+    {
+        let mut it = ctx.range_iter(STORE_KEY, Some(&first), end.as_deref())?;
+        while keys.len() <= MISSED_BLOCKS_MIGRATION_LIMIT {
+            let Some((k, _)) = it.next(ctx)? else { break };
+            keys.push(k[1..].to_vec());
+        }
+    }
+    for (i, key) in keys.iter().enumerate() {
+        if i >= MISSED_BLOCKS_MIGRATION_LIMIT {
+            return ctx.set(STORE_KEY, NEXT_MIGRATE_MISSED_BLOCKS.to_vec(), key.clone());
+        }
+        if key.len() < 3 {
+            return Err(errs::logic(format!(
+                "key length should be at least 3; got {}",
+                key.len()
+            )));
+        }
+        let short = &key[2..];
+        let len = u8::try_from(short.len()).map_err(|_| errs::logic("address too long"))?;
+        let prefix = [&[LEGACY_MISSED_BLOCKS_PREFIX, len][..], short].concat();
+        let mut doomed = Vec::new();
+        {
+            let mut it = ctx.prefix_iter(STORE_KEY, &prefix)?;
+            while let Some((k, _)) = it.next(ctx)? {
+                doomed.push(k);
+            }
+        }
+        for k in doomed {
+            ctx.delete(STORE_KEY, &k)?;
+        }
+    }
+    ctx.delete(STORE_KEY, NEXT_MIGRATE_MISSED_BLOCKS)
+}
+
 /// `BeginBlocker`.
 pub fn begin_block(ctx: &mut Context<'_>) -> Result<()> {
     if ctx.is_sdk_v046() {
@@ -680,14 +737,12 @@ pub fn begin_block(ctx: &mut Context<'_>) -> Result<()> {
             .map_or((Vec::new(), 0), |v| (v.address.clone(), v.power));
         handle_validator_signature(ctx, &addr, power, vote.block_id_flag)?;
     }
-    // RemoveLegacyValidatorMissedBlocks: a fresh v10 chain never has the
-    // migration cursor set.
-    if ctx.get(STORE_KEY, NEXT_MIGRATE_MISSED_BLOCKS)?.is_some() {
-        return Err(errs::not_supported(
-            "slashing v4 lazy migration is not ported",
-        ));
+    // `RemoveLegacyValidatorMissedBlocks`: the v4 migration continues from
+    // its cursor (a chain that never ran the v0.46 to v0.50 upgrade has none).
+    match ctx.get(STORE_KEY, NEXT_MIGRATE_MISSED_BLOCKS)? {
+        Some(index) => remove_legacy_missed_blocks(ctx, Some(&index)),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 // ---- hooks ----

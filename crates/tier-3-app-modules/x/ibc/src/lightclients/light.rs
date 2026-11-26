@@ -261,10 +261,12 @@ fn part_set_header(b: Option<&tm::BlockId>) -> tm::PartSetHeader {
 
 /// `BlockIDFromProto` + `BlockID.ValidateBasic`: `PartSetHeaderFromProto`
 /// (`PartSetHeader.ValidateBasic`: the part count, then the hash) first.
+/// celestia-core v0.34 has no part count limit.
 fn validate_block_id(b: &tm::BlockId) -> LResult<()> {
     let psh = part_set_header(Some(b));
     let max = MAX_BLOCK_PARTS.with(std::cell::Cell::get);
-    if psh.total > max {
+    // celestia-core v0.34 (app versions 1 to 3) checks only the hash.
+    if psh.total > max && !sdk::version::is_sdk_v046(0) {
         return Err(format!(
             "total {} exceeds MaxBlockPartsCount {max}",
             psh.total

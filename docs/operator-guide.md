@@ -979,6 +979,23 @@ celestia-rs start --home ~/.celestia-rs/mainnet-genesis \
 - **Disk.** With the defaults (`min-retain-blocks = 3000`, `pruning =
   default`) disk stays bounded while catching up. Set
   `min-retain-blocks = 0` only for a node meant to serve history.
+- **Speed.** Execution is most of the time. Bigger caches and less
+  frequent pruning make catch-up about 30% faster without changing
+  state (mainnet blocks 1–1000: 236 → 165 ms per block on 4 vCPUs). Use
+  them while catching up, if the machine has 8 GB of memory to spare:
+
+  ```toml
+  # app.toml
+  pruning = "custom"
+  pruning-keep-recent = "100"
+  pruning-interval = "100"
+  iavl-cache-size = 8000000   # decoded IAVL nodes, ~250 B each
+  ```
+
+  and start with `--db-cache-mib 4096` (RocksDB block cache). To measure
+  other settings, `crates/tier-5-node/celestia-rs/examples/replay_bench.rs`
+  (flags in its header) replays cached mainnet blocks through the block
+  executor and checks every app hash.
 
 ## 11. Running a Mocha validator on a Mac (M13)
 

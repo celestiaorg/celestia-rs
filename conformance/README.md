@@ -316,6 +316,121 @@ changes, store roots, app hash, transaction results, events, validator
 updates, consensus params and timeouts. `MATCHED_THROUGH` in the test is
 the last block that matches today.
 
+#### Synthetic chain across the v3 to v4 upgrade
+
+`v4-oracle` continues the synthetic chain across the v3 to v4 upgrade
+(cosmos-sdk v0.46 to v0.50), as the celestia-app v4 multiplexer does on
+mainnet at height 6,680,340. `v1-oracle -synthetic -handoff <home>`
+keeps the app home of celestia-app v3.13.0 on disk: the goleveldb
+database `data/application.db` after block 15, `data/upgrade-info.json`
+(plan `v4` at height 16) and `handoff.json` (what the next header
+commits to). `v4-oracle` opens that home with celestia-app v4.1.0. Its
+store loader adds the v4 stores at height 16, and the x/upgrade
+PreBlocker of block 16 runs the `v4` upgrade handler. It then executes
+blocks 16 to 20 with FinalizeBlock and Commit.
+
+[`fixtures/synthetic/v4`](fixtures/synthetic/v4) holds the blocks it
+built, the store roots and IAVL versions of heights 15 to 20, the
+FinalizeBlock responses, every key at height 15 (`kv-handoff.jsonl.gz`),
+the KV changes of each block, and the KV changes of the store loader and
+the x/upgrade PreBlocker of block 16 alone (`kv-upgrade.jsonl.gz`, run on
+a copy of the home), which is the target of the module migrations. `go test` in `v4-oracle` builds
+`v1-oracle`, makes the hand-off and requires the fixture byte for byte.
+`cargo test -p app --test synthetic_v4_oracle` checks the fixture and
+the facts of the upgrade block that the Rust hand-off must reproduce.
+`cargo test -p app --test upgrade_v4_oracle` runs each Rust migration of
+the `v4` handler, and the whole handler, on the height-15 state and
+requires Go's result in every store.
+To regenerate it:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -kv -out "$OUT/v1-v3" -handoff "$OUT/home"
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" \
+  -genesis "$OUT/v1-v3/genesis.json" -out ../fixtures/synthetic/v4
+```
+
+#### Rich synthetic chain for the v3 to v4 migrations
+
+`v1-oracle -synthetic -chain v3-rich` builds a second chain (genesis at
+app version 3) with the state that the v4 migrations act on: 12
+validators with missed blocks, 1,080 delegations, two unbonding entries
+of one pair at one height, a redelegation, a vesting account, a gov
+proposal that ends before the upgrade and one still voting, authz and
+fee grants, and an IBC client, connection and `transfer` channel. Its
+EndBlocker of block 13 schedules plan `v4` at 14. With more than 10
+validators and 1,000 delegations, slashing's and staking's migrations
+stop early and record continuation keys, which the BeginBlockers of the
+upgrade block finish. [`fixtures/synthetic/v3-rich`](fixtures/synthetic/v3-rich)
+holds the v3 side and [`fixtures/synthetic/v3-rich-v4`](fixtures/synthetic/v3-rich-v4)
+the v4 side; both `go test`s rebuild them. `upgrade_v4_oracle` runs each
+migration on both chains. To regenerate:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -chain v3-rich -kv -out "$OUT/rich" -handoff "$OUT/rich-home"
+cp "$OUT"/rich/{genesis.json,blocks.jsonl.gz,store-roots.json,tx-results.jsonl.gz,kv-diffs.jsonl.gz,kv-height-0.jsonl.gz} \
+  ../fixtures/synthetic/v3-rich/
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/rich-home" \
+  -genesis "$OUT/rich/genesis.json" -out ../fixtures/synthetic/v3-rich-v4
+```
+
+#### IBC chain for app version 2
+
+Mainnet's v2 and v3 eras carry interchain account host packets (27,031
+from height 3,161,843 in the archive index) and packet-forward-middleware
+forwards (2,974). `TestIBCFixture` in `v1-oracle` runs celestia-app
+v3.13.0 as chain A of an ibc-go v6 ibctesting coordinator, with two
+ibc-go simapp chains as counterparties:
+
+- Chain ID `test`, genesis at app version 1, `--v2-upgrade-height 3`,
+  the inter-block cache on (as celestia nodes run). Keys come from fixed
+  seeds and memos are empty, so the run is reproducible.
+- A opens transfer channels to B and C, sends utia to B, and receives it
+  back three times with a `forward` memo that PFM forwards to C: C
+  accepts the first forward (A writes the acknowledgement of B's
+  packet), rejects the second (A moves the utia back to the A-B escrow
+  and writes an error acknowledgement), and the third times out twice
+  (with one retry, A sends it again once, then gives up).
+- B registers an interchain account on A, funds it, and executes
+  delegate, send and withdraw-rewards through it, then (in one
+  transaction) a withdraw address, an undelegation, a redelegation and
+  an IBC transfer to B. Then two of its
+  transactions fail on A with error acknowledgements: a message signed
+  by another account, and a send of more than the account holds (after
+  a delegation that is rolled back with it).
+- A sender creates a validator with 100 times the genesis validators'
+  power and signals version 3 (chain ID `test` has a 3 block upgrade
+  delay), so A reaches app version 3 at block 95. Then a transfer to B,
+  a PFM forward from B to C and an interchain account delegation run at
+  app version 3. Then an interchain account packet times out on B: the
+  ordered channel closes on B and on A (`MsgChannelCloseConfirm`), B
+  registers again, and A reopens the same account on a new channel and
+  executes a send over it. The fixture keeps its `ibc-v2` name.
+
+The test records A's genesis, each BeginBlock header and the
+transactions of each block. It replays them in a fresh app through the
+usual oracle loop and requires each app hash to equal the ibctesting
+run's. Each block gets one BeginBlock at one time (ibctesting re-runs
+BeginBlock when its clock moves, which no consensus engine does), so
+the clients that A hosts allow an hour of clock drift. The blocks carry
+no last commit. [`fixtures/synthetic/ibc-v2`](fixtures/synthetic/ibc-v2)
+holds heights 0 to 124; the test requires it byte for byte. To
+regenerate it:
+
+```sh
+cd conformance/v1-oracle
+V1_ORACLE_IBC_OUT="$OUT" GOFLAGS=-mod=mod go test -run TestIBCFixture .
+cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
+  "$OUT"/tx-results.jsonl.gz "$OUT"/kv-diffs.jsonl.gz \
+  "$OUT"/kv-height-0.jsonl.gz ../fixtures/synthetic/ibc-v2/
+```
+
+`cargo test -p app --test ibc_oracle` compares each block as for the
+synthetic chain.
+
 #### Where checkpoints come from
 
 The QubeLabs archive (`celestia_2026-11-03.tar`, ETag
