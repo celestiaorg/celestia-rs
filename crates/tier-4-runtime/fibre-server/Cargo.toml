@@ -1,0 +1,17 @@
+[package]
+name = "fibre-server"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Fibre data availability server (port of celestia-app v11 fibre.Server)."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+
+[dev-dependencies]
