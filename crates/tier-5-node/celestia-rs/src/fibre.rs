@@ -199,7 +199,7 @@ pub fn options(files: &ConfigFiles, flags: &FibreFlags) -> anyhow::Result<Option
     if let Some(e) = flags.enable {
         enable = e;
     }
-    cfg.server_listen_address = listen_address(&cfg.server_listen_address)?;
+    cfg.server_listen_address = listen_address(&cfg.server_listen_address, enable)?;
     cfg.store.path = match store_path.as_deref() {
         None | Some("") => files.home().join(DEFAULT_STORE_DIR),
         Some(p) if Path::new(p).is_absolute() => PathBuf::from(p),
@@ -211,14 +211,18 @@ pub fn options(files: &ConfigFiles, flags: &FibreFlags) -> anyhow::Result<Option
 }
 
 /// Checks a `host:port` listen address (Go's `:7980` means every
-/// interface).
-fn listen_address(addr: &str) -> anyhow::Result<String> {
+/// interface). Only an enabled server's address is resolved: a disabled
+/// section never waits on DNS.
+fn listen_address(addr: &str, resolve: bool) -> anyhow::Result<String> {
     let addr = match addr.strip_prefix(':') {
         Some(port) => format!("0.0.0.0:{port}"),
         None => addr.to_owned(),
     };
-    let resolved = addr.to_socket_addrs().is_ok_and(|mut a| a.next().is_some());
-    if !resolved {
+    let syntax = addr
+        .rsplit_once(':')
+        .is_some_and(|(host, port)| !host.is_empty() && port.parse::<u16>().is_ok());
+    let ok = syntax && (!resolve || addr.to_socket_addrs().is_ok_and(|mut a| a.next().is_some()));
+    if !ok {
         bail!("fibre server_listen_address {addr:?} is not a host:port address");
     }
     Ok(addr)
@@ -1195,6 +1199,34 @@ mod tests {
             .unwrap(),
             None
         );
+    }
+
+    /// A disabled section is only checked for syntax: no DNS lookup can
+    /// fail or stall `start`.
+    #[test]
+    fn disabled_listen_address_is_not_resolved() {
+        let (_dir, f) =
+            files("\n[fibre]\nserver_listen_address = \"fibre.example.invalid:7980\"\n");
+        assert_eq!(options(&f, &FibreFlags::default()).unwrap(), None);
+        // Enabled, it must resolve.
+        let on = FibreFlags {
+            enable: Some(true),
+            ..FibreFlags::default()
+        };
+        assert!(
+            options(&f, &on)
+                .unwrap_err()
+                .to_string()
+                .contains("not a host:port")
+        );
+        // Bad syntax still fails while disabled.
+        for bad in ["nonsense", "host:", "host:port", ":99999"] {
+            let (_dir, f) = files(&format!("\n[fibre]\nserver_listen_address = \"{bad}\"\n"));
+            assert!(
+                options(&f, &FibreFlags::default()).is_err(),
+                "{bad} should be refused"
+            );
+        }
     }
 
     #[test]
