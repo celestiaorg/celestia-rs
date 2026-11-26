@@ -157,6 +157,8 @@ struct Inner {
     peers: Mutex<HashMap<NodeId, Arc<Peer>>>,
     dialing: Mutex<HashSet<NodeId>>,
     reconnecting: Mutex<HashSet<NodeId>>,
+    /// Short-lived connections of persistent peers (redial backoff).
+    flaps: Mutex<crate::flap::FlapTracker>,
     addr_book: RwLock<Option<Arc<AddrBook>>>,
     persistent_addrs: RwLock<Vec<NetAddress>>,
     unconditional: RwLock<HashSet<NodeId>>,
@@ -284,6 +286,7 @@ impl Switch {
                 peers: Mutex::new(HashMap::new()),
                 dialing: Mutex::new(HashSet::new()),
                 reconnecting: Mutex::new(HashSet::new()),
+                flaps: Mutex::new(crate::flap::FlapTracker::default()),
                 addr_book: RwLock::new(None),
                 persistent_addrs: RwLock::new(persistent),
                 unconditional: RwLock::new(unconditional),
@@ -784,6 +787,9 @@ impl Switch {
             r.reactor.add_peer(&peer);
             lock(&r.peers).insert(peer.id());
         }
+        if peer.is_persistent() {
+            lock(&self.inner.flaps).connected(peer.id(), std::time::Instant::now());
+        }
         tracing::info!(peer = %peer, "Added peer");
         tokio::spawn(self.clone().peer_pump(peer.clone(), rx));
         Ok(peer)
@@ -839,7 +845,17 @@ impl Switch {
                 peer.node_info().net_address().ok()
             };
             if let Some(a) = addr {
-                tokio::spawn(self.clone().reconnect_boxed(a));
+                // A peer that drops soon after connecting (e.g. at its
+                // inbound limit) is redialed after a growing delay.
+                let delay = lock(&self.inner.flaps).disconnected(
+                    peer.id(),
+                    std::time::Instant::now(),
+                    rand::rng().random_range(0.0..1.0),
+                );
+                if !delay.is_zero() {
+                    tracing::info!(peer = %peer, delay_ms = delay.as_millis(), "Persistent peer disconnected soon after connecting; delaying the redial");
+                }
+                tokio::spawn(self.clone().reconnect_boxed_after(a, delay));
             } else {
                 tracing::error!(peer = %peer, "Failed to get address for persistent peer");
             }
@@ -883,7 +899,25 @@ impl Switch {
         self,
         addr: NetAddress,
     ) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send>> {
-        Box::pin(async move { self.reconnect_to_peer(addr).await })
+        self.reconnect_boxed_after(addr, Duration::ZERO)
+    }
+
+    /// [`Self::reconnect_boxed`] that first waits `delay` (flap backoff).
+    fn reconnect_boxed_after(
+        self,
+        addr: NetAddress,
+        delay: Duration,
+    ) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send>> {
+        Box::pin(async move {
+            if !delay.is_zero() {
+                let mut quit = self.inner.quit.subscribe();
+                tokio::select! {
+                    () = tokio::time::sleep(delay) => {}
+                    _ = quit.changed() => return,
+                }
+            }
+            self.reconnect_to_peer(addr).await;
+        })
     }
 
     /// Redial `addr`: 20 attempts every ~5s, then 10 with exponential
