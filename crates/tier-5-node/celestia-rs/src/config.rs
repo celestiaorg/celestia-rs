@@ -676,7 +676,7 @@ mod tests {
             set(dir.path(), File::Config, "fibre.enabel", "true")
                 .unwrap_err()
                 .to_string(),
-            "key \"fibre.enabel\" not found in config.toml; the [fibre] keys are: enable, server_listen_address, min_upload_size, max_connections, max_concurrent_streams, upload_verify_workers, unlimited_budget, storage_backend, store_path, health.check_interval, health.probe_timeout, health.max_block_age"
+            "key \"fibre.enabel\" not found in config.toml; the [fibre] keys are: enable, server_listen_address, min_upload_size, max_connections, max_concurrent_streams, max_inflight_upload_bytes, upload_verify_workers, unlimited_budget, storage_backend, store_path, health.check_interval, health.probe_timeout, health.max_block_age"
         );
         let files = ConfigFiles::load(dir.path()).unwrap();
         assert!(!files.bool(File::Config, "fibre.enable"));

@@ -347,6 +347,125 @@ fn grpc_timeout(headers: &http::HeaderMap) -> Option<Duration> {
     })
 }
 
+/// An upload request body with the frames already read for its gRPC
+/// length prefix put back in front.
+struct PrefixedBody {
+    read: std::collections::VecDeque<http_body::Frame<bytes::Bytes>>,
+    rest: Option<Incoming>,
+}
+
+impl http_body::Body for PrefixedBody {
+    type Data = bytes::Bytes;
+    type Error = hyper::Error;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<bytes::Bytes>, hyper::Error>>> {
+        if let Some(f) = self.read.pop_front() {
+            return std::task::Poll::Ready(Some(Ok(f)));
+        }
+        match self.rest.as_mut() {
+            Some(rest) => Pin::new(rest).poll_frame(cx),
+            None => std::task::Poll::Ready(None),
+        }
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.read.is_empty()
+            && self
+                .rest
+                .as_ref()
+                .is_none_or(http_body::Body::is_end_stream)
+    }
+}
+
+/// An upload's reservation under `max_inflight_upload_bytes`.
+struct MemoryReservation {
+    _permit: tokio::sync::OwnedSemaphorePermit,
+    bytes: i64,
+    metrics: Arc<crate::metrics::ServerMetrics>,
+}
+
+impl Drop for MemoryReservation {
+    fn drop(&mut self) {
+        self.metrics.add_upload_memory(-self.bytes);
+    }
+}
+
+/// The in-flight upload memory budget. Reads the request up to its gRPC
+/// length prefix (the first 5 bytes, normally inside the first DATA frame)
+/// and reserves twice the declared length (tonic's receive buffer plus
+/// the decoded copy) before tonic buffers the message. The reservation is
+/// held until the handler finished. Without room, the call is refused at
+/// once with `ResourceExhausted`: waiting would keep the stream, and the
+/// peer's in-window data, while the client can retry or use the other
+/// validators. A declared length over the maximum message size is left to
+/// tonic, which refuses it with grpc-go's message.
+async fn admit_upload(
+    inner: &Inner,
+    max_message_size: usize,
+    req: Request<Incoming>,
+) -> Result<(Request<PrefixedBody>, Option<MemoryReservation>), Status> {
+    use http_body_util::BodyExt as _;
+    let (parts, mut body) = req.into_parts();
+    let mut read = std::collections::VecDeque::new();
+    let mut prefix = Vec::with_capacity(5);
+    let mut ended = false;
+    while prefix.len() < 5 {
+        match body.frame().await {
+            None => {
+                ended = true;
+                break;
+            }
+            Some(Err(e)) => return Err(Status::internal(e.to_string())),
+            Some(Ok(frame)) => {
+                if let Some(data) = frame.data_ref() {
+                    let take = (5 - prefix.len()).min(data.len());
+                    prefix.extend_from_slice(&data[..take]);
+                    read.push_back(frame);
+                } else {
+                    read.push_back(frame);
+                    break;
+                }
+            }
+        }
+    }
+    let rest = (!ended).then_some(body);
+    let rebuilt = |read, rest| Request::from_parts(parts, PrefixedBody { read, rest });
+    if prefix.len() < 5 {
+        return Ok((rebuilt(read, rest), None));
+    }
+    let declared = u32::from_be_bytes([prefix[1], prefix[2], prefix[3], prefix[4]]) as usize;
+    if declared > max_message_size {
+        return Ok((rebuilt(read, rest), None));
+    }
+    let bytes = 2 * declared;
+    let permits = u32::try_from(bytes.max(1)).unwrap_or(u32::MAX);
+    let Ok(permit) = Arc::clone(&inner.upload_memory).try_acquire_many_owned(permits) else {
+        inner
+            .metrics
+            .reject(crate::metrics::RejectReason::InflightMemory);
+        inner
+            .metrics
+            .count_upload_code(tonic::Code::ResourceExhausted);
+        return Err(Status::resource_exhausted(format!(
+            "fibre server upload memory limit reached (max_inflight_upload_bytes); \
+             retry later ({declared} bytes declared)"
+        )));
+    };
+    let bytes = i64::try_from(bytes).unwrap_or(i64::MAX);
+    inner.metrics.add_upload_memory(bytes);
+    Ok((
+        rebuilt(read, rest),
+        Some(MemoryReservation {
+            _permit: permit,
+            bytes,
+            metrics: Arc::clone(&inner.metrics),
+        }),
+    ))
+}
+
 #[derive(Clone)]
 struct Router {
     inner: Arc<Inner>,
@@ -411,7 +530,12 @@ impl Router {
         let timeout = grpc_timeout(req.headers());
         let path = req.uri().path().to_owned();
         let resp = match path.as_str() {
-            "/celestia.fibre.v1.Fibre/UploadShard" => {
+            "/celestia.fibre.v1.Fibre/UploadShard" => 'upload: {
+                let (req, _reservation) =
+                    match admit_upload(&self.inner, self.max_message_size, req).await {
+                        Ok(admitted) => admitted,
+                        Err(status) => break 'upload status.into_http(),
+                    };
                 let inner = Arc::clone(&self.inner);
                 let method = Method::<UploadShardRequest, UploadShardResponse> {
                     handler: Arc::new(move |r: tonic::Request<UploadShardRequest>| {

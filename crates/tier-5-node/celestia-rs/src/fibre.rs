@@ -70,6 +70,7 @@ pub const KEYS: &[(&str, KeyKind)] = &[
     ("min_upload_size", KeyKind::Int),
     ("max_connections", KeyKind::Int),
     ("max_concurrent_streams", KeyKind::Int),
+    ("max_inflight_upload_bytes", KeyKind::Int),
     ("upload_verify_workers", KeyKind::Int),
     ("unlimited_budget", KeyKind::Bool),
     ("storage_backend", KeyKind::Str),
@@ -166,6 +167,7 @@ pub fn options(files: &ConfigFiles, flags: &FibreFlags) -> anyhow::Result<Option
                     "min_upload_size" => cfg.min_upload_size = i,
                     "max_connections" => cfg.max_connections = i,
                     "max_concurrent_streams" => cfg.max_concurrent_streams = i,
+                    "max_inflight_upload_bytes" => cfg.max_inflight_upload_bytes = i,
                     _ => cfg.upload_verify_workers = i,
                 }
             }
@@ -219,13 +221,14 @@ fn listen_address(addr: &str) -> anyhow::Result<String> {
 }
 
 /// Worst-case memory of buffered uploads: `max_connections ×
-/// max_concurrent_streams × ~132 MiB`.
+/// max_concurrent_streams × ~132 MiB`, capped by `max_inflight_upload_bytes`.
 #[must_use]
 pub fn worst_case_upload_bytes(cfg: &ServerConfig) -> u64 {
     u64::try_from(cfg.max_connections)
         .unwrap_or(0)
         .saturating_mul(u64::try_from(cfg.max_concurrent_streams).unwrap_or(0))
         .saturating_mul(PER_STREAM_BYTES)
+        .min(u64::try_from(cfg.max_inflight_upload_bytes).unwrap_or(0))
 }
 
 // ------------------------------------------------------------------ state
@@ -881,13 +884,15 @@ mod tests {
         assert_eq!(cfg.min_upload_size, 262_144);
         assert!(!cfg.unlimited_budget);
         assert_eq!(cfg.health.check_interval, "10s");
-        assert_eq!(worst_case_upload_bytes(&cfg), 16 * 13 * (132 << 20));
+        assert_eq!(cfg.max_inflight_upload_bytes, 2 << 30);
+        // The memory budget, not the connection caps, bounds the worst case.
+        assert_eq!(worst_case_upload_bytes(&cfg), 2 << 30);
     }
 
     #[test]
     fn file_values_and_flag_precedence() {
         let toml = "\n[fibre]\nenable = true\nserver_listen_address = \"127.0.0.1:7999\"\n\
-            min_upload_size = 33554432\nmax_connections = 20\nmax_concurrent_streams = 2\n\
+            min_upload_size = 33554432\nmax_connections = 20\nmax_concurrent_streams = 2\nmax_inflight_upload_bytes = 1073741824\n\
             upload_verify_workers = 3\nunlimited_budget = true\nstorage_backend = \"local\"\n\
             store_path = \"/mnt/fibre\"\n[fibre.health]\ncheck_interval = \"1s\"\n\
             probe_timeout = \"500ms\"\nmax_block_age = \"30s\"\n";
@@ -897,6 +902,8 @@ mod tests {
         assert_eq!(cfg.min_upload_size, 32 << 20);
         assert_eq!(cfg.max_connections, 20);
         assert_eq!(cfg.max_concurrent_streams, 2);
+        assert_eq!(cfg.max_inflight_upload_bytes, 1 << 30);
+        assert_eq!(worst_case_upload_bytes(&cfg), 1 << 30);
         assert_eq!(cfg.upload_verify_workers, 3);
         assert!(cfg.unlimited_budget);
         assert_eq!(cfg.store.path, PathBuf::from("/mnt/fibre"));
@@ -1026,6 +1033,11 @@ mod tests {
         assert_eq!(
             err("\n[fibre]\nmax_connections = \"16\"\n", &on),
             "fibre.max_connections in config.toml must be an integer, got \"16\""
+        );
+        assert!(
+            err("\n[fibre]\nmax_inflight_upload_bytes = 1\n", &on).starts_with(
+                "invalid [fibre] configuration: max_inflight_upload_bytes must be at least "
+            )
         );
         assert_eq!(
             err("\n[fibre]\nmax_connections = 0\n", &on),

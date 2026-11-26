@@ -407,6 +407,7 @@ All keys go in `[fibre]` of `config.toml`; names follow Go's
 | `min_upload_size` | `262144` | Local minimum padded upload size in bytes (1 to 128 MiB). Smaller uploads are rejected. Coordinate with other validators and clients. |
 | `max_connections` | `16` | Concurrent gRPC connections. |
 | `max_concurrent_streams` | `13` | Concurrent streams per connection. |
+| `max_inflight_upload_bytes` | `2147483648` (2 GiB) | Memory all in-flight uploads may hold together (not in Go). At least twice the maximum message size (about 265 MiB). |
 | `upload_verify_workers` | CPU count | Concurrent shard verifications. |
 | `unlimited_budget` | `false` | Turn the storage limiter off (emergency switch). |
 | `[fibre.health] check_interval` | `10s` | How often the readiness checks run. |
@@ -422,27 +423,33 @@ growth cannot fill the disk of the consensus databases (and the reverse).
 The server warns when the free space is below its storage budget. Shards
 are pruned when their payment promise expires.
 
-Each in-flight upload stream can buffer a full gRPC message of about
-132 MiB, so the worst-case memory of the server is
+Each in-flight upload can hold a full gRPC message of up to about
+132 MiB, plus its decoded copy, before the server has checked anything
+about it, so peers alone decide how much memory uploads take. Go bounds
+this only by `max_connections × max_concurrent_streams × 132 MiB` (about
+27 GiB with the defaults, which in the Go setup could only kill the
+separate `fibre` process). Inside the node it would kill consensus too, so
+the embedded server adds a process-wide budget, `max_inflight_upload_bytes`
+(default 2 GiB). An upload reserves twice the length its gRPC frame
+declares before its body is read and keeps the reservation until its
+handler is done. An upload that does not fit is refused at once with
+`ResourceExhausted` (`fibre server upload memory limit reached`), counted
+as `fibre_server_upload_shard_rejected_total{reason="inflight_memory"}`;
+the client retries or uses the other validators. Downloads and health
+checks are not counted against it. The start log prints the effective
+bound (`worst_case_upload_memory_mib`), and
+`fibre_server_upload_memory_reserved_bytes` shows the current use.
 
-```text
-max_connections × max_concurrent_streams × 132 MiB
-```
-
-The Go defaults (16 × 13) allow about 27 GiB, sized for a 32 GiB host. The
-start log prints the figure (`worst_case_upload_memory_mib`). On the
-16 GB reference machine the node itself budgets up to 8 GB steady and
-12 GB at peak, so keep Fibre under about 4 GiB:
+The default suits the 16 GB reference machine, where the node itself
+budgets up to 8 GB steady and 12 GB at peak: no tuning is needed, and
+the connection caps can stay at Go's defaults (16 connections × 13
+streams), so downloads keep free slots while uploads run. On a larger
+host raise the budget, for example:
 
 ```toml
 [fibre]
-max_connections = 16
-max_concurrent_streams = 2   # 16 × 2 × 132 MiB ≈ 4.1 GiB
+max_inflight_upload_bytes = 8589934592   # 8 GiB on a 32 GiB host
 ```
-
-Raise the caps in proportion on a larger host. One client upload uses one
-connection per validator; raise `max_connections` to keep slots free for
-downloads while uploads run.
 
 #### Registration
 
@@ -504,6 +511,7 @@ total,duration_seconds,bytes_total}`,
 `fibre_server_budget_recompute_failures_total`,
 `fibre_server_connections_{active,accepted_total}`,
 `fibre_server_tls_handshake_failures_total`,
+`fibre_server_upload_memory_reserved_bytes`,
 `fibre_server_health_check_passing{check=…}`, `fibre_server_ready` and
 `fibre_server_live`. `*_total` RPC counters carry `grpc_code`.
 
@@ -541,6 +549,8 @@ in-flight requests drain for up to 10 s, then the store is closed
   `app_grpc_address` or `signer_*` settings (state and signing are in
   process; those keys are refused).
 - No object storage: `storage_backend = "local"` only.
+- Uploads share a memory budget (`max_inflight_upload_bytes`, 2 GiB);
+  Go has none and refuses nothing for memory.
 - No OTLP traces or metrics, pprof or Pyroscope: metrics go to the node's
   Prometheus endpoint; logs follow the node's `log_level` / `log_format`.
 - Shutdown waits at most 10 s for in-flight requests (Go waits until a
