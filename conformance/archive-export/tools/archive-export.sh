@@ -25,16 +25,7 @@ mkdir -p $OUT $T $HOME_DATA
 [ -e $HOME_DATA/application.db ] || ln -s /data/appdb $HOME_DATA/application.db
 for v in v046 v050; do [ -x $T/archive-export-$v ] || { vmx-gcs get tools/archive-export-$v $T/archive-export-$v && chmod 755 $T/archive-export-$v; }; done
 [ -d $RS/.git ] || git clone -q --depth 1 https://github.com/celestiaorg/celestia-rs $RS
-# Until the v0.46 trailer fix is on main, take the verifier from the bucket when present.
-# A failed download can leave a partial or empty file, and an empty verifier
-# "passes" every snapshot: replace the checked-out one only with a complete
-# file that compiles.
-vtmp=$(mktemp)
-if vmx-gcs get tools/verify-replay-checkpoint.py $vtmp 2>/dev/null && [ -s $vtmp ] && python3 -m py_compile $vtmp 2>/dev/null; then
-  mv $vtmp $RS/conformance/mainnet-rpc/verify-replay-checkpoint.py
-else
-  rm -f $vtmp
-fi
+# The verifier comes from main (it accepts the v0.46 duplicated zlib trailer).
 [ -s $RS/conformance/mainnet-rpc/verify-replay-checkpoint.py ] || { echo "no verifier"; exit 1; }
 command -v jq >/dev/null || { apt-get -o DPkg::Lock::Timeout=600 update -q >/dev/null; apt-get -o DPkg::Lock::Timeout=600 install -yq jq >/dev/null; }
 ulimit -n 2000000
