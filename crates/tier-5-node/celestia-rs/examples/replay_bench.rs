@@ -232,8 +232,8 @@ impl nodestore::AppConn for Timed {
 struct Probes {
     abci: Arc<Mutex<AbciTime>>,
     /// IAVL node cache: hits, misses, disk reads, disk bytes, reads made
-    /// only to resolve a child reference.
-    nodes: Box<dyn Fn() -> [u64; 5]>,
+    /// to resolve a child reference, and of those, records later decoded.
+    nodes: Box<dyn Fn() -> [u64; 6]>,
 }
 
 impl Probes {
@@ -251,7 +251,7 @@ impl Probes {
 #[derive(Debug, Default, Clone, Copy)]
 struct Sample {
     abci: AbciTime,
-    nodes: [u64; 5],
+    nodes: [u64; 6],
 }
 
 impl Sample {
@@ -264,7 +264,8 @@ impl Sample {
         let lookups = d(0) + d(1);
         format!(
             "finalize {:.1} ms, commit {:.1} ms; node cache hit {:.1}% of {:.0}/block, \
-             disk reads {:.0}/block (child refs {:.0}), {:.0} KiB/block",
+             disk reads {:.0}/block (for child refs {:.0}, later traversed {:.0}), \
+             {:.0} KiB/block",
             ms(self.abci.finalize, earlier.abci.finalize),
             ms(self.abci.commit, earlier.abci.commit),
             if lookups > 0.0 {
@@ -275,6 +276,7 @@ impl Sample {
             lookups / n,
             d(2) / n,
             d(4) / n,
+            d(5) / n,
             d(3) / 1024.0 / n,
         )
     }
@@ -303,7 +305,14 @@ fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State, Probes)>
         abci: Arc::default(),
         nodes: Box::new(move || {
             let s = cache.stats();
-            [s.hits, s.misses, s.disk_reads, s.disk_bytes, s.ref_reads]
+            [
+                s.hits,
+                s.misses,
+                s.disk_reads,
+                s.disk_bytes,
+                s.ref_reads,
+                s.ref_decodes,
+            ]
         }),
     };
     let mut exec = BlockExecutor::new(

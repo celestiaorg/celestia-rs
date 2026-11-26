@@ -54,6 +54,7 @@ pub struct NodeCache {
     disk_reads: AtomicU64,
     disk_bytes: AtomicU64,
     ref_reads: AtomicU64,
+    ref_decodes: AtomicU64,
 }
 
 impl fmt::Debug for NodeCache {
@@ -84,6 +85,10 @@ pub struct CacheStats {
     /// Of `disk_reads`, those made only to resolve a parent's child
     /// reference (the child itself was not needed yet).
     pub ref_reads: u64,
+    /// Records first read for a child reference and later decoded for a
+    /// traversal (`ref_reads - ref_decodes` read only for the reference,
+    /// as long as the record stayed cached).
+    pub ref_decodes: u64,
 }
 
 impl NodeCache {
@@ -97,6 +102,7 @@ impl NodeCache {
             disk_reads: AtomicU64::new(0),
             disk_bytes: AtomicU64::new(0),
             ref_reads: AtomicU64::new(0),
+            ref_decodes: AtomicU64::new(0),
         })
     }
 
@@ -115,6 +121,7 @@ impl NodeCache {
             disk_reads: self.disk_reads.load(Ordering::Relaxed),
             disk_bytes: self.disk_bytes.load(Ordering::Relaxed),
             ref_reads: self.ref_reads.load(Ordering::Relaxed),
+            ref_decodes: self.ref_decodes.load(Ordering::Relaxed),
         }
     }
 
@@ -235,7 +242,10 @@ impl NodeDb {
         let decode = |bytes: &[u8]| decode_node(bytes, r, |nk| self.child_ref(nk));
         let node = Arc::new(match self.cache.get(&cache_key) {
             Some(CachedNode::Decoded(node)) => return Ok(node),
-            Some(CachedNode::Encoded(node)) => decode(&node.bytes)?,
+            Some(CachedNode::Encoded(node)) => {
+                self.cache.ref_decodes.fetch_add(1, Ordering::Relaxed);
+                decode(&node.bytes)?
+            }
             None => decode(&self.node_bytes(r.nk)?)?,
         });
         self.cache
