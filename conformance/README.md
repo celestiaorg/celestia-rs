@@ -351,6 +351,25 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/home" \
   -genesis "$OUT/v1-v3/genesis.json" -out ../fixtures/synthetic/v4
 ```
 
+#### App homes between the upgrade oracles
+
+[`fixtures/synthetic/homes`](fixtures/synthetic/homes) holds the app home
+(`data/application.db`, `data/upgrade-info.json`, `handoff.json`) that each
+`-next-handoff` run leaves: `home-25` (after `v4-oracle`), `home-36`
+(`v5-oracle`), `home-46` (`v6-oracle`) and `home-56` (`v8-oracle`). The `go test`
+of `v5-oracle` to `v9-oracle` starts from the previous stage's home, so each
+module builds and runs only its own oracle. The `go test` that makes a home
+(`v4-oracle` to `v8-oracle`, in the `-next-handoff` case) requires the home it
+leaves to hold the committed `handoff.json`, which records the app hash of
+every store, and `data/upgrade-info.json`. After you regenerate a stage, make
+its archive from the home that the commands below leave, before the next stage
+modifies it:
+
+```sh
+tar -C "$OUT/home" --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - . \
+  | gzip -n -9 > conformance/fixtures/synthetic/homes/home-25.tar.gz
+```
+
 #### Synthetic chain across the v4 to v5 upgrade
 
 `v4-oracle -heights 10 -next-handoff` runs the same chain on to block
