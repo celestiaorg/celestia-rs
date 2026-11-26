@@ -5,7 +5,7 @@
 //!
 //! A [`Tree`] is either purely in memory ([`Tree::new`]) or backed by a
 //! [`NodeDb`] ([`Tree::open`]): nodes persisted under their IAVL v1 node key
-//! `(version, nonce)`, loaded lazily through a bounded LRU [`NodeCache`].
+//! `(version, nonce)`, loaded lazily through a bounded CLOCK [`NodeCache`].
 //! Between commits only the dirty (modified) nodes of the working tree live
 //! in memory. Both modes share the hashing code, so root hashes are
 //! identical (and match Go IAVL v1).
@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+mod clock;
 pub mod error;
 mod export;
 mod mutate;

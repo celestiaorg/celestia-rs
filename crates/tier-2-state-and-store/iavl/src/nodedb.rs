@@ -15,13 +15,12 @@
 //! deletes the node.
 
 use std::fmt;
-use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use kvdb::{KvBackend, WriteBatch};
-use lru::LruCache;
 
+use crate::clock::ClockCache;
 use crate::node::{NODE_KEY_LEN, Node, NodeKey, StoredRef, decode_node, decode_root, read_ref};
 use crate::{Error, Result, Version};
 
@@ -44,9 +43,12 @@ struct EncodedNode {
     bytes: Vec<u8>,
 }
 
-/// Bounded LRU cache of persisted nodes, shareable by many trees.
+/// Bounded CLOCK cache of persisted nodes, shareable by many trees.
+///
+/// A hit only sets a reference bit (see [`ClockCache`]), so lookups do not
+/// relink a list the way an LRU does.
 pub struct NodeCache {
-    lru: Mutex<LruCache<(u64, NodeKey), CachedNode>>,
+    clock: Mutex<ClockCache<(u64, NodeKey), CachedNode>>,
     hits: AtomicU64,
     misses: AtomicU64,
 }
@@ -79,9 +81,7 @@ impl NodeCache {
     #[must_use]
     pub fn new(capacity: usize) -> Arc<Self> {
         Arc::new(Self {
-            lru: Mutex::new(LruCache::new(
-                NonZeroUsize::new(capacity).unwrap_or(NonZeroUsize::MIN),
-            )),
+            clock: Mutex::new(ClockCache::new(capacity)),
             hits: AtomicU64::new(0),
             misses: AtomicU64::new(0),
         })
@@ -91,9 +91,9 @@ impl NodeCache {
     #[must_use]
     pub fn stats(&self) -> CacheStats {
         let (len, capacity) = self
-            .lru
+            .clock
             .lock()
-            .map_or((0, 0), |lru| (lru.len(), lru.cap().get()));
+            .map_or((0, 0), |clock| (clock.len(), clock.capacity()));
         CacheStats {
             len,
             capacity,
@@ -103,7 +103,7 @@ impl NodeCache {
     }
 
     fn get(&self, key: &(u64, NodeKey)) -> Option<CachedNode> {
-        let found = self.lru.lock().ok()?.get(key).cloned();
+        let found = self.clock.lock().ok()?.get(key);
         if found.is_some() {
             self.hits.fetch_add(1, Ordering::Relaxed);
         } else {
@@ -113,14 +113,14 @@ impl NodeCache {
     }
 
     fn put(&self, key: (u64, NodeKey), node: CachedNode) {
-        if let Ok(mut lru) = self.lru.lock() {
-            lru.put(key, node);
+        if let Ok(mut clock) = self.clock.lock() {
+            clock.put(key, node);
         }
     }
 
     fn remove(&self, key: &(u64, NodeKey)) {
-        if let Ok(mut lru) = self.lru.lock() {
-            lru.pop(key);
+        if let Ok(mut clock) = self.clock.lock() {
+            clock.remove(key);
         }
     }
 }
