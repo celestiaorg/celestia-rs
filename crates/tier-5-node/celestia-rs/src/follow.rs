@@ -1287,6 +1287,13 @@ fn follow_inner(
     for t in threads {
         let _ = t.join();
     }
+    // A run that reached its stop height keeps the snapshot of its last
+    // heights (a resumable checkpoint) instead of abandoning it on exit.
+    if result.is_ok() && !stopped.load(Ordering::SeqCst) {
+        app.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .wait_for_snapshot();
+    }
     tracing::info!(
         first = totals.first,
         last = totals.last,

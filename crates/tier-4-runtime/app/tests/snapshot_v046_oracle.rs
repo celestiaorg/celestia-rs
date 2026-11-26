@@ -57,11 +57,17 @@ impl Chain {
         Fixture::synthetic(self.fixture)
     }
 
-    /// The snapshot's chunks, in order.
-    fn chunks(&self, height: u64) -> Vec<Vec<u8>> {
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    /// The Go snapshot directory (`<height>/<format>/<chunk>`).
+    fn go_snapshots(&self) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../../conformance/fixtures/synthetic")
             .join(self.snapshots)
+    }
+
+    /// The snapshot's chunks, in order.
+    fn chunks(&self, height: u64) -> Vec<Vec<u8>> {
+        let dir = self
+            .go_snapshots()
             .join(height.to_string())
             .join(snapshots::FORMAT_V046.to_string());
         let mut out = Vec::new();
@@ -211,6 +217,131 @@ impl Chain {
         );
         assert_eq!(a.info().app_version, self.app_version_after(last));
     }
+}
+
+impl Chain {
+    /// Replays the chain from genesis with a snapshot after every commit
+    /// and requires, at each of `heights` (Go's snapshot heights), a format
+    /// 2 snapshot with the same items as Go's, in the same order; then
+    /// restores that Rust snapshot into a fresh app.
+    fn export_like_go(&self, heights: &[u64]) {
+        let f = self.fix();
+        let home = tempfile::tempdir().unwrap();
+        let mut a = app::App::open_with(
+            home.path(),
+            app::AppOptions {
+                snapshots: snapshots::SnapshotOptions {
+                    interval: 1,
+                    keep_recent: 0,
+                },
+                ..app::AppOptions::default()
+            },
+        )
+        .unwrap();
+        a.set_v2_upgrade_height(f.roots()["upgrade_height_v2"].as_i64().unwrap());
+        a.init_chain(common::init_request(&f.genesis())).unwrap();
+        let blocks = f.blocks();
+        let vals = f.validator_sets(&self.genesis_validators());
+        let last = i64::try_from(*heights.iter().max().unwrap()).unwrap();
+        for h in 1..=last {
+            let prev = vals.get(&(h - 1)).cloned().unwrap_or_default();
+            a.finalize_block(common::finalize_request(&blocks[&h], &prev))
+                .unwrap_or_else(|e| panic!("{} height {h}: {}", self.fixture, e.log));
+            a.commit().unwrap();
+            a.wait_for_snapshot();
+        }
+        let listed = a.list_snapshots().snapshots;
+        let rust = home.path().join("data/snapshots");
+        for &h in heights {
+            let s = listed
+                .iter()
+                .find(|s| s.height == h)
+                .unwrap_or_else(|| panic!("{}: no Rust snapshot at {h}", self.fixture));
+            assert_eq!(
+                s.format,
+                snapshots::FORMAT_V046,
+                "{} snapshot {h}",
+                self.fixture
+            );
+            let c = snapshots::compare_dirs(&rust, &self.go_snapshots(), h, snapshots::FORMAT_V046)
+                .unwrap();
+            assert!(
+                c.first_difference.is_none(),
+                "{} snapshot {h}: {}",
+                self.fixture,
+                c.first_difference.unwrap()
+            );
+            assert!(c.items > 0);
+            println!(
+                "{} snapshot {h}: {} items equal to Go's (chunk bytes identical: {})",
+                self.fixture, c.items, c.chunk_bytes_identical
+            );
+            self.restore_rust(&rust, h, &listed);
+        }
+    }
+
+    /// Restores a Rust format 2 snapshot into a fresh app.
+    fn restore_rust(&self, dir: &std::path::Path, height: u64, listed: &[abci::Snapshot]) {
+        let s = listed.iter().find(|s| s.height == height).unwrap().clone();
+        let fix = self.fix();
+        let want = hex::decode(
+            fix.roots()["heights"][usize::try_from(height).unwrap()]["app_hash"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let mut b = app::App::open(home.path()).unwrap();
+        b.set_v2_upgrade_height(fix.roots()["upgrade_height_v2"].as_i64().unwrap());
+        let chunks = s.chunks;
+        let offer = b.offer_snapshot(abci::RequestOfferSnapshot {
+            snapshot: Some(s),
+            app_hash: want.clone(),
+            app_version: self.app_version_after(i64::try_from(height).unwrap()),
+        });
+        assert_eq!(
+            offer.result,
+            abci::response_offer_snapshot::Result::Accept as i32
+        );
+        for i in 0..chunks {
+            let chunk = std::fs::read(
+                dir.join(height.to_string())
+                    .join(snapshots::FORMAT_V046.to_string())
+                    .join(i.to_string()),
+            )
+            .unwrap();
+            let r = b.apply_snapshot_chunk(abci::RequestApplySnapshotChunk {
+                index: i,
+                chunk,
+                sender: String::new(),
+            });
+            assert_eq!(
+                r.result,
+                abci::response_apply_snapshot_chunk::Result::Accept as i32
+            );
+        }
+        assert_eq!(
+            b.info().last_block_app_hash,
+            want,
+            "{} Rust snapshot {height}",
+            self.fixture
+        );
+    }
+}
+
+#[test]
+fn exports_synthetic_chain_snapshots_like_go() {
+    SYNTHETIC.export_like_go(&[3, 5, 7, 12]);
+}
+
+#[test]
+fn exports_staking_chain_snapshots_like_go() {
+    STAKING.export_like_go(&[9, 13, 27]);
+}
+
+#[test]
+fn exports_ibc_chain_snapshots_like_go() {
+    IBC.export_like_go(&[39, 72, 100, 120]);
 }
 
 #[test]

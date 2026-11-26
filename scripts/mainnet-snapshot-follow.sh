@@ -19,6 +19,10 @@
 #                    without it the primary's header is trusted.
 #   CELESTIA_RS_BIN  binary (default: celestia-rs on PATH)
 #   CELESTIA_RS_HOME node home (default: ~/.celestia-rs/mainnet-snapshot-<height>)
+#   SNAPSHOT_INTERVAL write a snapshot to <home>/data/snapshots every N
+#                    heights (resumable checkpoints; default 0 = none):
+#                    format 2 up to app version 3, format 3 after.
+#   SNAPSHOT_KEEP    snapshots kept (default 0 = all)
 #
 # The restored app hash must equal header <height>+1's, then every block
 # from <height>+1 executes and must match the next header's app hash and
@@ -49,7 +53,8 @@ echo "logging to $log"
 # from the period.
 args=(follow --home "$HOME_DIR" --chain-id celestia --rpc "$RPC"
   --snapshot "$SNAP" --snapshot-height "$HEIGHT"
-  --trust-period-hours 200000 --stop-at-height "$STOP")
+  --trust-period-hours 200000 --stop-at-height "$STOP"
+  --snapshot-interval "${SNAPSHOT_INTERVAL:-0}" --snapshot-keep-recent "${SNAPSHOT_KEEP:-0}")
 [[ -n ${TRUST_HASH:-} ]] && args+=(--trust-hash "$TRUST_HASH")
 # A restarted run resumes from the home's state (the snapshot is used on
 # the first start only).
