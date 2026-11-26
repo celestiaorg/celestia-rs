@@ -2925,8 +2925,8 @@ fn v046_create_vesting_account() {
 
 /// cosmos-sdk v0.46 feegrant: granting creates the grantee account and
 /// queues the expiration; a duplicate fails; using the allowance stores
-/// it through `GrantAllowance` again (`set_feegrant`); revoking deletes
-/// only the grant, not its queue entry.
+/// it through `UpdateAllowance` (`update_feegrant`, no account read);
+/// revoking deletes only the grant, not its queue entry.
 #[test]
 fn v046_feegrant_grant_use_revoke() {
     use celestia_proto::cosmos::base::v1beta1::Coin;
@@ -2979,7 +2979,7 @@ fn v046_feegrant_grant_use_revoke() {
     )
     .unwrap();
     let types: Vec<String> = ctx.events.take().into_iter().map(|e| e.r#type).collect();
-    assert_eq!(types, ["use_feegrant", "set_feegrant"]);
+    assert_eq!(types, ["use_feegrant", "update_feegrant"]);
     let left = x_feegrant::get_allowance(&mut ctx, &from, &to).unwrap();
     let x_feegrant::Allowance::Basic(b) = left else {
         panic!("not basic")

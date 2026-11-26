@@ -470,8 +470,7 @@ mod tests {
 /// cosmos-sdk v0.46 `x/feegrant` keeper flows (celestia-app v1 to v3):
 /// granting creates the grantee's account without the blocked-address
 /// check and moves the pruning-queue entry when the expiration changes;
-/// revoking leaves the queue entry; a used allowance is stored through
-/// `GrantAllowance` again (`set_feegrant`, not `update_feegrant`).
+/// revoking leaves the queue entry.
 pub mod v046 {
     use super::{
         Allowance, Any, Coins, Context, Result, STORE_KEY, allowance_key, bech32, event, get_grant,
@@ -568,6 +567,9 @@ pub mod v046 {
         }
         res?;
         use_event(ctx);
-        grant_allowance(ctx, granter, grantee, &grant, None)
+        // `UpdateAllowance`: reads the grant again and stores the used
+        // allowance (`update_feegrant`), without `GrantAllowance`'s
+        // account and queue handling.
+        super::update_allowance(ctx, granter, grantee, &grant)
     }
 }
