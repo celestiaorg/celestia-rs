@@ -69,6 +69,47 @@ eq     "pair different"        discard:different_snapshots "$(bench_pair_check 1
 eq     "pair missing"          discard:missing_snapshot "$(bench_pair_check '' 16200000 || true)"
 refute "pair exits nonzero"    bench_pair_check 1 2
 
+# Exercise collection against the summary.json format emitted by vm.sh.
+rs="$t/rust-summary.json"; go="$t/go-summary.json"
+jq -n --arg hash "$(printf 'A%.0s' {1..64})" '{
+  role:"rs", campaign:"state-sync", outcome:"ok", snapshot:"16200000",
+  verify:[{height:"16200099", match:true, chain_id:"celestia",
+           local_block_id:$hash, reference_block_id:$hash}]
+}' >"$rs"
+jq '.role = "go"' "$rs" >"$go"
+pair() { bench_pair_verdict "$1" "$rs" "$go"; }
+eq "verified pair" valid "$(pair state-sync)"
+jq '.outcome = "failed"' "$go" >"$t/failed"
+eq "failed run with same snapshot" discard:incomplete_run "$(bench_pair_verdict state-sync "$rs" "$t/failed" || true)"
+for invalid in '.verify = []' '.verify[0].match = false' '.verify[0].chain_id = "other"' \
+  '.verify[0].local_block_id = ""' '.verify[0].reference_block_id = "different"'; do
+  jq "$invalid" "$go" >"$t/unverified"
+  eq "unverified tip ($invalid)" discard:unverified_tip "$(bench_pair_verdict state-sync "$rs" "$t/unverified" || true)"
+done
+jq '.snapshot = "16198500"' "$go" >"$t/different"
+eq "verified different snapshots" discard:different_snapshots "$(bench_pair_verdict state-sync "$rs" "$t/different" || true)"
+eq "pending collection" discard:missing_or_invalid_summary "$(bench_pair_verdict state-sync "$rs" "$t/absent" || true)"
+printf '{' >"$t/partial"
+refute "partial summary" bench_pair_verdict state-sync "$rs" "$t/partial"
+refute "wrong role" bench_pair_verdict state-sync "$rs" "$rs"
+
+jq --arg digest "$(printf 'a%.0s' {1..64})" '
+  .campaign = "bridge" | .bridge = {tail:16200001, start:16200100, end:16200700, requests:32, digest:$digest}
+' "$rs" >"$t/bridge"
+cp "$t/bridge" "$rs"
+jq '.role = "go"' "$rs" >"$go"
+eq "same verified bridge work" valid "$(pair bridge)"
+for invalid in 'del(.bridge)' '.bridge.requests = 31' '.bridge.end -= 1' '.bridge.digest = ""' \
+  '.bridge.tail = (.bridge.start + 1)' '.bridge.start |= tostring'; do
+  jq "$invalid" "$go" >"$t/incomplete"
+  eq "incomplete bridge ($invalid)" discard:incomplete_bridge_receipt "$(bench_pair_verdict bridge "$rs" "$t/incomplete" || true)"
+done
+jq '.bridge.tail -= 1' "$go" >"$t/different"
+eq "unequal DA range" discard:different_da_ranges "$(bench_pair_verdict bridge "$rs" "$t/different" || true)"
+jq '.bridge.digest |= gsub("a"; "b")' "$go" >"$t/different"
+eq "unequal share responses" discard:different_workloads "$(bench_pair_verdict bridge "$rs" "$t/different" || true)"
+refute "bridge discard exits nonzero" bench_pair_verdict bridge "$rs" "$t/different"
+
 # --- chunking into guest-attribute-sized values -------------------------------
 head -c 300000 /dev/urandom >"$t/raw"
 n=$(bench_chunk "$t/raw" "$t/c" 100000 8)
@@ -136,7 +177,7 @@ for c in genesis-prefix state-sync bridge; do
   for r in rs go; do
     out=$(env BENCH_DRY_RUN="$t/dry-$c-$r" BENCH_META_campaign=$c BENCH_META_role=$r \
       BENCH_META_height=10 BENCH_META_rust_commit=58be8ae90d00518800df5506b3a1e988f009c1c6 \
-      BENCH_META_trust_height=16200000 BENCH_META_trust_hash="$(printf 'A%.0s' {1..64})" \
+      BENCH_META_bridge_start=16205000 BENCH_META_trust_height=16200000 BENCH_META_trust_hash="$(printf 'A%.0s' {1..64})" \
       BENCH_META_peers="$peer" BENCH_META_deadline=4102444800 \
       bash "$here/vm.sh" 2>&1) && rc=0 || rc=$?
     eq "dry run $c $r" 0 "$rc"
@@ -152,7 +193,8 @@ check "dry run summary outcome" jq -e '.outcome == "dry_run" and .campaign == "s
 check "dry run rs bridge flags" grep -q -- '--bridge-rpc-listen 127.0.0.1:26658 --bridge-p2p-listen' "$t/dry-bridge-rs/plan"
 check "dry run node pinned"     grep -q 'clone -q --depth 1 --branch v0.36.0 .*celestia-node' "$t/dry-bridge-go/plan"
 check "dry run go bridge"       grep -q 'celestia bridge start .*--core.port 9090' "$t/dry-bridge-go/plan"
-check "dry run bridge workload" jq -e '.workload == "live mainnet traffic only" and .window == "60"' "$t/dry-bridge-go/attrs/summary"
+check "dry run DA floor"        grep -q 'SyncFromHeight = 16200001' "$t/dry-bridge-go/bridge-config.toml"
+check "dry run bridge workload" jq -e '.workload == "share.GetShare(row=0,col=0) at tail and every 20 blocks" and .bridge == null' "$t/dry-bridge-go/attrs/summary"
 check "dry run no bridge on consensus runs" bash -c "! grep -q -- '--bridge-' '$t/dry-state-sync-rs/plan'"
 rc=0
 env BENCH_DRY_RUN="$t/dry-bad" BENCH_META_campaign='state-sync;reboot' BENCH_META_role=go \
@@ -189,6 +231,54 @@ env BENCH_DRY_RUN="$t/trap" bash -c '
   false
   exit 0' _ "$here" >/dev/null 2>&1 || rc=$?
 check "trap fires in main shell" test "$rc" -eq 1 -a -e "$t/trap/finish-main"
+
+# Exercise the fixed-height runner, including JSON-RPC share validation and
+# the head/tail checks. The mock advances on WaitForHeight like a live bridge.
+bridge_fixture() (
+  # shellcheck source=scripts/bench/vm.sh
+  . "$here/vm.sh"
+  STATE=$t/fixture-$1
+  mkdir -p "$STATE"
+  local fault=$1
+  role=go bridge_tail=900 bridge_start=1000 t0=1 deadline=4102444800 da_token=fixture
+  local fixture_share
+  fixture_share=$(head -c 512 /dev/zero | base64 -w0)
+  echo 999 >"$STATE/head"
+  alive() { return 0; }
+  poll() { return 0; }
+  da_sample() { echo '1 100 20 30 40 50 60' >>"$STATE/da-memory.tsv"; }
+  da_rpc() {
+    local h
+    case $1 in
+      header.WaitForHeight)
+        h=${2:1:-1}
+        echo "$h" >"$STATE/head"
+        printf '{"header":{"height":"%d"}}\n' "$h" ;;
+      das.SamplingStats)
+        read -r h <"$STATE/head"
+        printf '{"is_running":true,"head_of_sampled_chain":%d}' "$h" ;;
+      header.LocalHead)
+        read -r h <"$STATE/head"
+        if [[ $fault == late && $h == "$bridge_start" ]]; then h=$((h + 1)); fi
+        printf '{"header":{"height":"%d"}}\n' "$h" ;;
+      header.Tail)
+        read -r h <"$STATE/head"
+        local tail=$bridge_tail
+        if [[ $fault == pruned && $h -gt $bridge_start ]]; then tail=$((tail + 1)); fi
+        printf '{"header":{"height":"%d"}}\n' "$tail" ;;
+      share.GetShare)
+        if [[ $fault == malformed && $2 == '[1000,0,0]' ]]; then echo null; else jq -n --arg s "$fixture_share" '$s'; fi ;;
+      *) return 1 ;;
+    esac
+  }
+  da_window || return 1
+  jq -e '.tail==900 and .start==1000 and .end==1600 and .requests==32' "$STATE/bridge.json" &&
+    [[ $(awk '{print $1}' "$STATE/da-reads.tsv") == "$(printf '%s\n' 900; seq 1000 20 1600)" ]]
+)
+check "bridge serves same 32 reads across 600 heights" bridge_fixture matched
+refute "bridge rejects missed start" bridge_fixture late
+refute "bridge rejects tail moving in window" bridge_fixture pruned
+refute "bridge rejects malformed share" bridge_fixture malformed
 
 [[ $fails == 0 ]] || { echo "$fails failed"; exit 1; }
 echo "all passed"
