@@ -38,6 +38,7 @@ pub mod ibc_timeout;
 pub mod ibc_transfer;
 pub mod migrate;
 pub mod msgs;
+pub mod param_change;
 pub mod params;
 pub mod pfm;
 pub mod qgb;

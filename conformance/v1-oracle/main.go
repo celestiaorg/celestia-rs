@@ -304,8 +304,11 @@ func run() error {
 	if *registryOut != "" {
 		return writeRegistry(*registryOut)
 	}
-	upgradeHeightV2 := int64(appconsts.MainnetUpgradeHeightV2)
-	var syn *synth
+	cfg := runConfig{
+		genesisPath: *genesisPath, blocksPath: *blocksPath, windowsPath: *windowsPath,
+		from: *from, heights: *heights, out: *out, withKV: *withKV, keepRecent: *keepRecent,
+		upgradeHeightV2: appconsts.MainnetUpgradeHeightV2,
+	}
 	if *synthetic {
 		if *out == "" || *genesisPath != "" || *blocksPath != "" || *windowsPath != "" || *from != 1 {
 			flag.Usage()
@@ -315,28 +318,70 @@ func run() error {
 		if !ok {
 			return fmt.Errorf("unknown -chain %q", *chain)
 		}
-		*heights = spec.heights
-		upgradeHeightV2 = spec.upgradeHeightV2
-		var err error
-		if syn, err = newSynth(spec); err != nil {
+		syn, err := newSynth(spec)
+		if err != nil {
 			return err
 		}
+		cfg.heights = spec.heights
+		cfg.upgradeHeightV2 = spec.upgradeHeightV2
+		cfg.src = syn
+		cfg.chain = *chain
+		cfg.handoff = *handoff
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			return err
 		}
-		*genesisPath = filepath.Join(*out, "genesis.json")
-		if err := syn.genDoc.SaveAs(*genesisPath); err != nil {
+		cfg.genesisPath = filepath.Join(*out, "genesis.json")
+		if err := syn.genDoc.SaveAs(cfg.genesisPath); err != nil {
 			return err
 		}
 	}
-	if *handoff != "" && syn == nil {
+	if *handoff != "" && cfg.src == nil {
 		flag.Usage()
 		return errors.New("-handoff needs -synthetic")
 	}
-	if *genesisPath == "" || (*blocksPath == "" && syn == nil) || *out == "" || *heights < 1 || *from < 1 || *from > *heights {
+	if cfg.genesisPath == "" || (cfg.blocksPath == "" && cfg.src == nil) || cfg.out == "" || cfg.heights < 1 || cfg.from < 1 || cfg.from > cfg.heights {
 		flag.Usage()
 		return errors.New("missing arguments")
 	}
+	return execute(cfg)
+}
+
+// runConfig is one oracle run: the mainnet archive, or a chain that a
+// blockSource builds block by block.
+type runConfig struct {
+	genesisPath, blocksPath, windowsPath, out string
+	from, heights                             int64
+	withKV                                    bool
+	keepRecent                                uint64
+	upgradeHeightV2                           int64
+	// src builds the blocks (nil: read blocksPath and check each block
+	// against the next archived header).
+	src blockSource
+	// handoff, for a synthetic chain: keep the app home in this new
+	// directory and write handoff.json for conformance/v4-oracle; chain is
+	// the chain's -chain name.
+	handoff, chain string
+}
+
+// blockSource builds a chain's blocks on the replaying app's state.
+type blockSource interface {
+	// start takes the InitChain app hash (the app hash of block 1).
+	start(appHash []byte)
+	// block returns block height, built on the committed state.
+	block(a *app.App, height int64, vals map[int64]*tmtypes.ValidatorSet) (rpcBlock, error)
+	// committed takes the result of block height.
+	committed(height int64, appHash []byte, results []*abci.ResponseDeliverTx, end abci.ResponseEndBlock) error
+	// unchecked: the blocks carry no real last commit or header chain
+	// (recorded from ibctesting), so neither is checked.
+	unchecked() bool
+	// blocksJSONL is blocks.jsonl as the oracle reads it.
+	blocksJSONL() []byte
+}
+
+func execute(cfg runConfig) error {
+	genesisPath, blocksPath, windowsPath, out := &cfg.genesisPath, &cfg.blocksPath, &cfg.windowsPath, &cfg.out
+	from, heights, withKV, keepRecent := &cfg.from, &cfg.heights, &cfg.withKV, &cfg.keepRecent
+	upgradeHeightV2, syn := cfg.upgradeHeightV2, cfg.src
 
 	genesisBytes, err := os.ReadFile(*genesisPath)
 	if err != nil {
@@ -382,10 +427,7 @@ func run() error {
 			return err
 		}
 		defer os.RemoveAll(home)
-		genesisApp, _, err := newApp(home, 0, upgradeHeightV2, false)
-		if err != nil {
-			return err
-		}
+		genesisApp := newApp(home, 0, upgradeHeightV2)
 		if _, err := initChain(genesisApp, genDoc); err != nil {
 			return err
 		}
@@ -413,7 +455,7 @@ func run() error {
 	}
 
 	// Heights 1..N.
-	home := *handoff
+	home := cfg.handoff
 	if home == "" {
 		if home, err = os.MkdirTemp("", "v1-oracle-replay-"); err != nil {
 			return err
@@ -422,7 +464,7 @@ func run() error {
 	} else if err := os.Mkdir(home, 0o755); err != nil {
 		return fmt.Errorf("-handoff: %w", err)
 	}
-	replayApp, replayDB, err := newApp(home, *keepRecent, upgradeHeightV2, *handoff != "")
+	replayApp, replayDB, err := newAppDB(home, *keepRecent, upgradeHeightV2, cfg.handoff != "")
 	if err != nil {
 		return err
 	}
@@ -457,12 +499,14 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("height %d: %w", height, err)
 		}
-		if err := checkHeader(header, block, vals); err != nil {
-			return fmt.Errorf("height %d: %w", height, err)
-		}
-		lastCommit, err := lastCommitInfo(block, height, genDoc.InitialHeight, vals)
-		if err != nil {
-			return fmt.Errorf("height %d: %w", height, err)
+		lastCommit := abci.LastCommitInfo{Votes: []abci.VoteInfo{}}
+		if syn == nil || !syn.unchecked() {
+			if err := checkHeader(header, block, vals); err != nil {
+				return fmt.Errorf("height %d: %w", height, err)
+			}
+			if lastCommit, err = lastCommitInfo(block, height, genDoc.InitialHeight, vals); err != nil {
+				return fmt.Errorf("height %d: %w", height, err)
+			}
 		}
 		if len(block.Block.Evidence.Evidence) != 0 {
 			return fmt.Errorf("height %d: evidence is not supported", height)
@@ -515,7 +559,9 @@ func run() error {
 
 		got := upper(commit.Data)
 		if syn != nil {
-			syn.committed(commit.Data, results, end)
+			if err := syn.committed(height, commit.Data, results, end); err != nil {
+				return fmt.Errorf("height %d: %w", height, err)
+			}
 		} else {
 			next := blocks[height+1].Block.Header
 			if pinned, ok := postAppHash[height]; got != next.AppHash || (ok && got != pinned) {
@@ -607,23 +653,28 @@ func run() error {
 			}
 		}
 	}
-	if *handoff != "" {
+	if cfg.handoff != "" {
+		s, ok := syn.(*synth)
+		if !ok {
+			return errors.New("-handoff needs a synthetic chain")
+		}
 		if err := replayDB.Close(); err != nil {
 			return err
 		}
-		if err := syn.writeHandoff(filepath.Join(*handoff, "handoff.json"), *chain, *heights, vals); err != nil {
+		if err := s.writeHandoff(filepath.Join(cfg.handoff, "handoff.json"), cfg.chain, *heights, vals); err != nil {
 			return err
 		}
 	}
 	if syn != nil {
-		compressed, err := gzipBytes(syn.blocks.Bytes())
+		blocksJSONL := syn.blocksJSONL()
+		compressed, err := gzipBytes(blocksJSONL)
 		if err != nil {
 			return err
 		}
 		if err := os.WriteFile(filepath.Join(*out, "blocks.jsonl.gz"), compressed, 0o644); err != nil {
 			return err
 		}
-		fixture.BlocksSHA256 = sha256Hex(syn.blocks.Bytes())
+		fixture.BlocksSHA256 = sha256Hex(blocksJSONL)
 	}
 	fixture.TxResultsSHA256 = sha256Hex(txResultsJSONL.Bytes())
 	compressed, err := gzipBytes(txResultsJSONL.Bytes())
@@ -640,9 +691,18 @@ func run() error {
 	return os.WriteFile(filepath.Join(*out, "store-roots.json"), append(encoded, '\n'), 0o644)
 }
 
-// newApp builds the app over a memory database or, with onDisk, over the
+// newApp builds the app over a memory database.
+func newApp(home string, keepRecent uint64, upgradeHeightV2 int64) *app.App {
+	a, _, err := newAppDB(home, keepRecent, upgradeHeightV2, false)
+	if err != nil {
+		panic(err) // a memory database does not fail to open
+	}
+	return a
+}
+
+// newAppDB builds the app over a memory database or, with onDisk, over the
 // goleveldb database data/application.db of home, as celestia-appd opens it.
-func newApp(home string, keepRecent uint64, upgradeHeightV2 int64, onDisk bool) (*app.App, dbm.DB, error) {
+func newAppDB(home string, keepRecent uint64, upgradeHeightV2 int64, onDisk bool) (*app.App, dbm.DB, error) {
 	var db dbm.DB = dbm.NewMemDB()
 	if onDisk {
 		var err error
@@ -828,7 +888,8 @@ func protoHeader(b rpcBlock) (*tmproto.Header, error) {
 		return bz
 	}
 	parse := func(s string) uint64 {
-		if err != nil {
+		// An omitted zero (the recorded ibctesting headers' block version).
+		if err != nil || s == "" {
 			return 0
 		}
 		var v uint64
