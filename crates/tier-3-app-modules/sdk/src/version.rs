@@ -669,6 +669,24 @@ impl Release {
         }
     }
 
+    /// x/tx's amino JSON encoder resolves `hyperlane.warp.v1.RemoteRouter`
+    /// as a placeholder with no fields (celestia-app v4.1.0 to v6.4.x,
+    /// hyperlane-cosmos v1.0.1), so signing a `MsgEnrollRemoteRouter` that
+    /// sets it fails. From v8.0.8 (v1.1.0) it resolves.
+    #[must_use]
+    pub const fn amino_remote_router_placeholder(&self) -> bool {
+        matches!(self.hyperlane, Some(HyperlaneCosmos::V1_0_1))
+    }
+
+    /// x/tx's amino JSON encoder sees `MsgCreateVestingAccount.start_time`
+    /// (field 6, celestia's cosmos-sdk fork). celestia-app v4.1.0 links the
+    /// upstream `cosmossdk.io/api` v0.7.6 descriptors, which lack it, so
+    /// signing a message that sets it fails; v5.0.12 on link celestia's.
+    #[must_use]
+    pub const fn amino_vesting_start_time(&self) -> bool {
+        !matches!(self.cosmos_sdk, CosmosSdk::V0_50Celestia1_29)
+    }
+
     /// go-square v4.0.0-rc4: the square layout counts signer bytes and
     /// classifies fibre transactions (app version 9 only).
     #[must_use]
@@ -906,6 +924,8 @@ mod tests {
             assert!(!r.has_token_filter(), "v{v}");
             assert!(!r.legacy_insufficient_fee_message(), "v{v}");
             assert_eq!(r.default_unbonding_time_secs(), None, "v{v}");
+            assert!(!r.amino_remote_router_placeholder(), "v{v}");
+            assert!(r.amino_vesting_start_time(), "v{v}");
         }
     }
 
@@ -947,6 +967,8 @@ mod tests {
                 assert_eq!(r.legacy_insufficient_fee_message(), v <= 6, "v{v}");
                 let unbonding = v4_v5.then_some(21 * 24 * 3600);
                 assert_eq!(r.default_unbonding_time_secs(), unbonding, "v{v}");
+                assert_eq!(r.amino_remote_router_placeholder(), v <= 6, "v{v}");
+                assert_eq!(r.amino_vesting_start_time(), v != 4, "v{v}");
             }
         }
         let deps = |v| {
