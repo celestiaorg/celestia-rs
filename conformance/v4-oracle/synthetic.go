@@ -32,6 +32,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	bip39 "github.com/cosmos/go-bip39"
@@ -44,20 +45,20 @@ const (
 )
 
 var (
-	syntheticValidators = []string{"val0", "val1", "val2", "val3"}
-	syntheticUsers      = []string{"alice", "bob", "carol"}
-	syntheticNS         = share.MustNewV0Namespace(bytes.Repeat([]byte{0x42}, share.NamespaceVersionZeroIDSize))
+	syntheticNS = share.MustNewV0Namespace(bytes.Repeat([]byte{0x42}, share.NamespaceVersionZeroIDSize))
 )
 
 // handoff is the handoff.json of v1-oracle -synthetic.
 type handoff struct {
-	ChainID         string `json:"chain_id"`
-	Height          int64  `json:"height"`
-	AppHash         string `json:"app_hash"`
-	LastResultsHash string `json:"last_results_hash"`
-	AppVersion      uint64 `json:"app_version"`
-	BlockMaxBytes   int64  `json:"block_max_bytes"`
-	BlockMaxGas     int64  `json:"block_max_gas"`
+	Chain           string   `json:"chain"`
+	Accounts        []string `json:"accounts"`
+	ChainID         string   `json:"chain_id"`
+	Height          int64    `json:"height"`
+	AppHash         string   `json:"app_hash"`
+	LastResultsHash string   `json:"last_results_hash"`
+	AppVersion      uint64   `json:"app_version"`
+	BlockMaxBytes   int64    `json:"block_max_bytes"`
+	BlockMaxGas     int64    `json:"block_max_gas"`
 	LastBlockID     struct {
 		Hash      string `json:"hash"`
 		PartTotal uint32 `json:"part_total"`
@@ -98,6 +99,8 @@ type synth struct {
 	blocks bytes.Buffer
 
 	handoffHeight   int64
+	chain           string
+	accounts        []string
 	vals            map[int64]*cmttypes.ValidatorSet
 	pendingCommit   *cmttypes.Commit
 	lastBlockID     cmttypes.BlockID
@@ -119,7 +122,7 @@ func mustHex(s string) []byte {
 func newSynth(ho *handoff, genesisTime time.Time) (*synth, error) {
 	ecfg := encoding.MakeConfig(app.ModuleEncodingRegisters...)
 	kr := keyring.NewInMemory(ecfg.Codec)
-	for _, name := range append(append([]string{}, syntheticValidators...), syntheticUsers...) {
+	for _, name := range ho.Accounts {
 		// The mnemonic of v1-oracle's keyMnemonic.
 		entropy := sha256.Sum256([]byte("celestia-rs synthetic chain " + name))
 		mnemonic, err := bip39.NewMnemonic(entropy[:])
@@ -136,6 +139,8 @@ func newSynth(ho *handoff, genesisTime time.Time) (*synth, error) {
 		chainID:         ho.ChainID,
 		genesisTime:     genesisTime,
 		handoffHeight:   ho.Height,
+		chain:           ho.Chain,
+		accounts:        ho.Accounts,
 		vals:            map[int64]*cmttypes.ValidatorSet{},
 		appHash:         mustHex(ho.AppHash),
 		lastResultsHash: mustHex(ho.LastResultsHash),
@@ -182,7 +187,7 @@ func newSynth(ho *handoff, genesisTime time.Time) (*synth, error) {
 func (s *synth) signer(a *app.App) (*user.Signer, error) {
 	ctx := a.NewContext(true)
 	var accounts []*user.Account
-	for _, name := range append(append([]string{}, syntheticValidators...), syntheticUsers...) {
+	for _, name := range s.accounts {
 		rec, err := s.kr.Key(name)
 		if err != nil {
 			return nil, err
@@ -242,28 +247,40 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 	}
 
 	var steps []func() error
-	switch height - s.handoffHeight - 1 {
-	case 0:
+	if s.chain == "v3-rich" {
+		txWith := func(msg sdk.Msg, opts ...user.TxOption) error {
+			bz, _, err := sg.CreateTx([]sdk.Msg{msg}, opts...)
+			if err != nil {
+				return err
+			}
+			out = append(out, bz)
+			return nil
+		}
+		steps = s.richSteps(height-s.handoffHeight-1, addr, valAddr, utia, tx, txWith, send, pfb)
+	}
+	switch offset := height - s.handoffHeight - 1; {
+	case s.chain == "v3-rich":
+	case offset == 0:
 		// The upgrade block: the x/upgrade PreBlocker runs plan v4 first.
 		steps = append(steps, func() error { return send("alice", "bob", 1_000) })
-	case 1:
+	case offset == 1:
 		steps = append(steps,
 			func() error { return pfb("bob", share.ShareVersionZero, 700) },
 			func() error { return send("carol", "alice", 29) },
 		)
-	case 2:
+	case offset == 2:
 		steps = append(steps,
 			func() error {
 				return tx(stakingtypes.NewMsgDelegate(addr("alice").String(), valAddr("val2").String(), sdk.NewCoin(appconsts.BondDenom, math.NewInt(3_000_000))))
 			},
 			func() error { return tx(signaltypes.NewMsgSignalVersion(valAddr("val0").String(), 5)) },
 		)
-	case 3:
+	case offset == 3:
 		steps = append(steps,
 			func() error { return pfb("carol", share.ShareVersionOne, 1_100) },
 			func() error { return send("bob", "carol", 31) },
 		)
-	case 4:
+	case offset == 4:
 		steps = append(steps, func() error { return send("alice", "bob", 37) })
 	}
 	for _, step := range steps {
@@ -272,6 +289,58 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 		}
 	}
 	return out, nil
+}
+
+// absent is v1-oracle's rule for the validators that miss a commit.
+func (s *synth) absent(height int64, i, n int) bool {
+	if s.chain == "v3-rich" {
+		return i >= 2 && (height+int64(i))%4 == 0
+	}
+	return i == n-1 && height%3 == 0
+}
+
+// richSteps are the v4 blocks of the rich chain: an undelegation, a
+// redelegation and an authz execution on migrated state.
+func (s *synth) richSteps(
+	offset int64,
+	addr func(string) sdk.AccAddress,
+	valAddr func(string) sdk.ValAddress,
+	utia func(int64) sdk.Coins,
+	tx func(sdk.Msg) error,
+	txWith func(sdk.Msg, ...user.TxOption) error,
+	send func(string, string, int64) error,
+	pfb func(string, uint8, int) error,
+) []func() error {
+	coin := func(n int64) sdk.Coin { return sdk.NewCoin(appconsts.BondDenom, math.NewInt(n)) }
+	switch offset {
+	case 0:
+		return []func() error{func() error { return send("alice", "bob", 1_000) }}
+	case 1:
+		return []func() error{
+			func() error { return pfb("bob", share.ShareVersionZero, 700) },
+			func() error {
+				return tx(stakingtypes.NewMsgUndelegate(addr("d00").String(), valAddr("rv00").String(), coin(500_000)))
+			},
+		}
+	case 2:
+		return []func() error{func() error {
+			return txWith(stakingtypes.NewMsgBeginRedelegate(addr("d01").String(), valAddr("rv01").String(), valAddr("rv02").String(), coin(400_000)),
+				user.SetGasLimit(1_000_000), user.SetFee(10_000))
+		}}
+	case 3:
+		return []func() error{func() error {
+			exec := authz.NewMsgExec(addr("bob"), []sdk.Msg{banktypes.NewMsgSend(addr("alice"), addr("carol"), utia(100))})
+			return tx(&exec)
+		}}
+	case 4:
+		return []func() error{func() error { return send("carol", "dave", 37) }}
+	}
+	return nil
+}
+
+// blockTime is the time of block `height`, as v1-oracle sets it.
+func (s *synth) blockTime(height int64) time.Time {
+	return s.genesisTime.Add(time.Duration(height) * (15*time.Second + 123*time.Millisecond))
 }
 
 // block builds block `height` and appends it to blocks.jsonl.
@@ -288,7 +357,7 @@ func (s *synth) block(height int64, txs [][]byte) (*cmttypes.Block, cmttypes.Blo
 	block.Header.Populate(
 		cmtversion.Consensus{Block: cmtversionpkg.BlockProtocol, App: s.appVersion},
 		s.chainID,
-		s.genesisTime.Add(time.Duration(height)*(15*time.Second+123*time.Millisecond)),
+		s.blockTime(height),
 		s.lastBlockID,
 		cur.Hash(),
 		next.Hash(),
@@ -318,11 +387,10 @@ func (s *synth) block(height int64, txs [][]byte) (*cmttypes.Block, cmttypes.Blo
 	}
 	s.blocks.Write(append(line, '\n'))
 
-	// The commit of this block: the fourth validator misses every third
-	// height.
+	// The commit of this block, with v1-oracle's absent validators.
 	sigs := make([]cmttypes.CommitSig, len(cur.Validators))
 	for i, v := range cur.Validators {
-		if i == len(cur.Validators)-1 && height%3 == 0 {
+		if s.absent(height, i, len(cur.Validators)) {
 			sigs[i] = cmttypes.NewCommitSigAbsent()
 			continue
 		}
@@ -377,9 +445,13 @@ func (s *synth) committed(id cmttypes.BlockID, res *abci.ResponseFinalizeBlock) 
 	}
 	s.vals[height+2] = next
 	out := []ValidatorUpdate{}
-	for _, u := range res.ValidatorUpdates {
-		pk := u.PubKey.GetEd25519()
-		out = append(out, ValidatorUpdate{PubKeyType: "ed25519", PubKey: upper(pk), Power: u.Power})
+	for _, u := range updates {
+		out = append(out, ValidatorUpdate{
+			Address:    upper(u.Address),
+			PubKeyType: u.PubKey.Type(),
+			PubKey:     upper(u.PubKey.Bytes()),
+			Power:      u.VotingPower,
+		})
 	}
 	return out, nil
 }

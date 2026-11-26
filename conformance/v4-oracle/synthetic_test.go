@@ -11,11 +11,12 @@ import (
 // fixtureFiles are the outputs that conformance/fixtures/synthetic/v4 holds.
 var fixtureFiles = []string{
 	"blocks.jsonl.gz", "store-roots.json", "tx-results.jsonl.gz",
-	"kv-handoff.jsonl.gz", "kv-diffs.jsonl.gz",
+	"kv-handoff.jsonl.gz", "kv-upgrade.jsonl.gz", "kv-diffs.jsonl.gz",
 }
 
-// TestSyntheticFixtureIsReproducible runs v1-oracle -synthetic -handoff,
-// continues the chain and requires the committed fixture byte for byte.
+// TestSyntheticFixtureIsReproducible runs v1-oracle -synthetic -handoff
+// for each synthetic chain, continues it and requires the committed
+// fixture byte for byte.
 func TestSyntheticFixtureIsReproducible(t *testing.T) {
 	tmp := t.TempDir()
 	v1 := filepath.Join(tmp, "v1-oracle")
@@ -24,11 +25,21 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 	if bz, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build v1-oracle: %v\n%s", err, bz)
 	}
-	v1Out, home := filepath.Join(tmp, "v1-v3"), filepath.Join(tmp, "home")
-	if bz, err := exec.Command(v1, "-synthetic", "-kv", "-out", v1Out, "-handoff", home).CombinedOutput(); err != nil {
+	for _, c := range []struct{ chain, v1Dir, v4Dir string }{
+		{"v1-v3", "v1-v3", "v4"},
+		{"v3-rich", "v3-rich", "v3-rich-v4"},
+	} {
+		t.Run(c.chain, func(t *testing.T) { requireReproducible(t, v1, c.chain, c.v1Dir, c.v4Dir) })
+	}
+}
+
+func requireReproducible(t *testing.T, v1, chain, v1Dir, v4Dir string) {
+	tmp := t.TempDir()
+	v1Out, home := filepath.Join(tmp, "v1"), filepath.Join(tmp, "home")
+	if bz, err := exec.Command(v1, "-synthetic", "-chain", chain, "-kv", "-out", v1Out, "-handoff", home).CombinedOutput(); err != nil {
 		t.Fatalf("v1-oracle: %v\n%s", err, bz)
 	}
-	v1Fixture := filepath.Join("..", "fixtures", "synthetic", "v1-v3")
+	v1Fixture := filepath.Join("..", "fixtures", "synthetic", v1Dir)
 	for _, name := range []string{"genesis.json", "store-roots.json"} {
 		requireSame(t, filepath.Join(v1Fixture, name), filepath.Join(v1Out, name))
 	}
@@ -44,7 +55,7 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		t.Fatalf("synthetic run: %v\n%s", err, bz)
 	}
 	for _, name := range fixtureFiles {
-		requireSame(t, filepath.Join("..", "fixtures", "synthetic", "v4", name), filepath.Join(out, name))
+		requireSame(t, filepath.Join("..", "fixtures", "synthetic", v4Dir, name), filepath.Join(out, name))
 	}
 }
 

@@ -252,6 +252,16 @@ impl<'a> Context<'a> {
         self.consume(c.iter_next_cost_flat, "IterNextFlat")
     }
 
+    /// Iterates the keys in `[start, end)` (`None`: unbounded), ascending.
+    pub fn range_iter(
+        &mut self,
+        store: &str,
+        start: Option<&[u8]>,
+        end: Option<&[u8]>,
+    ) -> Result<Iter> {
+        self.iter_dir(store, start, end, false)
+    }
+
     /// Iterates all keys with `prefix`.
     pub fn prefix_iter(&mut self, store: &str, prefix: &[u8]) -> Result<Iter> {
         let end = prefix_end(prefix);

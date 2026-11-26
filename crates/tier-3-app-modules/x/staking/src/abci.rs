@@ -75,20 +75,20 @@ fn track_historical_info_with(ctx: &mut Context<'_>, header: Header) -> Result<(
     ctx.set(STORE_KEY, key, hi.encode_to_vec())
 }
 
-/// `BeginBlocker`.
+/// `BeginBlocker`. The v5 store migrations continue from their cursors
+/// (a chain that never ran the v0.46 to v0.50 upgrade has none): 10,000
+/// delegations into the by-validator index, then 1,000 historical info
+/// keys. Go recovers from their panics and ignores their errors.
 pub fn begin_block(ctx: &mut Context<'_>) -> Result<()> {
-    // Lazy store migrations from older versions; a fresh v10 chain never
-    // has their cursors set.
-    if ctx
-        .get(STORE_KEY, keys::NEXT_MIGRATE_DELEGATIONS_BY_VALIDATOR_INDEX)?
-        .is_some()
-        || ctx
-            .get(STORE_KEY, keys::NEXT_MIGRATE_HISTORICAL_INFO)?
-            .is_some()
+    if let Some(index) = ctx.get(STORE_KEY, keys::NEXT_MIGRATE_DELEGATIONS_BY_VALIDATOR_INDEX)?
+        && let Err(e) = crate::migrations::index_delegations_by_validator(ctx, Some(&index), 10_000)
     {
-        return Err(sdk::error::sdk::not_supported(
-            "staking v5 lazy migrations are not ported",
-        ));
+        tracing::error!(error = %e.log, "x/staking delegation index migration");
+    }
+    if let Some(index) = ctx.get(STORE_KEY, keys::NEXT_MIGRATE_HISTORICAL_INFO)?
+        && let Err(e) = crate::migrations::migrate_historical_info_keys(ctx, Some(&index), 1_000)
+    {
+        tracing::error!(error = %e.log, "x/staking historical info migration");
     }
     track_historical_info(ctx)
 }
