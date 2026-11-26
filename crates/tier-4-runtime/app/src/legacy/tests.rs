@@ -2663,9 +2663,11 @@ fn v046_authz_validate_basic() {
     let e = grant(&a, &b, stake(0)).unwrap_err();
     assert_eq!((e.codespace, e.code), ("authz", 4));
     let _ = take_not_ported();
+    // A v0.46 `SendAuthorization` without a spend limit is invalid.
     let send = Any::pack(&celestia_proto::cosmos::bank::v1beta1::SendAuthorization::default());
-    grant(&a, &b, Some(send)).unwrap_err();
-    assert!(take_not_ported().is_some());
+    let e = grant(&a, &b, Some(send)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 10), "{}", e.log);
+    assert!(take_not_ported().is_none());
 
     let exec = |grantee: &str, n: usize| {
         msgs::validate_basic(&Any::pack(&authz::MsgExec {

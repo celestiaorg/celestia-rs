@@ -10,9 +10,9 @@
 //! celestia's zero-amount exception) rather than by authz.
 //!
 //! Authorizations: `GenericAuthorization`, staking `StakeAuthorization`
-//! as v0.46 defines them, and ibc-go v6 `TransferAuthorization`. bank
-//! `SendAuthorization`, and any authorization type the v1 interface
-//! registry does not know (a decode failure in Go), are not ported.
+//! and bank `SendAuthorization` as v0.46 defines them, and ibc-go v6
+//! `TransferAuthorization`. Any authorization type the v1 interface
+//! registry does not know (a decode failure in Go) is not ported.
 
 #![allow(clippy::similar_names)] // granter / grantee
 
@@ -21,6 +21,7 @@ use celestia_proto::cosmos::authz::v1beta1::{
     self as authz, EventGrant, EventRevoke, GenericAuthorization, Grant, GrantQueueItem,
 };
 use celestia_proto::cosmos::bank::v1beta1 as bank;
+use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
 use celestia_proto::cosmos::distribution::v1beta1 as distr;
 use celestia_proto::cosmos::feegrant::v1beta1 as feegrant;
 use celestia_proto::cosmos::gov;
@@ -45,6 +46,7 @@ enum Authorization {
     Generic(GenericAuthorization),
     Stake(staking::StakeAuthorization),
     Transfer(transfer::TransferAuthorization),
+    Send(bank::SendAuthorization),
 }
 
 fn decode<M: Message + Default>(msg: &Any) -> Result<M> {
@@ -94,6 +96,19 @@ impl Authorization {
                 }
                 Ok(Some(Self::Transfer(a)))
             }
+            u if u == bank::SendAuthorization::type_url() => {
+                let mut a = bank::SendAuthorization::decode(v).map_err(|_| not_ported(u))?;
+                // cosmos-sdk v0.46 has no `allow_list` (field 2): gogoproto
+                // skips it.
+                a.allow_list.clear();
+                if a.spend_limit
+                    .iter()
+                    .any(|c| !c.amount.is_empty() && x_staking::msgs::wire_int(&c.amount).is_err())
+                {
+                    return Err(not_ported(u));
+                }
+                Ok(Some(Self::Send(a)))
+            }
             other => Err(not_ported(other)),
         }
     }
@@ -117,6 +132,18 @@ impl Authorization {
                 Ok(())
             }
             Self::Transfer(a) => validate_transfer_authorization(a),
+            Self::Send(a) => {
+                // gogoproto leaves an empty repeated field nil.
+                if a.spend_limit.is_empty() {
+                    return Err(errs::invalid_coins("").wrap("spend limit cannot be nil"));
+                }
+                for c in &a.spend_limit {
+                    if !sdk::coins::raw_is_positive(c)? {
+                        return Err(errs::invalid_coins("").wrap("spend limit must be positive"));
+                    }
+                }
+                Ok(())
+            }
         }
     }
 
@@ -129,6 +156,7 @@ impl Authorization {
             }),
             Self::Stake(a) => accept_stake(ctx, a, msg),
             Self::Transfer(a) => accept_transfer(ctx, a, msg),
+            Self::Send(a) => accept_send(a, msg),
         }
     }
 
@@ -146,6 +174,7 @@ impl Authorization {
                 ))),
             },
             Self::Transfer(_) => Ok(transfer::MsgTransfer::type_url()),
+            Self::Send(_) => Ok(bank::MsgSend::type_url()),
         }
     }
 
@@ -155,6 +184,7 @@ impl Authorization {
             Self::Generic(a) => Any::pack(a),
             Self::Stake(a) => Any::pack(a),
             Self::Transfer(a) => Any::pack(a),
+            Self::Send(a) => Any::pack(a),
         };
         txdecode::gogo_repack(&any)
     }
@@ -484,6 +514,88 @@ fn coin_int(c: &celestia_proto::cosmos::base::v1beta1::Coin) -> Result<math::Int
     wire_int_or_nil(&c.amount)
 }
 
+/// v0.46 `Coins.SafeSub(coinsB...)` of a valid coin set: `NewCoins(coinsB)`
+/// (zeros dropped, sorted; an invalid set panics), then the sorted
+/// difference without zero coins, and whether any coin is negative.
+fn safe_sub_coins(limit: &[PbCoin], sub: &[PbCoin]) -> Result<(Vec<PbCoin>, bool)> {
+    let mut b: Vec<(String, math::Int)> = Vec::with_capacity(sub.len());
+    for c in sub {
+        let v = coin_int(c)?;
+        if !v.is_zero() {
+            b.push((c.denom.clone(), v));
+        }
+    }
+    b.sort_by(|x, y| x.0.cmp(&y.0));
+    let invalid = b
+        .iter()
+        .any(|(d, v)| !sdk::coins::is_valid_denom(d) || !v.is_positive())
+        || b.windows(2).any(|w| w[0].0 == w[1].0);
+    if invalid {
+        let text: Vec<String> = b.iter().map(|(d, v)| format!("{v}{d}")).collect();
+        return Err(sdk::error::go_panic(format!(
+            "invalid coin set {}",
+            text.join(",")
+        )));
+    }
+    let mut merged: std::collections::BTreeMap<String, math::Int> =
+        std::collections::BTreeMap::new();
+    for c in limit {
+        let v = coin_int(c)?;
+        let e = merged
+            .entry(c.denom.clone())
+            .or_insert_with(math::Int::zero);
+        *e = e
+            .checked_add(&v)
+            .map_err(|e| sdk::error::go_panic(e.to_string()))?;
+    }
+    for (d, v) in b {
+        let e = merged.entry(d).or_insert_with(math::Int::zero);
+        *e = e
+            .checked_sub(&v)
+            .map_err(|e| sdk::error::go_panic(e.to_string()))?;
+    }
+    let mut negative = false;
+    let left = merged
+        .into_iter()
+        .filter(|(_, v)| !v.is_zero())
+        .map(|(denom, v)| {
+            negative |= v.is_negative();
+            PbCoin {
+                denom,
+                amount: v.to_string(),
+            }
+        })
+        .collect();
+    Ok((left, negative))
+}
+
+/// cosmos-sdk v0.46 bank `SendAuthorization.Accept` (no allow list).
+fn accept_send(a: &bank::SendAuthorization, msg: &Any) -> Result<Accepted> {
+    if msg.type_url != bank::MsgSend::type_url() {
+        return Err(errs::invalid_type("type mismatch"));
+    }
+    let m: bank::MsgSend = decode(msg)?;
+    let (left, negative) = safe_sub_coins(&a.spend_limit, &m.amount)?;
+    if negative {
+        return Err(errs::insufficient_funds(
+            "requested amount is more than spend limit",
+        ));
+    }
+    if left.is_empty() {
+        return Ok(Accepted {
+            delete: true,
+            updated: None,
+        });
+    }
+    Ok(Accepted {
+        delete: false,
+        updated: Some(Authorization::Send(bank::SendAuthorization {
+            spend_limit: left,
+            allow_list: vec![],
+        })),
+    })
+}
+
 /// ibc-go v6 `isAllowedAddress`: `IterNextCostFlat` per entry looked at.
 fn is_allowed_address(ctx: &mut Context<'_>, receiver: &str, allowed: &[String]) -> Result<bool> {
     if allowed.is_empty() {
@@ -505,7 +617,6 @@ fn accept_transfer(
     a: &transfer::TransferAuthorization,
     msg: &Any,
 ) -> Result<Accepted> {
-    use celestia_proto::cosmos::base::v1beta1::Coin as PbCoin;
     if msg.type_url != transfer::MsgTransfer::type_url() {
         return Err(errs::invalid_type("").wrap("type mismatch"));
     }
@@ -547,39 +658,8 @@ fn accept_transfer(
             updated: None,
         });
     }
-    // `NewCoins(token)`: a zero token is dropped; a negative one panics.
-    let amount = coin_int(&token)?;
-    if amount.is_negative() {
-        return Err(sdk::error::go_panic(format!(
-            "invalid coin set {}{}: coin {}{} amount is not positive",
-            amount, token.denom, amount, token.denom
-        )));
-    }
-    let mut left: Vec<PbCoin> = Vec::with_capacity(al.spend_limit.len() + 1);
-    let mut matched = false;
-    for c in &al.spend_limit {
-        let mut v = coin_int(c)?;
-        if c.denom == token.denom {
-            matched = true;
-            v = v
-                .checked_sub(&amount)
-                .map_err(|e| sdk::error::go_panic(e.to_string()))?;
-        }
-        if !v.is_zero() {
-            left.push(PbCoin {
-                denom: c.denom.clone(),
-                amount: v.to_string(),
-            });
-        }
-    }
-    if !matched && !amount.is_zero() {
-        left.push(PbCoin {
-            denom: token.denom.clone(),
-            amount: amount.neg().to_string(),
-        });
-    }
-    left.sort_by(|x, y| x.denom.cmp(&y.denom));
-    if left.iter().any(|c| c.amount.starts_with('-')) {
+    let (left, negative) = safe_sub_coins(&al.spend_limit, std::slice::from_ref(&token))?;
+    if negative {
         return Err(errs::insufficient_funds("").wrap("requested amount is more than spend limit"));
     }
     if left.is_empty() {
@@ -1132,6 +1212,98 @@ mod transfer_authorization_tests {
             e.2.starts_with("invalid source port ID: identifier a has invalid length"),
             "{}",
             e.2
+        );
+    }
+}
+
+#[cfg(test)]
+mod send_authorization_tests {
+    use super::*;
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+
+    fn coin(denom: &str, amount: &str) -> Coin {
+        Coin {
+            denom: denom.into(),
+            amount: amount.into(),
+        }
+    }
+
+    fn send(amount: Vec<Coin>) -> Any {
+        Any::pack(&bank::MsgSend {
+            from_address: String::new(),
+            to_address: String::new(),
+            amount,
+        })
+    }
+
+    fn accept(limit: Vec<Coin>, m: &Any) -> Result<Accepted> {
+        let mut ms = sdk::MultiStore::new();
+        let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+        Authorization::Send(bank::SendAuthorization {
+            spend_limit: limit,
+            allow_list: vec![],
+        })
+        .accept(&mut ctx, m)
+    }
+
+    /// v0.46 `SendAuthorization.Accept`: `SpendLimit.SafeSub(amount...)`;
+    /// an exhausted limit deletes the grant; more than the limit is
+    /// `ErrInsufficientFunds`.
+    #[test]
+    fn accept_spends_and_deletes() {
+        let limit = vec![coin("uatom", "3"), coin("utia", "10")];
+        let r = accept(limit.clone(), &send(vec![coin("utia", "4")])).unwrap();
+        assert!(!r.delete);
+        let Some(Authorization::Send(left)) = r.updated else {
+            panic!("no update")
+        };
+        assert_eq!(
+            left.spend_limit,
+            vec![coin("uatom", "3"), coin("utia", "6")]
+        );
+        let r = accept(
+            limit.clone(),
+            &send(vec![coin("uatom", "3"), coin("utia", "10")]),
+        )
+        .unwrap();
+        assert!(r.delete && r.updated.is_none());
+        for amount in [vec![coin("utia", "11")], vec![coin("ufoo", "1")]] {
+            let e = accept(limit.clone(), &send(amount)).err().unwrap();
+            assert_eq!((e.codespace, e.code), ("sdk", 5), "{}", e.log);
+        }
+        // `NewCoins` sorts the amount, then panics on a duplicate denom.
+        let r = accept(
+            limit.clone(),
+            &send(vec![coin("utia", "1"), coin("uatom", "1")]),
+        )
+        .unwrap();
+        assert!(!r.delete);
+        let e = accept(limit, &send(vec![coin("utia", "1"), coin("utia", "1")]))
+            .err()
+            .unwrap();
+        assert!(e.is_panic(), "{}", e.log);
+    }
+
+    /// v0.46 `SendAuthorization.ValidateBasic`.
+    #[test]
+    fn validate_basic() {
+        let v = |limit: Vec<Coin>| {
+            Authorization::Send(bank::SendAuthorization {
+                spend_limit: limit,
+                allow_list: vec![],
+            })
+            .validate_basic()
+            .err()
+            .map(|e| (e.code, e.log))
+        };
+        assert_eq!(v(vec![coin("utia", "1")]), None);
+        assert_eq!(
+            v(vec![]),
+            Some((10, "spend limit cannot be nil: invalid coins".into()))
+        );
+        assert_eq!(
+            v(vec![coin("utia", "0")]),
+            Some((10, "spend limit must be positive: invalid coins".into()))
         );
     }
 }
