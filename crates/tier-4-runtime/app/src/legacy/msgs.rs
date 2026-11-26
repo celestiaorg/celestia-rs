@@ -18,7 +18,7 @@ fn decode<M: Message + Default>(msg: &Any) -> Result<M> {
 }
 
 /// `sdk.AccAddressFromBech32`, failing with `invalid <what> address`.
-fn acc_address(s: &str, what: &str) -> Result<Vec<u8>> {
+pub(super) fn acc_address(s: &str, what: &str) -> Result<Vec<u8>> {
     sdk::address::acc_from_bech32_go(s)
         .map_err(|e| errs::invalid_address(format!("invalid {what} address: {e}")))
 }
@@ -216,6 +216,12 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
     if let Some(r) = super::ibc::validate_basic(msg) {
         return r;
     }
+    if let Some(r) = super::authz::validate_basic(msg) {
+        return r;
+    }
+    if let Some(r) = super::qgb::validate_basic(msg) {
+        return r;
+    }
     if msg.type_url == bank::MsgSend::type_url() {
         let m: bank::MsgSend = decode(msg)?;
         acc_address(&m.from_address, "from")?;
@@ -261,6 +267,13 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
         val_address(&m.validator_src_address, "source validator")?;
         val_address(&m.validator_dst_address, "destination validator")?;
         valid_shares_amount(m.amount.as_ref())?;
+    } else {
+        // Every other message of the v1 registry: its `ValidateBasic`
+        // runs before the gatekeeper and the ante handler.
+        return Err(super::not_ported(errs::unknown_request(format!(
+            "the cosmos-sdk v0.46 ValidateBasic of {} is not ported",
+            msg.type_url
+        ))));
     }
     Ok(())
 }
@@ -316,6 +329,12 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
         return r;
     }
     if let Some(r) = super::ibc_transfer::route(ctx, msg) {
+        return r;
+    }
+    if let Some(r) = super::authz::route(ctx, msg) {
+        return r;
+    }
+    if let Some(r) = super::qgb::route(ctx, msg) {
         return r;
     }
     Err(super::not_ported(errs::unknown_request(format!(

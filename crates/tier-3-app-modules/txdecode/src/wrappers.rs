@@ -357,3 +357,22 @@ pub fn unmarshal_index_wrapper(tx: &[u8]) -> Option<(Vec<u8>, Vec<u32>)> {
     let indexes = d.num_list(2).into_iter().map(|v| v as u32).collect();
     Some((d.bytes(1).to_vec(), indexes))
 }
+
+/// celestia-core v0.34 `types.UnmarshalBlobTx` (gogoproto
+/// `tendermint.types.BlobTx`): the inner tx of a `BlobTx` with type id
+/// `BLOB`, at least one blob and every blob's namespace ID 28 bytes long;
+/// `None` otherwise. celestia-core v0.34 delivers this inner tx to the app
+/// in place of the block tx (`execBlockOnProxyApp`).
+#[must_use]
+pub fn unmarshal_blob_tx_v034(tx: &[u8]) -> Option<Vec<u8>> {
+    const NAMESPACE_ID_SIZE: usize = 28;
+    let d = gogo::unmarshal("tendermint.types.BlobTx", tx).ok()?;
+    if d.bytes(3) != BLOB_TYPE_ID.as_bytes() {
+        return None;
+    }
+    let blobs = d.msg_list(2);
+    if blobs.is_empty() || blobs.iter().any(|b| b.bytes(1).len() != NAMESPACE_ID_SIZE) {
+        return None;
+    }
+    Some(d.bytes(1).to_vec())
+}

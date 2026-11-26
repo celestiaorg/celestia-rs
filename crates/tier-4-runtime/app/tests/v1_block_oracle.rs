@@ -207,14 +207,16 @@ fn check_tx_results(res: &ResponseFinalizeBlock, result: &serde_json::Value) -> 
             hex::encode(&got.data),
             w["data"].as_str().unwrap().to_owned(),
         );
+        // The oracle's JSON holds each invalid UTF-8 byte of a Go string
+        // as U+FFFD (a log can quote store keys).
         field(
             "log",
-            got.log.clone(),
+            gostr::lossy(&got.log).into_owned(),
             w["log"].as_str().unwrap().to_owned(),
         );
         field(
             "info",
-            got.info.clone(),
+            gostr::lossy(&got.info).into_owned(),
             w["info"].as_str().unwrap().to_owned(),
         );
         if let Some(d) = common::first_event_difference(&got.events, &common::events(&w["events"]))

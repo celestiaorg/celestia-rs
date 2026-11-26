@@ -2019,23 +2019,15 @@ fn not_ported_in_genesis_and_blockers_is_not_lost() {
     driver.commit(&mut ms).unwrap();
 }
 
-/// The v1 runTx aborts (records a not-ported behavior) for a transaction
-/// the v10 decoder rejects (`MsgRegisterEVMAddress` is not in its
-/// registry) and for a message type outside v1's registry (x/signal),
-/// before any ante handler state change.
+/// The v1 runTx decodes with the v1 registry: a message outside it (a
+/// later release's bank `MsgUpdateParams`) fails the transaction as Go
+/// does (a decode error, no gas wanted, no record); blobstream's
+/// `MsgRegisterEVMAddress` decodes and fails its `ValidateBasic`; a
+/// registered message whose `ValidateBasic` is not ported (x/signal)
+/// aborts the block before any ante handler state change.
 #[test]
-fn v1_run_tx_aborts_outside_the_v1_registry() {
-    let evm = celestia_proto::Any {
-        type_url: "/celestia.qgb.v1.MsgRegisterEVMAddress".to_owned(),
-        value: Vec::new(),
-    };
-    let signal =
-        celestia_proto::Any::pack(&celestia_proto::celestia::signal::v1::MsgSignalVersion {
-            validator_address: "celestiavaloper1".to_owned(),
-            version: 2,
-        });
-    for msg in [evm, signal] {
-        let url = msg.type_url.clone();
+fn v1_run_tx_decodes_with_the_v1_registry() {
+    let run = |msg: celestia_proto::Any| {
         let mut ms = v1_store();
         let _v046 = sdk::version::SdkV046Scope::enter(1);
         let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
@@ -2043,10 +2035,99 @@ fn v1_run_tx_aborts_outside_the_v1_registry() {
         let mut block_gas = kvstore::GasMeter::infinite();
         let _ = take_not_ported();
         let out = tx::deliver_tx(&mut ctx, &mut block_gas, &raw_tx(vec![msg]));
-        assert!(out.result.is_err(), "{url}");
-        let what = take_not_ported().unwrap_or_else(|| panic!("{url}: not recorded"));
-        assert!(what.contains("not ported"), "{url}: {what}");
+        (out, take_not_ported())
+    };
+    let later = celestia_proto::Any::pack(
+        &celestia_proto::cosmos::bank::v1beta1::MsgUpdateParams::default(),
+    );
+    let (out, record) = run(later);
+    let e = out.result.unwrap_err();
+    assert_eq!(
+        (e.codespace, e.code, out.gas_wanted),
+        ("sdk", 2, 0),
+        "{}",
+        e.log
+    );
+    assert!(record.is_none());
+
+    let evm = celestia_proto::Any {
+        type_url: "/celestia.qgb.v1.MsgRegisterEVMAddress".to_owned(),
+        value: Vec::new(),
+    };
+    let (out, record) = run(evm);
+    assert!(out.result.is_err());
+    assert!(record.is_none());
+
+    let signal =
+        celestia_proto::Any::pack(&celestia_proto::celestia::signal::v1::MsgSignalVersion {
+            validator_address: "celestiavaloper1".to_owned(),
+            version: 2,
+        });
+    let (out, record) = run(signal);
+    assert!(out.result.is_err());
+    let what = record.expect("not recorded");
+    assert!(
+        what.contains("ValidateBasic of /celestia.signal.v1.MsgSignalVersion"),
+        "{what}"
+    );
+}
+
+/// Runs a v1 transaction through `runTx`: its outcome and the not-ported
+/// record (which aborts the block in the driver).
+fn run_v1_tx(raw: &[u8]) -> (super::TxOutcome, Option<String>) {
+    let mut ms = v1_store();
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params = mainnet_consensus_params();
+    let mut block_gas = kvstore::GasMeter::infinite();
+    let _ = take_not_ported();
+    let out = tx::deliver_tx(&mut ctx, &mut block_gas, raw);
+    (out, take_not_ported())
+}
+
+/// `levels` `MsgExec`s nested through their `msgs` (the outermost with a
+/// valid grantee, so its `ValidateBasic` passes), around a `MsgSend`.
+fn nested_exec(levels: usize) -> celestia_proto::Any {
+    use celestia_proto::cosmos::authz::v1beta1::MsgExec;
+    let grantee = x_auth::bech32(&[1; 20]).unwrap();
+    let mut msg = celestia_proto::Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend {
+        from_address: grantee.clone(),
+        to_address: grantee.clone(),
+        amount: vec![],
+    });
+    for _ in 0..levels {
+        msg = celestia_proto::Any::pack(&MsgExec {
+            grantee: grantee.clone(),
+            msgs: vec![msg],
+        });
     }
+    msg
+}
+
+/// `MsgVersioningGateKeeper.hasInvalidMsg` recurses into `MsgExec`
+/// without a limit: past the legacy layer's nesting cap Go would go on
+/// to the ante handler, so the block aborts instead of failing the tx.
+#[test]
+fn v1_gatekeeper_nesting_cap_aborts_the_block() {
+    let (out, record) = run_v1_tx(&raw_tx(vec![nested_exec(70)]));
+    assert!(out.result.is_err());
+    let what = record.expect("not recorded");
+    assert!(what.contains("max depth exceeded"), "{what}");
+    // Within the cap the gatekeeper accepts and the ante handler runs.
+    let (out, record) = run_v1_tx(&raw_tx(vec![nested_exec(60)]));
+    assert!(out.result.is_err());
+    assert!(record.is_none(), "{record:?}");
+}
+
+/// The decoder's recursion limit, which Go v0.46 does not have, aborts
+/// the block under the v1 decoder instead of failing the tx.
+#[test]
+fn v1_decoder_recursion_limit_aborts_the_block() {
+    let raw = raw_tx(vec![nested_exec(10_050)]);
+    let (out, record) = run_v1_tx(&raw);
+    assert!(out.result.is_err());
+    let what = record.expect("not recorded");
+    assert!(what.contains("recursion limit reached"), "{what}");
 }
 
 /// v0.46 `Commission.String()` as mainnet's first `MsgEditValidator`
@@ -2323,4 +2404,78 @@ fn v6_recv_packet_validate_basic() {
     assert_eq!((e.codespace, e.code), ("sdk", 26), "{}", e.log);
     let e = recv(1, Vec::new()).unwrap_err();
     assert_eq!((e.codespace, e.code), ("commitment", 2), "{}", e.log);
+}
+
+/// v0.46 authz `ValidateBasic`: addresses, granter == grantee, and the
+/// grant's authorization (a nil one panics, an empty type URL is an
+/// invalid type, a stake authorization needs a type); a not-ported
+/// authorization type aborts the block.
+#[test]
+fn v046_authz_validate_basic() {
+    use celestia_proto::Any;
+    use celestia_proto::cosmos::authz::v1beta1 as authz;
+    use celestia_proto::cosmos::staking::v1beta1 as staking;
+    let a = x_auth::bech32(&[1; 20]).unwrap();
+    let b = x_auth::bech32(&[2; 20]).unwrap();
+    let grant = |granter: &str, grantee: &str, auth: Option<Any>| {
+        msgs::validate_basic(&Any::pack(&authz::MsgGrant {
+            granter: granter.into(),
+            grantee: grantee.into(),
+            grant: Some(authz::Grant {
+                authorization: auth,
+                expiration: None,
+            }),
+        }))
+    };
+    let generic = Any::pack(&authz::GenericAuthorization { msg: "x".into() });
+    grant(&a, &b, Some(generic.clone())).unwrap();
+    let e = grant(&a, &a, Some(generic.clone())).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("authz", 7));
+    let e = grant("x", &b, Some(generic)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 7));
+    assert!(e.log.starts_with("invalid granter address"), "{}", e.log);
+    let e = sdk::error::recover(|| grant(&a, &b, None)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("undefined", 111_222));
+    let empty = Any {
+        type_url: String::new(),
+        value: Vec::new(),
+    };
+    let e = grant(&a, &b, Some(empty)).unwrap_err();
+    assert_eq!(e.log, "expected <nil>, got <nil>: invalid type");
+    let stake = |t: i32| {
+        Some(Any::pack(&staking::StakeAuthorization {
+            max_tokens: None,
+            authorization_type: t,
+            policy: None,
+        }))
+    };
+    grant(&a, &b, stake(1)).unwrap();
+    let e = grant(&a, &b, stake(0)).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("authz", 4));
+    let _ = take_not_ported();
+    let send = Any::pack(&celestia_proto::cosmos::bank::v1beta1::SendAuthorization::default());
+    grant(&a, &b, Some(send)).unwrap_err();
+    assert!(take_not_ported().is_some());
+
+    let exec = |grantee: &str, n: usize| {
+        msgs::validate_basic(&Any::pack(&authz::MsgExec {
+            grantee: grantee.into(),
+            msgs: vec![Any::pack(&authz::GenericAuthorization::default()); n],
+        }))
+    };
+    exec(&a, 1).unwrap();
+    assert_eq!(exec(&a, 0).unwrap_err().code, 18);
+    assert_eq!(exec("x", 1).unwrap_err().code, 7);
+    let revoke = |t: &str| {
+        msgs::validate_basic(&Any::pack(&authz::MsgRevoke {
+            granter: a.clone(),
+            grantee: b.clone(),
+            msg_type_url: t.into(),
+        }))
+    };
+    revoke("x").unwrap();
+    assert_eq!(
+        revoke("").unwrap_err().log,
+        "missing method name: invalid request"
+    );
 }

@@ -110,9 +110,13 @@ fn gatekeeper_order(msgs: &[Any], depth: usize, out: &mut Vec<String>) -> Result
     use prost::Message as _;
     for msg in msgs {
         if msg.type_url == "/cosmos.authz.v1beta1.MsgExec" {
-            // The decoder bounds the nesting depth of `Any`s.
+            // Go's `hasInvalidMsg` recurses without a limit and would go
+            // on to the ante handler; this cap bounds the recursion here,
+            // so exceeding it is not ported (the block aborts).
             if depth > 64 {
-                return Err(errs::invalid_request("max depth exceeded"));
+                return Err(super::not_ported(errs::invalid_request(
+                    "max depth exceeded",
+                )));
             }
             let exec =
                 celestia_proto::cosmos::authz::v1beta1::MsgExec::decode(msg.value.as_slice())
@@ -140,29 +144,6 @@ fn gatekeeper(ctx: &Context<'_>, tx: &Tx) -> Result<(), SdkError> {
         if gatekeeper_accepts(v, &url) != Some(true) {
             return Err(errs::not_supported(format!(
                 "message type {url} is not supported in version {v}"
-            )));
-        }
-    }
-    Ok(())
-}
-
-/// Every message type (with a `MsgExec`'s nested ones) must be one the
-/// gatekeeper accepts at the block's app version: the only types v1's
-/// interface registry and router both know. Others decode differently in
-/// Go (or not at all) than in the v10 decoder used here.
-fn registry_check(ctx: &Context<'_>, tx: &Tx) -> Result<(), SdkError> {
-    let v = header_app_version(ctx);
-    let mut urls = Vec::new();
-    gatekeeper_order(tx.msgs(), 0, &mut urls).map_err(|e| {
-        errs::tx_decode(format!(
-            "decoding a nested message with the v1 registry is not ported: {}",
-            e.log
-        ))
-    })?;
-    for url in urls {
-        if gatekeeper_accepts(v, &url) != Some(true) {
-            return Err(errs::tx_decode(format!(
-                "the cosmos-sdk v0.46 decoding of {url}, outside the app version {v} registry, is not ported"
             )));
         }
     }
@@ -291,26 +272,17 @@ fn consume_block_gas(
 }
 
 fn run(ctx: &mut Context<'_>, block_gas: &mut GasMeter, tx_bytes: &[u8]) -> Ran {
-    // The v1 decoder and interface registry are not ported: this is the
-    // v10 decoder, whose registry differs from v1's (it lacks
-    // `MsgRegisterEVMAddress` and knows later messages). Any transaction
-    // it rejects, and any message outside v1's registry, aborts the block
-    // rather than produce a result Go may not.
-    let tx = match crate::txpipe::decode_tx(tx_bytes) {
+    // celestia-app v3.13.0's decoder: an undecodable transaction fails
+    // with no gas wanted, before the ante handler (no fee, no sequence).
+    let tx = match txdecode::decode_v1(tx_bytes) {
         Ok(tx) => tx,
-        Err(e) => {
-            return Ran::early(
-                0,
-                super::not_ported(errs::tx_decode(format!(
-                    "decoding with the cosmos-sdk v0.46 app version 1 registry is not ported (the v10 decoder failed: {})",
-                    e.log
-                ))),
-            );
+        // A nesting limit Go v0.46's decoder does not have: Go would
+        // decode on, so no result here is Go's (the block aborts).
+        Err(e) if txdecode::is_v1_unsupported_limit(&e) => {
+            return Ran::early(0, super::not_ported(e));
         }
+        Err(e) => return Ran::early(0, e),
     };
-    if let Err(e) = registry_check(ctx, &tx) {
-        return Ran::early(0, super::not_ported(e));
-    }
     // `validateBasicTxMsgs` (a Go panic in a `ValidateBasic` is recovered
     // by `runTx`).
     if let Err(e) = sdk::error::recover(|| msgs::validate_basic_tx_msgs(tx.msgs())) {

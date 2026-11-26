@@ -5,6 +5,7 @@
 //
 //	v1-oracle -genesis genesis.json -blocks blocks.jsonl.gz \
 //	  [-windows replay-windows.json] [-from 1] -heights 10 -out <dir> [-kv]
+//	v1-oracle -registry-out <dir>
 //
 // celestia-app v3.13.0 is the binary that the Go multiplexer runs for app
 // versions 1 to 3. This program builds that app in process and drives it as
@@ -287,7 +288,11 @@ func run() error {
 	heights := flag.Int64("heights", 10, "last block height to execute")
 	out := flag.String("out", "", "output directory")
 	withKV := flag.Bool("kv", false, "also write the KV dump at height 0 and the per-block KV diffs")
+	registryOut := flag.String("registry-out", "", "only write the Rust v1 registry and schema tables (registry.go) to this directory")
 	flag.Parse()
+	if *registryOut != "" {
+		return writeRegistry(*registryOut)
+	}
 	if *genesisPath == "" || *blocksPath == "" || *out == "" || *heights < 1 || *from < 1 || *from > *heights {
 		flag.Usage()
 		return errors.New("missing arguments")

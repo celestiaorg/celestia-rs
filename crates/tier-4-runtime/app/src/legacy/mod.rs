@@ -21,6 +21,7 @@
 
 mod app;
 pub(crate) use app::{AppDriver, AppModules, v1_modules};
+pub mod authz;
 pub mod blockers;
 pub mod consensus_params;
 pub mod genesis;
@@ -29,6 +30,7 @@ pub mod ibc_channel;
 pub mod ibc_transfer;
 pub mod msgs;
 pub mod params;
+pub mod qgb;
 pub mod tx;
 
 use celestia_proto::celestia_core_proto::abci::{
@@ -637,7 +639,11 @@ impl<M: Modules> Driver<M> {
         let mut tx_results = Vec::with_capacity(req.txs.len());
         for (i, tx) in req.txs.iter().enumerate() {
             let _ = take_not_ported();
-            let outcome = self.modules.deliver_tx(&mut ctx, &mut block_gas, tx);
+            // celestia-core v0.34 delivers a `BlobTx`'s inner transaction
+            // (`execBlockOnProxyApp`); the blobs stay in the block.
+            let delivered = txdecode::unmarshal_blob_tx_v034(tx);
+            let delivered = delivered.as_deref().unwrap_or(tx);
+            let outcome = self.modules.deliver_tx(&mut ctx, &mut block_gas, delivered);
             if let Some(what) = take_not_ported() {
                 return Err(sdk::error::sdk::not_supported(format!(
                     "app version {}: block {} not executed: tx {i} [{}] reached a behavior that is not ported: {what}",
