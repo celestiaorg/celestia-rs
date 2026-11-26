@@ -851,6 +851,11 @@ pub(super) fn exec_signer(msg: &Any) -> Result<Option<Vec<u8>>> {
             // does not parse.
             let m: transfer::MsgTransfer = decode(msg)?;
             sdk::address::acc_from_bech32_go(&m.sender).map_err(sdk::error::go_panic)?
+        } else if u == celestia_proto::celestia::blob::v1::MsgPayForBlobs::type_url() {
+            // celestia-app `MsgPayForBlobs.GetSigners`
+            // (`sdk.MustAccAddressFromBech32`).
+            let m: celestia_proto::celestia::blob::v1::MsgPayForBlobs = decode(msg)?;
+            sdk::address::acc_from_bech32_go(&m.signer).map_err(sdk::error::go_panic)?
         } else {
             return Ok(None);
         },
