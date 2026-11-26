@@ -866,8 +866,7 @@ pub(super) fn exec_signer(msg: &Any) -> Result<Option<Vec<u8>>> {
 /// cosmos-sdk fork, `baseapp/msg_service_router.go`): a failure is
 /// returned unless the message has a `GetAmount() sdk.Coin` whose amount
 /// is zero, in which case its handler runs on the invalid message
-/// (`Ok(true)`). A nil amount panics in `IsZero`. Only `MsgDelegate`'s
-/// handler is ported for that case.
+/// (`Ok(true)`). A nil amount panics in `IsZero`.
 fn router_validate_basic(msg: &Any) -> Result<bool> {
     let Err(e) = msgs::validate_basic(msg) else {
         return Ok(false);
@@ -893,13 +892,7 @@ fn router_validate_basic(msg: &Any) -> Result<bool> {
     if !x_staking::msgs::wire_int(&raw).is_ok_and(|a| a.is_zero()) {
         return Err(e);
     }
-    if msg.type_url == staking::MsgDelegate::type_url() {
-        return Ok(true);
-    }
-    Err(super::not_ported(errs::invalid_request(format!(
-        "the cosmos-sdk v0.46 handler of {} on a zero amount its ValidateBasic rejects is not ported",
-        msg.type_url
-    ))))
+    Ok(true)
 }
 
 /// `fmt.Sprintf("%v", msg)` of a dispatched message.
@@ -956,7 +949,7 @@ fn exec(ctx: &mut Context<'_>, msg: &authz::MsgExec) -> Result<authz::MsgExecRes
         let zero_amount = router_validate_basic(m).map_err(|e| wrap_failed(e, m))?;
         let outer = std::mem::take(&mut ctx.events);
         let resp = if zero_amount {
-            msgs::delegate_zero_amount(ctx, m)
+            msgs::zero_amount(ctx, m)
         } else {
             msgs::route(ctx, m)
         };

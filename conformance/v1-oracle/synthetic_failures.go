@@ -17,7 +17,9 @@ package main
 //     than the delegation, a delegation to a non-validator, a redelegation to the
 //     same validator, a send to a blocked module account, an eighth
 //     unbonding entry, out of gas in MsgDelegate and MsgUndelegate, a
-//     delegation above the balance, a vote on an unknown proposal);
+//     delegation above the balance, a vote on an unknown proposal, and
+//     MsgExec of zero-amount undelegation, redelegation and cancelled
+//     unbonding);
 //   - round 2: a transitive redelegation, MsgExec of an expired grant, a
 //     fee allowance spent past its limit and an expired one.
 //
@@ -55,6 +57,7 @@ var failUsers = append([]string{
 	// message failures
 	"f-rollback", "f-noauth", "f-nofeegrant", "f-dist", "f-del-unknown",
 	"f-blocked", "f-oog-del", "f-del-poor", "f-vote-unknown",
+	"f-zero-undel", "f-zero-redel", "f-zero-cancel",
 }, failPhaseUsers()...)
 
 // failPerPhase are cases whose grant or delegation of round 0 must be
@@ -147,6 +150,11 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 		tx(ph("f-redel-self"), stakingtypes.NewMsgDelegate(b.addr(ph("f-redel-self")), val0, coin(tia)))
 		tx(ph("f-undel"), stakingtypes.NewMsgDelegate(b.addr(ph("f-undel")), val0, coin(tia)))
 		tx(ph("f-oog-undel"), stakingtypes.NewMsgDelegate(b.addr(ph("f-oog-undel")), val0, coin(tia)))
+		for _, n := range []string{"f-zero-undel", "f-zero-redel"} {
+			tx(n, stakingtypes.NewMsgDelegate(b.addr(n), val0, coin(tia)))
+		}
+		tx("f-zero-cancel", stakingtypes.NewMsgDelegate(b.addr("f-zero-cancel"), val0, coin(tia)),
+			stakingtypes.NewMsgUndelegate(b.addr("f-zero-cancel"), val0, coin(tia/2)))
 		add(func() error {
 			g, err := authz.NewMsgGrant(b.addr("f-granter"), b.addr(ph("f-grantee")),
 				authz.NewGenericAuthorization(sdk.MsgTypeURL(&banktypes.MsgSend{})), &expiry)
@@ -218,6 +226,19 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 			stakingtypes.NewMsgUndelegate(b.addr(ph("f-oog-undel")), val0, coin(tia/2)))
 		tx("f-del-poor", stakingtypes.NewMsgDelegate(b.addr("f-del-poor"), val0, coin(1_000_000*tia)))
 		tx("f-vote-unknown", govv1beta1.NewMsgVote(b.addr("f-vote-unknown"), 999, govv1beta1.OptionYes))
+		// MsgExec runs a staking message of a zero amount although its
+		// ValidateBasic fails: v0.46 baseapp's msg service router skips
+		// that error for a zero GetAmount. The grantee is the signer, so
+		// no grant is needed.
+		self := func(n string, m sdk.Msg) {
+			add(func() error {
+				exec := authz.NewMsgExec(b.addr(n), []sdk.Msg{m})
+				return b.direct(n, nil, &exec)
+			})
+		}
+		self("f-zero-undel", stakingtypes.NewMsgUndelegate(b.addr("f-zero-undel"), val0, coin(0)))
+		self("f-zero-redel", stakingtypes.NewMsgBeginRedelegate(b.addr("f-zero-redel"), val0, val1, coin(0)))
+		self("f-zero-cancel", stakingtypes.NewMsgCancelUnbondingDelegation(b.addr("f-zero-cancel"), val0, b.height-1, coin(0)))
 		undel := make([]sdk.Msg, 8)
 		for i := range undel {
 			undel[i] = stakingtypes.NewMsgUndelegate(b.addr("f-unbond"), val0, coin(tia/10))

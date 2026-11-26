@@ -1,6 +1,6 @@
 //! ibc-go v6 (celestiaorg `v6.3.0`) channel handshake of celestia-app v1
 //! to v3: `MsgChannelOpenInit`, `MsgChannelOpenTry`, `MsgChannelOpenAck`,
-//! `MsgChannelOpenConfirm` and `MsgChannelCloseConfirm` with their v6
+//! `MsgChannelOpenConfirm`, `MsgChannelCloseInit` and `MsgChannelCloseConfirm` with their v6
 //! `ValidateBasic`, the 04-channel keeper steps, port and channel
 //! capabilities, and the callbacks of the ICS-20 transfer stack (behind
 //! celestia-app's token filter, which only filters received packets) and
@@ -169,6 +169,15 @@ pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
             check_signer(&m.signer)
         }));
     }
+    if msg.type_url == chpb::MsgChannelCloseInit::type_url() {
+        return Some(decode(msg).and_then(|m: chpb::MsgChannelCloseInit| {
+            port_id(&m.port_id)?;
+            if !channel::is_valid_channel_id(&m.channel_id) {
+                return Err(cherr::invalid_channel_identifier(""));
+            }
+            check_signer(&m.signer)
+        }));
+    }
     if msg.type_url == chpb::MsgChannelCloseConfirm::type_url() {
         return Some(decode(msg).and_then(|m: chpb::MsgChannelCloseConfirm| {
             port_id(&m.port_id)?;
@@ -196,6 +205,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
     }
     if msg.type_url == chpb::MsgChannelOpenConfirm::type_url() {
         return Some(decode(msg).and_then(|m| chan_open_confirm_msg(ctx, &m)));
+    }
+    if msg.type_url == chpb::MsgChannelCloseInit::type_url() {
+        return Some(decode(msg).and_then(|m| chan_close_init_msg(ctx, &m)));
     }
     if msg.type_url == chpb::MsgChannelCloseConfirm::type_url() {
         return Some(decode(msg).and_then(|m| chan_close_confirm_msg(ctx, &m)));
@@ -633,6 +645,21 @@ fn chan_open_confirm_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelOpenConfirm)
     channel::set_channel(ctx, port, chan, &ch)?;
     channel_events(ctx, "channel_open_confirm", port, chan, &ch, false);
     Ok(Any::pack(&chpb::MsgChannelOpenConfirmResponse {}))
+}
+
+/// `MsgChannelCloseInit` (core msg server). The callback runs first, and
+/// in v6 both transfer's and the interchain accounts host's
+/// `OnChanCloseInit` refuse (the token filter and packet-forward
+/// middlewares pass it on), so 04-channel `ChanCloseInit` never runs.
+fn chan_close_init_msg(ctx: &mut Context<'_>, m: &chpb::MsgChannelCloseInit) -> Result<Any> {
+    let (port, chan) = (&m.port_id, &m.channel_id);
+    let (module, _) = lookup_channel(ctx, port, chan)?;
+    route_to(&module)?;
+    Err(
+        errs::invalid_request("user cannot close channel").wrap(format!(
+            "channel close init callback failed for port ID: {port}, channel ID: {chan}"
+        )),
+    )
 }
 
 /// `MsgChannelCloseConfirm` (core msg server, then 04-channel

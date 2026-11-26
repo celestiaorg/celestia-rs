@@ -1079,6 +1079,10 @@ func runTransferAuthzAndTimeout(t *testing.T, coord *ibctesting.Coordinator, cha
 	sendFailing(t, chainA, channeltypes.NewMsgChannelOpenAck(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
 		pathAB.EndpointB.ChannelID, transfertypes.Version, []byte{1}, clienttypes.NewHeight(0, 1),
 		chainA.SenderAccount.GetAddress().String()))
+	// A user may not close a transfer channel: the callback refuses
+	// before the channel keeper runs.
+	sendFailing(t, chainA, channeltypes.NewMsgChannelCloseInit(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		chainA.SenderAccount.GetAddress().String()))
 }
 
 // sendFailing delivers a transaction whose messages fail after the ante
