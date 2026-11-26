@@ -1,0 +1,2276 @@
+{
+  "genesis_time": "2024-01-02T03:04:05.6Z",
+  "chain_id": "test",
+  "initial_height": "1",
+  "consensus_params": {
+    "block": {
+      "max_bytes": "1974272",
+      "max_gas": "-1",
+      "time_iota_ms": "1"
+    },
+    "evidence": {
+      "max_age_num_blocks": "120961",
+      "max_age_duration": "1814400000000000",
+      "max_bytes": "1048576"
+    },
+    "validator": {
+      "pub_key_types": [
+        "ed25519"
+      ]
+    },
+    "version": {
+      "app_version": "1"
+    }
+  },
+  "app_hash": "",
+  "app_state": {
+    "auth": {
+      "params": {
+        "max_memo_characters": "256",
+        "tx_sig_limit": "7",
+        "tx_size_cost_per_byte": "10",
+        "sig_verify_cost_ed25519": "590",
+        "sig_verify_cost_secp256k1": "1000"
+      },
+      "accounts": [
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1cys0wrdxlt5u9dt9qx8w6lfv0cvnhcuwj8xcj3",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A4+p7h0xlO24JZxg1+iBMhW/rVAW3n0HYDGnMI1HJ8px"
+          },
+          "account_number": "0",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1r2akkyvrkqe4g6mn5wgk624qsxh7j5adw6t04k",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AgahMkSzs8BOZN8aUIZPny+w9sG6OqEEvhuIIrq5jBtq"
+          },
+          "account_number": "1",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1ga0360xsv6jmrmgpxaf3tfpghnkf8uducxx8s5",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A9LoIzM6wyvrB78cXDSGfC6uS3In/2VL5G+KS6peW20z"
+          },
+          "account_number": "2",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1d2lvl3ds3ectyr5tpm7ph84zrfdpg9wzwcfqgz",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AxUu+duYhsURpar03elAI+suQgd8Ovz0xUfXk5t5/2wr"
+          },
+          "account_number": "3",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1n6nrv8xr3k89tunm4j47gt4fkndwjkwtqgd86m",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Axaf99l1HOldPsB5vXXbHjbcCpYMrSHqyQe6B7cuOrLG"
+          },
+          "account_number": "4",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1ws68ym96um5g8c9h9st9jmwjq85gz7gwcrxrpj",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AghJ3F5PEax/t6La8z0vHBTh8E7t5C3c5APxSJKdX/Ze"
+          },
+          "account_number": "5",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia100uvnlfa7h7d3pdsarmjn76gp0h7jkzegdewkr",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A8+a3cGrq2nR6hOA0LesxgeXKk0ATbInoT3aR6vrpx0f"
+          },
+          "account_number": "6",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1ynl9k5f7m3hgd0ce5yhz52yz2kdltprzvtkqhe",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AyO3ZoEU7Yhd2p9/1jHOUc6sdR5a0nb6GNFGscFThKj5"
+          },
+          "account_number": "7",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1v703k4nt84uqvymd8zr0xr5swxfper8cwc88ps",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Ag+57nT3GwrfBb2Mjs88ZJij36WlZFfFyfxP6LMtfYP1"
+          },
+          "account_number": "8",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia13rzcetxg3d5mfaskzal5sk5lhwv3247ypp2qad",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A/2w+KXloVwhPP7WgJGm4zG9D3JPb2oKdQhG888DJbsD"
+          },
+          "account_number": "9",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1a5csjmr4vq3q3s43v2y06axqq9xdxs7wc4s6r0",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AvmI0XY5dHVz8KLjSNlsO4TUmiA74cFeH3niWfhF5tqs"
+          },
+          "account_number": "10",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1p9w403tnhxx9h0n8m54genzkr5fem8qknwgylw",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AvUaFHem0HVQuC1DnIf/xOZKshTOfSJxDF5W/jDKHxsN"
+          },
+          "account_number": "11",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1hv7jwyz633rfqljensyxc9nalhyeex90dfaa24",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A4sNfCpojwP9WOppgBQsHCxTIfOzoPzpVZ/XGcq76clx"
+          },
+          "account_number": "12",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1hurcku9f9u0uynvu4x3n2a66qk69ga3gzf8hnq",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Ax8tZN6z32a+JZw+6p98HPvXSE+IBr2Zls6+UDGPbZt0"
+          },
+          "account_number": "13",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1mk6lyd0ggvledyddrjlrk4p8saf96zep2ddthm",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AiaYvTL0LIr+K7aYbrZFK91f5TixGnFQeV2hTC5DdWe5"
+          },
+          "account_number": "14",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia12mtgnxmcl6v29252e56337vjru3ynlq3z82rqr",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AxlAWDrIKT/KLxKiml/ceiKDw7RC/ipMEcES60xGLkuS"
+          },
+          "account_number": "15",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1qe6cx0dta8jxnv3rjszvm9pjl4xcrr8tjf7qqv",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Axje51KyMb55BOe/g4oT+5pthgjlkuuXUbIUKZSTInZV"
+          },
+          "account_number": "16",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia105fw9ekw6v9jf4gcehx8rdek20lfkecwsc3hcq",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AnAHIEAdTiP7OnmiZqtHEsVJFi0P9Ez18Du+vRCJwwVx"
+          },
+          "account_number": "17",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia187yh7hkh33xyf2uygndwsjafe6wqkr46luga7j",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AjY+KMQ0NNYj1Je1rt3S7hQdcDo84tHaOzq6n1TbfQYw"
+          },
+          "account_number": "18",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1a7f0gjxyp9w2np2pvappvzr62773gu5dzk6gqn",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "At1P6O5lgHUIelphXhl8fbcaTv8NbIupky1zuuxxvl9J"
+          },
+          "account_number": "19",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1mta53nyxxvqx5hduzkugmj5vn23rev7fhsl6k9",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Aw5wlV7kSfbupe6vNy68knd5bJQfUu2R5Op8JsftrYty"
+          },
+          "account_number": "20",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1k2j55gd28aknxntk94e6ampr9u9k4hce226pa6",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Ah8pTDg8uuTaYqAK+ghc3TnDJGSew+Q7ONDJ4ZDmYuKQ"
+          },
+          "account_number": "21",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1csr4uqapgrne3rrsg83jgh44nrkv85t0hpcjz0",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Aw8ktYYiB7eedgkBJVMBLMeALRtLK2k2cXxYIGiN7nDu"
+          },
+          "account_number": "22",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia14mde7zth9c035na5eyflatdl8gnff2ylv2fn5m",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AqGPx+2JXw7x/17seMjhXtDbsY0c+vJ1+igRQgEUTZ0a"
+          },
+          "account_number": "23",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1v09tgacf7ev50m0l93jvf7nrk558tye77l4n94",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "ApO7idA73Y8G3nbtgn/dLtJMn919KTOb8cgV2JG/YnDm"
+          },
+          "account_number": "24",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1c5nqwl7qad2eyrcl5swe9yp5sw6v7d2dywx2lx",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AgIrzUPpFCcgdF6+apSzQ2MRm+3Qh57wKeMh+pw/aQdz"
+          },
+          "account_number": "25",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1j7velf42maph4u0nh0vkhdypehcep3q3tuh7nw",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AvO11bqfM0J0lQG5TeI9ByxG+RhEWSrHzlPmGn0mbQpF"
+          },
+          "account_number": "26",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1qex2p432qjz89egj0mqqcvtv2t0q6sv58ardp9",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AluYCOdw4YufQm1/qOTLV+6jbZbDb7hH+XQ9VU0heZvj"
+          },
+          "account_number": "27",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia10mjycelgtw733sxakuneuf3zcrwrfktaxla0yy",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AmkGQ1jT9raIGN+LoXQ/ldPG0Q1Nd9LtYtiPAneopRYE"
+          },
+          "account_number": "28",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1rtsmxlsvg2d3m38m7cxza9j2ps5fld4hg0cp66",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AjpELgiChPayavVTviMfDCQMRx2ot+EgEYB5BMFYpE8M"
+          },
+          "account_number": "29",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1gmhyhc43x7kdr0e25jlmptg3wy4wwvy4e20pr8",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AzTANahifWoIoglP3Mj5lExOrdUwM1oWEGHBwO3hyVga"
+          },
+          "account_number": "30",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia14kzmc5mhg2ycu34f5af9mhqyy9lpszfax6d39s",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Ap6m6koUIi4NRnpG0RXAnKS3hcxy2/eBJou11vsx6AC6"
+          },
+          "account_number": "31",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1hy5nf8mp9thwtx4dlf2zuhq0elnn04dymfver4",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A7xli/+x57g11iJByk5Soo/u2QkZsEC4IRDelhxbMl3J"
+          },
+          "account_number": "32",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia10u8twvcq4t9p6mj2my7hptvzgr89kcav6dpr2q",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AyvbuCjk/7WXkMj3HPvEI60TSuJ5rFF5yBrufKpCib7V"
+          },
+          "account_number": "33",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1rmvjwnuupqy5vtg2fq6hu6lvyaphnku4gugc7m",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "An5Ac5wDY7cJnP3l8bAu9p79/3J05lWyPmr5LKLxuKEn"
+          },
+          "account_number": "34",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1gut2w3ewhv2nwar73626qcjm7a7288lupl7z5y",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AqzYMajuiBhQNTyoENe6OqNO6/GljJp4DfMU8Oifw6Mj"
+          },
+          "account_number": "35",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1apjn6g7atv0tlr29uaxn55aary0kdafcnu2kwz",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AtMaKEWl5oNF62+1P5amm+suhdIZs+rabXbIJek2t6uy"
+          },
+          "account_number": "36",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1080e4krf8mdvzx6u8ad6573lrd0yhpus3nzatx",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A0Vfmfbtgx9eW4A1OXRUR26tNiP1y1ngWHPDsxGQmzLQ"
+          },
+          "account_number": "37",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1y56vnyaz9hmj84p4wprky00wxl8q0ttgtl3jkx",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A7V5tAOEBL9wC7gWejh9kWIrWZiIibWBreXviBUOijsN"
+          },
+          "account_number": "38",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia10xp8tfs9qajeu2gectmc7tg3azpkacqy3dznff",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A23E4xw1AIwUgmD28eFpiqGQIGh5mE2bKz+dL7XdTQEf"
+          },
+          "account_number": "39",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia13v7ccmfyvthlgqg7f2sp7jgqfhytlllsgxl369",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Attyx528MoIVx8PghoWJDruaGkx9nrLjIn36+2kFIvxa"
+          },
+          "account_number": "40",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1prxaamt54nwcdm88lhhslm29fyqqa9fkzeg9zf",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Am644hELlXJP9x9k6Zh9yzEJC83M1U1N+2IhDj1dDFV+"
+          },
+          "account_number": "41",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia125nhfkde6kcy50pgxax4nhuhrwl5z2kphrnjqx",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AmK3ApqMh5N5CtmyzPk3OMdy5HD6i4mUn+l4S92Ui0NR"
+          },
+          "account_number": "42",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1pqg32lc3ndupgwjt9k20nc90aj4dk46344ula0",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "ApDWZ9Ov20kWvnqYeWzrbu8vH6OgJYXXNB+nZLdg3fKK"
+          },
+          "account_number": "43",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1ejjrtq9ph63jne07mg7ptaj90f6xx5hxxu5ml4",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AqqHMDJxD6x7hDUkjQKTupcqGl3ldwcUuIjnZ6PMW3M3"
+          },
+          "account_number": "44",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1vuq8lawselgzfvpa6w8zq7u45uklm2suyu9cpq",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AsouKkEGRUA7gwA860Fabb+L5wzWjF6tEI190T/0kBN0"
+          },
+          "account_number": "45",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1knhdpv56txs52j54sm08qk4a846jdrewv82keg",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AnQ2tI8wMZp7d63T/i7KEH2gSm8Qcl/EYgdCVMlATi6h"
+          },
+          "account_number": "46",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1c6r92prpxnhrkl94cuvqkclk3lwqw6eqsye5ek",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A/IoFgPP8fvdhruPea8k1RAJ9XCEC8DmhQDVHokYwXHu"
+          },
+          "account_number": "47",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia12ef6trrkv2950ppyvks32rum8yrlup7ghxgl0w",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A+xq4Y5KD+T2InCDRdlSmjLb6qjpcY4DxHMsybvX1qJ4"
+          },
+          "account_number": "48",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia14mgshqsweayk0f7p8s0u6fhldvxcyx3u7mnm3l",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A3ExNbPXJj+68FFeq+bhMA+0XQGXWt4Oeko1De9BS8Yx"
+          },
+          "account_number": "49",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1dx6nc8eywqlc7hst675nte8zcdl79wccpufups",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "As/vUkLaXRFDBIhaFAZquxY5CPzNL1JR2r3JVp9MKiIi"
+          },
+          "account_number": "50",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1afm4gwh4avf4pvu5pfzgn8y89ukvv7cpzr93xm",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A5jEGxxH2C1w7IXjluCiuZxbiGhkA7TweQV4m8eOW2GA"
+          },
+          "account_number": "51",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1zh8kj05s95jw4nw7r5mdwnh0uhy7c8r0qn8juu",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Axr5X4pTy+dXcNWxP809LEVX+RIyxUpafKGgGSLadzPu"
+          },
+          "account_number": "52",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia15034ayzpjpflwzg3zurmj9gz0v3fvmwy3mre59",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A5Ej6y0zEJ9DC//HiF/11pVoTQGBTlEiUHTVtbWNDENl"
+          },
+          "account_number": "53",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia13a7hhdyexzvyjquhxyfjxwptcvlqsq3enhnsng",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AkSdJMf5EVnuN5rLC4HyHiAlHqJP3C7PavBbuxpOvLXZ"
+          },
+          "account_number": "54",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1e3gwnzaclfpnuzjq9hl2ah4d0px2tx6ja04rqr",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AvRyMthbrPJiKyQg1369HjEkEQBfmMbeYWCYE9eidHe+"
+          },
+          "account_number": "55",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1yelnzjhspjyz0eqgrvthz5axpea39ksgvqxmfw",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A+TGCe2fU2h4b1BZQ2gURV0v6cNwY8VhSkN8dVvajgcn"
+          },
+          "account_number": "56",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1zwpgxgvdneppt4kqvcexvxm50awft0syhwvf6l",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A+7V128xlWe3y/sbwiOVMKuX0pPSY0Aymt4iIXC1Nflp"
+          },
+          "account_number": "57",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1vhwau2e23fgzy7p67znws5suy3askrx2dr065l",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AoSu1l/jwJ3CR4mrJa5tLpWR2cK3RdvXxJHPy3ON+m31"
+          },
+          "account_number": "58",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1fjsyws97qzchmejahrazhv59yn93jgv4qxqtw0",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AuBpH4eNLiCnAiBCVnsE2sheWriJyX5hZ2y0mtAPqCJ9"
+          },
+          "account_number": "59",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1qh6ettqf462x7jekttmfscyjfhrsyhhcmejeea",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A/cl0Ro0prKzCcEXaKfTuXyEgXhuHKoMNkXG4zR1OGth"
+          },
+          "account_number": "60",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1fkcmnf4rssa92jphhuumph9qgkk600kul6zxgr",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "ArukZnUNvaUWReGn87QD6iEgCGGXNCcFCneY0uw0ZgYc"
+          },
+          "account_number": "61",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia107prrtcr7clvvq6qeet2pne6gchwkr5u3hcgzl",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AyKBFXL7VBPeAGhEKCtmFRSgSaVC1MPcvGD57ppppl5P"
+          },
+          "account_number": "62",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia12yycwnwrwzqs0y8qgjvgfzde3y5hh4gea232z6",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A4w1AJvVZI7XHJEn1tvTskEOoU1arKC/3ITTDzduVxvk"
+          },
+          "account_number": "63",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1ca60ygnejf9dhnc34gd6m6e8nkk99l9ggt5ed3",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AjvY+v0+TfJPEVnBZGkPl/6x37qEC5mpwzO9yWLeFKvU"
+          },
+          "account_number": "64",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1hgqwjlq7scsm6zafzapnvwg9xwsnhpmvpxnajl",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AidY74IRpXDimRfPQRhafF8Y/HMqP94GGWkMYvGbyEPU"
+          },
+          "account_number": "65",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1g6agam2h20susl03q2u04elcfnr70zg7f72e4n",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A0tZOo6qzANKWIx8dGSXg7jHQrDLEIoafZ94KEtyxEau"
+          },
+          "account_number": "66",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1a6uanaz0ukf26ku9qgmdux4uqhrcp3jl6vza78",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "ApzqVUi2OjQAY6QSndUouMW+E6RnYyW7vrUwWtCC8pA3"
+          },
+          "account_number": "67",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia10xuutjazntfyyufx8z5m0j49mfpau872u5z44a",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AuJfMO+o3TUThmd7oAE+Wn9TrKddBDHeuvmgyHW38Ja+"
+          },
+          "account_number": "68",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1n9qkl0m0stapdgdxyr40330qjukfpcvrm0a4ly",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AiPkEAGzkFwNtMsO5dYAHbdQcX7IN3Jzg7CqvQqvYdWw"
+          },
+          "account_number": "69",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia13cxesun428cfrptqzpe03h3fh9tu6rd4g8x2xm",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Al8QsclJGt8qLLVGkF91jr8wd6dk/Fp2ml2SnuaaBeDC"
+          },
+          "account_number": "70",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia19ap94nlelse2lcntfm27aq05ukyaql2rzdldnk",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AlU8xM4+/YyJ6qWrDHyh595BZ/QtRQFvLEZ7Ebc4uaub"
+          },
+          "account_number": "71",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1zq7dv9l7tnrwh0ey3j2twhzw3xrnzs3qvmq8p7",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A9YS2dlo85MUhLqVxnlejoRW8d6I6NZ8BM/A8kmD1jbd"
+          },
+          "account_number": "72",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1cf2va2zf9v8fc670z2a3x9a280auw9gycg3lkw",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AlXjaoLnCxer2gzBJP1Iuup5ZP8EYMNANC3wECPekoo1"
+          },
+          "account_number": "73",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1fddzaec4vqny20xcyd3cs6u2scaz4thuzqsulg",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A60n/jbQO1aLKvH1t9BVjTNZ1ZesafNtLBVl/PjvrBlv"
+          },
+          "account_number": "74",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1z63wuwpj563d0w552y2fk4ddrhp97lj0avwh69",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Aju8Y2CmkkokWs4g5W0wWkuGejFLgzarkVfmMeggdQ6H"
+          },
+          "account_number": "75",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1mstvy5my2nkkash6z58lncalr9350f6xg6zjf6",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "As9ACb8iT+hKjZuNekzAYK/Y17KoxiN04HGmEyUdxFd/"
+          },
+          "account_number": "76",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1v3wx9pvgfvqyk6kyj0fu0j25yau5jhz3655g4u",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A4zFWrPIVUKyk7rEd8GzbqRnzs2vDLSEF3JarVRKWNzK"
+          },
+          "account_number": "77",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1adtwzc0uhtakupkfgs9hdpj6x07es8e8t94mhp",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "ArMrvPbfF2nf/VW9TN0t1C9/GT8a4wAaxSJrQ8Zk70hO"
+          },
+          "account_number": "78",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1jnrf3c763qg8z4fd8fcf04em8nsag4qc2etg7s",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AsyNDz4jdcTJLDlwZzWzcb8oQcTPfdGaWQ5w6cCyiB5d"
+          },
+          "account_number": "79",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1ckqfe2q8jx4hw9a45u8hxuvc34xn3d0e425s8r",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Ah47Y8QWbCIW/SUXWejxgt3q2lmebr+A5xicY9eAwCCk"
+          },
+          "account_number": "80",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1lejmfyj9h4k6yc6ga86qvqgkvnwcxs82c9gktt",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AtvCpS1J0+a/OEVPbwNAZPKxnKdt/ZF07WL+ROuBuQah"
+          },
+          "account_number": "81",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1qq7jjujqd3e46sllhwdtc6mj2eulqu5j8qw254",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A5O5k/RP2UaTSZTxEtA70EMGMz+sla9Cj8KFAtZyER5H"
+          },
+          "account_number": "82",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1hjr3g74k92nwy0mllw2mdt0w33j3zqup8h8k5n",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AoBjNQWa3k2O8uKW9lB/WVLncPzHlX9c98+s7jxY/ste"
+          },
+          "account_number": "83",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia15hwk3tus278528frld6xfhcp6n25vew7aks7h9",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A+Hkxo3Ax2listBho4rSKcgX1UMroXlbDV/q12uXU3MV"
+          },
+          "account_number": "84",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1dtru74sg5vykpxqrj0a8kv07z0xs6vrq6nquve",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A7C48ImW74L53SbT8FWlNqEMIdDXeWBYxmftGYAs/ATa"
+          },
+          "account_number": "85",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1yw672h9ukd2zmxx6euqwgs905a6yfu7m23tgn8",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A7WH/rkJcmCcflg96AiqZDq9ocl0b288hUE13JiOUupr"
+          },
+          "account_number": "86",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia17v2hhevqwfvws6v5e63jjv6uylc72xajv282q6",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A4gcUcP/GDjLrM1h3OlSXEEM2YWqUowxplp3YWXxFrWG"
+          },
+          "account_number": "87",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia10m4n9qtfpnp9ey5hkknnd3n4us4k0u2w0fh7ff",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A8gdlGcMgHF0P2ll4TTwa4BYRrg5ka21w4D9btI29MQX"
+          },
+          "account_number": "88",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1m5p8yugal9v2unsawr53nynfwsxdcltkwzc5j2",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AlckAe0lRAssgTkB8lMHWBcq9kjh5UFrGlJpWVsBJoia"
+          },
+          "account_number": "89",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1nchl0dz836zeehektcske73npywx83x2m2wj50",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A5QXBmZ+Wd8fCXYF2wmhLb89n+w9V7IdPD54rjjIwsnB"
+          },
+          "account_number": "90",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia163ftxz00ejhmmew5khf9c5lw7vplx9vusgqz4k",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Ann3wpDboU8G7KCIpLhfDrfQLtOfLhRLkNG4V/sMxUwL"
+          },
+          "account_number": "91",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1tw92amj7x530thh93qly98eqa7snkjdpag0df0",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "Aixu1GjVhx9AAM9gfbUrkmJ7eclCfCLko/9sxGq+8Ol0"
+          },
+          "account_number": "92",
+          "sequence": "0"
+        }
+      ]
+    },
+    "authz": {
+      "authorization": []
+    },
+    "bank": {
+      "params": {
+        "send_enabled": [],
+        "default_send_enabled": true
+      },
+      "balances": [
+        {
+          "address": "celestia1qq7jjujqd3e46sllhwdtc6mj2eulqu5j8qw254",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1qh6ettqf462x7jekttmfscyjfhrsyhhcmejeea",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1qex2p432qjz89egj0mqqcvtv2t0q6sv58ardp9",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1qe6cx0dta8jxnv3rjszvm9pjl4xcrr8tjf7qqv",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1pqg32lc3ndupgwjt9k20nc90aj4dk46344ula0",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1prxaamt54nwcdm88lhhslm29fyqqa9fkzeg9zf",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1p9w403tnhxx9h0n8m54genzkr5fem8qknwgylw",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1zq7dv9l7tnrwh0ey3j2twhzw3xrnzs3qvmq8p7",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1zwpgxgvdneppt4kqvcexvxm50awft0syhwvf6l",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1zh8kj05s95jw4nw7r5mdwnh0uhy7c8r0qn8juu",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1z63wuwpj563d0w552y2fk4ddrhp97lj0avwh69",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1r2akkyvrkqe4g6mn5wgk624qsxh7j5adw6t04k",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "301000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1rtsmxlsvg2d3m38m7cxza9j2ps5fld4hg0cp66",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1rmvjwnuupqy5vtg2fq6hu6lvyaphnku4gugc7m",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1yw672h9ukd2zmxx6euqwgs905a6yfu7m23tgn8",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1ynl9k5f7m3hgd0ce5yhz52yz2kdltprzvtkqhe",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1y56vnyaz9hmj84p4wprky00wxl8q0ttgtl3jkx",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1yelnzjhspjyz0eqgrvthz5axpea39ksgvqxmfw",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia19ap94nlelse2lcntfm27aq05ukyaql2rzdldnk",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia187yh7hkh33xyf2uygndwsjafe6wqkr46luga7j",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1g6agam2h20susl03q2u04elcfnr70zg7f72e4n",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1gmhyhc43x7kdr0e25jlmptg3wy4wwvy4e20pr8",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1gut2w3ewhv2nwar73626qcjm7a7288lupl7z5y",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1ga0360xsv6jmrmgpxaf3tfpghnkf8uducxx8s5",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "251000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1fddzaec4vqny20xcyd3cs6u2scaz4thuzqsulg",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1fjsyws97qzchmejahrazhv59yn93jgv4qxqtw0",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1fkcmnf4rssa92jphhuumph9qgkk600kul6zxgr",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia12yycwnwrwzqs0y8qgjvgfzde3y5hh4gea232z6",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia125nhfkde6kcy50pgxax4nhuhrwl5z2kphrnjqx",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia12ef6trrkv2950ppyvks32rum8yrlup7ghxgl0w",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia12mtgnxmcl6v29252e56337vjru3ynlq3z82rqr",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1tw92amj7x530thh93qly98eqa7snkjdpag0df0",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1v09tgacf7ev50m0l93jvf7nrk558tye77l4n94",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1v3wx9pvgfvqyk6kyj0fu0j25yau5jhz3655g4u",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1vhwau2e23fgzy7p67znws5suy3askrx2dr065l",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1vuq8lawselgzfvpa6w8zq7u45uklm2suyu9cpq",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1v703k4nt84uqvymd8zr0xr5swxfper8cwc88ps",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1dx6nc8eywqlc7hst675nte8zcdl79wccpufups",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1d2lvl3ds3ectyr5tpm7ph84zrfdpg9wzwcfqgz",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "51000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1dtru74sg5vykpxqrj0a8kv07z0xs6vrq6nquve",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1ws68ym96um5g8c9h9st9jmwjq85gz7gwcrxrpj",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia10xp8tfs9qajeu2gectmc7tg3azpkacqy3dznff",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia10xuutjazntfyyufx8z5m0j49mfpau872u5z44a",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1080e4krf8mdvzx6u8ad6573lrd0yhpus3nzatx",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia100uvnlfa7h7d3pdsarmjn76gp0h7jkzegdewkr",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia105fw9ekw6v9jf4gcehx8rdek20lfkecwsc3hcq",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia10mjycelgtw733sxakuneuf3zcrwrfktaxla0yy",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia10m4n9qtfpnp9ey5hkknnd3n4us4k0u2w0fh7ff",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia10u8twvcq4t9p6mj2my7hptvzgr89kcav6dpr2q",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia107prrtcr7clvvq6qeet2pne6gchwkr5u3hcgzl",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia13rzcetxg3d5mfaskzal5sk5lhwv3247ypp2qad",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia13v7ccmfyvthlgqg7f2sp7jgqfhytlllsgxl369",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia13cxesun428cfrptqzpe03h3fh9tu6rd4g8x2xm",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia13a7hhdyexzvyjquhxyfjxwptcvlqsq3enhnsng",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1jnrf3c763qg8z4fd8fcf04em8nsag4qc2etg7s",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1j7velf42maph4u0nh0vkhdypehcep3q3tuh7nw",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1n9qkl0m0stapdgdxyr40330qjukfpcvrm0a4ly",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1nchl0dz836zeehektcske73npywx83x2m2wj50",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1n6nrv8xr3k89tunm4j47gt4fkndwjkwtqgd86m",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia15034ayzpjpflwzg3zurmj9gz0v3fvmwy3mre59",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia15hwk3tus278528frld6xfhcp6n25vew7aks7h9",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia14kzmc5mhg2ycu34f5af9mhqyy9lpszfax6d39s",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia14mgshqsweayk0f7p8s0u6fhldvxcyx3u7mnm3l",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia14mde7zth9c035na5eyflatdl8gnff2ylv2fn5m",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1k2j55gd28aknxntk94e6ampr9u9k4hce226pa6",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1knhdpv56txs52j54sm08qk4a846jdrewv82keg",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1hy5nf8mp9thwtx4dlf2zuhq0elnn04dymfver4",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1hgqwjlq7scsm6zafzapnvwg9xwsnhpmvpxnajl",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1hv7jwyz633rfqljensyxc9nalhyeex90dfaa24",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1hjr3g74k92nwy0mllw2mdt0w33j3zqup8h8k5n",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1hurcku9f9u0uynvu4x3n2a66qk69ga3gzf8hnq",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1cys0wrdxlt5u9dt9qx8w6lfv0cvnhcuwj8xcj3",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "401000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1cf2va2zf9v8fc670z2a3x9a280auw9gycg3lkw",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1csr4uqapgrne3rrsg83jgh44nrkv85t0hpcjz0",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1c5nqwl7qad2eyrcl5swe9yp5sw6v7d2dywx2lx",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1ckqfe2q8jx4hw9a45u8hxuvc34xn3d0e425s8r",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1c6r92prpxnhrkl94cuvqkclk3lwqw6eqsye5ek",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1ca60ygnejf9dhnc34gd6m6e8nkk99l9ggt5ed3",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1e3gwnzaclfpnuzjq9hl2ah4d0px2tx6ja04rqr",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1ejjrtq9ph63jne07mg7ptaj90f6xx5hxxu5ml4",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia163ftxz00ejhmmew5khf9c5lw7vplx9vusgqz4k",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1mta53nyxxvqx5hduzkugmj5vn23rev7fhsl6k9",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1mstvy5my2nkkash6z58lncalr9350f6xg6zjf6",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1m5p8yugal9v2unsawr53nynfwsxdcltkwzc5j2",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1mk6lyd0ggvledyddrjlrk4p8saf96zep2ddthm",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1apjn6g7atv0tlr29uaxn55aary0kdafcnu2kwz",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1afm4gwh4avf4pvu5pfzgn8y89ukvv7cpzr93xm",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1adtwzc0uhtakupkfgs9hdpj6x07es8e8t94mhp",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1a5csjmr4vq3q3s43v2y06axqq9xdxs7wc4s6r0",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1a6uanaz0ukf26ku9qgmdux4uqhrcp3jl6vza78",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1a7f0gjxyp9w2np2pvappvzr62773gu5dzk6gqn",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia17v2hhevqwfvws6v5e63jjv6uylc72xajv282q6",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1lejmfyj9h4k6yc6ga86qvqgkvnwcxs82c9gktt",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        }
+      ],
+      "supply": [],
+      "denom_metadata": []
+    },
+    "blob": {
+      "params": {
+        "gas_per_blob_byte": 8,
+        "gov_max_square_size": "64"
+      }
+    },
+    "capability": {
+      "index": "1",
+      "owners": []
+    },
+    "crisis": {
+      "constant_fee": {
+        "denom": "utia",
+        "amount": "1000"
+      }
+    },
+    "distribution": {
+      "params": {
+        "community_tax": "0.020000000000000000",
+        "base_proposer_reward": "0.000000000000000000",
+        "bonus_proposer_reward": "0.000000000000000000",
+        "withdraw_addr_enabled": true
+      },
+      "fee_pool": {
+        "community_pool": []
+      },
+      "delegator_withdraw_infos": [],
+      "previous_proposer": "",
+      "outstanding_rewards": [],
+      "validator_accumulated_commissions": [],
+      "validator_historical_rewards": [],
+      "validator_current_rewards": [],
+      "delegator_starting_infos": [],
+      "validator_slash_events": []
+    },
+    "evidence": {
+      "evidence": []
+    },
+    "feegrant": {
+      "allowances": []
+    },
+    "genutil": {
+      "gen_txs": [
+        {
+          "body": {
+            "messages": [
+              {
+                "@type": "/cosmos.staking.v1beta1.MsgCreateValidator",
+                "description": {
+                  "moniker": "val0",
+                  "identity": "",
+                  "website": "",
+                  "security_contact": "",
+                  "details": ""
+                },
+                "commission": {
+                  "rate": "0.500000000000000000",
+                  "max_rate": "1.000000000000000000",
+                  "max_change_rate": "1.000000000000000000"
+                },
+                "min_self_delegation": "200000000000",
+                "delegator_address": "celestia1cys0wrdxlt5u9dt9qx8w6lfv0cvnhcuwj8xcj3",
+                "validator_address": "celestiavaloper1cys0wrdxlt5u9dt9qx8w6lfv0cvnhcuwhcypyh",
+                "pubkey": {
+                  "@type": "/cosmos.crypto.ed25519.PubKey",
+                  "key": "chCym1slDIHGHkTE6fjHQh26xndO66IEC352pA19DPc="
+                },
+                "value": {
+                  "denom": "utia",
+                  "amount": "400000000000"
+                }
+              }
+            ],
+            "memo": "",
+            "timeout_height": "0",
+            "extension_options": [],
+            "non_critical_extension_options": []
+          },
+          "auth_info": {
+            "signer_infos": [
+              {
+                "public_key": {
+                  "@type": "/cosmos.crypto.secp256k1.PubKey",
+                  "key": "A4+p7h0xlO24JZxg1+iBMhW/rVAW3n0HYDGnMI1HJ8px"
+                },
+                "mode_info": {
+                  "single": {
+                    "mode": "SIGN_MODE_DIRECT"
+                  }
+                },
+                "sequence": "0"
+              }
+            ],
+            "fee": {
+              "amount": [
+                {
+                  "denom": "utia",
+                  "amount": "20000"
+                }
+              ],
+              "gas_limit": "1000000",
+              "payer": "",
+              "granter": ""
+            },
+            "tip": null
+          },
+          "signatures": [
+            "O3SxJHrHpbIyQYtqlXi7tnzs8XC2jUnpZ8Xtj2mvxeJLE2nF+Z9vNJt42OW/Q1h+2aSg7WUAKthLC4dcknom8g=="
+          ]
+        },
+        {
+          "body": {
+            "messages": [
+              {
+                "@type": "/cosmos.staking.v1beta1.MsgCreateValidator",
+                "description": {
+                  "moniker": "val1",
+                  "identity": "",
+                  "website": "",
+                  "security_contact": "",
+                  "details": ""
+                },
+                "commission": {
+                  "rate": "0.500000000000000000",
+                  "max_rate": "1.000000000000000000",
+                  "max_change_rate": "1.000000000000000000"
+                },
+                "min_self_delegation": "150000000000",
+                "delegator_address": "celestia1r2akkyvrkqe4g6mn5wgk624qsxh7j5adw6t04k",
+                "validator_address": "celestiavaloper1r2akkyvrkqe4g6mn5wgk624qsxh7j5adt9fkrs",
+                "pubkey": {
+                  "@type": "/cosmos.crypto.ed25519.PubKey",
+                  "key": "hK8ABuS680FvfyRT7opFolhR2r6DFRYkmmlxeOXglEA="
+                },
+                "value": {
+                  "denom": "utia",
+                  "amount": "300000000000"
+                }
+              }
+            ],
+            "memo": "",
+            "timeout_height": "0",
+            "extension_options": [],
+            "non_critical_extension_options": []
+          },
+          "auth_info": {
+            "signer_infos": [
+              {
+                "public_key": {
+                  "@type": "/cosmos.crypto.secp256k1.PubKey",
+                  "key": "AgahMkSzs8BOZN8aUIZPny+w9sG6OqEEvhuIIrq5jBtq"
+                },
+                "mode_info": {
+                  "single": {
+                    "mode": "SIGN_MODE_DIRECT"
+                  }
+                },
+                "sequence": "0"
+              }
+            ],
+            "fee": {
+              "amount": [
+                {
+                  "denom": "utia",
+                  "amount": "20000"
+                }
+              ],
+              "gas_limit": "1000000",
+              "payer": "",
+              "granter": ""
+            },
+            "tip": null
+          },
+          "signatures": [
+            "Vm9dPbLWmfqo2lKQ4x5IfVn97UrsTr67zYUJRByt9f5k+mIq7mHvCtzf9HtWerLNm+vNbF8bl0DFtH4SxQHqmA=="
+          ]
+        },
+        {
+          "body": {
+            "messages": [
+              {
+                "@type": "/cosmos.staking.v1beta1.MsgCreateValidator",
+                "description": {
+                  "moniker": "val2",
+                  "identity": "",
+                  "website": "",
+                  "security_contact": "",
+                  "details": ""
+                },
+                "commission": {
+                  "rate": "0.500000000000000000",
+                  "max_rate": "1.000000000000000000",
+                  "max_change_rate": "1.000000000000000000"
+                },
+                "min_self_delegation": "125000000000",
+                "delegator_address": "celestia1ga0360xsv6jmrmgpxaf3tfpghnkf8uducxx8s5",
+                "validator_address": "celestiavaloper1ga0360xsv6jmrmgpxaf3tfpghnkf8uduaey7xj",
+                "pubkey": {
+                  "@type": "/cosmos.crypto.ed25519.PubKey",
+                  "key": "ioDkcXX1DWEC+ZtCrjfDYBz1EyLgZWQ62P+zV/qMhnU="
+                },
+                "value": {
+                  "denom": "utia",
+                  "amount": "250000000000"
+                }
+              }
+            ],
+            "memo": "",
+            "timeout_height": "0",
+            "extension_options": [],
+            "non_critical_extension_options": []
+          },
+          "auth_info": {
+            "signer_infos": [
+              {
+                "public_key": {
+                  "@type": "/cosmos.crypto.secp256k1.PubKey",
+                  "key": "A9LoIzM6wyvrB78cXDSGfC6uS3In/2VL5G+KS6peW20z"
+                },
+                "mode_info": {
+                  "single": {
+                    "mode": "SIGN_MODE_DIRECT"
+                  }
+                },
+                "sequence": "0"
+              }
+            ],
+            "fee": {
+              "amount": [
+                {
+                  "denom": "utia",
+                  "amount": "20000"
+                }
+              ],
+              "gas_limit": "1000000",
+              "payer": "",
+              "granter": ""
+            },
+            "tip": null
+          },
+          "signatures": [
+            "sKJW6FbWEZhsD/NgFWJNmnnQIPvmg1w/DWWiLivfCgExt/aJ9rbNKk6Z61dA3oxlxwd2zQ6sS1xz7KfIFFDG0w=="
+          ]
+        },
+        {
+          "body": {
+            "messages": [
+              {
+                "@type": "/cosmos.staking.v1beta1.MsgCreateValidator",
+                "description": {
+                  "moniker": "val3",
+                  "identity": "",
+                  "website": "",
+                  "security_contact": "",
+                  "details": ""
+                },
+                "commission": {
+                  "rate": "0.500000000000000000",
+                  "max_rate": "1.000000000000000000",
+                  "max_change_rate": "1.000000000000000000"
+                },
+                "min_self_delegation": "25000000000",
+                "delegator_address": "celestia1d2lvl3ds3ectyr5tpm7ph84zrfdpg9wzwcfqgz",
+                "validator_address": "celestiavaloper1d2lvl3ds3ectyr5tpm7ph84zrfdpg9wzt8te7y",
+                "pubkey": {
+                  "@type": "/cosmos.crypto.ed25519.PubKey",
+                  "key": "1ifWLbnC2fvIvtc9xrzgfxYK2Ljd8gweVsyk1aexJ2c="
+                },
+                "value": {
+                  "denom": "utia",
+                  "amount": "50000000000"
+                }
+              }
+            ],
+            "memo": "",
+            "timeout_height": "0",
+            "extension_options": [],
+            "non_critical_extension_options": []
+          },
+          "auth_info": {
+            "signer_infos": [
+              {
+                "public_key": {
+                  "@type": "/cosmos.crypto.secp256k1.PubKey",
+                  "key": "AxUu+duYhsURpar03elAI+suQgd8Ovz0xUfXk5t5/2wr"
+                },
+                "mode_info": {
+                  "single": {
+                    "mode": "SIGN_MODE_DIRECT"
+                  }
+                },
+                "sequence": "0"
+              }
+            ],
+            "fee": {
+              "amount": [
+                {
+                  "denom": "utia",
+                  "amount": "20000"
+                }
+              ],
+              "gas_limit": "1000000",
+              "payer": "",
+              "granter": ""
+            },
+            "tip": null
+          },
+          "signatures": [
+            "cbSgTVGeHJiS9Aq0zSmZek/XlCnsGx3Q/2XReV9Ni8dC6caKWpvvAuzl7Mg8BdvV9LKv32Q0R22VQ38fVib6xw=="
+          ]
+        }
+      ]
+    },
+    "gov": {
+      "starting_proposal_id": "1",
+      "deposits": [],
+      "votes": [],
+      "proposals": [],
+      "deposit_params": {
+        "min_deposit": [
+          {
+            "denom": "utia",
+            "amount": "10000000000"
+          }
+        ],
+        "max_deposit_period": "604800s"
+      },
+      "voting_params": {
+        "voting_period": "604800s"
+      },
+      "tally_params": {
+        "quorum": "0.334000000000000000",
+        "threshold": "0.500000000000000000",
+        "veto_threshold": "0.334000000000000000"
+      }
+    },
+    "ibc": {
+      "client_genesis": {
+        "clients": [],
+        "clients_consensus": [],
+        "clients_metadata": [],
+        "params": {
+          "allowed_clients": [
+            "06-solomachine",
+            "07-tendermint"
+          ]
+        },
+        "create_localhost": false,
+        "next_client_sequence": "0"
+      },
+      "connection_genesis": {
+        "connections": [],
+        "client_connection_paths": [],
+        "next_connection_sequence": "0",
+        "params": {
+          "max_expected_time_per_block": "75000000000"
+        }
+      },
+      "channel_genesis": {
+        "channels": [],
+        "acknowledgements": [],
+        "commitments": [],
+        "receipts": [],
+        "send_sequences": [],
+        "recv_sequences": [],
+        "ack_sequences": [],
+        "next_channel_sequence": "0"
+      }
+    },
+    "interchainaccounts": {
+      "controller_genesis_state": {
+        "active_channels": [],
+        "interchain_accounts": [],
+        "ports": [],
+        "params": {
+          "controller_enabled": false
+        }
+      },
+      "host_genesis_state": {
+        "active_channels": [],
+        "interchain_accounts": [],
+        "port": "icahost",
+        "params": {
+          "host_enabled": true,
+          "allow_messages": [
+            "/ibc.applications.transfer.v1.MsgTransfer",
+            "/cosmos.bank.v1beta1.MsgSend",
+            "/cosmos.staking.v1beta1.MsgDelegate",
+            "/cosmos.staking.v1beta1.MsgBeginRedelegate",
+            "/cosmos.staking.v1beta1.MsgUndelegate",
+            "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation",
+            "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress",
+            "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward",
+            "/cosmos.distribution.v1beta1.MsgFundCommunityPool",
+            "/cosmos.gov.v1.MsgVote",
+            "/cosmos.feegrant.v1beta1.MsgGrantAllowance",
+            "/cosmos.feegrant.v1beta1.MsgRevokeAllowance"
+          ]
+        }
+      }
+    },
+    "minfee": {
+      "network_min_gas_price": "0.000001000000000000"
+    },
+    "mint": {
+      "bond_denom": "utia"
+    },
+    "packetfowardmiddleware": {
+      "params": {
+        "fee_percentage": "0.000000000000000000"
+      },
+      "in_flight_packets": {}
+    },
+    "params": null,
+    "qgb": {
+      "params": {
+        "data_commitment_window": "400"
+      }
+    },
+    "signal": {},
+    "slashing": {
+      "params": {
+        "signed_blocks_window": "5000",
+        "min_signed_per_window": "0.750000000000000000",
+        "downtime_jail_duration": "60s",
+        "slash_fraction_double_sign": "0.020000000000000000",
+        "slash_fraction_downtime": "0.000000000000000000"
+      },
+      "signing_infos": [],
+      "missed_blocks": []
+    },
+    "staking": {
+      "params": {
+        "unbonding_time": "1814400s",
+        "max_validators": 100,
+        "max_entries": 7,
+        "historical_entries": 10000,
+        "bond_denom": "utia",
+        "min_commission_rate": "0.050000000000000000"
+      },
+      "last_total_power": "0",
+      "last_validator_powers": [],
+      "validators": [],
+      "delegations": [],
+      "unbonding_delegations": [],
+      "redelegations": [],
+      "exported": false
+    },
+    "transfer": {
+      "port_id": "transfer",
+      "denom_traces": [],
+      "params": {
+        "send_enabled": true,
+        "receive_enabled": true
+      }
+    },
+    "vesting": {}
+  }
+}

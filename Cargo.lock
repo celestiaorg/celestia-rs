@@ -2318,6 +2318,51 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64cd1e32ddd350061ae6edb1b082d7c54915b5c672c389143b9a63403a109f24"
 
 [[package]]
+name = "fibre-server"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "axum",
+ "bytes",
+ "celestia-fibre",
+ "celestia-proto 0.0.1",
+ "celestia-types",
+ "chacha8rand",
+ "crypto",
+ "ed25519-dalek",
+ "futures-util",
+ "getrandom 0.3.4",
+ "gostr",
+ "grpc-transport",
+ "hash",
+ "hex",
+ "http",
+ "hyper",
+ "hyper-util",
+ "k256",
+ "pbjson-types",
+ "prost 0.13.5",
+ "redb",
+ "rsema1d",
+ "rustix",
+ "rustls",
+ "sdk",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "tonic 0.12.3",
+ "tower 0.5.3",
+ "tracing",
+ "x-fibre",
+ "x509-parser 0.18.1",
+ "zstd",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3131,10 +3176,10 @@ dependencies = [
 name = "iavl"
 version = "0.0.1"
 dependencies = [
+ "foldhash 0.2.0",
  "hash",
  "hex",
  "kvdb",
- "lru",
  "serde",
  "serde_json",
 ]
@@ -4321,12 +4366,6 @@ checksum = "52d3a9855747c17eaf4383823f135220716ab49bea5fbea7dd42cc9a92f8aa31"
 dependencies = [
  "logos-codegen 0.16.1",
 ]
-
-[[package]]
-name = "lru"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a9f71e3591c7ec44d3e563e87bf14ddc2bada8519dca046e5b0e560cd004e2d"
 
 [[package]]
 name = "lru-slab"
@@ -7402,6 +7441,7 @@ dependencies = [
  "futures-core",
  "futures-io",
  "futures-sink",
+ "futures-util",
  "libc",
  "pin-project-lite",
  "tokio",

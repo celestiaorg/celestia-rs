@@ -1,0 +1,1530 @@
+[
+ {
+  "type": "/celestia.blob.v1.MsgPayForBlobs",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 547,
+  "ok": 160,
+  "multisig": 8,
+  "files": [
+   "amino.json.zst",
+   "celestia.json.zst",
+   "fuzz.json.zst",
+   "gas.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/celestia.blob.v1.MsgPayForBlobs",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 17,
+  "ok": 0,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/celestia.blob.v1.MsgPayForBlobs",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 28,
+  "ok": 10,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/celestia.fibre.v1.MsgDepositToEscrow",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 5,
+  "ok": 0,
+  "multisig": 0,
+  "files": [
+   "celestia.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/celestia.fibre.v1.MsgPayForFibre",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 9,
+  "ok": 2,
+  "multisig": 0,
+  "files": [
+   "celestia.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/celestia.signal.v1.MsgSignalVersion",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 40,
+  "ok": 14,
+  "multisig": 5,
+  "files": [
+   "amino.json.zst",
+   "basic.json.zst",
+   "fuzz.json.zst",
+   "modes.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/celestia.signal.v1.MsgSignalVersion",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 8,
+  "ok": 2,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/celestia.signal.v1.MsgSignalVersion",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 29,
+  "ok": 9,
+  "multisig": 1,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/celestia.signal.v1.MsgTryUpgrade",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 28,
+  "ok": 8,
+  "multisig": 6,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/celestia.signal.v1.MsgTryUpgrade",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 10,
+  "ok": 1,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/celestia.signal.v1.MsgTryUpgrade",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 25,
+  "ok": 9,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.authz.v1beta1.MsgExec",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 86,
+  "ok": 19,
+  "multisig": 5,
+  "files": [
+   "amino.json.zst",
+   "basic.json.zst",
+   "celestia.json.zst",
+   "fuzz.json.zst",
+   "modes.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.authz.v1beta1.MsgExec",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 8,
+  "ok": 1,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.authz.v1beta1.MsgExec",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 36,
+  "ok": 10,
+  "multisig": 1,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.authz.v1beta1.MsgGrant",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 80,
+  "ok": 27,
+  "multisig": 19,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.authz.v1beta1.MsgGrant",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 30,
+  "ok": 9,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.authz.v1beta1.MsgGrant",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 49,
+  "ok": 19,
+  "multisig": 1,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.authz.v1beta1.MsgRevoke",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 37,
+  "ok": 6,
+  "multisig": 7,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.authz.v1beta1.MsgRevoke",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 10,
+  "ok": 0,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.authz.v1beta1.MsgRevoke",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 30,
+  "ok": 9,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgMultiSend",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 62,
+  "ok": 6,
+  "multisig": 10,
+  "files": [
+   "amino.json.zst",
+   "basic.json.zst",
+   "fuzz.json.zst",
+   "modes.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgMultiSend",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 15,
+  "ok": 0,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgMultiSend",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 19,
+  "ok": 0,
+  "multisig": 1,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgSend",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 2896,
+  "ok": 448,
+  "multisig": 277,
+  "files": [
+   "amino.json.zst",
+   "basic.json.zst",
+   "celestia.json.zst",
+   "fee-boundaries.json.zst",
+   "feegrant-boundaries.json.zst",
+   "feegrant-revoke-gas.json.zst",
+   "fuzz.json.zst",
+   "gas.json.zst",
+   "keys.json.zst",
+   "modes.json.zst",
+   "multisig.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgSend",
+  "mode": "DIRECT",
+  "app": "9",
+  "vectors": 24,
+  "ok": 1,
+  "multisig": 0,
+  "files": [
+   "v9-fee-boundaries.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgSend",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 62,
+  "ok": 17,
+  "multisig": 2,
+  "files": [
+   "basic.json.zst",
+   "fuzz.json.zst",
+   "modes.json.zst",
+   "multisig.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgSend",
+  "mode": "EIP191",
+  "app": "10",
+  "vectors": 8,
+  "ok": 2,
+  "multisig": 0,
+  "files": [
+   "basic.json.zst",
+   "modes.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgSend",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 229,
+  "ok": 94,
+  "multisig": 9,
+  "files": [
+   "amino.json.zst",
+   "basic.json.zst",
+   "fuzz.json.zst",
+   "keys.json.zst",
+   "modes.json.zst",
+   "multisig.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgSend",
+  "mode": "NONE",
+  "app": "10",
+  "vectors": 8,
+  "ok": 0,
+  "multisig": 0,
+  "files": [
+   "basic.json.zst",
+   "modes.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgSend",
+  "mode": "TEXTUAL",
+  "app": "10",
+  "vectors": 10,
+  "ok": 2,
+  "multisig": 2,
+  "files": [
+   "basic.json.zst",
+   "modes.json.zst",
+   "multisig.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgSend",
+  "mode": "UNSPECIFIED",
+  "app": "10",
+  "vectors": 8,
+  "ok": 2,
+  "multisig": 0,
+  "files": [
+   "basic.json.zst",
+   "modes.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgUpdateParams",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 65,
+  "ok": 4,
+  "multisig": 7,
+  "files": [
+   "amino.json.zst",
+   "celestia.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgUpdateParams",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 10,
+  "ok": 0,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.bank.v1beta1.MsgUpdateParams",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 16,
+  "ok": 0,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.consensus.v1.MsgUpdateParams",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 20,
+  "ok": 4,
+  "multisig": 0,
+  "files": [
+   "celestia.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.distribution.v1beta1.MsgFundCommunityPool",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 37,
+  "ok": 15,
+  "multisig": 4,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.distribution.v1beta1.MsgFundCommunityPool",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 6,
+  "ok": 1,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.distribution.v1beta1.MsgFundCommunityPool",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 24,
+  "ok": 8,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 31,
+  "ok": 9,
+  "multisig": 6,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 7,
+  "ok": 2,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 25,
+  "ok": 8,
+  "multisig": 2,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 29,
+  "ok": 9,
+  "multisig": 3,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 12,
+  "ok": 1,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 19,
+  "ok": 7,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.feegrant.v1beta1.MsgGrantAllowance",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 22,
+  "ok": 5,
+  "multisig": 3,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.feegrant.v1beta1.MsgGrantAllowance",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 8,
+  "ok": 1,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.feegrant.v1beta1.MsgGrantAllowance",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 19,
+  "ok": 8,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.feegrant.v1beta1.MsgRevokeAllowance",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 32,
+  "ok": 12,
+  "multisig": 10,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.feegrant.v1beta1.MsgRevokeAllowance",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 3,
+  "ok": 1,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.feegrant.v1beta1.MsgRevokeAllowance",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 17,
+  "ok": 8,
+  "multisig": 1,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.gov.v1.MsgDeposit",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 36,
+  "ok": 9,
+  "multisig": 11,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.gov.v1.MsgDeposit",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 10,
+  "ok": 0,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.gov.v1.MsgDeposit",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 18,
+  "ok": 5,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.gov.v1.MsgSubmitProposal",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 114,
+  "ok": 29,
+  "multisig": 8,
+  "files": [
+   "amino.json.zst",
+   "celestia.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.gov.v1.MsgSubmitProposal",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 6,
+  "ok": 3,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.gov.v1.MsgSubmitProposal",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 34,
+  "ok": 13,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.gov.v1.MsgVote",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 45,
+  "ok": 13,
+  "multisig": 9,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.gov.v1.MsgVote",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 19,
+  "ok": 2,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.gov.v1.MsgVote",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 32,
+  "ok": 14,
+  "multisig": 2,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.gov.v1.MsgVoteWeighted",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 40,
+  "ok": 9,
+  "multisig": 6,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.gov.v1.MsgVoteWeighted",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 14,
+  "ok": 1,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.gov.v1.MsgVoteWeighted",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 38,
+  "ok": 14,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.slashing.v1beta1.MsgUnjail",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 38,
+  "ok": 13,
+  "multisig": 2,
+  "files": [
+   "amino.json.zst",
+   "basic.json.zst",
+   "fuzz.json.zst",
+   "modes.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.slashing.v1beta1.MsgUnjail",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 9,
+  "ok": 1,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.slashing.v1beta1.MsgUnjail",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 31,
+  "ok": 10,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgBeginRedelegate",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 31,
+  "ok": 12,
+  "multisig": 5,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgBeginRedelegate",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 5,
+  "ok": 0,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgBeginRedelegate",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 22,
+  "ok": 9,
+  "multisig": 1,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 29,
+  "ok": 11,
+  "multisig": 5,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 15,
+  "ok": 2,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 20,
+  "ok": 10,
+  "multisig": 1,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgCreateValidator",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 39,
+  "ok": 11,
+  "multisig": 7,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgCreateValidator",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 7,
+  "ok": 0,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgCreateValidator",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 25,
+  "ok": 8,
+  "multisig": 1,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgDelegate",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 27,
+  "ok": 8,
+  "multisig": 2,
+  "files": [
+   "amino.json.zst",
+   "feegrant-boundaries.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgDelegate",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 13,
+  "ok": 1,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgDelegate",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 37,
+  "ok": 15,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "basic.json.zst",
+   "fuzz.json.zst",
+   "modes.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgEditValidator",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 32,
+  "ok": 8,
+  "multisig": 2,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgEditValidator",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 15,
+  "ok": 2,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgEditValidator",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 26,
+  "ok": 10,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgUndelegate",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 33,
+  "ok": 11,
+  "multisig": 7,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgUndelegate",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 10,
+  "ok": 1,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgUndelegate",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 21,
+  "ok": 5,
+  "multisig": 0,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/cosmos.staking.v1beta1.MsgUpdateParams",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 15,
+  "ok": 4,
+  "multisig": 0,
+  "files": [
+   "celestia.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/ibc.applications.transfer.v1.MsgTransfer",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 30,
+  "ok": 11,
+  "multisig": 5,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/ibc.applications.transfer.v1.MsgTransfer",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 4,
+  "ok": 1,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey"
+  ]
+ },
+ {
+  "type": "/ibc.applications.transfer.v1.MsgTransfer",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 33,
+  "ok": 8,
+  "multisig": 2,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/ibc.core.client.v1.MsgUpdateClient",
+  "mode": "DIRECT",
+  "app": "10",
+  "vectors": 35,
+  "ok": 9,
+  "multisig": 6,
+  "files": [
+   "amino.json.zst",
+   "celestia.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/ibc.core.client.v1.MsgUpdateClient",
+  "mode": "DIRECT_AUX",
+  "app": "10",
+  "vectors": 13,
+  "ok": 2,
+  "multisig": 0,
+  "files": [
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ },
+ {
+  "type": "/ibc.core.client.v1.MsgUpdateClient",
+  "mode": "LEGACY_AMINO_JSON",
+  "app": "10",
+  "vectors": 28,
+  "ok": 7,
+  "multisig": 1,
+  "files": [
+   "amino.json.zst",
+   "fuzz.json.zst"
+  ],
+  "pubkeys": [
+   "/cosmos.crypto.ed25519.PubKey",
+   "/cosmos.crypto.multisig.LegacyAminoPubKey",
+   "/cosmos.crypto.secp256k1.PubKey",
+   "/cosmos.crypto.secp256r1.PubKey"
+  ]
+ }
+]

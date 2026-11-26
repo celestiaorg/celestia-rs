@@ -92,3 +92,58 @@ fn dependabot_groups_rust_majors() {
         "cargo major version updates must share one group"
     );
 }
+
+/// The `- package-ecosystem:` entries of the configuration, one string each.
+fn entries(config: &str) -> Vec<String> {
+    config
+        .split("\n  - package-ecosystem:")
+        .skip(1)
+        .map(|entry| format!("package-ecosystem:{entry}"))
+        .collect()
+}
+
+#[test]
+fn dependabot_cools_down_every_entry() {
+    let root = workspace_root();
+    let config = fs::read_to_string(root.join(".github/dependabot.yml")).unwrap();
+    let entries = entries(&config);
+    assert!(!entries.is_empty(), "no dependabot entries found");
+    for entry in &entries {
+        assert!(
+            entry.contains("cooldown:\n      default-days: 7"),
+            "every dependabot entry needs a seven-day cooldown:\n{entry}"
+        );
+    }
+}
+
+#[test]
+fn dependabot_opens_no_go_pull_requests() {
+    let root = workspace_root();
+    let config = fs::read_to_string(root.join(".github/dependabot.yml")).unwrap();
+    let go: Vec<_> = entries(&config)
+        .into_iter()
+        .filter(|entry| entry.starts_with("package-ecosystem: gomod"))
+        .collect();
+    assert!(!go.is_empty(), "no gomod entries found");
+    for entry in &go {
+        assert!(
+            entry.contains("open-pull-requests-limit: 0")
+                && entry.contains("- dependency-name: \"*\""),
+            "gomod entries must ignore every dependency (alerts only):\n{entry}"
+        );
+    }
+}
+
+#[test]
+fn dependabot_defers_consensus_majors() {
+    let root = workspace_root();
+    let config = fs::read_to_string(root.join(".github/dependabot.yml")).unwrap();
+    for name in ["secp256k1", "\"tendermint*\""] {
+        assert!(
+            config.contains(&format!(
+                "- dependency-name: {name}\n        update-types: [\"version-update:semver-major\"]"
+            )),
+            "major versions of {name} must be migrated by hand"
+        );
+    }
+}
