@@ -548,6 +548,25 @@ impl Release {
         self.app_version < 10
     }
 
+    /// x/mint's CIP-29 schedule (`InitialInflationRate` 0.0536,
+    /// celestia-app v4.1.0 and v5.0.12); v6.4.10 and later use CIP-41's
+    /// 0.0267. Both use `DisinflationRate` 0.067 and the 0.015 target.
+    #[must_use]
+    pub const fn cip29_inflation(&self) -> bool {
+        matches!(self.app_version, 4 | 5)
+    }
+
+    /// celestiaorg/cosmos-sdk x/staking `types.MaxCommissionRate`, in
+    /// percent: 25 through v0.51.8 (celestia-app v4 to v6), 60 from v0.52.1
+    /// (v7 on). App version 1 keeps v9's.
+    #[must_use]
+    pub const fn max_commission_rate_pct(&self) -> u32 {
+        match self.cosmos_sdk {
+            CosmosSdk::V0_50Celestia1_29 | CosmosSdk::V0_50Celestia1_31 | CosmosSdk::V0_51_8 => 25,
+            _ => 60,
+        }
+    }
+
     /// go-square v4.0.0-rc4: the square layout counts signer bytes and
     /// classifies fibre transactions (app version 9 only).
     #[must_use]
@@ -745,7 +764,13 @@ mod tests {
     /// run as 9.
     #[test]
     fn executing_release_predicates_keep_the_v9_split() {
-        for v in (0..=14).chain([u64::MAX]) {
+        // App version 4 runs as itself (its own answers:
+        // `historical_releases_record_their_own_features`).
+        assert_eq!(
+            Release::executing(4),
+            Release::for_app_version(4).expect("v4")
+        );
+        for v in (0..=14).chain([u64::MAX]).filter(|v| *v != 4) {
             let old_v9 = matches!(v, 1..=9);
             let r = Release::executing(v);
             assert_eq!(r.upstream_hyperlane(), old_v9, "v{v}");
@@ -755,6 +780,10 @@ mod tests {
             assert_eq!(r.before_v10(), old_v9, "v{v}");
             assert_eq!(r.go_square_v4_rc4(), old_v9, "v{v}");
             assert_eq!(r.rejects_duplicate_tx_raw_fields(), old_v9, "v{v}");
+            // Gates added for app versions 4 to 8 stay off where they run
+            // as 9.
+            assert!(!r.cip29_inflation(), "v{v}");
+            assert_eq!(r.max_commission_rate_pct(), 60, "v{v}");
         }
     }
 
@@ -774,6 +803,9 @@ mod tests {
             assert!(r.before_v10(), "v{v}");
             assert!(!r.go_square_v4_rc4(), "v{v}");
             assert!(!r.rejects_duplicate_tx_raw_fields(), "v{v}");
+            assert_eq!(r.cip29_inflation(), matches!(v, 4 | 5), "v{v}");
+            let pct = if matches!(v, 4..=6) { 25 } else { 60 };
+            assert_eq!(r.max_commission_rate_pct(), pct, "v{v}");
         }
         let deps = |v| {
             let r = Release::for_app_version(v).expect("known app version");
@@ -839,13 +871,14 @@ mod tests {
         set_app_version(prev);
     }
 
-    /// App version 1 executes as itself (the v0.46 driver); app versions
-    /// 2 to 8 keep running as v9 (no behavior change).
+    /// App version 1 executes as itself (the v0.46 driver) and app version
+    /// 4 as celestia-app v4.1.0; app versions 2, 3 and 5 to 8 keep running
+    /// as v9.
     #[test]
-    fn historical_versions_run_as_v9_except_v1() {
+    fn historical_versions_run_as_v9_except_v1_and_v4() {
         for v in 1..=12 {
             let r = Release::for_app_version(v).expect("known app version");
-            let runs_as = if v == 1 { 1 } else { v.max(9) };
+            let runs_as = if matches!(v, 1 | 4) { v } else { v.max(9) };
             assert_eq!(r.runs_as, runs_as, "v{v}");
         }
         assert_eq!(Release::executing(1).app_version, 1);

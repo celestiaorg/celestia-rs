@@ -186,6 +186,45 @@ pub fn v1_calculate_inflation_rate(
     )
 }
 
+/// celestia-app v4.1.0 and v5.0.12 `InitialInflationRateAsDec` (0.0536,
+/// CIP-29).
+#[must_use]
+pub fn cip29_initial_inflation_rate() -> LegacyDec {
+    LegacyDec::new_with_prec(536, 4).unwrap_or_default()
+}
+
+/// celestia-app v4.1.0 and v5.0.12 `CalculateInflationRate`:
+/// `0.0536 * (1 - 0.067)^years`, floored at 0.015 (CIP-29).
+pub fn cip29_calculate_inflation_rate(
+    genesis: &Timestamp,
+    block_time: &Timestamp,
+) -> Result<LegacyDec> {
+    schedule_rate(
+        &cip29_initial_inflation_rate(),
+        &disinflation_rate(),
+        genesis,
+        block_time,
+    )
+}
+
+/// The inflation rate the release computes: the v1 schedule on the
+/// cosmos-sdk v0.46 paths (`sdk_v046`), CIP-29 where the release has it
+/// ([`sdk::version::Release::cip29_inflation`]), else CIP-41.
+pub fn inflation_rate_for(
+    release: &sdk::version::Release,
+    sdk_v046: bool,
+    genesis: &Timestamp,
+    block_time: &Timestamp,
+) -> Result<LegacyDec> {
+    if sdk_v046 {
+        v1_calculate_inflation_rate(genesis, block_time)
+    } else if release.cip29_inflation() {
+        cip29_calculate_inflation_rate(genesis, block_time)
+    } else {
+        calculate_inflation_rate(genesis, block_time)
+    }
+}
+
 /// `initial * (1 - disinflation)^years`, floored at the target rate.
 fn schedule_rate(
     initial: &LegacyDec,
@@ -264,12 +303,9 @@ fn maybe_update_minter(ctx: &mut Context<'_>) -> Result<()> {
     let mut minter = get_minter(ctx)?;
     let genesis = get_genesis_time(ctx)?;
     let block_time = ctx.header.time;
-    // celestia-app v1 to v3 (cosmos-sdk v0.46) use the original schedule.
-    let rate = if ctx.is_sdk_v046() {
-        v1_calculate_inflation_rate(&genesis, &block_time)?
-    } else {
-        calculate_inflation_rate(&genesis, &block_time)?
-    };
+    // celestia-app v1 to v3 (cosmos-sdk v0.46) use the original schedule,
+    // v4 and v5 CIP-29's, v6 and later CIP-41's.
+    let rate = inflation_rate_for(ctx.release(), ctx.is_sdk_v046(), &genesis, &block_time)?;
     if rate == minter.inflation_rate && !minter.annual_provisions.is_zero() {
         return Ok(());
     }
@@ -358,6 +394,59 @@ mod tests {
                 v1_calculate_inflation_rate(&g, &ts(years * year, 0))?.to_string(),
                 want,
                 "{years} years"
+            );
+        }
+        Ok(())
+    }
+
+    /// celestia-app v4.1.0 and v5.0.12 (CIP-29): `0.0536 * 0.933^years`.
+    #[test]
+    fn cip29_schedule() -> Result<()> {
+        let g = ts(0, 0);
+        let year = NANOSECONDS_PER_YEAR / 1_000_000_000;
+        assert_eq!(
+            cip29_calculate_inflation_rate(&g, &ts(year - 1, 0))?.to_string(),
+            "0.053600000000000000"
+        );
+        assert_eq!(
+            cip29_calculate_inflation_rate(&g, &ts(year, 0))?.to_string(),
+            "0.050008800000000000"
+        );
+        assert_eq!(
+            cip29_calculate_inflation_rate(&g, &ts(100 * year, 0))?,
+            target_inflation_rate()
+        );
+        Ok(())
+    }
+
+    /// The schedule follows the release: CIP-29 for app versions 4 and 5,
+    /// CIP-41 for 6 and later, and the v1 schedule only on the v0.46
+    /// paths. App version 5 still runs as 9 (CIP-41).
+    #[test]
+    fn schedule_follows_the_release() -> Result<()> {
+        use sdk::version::Release;
+        let g = ts(0, 0);
+        let t = ts(1, 0);
+        let rate = |r: &Release, v046| inflation_rate_for(r, v046, &g, &t);
+        for v in 1..=12 {
+            let r = Release::for_app_version(v).expect("known app version");
+            let want = if matches!(v, 4 | 5) {
+                "0.053600000000000000"
+            } else {
+                "0.026700000000000000"
+            };
+            assert_eq!(rate(r, false)?.to_string(), want, "v{v}");
+            assert_eq!(rate(r, true)?, v1_initial_inflation_rate(), "v{v}");
+            // App version 4 runs as itself; 5 to 8 still run as 9.
+            let executing = if v == 4 {
+                cip29_initial_inflation_rate()
+            } else {
+                initial_inflation_rate()
+            };
+            assert_eq!(
+                rate(Release::executing(v), false)?,
+                executing,
+                "executing v{v}"
             );
         }
         Ok(())

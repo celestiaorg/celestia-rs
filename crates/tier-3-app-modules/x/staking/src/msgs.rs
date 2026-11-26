@@ -25,6 +25,13 @@ pub fn max_commission_rate() -> LegacyDec {
     LegacyDec::new_with_prec(60, 2).unwrap_or_default()
 }
 
+/// `types.MaxCommissionRate` of the release's cosmos-sdk
+/// ([`sdk::version::Release::max_commission_rate_pct`]).
+#[must_use]
+pub fn max_commission_rate_for(release: &sdk::version::Release) -> LegacyDec {
+    LegacyDec::new_with_prec(i64::from(release.max_commission_rate_pct()), 2).unwrap_or_default()
+}
+
 fn invalid_addr(what: &str, e: &sdk::SdkError) -> sdk::SdkError {
     errs::invalid_address(format!("invalid {what} address: {}", e.log))
 }
@@ -143,7 +150,7 @@ pub fn handle_create_validator(
             "cannot set validator commission to less than minimum rate of {min_rate}"
         )));
     }
-    let max_rate = max_commission_rate();
+    let max_rate = max_commission_rate_for(ctx.release());
     if commission.rate > max_rate {
         return Err(errors::commission_gt_max_rate().wrap(format!(
             "cannot set validator commission rate to greater than maximum rate of {max_rate}, proposed {}",
@@ -313,7 +320,7 @@ fn edit_validator(
                 "commission rate cannot be less than the min commission rate {min}"
             )));
         }
-        let max = max_commission_rate();
+        let max = max_commission_rate_for(ctx.release());
         if *r > max {
             return Err(errs::invalid_request(format!(
                 "commission rate cannot be greater than the max commission rate {max}, proposed: {r}"
@@ -592,7 +599,37 @@ pub fn json_msg_to_wire(v: &mut serde_json::Value) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::empty_field;
+    use super::{empty_field, max_commission_rate, max_commission_rate_for};
+    use sdk::version::Release;
+
+    /// celestiaorg/cosmos-sdk `types.MaxCommissionRate`: 25% through
+    /// v0.51.8 (celestia-app v4 to v6), 60% from v0.52.1 (v7 on). Executing
+    /// releases other than app version 4 keep 60% (5 and 6 still run as 9).
+    #[test]
+    fn max_commission_rate_follows_the_release() {
+        for v in 1..=12 {
+            let r = Release::for_app_version(v).expect("known app version");
+            let want = if matches!(v, 4..=6) {
+                "0.250000000000000000"
+            } else {
+                "0.600000000000000000"
+            };
+            assert_eq!(max_commission_rate_for(r).to_string(), want, "v{v}");
+        }
+        // App version 4 runs as itself; 5 and 6 still run as 9.
+        for v in (0..=14).chain([u64::MAX]) {
+            let want = if v == 4 {
+                max_commission_rate_for(Release::for_app_version(4).expect("v4"))
+            } else {
+                max_commission_rate()
+            };
+            assert_eq!(
+                max_commission_rate_for(Release::executing(v)),
+                want,
+                "executing v{v}"
+            );
+        }
+    }
 
     #[test]
     fn empty_field_last_occurrence() {
