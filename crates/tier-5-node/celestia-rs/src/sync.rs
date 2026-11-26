@@ -122,7 +122,8 @@ impl blocksync::CommittedDataCheck for HistoricalDataRoot {
 }
 
 /// The node's block sync options.
-pub(crate) fn blocksync_options(local_addr: Option<Vec<u8>>) -> blocksync::ReactorOptions {
+#[must_use]
+pub fn blocksync_options(local_addr: Option<Vec<u8>>) -> blocksync::ReactorOptions {
     blocksync::ReactorOptions {
         local_addr,
         committed_data_check: Some(Arc::new(HistoricalDataRoot)),

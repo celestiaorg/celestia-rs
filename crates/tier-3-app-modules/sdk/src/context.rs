@@ -123,6 +123,13 @@ impl<'a> Context<'a> {
         crate::version::is_sdk_v046(self.consensus_params.version.as_ref().map_or(0, |v| v.app))
     }
 
+    /// The release celestia-rs runs for this context
+    /// ([`crate::version::release`] of the consensus app version).
+    #[must_use]
+    pub fn release(&self) -> &'static crate::version::Release {
+        crate::version::release(self.consensus_params.version.as_ref().map_or(0, |v| v.app))
+    }
+
     /// Direct (un-metered) access to the multistore.
     pub fn multistore(&mut self) -> &mut MultiStore {
         self.ms
@@ -333,6 +340,22 @@ mod tests {
         let mut ms = MultiStore::new();
         ms.mount("s", Kind::Iavl).unwrap();
         ms
+    }
+
+    /// `Context::release` is the release of the thread's executing app
+    /// version, falling back to the consensus app version.
+    #[test]
+    fn release_follows_the_executing_app_version() {
+        let mut ms = setup();
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        ctx.consensus_params.version =
+            Some(celestia_core_proto::tendermint::types::VersionParams { app: 5 });
+        let prev = crate::version::app_version();
+        crate::version::set_app_version(0);
+        assert_eq!(ctx.release().app_version, 9);
+        crate::version::set_app_version(10);
+        assert_eq!(ctx.release().app_version, 10);
+        crate::version::set_app_version(prev);
     }
 
     #[test]

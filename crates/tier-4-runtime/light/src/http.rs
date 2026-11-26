@@ -708,7 +708,8 @@ fn pub_key_from_json(v: &Value) -> RpcResult<PubKey> {
     }
 }
 
-fn validator_from_json(v: &Value) -> RpcResult<Validator> {
+/// A validator from its RPC JSON (`/validators` entries).
+pub fn validator_from_json(v: &Value) -> RpcResult<Validator> {
     Ok(Validator {
         address: hex_field(v, "address")?,
         pub_key: pub_key_from_json(&v["pub_key"])?,
@@ -717,7 +718,8 @@ fn validator_from_json(v: &Value) -> RpcResult<Validator> {
     })
 }
 
-fn consensus_params_from_json(v: &Value) -> RpcResult<ConsensusParams> {
+/// Consensus params from their RPC JSON (`/consensus_params`).
+pub fn consensus_params_from_json(v: &Value) -> RpcResult<ConsensusParams> {
     let b = &v["block"];
     let e = &v["evidence"];
     let val = &v["validator"];

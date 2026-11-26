@@ -141,7 +141,7 @@ fn validate_groth16_vkey_v9(v: &[u8]) -> core::result::Result<(), String> {
 
 /// Whether the executing app version is 9 (SP1 v5 proofs, ADR 0004).
 fn sp1_v5() -> bool {
-    sdk::version::is_v9(sdk::version::app_version())
+    sdk::version::release(0).before_v10()
 }
 
 /// `ValidateGroth16Vkey`.
@@ -400,7 +400,7 @@ fn verify_proof(
         .consume(PROOF_VERIFY_COST_GROTH16, "groth16 verify")
         .map_err(|_| errs::out_of_gas(""))?;
     let app_version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    let verify = if sdk::version::is_v9(sdk::version::executing(app_version)) {
+    let verify = if sdk::version::release(app_version).before_v10() {
         groth16::sp1_verify_v5
     } else {
         groth16::sp1_verify

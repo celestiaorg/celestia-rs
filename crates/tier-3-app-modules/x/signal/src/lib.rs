@@ -316,7 +316,7 @@ pub fn try_upgrade(
         let current = sdk::version::executing(committed);
         let delay = if ctx.is_sdk_v046() {
             upgrade_height_delay_v3(&ctx.header.chain_id, committed)
-        } else if sdk::version::is_v9(current) {
+        } else if sdk::version::Release::executing(current).before_v10() {
             upgrade_height_delay_v9(&ctx.header.chain_id)
         } else if current >= 12 {
             upgrade_height_delay_v12(&ctx.header.chain_id, committed)
