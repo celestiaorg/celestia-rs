@@ -567,6 +567,7 @@ fn on_acknowledgement_packet(ctx: &mut Context<'_>, p: &Packet, ack_bz: &[u8]) -
     let data = tr::PacketData::decode(&p.data).map_err(|e| {
         errs::unknown_request(format!("cannot unmarshal ICS-20 transfer packet data: {e}"))
     })?;
+    super::pfm::in_flight(ctx, p)?;
     let marshaled = ack.marshal();
     let bz = gostr::to_go_bytes(&marshaled);
     if *bz != *ack_bz {
@@ -783,8 +784,9 @@ fn error_ack(e: &sdk::SdkError) -> channel::AckResponse {
     ))
 }
 
-/// The transfer stack's `OnRecvPacket` at app version 1: celestia-app's
-/// token filter, then transfer (v6).
+/// The transfer stack's `OnRecvPacket`: celestia-app's token filter, the
+/// packet-forward middleware from app version 2 ([`super::pfm`]), then
+/// transfer (v6).
 fn on_recv_packet(ctx: &mut Context<'_>, p: &Packet) -> Result<channel::AckResponse> {
     // Token filter: only a token returning to this chain passes.
     if let Ok(data) = tr::PacketData::decode(&p.data)
@@ -808,6 +810,10 @@ fn on_recv_packet(ctx: &mut Context<'_>, p: &Packet) -> Result<channel::AckRespo
             ],
         ));
         return Ok(error_ack(&err));
+    }
+    // packet-forward-middleware (app versions 2 and 3).
+    if let Ok(data) = tr::PacketData::decode(&p.data) {
+        super::pfm::on_recv(ctx, &data.memo)?;
     }
     // transfer `IBCModule.OnRecvPacket`.
     let decoded = tr::PacketData::decode(&p.data);

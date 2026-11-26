@@ -5,7 +5,7 @@
 //! 1. `migrateCommitStore`: stores of the old version that the new one
 //!    lacks are deleted, new stores are added with the next version as
 //!    their initial IAVL version, their first nodes versioned 1 as iavl
-//!    v0.19 does ([`stores`]).
+//!    v0.19 does ([`add_stores`], [`remove_stores`]).
 //! 2. `migrateModules` (`Manager.RunMigrations`): each module of both
 //!    versions runs its consensus-version migrations (none between app
 //!    versions 1, 2 and 3: every module keeps its version), and each new
@@ -40,24 +40,44 @@ fn store_changes(from: u64, to: u64) -> Result<(Vec<&'static str>, Vec<&'static 
     Ok((deleted, added))
 }
 
-/// `migrateCommitStore` and `LoadLatestVersionAndUpgrade`: deletes and
-/// adds the stores of the change from `from` to `to` (the block's writes
-/// are already flushed). Added stores start at the version being
-/// committed.
-pub fn stores(ms: &mut MultiStore, from: u64, to: u64) -> Result<()> {
+/// `migrateCommitStore`'s added stores: mounts them, empty, with the
+/// version being committed as their initial version. Returns their
+/// names, for [`unmount_added`] if the block fails.
+pub fn add_stores(ms: &mut MultiStore, from: u64, to: u64) -> Result<Vec<&'static str>> {
+    if to == 4 {
+        return Ok(Vec::new());
+    }
+    let (_, added) = store_changes(from, to)?;
+    let next = ms.version().saturating_add(1);
+    for name in &added {
+        ms.mount_iavl_at_v019(name, next).map_err(store_err)?;
+    }
+    Ok(added)
+}
+
+/// Undoes [`add_stores`] (the stores hold no committed version).
+pub fn unmount_added(ms: &mut MultiStore, added: &[&str]) {
+    for name in added {
+        let _ = ms.unmount_iavl(name);
+    }
+}
+
+/// `migrateCommitStore`'s deleted stores: removes them from the commit set
+/// with their pending writes (Go deletes every key of a deleted store and
+/// drops it from the commit info).
+pub fn remove_stores(ms: &mut MultiStore, from: u64, to: u64) -> Result<()> {
     if to == 4 {
         return Ok(());
     }
-    let (deleted, added) = store_changes(from, to)?;
-    let store_err = |e: sdk::store::StoreError| sdk::error::sdk::logic(format!("store: {e}"));
+    let (deleted, _) = store_changes(from, to)?;
     for name in deleted {
         ms.remove_iavl(name).map_err(store_err)?;
     }
-    let next = ms.version().saturating_add(1);
-    for name in added {
-        ms.mount_iavl_at_v019(name, next).map_err(store_err)?;
-    }
     Ok(())
+}
+
+fn store_err(e: sdk::store::StoreError) -> sdk::SdkError {
+    sdk::error::sdk::logic(format!("store: {e}"))
 }
 
 /// `migrateModules` from `from` to `to`.
