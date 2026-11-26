@@ -7,7 +7,7 @@
 
 use celestia_proto::Any;
 use celestia_proto::celestia::signal::v1::{MsgSignalVersion, MsgTryUpgrade};
-use prost::{Message as _, Name as _};
+use prost::Name as _;
 use sdk::Result;
 use sdk::error::sdk as errs;
 

@@ -116,6 +116,15 @@ pub fn set_initial_app_version(ctx: &mut Context<'_>, app: u64) -> Result<()> {
     SUBSPACE.set(ctx, VERSION, &version_json(app))
 }
 
+/// `BaseApp.SetAppVersion`'s store write: `VersionParams` only when the
+/// subspace already has them (the caller keeps the in-memory version).
+pub fn set_app_version(ctx: &mut Context<'_>, app: u64) -> Result<()> {
+    if x_params::has(ctx, SUBSPACE.name, VERSION.as_bytes())? {
+        SUBSPACE.set(ctx, VERSION, &version_json(app))?;
+    }
+    Ok(())
+}
+
 /// An amino-JSON 64-bit integer field (a quoted decimal; absent is 0).
 fn field_i64(v: &serde_json::Value, name: &str, what: &str) -> Result<i64> {
     match &v[name] {

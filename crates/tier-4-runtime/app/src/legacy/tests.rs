@@ -48,6 +48,14 @@ fn v1_store() -> MultiStore {
     ms
 }
 
+/// The stores of app versions 2 and 3.
+fn v2_store() -> MultiStore {
+    let mut ms = MultiStore::new();
+    let v2 = Release::for_app_version(2).expect("v2");
+    crate::stores::mount_release(&mut ms, v2).expect("mount v2");
+    ms
+}
+
 fn init_request() -> abci::RequestInitChain {
     abci::RequestInitChain {
         chain_id: "celestia".to_owned(),
@@ -280,7 +288,7 @@ fn deliver_tx_results_are_shaped_like_v046() {
 /// `baseapp` once written (v2 and later), else 1 (Go `App.Info`).
 #[test]
 fn app_version_reads_subspace_baseapp() {
-    let mut ms = v1_store();
+    let mut ms = v2_store();
     let mut driver = Driver::new(NoModules);
     let mut req = init_request();
     req.consensus_params.as_mut().unwrap().version = Some(VersionParams { app: 2 });
@@ -1335,7 +1343,7 @@ fn driver_scopes_sdk_v046_semantics_to_its_calls() {
     };
     sdk::version::set_app_version(7);
 
-    let mut ms = v1_store();
+    let mut ms = v2_store();
     let mut driver = Driver::new(Probe::default());
     let mut req = init_request();
     req.consensus_params.as_mut().unwrap().version = Some(VersionParams { app: 2 });

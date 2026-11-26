@@ -30,10 +30,9 @@ const FIXTURE: &str = concat!(
 );
 
 /// The last block of the synthetic chain that celestia-rs executes as Go
-/// does. Block 4 holds a `MsgSignalVersion` at app version 1, whose
-/// cosmos-sdk v0.46 `ValidateBasic` is not ported yet; block 5 runs the
-/// v1 to v2 upgrade.
-const MATCHED_THROUGH: i64 = 4;
+/// does: block 5 runs the v1 to v2 upgrade and its migrations; block 6 is
+/// the first app version 2 block, whose rules are not ported yet.
+const MATCHED_THROUGH: i64 = 5;
 
 fn read(name: &str) -> Vec<u8> {
     std::fs::read(format!("{FIXTURE}/{name}")).unwrap()
@@ -189,6 +188,7 @@ fn synthetic_blocks_match_the_oracle() {
 
     let mut ms = v1_store();
     let mut driver = Driver::new(V1Modules);
+    driver.set_upgrade_height_v2(r["upgrade_height_v2"].as_i64().unwrap());
     let init = driver
         .init_chain(&mut ms, &common::init_request(&genesis))
         .unwrap();
@@ -299,4 +299,60 @@ fn synthetic_blocks_match_the_oracle() {
         );
         println!("synthetic block {height} matches {app_hash}");
     }
+}
+
+/// The node's [`app::App`] on a persistent home runs the synthetic chain
+/// through the v1 to v2 upgrade block with the oracle's app hashes, and
+/// reopens on the upgraded state: the app version 2 store set and app
+/// version, with the same app hash.
+#[test]
+fn synthetic_app_reopens_after_the_v2_upgrade() {
+    let genesis: serde_json::Value = serde_json::from_slice(&read("genesis.json")).unwrap();
+    let r = roots();
+    let heights = r["heights"].as_array().unwrap();
+    let results = results();
+    let blocks = blocks();
+    let home = tempfile::tempdir().unwrap();
+    let mut app = app::App::open(home.path()).unwrap();
+    app.set_v2_upgrade_height(r["upgrade_height_v2"].as_i64().unwrap());
+    let init = app.init_chain(common::init_request(&genesis)).unwrap();
+    let mut vals: BTreeMap<i64, common::ValidatorSet> = BTreeMap::new();
+    let mut genesis_set = update_set(&init.validators);
+    common::sort_validators(&mut genesis_set);
+    vals.insert(1, genesis_set.clone());
+    vals.insert(2, genesis_set);
+    for h in 1..5 {
+        let next = common::apply_updates(&vals[&(h + 1)], &common::oracle_updates(&results[&h]));
+        vals.insert(h + 2, next);
+    }
+    for height in 1..=5i64 {
+        let last = if height == 1 {
+            Vec::new()
+        } else {
+            vals[&(height - 1)].clone()
+        };
+        let res = app
+            .finalize_block(common::finalize_request(&blocks[&height], &last))
+            .unwrap_or_else(|e| panic!("height {height}: {}", e.log));
+        app.commit().unwrap();
+        assert_eq!(
+            hex::encode_upper(&res.app_hash),
+            heights[usize::try_from(height).unwrap()]["app_hash"]
+                .as_str()
+                .unwrap(),
+            "app hash at {height}"
+        );
+    }
+    assert_eq!(app.info().app_version, 2);
+    let hash = app.info().last_block_app_hash;
+    drop(app);
+    let app = app::App::open(home.path()).unwrap();
+    assert!(app.is_sdk_v046_state());
+    let info = app.info();
+    assert_eq!(
+        (info.last_block_height, info.app_version),
+        (5, 2),
+        "reopened"
+    );
+    assert_eq!(info.last_block_app_hash, hash);
 }
