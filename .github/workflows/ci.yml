@@ -303,6 +303,7 @@ jobs:
           - devnet-oracle
           - evidencevectors
           - fibre-client
+          - fibre-interop
           - fibre-server
           - fixturegen
           - fuzzoracle/v9
