@@ -2777,6 +2777,7 @@ fn v046_gov_vote_on_unknown_proposal() {
 /// the minimum is dropped (deleted, deposit refunded) after its deposit
 /// period.
 #[test]
+#[allow(clippy::too_many_lines)]
 fn v046_gov_community_pool_spend_proposal_lifecycle() {
     use celestia_proto::cosmos::gov::{v1, v1beta1};
     use prost::Message as _;

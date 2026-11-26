@@ -484,6 +484,20 @@ fn coin_int(c: &celestia_proto::cosmos::base::v1beta1::Coin) -> Result<math::Int
     wire_int_or_nil(&c.amount)
 }
 
+/// ibc-go v6 `isAllowedAddress`: `IterNextCostFlat` per entry looked at.
+fn is_allowed_address(ctx: &mut Context<'_>, receiver: &str, allowed: &[String]) -> Result<bool> {
+    if allowed.is_empty() {
+        return Ok(true);
+    }
+    for addr in allowed {
+        consume(ctx, ITER_NEXT_COST_FLAT, "transfer authorization")?;
+        if addr == receiver {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// ibc-go v6 `TransferAuthorization.Accept` (`Coins.SafeSub` of v0.46:
 /// the token's coin set is sanitized, zero results are dropped).
 fn accept_transfer(
@@ -507,18 +521,8 @@ fn accept_transfer(
         );
     };
     let al = allocations[index].clone();
-    if !al.allow_list.is_empty() {
-        let mut allowed = false;
-        for addr in &al.allow_list {
-            consume(ctx, ITER_NEXT_COST_FLAT, "transfer authorization")?;
-            if *addr == m.receiver {
-                allowed = true;
-                break;
-            }
-        }
-        if !allowed {
-            return Err(errs::invalid_address("").wrap("not allowed receiver address for transfer"));
-        }
+    if !is_allowed_address(ctx, &m.receiver, &al.allow_list)? {
+        return Err(errs::invalid_address("").wrap("not allowed receiver address for transfer"));
     }
     // `SpendLimit.AmountOf(denom)` validates the denom (a panic).
     if !sdk::coins::is_valid_denom(&token.denom) {
@@ -991,6 +995,7 @@ mod transfer_authorization_tests {
     /// `IterNextCostFlat` (30) per entry looked at; the max-uint256
     /// sentinel is never reduced.
     #[test]
+    #[allow(clippy::many_single_char_names)]
     fn accept_spends_removes_and_deletes() {
         let a = vec![
             alloc("channel-0", vec![coin("utia", "100")], &[]),
@@ -1033,7 +1038,7 @@ mod transfer_authorization_tests {
         assert_eq!(gas, 60);
         let (r, gas) = accept(l, &msg("channel-0", coin("utia", "1"), "z"));
         let e = r.err().unwrap();
-        assert_eq!((&*e.codespace, e.code), ("sdk", 7), "{}", e.log);
+        assert_eq!((e.codespace, e.code), ("sdk", 7), "{}", e.log);
         assert_eq!(
             e.log,
             "not allowed receiver address for transfer: invalid address"
@@ -1048,7 +1053,7 @@ mod transfer_authorization_tests {
             .0
             .err()
             .unwrap();
-        assert_eq!((&*e.codespace, e.code), ("sdk", 38), "{}", e.log);
+        assert_eq!((e.codespace, e.code), ("sdk", 38), "{}", e.log);
         assert_eq!(
             e.log,
             "requested port and channel allocation does not exist: not found"
@@ -1058,7 +1063,7 @@ mod transfer_authorization_tests {
                 .0
                 .err()
                 .unwrap();
-            assert_eq!((&*e.codespace, e.code), ("sdk", 5), "{}", e.log);
+            assert_eq!((e.codespace, e.code), ("sdk", 5), "{}", e.log);
             assert_eq!(
                 e.log,
                 "requested amount is more than spend limit: insufficient funds"
@@ -1083,7 +1088,7 @@ mod transfer_authorization_tests {
         assert_eq!(
             v(vec![]),
             Some((
-                "transfer".into(),
+                "transfer",
                 10,
                 "allocations cannot be empty: invalid transfer authorization".into()
             ))
@@ -1091,23 +1096,19 @@ mod transfer_authorization_tests {
         assert_eq!(
             v(vec![ok.clone(), ok.clone()]),
             Some((
-                "channel".into(),
+                "channel",
                 4,
                 "duplicate source channel ID: channel-0: invalid channel".into()
             ))
         );
         assert_eq!(
             v(vec![alloc("channel-0", vec![], &[])]),
-            Some((
-                "sdk".into(),
-                10,
-                "spend limit cannot be nil: invalid coins".into()
-            ))
+            Some(("sdk", 10, "spend limit cannot be nil: invalid coins".into()))
         );
         assert_eq!(
             v(vec![alloc("channel-0", vec![coin("utia", "0")], &[])]),
             Some((
-                "sdk".into(),
+                "sdk",
                 10,
                 "coin 0utia amount is not positive: invalid coins".into()
             ))
@@ -1119,7 +1120,7 @@ mod transfer_authorization_tests {
                 &["x", "x"]
             )]),
             Some((
-                "transfer".into(),
+                "transfer",
                 10,
                 "duplicate entry in allow list %!s(MISSING): invalid transfer authorization".into()
             ))
