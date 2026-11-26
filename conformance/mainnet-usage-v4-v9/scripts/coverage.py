@@ -2,7 +2,7 @@ import json,collections,zstandard,glob,os,base64,pbdec
 RAW="../audit/raw"
 # antevectors pairs, keeping authz-inner separate
 av=collections.defaultdict(lambda:{"n":0,"ok":0,"multi":0,"apps":set()})
-for f in sorted(glob.glob("/home/user/celestia-rs/conformance/fixtures/antevectors/*.json.zst")):
+for f in sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "fixtures", "antevectors", "*.json.zst"))):
     fn=os.path.basename(f); app="9" if fn.startswith("v9-") else "10"
     j=json.loads(zstandard.ZstdDecompressor().stream_reader(open(f,'rb')).read())
     for v in j["vectors"]:
