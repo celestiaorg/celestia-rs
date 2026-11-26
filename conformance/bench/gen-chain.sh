@@ -112,8 +112,7 @@ cp "$H/config/genesis.json" "$OUT/genesis.json"
 cat > "$OUT/meta.json" <<JSON
 {
   "chain_id": "$CHAIN_ID",
-  "celestia_app": "v10.5.0",
-  "celestia_core": "v0.42.3",
+  "celestia_app": "$(celestia-appd version 2>&1 | tail -n 1)",
   "last_height": $LAST,
   "generation_secs": $(( $(date +%s) - T0 )),
   "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
