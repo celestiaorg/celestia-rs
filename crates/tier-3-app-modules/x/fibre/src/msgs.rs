@@ -1160,7 +1160,7 @@ mod tests {
         assert_eq!(escrow(&mut ctx, &signer), ("1305000".into(), "0".into()));
         let w = ctx
             .prefix_iter(STORE_KEY, &[crate::WITHDRAWALS_BY_SIGNER_PREFIX])?
-            .into_items();
+            .into_items()?;
         assert_eq!(w.len(), 1);
         let w = Withdrawal::decode(w[0].1.as_slice()).map_err(|e| internal(e.to_string()))?;
         assert_eq!(w.amount.map(|c| c.amount), Some("1305000".into()));
