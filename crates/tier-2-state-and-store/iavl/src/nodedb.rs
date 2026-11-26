@@ -51,6 +51,9 @@ pub struct NodeCache {
     clock: Mutex<ClockCache<(u64, NodeKey), CachedNode>>,
     hits: AtomicU64,
     misses: AtomicU64,
+    disk_reads: AtomicU64,
+    disk_bytes: AtomicU64,
+    ref_reads: AtomicU64,
 }
 
 impl fmt::Debug for NodeCache {
@@ -74,6 +77,13 @@ pub struct CacheStats {
     pub hits: u64,
     /// Lookups that went to the backend.
     pub misses: u64,
+    /// Node records read from the backend.
+    pub disk_reads: u64,
+    /// Bytes of those records.
+    pub disk_bytes: u64,
+    /// Of `disk_reads`, those made only to resolve a parent's child
+    /// reference (the child itself was not needed yet).
+    pub ref_reads: u64,
 }
 
 impl NodeCache {
@@ -84,6 +94,9 @@ impl NodeCache {
             clock: Mutex::new(ClockCache::new(capacity)),
             hits: AtomicU64::new(0),
             misses: AtomicU64::new(0),
+            disk_reads: AtomicU64::new(0),
+            disk_bytes: AtomicU64::new(0),
+            ref_reads: AtomicU64::new(0),
         })
     }
 
@@ -99,6 +112,9 @@ impl NodeCache {
             capacity,
             hits: self.hits.load(Ordering::Relaxed),
             misses: self.misses.load(Ordering::Relaxed),
+            disk_reads: self.disk_reads.load(Ordering::Relaxed),
+            disk_bytes: self.disk_bytes.load(Ordering::Relaxed),
+            ref_reads: self.ref_reads.load(Ordering::Relaxed),
         }
     }
 
@@ -228,13 +244,19 @@ impl NodeDb {
     }
 
     fn node_bytes(&self, nk: NodeKey) -> Result<Vec<u8>> {
-        self.backend
+        let bytes = self
+            .backend
             .get(&self.node_key(nk))
             .map_err(db_err)?
             .ok_or(Error::MissingNode {
                 version: nk.version,
                 nonce: nk.nonce,
-            })
+            })?;
+        self.cache.disk_reads.fetch_add(1, Ordering::Relaxed);
+        self.cache
+            .disk_bytes
+            .fetch_add(bytes.len() as u64, Ordering::Relaxed);
+        Ok(bytes)
     }
 
     fn child_ref(&self, nk: NodeKey) -> Result<StoredRef> {
@@ -249,6 +271,7 @@ impl NodeDb {
             Some(CachedNode::Encoded(node)) => Ok(node.reference),
             None => {
                 let bytes = self.node_bytes(nk)?;
+                self.cache.ref_reads.fetch_add(1, Ordering::Relaxed);
                 let reference = read_ref(&bytes, nk)?;
                 self.cache.put(
                     key,
