@@ -42,6 +42,9 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
+	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
+	govv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
+	paramproposal "github.com/cosmos/cosmos-sdk/x/params/types/proposal"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	icacontrollertypes "github.com/cosmos/ibc-go/v6/modules/apps/27-interchain-accounts/controller/types"
 	icatypes "github.com/cosmos/ibc-go/v6/modules/apps/27-interchain-accounts/types"
@@ -247,6 +250,8 @@ func newCelestiaChain(t *testing.T, coord *ibctesting.Coordinator, rec *ibcRecor
 	ecfg := encoding.MakeConfig(app.ModuleEncodingRegisters...)
 
 	genesisState := app.NewDefaultGenesisState(ecfg.Codec)
+	// 40 second gov periods, so that a proposal passes within the run.
+	genesisState = govGenesis(ecfg.Codec)(genesisState)
 	genesisState[authtypes.ModuleName] = a.AppCodec().MustMarshalJSON(authtypes.NewGenesisState(authtypes.DefaultParams(), accs))
 	bondAmt := sdk.TokensFromConsensusPower(1, sdk.DefaultPowerReduction)
 	var validators []stakingtypes.Validator
@@ -627,6 +632,34 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 			banktypes.NewOutput(chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 10))),
 			banktypes.NewOutput(chainA.SenderAccounts[2].SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 20))),
 		}))
+
+	// Governance narrows the host's allow list to MsgSend (as mainnet's
+	// proposal 3 replaced the v2 migration's "*"): the v3 validator's
+	// operator votes yes, the proposal passes, and then the account's
+	// delegation is refused (an error acknowledgement) and a send runs.
+	allowList := paramproposal.NewParameterChangeProposal("ica allow list", "narrow the host allow list",
+		[]paramproposal.ParamChange{paramproposal.NewParamChange("icahost", "AllowMessages", `["/cosmos.bank.v1beta1.MsgSend"]`)})
+	submit, err := govv1beta1.NewMsgSubmitProposal(allowList, sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, govMinDeposit)), chainA.SenderAccount.GetAddress())
+	must(t, err)
+	_, err = chainA.SendMsgs(submit)
+	must(t, err)
+	proposalID, err := chainA.App.(*recApp).GovKeeper.GetProposalID(chainA.GetContext())
+	must(t, err)
+	proposalID--
+	sender, senderKey := chainA.SenderAccount, chainA.SenderPrivKey
+	chainA.SenderAccount, chainA.SenderPrivKey = chainA.SenderAccounts[1].SenderAccount, chainA.SenderAccounts[1].SenderPrivKey
+	_, err = chainA.SendMsgs(govv1beta1.NewMsgVote(chainA.SenderAccount.GetAddress(), proposalID, govv1beta1.OptionYes))
+	must(t, err)
+	chainA.SenderAccount, chainA.SenderPrivKey = sender, senderKey
+	// The open block keeps its time; the next one ends the voting period.
+	coord.IncrementTimeBy(govPeriod + time.Second)
+	coord.CommitBlock(chainA)
+	coord.CommitBlock(chainA)
+	if p, _ := chainA.App.(*recApp).GovKeeper.GetProposal(chainA.GetContext(), proposalID); p.Status != govv1.StatusPassed {
+		t.Fatalf("allow list proposal is %s", p.Status)
+	}
+	sendICA(stakingtypes.NewMsgDelegate(icaAcc, val, sdk.NewInt64Coin(appconsts.BondDenom, 1_000)))
+	sendICA(banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 3))))
 	// A last empty block commits the last transaction's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc

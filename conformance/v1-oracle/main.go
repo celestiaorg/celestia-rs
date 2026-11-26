@@ -298,6 +298,7 @@ func run() error {
 	registryOut := flag.String("registry-out", "", "only write the Rust v1 registry and schema tables (registry.go) to this directory")
 	keepRecent := flag.Uint64("keep-recent", 0, "prune all but this many recent IAVL versions (0: keep every version); bounds memory on long runs")
 	synthetic := flag.Bool("synthetic", false, "build the synthetic app version 1 to 3 chain (synthetic.go) instead of reading -genesis and -blocks; writes its genesis.json and blocks.jsonl.gz to -out")
+	govChain := flag.Bool("gov", false, "with -synthetic: build the governance chain (synthetic_gov.go)")
 	flag.Parse()
 	if *registryOut != "" {
 		return writeRegistry(*registryOut)
@@ -310,14 +311,18 @@ func run() error {
 	if *synthetic {
 		if *out == "" || *genesisPath != "" || *blocksPath != "" || *windowsPath != "" || *from != 1 {
 			flag.Usage()
-			return errors.New("-synthetic takes -out (and -kv) only")
+			return errors.New("-synthetic takes -out (and -kv, -gov) only")
 		}
-		syn, err := newSynth()
+		syn, err := newSynth(*govChain)
 		if err != nil {
 			return err
 		}
 		cfg.heights = syntheticHeights
 		cfg.upgradeHeightV2 = syntheticUpgradeHeightV2
+		if *govChain {
+			cfg.heights = govHeights
+			cfg.upgradeHeightV2 = govUpgradeHeightV2
+		}
 		cfg.src = syn
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			return err

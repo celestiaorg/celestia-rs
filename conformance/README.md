@@ -316,6 +316,43 @@ changes, store roots, app hash, transaction results, events, validator
 updates, consensus params and timeouts. `MATCHED_THROUGH` in the test is
 the last block that matches today.
 
+#### Governance chain for app versions 1 to 3
+
+`v1-oracle -synthetic -gov` (`synthetic_gov.go`) runs the synthetic
+chain's genesis with 40 second gov deposit and voting periods (about 3
+blocks), `--v2-upgrade-height 14` and a signalled upgrade to app version
+3 at block 18. At app version 1 (blocks 2 to 13) and again at app
+version 3 (blocks 19 to 26):
+
+- community pool spends that pass (a delegator's authz `MsgExec` vote
+  overrides its validator's), expire in the deposit period (deposit
+  burned), are vetoed (burned) or rejected (refunded);
+- parameter changes through celestia-app's param filter: slashing
+  `SignedBlocksWindow`, baseapp `BlockParams` (the consensus params of
+  blocks 7 and 23 change), blob `GovMaxSquareSize`, icahost
+  `AllowMessages`, and two in one proposal. Blocked parameters (staking
+  `UnbondingTime`, bank `SendEnabled`) fail at submission: gov runs the
+  filter's handler then;
+- v1beta1 and v1 messages, `MsgExecLegacyContent`, a second
+  `MsgDeposit` that starts the voting period, and weighted votes with
+  `NoWithVeto`.
+
+Block 26 checks every proposal's final status against the plan.
+[`fixtures/synthetic/gov-v1-v3`](fixtures/synthetic/gov-v1-v3) holds
+heights 0 to 26; `TestSyntheticFixtureIsReproducible` requires it byte for
+byte. To regenerate it:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -gov -kv -out "$OUT"
+cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
+  "$OUT"/tx-results.jsonl.gz "$OUT"/kv-diffs.jsonl.gz \
+  "$OUT"/kv-height-0.jsonl.gz ../fixtures/synthetic/gov-v1-v3/
+```
+
+`cargo test -p app --test gov_oracle` compares each block as for the
+synthetic chain.
+
 #### IBC chain for app version 2
 
 Mainnet's v2 and v3 eras carry interchain account host packets (27,031
@@ -347,7 +384,10 @@ ibc-go simapp chains as counterparties:
   app version 3. Then an interchain account packet times out on B: the
   ordered channel closes on B and on A (`MsgChannelCloseConfirm`), B
   registers again, and A reopens the same account on a new channel and
-  executes a send and a multi-send over it. The fixture keeps its
+  executes a send and a multi-send over it. Last, a governance proposal
+  narrows the host's `AllowMessages` to `MsgSend` (the chain's genesis
+  has 40 second gov periods), after which the account's delegation gets
+  an error acknowledgement and its send runs. The fixture keeps its
   `ibc-v2` name.
 
 The test records A's genesis, each BeginBlock header and the
@@ -357,7 +397,7 @@ run's. Each block gets one BeginBlock at one time (ibctesting re-runs
 BeginBlock when its clock moves, which no consensus engine does), so
 the clients that A hosts allow an hour of clock drift. The blocks carry
 no last commit. [`fixtures/synthetic/ibc-v2`](fixtures/synthetic/ibc-v2)
-holds heights 0 to 127; the test requires it byte for byte. To
+holds heights 0 to 137; the test requires it byte for byte. To
 regenerate it:
 
 ```sh

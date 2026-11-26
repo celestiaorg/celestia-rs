@@ -34,7 +34,11 @@
 //! channel closes (block 115: `MsgChannelCloseConfirm`), B registers
 //! again and A reopens the same account on a new channel (blocks 117 and
 //! 120) and executes a send over it (block 122), then a multi-send
-//! (block 125). The fixture keeps its `ibc-v2` name.
+//! (block 125). Last, a proposal (block 127, the genesis has 40 second
+//! gov periods) narrows the host's `AllowMessages` to `MsgSend`; it
+//! passes in block 130, the account's delegation gets an error
+//! acknowledgement (block 132) and its send runs (block 135). The
+//! fixture keeps its `ibc-v2` name.
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::print_stdout)]
 
@@ -47,7 +51,7 @@ fn fix() -> Fixture {
 }
 
 /// The last block that celestia-rs executes as Go does: every block.
-const MATCHED_THROUGH: i64 = 127;
+const MATCHED_THROUGH: i64 = 137;
 
 /// The fixture files are the ones the oracle wrote.
 #[test]
@@ -71,7 +75,7 @@ fn ibc_fixture_files_match_their_record() {
         r["kv"]["kv-diffs.jsonl"],
         sha(&f.gunzip("kv-diffs.jsonl.gz"))
     );
-    assert_eq!(f.last_height(), 127);
+    assert_eq!(f.last_height(), 137);
 }
 
 #[test]

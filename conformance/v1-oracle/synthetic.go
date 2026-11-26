@@ -89,6 +89,9 @@ type synth struct {
 	// blocks is blocks.jsonl as the oracle reads it: {"height", "result"}.
 	blocks bytes.Buffer
 
+	// gov builds the governance chain (synthetic_gov.go) instead.
+	gov bool
+
 	lastBlockID     tmtypes.BlockID
 	lastCommit      *tmtypes.Commit
 	appHash         []byte
@@ -102,7 +105,7 @@ func keyMnemonic(name string) (string, error) {
 	return bip39.NewMnemonic(entropy[:])
 }
 
-func newSynth() (*synth, error) {
+func newSynth(gov bool) (*synth, error) {
 	ecfg := encoding.MakeConfig(app.ModuleEncodingRegisters...)
 	kr := keyring.NewInMemory(ecfg.Codec)
 	params := app.DefaultConsensusParams()
@@ -112,6 +115,9 @@ func newSynth() (*synth, error) {
 		WithGenesisTime(syntheticGenesisTime).
 		WithConsensusParams(params).
 		WithKeyring(kr)
+	if gov {
+		g = g.WithModifiers(govGenesis(ecfg.Codec))
+	}
 	addAccount := func(name string, balance int64) error {
 		mnemonic, err := keyMnemonic(name)
 		if err != nil {
@@ -153,7 +159,7 @@ func newSynth() (*synth, error) {
 	if err := genDoc.ValidateAndComplete(); err != nil {
 		return nil, err
 	}
-	return &synth{ecfg: ecfg, kr: kr, genDoc: genDoc, appVersion: 1}, nil
+	return &synth{ecfg: ecfg, kr: kr, genDoc: genDoc, appVersion: 1, gov: gov}, nil
 }
 
 // start records the InitChain app hash: the app hash of block 1.
@@ -207,6 +213,9 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 	if height == 1 {
 		// Nothing is committed yet: block 1 is empty.
 		return nil, nil
+	}
+	if s.gov {
+		return s.govTxs(a, height)
 	}
 	sg, err := s.signer(a)
 	if err != nil {
