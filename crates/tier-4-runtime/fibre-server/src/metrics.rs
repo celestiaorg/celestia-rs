@@ -251,7 +251,9 @@ impl RpcTimer<'_> {
 }
 
 impl Drop for RpcTimer<'_> {
-    /// A handler dropped mid-flight (client cancel): counted as `Canceled`.
+    /// A handler dropped mid-flight: a client cancel is counted as
+    /// `Canceled`; a panic unwinding the handler as `Internal`, the status
+    /// the recovery interceptor returns to the client.
     fn drop(&mut self) {
         if !self.done {
             let m = self.metrics;
@@ -259,8 +261,13 @@ impl Drop for RpcTimer<'_> {
                 Rpc::Upload => (&m.upload_in_flight, &m.upload_codes),
                 Rpc::Download => (&m.download_in_flight, &m.download_codes),
             };
+            let code = if std::thread::panicking() {
+                Code::Internal
+            } else {
+                Code::Cancelled
+            };
             in_flight.fetch_sub(1, Ordering::Relaxed);
-            codes[Code::Cancelled as usize].fetch_add(1, Ordering::Relaxed);
+            codes[code as usize].fetch_add(1, Ordering::Relaxed);
         }
     }
 }

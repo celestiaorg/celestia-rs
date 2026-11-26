@@ -556,6 +556,38 @@ mod tests {
         );
     }
 
+    /// A recovered panic reaches the client as `Internal`; the handler's
+    /// RPC timer must count it the same way, not as a client cancel.
+    #[tokio::test]
+    #[allow(clippy::panic, clippy::manual_assert)]
+    async fn recovered_panics_count_as_internal() {
+        use crate::metrics::{Rpc, ServerMetrics};
+        let metrics = Arc::new(ServerMetrics::new(Arc::new(
+            crate::occupancy::Occupancy::new(0),
+        )));
+        let m = Arc::clone(&metrics);
+        let _ = recovering("/test/Panic", async move {
+            let _timer = m.start_rpc(Rpc::Upload);
+            if true {
+                panic!("boom");
+            }
+            Ok::<(), Status>(())
+        })
+        .await;
+        let m = Arc::clone(&metrics);
+        let _ = recovering("/test/BlockingPanic", async move {
+            let _timer = m.start_rpc(Rpc::Upload);
+            crate::service::blocking_for_test(|| panic!("boom")).await
+        })
+        .await;
+        assert_eq!(metrics.upload_count(tonic::Code::Internal), 2);
+        assert_eq!(metrics.upload_count(tonic::Code::Cancelled), 0);
+        assert_eq!(metrics.uploads_in_flight(), 0);
+        // A handler dropped without a panic is still a cancel.
+        drop(metrics.start_rpc(Rpc::Upload));
+        assert_eq!(metrics.upload_count(tonic::Code::Cancelled), 1);
+    }
+
     #[test]
     fn grpc_timeout_header() {
         let parse = |v: &str| {
