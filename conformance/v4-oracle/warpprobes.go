@@ -1,6 +1,6 @@
 package main
 
-// Warp probe blocks +8 to +13 (-probes, with -heights 16): a hyperlane route set up
+// Warp probe blocks +8 to +13 (-probes, with -heights 19): a hyperlane route set up
 // in direct mode, then warp transactions signed in
 // SIGN_MODE_LEGACY_AMINO_JSON, as most mainnet hyperlane transactions were.
 //

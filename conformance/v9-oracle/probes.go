@@ -1,7 +1,7 @@
 package main
 
-// Probe blocks (-probes, with -heights 16; warpprobes.go has blocks +8 to
-// +13; pfmprobes.go +14 and +15): after the release's usual five blocks, these three
+// Probe blocks (-probes, with -heights 19; warpprobes.go has blocks +8 to
+// +13; pfmprobes.go +14 and +15; icaprobes.go +16 to +18): after the release's usual five blocks, these three
 // blocks of transactions probe behaviours which differ
 // between releases, so that celestia-rs can check its per-release rules
 // against Go. The output directory holds the usual blocks plus the probes;

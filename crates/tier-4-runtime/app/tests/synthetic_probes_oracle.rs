@@ -1,13 +1,14 @@
-//! Probe blocks per release, as the Go oracles ran them (`-heights 16
+//! Probe blocks per release, as the Go oracles ran them (`-heights 19
 //! -probes` in `conformance/v{4,5,6,8,9}-oracle`, `probes.go`,
-//! `warpprobes.go` and `pfmprobes.go`; fixtures
+//! `warpprobes.go`, `pfmprobes.go` and `icaprobes.go`; fixtures
 //! `conformance/fixtures/synthetic/v*-probes`): after each release's usual
-//! five blocks, eleven blocks of transactions whose outcome differs between
-//! releases. Blocks +5 to +7 probe module rules; blocks +8 to +13 set up a
+//! five blocks, fourteen blocks of transactions whose outcome differs
+//! between releases. Blocks +5 to +7 probe module rules; blocks +8 to +13 set up a
 //! hyperlane route and send warp transactions signed in
 //! SIGN_MODE_LEGACY_AMINO_JSON; from v6, where the chain has the solo
 //! machine's transfer channel, blocks +14 and +15 receive packets that
-//! packet-forward-middleware forwards. These tests pin Go's outcome per
+//! packet-forward-middleware forwards, and blocks +16 to +18 open an
+//! interchain-account channel and execute a transaction through it. These tests pin Go's outcome per
 //! release, the target of the per-release rules.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
@@ -51,8 +52,8 @@ fn probe_txs(release: &str) -> Vec<serde_json::Value> {
         .collect()
 }
 
-/// The first fifteen probe transactions of `release` (all but the packet
-/// forwards): code, codespace, log and signers.
+/// The first fifteen probe transactions of `release` (all but the IBC
+/// ones from v6): code, codespace, log and signers.
 fn probes(release: &str) -> Vec<(u64, String, String, Option<Vec<String>>)> {
     probe_txs(release)[..PROBES.len()]
         .iter()
@@ -257,6 +258,10 @@ fn signers_are_recorded_from_v5() {
     }
 }
 
+/// The IBC probe transactions from v6: two packet forwards, then the
+/// interchain-account channel try, confirm, funding and execution.
+const IBC_PROBES: usize = 6;
+
 /// Packet forwarding (packet-forward-middleware v8.2.0) from v6.4.4, on
 /// the solo machine's channel-0. Block +14: the solo machine's packet 3
 /// asks to forward 300 uatom back over channel-0; the voucher is received
@@ -271,7 +276,7 @@ fn packet_forward_from_v6() {
     }
     for release in ["v6", "v8", "v9"] {
         let txs = probe_txs(release);
-        assert_eq!(txs.len(), PROBES.len() + 2, "{release}");
+        assert_eq!(txs.len(), PROBES.len() + IBC_PROBES, "{release}");
         let (forward, bad) = (&txs[PROBES.len()], &txs[PROBES.len() + 1]);
         for tx in [forward, bad] {
             assert_eq!(tx["code"], 0, "{release}: {}", tx["log"]);
@@ -317,5 +322,65 @@ fn packet_forward_from_v6() {
             ),
             "{release}: {ack}"
         );
+    }
+}
+
+/// Interchain-account host from v6.4.4, with the solo machine as
+/// controller on its connection. Block +16: `MsgChannelOpenTry` on port
+/// icahost opens channel-1 in TRYOPEN and the host registers an account,
+/// whose address the returned version names. Block +17:
+/// `MsgChannelOpenConfirm` opens it, and alice funds the account. Block
+/// +18: an EXECUTE_TX packet runs a `MsgSend` of 1,000 utia from the
+/// account to bob and writes a result acknowledgement.
+#[test]
+fn interchain_account_host_from_v6() {
+    for release in ["v6", "v8", "v9"] {
+        let txs = probe_txs(release);
+        let ica = &txs[PROBES.len() + 2..];
+        assert_eq!(ica.len(), 4, "{release}");
+        for tx in ica {
+            assert_eq!(tx["code"], 0, "{release}: {}", tx["log"]);
+        }
+        let (try_, confirm, fund, exec) = (&ica[0], &ica[1], &ica[2], &ica[3]);
+        assert_eq!(
+            attrs(try_, "channel_open_try", "channel_id"),
+            ["channel-1"],
+            "{release}"
+        );
+        let version: serde_json::Value =
+            serde_json::from_str(&attrs(try_, "channel_open_try", "version")[0]).unwrap();
+        assert_eq!(version["version"], "ics27-1", "{release}");
+        assert_eq!(
+            version["controller_connection_id"], "connection-on-solomachine",
+            "{release}"
+        );
+        assert_eq!(version["host_connection_id"], "connection-0", "{release}");
+        let account = version["address"].as_str().unwrap();
+        assert!(account.starts_with("celestia1"), "{release}: {account}");
+        assert_eq!(
+            attrs(confirm, "channel_open_confirm", "channel_id"),
+            ["channel-1"],
+            "{release}"
+        );
+        assert!(
+            attrs(fund, "transfer", "recipient")
+                .iter()
+                .any(|r| r == account),
+            "{release}"
+        );
+        assert_eq!(
+            attrs(exec, "ics27_packet", "success"),
+            ["true"],
+            "{release}"
+        );
+        assert!(
+            attrs(exec, "transfer", "sender")
+                .iter()
+                .any(|r| r == account),
+            "{release}"
+        );
+        let ack = &attrs(exec, "write_acknowledgement", "packet_ack")[0];
+        let ack: serde_json::Value = serde_json::from_str(ack).unwrap();
+        assert!(ack["result"].is_string(), "{release}: {ack}");
     }
 }

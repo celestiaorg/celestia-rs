@@ -1,6 +1,6 @@
 package main
 
-// Probe blocks (-probes, with -heights 16; warpprobes.go has blocks +8 to
+// Probe blocks (-probes, with -heights 19; warpprobes.go has blocks +8 to
 // +13): after the release's usual five blocks, these three
 // blocks of transactions probe behaviours which differ
 // between releases, so that celestia-rs can check its per-release rules

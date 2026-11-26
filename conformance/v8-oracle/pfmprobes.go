@@ -1,6 +1,6 @@
 package main
 
-// The packet-forward probe blocks (-probes, with -heights 16): blocks +14
+// The packet-forward probe blocks (-probes, with -heights 19): blocks +14
 // and +15, where the chain has the solo machine's transfer channel (v6 on;
 // the v5-oracle -next-handoff blocks open it). The solo machine sends two
 // uatom packets whose memo asks packet-forward-middleware to forward them:
