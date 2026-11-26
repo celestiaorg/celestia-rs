@@ -30,7 +30,7 @@ ulimit -n 65536 2>/dev/null || echo "warning: could not raise the open-files lim
 
 if [[ ! -f $HOME_DIR/config/genesis.json ]]; then
   # Downloads and verifies the mainnet genesis (SHA-256 pinned in networks.rs).
-  "$BIN" init --network mainnet --home "$HOME_DIR" --moniker genesis-sync
+  "$BIN" init genesis-sync --network mainnet --home "$HOME_DIR"
   # No state-sync snapshots while catching up (they cost I/O and disk).
   sed -i.bak 's/^snapshot-interval = .*/snapshot-interval = 0/' "$HOME_DIR/config/app.toml"
   if [[ ${KEEP_ALL_BLOCKS:-0} == 1 ]]; then

@@ -673,6 +673,8 @@ impl Reactor {
                 .map(|e| e.to_string());
             }
         }
+        // The extended commit check is signature verification too.
+        lap(&mut t.verify_commit);
         if let Some(e) = err {
             tracing::error!(err = %e, height, "Error in validation");
             let now = Instant::now();

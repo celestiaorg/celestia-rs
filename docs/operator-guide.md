@@ -937,7 +937,7 @@ canonical genesis (app version 1, executed by the Cosmos SDK v0.46
 legacy driver) and block-syncs every height from peers.
 
 ```sh
-celestia-rs init --network mainnet --home ~/.celestia-rs/mainnet-genesis
+celestia-rs init genesis-sync --network mainnet --home ~/.celestia-rs/mainnet-genesis
 # Optional: no snapshots while catching up; keep every block to serve
 # history to other nodes (needs much more disk).
 sed -i 's/^snapshot-interval = .*/snapshot-interval = 0/' ~/.celestia-rs/mainnet-genesis/config/app.toml
