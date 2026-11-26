@@ -11,11 +11,19 @@ use sdk::version::SdkV046Scope;
 use sdk::{Context, Result};
 
 mod auth;
+mod gov;
+mod handler;
+mod ibc;
 mod params;
+mod staking;
 mod transfer;
 
 pub use auth::migrate_auth;
+pub use gov::migrate_gov;
+pub use handler::{VERSION_MAP, handler, run_migrations};
+pub use ibc::migrate_ibc;
 pub use params::{migrate_bank, migrate_blob, migrate_distribution, migrate_slashing};
+pub use staking::migrate_staking;
 pub use transfer::migrate_transfer;
 
 /// Runs `f` with the modules' cosmos-sdk v0.46 paths (app version 3), to

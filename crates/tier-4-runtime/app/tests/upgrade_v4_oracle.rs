@@ -163,3 +163,87 @@ fn v4_migrates_transfer() {
 fn v4_migrates_blob() {
     check(app::upgrades::v4::migrate_blob, &["blob"]);
 }
+
+/// staking 3 to 5: params (0x51), merged unbonding entries, the
+/// delegations-by-validator index (0x71) and binary historical info keys.
+#[test]
+fn v4_migrates_staking() {
+    check(app::upgrades::v4::migrate_staking, &["staking"]);
+}
+
+/// gov 3 to 5: voting-period index, params from the subspace and the
+/// defaults, the default constitution. The `v4` handler then raises the
+/// expedited min deposit ([`v4_upgrade_matches_go_in_every_store`]).
+#[test]
+fn v4_migrates_gov() {
+    let mut ms = handoff();
+    {
+        let mut c = ctx(&mut ms);
+        app::upgrades::v4::migrate_gov(&mut c).unwrap();
+    }
+    let got = contents(&ms, "gov");
+    let want = upgraded_state()["gov"].clone();
+    // Everything but the params matches; the params differ only in the
+    // expedited min deposit, which the handler sets after the migrations.
+    let params = |kv: &Kv| {
+        <celestia_proto::cosmos::gov::v1::Params as prost::Message>::decode(&kv[&b"0".to_vec()][..])
+            .unwrap()
+    };
+    let (mut g, w) = (params(&got), params(&want));
+    assert_eq!(g.expedited_min_deposit[0].denom, "stake");
+    g.expedited_min_deposit.clone_from(&w.expedited_min_deposit);
+    assert_eq!(g, w);
+    let without_params = |kv: &Kv| {
+        let mut kv = kv.clone();
+        kv.remove(&b"0".to_vec());
+        kv
+    };
+    assert_eq!(without_params(&got), without_params(&want));
+}
+
+/// ibc core 2 to 6: the localhost client and sentinel connection, client,
+/// connection and channel params.
+#[test]
+fn v4_migrates_ibc() {
+    check(app::upgrades::v4::migrate_ibc, &["ibc"]);
+}
+
+/// The whole x/upgrade `ApplyUpgrade` of plan `v4` with the handlers of
+/// celestia-app v4.1.0: every store (the v4 store set, which adds circuit,
+/// consensus, hyperlane, minfee and warp) holds what Go's PreBlocker left,
+/// including the consensus params at app version 4, the circuit disable
+/// list, the default genesis of the modules the v3 version map lacks, the
+/// module version map and the done marker of the plan.
+#[test]
+fn v4_upgrade_matches_go_in_every_store() {
+    use x_upgrade::UpgradeHandlers as _;
+    let handlers = app::upgrades::Handlers::of_release(4);
+    assert!(handlers.has_handler("v4"));
+    let mut ms = handoff();
+    {
+        let mut c = ctx(&mut ms);
+        let plan = x_upgrade::get_upgrade_plan(&mut c)
+            .unwrap()
+            .expect("plan v4");
+        assert_eq!((plan.name.as_str(), plan.height), ("v4", UPGRADE));
+        x_upgrade::apply_upgrade(&mut c, &handlers, &plan)
+            .unwrap_or_else(|e| panic!("ApplyUpgrade: {}", e.log));
+    }
+    let want = upgraded_state();
+    let v4 = sdk::version::Release::for_app_version(4).unwrap();
+    let mut failures = Vec::new();
+    for store in v4.stores {
+        let got = contents(&ms, store);
+        let w = want.get(*store).cloned().unwrap_or_default();
+        if got != w {
+            failures.push(format!("{store}: rs vs go {}", describe(&diff(&w, &got))));
+        }
+    }
+    let mut extra: Vec<&String> = want
+        .keys()
+        .filter(|s| !v4.stores.contains(&s.as_str()))
+        .collect();
+    extra.retain(|s| s.as_str() != "mem_capability");
+    assert!(extra.is_empty(), "stores outside the v4 set: {extra:?}");
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
