@@ -1006,6 +1006,7 @@ func runTransferAuthzAndTimeout(t *testing.T, coord *ibctesting.Coordinator, cha
 	must(t, err)
 	_, err = chainA.SendMsgs(generic, limited)
 	must(t, err)
+	var lastSent channeltypes.Packet
 	for _, g := range []struct {
 		sender int
 		amount int64
@@ -1020,6 +1021,7 @@ func runTransferAuthzAndTimeout(t *testing.T, coord *ibctesting.Coordinator, cha
 		must(t, err)
 		must(t, pathAB.EndpointB.UpdateClient())
 		must(t, pathAB.RelayPacket(packet))
+		lastSent = packet
 	}
 
 	// A transfer that times out on B: one minute, never relayed.
@@ -1035,6 +1037,32 @@ func runTransferAuthzAndTimeout(t *testing.T, coord *ibctesting.Coordinator, cha
 	if !found {
 		t.Fatal("no next sequence receive on B")
 	}
-	_, err = chainA.SendMsgs(channeltypes.NewMsgTimeout(lost, next, proof, proofHeight, granter.String()))
+	timeoutMsg := channeltypes.NewMsgTimeout(lost, next, proof, proofHeight, granter.String())
+	_, err = chainA.SendMsgs(timeoutMsg)
 	must(t, err)
+
+	// Redundant relays, as racing relayers send them: ibc-go v6 turns each
+	// into a NOOP result. The packet commitment of the timeout and of the
+	// acknowledged packet is gone, so both return before any proof check;
+	// a second receive verifies the proof, then finds the receipt.
+	_, err = chainA.SendMsgs(timeoutMsg)
+	must(t, err)
+	ackProof, ackHeight := chainB.QueryProof(host.PacketAcknowledgementKey(lastSent.GetDestPort(), lastSent.GetDestChannel(), lastSent.GetSequence()))
+	_, err = chainA.SendMsgs(channeltypes.NewMsgAcknowledgement(lastSent,
+		channeltypes.NewResultAcknowledgement([]byte{1}).Acknowledgement(), ackProof, ackHeight, granter.String()))
+	must(t, err)
+	inboundSend := transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointB.ChannelID,
+		sdk.NewInt64Coin(sdk.DefaultBondDenom, 1_000), chainB.SenderAccount.GetAddress().String(),
+		chainA.SenderAccount.GetAddress().String(), clienttypes.NewHeight(1, 10_000), 0, "")
+	res, err = chainB.SendMsgs(inboundSend)
+	must(t, err)
+	inbound, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAB.EndpointA.UpdateClient())
+	recvProof, recvHeight := chainB.QueryProof(host.PacketCommitmentKey(inbound.GetSourcePort(), inbound.GetSourceChannel(), inbound.GetSequence()))
+	recv := channeltypes.NewMsgRecvPacket(inbound, recvProof, recvHeight, granter.String())
+	for i := 0; i < 2; i++ {
+		_, err = chainA.SendMsgs(recv)
+		must(t, err)
+	}
 }

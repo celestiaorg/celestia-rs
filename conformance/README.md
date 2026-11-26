@@ -603,6 +603,33 @@ heights 0 to 17 (regenerate it as the governance chain, with
 every block, and checks that the app version 4 and later sign bytes of
 its transactions do not change.
 
+#### Failure paths for app versions 1 to 3
+
+`v1-oracle -synthetic -chain failures-v1-v3` (`synthetic_failures.go`)
+signs transactions in DIRECT mode that fail, at app version 1 (blocks 2
+to 4), 2 (blocks 6 to 8) and 3 (blocks 14 to 16). Each failure's code,
+codespace and `gas_used` go into `LastResultsHash`, so celestia-rs must
+fail at the same point of the ante handler or message handler as Go:
+
+- ante handler: a wrong sequence, a wrong chain ID, out of gas in the
+  ante handler and at two points of a message, no fee (passes at app
+  version 1, below the network minimum gas price from app version 2), a
+  fee above the balance, a memo too large, a past timeout height;
+- messages: a multi-message transaction whose second message fails (the
+  first is rolled back), `MsgExec` without a grant and with an expired
+  one, a fee granter without an allowance, an allowance spent past its
+  limit and an expired one, a reward withdrawal without a delegation, an
+  undelegation of more than the delegation, a delegation to an account
+  that is not a validator, a redelegation to the same validator, a
+  transitive redelegation, a send to a blocked module account, and an
+  eighth unbonding entry.
+
+Blob transactions that fail `ValidateBasic` are not in it: ProcessProposal
+rejects a block that holds one. [`fixtures/synthetic/failures-v1-v3`](fixtures/synthetic/failures-v1-v3)
+holds heights 0 to 17 (regenerate it as the governance chain, with
+`-chain failures-v1-v3`). `cargo test -p app --test failures_oracle`
+compares every block.
+
 The oracle writes a transaction's log without what depends on Go's
 runtime or the machine (the log is not consensus data): the goroutine
 stack and celestia's "caused by transaction" dump of a recovered panic
@@ -676,9 +703,11 @@ ibc-go simapp chains as counterparties:
   an error acknowledgement and its send runs. Then utia goes to B
   through authz `MsgExec` (a GenericAuthorization, and an ibc-go
   TransferAuthorization whose spend limit it uses up), and a plain
-  transfer times out on B and is refunded on A. The fixture keeps its
-  `ibc-v2` name.
-  executes a send over it. The fixture keeps its `ibc-v2` name.
+  transfer times out on B and is refunded on A. Last come redundant
+  relays, as racing relayers send them: the timeout again, an
+  acknowledgement of an acknowledged packet, and a packet from B that A
+  receives twice. ibc-go v6 gives each a `NOOP` result (code 0). The
+  fixture keeps its `ibc-v2` name.
 
 The test records A's genesis, each BeginBlock header and the
 transactions of each block. It replays them in a fresh app through the
