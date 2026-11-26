@@ -65,6 +65,20 @@ class VerifyAgainstGivenAppHash(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             self.run_main("--app-hash", "XYZ")
 
+    def test_sdk_v046_duplicated_zlib_trailer_is_accepted(self):
+        # Cosmos SDK v0.46 closes its zlib writer twice: the Adler-32 trailer
+        # appears a second time after the stream (seen on real exports).
+        chunk = self.directory / "0"
+        data = chunk.read_bytes()
+        chunk.write_bytes(data + data[-4:])
+        self.assertIn("Verified", self.run_main("--app-hash", self.app_hash))
+
+    def test_other_trailing_bytes_fail(self):
+        chunk = self.directory / "0"
+        chunk.write_bytes(chunk.read_bytes() + b"\x00\x01\x02\x03")
+        with self.assertRaisesRegex(ValueError, "truncated or has trailing data"):
+            self.run_main("--app-hash", self.app_hash)
+
     def test_height_without_window_still_needs_an_app_hash(self):
         with self.assertRaisesRegex(SystemExit, "no replay window starts at 2371490"):
             self.run_main()

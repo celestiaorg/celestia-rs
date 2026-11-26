@@ -661,6 +661,28 @@ cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
 `cargo test -p app --test ibc_oracle` compares each block as for the
 synthetic chain.
 
+#### History synthetic chain for the historical info migration
+
+`v1-oracle -synthetic -chain v3-history` runs the v1-v3 chain's
+validators and accounts from a genesis at app version 3 for 1,005
+blocks, then schedules plan `v4` at 1,006. Its 1,005 historical infos
+are more than staking's v5 migration moves at once (1,000), so the
+migration records the cursor 0x82 and the BeginBlocker of the upgrade
+block finishes it. Only the v4 side
+([`fixtures/synthetic/v3-history-v4`](fixtures/synthetic/v3-history-v4))
+and the genesis ([`fixtures/synthetic/v3-history`](fixtures/synthetic/v3-history))
+are committed: the v3 side's store roots of 1,005 heights would add
+2 MB. `go test` in `v4-oracle` rebuilds it. To regenerate:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -chain v3-history -out "$OUT/hist" -handoff "$OUT/hist-home"
+cp "$OUT"/hist/genesis.json ../fixtures/synthetic/v3-history/
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/hist-home" \
+  -genesis "$OUT/hist/genesis.json" -out ../fixtures/synthetic/v3-history-v4
+```
+
 #### Where checkpoints come from
 
 The QubeLabs archive (`celestia_2026-11-03.tar`, ETag
