@@ -523,16 +523,36 @@ fn check_bond_denom(ctx: &mut Context<'_>, denom: &str) -> Result<()> {
     Ok(())
 }
 
+/// staking `msgServer.Delegate` (v0.46) on a `MsgDelegate` with a zero
+/// amount whose `ValidateBasic` failed: celestia's router runs the
+/// handler anyway when the message is dispatched by `MsgExec`.
+pub(super) fn delegate_zero_amount(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
+    let m: staking::MsgDelegate = decode(&gogo_view(msg)?)?;
+    let (coin, _) = x_staking::msgs::parse_coin(m.amount.as_ref());
+    Ok(Any::pack(&delegate_amount(ctx, &m, coin)?))
+}
+
 /// staking `msgServer.Delegate` (v0.46).
 fn delegate(
     ctx: &mut Context<'_>,
     msg: &staking::MsgDelegate,
 ) -> Result<staking::MsgDelegateResponse> {
-    let val = val_address(&msg.validator_address, "validator")?;
+    let amount = valid_positive_coin(msg.amount.as_ref())?;
+    delegate_amount(ctx, msg, amount)
+}
+
+/// The body of staking `msgServer.Delegate` (v0.46) for `amount`. The
+/// address errors are plain Go errors (`ValidateBasic` checked them
+/// before, except on the zero-amount path).
+fn delegate_amount(
+    ctx: &mut Context<'_>,
+    msg: &staking::MsgDelegate,
+    amount: sdk::coins::Coin,
+) -> Result<staking::MsgDelegateResponse> {
+    let val = server_val(&msg.validator_address)?;
     let v = x_staking::store::get_validator(ctx, &val)?
         .ok_or_else(x_staking::errors::no_validator_found)?;
-    let del = acc_address(&msg.delegator_address, "delegator")?;
-    let amount = valid_positive_coin(msg.amount.as_ref())?;
+    let del = server_acc(&msg.delegator_address)?;
     check_bond_denom(ctx, &amount.denom)?;
     let shares = x_staking::delegation::delegate(
         ctx,

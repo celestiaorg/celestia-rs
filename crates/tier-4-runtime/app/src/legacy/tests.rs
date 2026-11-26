@@ -3153,3 +3153,47 @@ fn v046_exec_dispatches_a_nested_grant() {
     let stored = ctx.get(x_authz::STORE_KEY, &key).unwrap().unwrap();
     assert!(Grant::decode(stored.as_slice()).is_ok());
 }
+
+/// celestia's router runs a `MsgExec`-dispatched `MsgDelegate` whose
+/// `ValidateBasic` fails on a zero amount: the delegation of 0 tokens
+/// succeeds (mainnet block 52698). A nil amount panics in `IsZero`.
+#[test]
+fn v046_exec_runs_a_zero_amount_delegate() {
+    use celestia_proto::cosmos::authz::v1beta1::MsgExec;
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::cosmos::staking::v1beta1::MsgDelegate;
+    crate::modules::install_staking_hooks();
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let (mut ctx, _) = v046_two_validators(&mut ms, 10);
+    x_distribution::store::set_fee_pool(&mut ctx, &sdk::dec_coins::DecCoins::new()).unwrap();
+    let del = [9u8; 20];
+    let acc = x_auth::new_account_with_address(&mut ctx, &del).unwrap();
+    x_auth::set_account(&mut ctx, &acc).unwrap();
+    let delegate = |amount: Option<Coin>| {
+        celestia_proto::Any::pack(&MsgExec {
+            grantee: x_auth::bech32(&del).unwrap(),
+            msgs: vec![celestia_proto::Any::pack(&MsgDelegate {
+                delegator_address: x_auth::bech32(&del).unwrap(),
+                validator_address: x_staking::addr::val_to_string(&[1; 20]).unwrap(),
+                amount,
+            })],
+        })
+    };
+    let _ = take_not_ported();
+    msgs::route(
+        &mut ctx,
+        &delegate(Some(Coin {
+            denom: "utia".into(),
+            amount: "0".into(),
+        })),
+    )
+    .unwrap();
+    assert!(take_not_ported().is_none());
+    let d = x_staking::store::get_delegation(&mut ctx, &del, &[1; 20])
+        .unwrap()
+        .unwrap();
+    assert!(d.shares.is_zero());
+    let e = sdk::error::recover(|| msgs::route(&mut ctx, &delegate(None))).unwrap_err();
+    assert!(e.is_panic(), "{}", e.log);
+}

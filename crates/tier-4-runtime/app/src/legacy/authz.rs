@@ -562,13 +562,15 @@ fn exec_signer(msg: &Any) -> Result<Option<Vec<u8>>> {
     ))
 }
 
-/// The router's `ValidateBasic` of a dispatched message: a failure is
-/// returned unless the message has a zero `GetAmount()` (celestia's
-/// exception), in which case its handler runs on the invalid message,
-/// which is not ported.
-fn router_validate_basic(msg: &Any) -> Result<()> {
+/// The router's `ValidateBasic` of a dispatched message (celestia's
+/// cosmos-sdk fork, `baseapp/msg_service_router.go`): a failure is
+/// returned unless the message has a `GetAmount() sdk.Coin` whose amount
+/// is zero, in which case its handler runs on the invalid message
+/// (`Ok(true)`). A nil amount panics in `IsZero`. Only `MsgDelegate`'s
+/// handler is ported for that case.
+fn router_validate_basic(msg: &Any) -> Result<bool> {
     let Err(e) = msgs::validate_basic(msg) else {
-        return Ok(());
+        return Ok(false);
     };
     let amount = if msg.type_url == staking::MsgDelegate::type_url() {
         Some(decode::<staking::MsgDelegate>(msg)?.amount)
@@ -576,23 +578,28 @@ fn router_validate_basic(msg: &Any) -> Result<()> {
         Some(decode::<staking::MsgUndelegate>(msg)?.amount)
     } else if msg.type_url == staking::MsgBeginRedelegate::type_url() {
         Some(decode::<staking::MsgBeginRedelegate>(msg)?.amount)
+    } else if msg.type_url == staking::MsgCancelUnbondingDelegation::type_url() {
+        Some(decode::<staking::MsgCancelUnbondingDelegation>(msg)?.amount)
     } else {
         None
     };
-    match amount {
-        Some(c)
-            if c.as_ref().is_none_or(|c| {
-                c.amount.is_empty()
-                    || x_staking::msgs::wire_int(&c.amount).is_ok_and(|a| a.is_zero())
-            }) =>
-        {
-            Err(super::not_ported(errs::invalid_request(format!(
-                "the cosmos-sdk v0.46 handler of {} on a zero amount its ValidateBasic rejects is not ported",
-                msg.type_url
-            ))))
-        }
-        _ => Err(e),
+    let Some(coin) = amount else { return Err(e) };
+    let raw = coin.map(|c| c.amount).unwrap_or_default();
+    if raw.is_empty() {
+        return Err(sdk::error::go_panic(
+            "runtime error: invalid memory address or nil pointer dereference",
+        ));
     }
+    if !x_staking::msgs::wire_int(&raw).is_ok_and(|a| a.is_zero()) {
+        return Err(e);
+    }
+    if msg.type_url == staking::MsgDelegate::type_url() {
+        return Ok(true);
+    }
+    Err(super::not_ported(errs::invalid_request(format!(
+        "the cosmos-sdk v0.46 handler of {} on a zero amount its ValidateBasic rejects is not ported",
+        msg.type_url
+    ))))
 }
 
 /// `fmt.Sprintf("%v", msg)` of a dispatched message.
@@ -652,9 +659,13 @@ fn exec(ctx: &mut Context<'_>, msg: &authz::MsgExec) -> Result<authz::MsgExecRes
         // The router's handler: a fresh event manager, `ValidateBasic`,
         // the circuit breaker (the gatekeeper already accepted every
         // nested message), then the msg server.
-        router_validate_basic(m).map_err(|e| wrap_failed(e, m))?;
+        let zero_amount = router_validate_basic(m).map_err(|e| wrap_failed(e, m))?;
         let outer = std::mem::take(&mut ctx.events);
-        let resp = msgs::route(ctx, m);
+        let resp = if zero_amount {
+            msgs::delegate_zero_amount(ctx, m)
+        } else {
+            msgs::route(ctx, m)
+        };
         let nested = std::mem::replace(&mut ctx.events, outer).take();
         let resp = resp.map_err(|e| wrap_failed(e, m))?;
         let before = ctx.events.len();
