@@ -357,9 +357,10 @@ const fn entry(
         cosmos_sdk,
         hyperlane,
         go_square,
-        // App version 1 executes as itself (the cosmos-sdk v0.46 driver);
-        // historical execution of app versions 2 to 8 is not ported yet.
-        runs_as: if app_version > 1 && app_version < 9 {
+        // App version 1 executes as itself (the cosmos-sdk v0.46 driver)
+        // and app version 4 as celestia-app v4.1.0; historical execution
+        // of app versions 2, 3 and 5 to 8 is not ported yet.
+        runs_as: if matches!(app_version, 2 | 3 | 5..=8) {
             9
         } else {
             app_version
