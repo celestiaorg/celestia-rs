@@ -355,6 +355,6 @@ jobs:
           needs.changes.outputs.docs_only != 'true' && (
           matrix.module == 'fixturegen' || matrix.module == 'antereplay' ||
           matrix.module == 'fuzzoracle/v10' || matrix.module == 'pfm-fork' ||
-          matrix.module == 'websocket-lifecycle')
+          matrix.module == 'websocket-lifecycle' || matrix.module == 'v1-oracle')
         working-directory: conformance/${{ matrix.module }}
         run: go test ./...

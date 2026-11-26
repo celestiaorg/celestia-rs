@@ -300,13 +300,7 @@ The oracle writes its genesis and blocks next to the usual outputs.
 [`fixtures/synthetic/v1-v3`](fixtures/synthetic/v1-v3) holds them for
 heights 0 to 15. `store-roots.json` also records `upgrade_height_v2`
 and the SHA-256 of `blocks.jsonl`. `go test` in `v1-oracle` rebuilds the
-<<<<<<< HEAD
-chain and requires the fixture byte for byte (run it locally; the CI Go
-matrix only builds this module, because `ci.yml` is pinned as RPC
-evidence). To regenerate it:
-=======
 chain and requires the fixture byte for byte. To regenerate it:
->>>>>>> origin/main
 
 ```sh
 cd conformance/v1-oracle
