@@ -2996,3 +2996,49 @@ fn v046_feegrant_grant_use_revoke() {
     let e = msgs::route(&mut ctx, &revoke).unwrap_err();
     assert_eq!((e.codespace, e.code), ("sdk", 38), "{}", e.log);
 }
+
+/// cosmos-sdk v0.46 `FundCommunityPool`: the coins move to the
+/// distribution module account and into the community pool;
+/// `ValidateBasic` rejects invalid coins and an empty depositor.
+#[test]
+fn v046_fund_community_pool() {
+    use celestia_proto::cosmos::base::v1beta1::Coin;
+    use celestia_proto::cosmos::distribution::v1beta1::MsgFundCommunityPool;
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ms = v1_store();
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    x_distribution::store::set_fee_pool(&mut ctx, &sdk::dec_coins::DecCoins::new()).unwrap();
+    let from = [7u8; 20];
+    let acc = x_auth::new_account_with_address(&mut ctx, &from).unwrap();
+    x_auth::set_account(&mut ctx, &acc).unwrap();
+    x_bank::set_balance(&mut ctx, &from, &sdk::coins::Coin::new("utia", 50)).unwrap();
+    let fund = |depositor: String, amount: &str| {
+        celestia_proto::Any::pack(&MsgFundCommunityPool {
+            amount: vec![Coin {
+                denom: "utia".into(),
+                amount: amount.into(),
+            }],
+            depositor,
+        })
+    };
+    let e = msgs::validate_basic(&fund(String::new(), "1")).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 7), "{}", e.log);
+    let e = msgs::validate_basic(&fund(x_auth::bech32(&from).unwrap(), "-1")).unwrap_err();
+    assert_eq!((e.codespace, e.code), ("sdk", 10), "{}", e.log);
+    let ok = fund(x_auth::bech32(&from).unwrap(), "20");
+    msgs::validate_basic(&ok).unwrap();
+    msgs::route(&mut ctx, &ok).unwrap();
+    assert_eq!(
+        x_distribution::store::get_fee_pool(&mut ctx)
+            .unwrap()
+            .to_string(),
+        "20.000000000000000000utia"
+    );
+    let distr = x_auth::module_address("distribution");
+    assert_eq!(
+        x_bank::get_balance(&mut ctx, &distr, "utia")
+            .unwrap()
+            .amount,
+        math::Int::from_u64(20)
+    );
+}

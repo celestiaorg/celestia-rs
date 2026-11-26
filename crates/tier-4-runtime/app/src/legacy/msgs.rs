@@ -293,6 +293,16 @@ pub fn validate_basic(msg: &Any) -> Result<()> {
     } else if msg.type_url == distr::MsgWithdrawValidatorCommission::type_url() {
         let m: distr::MsgWithdrawValidatorCommission = decode(msg)?;
         val_address(&m.validator_address, "validator")?;
+    } else if msg.type_url == distr::MsgFundCommunityPool::type_url() {
+        let m: distr::MsgFundCommunityPool = decode(msg)?;
+        // v0.46 checks validity only (empty coins pass), then a non-empty
+        // depositor string.
+        if !sdk::coins::raw_coins_is_valid(&m.amount)? {
+            return Err(errs::invalid_coins("").wrap(sdk::coins::raw_coins_string(&m.amount)));
+        }
+        if m.depositor.is_empty() {
+            return Err(errs::invalid_address(""));
+        }
     } else if msg.type_url == staking::MsgUndelegate::type_url() {
         let m: staking::MsgUndelegate = decode(msg)?;
         acc_address(&m.delegator_address, "delegator")?;
@@ -365,6 +375,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
     }
     if msg.type_url == staking::MsgBeginRedelegate::type_url() {
         return Ok(Any::pack(&begin_redelegate(ctx, &decode(msg)?)?));
+    }
+    if msg.type_url == distr::MsgFundCommunityPool::type_url() {
+        return Ok(Any::pack(&fund_community_pool(ctx, &decode(msg)?)?));
     }
     if msg.type_url == staking::MsgCancelUnbondingDelegation::type_url() {
         return Ok(Any::pack(&cancel_unbonding_delegation(ctx, &decode(msg)?)?));
@@ -932,4 +945,18 @@ fn withdraw_validator_commission(
     Ok(distr::MsgWithdrawValidatorCommissionResponse {
         amount: amount.to_proto(),
     })
+}
+
+/// distribution `msgServer.FundCommunityPool` and keeper
+/// `FundCommunityPool` (v0.46): the coins go to the distribution module
+/// account and into the fee pool's community pool.
+fn fund_community_pool(
+    ctx: &mut Context<'_>,
+    msg: &distr::MsgFundCommunityPool,
+) -> Result<distr::MsgFundCommunityPoolResponse> {
+    let depositor = server_acc(&msg.depositor)?;
+    let amount = Coins::from_proto(&msg.amount)?;
+    x_distribution::keeper::fund_community_pool(ctx, &amount, &depositor)?;
+    distribution_message_event(ctx, &msg.depositor);
+    Ok(distr::MsgFundCommunityPoolResponse {})
 }
