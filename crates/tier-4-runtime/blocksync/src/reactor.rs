@@ -71,12 +71,29 @@ impl Network for WeakSwitch {
     }
 }
 
+/// Checks the data of a synced block whose `BlockID` already carries a
+/// verified +2/3 commit from the trusted validator set.
+///
+/// `Some(result)` replaces `ProcessProposal` for that block; `None` defers
+/// to `ProcessProposal`. The node uses this for app versions whose
+/// `ProcessProposal` rules this binary does not run (historical versions):
+/// it rebuilds the data square from the block's txs and compares it with
+/// the committed data root.
+pub trait CommittedDataCheck: Send + Sync + std::fmt::Debug {
+    /// The data check of `block`, or `None` to ask the app.
+    fn check(&self, block: &Block) -> Option<Result<(), String>>;
+}
+
 /// Reactor options (`ReactorOption`s and node config).
 #[derive(Debug, Clone)]
 pub struct ReactorOptions {
     /// `ReactorVerifyData`: ask the app (`ProcessProposal`) about every
     /// synced block (default true).
     pub verify_data: bool,
+    /// With `verify_data`: a check that can replace `ProcessProposal` for
+    /// committed blocks (see [`CommittedDataCheck`]). `None`: always ask
+    /// the app.
+    pub committed_data_check: Option<Arc<dyn CommittedDataCheck>>,
     /// Our validator address (`NewReactorWithAddr`): a node holding 1/3+
     /// of the power switches to consensus without waiting.
     pub local_addr: Option<Vec<u8>>,
@@ -88,6 +105,7 @@ impl Default for ReactorOptions {
     fn default() -> Self {
         Self {
             verify_data: true,
+            committed_data_check: None,
             local_addr: None,
             switch_to_consensus_interval: SWITCH_TO_CONSENSUS_INTERVAL,
         }
@@ -534,7 +552,21 @@ impl Reactor {
             };
             err = r.err().map(|e| e.to_string());
         }
-        if err.is_none() && self.opts.verify_data {
+        let committed_check = if err.is_none() && self.opts.verify_data {
+            self.opts
+                .committed_data_check
+                .as_ref()
+                .and_then(|c| c.check(&first))
+        } else {
+            None
+        };
+        if let Some(Err(e)) = &committed_check {
+            err = Some(format!(
+                "committed data of syncing block ({}) at height {height} is invalid: {e}",
+                hex::encode_upper(&first_id.hash)
+            ));
+        }
+        if err.is_none() && self.opts.verify_data && committed_check.is_none() {
             let (valid, perr) = match exec.process_proposal(&mut first, state) {
                 Ok(v) => (v, None),
                 Err(e) => (false, Some(e.to_string())),
