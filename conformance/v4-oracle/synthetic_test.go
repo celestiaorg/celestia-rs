@@ -36,6 +36,8 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		{"v3-rich", "v3-rich", "v3-rich", "v3-rich-v4", nil},
 		// Only the history chain's genesis is committed on the v3 side.
 		{"v3-history", "v3-history", "v3-history", "v3-history-v4", nil},
+		// A transfer channel opened at app version 3, used at version 4.
+		{"v3-ibc", "v3-ibc", "v3-ibc", "v3-ibc-v4", nil},
 	} {
 		t.Run(c.name, func(t *testing.T) { requireReproducible(t, v1, c.chain, c.v1Dir, c.v4Dir, c.args) })
 	}
