@@ -33,6 +33,10 @@ pub const IAVL_STORES: &[&str] = &[
     "fibre",
 ];
 
+/// IAVL stores added by celestia-app v8.0.8's store loader (v7 for
+/// chains that ran it).
+pub const ADDED_IN_V8: &[&str] = &["zkism"];
+
 /// Stores (and modules) celestia-app v10 added: absent from app version 9
 /// (celestia-app v9.0.8 without the `fibre` build tag), mounted by the v10
 /// upgrade's store loader (`StoreUpgrades.Added`).
