@@ -166,6 +166,27 @@ impl Server {
         state: Arc<dyn ChainState>,
         signer: Arc<dyn Signer>,
     ) -> Result<Self, StartError> {
+        Self::build(cfg, state, signer, None)
+    }
+
+    /// [`Self::new`] reporting into `metrics`, those of a server this one
+    /// replaces (a supervised restart): counters and histograms carry on,
+    /// occupancy and budget come from the new server.
+    pub fn with_metrics(
+        cfg: ServerConfig,
+        state: Arc<dyn ChainState>,
+        signer: Arc<dyn Signer>,
+        metrics: Arc<ServerMetrics>,
+    ) -> Result<Self, StartError> {
+        Self::build(cfg, state, signer, Some(metrics))
+    }
+
+    fn build(
+        cfg: ServerConfig,
+        state: Arc<dyn ChainState>,
+        signer: Arc<dyn Signer>,
+        metrics: Option<Arc<ServerMetrics>>,
+    ) -> Result<Self, StartError> {
         let health_settings: HealthSettings = cfg.validate()?;
         let listener = std::net::TcpListener::bind(&cfg.server_listen_address)
             .and_then(|l| l.set_nonblocking(true).map(|()| l))
@@ -179,7 +200,13 @@ impl Server {
             .local_addr()
             .map_err(|e| StartError::Other(format!("opening gRPC listener: {e}")))?;
         let occupancy = Arc::new(Occupancy::new(0));
-        let metrics = Arc::new(ServerMetrics::new(Arc::clone(&occupancy)));
+        let metrics = match metrics {
+            Some(m) => {
+                m.attach_occupancy(Arc::clone(&occupancy));
+                m
+            }
+            None => Arc::new(ServerMetrics::new(Arc::clone(&occupancy))),
+        };
         let workers = usize::try_from(cfg.upload_verify_workers).unwrap_or(1);
         let inner = Inner {
             state,
