@@ -12,11 +12,13 @@
 //! and the thread's previous state is restored when the call returns.
 //! [`crate::App`] routes InitChain, FinalizeBlock and Commit here for a
 //! cosmos-sdk v0.46 state ([`app`]); only releases that run as themselves
-//! execute ([`executes`]: app version 1). The EndBlocker's app version
-//! change ([`upgrade`]) and the migrations that `Commit` runs for it in
-//! Go ([`migrate`]) are part of the block here, before its app hash. App
-//! versions 2 and 3 still run as v9 elsewhere and stop with an error on
-//! a v0.46 state; app versions 4 and later never come here.
+//! start from genesis ([`executes`]: app version 1); blocks execute at
+//! app versions 1 to 3. The EndBlocker's app version change
+//! ([`upgrade`]) and the migrations that `Commit` runs for it in Go
+//! ([`migrate`]) are part of the block here, before its app hash. App
+//! version 4 (scheduled by the last app version 3 block) runs on the
+//! cosmos-sdk v0.50 app; a v0.46 state at app version 4 stops with an
+//! error.
 //!
 //! Reference: cosmos-sdk `v1.31.2-sdk-v0.46.16` `baseapp/abci.go` and
 //! `baseapp/baseapp.go`, celestia-app v3.13.0 `app/app.go`.
@@ -38,6 +40,7 @@ pub mod migrate;
 pub mod msgs;
 pub mod param_change;
 pub mod params;
+pub mod pfm;
 pub mod qgb;
 pub mod signal;
 pub mod tx;
@@ -695,21 +698,28 @@ impl<M: Modules> Driver<M> {
         let cp = consensus_params::load(&mut ctx, app_version)?;
         drop(ctx);
 
-        ms.flush()?;
         if let Some(to) = upgraded {
             // `BaseApp.Commit`: the header's app version is below the new
             // one, so the store and module migrations run before the
-            // commit.
-            migrate::stores(ms, block_version, to)?;
-            let _scope = sdk::version::SdkV046Scope::enter(to);
-            let mut ctx = Context::new(ms, header.clone(), ExecMode::Finalize);
-            ctx.consensus_params = cp.clone();
-            migrate::modules(&mut ctx, block_version, to)?;
-            drop(ctx);
-            self.phase_not_ported(req.height, "Commit migrations")?;
-            ms.flush()?;
+            // commit. They run on the block's branch, before the flush,
+            // so that a failure leaves no writes and no store changes.
+            let added = migrate::add_stores(ms, block_version, to)?;
+            let migrated = (|| {
+                let _scope = sdk::version::SdkV046Scope::enter(to);
+                let mut ctx = Context::new(ms, header.clone(), ExecMode::Finalize);
+                ctx.consensus_params = cp.clone();
+                migrate::modules(&mut ctx, block_version, to)?;
+                drop(ctx);
+                self.phase_not_ported(req.height, "Commit migrations")
+            })();
+            if let Err(e) = migrated {
+                migrate::unmount_added(ms, &added);
+                return Err(e);
+            }
+            migrate::remove_stores(ms, block_version, to)?;
             self.app_version = to;
         }
+        ms.flush()?;
         let app_hash = ms.working_hash()?.to_vec();
         self.finalized = Some(header);
         Ok(ResponseFinalizeBlock {

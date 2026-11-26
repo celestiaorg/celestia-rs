@@ -122,9 +122,21 @@ fn end_module(ctx: &mut Context<'_>, module: &str) -> Result<Vec<ValidatorUpdate
     Ok(Vec::new())
 }
 
+/// Whether `module` is in the block's module set: blobstream (`qgb`) only
+/// at app version 1. The modules app version 2 adds (signal, minfee,
+/// interchain accounts, packet forward middleware) have no begin or end
+/// blocker.
+fn runs_at(ctx: &Context<'_>, module: &str) -> bool {
+    let version = ctx.consensus_params.version.as_ref().map_or(1, |v| v.app);
+    module != "qgb" || version == 1
+}
+
 /// celestia-app v1 `BeginBlocker`: the module manager's BeginBlock.
 pub fn begin_block(ctx: &mut Context<'_>, header: &TmHeader) -> Result<()> {
     for &module in V1_BEGIN_BLOCKERS {
+        if !runs_at(ctx, module) {
+            continue;
+        }
         begin_module(ctx, module, header)?;
     }
     Ok(())
@@ -136,6 +148,9 @@ pub fn begin_block(ctx: &mut Context<'_>, header: &TmHeader) -> Result<()> {
 pub fn end_block(ctx: &mut Context<'_>) -> Result<Vec<ValidatorUpdate>> {
     let mut updates = Vec::new();
     for &module in V1_END_BLOCKERS {
+        if !runs_at(ctx, module) {
+            continue;
+        }
         let u = end_module(ctx, module)?;
         if !u.is_empty() {
             if !updates.is_empty() {

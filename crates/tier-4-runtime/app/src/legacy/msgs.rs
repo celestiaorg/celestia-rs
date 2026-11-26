@@ -418,6 +418,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
     if let Some(r) = super::blob::route(ctx, msg) {
         return r;
     }
+    if let Some(r) = super::signal::route(ctx, msg) {
+        return r;
+    }
     Err(super::not_ported(errs::unknown_request(format!(
         "the cosmos-sdk v0.46 handler of {} is not ported",
         msg.type_url
