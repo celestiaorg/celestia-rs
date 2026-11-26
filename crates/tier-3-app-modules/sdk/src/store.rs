@@ -90,13 +90,16 @@ impl From<kvstore::Error> for StoreError {
 
 type BaseIter = Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>), StoreError>> + Send>;
 
+/// A cache layer write in a range: the value, or `None` for a delete.
+type Write = (Vec<u8>, Option<Vec<u8>>);
+
 /// Lazy merged range of a [`MultiStore`] store (see
 /// [`MultiStore::lazy_range`]): committed entries, read on demand, merged
 /// with a snapshot of the cache layers' writes; a layered write shadows the
 /// committed value and a layered delete hides it.
 pub struct LazyRange {
     base: std::iter::Peekable<BaseIter>,
-    overlay: std::iter::Peekable<std::vec::IntoIter<(Vec<u8>, Option<Vec<u8>>)>>,
+    overlay: std::iter::Peekable<std::vec::IntoIter<Write>>,
     reverse: bool,
     failed: bool,
 }
@@ -460,7 +463,7 @@ impl MultiStore {
                 }
             }
         }
-        let mut overlay: Vec<(Vec<u8>, Option<Vec<u8>>)> = writes.into_iter().collect();
+        let mut overlay: Vec<Write> = writes.into_iter().collect();
         if reverse {
             overlay.reverse();
         }
@@ -634,6 +637,8 @@ mod stack_tests {
 mod range_iter_tests {
     use super::*;
 
+    type Bounds<'a> = (Option<&'a [u8]>, Option<&'a [u8]>);
+
     /// A committed store plus two cache layers with sets and deletes that
     /// shadow committed keys, add new ones and delete layered ones.
     fn layered() -> Result<MultiStore, StoreError> {
@@ -690,7 +695,7 @@ mod range_iter_tests {
     #[test]
     fn lazy_range_equals_the_merged_view() -> Result<(), StoreError> {
         let m = layered()?;
-        let bounds: [(Option<&[u8]>, Option<&[u8]>); 5] = [
+        let bounds: [Bounds<'_>; 5] = [
             (None, None),
             (Some(b"k"), Some(b"l")),
             (Some(&[b'k', 2]), Some(&[b'k', 30])),
