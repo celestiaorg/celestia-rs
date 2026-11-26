@@ -25,6 +25,10 @@ mkdir -p $OUT $T $HOME_DATA
 [ -e $HOME_DATA/application.db ] || ln -s /data/appdb $HOME_DATA/application.db
 for v in v046 v050; do [ -x $T/archive-export-$v ] || { vmx-gcs get tools/archive-export-$v $T/archive-export-$v && chmod 755 $T/archive-export-$v; }; done
 [ -d $RS/.git ] || git clone -q --depth 1 https://github.com/celestiaorg/celestia-rs $RS
+# A checkout left by an earlier run can hold an old verifier, which rejects
+# valid snapshots and makes the next run export them again. Use main's.
+git -C $RS fetch -q --depth 1 origin main && git -C $RS checkout -q --detach FETCH_HEAD ||
+  { echo "cannot update $RS to origin/main"; exit 1; }
 # The verifier comes from main (it accepts the v0.46 duplicated zlib trailer).
 [ -s $RS/conformance/mainnet-rpc/verify-replay-checkpoint.py ] || { echo "no verifier"; exit 1; }
 command -v jq >/dev/null || { apt-get -o DPkg::Lock::Timeout=600 update -q >/dev/null; apt-get -o DPkg::Lock::Timeout=600 install -yq jq >/dev/null; }
