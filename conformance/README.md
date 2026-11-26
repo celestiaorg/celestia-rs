@@ -448,6 +448,35 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json
   -out ../fixtures/synthetic/v8
 ```
 
+#### Synthetic chain across the v8 to v9 upgrade
+
+`v8-oracle -heights 10 -next-handoff` runs the chain on to block 56: the
+validators signal version 9, a `MsgTryUpgrade` in block 53 reaches
+quorum, and the EndBlocker of block 56 sets app version 9 and schedules
+plan `v9` at 57. [`fixtures/synthetic/v8-to-v9`](fixtures/synthetic/v8-to-v9)
+holds its outputs (blocks 47 to 51 are those of `fixtures/synthetic/v8`).
+`v9-oracle` opens the home with celestia-app v9.0.8, built without the
+`fibre` build tag as the release binaries are (so no store is added). The
+PreBlocker of block 57 runs the `v9` handler (BlockMaxBytes 32 MiB,
+evidence MaxAgeNumBlocks 559,940, blob GovMaxSquareSize 256, IBC
+MaxExpectedTimePerBlock 13 s), and the program executes blocks 57 to 61.
+Its `tx-results.jsonl.gz` also records each block's whole `timeout_info`,
+which has more fields in celestia-core v0.40.
+[`fixtures/synthetic/v9`](fixtures/synthetic/v9) holds the outputs from
+height 56. `go test` in `v8-oracle` rebuilds `v8-to-v9`; `go test` in
+`v9-oracle` runs the whole chain from genesis and rebuilds `v9`.
+`cargo test -p app --test synthetic_v9_oracle` checks the fixtures'
+facts. To regenerate, after the v6 to v8 commands (on a fresh home):
+
+```sh
+cd conformance/v8-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v8-to-v9 -heights 10 -next-handoff
+cd ../v9-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v9
+```
+
 #### Rich synthetic chain for the v3 to v4 migrations
 
 `v1-oracle -synthetic -chain v3-rich` builds a second chain (genesis at
