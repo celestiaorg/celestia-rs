@@ -13,7 +13,8 @@
 //! cargo run --release -p celestia-rs --example replay_bench -- \
 //!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR] \
 //!   [--iavl-cache 781250] [--db-cache-mib 512] [--pruning-interval 1] \
-//!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl]
+//!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl] \
+//!   [--background-pruning true]
 //! ```
 //!
 //! `--base` holds a home after InitChain (created on first use), so later
@@ -45,6 +46,7 @@ struct Args {
     pruning_interval: u64,
     discard_abci_responses: bool,
     blocks_jsonl: Vec<PathBuf>,
+    background_pruning: bool,
 }
 
 fn args() -> anyhow::Result<Args> {
@@ -62,6 +64,8 @@ fn args() -> anyhow::Result<Args> {
         // config.toml `storage.discard_abci_responses` (template: true).
         discard_abci_responses: true,
         blocks_jsonl: Vec::new(),
+        // `celestia-rs start` prunes in the background.
+        background_pruning: true,
     };
     let mut it = std::env::args().skip(1);
     while let Some(k) = it.next() {
@@ -74,6 +78,7 @@ fn args() -> anyhow::Result<Args> {
             "--db-cache-mib" => a.db_cache_mib = v.parse()?,
             "--pruning-interval" => a.pruning_interval = v.parse()?,
             "--discard-abci-responses" => a.discard_abci_responses = v.parse()?,
+            "--background-pruning" => a.background_pruning = v.parse()?,
             "--blocks-jsonl" => a.blocks_jsonl.extend(v.split(',').map(PathBuf::from)),
             _ => bail!("unknown argument {k}"),
         }
@@ -142,6 +147,7 @@ fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State)> {
     opts.store.node_cache_size = a.iavl_cache;
     opts.db.cache_size = a.db_cache_mib << 20;
     opts.store.pruning.interval = a.pruning_interval;
+    opts.store.background_pruning = a.background_pruning;
     let app = app::App::open_with(home, opts).map_err(|e| anyhow!("open app: {}", e.log))?;
     let (bs, mut ss) = node::open_stores(home)?;
     ss.discard_abci_responses = a.discard_abci_responses;

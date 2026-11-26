@@ -1123,6 +1123,7 @@ mod tests {
             multistore::StoreOptions {
                 pruning: multistore::PruningOptions::nothing(),
                 node_cache_size: 128,
+                ..multistore::StoreOptions::default()
             },
         );
         for name in ["acc", "bank", "zempty"] {

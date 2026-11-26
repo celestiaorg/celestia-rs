@@ -1155,6 +1155,9 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
         opts.db.cache_size = a.db_cache_mib << 20;
     }
     opts.store.pruning = pruning;
+    // Prune storage off the block execution thread (same deletions, same
+    // retained versions; a crash before a prune lands leaves a superset).
+    opts.store.background_pruning = true;
     if let Ok(n) = usize::try_from(files.int(File::App, "iavl-cache-size"))
         && n > 0
     {

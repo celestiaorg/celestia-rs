@@ -46,6 +46,7 @@ fn open(db: Arc<dyn KvBackend>, pruning: PruningOptions) -> Store {
         StoreOptions {
             pruning,
             node_cache_size: 64,
+            ..StoreOptions::default()
         },
     ))
 }

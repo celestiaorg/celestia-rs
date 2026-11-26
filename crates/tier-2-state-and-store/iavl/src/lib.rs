@@ -361,6 +361,18 @@ impl Tree {
         keep: impl Fn(Version) -> bool,
         batch: &mut WriteBatch,
     ) -> Result<Vec<Version>> {
+        let plan = self.plan_prune(keep);
+        plan.write_to(batch)?;
+        self.forget_versions(&plan);
+        Ok(plan.versions())
+    }
+
+    /// The versions [`Self::prune`] would delete and what it needs to queue
+    /// their storage deletions, without changing the tree: run
+    /// [`PrunePlan::write_to`] (on any thread; it reads only the orphan
+    /// records of the deleted versions) and [`Self::forget_versions`].
+    #[must_use]
+    pub fn plan_prune(&self, keep: impl Fn(Version) -> bool) -> PrunePlan {
         let latest = self.version;
         let delete: BTreeSet<Version> = self
             .versions
@@ -368,31 +380,29 @@ impl Tree {
             .copied()
             .filter(|v| *v != latest && !keep(*v))
             .collect();
-        if delete.is_empty() {
-            return Ok(Vec::new());
+        let retained: BTreeSet<Version> = self
+            .versions
+            .keys()
+            .copied()
+            .filter(|v| !delete.contains(v))
+            .collect();
+        PrunePlan {
+            ndb: if delete.is_empty() {
+                None
+            } else {
+                self.ndb.clone()
+            },
+            delete,
+            retained,
         }
-        if let Some(ndb) = &self.ndb {
-            let retained: BTreeSet<Version> = self
-                .versions
-                .keys()
-                .copied()
-                .filter(|v| !delete.contains(v))
-                .collect();
-            for &d in &delete {
-                batch.delete(ndb.root_key(d));
-                for nk in ndb.orphans(d)? {
-                    batch.delete(ndb.orphan_key(d, nk));
-                    match retained.range(nk.version..d).next_back() {
-                        Some(&t) => batch.put(ndb.orphan_key(t, nk), Vec::new()),
-                        None => ndb.delete_node(batch, nk),
-                    }
-                }
-            }
-        }
-        for d in &delete {
+    }
+
+    /// Drops the versions of `plan` from the tree (they can no longer be
+    /// loaded); their storage goes with [`PrunePlan::write_to`].
+    pub fn forget_versions(&mut self, plan: &PrunePlan) {
+        for d in &plan.delete {
             self.versions.remove(d);
         }
-        Ok(delete.into_iter().collect())
     }
 
     /// Deletes every committed version above `target` and makes `target`
@@ -935,6 +945,44 @@ pub struct CommitInfo {
     pub root_hash: Hash,
     /// Number of entries in the committed tree.
     pub size: usize,
+}
+
+/// The storage deletions of a prune ([`Tree::plan_prune`]): owns what it
+/// reads, so it can run apart from the tree.
+#[derive(Debug, Clone)]
+pub struct PrunePlan {
+    ndb: Option<Arc<NodeDb>>,
+    delete: BTreeSet<Version>,
+    retained: BTreeSet<Version>,
+}
+
+impl PrunePlan {
+    /// The versions deleted, ascending.
+    #[must_use]
+    pub fn versions(&self) -> Vec<Version> {
+        self.delete.iter().copied().collect()
+    }
+
+    /// Queues the deletions into `batch`: each deleted version's root and
+    /// orphan records; a node orphaned after a deleted version moves to the
+    /// newest older retained version still containing it, or is deleted
+    /// when there is none (retained versions keep their exact hashes).
+    pub fn write_to(&self, batch: &mut WriteBatch) -> Result<()> {
+        let Some(ndb) = &self.ndb else {
+            return Ok(());
+        };
+        for &d in &self.delete {
+            batch.delete(ndb.root_key(d));
+            for nk in ndb.orphans(d)? {
+                batch.delete(ndb.orphan_key(d, nk));
+                match self.retained.range(nk.version..d).next_back() {
+                    Some(&t) => batch.put(ndb.orphan_key(t, nk), Vec::new()),
+                    None => ndb.delete_node(batch, nk),
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Owned key/value iterator entry.
