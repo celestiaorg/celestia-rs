@@ -36,6 +36,7 @@ use std::sync::Arc;
 use ctypes::{Part, PartSet, PartSetHeader, Proposal, PubKey};
 
 pub mod erasure;
+mod gf8;
 pub mod peer_state;
 pub mod reactor;
 pub mod types;

@@ -59,13 +59,13 @@ pub(super) async fn handle(bridge: Arc<Bridge>, method: &str, params: &Value) ->
                 ensure!(range.end - 1 <= head(&bridge)?, "range is not committed");
                 let mut result = Vec::new();
                 for height in range {
-                    let block = bridge.committed(height)?;
+                    let header = bridge.index.header(height)?;
                     ensure!(
-                        block.header.last_block_id.hash == previous,
+                        header.header.last_block_id.hash == previous,
                         "discontinuous header range"
                     );
-                    previous.clone_from(&block.commit.block_id.hash);
-                    result.push(block.header_json());
+                    result.push(header.json());
+                    previous = header.commit.block_id.hash;
                 }
                 Ok(J::Arr(result))
             })

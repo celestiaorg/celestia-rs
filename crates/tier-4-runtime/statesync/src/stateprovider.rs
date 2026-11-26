@@ -12,6 +12,10 @@ use crate::state::{State, TM_CORE_SEM_VER, empty_state};
 
 /// `StateProvider`.
 pub trait StateProvider: Send + Sync {
+    /// Lowest snapshot height to consider during automatic peer discovery.
+    fn minimum_snapshot_height(&self) -> u64 {
+        0
+    }
     /// The app hash after `height` was committed (from header `height+1`).
     fn app_hash(&self, height: u64) -> light::Result<Vec<u8>>;
     /// The commit for `height`.
@@ -41,6 +45,7 @@ struct Entry {
 /// `lightClientStateProvider`.
 pub struct LightClientStateProvider {
     lc: Mutex<Client>,
+    trust_height: u64,
     version: ctypes::Consensus,
     initial_height: i64,
     providers: Vec<Entry>,
@@ -124,6 +129,8 @@ impl LightClientStateProvider {
         )?;
         Ok(Self {
             lc: Mutex::new(lc),
+            trust_height: u64::try_from(trust_options.height)
+                .map_err(|_| light::Error::msg("negative trust height"))?,
             version,
             initial_height,
             providers: providers
@@ -157,6 +164,12 @@ fn height_i64(h: u64) -> i64 {
 }
 
 impl StateProvider for LightClientStateProvider {
+    fn minimum_snapshot_height(&self) -> u64 {
+        // State and commit verification start at the snapshot height. Below the
+        // anchor, the light client must fetch every intervening header by RPC.
+        self.trust_height
+    }
+
     fn app_hash(&self, height: u64) -> light::Result<Vec<u8>> {
         let mut lc = self.lock();
         let h = height_i64(height);

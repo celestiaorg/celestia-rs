@@ -702,7 +702,12 @@ impl App {
 
     fn app_version(&self) -> u64 {
         if self.last_height == 0 {
-            return INITIAL_APP_VERSION;
+            // Between a v0.46 InitChain and the first commit, the driver
+            // holds the genesis app version.
+            return match self.legacy.as_ref().map(legacy::Driver::app_version) {
+                Some(v) if v != 0 => v,
+                _ => INITIAL_APP_VERSION,
+            };
         }
         // A cosmos-sdk v0.46 state (app versions 1 to 3) has no x/consensus
         // store; its version lives in the params subspace `baseapp`.

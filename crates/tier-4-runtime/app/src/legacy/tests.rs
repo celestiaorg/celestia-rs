@@ -2072,6 +2072,64 @@ fn v1_run_tx_decodes_with_the_v1_registry() {
     );
 }
 
+/// Runs a v1 transaction through `runTx`: its outcome and the not-ported
+/// record (which aborts the block in the driver).
+fn run_v1_tx(raw: &[u8]) -> (super::TxOutcome, Option<String>) {
+    let mut ms = v1_store();
+    let _v046 = sdk::version::SdkV046Scope::enter(1);
+    let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params = mainnet_consensus_params();
+    let mut block_gas = kvstore::GasMeter::infinite();
+    let _ = take_not_ported();
+    let out = tx::deliver_tx(&mut ctx, &mut block_gas, raw);
+    (out, take_not_ported())
+}
+
+/// `levels` `MsgExec`s nested through their `msgs` (the outermost with a
+/// valid grantee, so its `ValidateBasic` passes), around a `MsgSend`.
+fn nested_exec(levels: usize) -> celestia_proto::Any {
+    use celestia_proto::cosmos::authz::v1beta1::MsgExec;
+    let grantee = x_auth::bech32(&[1; 20]).unwrap();
+    let mut msg = celestia_proto::Any::pack(&celestia_proto::cosmos::bank::v1beta1::MsgSend {
+        from_address: grantee.clone(),
+        to_address: grantee.clone(),
+        amount: vec![],
+    });
+    for _ in 0..levels {
+        msg = celestia_proto::Any::pack(&MsgExec {
+            grantee: grantee.clone(),
+            msgs: vec![msg],
+        });
+    }
+    msg
+}
+
+/// `MsgVersioningGateKeeper.hasInvalidMsg` recurses into `MsgExec`
+/// without a limit: past the legacy layer's nesting cap Go would go on
+/// to the ante handler, so the block aborts instead of failing the tx.
+#[test]
+fn v1_gatekeeper_nesting_cap_aborts_the_block() {
+    let (out, record) = run_v1_tx(&raw_tx(vec![nested_exec(70)]));
+    assert!(out.result.is_err());
+    let what = record.expect("not recorded");
+    assert!(what.contains("max depth exceeded"), "{what}");
+    // Within the cap the gatekeeper accepts and the ante handler runs.
+    let (out, record) = run_v1_tx(&raw_tx(vec![nested_exec(60)]));
+    assert!(out.result.is_err());
+    assert!(record.is_none(), "{record:?}");
+}
+
+/// The decoder's recursion limit, which Go v0.46 does not have, aborts
+/// the block under the v1 decoder instead of failing the tx.
+#[test]
+fn v1_decoder_recursion_limit_aborts_the_block() {
+    let raw = raw_tx(vec![nested_exec(10_050)]);
+    let (out, record) = run_v1_tx(&raw);
+    assert!(out.result.is_err());
+    let what = record.expect("not recorded");
+    assert!(what.contains("recursion limit reached"), "{what}");
+}
+
 /// v0.46 `Commission.String()` as mainnet's first `MsgEditValidator`
 /// (height 13) emitted it, and with a fractional update time.
 #[test]

@@ -15,22 +15,39 @@ use crate::registry;
 
 const BIT11_NON_CRITICAL: i64 = 1 << 10;
 
-/// `RejectUnknownFields`: returns whether non-critical unknown fields were
-/// seen, and the error (if any) – Go returns both.
+/// The outcome of [`reject_unknown_fields`].
+pub(crate) struct Rejection {
+    /// Whether non-critical unknown fields were seen (Go returns it with
+    /// the error).
+    pub(crate) has_unknown_non_criticals: bool,
+    /// Whether the error is the walk's recursion limit (cosmos-sdk
+    /// v0.50's; v0.46 has none).
+    pub(crate) recursion_limit: bool,
+    /// The error, if any.
+    pub(crate) result: GoResult<()>,
+}
+
+/// `RejectUnknownFields`.
 pub(crate) fn reject_unknown_fields(
     bz: &[u8],
     msg: &'static MessageInfo,
     allow_unknown_non_criticals: bool,
-) -> (bool, GoResult<()>) {
+) -> Rejection {
     let mut has = false;
-    let r = walk(
+    let mut limited = false;
+    let result = walk(
         bz,
         msg,
         allow_unknown_non_criticals,
         protowire::DEFAULT_RECURSION_LIMIT,
         &mut has,
+        &mut limited,
     );
-    (has, r)
+    Rejection {
+        has_unknown_non_criticals: has,
+        recursion_limit: limited && result.is_err(),
+        result,
+    }
 }
 
 /// `wireTypeToString`.
@@ -96,11 +113,13 @@ fn walk(
     allow: bool,
     recursion_limit: i32,
     has: &mut bool,
+    limited: &mut bool,
 ) -> GoResult<()> {
     if bz.is_empty() {
         return Ok(());
     }
     if recursion_limit == 0 {
+        *limited = true;
         return Err(GoError::new("recursion limit reached"));
     }
     while !bz.is_empty() {
@@ -160,7 +179,14 @@ fn walk(
 
         let nested: &'static MessageInfo = if f.type_name == "google.protobuf.Any" {
             let any_info = gogo::info("google.protobuf.Any")?;
-            walk(field_bytes, any_info, allow, recursion_limit - 1, has)?;
+            walk(
+                field_bytes,
+                any_info,
+                allow,
+                recursion_limit - 1,
+                has,
+                limited,
+            )?;
             let any = gogo::unmarshal("google.protobuf.Any", field_bytes)?;
             let type_url = any.bytes(1);
             let resolved = registry::resolve(type_url).ok_or_else(|| {
@@ -170,12 +196,19 @@ fn walk(
                 ))
             })?;
             let value = any.bytes(2).to_vec();
-            walk(&value, resolved, allow, recursion_limit - 1, has)?;
+            walk(&value, resolved, allow, recursion_limit - 1, has, limited)?;
             continue;
         } else {
             gogo::info(f.type_name)?
         };
-        walk(field_bytes, nested, allow, recursion_limit - 1, has)?;
+        walk(
+            field_bytes,
+            nested,
+            allow,
+            recursion_limit - 1,
+            has,
+            limited,
+        )?;
     }
     Ok(())
 }

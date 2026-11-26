@@ -110,9 +110,13 @@ fn gatekeeper_order(msgs: &[Any], depth: usize, out: &mut Vec<String>) -> Result
     use prost::Message as _;
     for msg in msgs {
         if msg.type_url == "/cosmos.authz.v1beta1.MsgExec" {
-            // The decoder bounds the nesting depth of `Any`s.
+            // Go's `hasInvalidMsg` recurses without a limit and would go
+            // on to the ante handler; this cap bounds the recursion here,
+            // so exceeding it is not ported (the block aborts).
             if depth > 64 {
-                return Err(errs::invalid_request("max depth exceeded"));
+                return Err(super::not_ported(errs::invalid_request(
+                    "max depth exceeded",
+                )));
             }
             let exec =
                 celestia_proto::cosmos::authz::v1beta1::MsgExec::decode(msg.value.as_slice())
@@ -272,6 +276,11 @@ fn run(ctx: &mut Context<'_>, block_gas: &mut GasMeter, tx_bytes: &[u8]) -> Ran 
     // with no gas wanted, before the ante handler (no fee, no sequence).
     let tx = match txdecode::decode_v1(tx_bytes) {
         Ok(tx) => tx,
+        // A nesting limit Go v0.46's decoder does not have: Go would
+        // decode on, so no result here is Go's (the block aborts).
+        Err(e) if txdecode::is_v1_unsupported_limit(&e) => {
+            return Ran::early(0, super::not_ported(e));
+        }
         Err(e) => return Ran::early(0, e),
     };
     // `validateBasicTxMsgs` (a Go panic in a `ValidateBasic` is recovered
