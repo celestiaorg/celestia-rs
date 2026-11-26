@@ -426,8 +426,9 @@ fn validate_submit_v1(m: &v1::MsgSubmitProposal) -> Result<()> {
                 if err.is_panic() {
                     return Err(err);
                 }
-                return Err(gerr::invalid_proposal_msg()
-                    .wrap(format!("msg: {idx}, err: {}", err.log)));
+                return Err(
+                    gerr::invalid_proposal_msg().wrap(format!("msg: {idx}, err: {}", err.log))
+                );
             }
             continue;
         }

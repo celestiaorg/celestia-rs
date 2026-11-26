@@ -21,9 +21,11 @@ fn decode(msg: &Any) -> Result<MsgSubmitEvidence> {
 fn evidence(m: &MsgSubmitEvidence) -> Result<Option<Equivocation>> {
     match m.evidence.as_ref() {
         None => Ok(None),
-        Some(a) if a.type_url == Equivocation::type_url() => Equivocation::decode(a.value.as_slice())
-            .map(Some)
-            .map_err(|e| errs::tx_decode(e.to_string())),
+        Some(a) if a.type_url == Equivocation::type_url() => {
+            Equivocation::decode(a.value.as_slice())
+                .map(Some)
+                .map_err(|e| errs::tx_decode(e.to_string()))
+        }
         Some(a) => Err(super::not_ported(errs::unknown_request(format!(
             "the cosmos-sdk v0.46 evidence {}",
             a.type_url
