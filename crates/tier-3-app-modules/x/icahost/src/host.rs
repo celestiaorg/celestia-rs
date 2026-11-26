@@ -451,11 +451,10 @@ fn decode_packet_data(bz: &[u8]) -> core::result::Result<(i32, Vec<u8>), ()> {
     Ok((ty, data))
 }
 
-/// Whether the app version is 9 (celestia-app v9.0.8's registry and schema
-/// for the gogoproto decoding of host messages).
-fn is_v9(ctx: &Context<'_>) -> bool {
-    let version = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    sdk::version::is_v9(sdk::version::executing(version))
+/// Whether host messages decode with celestia-app v9.0.8's registry and
+/// schema ([`sdk::version::Release::v9_registry`]).
+fn v9_registry(ctx: &Context<'_>) -> bool {
+    ctx.release().v9_registry()
 }
 
 /// Keeper `OnRecvPacket`: the `TxMsgData` result bytes.
@@ -472,7 +471,7 @@ fn keeper_on_recv_packet(
     if ty != 1 {
         return Err(errors::unknown_data_type(""));
     }
-    let v9 = is_v9(ctx);
+    let v9 = v9_registry(ctx);
     let msgs = deserialize_cosmos_tx(&data, &metadata.encoding, reg, v9)
         .map_err(|e| e.wrap("failed to deserialize interchain account transaction"))?;
     execute_tx(
@@ -611,7 +610,7 @@ fn authenticate_tx(
                 m.type_url
             )));
         }
-        let signers = msg_v1_signers(is_v9(ctx), m)?;
+        let signers = msg_v1_signers(v9_registry(ctx), m)?;
         for bytes in signers {
             let got = sdk::address::to_bech32(sdk::address::ACC_PREFIX, &bytes);
             if got != ica {
@@ -673,7 +672,7 @@ fn execute_tx(
     authenticate_tx(ctx, msgs, &hop, source_port)?;
     // `authenticateTx`'s `GetMsgV1Signers` marshaled each message: nil
     // customtypes are zero when they execute. (A nil message failed it.)
-    let msgs: Vec<Any> = txdecode::scoped_v9(is_v9(ctx), || {
+    let msgs: Vec<Any> = txdecode::scoped_v9(v9_registry(ctx), || {
         msgs.iter()
             .flatten()
             .map(txdecode::gogo_marshaled)

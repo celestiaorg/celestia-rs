@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 
 use blocksync::reactor::Network;
-use blocksync::{Reactor, ReactorOptions, SwitchToConsensus};
+use blocksync::{CommittedDataCheck, Reactor, ReactorOptions, SwitchToConsensus};
 use ctypes::proto::abci;
 use ctypes::{
     BLOCK_ID_FLAG_COMMIT, BlockId, Commit, CommitSig, ExtendedCommit, PubKey, Time, Vote,
@@ -34,6 +34,12 @@ struct TestApp {
     hash: Vec<u8>,
     pending: Option<(i64, Vec<u8>)>,
     reject_height: Option<i64>,
+    /// ProcessProposal fails (like the app version 1 legacy driver, which
+    /// does not implement it).
+    pp_unsupported: bool,
+    /// FinalizeBlock at this height switches the app version (like an
+    /// upgrade height on mainnet).
+    upgrade: Option<(i64, u64)>,
 }
 
 impl AppConn for TestApp {
@@ -70,6 +76,9 @@ impl AppConn for TestApp {
         &mut self,
         req: abci::RequestProcessProposal,
     ) -> nodestore::Result<abci::ResponseProcessProposal> {
+        if self.pp_unsupported {
+            return Err(nodestore::Error::new("ProcessProposal is not supported"));
+        }
         let reject = self.reject_height == Some(req.height);
         Ok(abci::ResponseProcessProposal {
             status: if reject {
@@ -98,6 +107,12 @@ impl AppConn for TestApp {
                 .map(|_| abci::ExecTxResult::default())
                 .collect(),
             app_hash: h,
+            consensus_param_updates: self.upgrade.filter(|(at, _)| *at == req.height).map(
+                |(_, app)| celestia_core_proto::tendermint::types::ConsensusParams {
+                    version: Some(celestia_core_proto::tendermint::types::VersionParams { app }),
+                    ..Default::default()
+                },
+            ),
             ..Default::default()
         })
     }
@@ -370,16 +385,11 @@ impl Network for Endpoint {
 }
 
 fn reactor_for(node: &Node, name: &str, net: &Arc<Net>) -> Arc<Reactor> {
-    let r = Arc::new(
-        Reactor::new(
-            &node.state,
-            node.bs.clone(),
-            node.ss.clone(),
-            0,
-            ReactorOptions::default(),
-        )
-        .unwrap(),
-    );
+    reactor_with(node, name, net, ReactorOptions::default())
+}
+
+fn reactor_with(node: &Node, name: &str, net: &Arc<Net>, opts: ReactorOptions) -> Arc<Reactor> {
+    let r = Arc::new(Reactor::new(&node.state, node.bs.clone(), node.ss.clone(), 0, opts).unwrap());
     r.set_network(Arc::new(Endpoint {
         me: name.into(),
         net: Arc::clone(net),
@@ -392,9 +402,13 @@ fn reactor_for(node: &Node, name: &str, net: &Arc<Net>) -> Arc<Reactor> {
 }
 
 fn chain(n_blocks: i64, vote_ext_height: i64) -> (GenesisDoc, Node, Vec<Key>) {
+    chain_with(n_blocks, vote_ext_height, TestApp::default())
+}
+
+fn chain_with(n_blocks: i64, vote_ext_height: i64, app: TestApp) -> (GenesisDoc, Node, Vec<Key>) {
     let g = genesis(4, vote_ext_height);
     let keys: Vec<Key> = (0..4).map(key).collect();
-    let mut node = open_node(&g, TestApp::default());
+    let mut node = open_node(&g, app);
     for _ in 0..n_blocks {
         node.produce(&keys);
     }
@@ -685,4 +699,260 @@ fn store_state_mismatch_is_rejected() {
         .is_err()
     );
     let _ = Commit::default();
+}
+
+/// A committed data check that records the heights it saw and fails at
+/// `fail_height` (or defers to ProcessProposal when `defer`).
+#[derive(Debug, Default)]
+struct RecordingCheck {
+    seen: Mutex<Vec<i64>>,
+    versions: Mutex<Vec<(i64, u64)>>,
+    fail_height: Option<i64>,
+    defer: bool,
+}
+
+impl CommittedDataCheck for RecordingCheck {
+    fn check(&self, block: &ctypes::Block) -> Option<Result<(), String>> {
+        if self.defer {
+            return None;
+        }
+        self.seen.lock().unwrap().push(block.header.height);
+        self.versions
+            .lock()
+            .unwrap()
+            .push((block.header.height, block.header.version.app));
+        if self.fail_height == Some(block.header.height) {
+            return Some(Err("data root mismatch".into()));
+        }
+        Some(Ok(()))
+    }
+}
+
+fn opts_with_check(check: &Arc<RecordingCheck>) -> ReactorOptions {
+    ReactorOptions {
+        committed_data_check: Some(Arc::clone(check) as Arc<dyn CommittedDataCheck>),
+        ..ReactorOptions::default()
+    }
+}
+
+fn sync_for(client: &mut Node, reactor: &Reactor, secs: u64) -> blocksync::SyncOutcome {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+    let state = client.state.clone();
+    reactor
+        .run_sync(state, &mut client.exec, false, true, &mut |_| {
+            std::time::Instant::now() > deadline
+        })
+        .unwrap()
+}
+
+#[test]
+fn committed_data_check_replaces_process_proposal() {
+    // An app without ProcessProposal (app version 1 to 3 legacy driver):
+    // a data check that vouches for committed blocks lets block sync go on.
+    let (g, server, _) = chain(30, 0);
+    let mut client = open_node(
+        &g,
+        TestApp {
+            pp_unsupported: true,
+            ..TestApp::default()
+        },
+    );
+    let net = Arc::new(Net::default());
+    reactor_for(&server, "server", &net);
+    let check = Arc::new(RecordingCheck::default());
+    let rc = reactor_with(&client, "client", &net, opts_with_check(&check));
+    connect(&net, "server", "client");
+    let out = sync(&mut client, &rc);
+    assert_eq!(out.reason, SwitchToConsensus::CaughtUp);
+    assert_eq!(out.state.last_block_height, 29);
+    assert_eq!(*check.seen.lock().unwrap(), (1..=29).collect::<Vec<_>>());
+    assert!(net.stopped.lock().unwrap().is_empty());
+}
+
+#[test]
+fn process_proposal_error_without_data_check_stops_peer() {
+    // Without a committed data check, the legacy app's ProcessProposal
+    // error rejects block 1 (the old behaviour that stalled mainnet sync).
+    let (g, server, _) = chain(10, 0);
+    let mut client = open_node(
+        &g,
+        TestApp {
+            pp_unsupported: true,
+            ..TestApp::default()
+        },
+    );
+    let net = Arc::new(Net::default());
+    reactor_for(&server, "server", &net);
+    let rc = reactor_for(&client, "client", &net);
+    connect(&net, "server", "client");
+    let out = sync_for(&mut client, &rc, 4);
+    assert_eq!(out.state.last_block_height, 0);
+    let stopped = net.stopped.lock().unwrap().clone();
+    assert!(
+        stopped
+            .iter()
+            .any(|(p, r)| p == "server" && r.contains("ProcessProposal is not supported")),
+        "{stopped:?}"
+    );
+}
+
+#[test]
+fn failed_committed_data_check_stops_peer() {
+    let (g, server, _) = chain(10, 0);
+    let mut client = open_node(&g, TestApp::default());
+    let net = Arc::new(Net::default());
+    reactor_for(&server, "server", &net);
+    let check = Arc::new(RecordingCheck {
+        fail_height: Some(5),
+        ..RecordingCheck::default()
+    });
+    let rc = reactor_with(&client, "client", &net, opts_with_check(&check));
+    connect(&net, "server", "client");
+    let out = sync_for(&mut client, &rc, 8);
+    assert_eq!(out.state.last_block_height, 4);
+    let stopped = net.stopped.lock().unwrap().clone();
+    assert!(
+        stopped.iter().any(|(p, r)| p == "server"
+            && r.contains("committed data of syncing block")
+            && r.contains("data root mismatch")),
+        "{stopped:?}"
+    );
+}
+
+#[test]
+fn deferring_data_check_runs_process_proposal() {
+    let (g, server, _) = chain(10, 0);
+    let mut client = open_node(
+        &g,
+        TestApp {
+            reject_height: Some(5),
+            ..TestApp::default()
+        },
+    );
+    let net = Arc::new(Net::default());
+    reactor_for(&server, "server", &net);
+    let check = Arc::new(RecordingCheck {
+        defer: true,
+        ..RecordingCheck::default()
+    });
+    let rc = reactor_with(&client, "client", &net, opts_with_check(&check));
+    connect(&net, "server", "client");
+    let out = sync_for(&mut client, &rc, 8);
+    assert_eq!(out.state.last_block_height, 4);
+    let stopped = net.stopped.lock().unwrap().clone();
+    assert!(
+        stopped
+            .iter()
+            .any(|(p, r)| p == "server" && r.contains("application has rejected syncing block")),
+        "{stopped:?}"
+    );
+}
+
+#[test]
+fn no_data_check_when_verify_data_is_off() {
+    let (g, server, _) = chain(10, 0);
+    let mut client = open_node(&g, TestApp::default());
+    let net = Arc::new(Net::default());
+    reactor_for(&server, "server", &net);
+    let check = Arc::new(RecordingCheck {
+        fail_height: Some(1),
+        ..RecordingCheck::default()
+    });
+    let rc = reactor_with(
+        &client,
+        "client",
+        &net,
+        ReactorOptions {
+            verify_data: false,
+            ..opts_with_check(&check)
+        },
+    );
+    connect(&net, "server", "client");
+    let out = sync(&mut client, &rc);
+    assert_eq!(out.state.last_block_height, 9);
+    assert!(check.seen.lock().unwrap().is_empty());
+}
+
+#[test]
+fn app_version_switch_flows_through_block_sync() {
+    // FinalizeBlock of block 10 returns version.app = 2 (an upgrade
+    // height): block 11 and later carry app version 2 in their headers, and
+    // the synced state switches with them.
+    let upgrade = TestApp {
+        upgrade: Some((10, 2)),
+        ..TestApp::default()
+    };
+    let (g, server, _) = chain_with(20, 0, upgrade);
+    assert_eq!(server.state.version.app, 2);
+    let mut client = open_node(
+        &g,
+        TestApp {
+            upgrade: Some((10, 2)),
+            ..TestApp::default()
+        },
+    );
+    assert_eq!(client.state.version.app, 1);
+    let net = Arc::new(Net::default());
+    reactor_for(&server, "server", &net);
+    let check = Arc::new(RecordingCheck::default());
+    let rc = reactor_with(&client, "client", &net, opts_with_check(&check));
+    connect(&net, "server", "client");
+    let out = sync(&mut client, &rc);
+    assert_eq!(out.state.last_block_height, 19);
+    assert_eq!(out.state.version.app, 2);
+    assert_eq!(out.state.consensus_params.version.app, 2);
+    assert_eq!(out.state.last_height_consensus_params_changed, 11);
+    let versions = check.versions.lock().unwrap().clone();
+    for (h, v) in versions {
+        assert_eq!(v, if h <= 10 { 1 } else { 2 }, "height {h}");
+    }
+    assert_eq!(client.ss.load_consensus_params(11).unwrap().version.app, 2);
+    assert!(net.stopped.lock().unwrap().is_empty());
+}
+
+#[test]
+fn header_app_version_is_enforced_after_switch() {
+    // The network upgraded at height 10, but this node's app did not
+    // switch: block 11 (app version 2, validly committed) does not match
+    // the synced state, so block sync rejects it instead of executing it.
+    let (g, server, _) = chain_with(
+        20,
+        0,
+        TestApp {
+            upgrade: Some((10, 2)),
+            ..TestApp::default()
+        },
+    );
+    let mut client = open_node(&g, TestApp::default());
+    let net = Arc::new(Net::default());
+    reactor_for(&server, "server", &net);
+    let rc = reactor_for(&client, "client", &net);
+    connect(&net, "server", "client");
+    let out = sync_for(&mut client, &rc, 6);
+    assert_eq!(out.state.last_block_height, 10);
+    assert_eq!(out.state.version.app, 1);
+    let stopped = net.stopped.lock().unwrap().clone();
+    assert!(
+        stopped
+            .iter()
+            .any(|(p, r)| p == "server" && r.contains("wrong Block.Header.Version")),
+        "{stopped:?}"
+    );
+}
+
+#[test]
+fn phase_timings_cover_every_synced_block() {
+    let (g, server, _) = chain(15, 0);
+    let mut client = open_node(&g, TestApp::default());
+    let net = Arc::new(Net::default());
+    reactor_for(&server, "server", &net);
+    let rc = reactor_for(&client, "client", &net);
+    connect(&net, "server", "client");
+    let out = sync(&mut client, &rc);
+    let t = rc.timings();
+    assert_eq!(t.blocks, out.blocks_synced);
+    assert_eq!(t.blocks, 14);
+    assert!(t.apply > std::time::Duration::ZERO);
+    assert!(t.verify_commit > std::time::Duration::ZERO);
+    assert!(t.total() >= t.apply);
 }

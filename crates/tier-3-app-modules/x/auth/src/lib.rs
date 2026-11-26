@@ -61,7 +61,7 @@ pub const MODULE_ACCOUNT_PERMS: &[(&str, &[&str])] = &[
 /// so its address is neither a module account nor blocked there.
 pub fn module_account_perms()
 -> impl Iterator<Item = &'static (&'static str, &'static [&'static str])> {
-    let v9 = sdk::version::is_v9(sdk::version::app_version());
+    let v9 = !sdk::version::release(0).has_fibre();
     MODULE_ACCOUNT_PERMS
         .iter()
         .filter(move |(n, _)| !(v9 && *n == "fibre"))

@@ -18,7 +18,7 @@ pub fn decode_tx_v9(bytes: &[u8]) -> Result<Tx> {
 /// The decoder of `app_version`.
 #[must_use]
 pub fn decoder(app_version: u64) -> crate::tx::DecodeFn {
-    if crate::stores::is_v9(app_version) {
+    if sdk::version::Release::executing(app_version).v9_registry() {
         decode_tx_v9
     } else {
         decode_tx

@@ -145,9 +145,7 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
         );
     }
     let mut messages = Vec::new();
-    let v9 = sdk::version::is_v9(sdk::version::executing(
-        ctx.consensus_params.version.as_ref().map_or(0, |v| v.app),
-    ));
+    let v9 = ctx.release().before_v10();
     let mut by_internal = std::collections::BTreeMap::new();
     for ism in &isms {
         let id = decode_hex_address(&ism.id)?;

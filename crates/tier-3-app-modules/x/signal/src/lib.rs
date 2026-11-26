@@ -288,7 +288,7 @@ pub fn try_upgrade(
         }
         let committed = app_version(ctx);
         let current = sdk::version::executing(committed);
-        let delay = if sdk::version::is_v9(current) {
+        let delay = if sdk::version::Release::executing(current).before_v10() {
             upgrade_height_delay_v9(&ctx.header.chain_id)
         } else if current >= 12 {
             upgrade_height_delay_v12(&ctx.header.chain_id, committed)

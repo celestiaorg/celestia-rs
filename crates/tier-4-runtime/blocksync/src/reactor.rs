@@ -71,12 +71,29 @@ impl Network for WeakSwitch {
     }
 }
 
+/// Checks the data of a synced block whose `BlockID` already carries a
+/// verified +2/3 commit from the trusted validator set.
+///
+/// `Some(result)` replaces `ProcessProposal` for that block; `None` defers
+/// to `ProcessProposal`. The node uses this for app versions whose
+/// `ProcessProposal` rules this binary does not run (historical versions):
+/// it rebuilds the data square from the block's txs and compares it with
+/// the committed data root.
+pub trait CommittedDataCheck: Send + Sync + std::fmt::Debug {
+    /// The data check of `block`, or `None` to ask the app.
+    fn check(&self, block: &Block) -> Option<Result<(), String>>;
+}
+
 /// Reactor options (`ReactorOption`s and node config).
 #[derive(Debug, Clone)]
 pub struct ReactorOptions {
     /// `ReactorVerifyData`: ask the app (`ProcessProposal`) about every
     /// synced block (default true).
     pub verify_data: bool,
+    /// With `verify_data`: a check that can replace `ProcessProposal` for
+    /// committed blocks (see [`CommittedDataCheck`]). `None`: always ask
+    /// the app.
+    pub committed_data_check: Option<Arc<dyn CommittedDataCheck>>,
     /// Our validator address (`NewReactorWithAddr`): a node holding 1/3+
     /// of the power switches to consensus without waiting.
     pub local_addr: Option<Vec<u8>>,
@@ -88,9 +105,50 @@ impl Default for ReactorOptions {
     fn default() -> Self {
         Self {
             verify_data: true,
+            committed_data_check: None,
             local_addr: None,
             switch_to_consensus_interval: SWITCH_TO_CONSENSUS_INTERVAL,
         }
+    }
+}
+
+/// Where block sync spent its time, summed over the applied blocks
+/// (for throughput reports; execution is `apply`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SyncTimings {
+    /// Blocks applied.
+    pub blocks: u64,
+    /// Part set + block hash (the `BlockID`).
+    pub block_id: Duration,
+    /// `VerifyCommit` of the successor's `LastCommit` (and the extended
+    /// commit).
+    pub verify_commit: Duration,
+    /// `ValidateBlock` (header checks, evidence).
+    pub validate: Duration,
+    /// The data check (committed data root or `ProcessProposal`).
+    pub verify_data: Duration,
+    /// Saving the block, its parts and commit.
+    pub save: Duration,
+    /// `ApplyVerifiedBlock`: FinalizeBlock, Commit, state save.
+    pub apply: Duration,
+}
+
+impl SyncTimings {
+    /// The time of all phases.
+    #[must_use]
+    pub fn total(&self) -> Duration {
+        self.block_id
+            + self.verify_commit
+            + self.validate
+            + self.verify_data
+            + self.save
+            + self.apply
+    }
+
+    fn per_block_ms(&self, d: Duration) -> f64 {
+        #[allow(clippy::cast_precision_loss)]
+        let n = self.blocks.max(1) as f64;
+        d.as_secs_f64() * 1e3 / n
     }
 }
 
@@ -127,6 +185,7 @@ pub struct Reactor {
     opts: ReactorOptions,
     syncing: AtomicBool,
     quit: AtomicBool,
+    timings: Mutex<SyncTimings>,
 }
 
 impl std::fmt::Debug for Reactor {
@@ -182,6 +241,7 @@ impl Reactor {
             opts,
             syncing: AtomicBool::new(false),
             quit: AtomicBool::new(false),
+            timings: Mutex::new(SyncTimings::default()),
         })
     }
 
@@ -200,6 +260,12 @@ impl Reactor {
     #[must_use]
     pub fn pool(&self) -> &Arc<BlockPool> {
         &self.pool
+    }
+
+    /// Time spent per block sync phase so far.
+    #[must_use]
+    pub fn timings(&self) -> SyncTimings {
+        self.timings.lock().map(|t| *t).unwrap_or_default()
     }
 
     /// Whether [`Self::run_sync`] is running.
@@ -459,10 +525,17 @@ impl Reactor {
                 if blocks_synced.is_multiple_of(100) {
                     let secs = last_hundred.elapsed().as_secs_f64().max(1e-9);
                     last_rate = 0.9 * last_rate + 0.1 * (100.0 / secs);
+                    let t = self.timings();
                     tracing::info!(
                         height = self.pool.height(),
                         max_peer_height = self.pool.max_peer_height(),
                         blocks_per_s = last_rate,
+                        block_id_ms = t.per_block_ms(t.block_id),
+                        verify_commit_ms = t.per_block_ms(t.verify_commit),
+                        validate_ms = t.per_block_ms(t.validate),
+                        verify_data_ms = t.per_block_ms(t.verify_data),
+                        save_ms = t.per_block_ms(t.save),
+                        apply_ms = t.per_block_ms(t.apply),
                         "Block Sync Rate"
                     );
                     last_hundred = Instant::now();
@@ -503,6 +576,13 @@ impl Reactor {
                 state.last_block_height, first.header.height
             ));
         }
+        let mut t = SyncTimings::default();
+        let mut mark = Instant::now();
+        let mut lap = |d: &mut Duration| {
+            let now = Instant::now();
+            *d += now - mark;
+            mark = now;
+        };
         let first_parts = first
             .make_part_set(ctypes::BLOCK_PART_SIZE_BYTES)
             .map_err(|e| {
@@ -517,6 +597,7 @@ impl Reactor {
         };
         let second_commit = second.last_commit.clone().unwrap_or_default();
         let height = first.header.height;
+        lap(&mut t.block_id);
         let mut err: Option<String> = ctypes::verify_commit(
             chain_id,
             &state.validators,
@@ -526,6 +607,7 @@ impl Reactor {
         )
         .err()
         .map(|e| e.to_string());
+        lap(&mut t.verify_commit);
         if err.is_none() {
             let r = if blocks_synced == 0 {
                 exec.validate_block(state, &mut first, now_time())
@@ -534,7 +616,22 @@ impl Reactor {
             };
             err = r.err().map(|e| e.to_string());
         }
-        if err.is_none() && self.opts.verify_data {
+        lap(&mut t.validate);
+        let committed_check = if err.is_none() && self.opts.verify_data {
+            self.opts
+                .committed_data_check
+                .as_ref()
+                .and_then(|c| c.check(&first))
+        } else {
+            None
+        };
+        if let Some(Err(e)) = &committed_check {
+            err = Some(format!(
+                "committed data of syncing block ({}) at height {height} is invalid: {e}",
+                hex::encode_upper(&first_id.hash)
+            ));
+        }
+        if err.is_none() && self.opts.verify_data && committed_check.is_none() {
             let (valid, perr) = match exec.process_proposal(&mut first, state) {
                 Ok(v) => (v, None),
                 Err(e) => (false, Some(e.to_string())),
@@ -547,6 +644,7 @@ impl Reactor {
                 ));
             }
         }
+        lap(&mut t.verify_data);
         let present_ext = ext_commit.is_some();
         let ext_enabled = state
             .consensus_params
@@ -575,6 +673,8 @@ impl Reactor {
                 .map(|e| e.to_string());
             }
         }
+        // The extended commit check is signature verification too.
+        lap(&mut t.verify_commit);
         if let Some(e) = err {
             tracing::error!(err = %e, height, "Error in validation");
             let now = Instant::now();
@@ -613,6 +713,7 @@ impl Reactor {
                 .save_block(&mut first, &first_parts, &second_commit)
         };
         saved.map_err(|e| format!("failed to save block {height}: {e}"))?;
+        lap(&mut t.save);
         *state = exec
             .apply_verified_block(state, first_id.clone(), &mut first)
             .map_err(|e| {
@@ -621,6 +722,16 @@ impl Reactor {
                     hex::encode_upper(&first_id.hash)
                 )
             })?;
+        lap(&mut t.apply);
+        if let Ok(mut all) = self.timings.lock() {
+            all.blocks += 1;
+            all.block_id += t.block_id;
+            all.verify_commit += t.verify_commit;
+            all.validate += t.validate;
+            all.verify_data += t.verify_data;
+            all.save += t.save;
+            all.apply += t.apply;
+        }
         Ok(true)
     }
 

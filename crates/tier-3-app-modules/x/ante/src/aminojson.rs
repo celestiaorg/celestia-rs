@@ -295,7 +295,7 @@ fn reject_unknown_in(
 /// The `amino.name` of hyperlane-cosmos v1.1.0's protos (celestia-app
 /// v9.0.8) where it differs from v1.3.0's (vendored), at app version 9.
 fn v9_amino_name(full_name: &str) -> Option<&'static str> {
-    if !sdk::version::is_v9(sdk::version::app_version()) {
+    if !sdk::version::release(0).upstream_hyperlane() {
         return None;
     }
     match full_name {
