@@ -531,7 +531,15 @@ impl Encoder {
                     write_nil = true;
                 } else if self.omit_empty(fd) {
                     continue;
-                } else if fd.kind().as_message().is_some() && !fd.is_list() && !fd.is_map() {
+                } else if fd.kind().as_message().is_some()
+                    && !fd.is_list()
+                    && !fd.is_map()
+                    && !sdk::version::is_sdk_v046(0)
+                {
+                    // cosmos-sdk v0.46 (legacy amino `GetSignBytes`) writes
+                    // an unset non-nullable message as its zero struct
+                    // (e.g. ibc-go v6 `MsgTransfer.timeout_height`: `{}`),
+                    // which the default message below encodes.
                     return Err(format!(
                         "not supported: dont_omit_empty=true on invalid (nil?) message field: {name}"
                     ));
