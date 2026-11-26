@@ -11,7 +11,7 @@ import (
 // TestSyntheticFixtureIsReproducible rebuilds each synthetic chain and
 // requires the committed fixture byte for byte.
 func TestSyntheticFixtureIsReproducible(t *testing.T) {
-	for chain, dir := range map[string]string{"v1-v3": "v1-v3", "v3-rich": "v3-rich"} {
+	for chain, dir := range map[string]string{"v1-v3": "v1-v3", "v3-rich": "v3-rich", "gov-v1-v3": "gov-v1-v3", "staking-v1-v3": "staking-v1-v3"} {
 		t.Run(chain, func(t *testing.T) { requireReproducible(t, chain, dir) })
 	}
 }
@@ -50,6 +50,9 @@ func TestRunSynthetic(t *testing.T) {
 		t.Skip("run by TestSyntheticFixtureIsReproducible")
 	}
 	os.Args = []string{"v1-oracle", "-synthetic", "-chain", os.Getenv("V1_ORACLE_SYNTHETIC_CHAIN"), "-kv", "-out", out}
+	if h := os.Getenv("V1_ORACLE_SYNTHETIC_SNAPSHOTS"); h != "" {
+		os.Args = append(os.Args, "-snapshot-at", h)
+	}
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}

@@ -5,10 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-// fixtureFiles are the outputs that conformance/fixtures/synthetic/v4 holds.
+// fixtureFiles are the outputs that each fixture directory holds.
 var fixtureFiles = []string{
 	"blocks.jsonl.gz", "store-roots.json", "tx-results.jsonl.gz",
 	"kv-handoff.jsonl.gz", "kv-upgrade.jsonl.gz", "kv-diffs.jsonl.gz",
@@ -25,17 +26,22 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 	if bz, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build v1-oracle: %v\n%s", err, bz)
 	}
-	for _, c := range []struct{ chain, v1Dir, v4Dir string }{
-		{"v1-v3", "v1-v3", "v4"},
-		{"v3-rich", "v3-rich", "v3-rich-v4"},
+	for _, c := range []struct {
+		name, chain, v1Dir, v4Dir string
+		args                      []string
+	}{
+		{"v1-v3", "v1-v3", "v1-v3", "v4", nil},
+		// The same chain on to the v5 hand-off (conformance/v5-oracle).
+		{"v1-v3-to-v5", "v1-v3", "v1-v3", "v4-to-v5", []string{"-heights", "10", "-next-handoff"}},
+		{"v3-rich", "v3-rich", "v3-rich", "v3-rich-v4", nil},
 		// Only the history chain's genesis is committed on the v3 side.
-		{"v3-history", "v3-history", "v3-history-v4"},
+		{"v3-history", "v3-history", "v3-history", "v3-history-v4", nil},
 	} {
-		t.Run(c.chain, func(t *testing.T) { requireReproducible(t, v1, c.chain, c.v1Dir, c.v4Dir) })
+		t.Run(c.name, func(t *testing.T) { requireReproducible(t, v1, c.chain, c.v1Dir, c.v4Dir, c.args) })
 	}
 }
 
-func requireReproducible(t *testing.T, v1, chain, v1Dir, v4Dir string) {
+func requireReproducible(t *testing.T, v1, chain, v1Dir, v4Dir string, args []string) {
 	tmp := t.TempDir()
 	v1Out, home := filepath.Join(tmp, "v1"), filepath.Join(tmp, "home")
 	if bz, err := exec.Command(v1, "-synthetic", "-chain", chain, "-kv", "-out", v1Out, "-handoff", home).CombinedOutput(); err != nil {
@@ -56,6 +62,7 @@ func requireReproducible(t *testing.T, v1, chain, v1Dir, v4Dir string) {
 		"V4_ORACLE_HANDOFF="+home,
 		"V4_ORACLE_GENESIS="+filepath.Join(v1Out, "genesis.json"),
 		"V4_ORACLE_OUT="+out,
+		"V4_ORACLE_ARGS="+strings.Join(args, " "),
 	)
 	if bz, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("synthetic run: %v\n%s", err, bz)
@@ -92,6 +99,7 @@ func TestRunSynthetic(t *testing.T) {
 		"-genesis", os.Getenv("V4_ORACLE_GENESIS"),
 		"-out", out,
 	}
+	os.Args = append(os.Args, strings.Fields(os.Getenv("V4_ORACLE_ARGS"))...)
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}

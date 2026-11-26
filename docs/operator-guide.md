@@ -948,11 +948,38 @@ celestia-rs start --home ~/.celestia-rs/mainnet-genesis \
 `scripts/mainnet-genesis-blocksync.sh` does the same on a VM
 (`ARCHIVE_PEERS=… scripts/mainnet-genesis-blocksync.sh [stop-height]`).
 
+To start from a later height instead, restore a Go state-sync snapshot and
+follow the network from there. `celestia-rs follow --snapshot <dir>`
+restores `<dir>/<height>/<format>/<chunk>` (Go's snapshot layout):
+format 2 for the cosmos-sdk v0.46 states of app versions 1 to 3 (heights
+below 6,680,340), format 3 after. The restored app hash must equal header
+`<height>+1`'s; the light client supplies the validators, consensus
+params and commit at the snapshot height; then each block executes and
+must match the next signed header. On a VM:
+
+```sh
+RPC=https://<archive-rpc>[,<witness-rpc>] TRUST_HASH=<header hash at H> \
+  scripts/mainnet-snapshot-follow.sh <snapshot-dir> <H> [stop-height]
+```
+
+The RPC servers must still hold height `H` (archive nodes for old
+heights). The script sets a long `--trust-period-hours`, because the light
+client measures the trusting period from now and an old header is years
+old; the trust itself comes from `TRUST_HASH` (or the primary's header).
+
 - **Archive peers.** Block sync asks a peer only for heights inside the
   `[base, height]` range it reports. Most public peers prune old blocks,
   so the node needs at least one persistent peer whose block store starts
   at height 1. Without one, block sync waits at the first height that no
-  peer serves.
+  peer serves. Peers seen serving mainnet from height 1 (November 2026;
+  public addresses, availability not guaranteed):
+  `e0c570997f9c4ecc3b1c4c0f5fbb2681031e5353@157.180.10.38:40656`,
+  `217bd0e9fb6ed289a44c5ad7d95ee62becaccb1c@169.155.169.214:26656`,
+  `fb779c787dda02b66c061ce030f77682494cc4c8@65.21.231.168:11656`.
+  Many public peers are at their inbound limit and close the connection
+  right after the handshake; a persistent peer that does so is redialed
+  after a growing delay (1 s doubling to 5 min, reset by a connection that
+  lasts a minute).
 - **Verification.** Each block `H` is applied only after the `LastCommit`
   of `H+1` is checked as +2/3 of the validator set the node computed,
   and after the header (app hash, results hash, validator and params

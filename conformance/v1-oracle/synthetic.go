@@ -44,6 +44,7 @@ import (
 	"github.com/celestiaorg/celestia-app/v3/test/util/genesis"
 	signaltypes "github.com/celestiaorg/celestia-app/v3/x/signal/types"
 	"github.com/celestiaorg/go-square/v2/share"
+	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -103,6 +104,18 @@ type chainSpec struct {
 	// absent reports whether validator i of n misses the commit of block
 	// height.
 	absent func(height int64, i, n int) bool
+	// modifier, when set, edits the genesis state before Export
+	// (genesis.WithModifiers).
+	modifier func(codec.Codec) genesis.Modifier
+	// newAccounts are keys of accounts that a transaction creates: in the
+	// keyring from the start, signing once they exist.
+	newAccounts []string
+	// rawTxs, when set, builds a block's transactions in place of txs,
+	// with the committed app state at hand.
+	rawTxs func(s *synth, a *app.App, height int64) ([][]byte, error)
+	// noHandoff: the chain never schedules the v4 upgrade, so -handoff
+	// would leave conformance/v4-oracle no plan to continue with.
+	noHandoff bool
 }
 
 // accounts are the spec's key names: validators, then users.
@@ -157,6 +170,9 @@ func newSynth(spec *chainSpec) (*synth, error) {
 		WithGenesisTime(syntheticGenesisTime).
 		WithConsensusParams(params).
 		WithKeyring(kr)
+	if spec.modifier != nil {
+		g = g.WithModifiers(spec.modifier(ecfg.Codec))
+	}
 	addAccount := func(name string, balance int64) error {
 		mnemonic, err := keyMnemonic(name)
 		if err != nil {
@@ -210,6 +226,15 @@ func newSynth(spec *chainSpec) (*synth, error) {
 	if err := genDoc.ValidateAndComplete(); err != nil {
 		return nil, err
 	}
+	for _, name := range spec.newAccounts {
+		mnemonic, err := keyMnemonic(name)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := kr.NewAccount(name, mnemonic, "", sdk.FullFundraiserPath, hd.Secp256k1); err != nil {
+			return nil, err
+		}
+	}
 	return &synth{spec: spec, ecfg: ecfg, kr: kr, genDoc: genDoc, appVersion: spec.appVersion}, nil
 }
 
@@ -240,7 +265,11 @@ func (s *synth) blocksJSONL() []byte { return s.blocks.Bytes() }
 func (s *synth) signer(a *app.App) (*user.Signer, error) {
 	ctx := a.NewContext(true, tmproto.Header{})
 	var accounts []*user.Account
-	for _, name := range s.spec.accounts() {
+	pending := map[string]bool{}
+	for _, name := range s.spec.newAccounts {
+		pending[name] = true
+	}
+	for _, name := range append(s.spec.accounts(), s.spec.newAccounts...) {
 		rec, err := s.kr.Key(name)
 		if err != nil {
 			return nil, err
@@ -250,6 +279,9 @@ func (s *synth) signer(a *app.App) (*user.Signer, error) {
 			return nil, err
 		}
 		acc := a.AccountKeeper.GetAccount(ctx, addr)
+		if acc == nil && pending[name] {
+			continue // not created yet
+		}
 		if acc == nil {
 			return nil, fmt.Errorf("no account %s", name)
 		}
@@ -327,6 +359,9 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 	if height == 1 {
 		// Nothing is committed yet: block 1 is empty.
 		return nil, nil
+	}
+	if s.spec.rawTxs != nil {
+		return s.spec.rawTxs(s, a, height)
 	}
 	sg, err := s.signer(a)
 	if err != nil {

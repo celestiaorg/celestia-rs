@@ -10,8 +10,8 @@
 //! subspace, the metadata allows only the `proto3` encoding, an active
 //! channel may be reopened only while it is not `OPEN` and with the same
 //! metadata, and the account address hashes the block header's app hash
-//! and data hash. A message whose signers, `ValidateBasic` or handler is
-//! not ported aborts the block ([`super::not_ported`]), as does a
+//! and data hash. A message whose signers ([`signers`]), `ValidateBasic`
+//! or handler is not ported aborts the block ([`super::not_ported`]), as does a
 //! `CosmosTx` that does not decode or holds an empty type URL.
 
 use celestia_proto::Any;
@@ -380,21 +380,72 @@ fn authenticate_tx(
                 m.type_url
             )));
         }
-        let signer = super::authz::exec_signer(m)?.ok_or_else(|| {
+        let signers = signers(m)?.ok_or_else(|| {
             not_ported(&format!("the cosmos-sdk v0.46 signers of {}", m.type_url))
         })?;
-        let got = if signer.is_empty() {
-            String::new()
-        } else {
-            x_auth::bech32(&signer)?
-        };
-        if got != ica_addr {
-            return Err(errs::unauthorized(format!(
-                "unexpected signer address: expected {ica_addr}, got {got}"
-            )));
+        for signer in signers {
+            let got = if signer.is_empty() {
+                String::new()
+            } else {
+                x_auth::bech32(&signer)?
+            };
+            if got != ica_addr {
+                return Err(errs::unauthorized(format!(
+                    "unexpected signer address: expected {ica_addr}, got {got}"
+                )));
+            }
         }
     }
     Ok(())
+}
+
+fn decode<M: Message + Default>(m: &Any) -> Result<M> {
+    M::decode(m.value.as_slice()).map_err(|e| errs::tx_decode(e.to_string()))
+}
+
+/// v0.46 `msg.GetSigners()` of a host message: the messages authz
+/// `MsgExec` dispatches ([`super::authz::exec_signer`]), plus the other
+/// messages with a ported handler. An address that does not parse is an
+/// empty signer, as in Go. `None` for a message whose signers are not
+/// ported.
+// v0.46 still reads `MsgCreateValidator.delegator_address`.
+#[allow(deprecated)]
+fn signers(m: &Any) -> Result<Option<Vec<Vec<u8>>>> {
+    use celestia_proto::cosmos::bank::v1beta1 as bank;
+    use celestia_proto::cosmos::gov;
+    use celestia_proto::cosmos::slashing::v1beta1 as slashing;
+    use celestia_proto::cosmos::staking::v1beta1 as staking;
+    use prost::Name;
+    if let Some(s) = super::authz::exec_signer(m)? {
+        return Ok(Some(vec![s]));
+    }
+    let acc = |s: &str| sdk::address::acc_from_bech32_go(s).unwrap_or_default();
+    let val = |s: &str| x_staking::addr::val_from_string(s).unwrap_or_default();
+    let u = m.type_url.as_str();
+    Ok(Some(if u == bank::MsgMultiSend::type_url() {
+        let msg: bank::MsgMultiSend = decode(m)?;
+        msg.inputs.iter().map(|i| acc(&i.address)).collect()
+    } else if u == slashing::MsgUnjail::type_url() {
+        vec![val(&decode::<slashing::MsgUnjail>(m)?.validator_addr)]
+    } else if u == staking::MsgCreateValidator::type_url() {
+        let msg: staking::MsgCreateValidator = decode(m)?;
+        let (del, v) = (acc(&msg.delegator_address), val(&msg.validator_address));
+        if del == v { vec![del] } else { vec![del, v] }
+    } else if u == staking::MsgEditValidator::type_url() {
+        vec![val(
+            &decode::<staking::MsgEditValidator>(m)?.validator_address
+        )]
+    } else if u == gov::v1beta1::MsgDeposit::type_url() {
+        vec![acc(&decode::<gov::v1beta1::MsgDeposit>(m)?.depositor)]
+    } else if u == gov::v1::MsgDeposit::type_url() {
+        vec![acc(&decode::<gov::v1::MsgDeposit>(m)?.depositor)]
+    } else if u == gov::v1beta1::MsgVoteWeighted::type_url() {
+        vec![acc(&decode::<gov::v1beta1::MsgVoteWeighted>(m)?.voter)]
+    } else if u == gov::v1::MsgVoteWeighted::type_url() {
+        vec![acc(&decode::<gov::v1::MsgVoteWeighted>(m)?.voter)]
+    } else {
+        return Ok(None);
+    }))
 }
 
 /// `executeTx`: every message, in one cache context kept only when all
@@ -490,6 +541,92 @@ mod tests {
             x_icahost::host::generate_address(&ctx, "connection-0", "icacontroller-x")
         );
         set_data_hash(&[]);
+    }
+
+    fn any<M: prost::Name>(m: &M) -> Any {
+        Any::pack(m)
+    }
+
+    fn acc(i: u8) -> (Vec<u8>, String) {
+        let b = vec![i; 20];
+        let s = sdk::address::to_bech32(sdk::address::ACC_PREFIX, &b);
+        (b, s)
+    }
+
+    fn val(i: u8) -> String {
+        sdk::address::to_bech32(sdk::address::VALOPER_PREFIX, &[i; 20])
+    }
+
+    /// The v0.46 `GetSigners` of the messages beyond authz's dispatch
+    /// list: an address that does not parse is an empty signer.
+    #[test]
+    #[allow(deprecated)]
+    fn signers_of_the_v1_handlers() -> Result<()> {
+        use celestia_proto::cosmos::bank::v1beta1 as bank;
+        use celestia_proto::cosmos::gov;
+        use celestia_proto::cosmos::slashing::v1beta1 as slashing;
+        use celestia_proto::cosmos::staking::v1beta1 as staking;
+        let ((a1, s1), (a2, s2)) = (acc(1), acc(2));
+        let input = |a: &str| bank::Input {
+            address: a.into(),
+            coins: vec![],
+        };
+        let multi = bank::MsgMultiSend {
+            inputs: vec![input(&s1), input("bad"), input(&s2)],
+            outputs: vec![],
+        };
+        assert_eq!(
+            signers(&any(&multi))?,
+            Some(vec![a1.clone(), vec![], a2.clone()])
+        );
+        let unjail = slashing::MsgUnjail {
+            validator_addr: val(1),
+        };
+        assert_eq!(signers(&any(&unjail))?, Some(vec![a1.clone()]));
+        let create = |del: &str, v: u8| staking::MsgCreateValidator {
+            delegator_address: del.into(),
+            validator_address: val(v),
+            ..Default::default()
+        };
+        assert_eq!(signers(&any(&create(&s1, 1)))?, Some(vec![a1.clone()]));
+        assert_eq!(
+            signers(&any(&create(&s1, 2)))?,
+            Some(vec![a1.clone(), a2.clone()])
+        );
+        let edit = staking::MsgEditValidator {
+            validator_address: val(2),
+            ..Default::default()
+        };
+        assert_eq!(signers(&any(&edit))?, Some(vec![a2.clone()]));
+        let dep1 = gov::v1beta1::MsgDeposit {
+            depositor: s1.clone(),
+            ..Default::default()
+        };
+        let dep = gov::v1::MsgDeposit {
+            depositor: "bad".into(),
+            ..Default::default()
+        };
+        let vw1 = gov::v1beta1::MsgVoteWeighted {
+            voter: s2.clone(),
+            ..Default::default()
+        };
+        let vw = gov::v1::MsgVoteWeighted {
+            voter: s1.clone(),
+            ..Default::default()
+        };
+        assert_eq!(signers(&any(&dep1))?, Some(vec![a1.clone()]));
+        assert_eq!(signers(&any(&dep))?, Some(vec![vec![]]));
+        assert_eq!(signers(&any(&vw1))?, Some(vec![a2.clone()]));
+        assert_eq!(signers(&any(&vw))?, Some(vec![a1.clone()]));
+        // authz's dispatch list is unchanged; the rest stays not ported.
+        let send = bank::MsgSend {
+            from_address: s2,
+            ..Default::default()
+        };
+        assert_eq!(signers(&any(&send))?, Some(vec![a2]));
+        let exec = celestia_proto::cosmos::authz::v1beta1::MsgExec::default();
+        assert_eq!(signers(&any(&exec))?, None);
+        Ok(())
     }
 
     /// Previous metadata must agree on every field but the address.

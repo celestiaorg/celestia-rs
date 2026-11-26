@@ -120,6 +120,8 @@ updates:
   - package-ecosystem: gomod
     directories:
       - /conformance/antereplay
+      - /conformance/archive-export/v046
+      - /conformance/archive-export/v050
       - /conformance/antevectors
       - /conformance/consensusvectors
       - /conformance/ctypesvectors
@@ -136,6 +138,7 @@ updates:
       - /conformance/mainnet-rpc/module-closure/proofcheck
       - /conformance/mathvectors
       - /conformance/mintvectors
+      - /conformance/p2pprobe
       - /conformance/p2pvectors
       - /conformance/pfm-fork
       - /conformance/provider-client
@@ -145,6 +148,7 @@ updates:
       - /conformance/txdecode
       - /conformance/v1-oracle
       - /conformance/v4-oracle
+      - /conformance/v5-oracle
       - /conformance/v11-frozen
       - /conformance/websocket-lifecycle
     schedule:

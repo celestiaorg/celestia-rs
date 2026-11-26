@@ -48,7 +48,9 @@ var (
 	syntheticNS = share.MustNewV0Namespace(bytes.Repeat([]byte{0x42}, share.NamespaceVersionZeroIDSize))
 )
 
-// handoff is the handoff.json of v1-oracle -synthetic.
+// handoff is the handoff.json of v1-oracle -synthetic, which this program
+// also writes with -next-handoff for the next release's oracle. Bytes are
+// upper-case hex.
 type handoff struct {
 	Chain           string   `json:"chain"`
 	Accounts        []string `json:"accounts"`
@@ -56,25 +58,35 @@ type handoff struct {
 	Height          int64    `json:"height"`
 	AppHash         string   `json:"app_hash"`
 	LastResultsHash string   `json:"last_results_hash"`
-	AppVersion      uint64   `json:"app_version"`
-	BlockMaxBytes   int64    `json:"block_max_bytes"`
-	BlockMaxGas     int64    `json:"block_max_gas"`
-	LastBlockID     struct {
-		Hash      string `json:"hash"`
-		PartTotal uint32 `json:"part_total"`
-		PartHash  string `json:"part_hash"`
-	} `json:"last_block_id"`
-	LastCommit []struct {
-		Flag             int32  `json:"flag"`
-		ValidatorAddress string `json:"validator_address"`
-		TimeNs           int64  `json:"time_ns"`
-		Signature        string `json:"signature"`
-	} `json:"last_commit"`
-	Validators [2][]struct {
-		PubKey           string `json:"pub_key"`
-		Power            int64  `json:"power"`
-		ProposerPriority int64  `json:"proposer_priority"`
-	} `json:"validators"`
+	// AppVersion is the app version of the last FinalizeBlock consensus
+	// params: the version of the next header.
+	AppVersion    uint64          `json:"app_version"`
+	BlockMaxBytes int64           `json:"block_max_bytes"`
+	BlockMaxGas   int64           `json:"block_max_gas"`
+	LastBlockID   handoffBlockID  `json:"last_block_id"`
+	LastCommit    []handoffSig    `json:"last_commit"`
+	Validators    [2][]handoffVal `json:"validators"`
+}
+
+type handoffBlockID struct {
+	Hash      string `json:"hash"`
+	PartTotal uint32 `json:"part_total"`
+	PartHash  string `json:"part_hash"`
+}
+
+// handoffSig is a CommitSig of the last block. TimeNs is Unix nanoseconds.
+type handoffSig struct {
+	Flag             int32  `json:"flag"`
+	ValidatorAddress string `json:"validator_address"`
+	TimeNs           int64  `json:"time_ns"`
+	Signature        string `json:"signature"`
+}
+
+// handoffVal is an ed25519 validator in proposer-priority order.
+type handoffVal struct {
+	PubKey           string `json:"pub_key"`
+	Power            int64  `json:"power"`
+	ProposerPriority int64  `json:"proposer_priority"`
 }
 
 func readHandoff(path string) (*handoff, error) {
@@ -282,6 +294,22 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 		)
 	case offset == 4:
 		steps = append(steps, func() error { return send("alice", "bob", 37) })
+	// Blocks 21 to 25 (-heights 10, for the v5 hand-off): the other
+	// validators signal version 5, a MsgTryUpgrade reaches quorum in block
+	// 22, and the EndBlocker of block 25 (22 plus chain "test"'s delay of
+	// 3) sets app version 5 and schedules plan "v5" at 26.
+	case offset == 5:
+		for _, v := range []string{"val1", "val2", "val3"} {
+			steps = append(steps, func() error { return tx(signaltypes.NewMsgSignalVersion(valAddr(v).String(), 5)) })
+		}
+	case offset == 6:
+		steps = append(steps, func() error { return tx(signaltypes.NewMsgTryUpgrade(addr("bob"))) })
+	case offset == 7:
+		steps = append(steps, func() error { return pfb("alice", share.ShareVersionOne, 900) })
+	case offset == 8:
+		steps = append(steps, func() error { return send("carol", "bob", 43) })
+	case offset == 9:
+		steps = append(steps, func() error { return send("bob", "alice", 47) })
 	}
 	for _, step := range steps {
 		if err := step(); err != nil {
@@ -454,4 +482,51 @@ func (s *synth) committed(id cmttypes.BlockID, res *abci.ResponseFinalizeBlock) 
 		})
 	}
 	return out, nil
+}
+
+// writeHandoff records the state after the last committed block, in the
+// format of v1-oracle's handoff.json, for the next release's oracle.
+func (s *synth) writeHandoff(path string) error {
+	height := s.lastCommit.Height
+	h := handoff{
+		Chain:           s.chain,
+		Accounts:        s.accounts,
+		ChainID:         s.chainID,
+		Height:          height,
+		AppHash:         upper(s.appHash),
+		LastResultsHash: upper(s.lastResultsHash),
+		AppVersion:      s.appVersion,
+		BlockMaxBytes:   s.params.Block.MaxBytes,
+		BlockMaxGas:     s.params.Block.MaxGas,
+		LastBlockID: handoffBlockID{
+			Hash:      upper(s.lastBlockID.Hash),
+			PartTotal: s.lastBlockID.PartSetHeader.Total,
+			PartHash:  upper(s.lastBlockID.PartSetHeader.Hash),
+		},
+	}
+	for _, sig := range s.lastCommit.Signatures {
+		hs := handoffSig{Flag: int32(sig.BlockIDFlag), ValidatorAddress: upper(sig.ValidatorAddress), Signature: upper(sig.Signature)}
+		if sig.BlockIDFlag != cmttypes.BlockIDFlagAbsent {
+			hs.TimeNs = sig.Timestamp.UnixNano()
+		}
+		h.LastCommit = append(h.LastCommit, hs)
+	}
+	for i := range h.Validators {
+		set := s.vals[height+1+int64(i)]
+		if set == nil {
+			return fmt.Errorf("no validator set at %d", height+1+int64(i))
+		}
+		for _, v := range set.Validators {
+			h.Validators[i] = append(h.Validators[i], handoffVal{
+				PubKey:           upper(v.PubKey.Bytes()),
+				Power:            v.VotingPower,
+				ProposerPriority: v.ProposerPriority,
+			})
+		}
+	}
+	bz, err := json.MarshalIndent(h, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(bz, '\n'), 0o644)
 }

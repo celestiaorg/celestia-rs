@@ -126,13 +126,16 @@ impl App {
     /// celestia-app v9.0.8 `CheckTx` (app version 9, ADR 0004).
     fn check_tx_v9(&mut self, req: &RequestCheckTx) -> Result<ResponseCheckTx, String> {
         let raw = &req.tx;
-        if raw.len() > MAX_TX_SIZE {
+        let release = sdk::version::release(0);
+        let max_tx_size = release.max_tx_size();
+        if raw.len() > max_tx_size {
             let e = SdkError::new(
                 "app",
                 11_142,
                 format!(
-                    "tx size {} bytes is larger than the application's configured MaxTxSize of {MAX_TX_SIZE} bytes for version 9: transaction size exceeds maximum allowed limit",
-                    raw.len()
+                    "tx size {} bytes is larger than the application's configured MaxTxSize of {max_tx_size} bytes for version {}: transaction size exceeds maximum allowed limit",
+                    raw.len(),
+                    release.app_version
                 ),
             );
             return Ok(error_response(&e, 0, 0));
