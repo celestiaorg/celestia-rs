@@ -141,8 +141,8 @@ mod tests {
 
     /// Before the release table, a name was missing only when a v9
     /// executable ran it and v10 added it. Every app version but 1 and 4
-    /// keeps that; app versions 1, 4 and 5 run as themselves, with their own
-    /// store sets (v4 and v5 have no `zkism`).
+    /// keeps that; app versions 1 and 4 to 6 run as themselves, with their own
+    /// store sets (v4 to v6 have no `zkism`).
     #[test]
     fn exists_at_is_unchanged_for_every_app_version() {
         let names = IAVL_STORES
@@ -150,7 +150,7 @@ mod tests {
             .copied()
             .chain(["auth", "genutil", "qgb"]);
         for name in names {
-            for own in [1, 4, 5] {
+            for own in [1, 4, 5, 6] {
                 let r = Release::for_app_version(own).expect("known app version");
                 assert_eq!(
                     exists_at(name, own),
@@ -158,7 +158,7 @@ mod tests {
                     "{name} at v{own}"
                 );
             }
-            for v in (0..=13).filter(|v| !matches!(v, 1 | 4 | 5)) {
+            for v in (0..=13).filter(|v| !matches!(v, 1 | 4 | 5 | 6)) {
                 let before = !(v != 0 && v < 10 && ADDED_IN_V10.contains(&name));
                 assert_eq!(exists_at(name, v), before, "{name} at v{v}");
             }

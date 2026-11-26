@@ -16,6 +16,7 @@ mod v10;
 mod v11;
 mod v12;
 pub mod v4;
+pub mod v6;
 mod v9;
 
 /// `appconsts.Version`.
@@ -80,14 +81,14 @@ impl Handlers {
 
     /// Whether [`x_upgrade::UpgradeHandlers::apply`] runs plan `name` here.
     /// A release can register a plan (Go's `HasHandler`, which x/upgrade's
-    /// PreBlocker checks) before celestia-rs ports its handler (`v6` to
+    /// PreBlocker checks) before celestia-rs ports its handler (`v7` and
     /// `v8`).
     #[must_use]
     pub fn is_ported(&self, name: &str) -> bool {
         use x_upgrade::UpgradeHandlers as _;
         match name {
             "v9" => true,
-            "v4" | "v5" | "v10" | "v11" | "v12" => self.has_handler(name),
+            "v4" | "v5" | "v6" | "v10" | "v11" | "v12" => self.has_handler(name),
             _ => false,
         }
     }
@@ -102,6 +103,7 @@ impl x_upgrade::UpgradeHandlers for Handlers {
         match plan.name.as_str() {
             // celestia-app v5.0.12's `v5` handler returns `fromVM`.
             "v5" if self.has_handler("v5") => Ok(from),
+            "v6" if self.has_handler("v6") => v6::handler(ctx, from),
             "v4" if self.has_handler("v4") => {
                 let versions = v4::handler(ctx, &from)?;
                 // celestiaorg x/upgrade v0.1.0 `ApplyUpgrade` (celestia-app
@@ -127,17 +129,21 @@ impl x_upgrade::UpgradeHandlers for Handlers {
 /// The module manager's version map of the release that runs as app
 /// version `app_version`, where celestia-rs does not derive it from
 /// [`crate::modules::VERSION_MAP`]: celestia-app v4.1.0 (no capability,
-/// ICA host or forwarding module) and v5.0.12 (v4.1.0's plus capability).
+/// ICA host or forwarding module), v5.0.12 (v4.1.0's plus capability) and
+/// v6.4.x (v5.0.12's plus interchain accounts).
 #[must_use]
 pub fn release_version_map(app_version: u64) -> Option<Vec<(&'static str, u64)>> {
     let mut versions: Vec<(&'static str, u64)> = match app_version {
-        4 | 5 => v4::VERSION_MAP.to_vec(),
+        4..=6 => v4::VERSION_MAP.to_vec(),
         _ => return None,
     };
-    if app_version == 5 {
+    if app_version >= 5 {
         versions.push(("capability", 1));
-        versions.sort_unstable();
     }
+    if app_version >= 6 {
+        versions.push(("interchainaccounts", 3));
+    }
+    versions.sort_unstable();
     Some(versions)
 }
 
@@ -168,12 +174,24 @@ pub fn set_app_version(ctx: &mut Context<'_>, version: u64) -> Result<()> {
 /// name). Run the migrations required by the target release. Modules added
 /// in v10 run `InitGenesis` when missing from the previous version map.
 fn run_migrations(ctx: &mut Context<'_>, from: &VersionMap, target: u64) -> Result<VersionMap> {
-    let mut out = VersionMap::new();
     // The target release's module manager: v9.0.8 has no fibre or
     // valaddr module.
-    for (name, to) in crate::modules::version_map(target)
+    let versions = crate::modules::version_map(target)
         .filter(|(name, _)| crate::stores::exists_at(name, target))
-    {
+        .collect();
+    run_migrations_to(ctx, from, versions)
+}
+
+/// `ModuleManager.RunMigrations` to the module versions `versions` (the
+/// target release's module manager): migrates each module `from` lists and
+/// runs the default genesis of each module it does not.
+fn run_migrations_to(
+    ctx: &mut Context<'_>,
+    from: &VersionMap,
+    versions: Vec<(&'static str, u64)>,
+) -> Result<VersionMap> {
+    let mut out = VersionMap::new();
+    for (name, to) in versions {
         match from.get(name).copied() {
             Some(v) if v == to => {}
             Some(2) if name == "blob" && to == 3 => x_blob::migrate_params(ctx)?,
@@ -195,6 +213,15 @@ fn run_migrations(ctx: &mut Context<'_>, from: &VersionMap, target: u64) -> Resu
                 "valaddr" => x_valaddr::init_genesis(
                     ctx,
                     &celestia_proto::celestia::valaddr::v1::GenesisState::default(),
+                )?,
+                // celestia-app's `icaModule` default genesis (v6.4.x).
+                "interchainaccounts" => x_icahost::init_host_genesis(
+                    ctx,
+                    &celestia_proto::ibc::applications::interchain_accounts::genesis::v1::HostGenesisState {
+                        port: x_icahost::HOST_PORT_ID.to_owned(),
+                        params: Some(v6::ica_host_params()),
+                        ..Default::default()
+                    },
                 )?,
                 _ => {
                     return Err(sdk::error::sdk::not_supported(format!(
@@ -254,10 +281,11 @@ mod tests {
         assert!(Handlers::of_release(5).has_handler("v5"));
         assert!(!Handlers::of_release(3).has_handler("v4"));
         assert!(!Handlers::of_release(13).has_handler("v4"));
-        // App versions 4 and 5 run as themselves; 6 still runs as 9.
+        // App versions 4 to 6 run as themselves; 7 still runs as 9.
         assert!(Handlers::at(4).has_handler("v4"));
         assert!(Handlers::at(5).has_handler("v5"));
-        assert!(!Handlers::at(6).has_handler("v4"));
+        assert!(Handlers::at(6).has_handler("v6"));
+        assert!(!Handlers::at(7).has_handler("v4"));
     }
 
     /// The release table keeps the handler sets of the hand-written table
@@ -292,6 +320,7 @@ mod tests {
                 1 => &[],
                 4 => &["v4"],
                 5 => &["v4", "v5"],
+                6 => &["v6"],
                 2..=9 => &["v9"],
                 11 => &["v11"],
                 12 => &["v12"],

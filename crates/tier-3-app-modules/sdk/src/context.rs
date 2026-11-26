@@ -366,7 +366,7 @@ mod tests {
         let mut ms = setup();
         let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
         ctx.consensus_params.version =
-            Some(celestia_core_proto::tendermint::types::VersionParams { app: 6 });
+            Some(celestia_core_proto::tendermint::types::VersionParams { app: 7 });
         let prev = crate::version::app_version();
         crate::version::set_app_version(0);
         assert_eq!(ctx.release().app_version, 9);
