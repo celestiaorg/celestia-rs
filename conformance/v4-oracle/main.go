@@ -142,8 +142,10 @@ type Attribute struct {
 	Index bool   `json:"index"`
 }
 
-// ValidatorUpdate is one validator update. PubKey is upper-case hex.
+// ValidatorUpdate is one validator update, as v1-oracle writes it.
+// Address and PubKey are upper-case hex.
 type ValidatorUpdate struct {
+	Address    string `json:"address"`
 	PubKeyType string `json:"pub_key_type"`
 	PubKey     string `json:"pub_key"`
 	Power      int64  `json:"power"`

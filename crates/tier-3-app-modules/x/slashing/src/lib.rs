@@ -686,13 +686,16 @@ const MISSED_BLOCKS_MIGRATION_LIMIT: usize = 10;
 /// (`0x02 || len(short) || short`) matches no v0.46 entry, whose length
 /// byte is the full address length.
 pub fn remove_legacy_missed_blocks(ctx: &mut Context<'_>, index: Option<&[u8]>) -> Result<()> {
+    // The signing infos to walk and the next one, whose key becomes the
+    // cursor; the iterator starts at `index`.
+    let first = [&[0x01][..], index.unwrap_or_default()].concat();
+    let end = sdk::context::prefix_end(&[0x01]);
     let mut keys = Vec::new();
     {
-        let mut it = ctx.prefix_iter(STORE_KEY, &[0x01])?;
-        while let Some((k, _)) = it.next(ctx)? {
-            if index.is_none_or(|i| &k[1..] >= i) {
-                keys.push(k[1..].to_vec());
-            }
+        let mut it = ctx.range_iter(STORE_KEY, Some(&first), end.as_deref())?;
+        while keys.len() <= MISSED_BLOCKS_MIGRATION_LIMIT {
+            let Some((k, _)) = it.next(ctx)? else { break };
+            keys.push(k[1..].to_vec());
         }
     }
     for (i, key) in keys.iter().enumerate() {

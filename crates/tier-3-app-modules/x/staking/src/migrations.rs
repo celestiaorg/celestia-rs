@@ -11,18 +11,22 @@ fn internal(e: impl std::fmt::Display) -> sdk::SdkError {
     sdk::error::sdk::logic(e.to_string())
 }
 
-/// The keys and values under `prefix` from `prefix || start` on.
+/// At most `limit` keys and values under `prefix`, from `prefix || start`
+/// on (`None`: the first): the iterator starts at the cursor, as Go's
+/// prefix-store iterator from `index` does.
 fn from(
     ctx: &mut Context<'_>,
     prefix: u8,
     start: Option<&[u8]>,
+    limit: usize,
 ) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
+    let first = [&[prefix][..], start.unwrap_or_default()].concat();
+    let end = sdk::context::prefix_end(&[prefix]);
     let mut out = Vec::new();
-    let mut it = ctx.prefix_iter(STORE_KEY, &[prefix])?;
-    while let Some((k, v)) = it.next(ctx)? {
-        if start.is_none_or(|s| &k[1..] >= s) {
-            out.push((k, v));
-        }
+    let mut it = ctx.range_iter(STORE_KEY, Some(&first), end.as_deref())?;
+    while out.len() < limit {
+        let Some(kv) = it.next(ctx)? else { break };
+        out.push(kv);
     }
     Ok(out)
 }
@@ -54,7 +58,10 @@ pub fn index_delegations_by_validator(
     start: Option<&[u8]>,
     limit: usize,
 ) -> Result<()> {
-    for (i, (key, _)) in from(ctx, keys::DELEGATION, start)?.into_iter().enumerate() {
+    for (i, (key, _)) in from(ctx, keys::DELEGATION, start, limit)?
+        .into_iter()
+        .enumerate()
+    {
         let (del, val) = parse_delegation_key(&key)?;
         ctx.set(STORE_KEY, keys::delegation_by_val(&val, &del), Vec::new())?;
         if i + 1 >= limit {
@@ -81,10 +88,9 @@ pub fn migrate_historical_info_keys(
     start: Option<&[u8]>,
     limit: usize,
 ) -> Result<()> {
-    for (i, (key, value)) in from(ctx, keys::HISTORICAL_INFO, start)?
-        .into_iter()
-        .enumerate()
-    {
+    // The entries to move and the next one, whose key becomes the cursor.
+    let entries = from(ctx, keys::HISTORICAL_INFO, start, limit.saturating_add(1))?;
+    for (i, (key, value)) in entries.into_iter().enumerate() {
         let decimal = &key[1..];
         if i >= limit {
             return ctx.set(
