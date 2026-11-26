@@ -83,6 +83,9 @@ pub struct App {
     /// Whether the active restore may omit stores added by the v10
     /// executable while retaining consensus app version 9.
     snapshot_optional_v10_stores: bool,
+    /// The cosmos-sdk v0.46 release whose stores the active restore of a
+    /// format 2 snapshot (app versions 1 to 3) imports.
+    snapshot_v046: Option<&'static Release>,
     /// Header of the check state (`setState(execModeCheck, ...)` at
     /// InitChain and Commit).
     check_header: Header,
@@ -307,6 +310,7 @@ impl App {
             upgrade: x_upgrade::NodeState::default(),
             snapshots: None,
             snapshot_optional_v10_stores: false,
+            snapshot_v046: None,
             check_header: Header::default(),
             pending_sequencer: None,
             switch_on_commit: false,
@@ -452,7 +456,11 @@ impl App {
             app.unmount_stores_absent_from_release()?;
         }
         if v046.is_some() {
-            app.legacy = Some(app.new_legacy_driver());
+            let mut driver = app.new_legacy_driver();
+            if app.last_height > 0 {
+                driver.init_memory_stores(&mut app.ms)?;
+            }
+            app.legacy = Some(driver);
         } else if app.last_height > 0 && legacy::executes(app.app_version()) {
             // Releases before the v0.46 driver ran app version 1 as app
             // version 9 on the v0.50 stores; app version 1 now selects the
@@ -1167,14 +1175,9 @@ impl App {
         req: abci::RequestOfferSnapshot,
     ) -> abci::ResponseOfferSnapshot {
         use abci::response_offer_snapshot::Result as R;
-        if legacy::is_v046(req.app_version) || self.legacy.is_some() {
-            tracing::error!(
-                app_version = req.app_version,
-                "rejecting snapshot: state sync of cosmos-sdk v0.46 states (app versions 1 to 3) is not supported"
-            );
-            return abci::ResponseOfferSnapshot {
-                result: R::Reject as i32,
-            };
+        if legacy::is_v046(req.app_version) || self.legacy.is_some() || self.snapshot_v046.is_some()
+        {
+            return self.legacy_offer_snapshot(req);
         }
         let result = match (&mut self.snapshots, req.snapshot) {
             (None, _) => R::Abort,
@@ -1249,6 +1252,9 @@ impl App {
         let Some(manager) = &mut self.snapshots else {
             return abort();
         };
+        if self.snapshot_v046.is_some() {
+            return self.legacy_apply_snapshot_chunk(req);
+        }
         let optional: &[&str] = if self.snapshot_optional_v10_stores {
             stores::ADDED_IN_V10
         } else {
