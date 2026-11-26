@@ -13,6 +13,7 @@
 //! cargo run --release -p celestia-rs --example replay_bench -- \
 //!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR] \
 //!   [--iavl-cache 781250] [--db-cache-mib 512] [--pruning-interval 1] \
+//!   [--value-cache 0 [--value-cache-verify true]] \
 //!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl] \
 //!   [--home DIR [--in-place true]] [--blocks-home DIR] [--save-blocks false]
 //! ```
@@ -47,11 +48,15 @@ use prost::Message as _;
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
+// Independent command-line switches.
+#[allow(clippy::struct_excessive_bools)]
 struct Args {
     blocks: i64,
     base: PathBuf,
     cache: PathBuf,
     iavl_cache: usize,
+    value_cache: usize,
+    value_cache_verify: bool,
     db_cache_mib: usize,
     pruning_interval: u64,
     discard_abci_responses: bool,
@@ -72,6 +77,9 @@ fn args() -> anyhow::Result<Args> {
         // `celestia-rs start` defaults: app.toml `iavl-cache-size`,
         // `--db-cache-mib`.
         iavl_cache: 781_250,
+        // `celestia-rs start --value-cache-size` (off by default).
+        value_cache: 0,
+        value_cache_verify: false,
         db_cache_mib: 512,
         pruning_interval: 1,
         // config.toml `storage.discard_abci_responses` (template: true).
@@ -90,6 +98,8 @@ fn args() -> anyhow::Result<Args> {
             "--base" => a.base = v.into(),
             "--cache" => a.cache = v.into(),
             "--iavl-cache" => a.iavl_cache = v.parse()?,
+            "--value-cache" => a.value_cache = v.parse()?,
+            "--value-cache-verify" => a.value_cache_verify = v.parse()?,
             "--db-cache-mib" => a.db_cache_mib = v.parse()?,
             "--pruning-interval" => a.pruning_interval = v.parse()?,
             "--discard-abci-responses" => a.discard_abci_responses = v.parse()?,
@@ -176,6 +186,8 @@ fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State)> {
     };
     opts.node.home = Some(home.to_path_buf());
     opts.store.node_cache_size = a.iavl_cache;
+    opts.store.value_cache_size = a.value_cache;
+    opts.store.value_cache_verify = a.value_cache_verify;
     opts.db.cache_size = a.db_cache_mib << 20;
     opts.store.pruning.interval = a.pruning_interval;
     let app = app::App::open_with(home, opts).map_err(|e| anyhow!("open app: {}", e.log))?;

@@ -26,6 +26,7 @@ mod nodedb;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+pub use clock::ClockCache;
 pub use error::{Error, Result};
 pub use export::{ExportNode, Exporter, Importer};
 pub use kvdb;

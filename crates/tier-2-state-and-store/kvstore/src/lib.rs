@@ -7,6 +7,8 @@
 #![allow(clippy::iter_not_returning_iterator, clippy::needless_pass_by_value)]
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 pub use iavl::{CommitInfo, Hash, Version};
 
@@ -18,10 +20,106 @@ pub type Gas = u64;
 /// Result alias for key/value store helpers.
 pub type Result<T> = core::result::Result<T, Error>;
 
+/// Bounded cache of the latest value of keys, shared by many stores.
+///
+/// It sits below gas metering: a hit returns exactly what the tree would
+/// (gas is charged by the layers above, from the key and value alone). It
+/// mirrors each store's working tree: reads fill it, [`Store::set`] and
+/// [`Store::delete`] write through, and every other change to the tree
+/// (version loads, rollbacks, imports, clones) moves the store to a fresh
+/// generation, so entries of the old one are never read again. Iteration
+/// does not use it.
+pub struct ValueCache {
+    clock: Mutex<iavl::ClockCache<(u64, Vec<u8>), Option<Arc<[u8]>>>>,
+    verify: bool,
+    hits: AtomicU64,
+    misses: AtomicU64,
+}
+
+impl std::fmt::Debug for ValueCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (hits, misses) = self.stats();
+        f.debug_struct("ValueCache")
+            .field("verify", &self.verify)
+            .field("hits", &hits)
+            .field("misses", &misses)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Values larger than this are not cached.
+const MAX_CACHED_VALUE: usize = 16 << 10;
+
+/// Store generations; never reused.
+static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
+
+fn next_generation() -> u64 {
+    NEXT_GENERATION.fetch_add(1, Ordering::Relaxed)
+}
+
+impl ValueCache {
+    /// A cache of `capacity` entries (at least one). With `verify`, every
+    /// hit is also read from the tree and a difference panics.
+    #[must_use]
+    pub fn new(capacity: usize, verify: bool) -> Arc<Self> {
+        Arc::new(Self {
+            clock: Mutex::new(iavl::ClockCache::new(capacity)),
+            verify,
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
+        })
+    }
+
+    /// Lookups served from the cache and lookups that read the tree.
+    #[must_use]
+    pub fn stats(&self) -> (u64, u64) {
+        (
+            self.hits.load(Ordering::Relaxed),
+            self.misses.load(Ordering::Relaxed),
+        )
+    }
+
+    fn lock(
+        &self,
+    ) -> std::sync::MutexGuard<'_, iavl::ClockCache<(u64, Vec<u8>), Option<Arc<[u8]>>>> {
+        self.clock.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn put(&self, generation: u64, key: &[u8], value: Option<&[u8]>) {
+        let key = (generation, key.to_vec());
+        match value {
+            Some(v) if v.len() > MAX_CACHED_VALUE => self.lock().remove(&key),
+            _ => self.lock().put(key, value.map(Arc::from)),
+        }
+    }
+}
+
+/// A store's view of the shared [`ValueCache`].
+#[derive(Debug)]
+struct Values {
+    cache: Arc<ValueCache>,
+    generation: u64,
+}
+
 /// IAVL-backed key/value store.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct Store {
     tree: iavl::Tree,
+    values: Option<Values>,
+}
+
+impl Clone for Store {
+    /// The clone reads and writes the cache under its own generation, so
+    /// neither sees the other's later writes.
+    fn clone(&self) -> Self {
+        Self {
+            tree: self.tree.clone(),
+            values: self.values.as_ref().map(|v| Values {
+                cache: Arc::clone(&v.cache),
+                generation: next_generation(),
+            }),
+        }
+    }
 }
 
 impl Store {
@@ -35,13 +133,30 @@ impl Store {
     pub fn with_initial_version(initial_version: Version) -> Result<Self> {
         Ok(Self {
             tree: iavl::Tree::with_initial_version(initial_version)?,
+            values: None,
         })
     }
 
     /// Create a store from an existing IAVL tree.
     #[must_use]
     pub fn from_tree(tree: iavl::Tree) -> Self {
-        Self { tree }
+        Self { tree, values: None }
+    }
+
+    /// Reads latest values through `cache` (`None`: read the tree only).
+    /// The store starts a fresh generation: it reads nothing cached before.
+    pub fn set_value_cache(&mut self, cache: Option<Arc<ValueCache>>) {
+        self.values = cache.map(|cache| Values {
+            cache,
+            generation: next_generation(),
+        });
+    }
+
+    /// Forgets what the cache holds for this store (a fresh generation).
+    fn invalidate_values(&mut self) {
+        if let Some(v) = &mut self.values {
+            v.generation = next_generation();
+        }
     }
 
     /// Consume the store and return the underlying IAVL tree.
@@ -56,9 +171,29 @@ impl Store {
         &self.tree
     }
 
-    /// The underlying IAVL tree, mutably (commit, pruning, export).
+    /// The underlying IAVL tree, mutably (version loads, rollbacks,
+    /// imports). The value cache is invalidated: the caller may change
+    /// what the latest version holds.
     pub fn tree_mut(&mut self) -> &mut iavl::Tree {
+        self.invalidate_values();
         &mut self.tree
+    }
+
+    /// Commits the working tree as the next version into `batch`
+    /// ([`iavl::Tree::save_version_to`]). The latest values do not change,
+    /// so the value cache stays valid.
+    pub fn save_version_to(&mut self, batch: &mut iavl::kvdb::WriteBatch) -> Result<CommitInfo> {
+        self.tree.save_version_to(batch).map_err(Error::from)
+    }
+
+    /// Prunes old versions ([`iavl::Tree::prune`]). The latest version is
+    /// never pruned, so the value cache stays valid.
+    pub fn prune_versions(
+        &mut self,
+        keep: impl Fn(Version) -> bool,
+        batch: &mut iavl::kvdb::WriteBatch,
+    ) -> Result<Vec<Version>> {
+        self.tree.prune(keep, batch).map_err(Error::from)
     }
 
     /// Return the latest saved version.
@@ -93,25 +228,69 @@ impl Store {
     /// Return the value for `key`, if present.
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
         validate_key(key)?;
-        Ok(self.tree.get(key)?)
+        let Some(values) = &self.values else {
+            return Ok(self.tree.get(key)?);
+        };
+        let cache = &values.cache;
+        let hit = cache.lock().get(&(values.generation, key.to_vec()));
+        if let Some(value) = hit {
+            cache.hits.fetch_add(1, Ordering::Relaxed);
+            let value = value.map(|v| v.to_vec());
+            if cache.verify {
+                let tree = self.tree.get(key)?;
+                assert!(
+                    tree == value,
+                    "value cache: stale entry for key {key:02x?}: cached {value:02x?}, tree {tree:02x?}"
+                );
+            }
+            return Ok(value);
+        }
+        cache.misses.fetch_add(1, Ordering::Relaxed);
+        let value = self.tree.get(key)?;
+        cache.put(values.generation, key, value.as_deref());
+        Ok(value)
     }
 
     /// Return true when `key` exists.
     pub fn has(&self, key: &[u8]) -> Result<bool> {
         validate_key(key)?;
-        Ok(self.tree.get(key)?.is_some())
+        Ok(self.get(key)?.is_some())
     }
 
     /// Insert or replace a key/value pair, returning the previous value.
     pub fn set(&mut self, key: Vec<u8>, value: Vec<u8>) -> Result<Option<Vec<u8>>> {
         validate_key(&key)?;
-        self.tree.set(key, value).map_err(Error::from)
+        let cached = self.values.as_ref().map(|_| (key.clone(), value.clone()));
+        match self.tree.set(key, value) {
+            Ok(previous) => {
+                if let (Some(values), Some((key, value))) = (&self.values, cached) {
+                    // Write through: the tree now holds `value` at `key`.
+                    values.cache.put(values.generation, &key, Some(&value));
+                }
+                Ok(previous)
+            }
+            Err(e) => {
+                self.invalidate_values();
+                Err(e.into())
+            }
+        }
     }
 
     /// Delete a key/value pair, returning the previous value.
     pub fn delete(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>> {
         validate_key(key)?;
-        self.tree.remove(key).map_err(Error::from)
+        match self.tree.remove(key) {
+            Ok(previous) => {
+                if let Some(values) = &self.values {
+                    values.cache.put(values.generation, key, None);
+                }
+                Ok(previous)
+            }
+            Err(e) => {
+                self.invalidate_values();
+                Err(e.into())
+            }
+        }
     }
 
     /// Iterate forward over the half-open range `[start, end)`.

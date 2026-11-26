@@ -313,6 +313,14 @@ struct StartArgs {
     /// State database cache in MiB.
     #[arg(long, default_value_t = 512)]
     db_cache_mib: usize,
+    /// Latest values cached across the IAVL stores, below gas metering
+    /// (0 = off). Experimental.
+    #[arg(long = "value-cache-size", default_value_t = 0)]
+    value_cache_size: usize,
+    /// Read every value-cache hit from the tree too and abort on a
+    /// difference (also `CELESTIA_VALUE_CACHE_VERIFY=1`).
+    #[arg(long = "value-cache-verify")]
+    value_cache_verify: bool,
     /// Prometheus listen address (enables metrics; default: config.toml
     /// `[instrumentation]`).
     #[arg(long = "prometheus-listen-addr")]
@@ -1197,6 +1205,9 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
             };
         }
         opts.db.cache_size = a.db_cache_mib << 20;
+        opts.store.value_cache_size = a.value_cache_size;
+        opts.store.value_cache_verify = a.value_cache_verify
+            || std::env::var_os("CELESTIA_VALUE_CACHE_VERIFY").is_some_and(|v| v == "1");
     }
     opts.store.pruning = pruning;
     if let Ok(n) = usize::try_from(files.int(File::App, "iavl-cache-size"))

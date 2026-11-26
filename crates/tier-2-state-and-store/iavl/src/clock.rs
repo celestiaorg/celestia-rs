@@ -15,7 +15,7 @@ struct Slot<K, V> {
 }
 
 /// A CLOCK cache holding at most `capacity` entries.
-pub(crate) struct ClockCache<K, V, S = foldhash::fast::RandomState> {
+pub struct ClockCache<K, V, S = foldhash::fast::RandomState> {
     map: HashMap<K, usize, S>,
     slots: Vec<Slot<K, V>>,
     free: Vec<usize>,
@@ -47,6 +47,12 @@ impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> ClockCache<K, V, S> {
     #[must_use]
     pub fn len(&self) -> usize {
         self.map.len()
+    }
+
+    /// Whether nothing is cached.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
     }
 
     /// Maximum entries.

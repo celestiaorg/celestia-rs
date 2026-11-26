@@ -17,6 +17,7 @@ use prost::Message;
 
 pub use iavl::{Hash, Version};
 pub use kvdb;
+pub use kvstore::ValueCache;
 
 /// IAVL-backed key/value store mounted in a multi-store.
 pub type KvStore = kvstore::Store;
@@ -241,6 +242,11 @@ pub struct StoreOptions {
     /// Decoded IAVL nodes cached across all stores (roughly 200–300 B of
     /// memory each).
     pub node_cache_size: usize,
+    /// Latest values cached across all IAVL stores (0: off), below gas
+    /// metering ([`kvstore::ValueCache`]).
+    pub value_cache_size: usize,
+    /// Check every value-cache hit against the tree; a difference panics.
+    pub value_cache_verify: bool,
 }
 
 impl Default for StoreOptions {
@@ -248,6 +254,8 @@ impl Default for StoreOptions {
         Self {
             pruning: PruningOptions::validator(),
             node_cache_size: 1_000_000,
+            value_cache_size: 0,
+            value_cache_verify: false,
         }
     }
 }
@@ -297,6 +305,8 @@ pub struct Store {
     commit_timestamp: Option<prost_types::Timestamp>,
     /// Versions pruning must keep (in-flight snapshots), with pin counts.
     pins: Pins,
+    /// Latest-value cache of the IAVL stores, when enabled.
+    values: Option<Arc<ValueCache>>,
 }
 
 type Pins = Arc<Mutex<BTreeMap<Version, usize>>>;
@@ -347,6 +357,7 @@ impl Store {
             pending_metadata: Vec::new(),
             commit_timestamp: None,
             pins: Pins::default(),
+            values: None,
         }
     }
 
@@ -371,6 +382,8 @@ impl Store {
             db: Some(db),
             cache: NodeCache::new(options.node_cache_size),
             pruning: options.pruning,
+            values: (options.value_cache_size > 0)
+                .then(|| ValueCache::new(options.value_cache_size, options.value_cache_verify)),
             ..Self::new()
         }
     }
@@ -399,15 +412,23 @@ impl Store {
     }
 
     fn new_kv_store(&self, name: &str) -> Result<KvStore> {
-        match &self.db {
-            None => Ok(KvStore::with_initial_version(self.initial_version)?),
+        let mut store = match &self.db {
+            None => KvStore::with_initial_version(self.initial_version)?,
             Some(db) => {
                 let ndb = NodeDb::new(Arc::clone(db), store_prefix(name), Arc::clone(&self.cache));
                 let mut tree = iavl::Tree::open(ndb)?;
                 tree.set_initial_version(self.initial_version)?;
-                Ok(KvStore::from_tree(tree))
+                KvStore::from_tree(tree)
             }
-        }
+        };
+        store.set_value_cache(self.values.clone());
+        Ok(store)
+    }
+
+    /// The latest-value cache, when enabled.
+    #[must_use]
+    pub fn value_cache(&self) -> Option<&Arc<ValueCache>> {
+        self.values.as_ref()
     }
 
     /// Mount a new store under `name`.
@@ -676,7 +697,7 @@ impl Store {
         let mut batch = WriteBatch::new();
         let mut store_infos = self.memory_store_infos();
         for (name, store) in &mut self.stores {
-            let commit = store.tree_mut().save_version_to(&mut batch)?;
+            let commit = store.save_version_to(&mut batch)?;
             store_infos.push(StoreInfo {
                 name: name.clone(),
                 commit_id: Some(CommitId {
@@ -745,7 +766,7 @@ impl Store {
         let mut batch = WriteBatch::new();
         let mut deleted = BTreeSet::new();
         for store in self.stores.values_mut() {
-            deleted.extend(store.tree_mut().prune(
+            deleted.extend(store.prune_versions(
                 |v| pruning.retains(v, latest) || pinned.contains(&v),
                 &mut batch,
             )?);
@@ -848,6 +869,7 @@ impl Store {
             pending_metadata: Vec::new(),
             commit_timestamp: None,
             pins: Pins::default(),
+            values: None,
         })
     }
 
@@ -1038,6 +1060,7 @@ impl Restorer<'_> {
         for (name, tree) in std::mem::take(&mut self.imported) {
             if let Some(store) = self.store.stores.get_mut(&name) {
                 *store = KvStore::from_tree(tree);
+                store.set_value_cache(self.store.values.clone());
             }
         }
         self.store.version = self.version;
@@ -1707,6 +1730,7 @@ mod tests {
             StoreOptions {
                 pruning: PruningOptions::latest_only(),
                 node_cache_size: 16,
+                ..StoreOptions::default()
             },
         );
         store.mount_store("acc", StoreKind::Iavl)?;
