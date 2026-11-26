@@ -226,46 +226,28 @@ pub(super) fn gogo_view(msg: &Any) -> Result<Any> {
     })
 }
 
+/// `ValidateBasic` of the messages a module file of the legacy driver
+/// owns; `None` for the rest.
+fn module_validate_basic(msg: &Any) -> Option<Result<()>> {
+    super::ibc_channel::validate_basic(msg)
+        .or_else(|| super::ibc_transfer::validate_basic(msg))
+        .or_else(|| super::ibc_timeout::validate_basic(msg))
+        .or_else(|| super::ibc::validate_basic(msg))
+        .or_else(|| super::authz::validate_basic(msg))
+        .or_else(|| super::qgb::validate_basic(msg))
+        .or_else(|| super::gov::validate_basic(msg))
+        .or_else(|| super::evidence::validate_basic(msg))
+        .or_else(|| super::crisis::validate_basic(msg))
+        .or_else(|| super::vesting::validate_basic(msg))
+        .or_else(|| super::feegrant::validate_basic(msg))
+        .or_else(|| super::blob::validate_basic(msg))
+        .or_else(|| super::signal::validate_basic(msg))
+}
+
 /// `msg.ValidateBasic()` of a v0.46 message.
 pub fn validate_basic(msg: &Any) -> Result<()> {
     let msg = &gogo_view(msg)?;
-    if let Some(r) = super::ibc_channel::validate_basic(msg) {
-        return r;
-    }
-    if let Some(r) = super::ibc_transfer::validate_basic(msg) {
-        return r;
-    }
-    if let Some(r) = super::ibc_timeout::validate_basic(msg) {
-        return r;
-    }
-    if let Some(r) = super::ibc::validate_basic(msg) {
-        return r;
-    }
-    if let Some(r) = super::authz::validate_basic(msg) {
-        return r;
-    }
-    if let Some(r) = super::qgb::validate_basic(msg) {
-        return r;
-    }
-    if let Some(r) = super::gov::validate_basic(msg) {
-        return r;
-    }
-    if let Some(r) = super::evidence::validate_basic(msg) {
-        return r;
-    }
-    if let Some(r) = super::crisis::validate_basic(msg) {
-        return r;
-    }
-    if let Some(r) = super::vesting::validate_basic(msg) {
-        return r;
-    }
-    if let Some(r) = super::feegrant::validate_basic(msg) {
-        return r;
-    }
-    if let Some(r) = super::blob::validate_basic(msg) {
-        return r;
-    }
-    if let Some(r) = super::signal::validate_basic(msg) {
+    if let Some(r) = module_validate_basic(msg) {
         return r;
     }
     if msg.type_url == bank::MsgSend::type_url() {

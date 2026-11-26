@@ -2280,7 +2280,8 @@ fn v1_run_tx_decodes_with_the_v1_registry() {
     );
     let (out, record) = run(crisis);
     let e = out.result.expect_err("an empty sender");
-    assert_eq!((&*e.codespace, e.code), ("sdk", 7), "{}", e.log);
+    assert_eq!(e.codespace, "sdk", "{}", e.log);
+    assert_eq!(e.code, 7, "{}", e.log);
     assert!(e.log.starts_with("invalid sender address: "), "{}", e.log);
     assert!(record.is_none());
 }
