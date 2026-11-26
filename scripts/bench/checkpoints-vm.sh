@@ -86,7 +86,7 @@ mount_disk() { # mount_disk DEVICE_NAME DIR: format only a disk with no filesyst
   mkdir -p "$2"
   [[ -z $DRY ]] || { run mount -o noatime "$dev" "$2"; return; }
   blkid -p "$dev" >/dev/null 2>&1 || mkfs.ext4 -q -m 0 "$dev"
-  mountpoint -q "$2" || mount -o noatime "$dev" "$2"
+  mountpoint -q "$2" || mount -o noatime "$dev" "$2" || mountpoint -q "$2" # another boot script may mount it first
 }
 
 setup() {
@@ -320,8 +320,9 @@ checkpoint() { # checkpoint H V
 
 # upload H: copy checkpoint H to Cloud Storage under checkpoints/<campaign>/
 # when the VM runs the vmexec agent with a bucket (vmexec create --gcs).
+has_bucket() { [[ -n $DRY ]] || { command -v vmx-gcs >/dev/null && vmx-gcs url probe >/dev/null 2>&1; }; }
 upload() {
-  [[ -n $DRY ]] || { command -v vmx-gcs >/dev/null && vmx-gcs url probe >/dev/null 2>&1; } || return 0
+  has_bucket || return 0
   local f
   while IFS= read -r f; do
     run vmx-gcs put "$f" "checkpoints/$name/${f#"$CKPT"/}" || return 1
@@ -365,7 +366,11 @@ finish() {
   local n files=()
   for f in polls.tail.tsv node.excerpt status.log du.txt df.txt export-*.log; do [[ -e $STATE/$f ]] && files+=("$f"); done
   tar -C "$STATE" -cf "$RUN/raw.tar" "${files[@]}" 2>/dev/null || true
-  n=$(bench_chunk "$RUN/raw.tar" "$RUN/raw" 196608 2) || {
+  # With a bucket the raw results go there: guest attributes share ~512 KiB
+  # per VM with the vmexec agent's results.
+  if has_bucket && run vmx-gcs put "$RUN/raw.tar" "checkpoints/$name/raw/$(date -u +%Y%m%dT%H%M%SZ).tar"; then
+    n=0
+  else n=$(bench_chunk "$RUN/raw.tar" "$RUN/raw" 196608 2); fi || {
     tar -C "$STATE" -cf "$RUN/raw.tar" polls.tail.tsv status.log 2>/dev/null || true
     n=$(bench_chunk "$RUN/raw.tar" "$RUN/raw" 196608 2) || n=0
   }
