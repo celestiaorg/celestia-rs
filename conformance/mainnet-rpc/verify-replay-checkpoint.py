@@ -69,11 +69,13 @@ def items(directory):
     chunks = sorted((p for p in directory.iterdir() if p.name.isdigit()), key=lambda p: int(p.name))
     if [int(p.name) for p in chunks] != list(range(len(chunks))) or not chunks:
         raise ValueError(f"chunk files in {directory} are not 0..n-1")
-    decoder, buffer, offset = zlib.decompressobj(), b"", 0
+    decoder, buffer, offset, adler = zlib.decompressobj(), b"", 0, 1
     for chunk in chunks:
         with chunk.open("rb") as handle:
             while data := handle.read(1 << 22):
-                buffer = buffer[offset:] + decoder.decompress(data)
+                out = decoder.decompress(data)
+                adler = zlib.adler32(out, adler)
+                buffer = buffer[offset:] + out
                 offset = 0
                 while True:
                     try:
@@ -84,7 +86,11 @@ def items(directory):
                         break
                     yield buffer[start:start + size]
                     offset = start + size
-    if not decoder.eof or offset != len(buffer) or decoder.unused_data:
+    # Cosmos SDK v0.46 closes its zlib writer twice (StreamWriter.Close), so
+    # format 2 streams end with the Adler-32 trailer written a second time.
+    # Go's reader ignores those four bytes; accept exactly them.
+    trailer = adler.to_bytes(4, "big")
+    if not decoder.eof or offset != len(buffer) or decoder.unused_data not in (b"", trailer):
         raise ValueError("snapshot stream is truncated or has trailing data")
 
 

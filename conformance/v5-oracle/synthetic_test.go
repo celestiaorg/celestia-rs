@@ -5,10 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-// fixtureFiles are the outputs that conformance/fixtures/synthetic/v5 holds.
+// fixtureFiles are the outputs that each fixture directory holds.
 var fixtureFiles = []string{
 	"blocks.jsonl.gz", "store-roots.json", "tx-results.jsonl.gz",
 	"kv-handoff.jsonl.gz", "kv-upgrade.jsonl.gz", "kv-diffs.jsonl.gz",
@@ -16,7 +17,8 @@ var fixtureFiles = []string{
 
 // TestSyntheticFixtureIsReproducible runs the v1-v3 synthetic chain through
 // v1-oracle and v4-oracle -next-handoff, continues it across the v5
-// upgrade and requires the committed fixtures byte for byte.
+// upgrade (and on to the v6 hand-off) and requires the committed fixtures
+// byte for byte.
 func TestSyntheticFixtureIsReproducible(t *testing.T) {
 	tmp := t.TempDir()
 	bin := map[string]string{}
@@ -40,18 +42,33 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 	}
 	requireSame(t, filepath.Join(fixtures, "v4-to-v5", "store-roots.json"), filepath.Join(v4Out, "store-roots.json"))
 
-	out := filepath.Join(tmp, "v5")
-	cmd := exec.Command(os.Args[0], "-test.run=TestRunSynthetic", "-test.v")
-	cmd.Env = append(os.Environ(),
-		"V5_ORACLE_HANDOFF="+home,
-		"V5_ORACLE_GENESIS="+genesis,
-		"V5_ORACLE_OUT="+out,
-	)
-	if bz, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("synthetic run: %v\n%s", err, bz)
+	// v5 (blocks 26 to 30) and, on a copy of the home, v5-to-v6 (blocks
+	// 26 to 36, on to the v6 hand-off).
+	home6 := filepath.Join(tmp, "home-v6")
+	if err := os.CopyFS(home6, os.DirFS(home)); err != nil {
+		t.Fatal(err)
 	}
-	for _, name := range fixtureFiles {
-		requireSame(t, filepath.Join(fixtures, "v5", name), filepath.Join(out, name))
+	for _, c := range []struct {
+		home, dir string
+		args      []string
+	}{
+		{home, "v5", nil},
+		{home6, "v5-to-v6", []string{"-heights", "11", "-next-handoff"}},
+	} {
+		out := filepath.Join(tmp, c.dir)
+		cmd := exec.Command(os.Args[0], "-test.run=TestRunSynthetic", "-test.v")
+		cmd.Env = append(os.Environ(),
+			"V5_ORACLE_HANDOFF="+c.home,
+			"V5_ORACLE_GENESIS="+genesis,
+			"V5_ORACLE_OUT="+out,
+			"V5_ORACLE_ARGS="+strings.Join(c.args, " "),
+		)
+		if bz, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("synthetic run %s: %v\n%s", c.dir, err, bz)
+		}
+		for _, name := range fixtureFiles {
+			requireSame(t, filepath.Join(fixtures, c.dir, name), filepath.Join(out, name))
+		}
 	}
 }
 
@@ -82,6 +99,7 @@ func TestRunSynthetic(t *testing.T) {
 		"-genesis", os.Getenv("V5_ORACLE_GENESIS"),
 		"-out", out,
 	}
+	os.Args = append(os.Args, strings.Fields(os.Getenv("V5_ORACLE_ARGS"))...)
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}

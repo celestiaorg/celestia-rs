@@ -4,7 +4,7 @@
 //! (16, `conformance/fixtures/synthetic/v4`), where the app switches its
 //! store set and runs plan `v4`, and the v4 blocks 17 to 20. Every block's
 //! app hash must equal Go's, so the app syncs the synthetic chain from
-//! genesis to block 20.
+//! genesis to block 20. The test also requires Go's transaction results.
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use app::App;
 use common::Kv;
-use common::check::{contents, describe, diff, update_set};
+use common::check::{check_tx_results, contents, describe, diff, update_set};
 
 const V1_V3: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -141,7 +141,7 @@ fn v4_handoff_block_matches_go() {
         ),
     );
 
-    let req = common::finalize_request(&v4_blocks[&UPGRADE], &vals[&HANDOFF]);
+    let req = v4_request(&v4_blocks[&UPGRADE], &vals[&HANDOFF]);
     app.finalize_block(req)
         .unwrap_or_else(|e| panic!("height {UPGRADE}: {}", e.log));
     app.commit().unwrap();
@@ -207,11 +207,13 @@ fn sync(v1: &str, v4: &str, handoff: i64, last: i64) {
                 &common::oracle_updates(&v4_results[&height]),
             ),
         );
-        let req = common::finalize_request(&v4_blocks[&height], &vals[&(height - 1)]);
-        app.finalize_block(req)
+        let req = v4_request(&v4_blocks[&height], &vals[&(height - 1)]);
+        let res = app
+            .finalize_block(req)
             .unwrap_or_else(|e| panic!("height {height}: {}", e.log));
         app.commit().unwrap();
-        let failures = store_failures(&app, v4, height);
+        let mut failures = check_tx_results(&res, &v4_results[&height]);
+        failures.extend(store_failures(&app, v4, height));
         assert!(
             failures.is_empty(),
             "height {height}:\n{}",
@@ -225,6 +227,21 @@ fn sync(v1: &str, v4: &str, handoff: i64, last: i64) {
             "height {height}"
         );
     }
+}
+
+/// The FinalizeBlock request of a v4 block: celestia-core v0.38 passes
+/// each BlobTx's inner transaction, as the oracle did.
+fn v4_request(
+    block: &serde_json::Value,
+    last_vals: &common::ValidatorSet,
+) -> celestia_proto::celestia_core_proto::abci::RequestFinalizeBlock {
+    let mut req = common::finalize_request(block, last_vals);
+    for tx in &mut req.txs {
+        if let Some(blob_tx) = txdecode::unmarshal_blob_tx_v9(tx) {
+            *tx = blob_tx.unwrap().tx;
+        }
+    }
+    req
 }
 
 fn oracle_height(roots: &serde_json::Value, height: i64) -> serde_json::Value {

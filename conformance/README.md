@@ -383,6 +383,100 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json
   -out ../fixtures/synthetic/v5
 ```
 
+`v5-oracle` modifies the home in place: run the v5 to v6 commands below
+on a fresh home made by the first two commands.
+
+#### Synthetic chain across the v5 to v6 upgrade
+
+`v5-oracle -heights 11 -next-handoff` runs the chain on to block 36
+(`to_v6.go`): alice and carol become validators below v6's 10% minimum
+commission (6% with max 20%, 7% with max 8%); a solo machine
+(06-solomachine, whose proofs are signatures by a fixed key) opens an IBC
+client, connection and transfer channel, and its `uatom` transfer gets an
+error acknowledgement from x/tokenfilter; the validators signal version
+6, a `MsgTryUpgrade` in block 33 reaches quorum, and the EndBlocker of
+block 36 sets app version 6 and schedules plan `v6` at 37.
+[`fixtures/synthetic/v5-to-v6`](fixtures/synthetic/v5-to-v6) holds its
+outputs (blocks 26 to 30 are those of `fixtures/synthetic/v5`).
+`v6-oracle` opens the home with celestia-app v6.4.4 (the v6 release that
+the v8 and v9 multiplexers embed; v6.4.10 changes only CheckTx,
+ProcessProposal and the tx cache). The PreBlocker of block 37 runs the
+`v6` handler; blocks 37 to 41 receive a second `uatom` transfer (now a
+voucher), send the voucher, return part of it to the solo machine and
+take its acknowledgement. [`fixtures/synthetic/v6`](fixtures/synthetic/v6)
+holds the outputs from height 36. `go test` in `v5-oracle` rebuilds
+`v5-to-v6`; `go test` in `v6-oracle` runs the whole chain and rebuilds
+`v6`. `cargo test -p app --test synthetic_v6_oracle` checks the fixtures'
+facts. To regenerate, after the v4 to v5 commands above (on a fresh home):
+
+```sh
+cd conformance/v5-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v5-to-v6 -heights 11 -next-handoff
+cd ../v6-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v6
+```
+
+#### Synthetic chain across the v6 to v8 upgrade
+
+Mainnet skipped v7: its v6 chain signalled version 8. `v6-oracle -heights
+10 -next-handoff` runs the chain on to block 46 (`to_v8.go`): accounts
+send to the fee collector, distribution, gov and bonded pool module
+accounts (v6's `BlockedAddresses` hashes module addresses twice, so it
+blocks none), bob becomes a validator at 25% commission with a 30% max,
+the validators signal version 8, a `MsgTryUpgrade` in block 43 reaches
+quorum, and the EndBlocker of block 46 sets app version 8 and schedules
+plan `v8` at 47. [`fixtures/synthetic/v6-to-v8`](fixtures/synthetic/v6-to-v8)
+holds its outputs (blocks 37 to 41 are those of `fixtures/synthetic/v6`).
+`v8-oracle` opens the home with celestia-app v8.0.8: its store loader adds
+`zkism` at 47 and the PreBlocker runs the `v8` handler (20% minimum
+commission, 60% minimum max rate). In blocks 47 to 51 the sends to module
+accounts fail except the ones to gov. [`fixtures/synthetic/v8`](fixtures/synthetic/v8)
+holds the outputs from height 46. `go test` in `v6-oracle` rebuilds
+`v6-to-v8`; `go test` in `v8-oracle` runs the whole chain and rebuilds
+`v8`. `cargo test -p app --test synthetic_v8_oracle` checks the fixtures'
+facts. To regenerate, after the v5 to v6 commands (on a fresh home, as
+`v6-oracle` modifies it in place):
+
+```sh
+cd conformance/v6-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v6-to-v8 -heights 10 -next-handoff
+cd ../v8-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v8
+```
+
+#### Synthetic chain across the v8 to v9 upgrade
+
+`v8-oracle -heights 10 -next-handoff` runs the chain on to block 56: the
+validators signal version 9, a `MsgTryUpgrade` in block 53 reaches
+quorum, and the EndBlocker of block 56 sets app version 9 and schedules
+plan `v9` at 57. [`fixtures/synthetic/v8-to-v9`](fixtures/synthetic/v8-to-v9)
+holds its outputs (blocks 47 to 51 are those of `fixtures/synthetic/v8`).
+`v9-oracle` opens the home with celestia-app v9.0.8, built without the
+`fibre` build tag as the release binaries are (so no store is added). The
+PreBlocker of block 57 runs the `v9` handler (BlockMaxBytes 32 MiB,
+evidence MaxAgeNumBlocks 559,940, blob GovMaxSquareSize 256, IBC
+MaxExpectedTimePerBlock 13 s), and the program executes blocks 57 to 61.
+Its `tx-results.jsonl.gz` also records each block's whole `timeout_info`,
+which has more fields in celestia-core v0.40.
+[`fixtures/synthetic/v9`](fixtures/synthetic/v9) holds the outputs from
+height 56. `go test` in `v8-oracle` rebuilds `v8-to-v9`; `go test` in
+`v9-oracle` runs the whole chain from genesis and rebuilds `v9`.
+`cargo test -p app --test synthetic_v9_oracle` checks the fixtures'
+facts. To regenerate, after the v6 to v8 commands (on a fresh home):
+
+```sh
+cd conformance/v8-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v8-to-v9 -heights 10 -next-handoff
+cd ../v9-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v9
+```
+
 #### Rich synthetic chain for the v3 to v4 migrations
 
 `v1-oracle -synthetic -chain v3-rich` builds a second chain (genesis at
@@ -566,6 +660,28 @@ cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
 
 `cargo test -p app --test ibc_oracle` compares each block as for the
 synthetic chain.
+
+#### History synthetic chain for the historical info migration
+
+`v1-oracle -synthetic -chain v3-history` runs the v1-v3 chain's
+validators and accounts from a genesis at app version 3 for 1,005
+blocks, then schedules plan `v4` at 1,006. Its 1,005 historical infos
+are more than staking's v5 migration moves at once (1,000), so the
+migration records the cursor 0x82 and the BeginBlocker of the upgrade
+block finishes it. Only the v4 side
+([`fixtures/synthetic/v3-history-v4`](fixtures/synthetic/v3-history-v4))
+and the genesis ([`fixtures/synthetic/v3-history`](fixtures/synthetic/v3-history))
+are committed: the v3 side's store roots of 1,005 heights would add
+2 MB. `go test` in `v4-oracle` rebuilds it. To regenerate:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -chain v3-history -out "$OUT/hist" -handoff "$OUT/hist-home"
+cp "$OUT"/hist/genesis.json ../fixtures/synthetic/v3-history/
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/hist-home" \
+  -genesis "$OUT/hist/genesis.json" -out ../fixtures/synthetic/v3-history-v4
+```
 
 #### Where checkpoints come from
 
