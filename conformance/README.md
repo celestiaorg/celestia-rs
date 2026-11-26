@@ -377,6 +377,71 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/rich-home" \
   -genesis "$OUT/rich/genesis.json" -out ../fixtures/synthetic/v3-rich-v4
 ```
 
+#### Governance chain for app versions 1 to 3
+
+`v1-oracle -synthetic -chain gov-v1-v3` (`synthetic_gov.go`) runs the synthetic
+chain's genesis with 40 second gov deposit and voting periods (about 3
+blocks), `--v2-upgrade-height 14` and a signalled upgrade to app version
+3 at block 18. At app version 1 (blocks 2 to 13) and again at app
+version 3 (blocks 19 to 26):
+
+- community pool spends that pass (a delegator's authz `MsgExec` vote
+  overrides its validator's), expire in the deposit period (deposit
+  refunded: the fork's EndBlocker refunds dropped proposals), are vetoed
+  (burned) or rejected (refunded);
+- parameter changes through celestia-app's param filter: slashing
+  `SignedBlocksWindow`, baseapp `BlockParams` (the consensus params of
+  blocks 7 and 23 change), blob `GovMaxSquareSize`, icahost
+  `AllowMessages`, and two in one proposal. Blocked parameters (staking
+  `UnbondingTime`, bank `SendEnabled`) fail at submission: gov runs the
+  filter's handler then;
+- v1beta1 and v1 messages, `MsgExecLegacyContent`, a second
+  `MsgDeposit` that starts the voting period, and weighted votes with
+  `NoWithVeto`.
+
+Block 26 checks every proposal's final status against the plan.
+[`fixtures/synthetic/gov-v1-v3`](fixtures/synthetic/gov-v1-v3) holds
+heights 0 to 26; `TestSyntheticFixtureIsReproducible` requires it byte for
+byte. To regenerate it:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -chain gov-v1-v3 -kv -out "$OUT"
+cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
+  "$OUT"/tx-results.jsonl.gz "$OUT"/kv-diffs.jsonl.gz \
+  "$OUT"/kv-height-0.jsonl.gz ../fixtures/synthetic/gov-v1-v3/
+```
+
+`cargo test -p app --test gov_oracle` compares each block as for the
+synthetic chain.
+
+#### Staking chain for app versions 1 to 3
+
+`v1-oracle -synthetic -chain staking-v1-v3` (`synthetic_staking.go`) runs the
+synthetic chain's genesis with a 60 second unbonding time and a 10 block
+signing window (half of it signed, a 60 second downtime jail),
+`--v2-upgrade-height 20` and a signalled upgrade to app version 3 at
+block 24, so that the staking queues mature within the run:
+
+- app version 1 (blocks 2 to 19): a fee allowance, a transaction whose
+  fee the granter pays, and its revocation; authz StakeAuthorization
+  and SendAuthorization through one `MsgExec`, then `MsgRevoke`; an
+  undelegation and a redelegation that mature in the EndBlocker, and a
+  cancelled unbonding; a validator edit, commission and reward
+  withdrawals to a withdraw address; a continuous vesting account that
+  delegates locked coins and a delayed one; a multi-send; val3 misses
+  every commit until it is jailed for downtime (block 11), then
+  unjails (block 16);
+- app version 3 (blocks 25 to 32): a periodic fee allowance, an authz
+  undelegation, a cancelled unbonding, a redelegation and a vesting
+  account's undelegation, maturing in blocks 30 and 31.
+
+Blocks 14 and 32 check the jail and the queues against the plan.
+[`fixtures/synthetic/staking-v1-v3`](fixtures/synthetic/staking-v1-v3)
+holds heights 0 to 32 (regenerate it as the governance chain, with
+`-chain staking-v1-v3`). `cargo test -p app --test staking_oracle` compares each
+block.
+
 #### IBC chain for app version 2
 
 Mainnet's v2 and v3 eras carry interchain account host packets (27,031
@@ -408,6 +473,14 @@ ibc-go simapp chains as counterparties:
   app version 3. Then an interchain account packet times out on B: the
   ordered channel closes on B and on A (`MsgChannelCloseConfirm`), B
   registers again, and A reopens the same account on a new channel and
+  executes a send and a multi-send over it. Last, a governance proposal
+  narrows the host's `AllowMessages` to `MsgSend` (the chain's genesis
+  has 40 second gov periods), after which the account's delegation gets
+  an error acknowledgement and its send runs. Then utia goes to B
+  through authz `MsgExec` (a GenericAuthorization, and an ibc-go
+  TransferAuthorization whose spend limit it uses up), and a plain
+  transfer times out on B and is refunded on A. The fixture keeps its
+  `ibc-v2` name.
   executes a send over it. The fixture keeps its `ibc-v2` name.
 
 The test records A's genesis, each BeginBlock header and the
@@ -417,6 +490,7 @@ run's. Each block gets one BeginBlock at one time (ibctesting re-runs
 BeginBlock when its clock moves, which no consensus engine does), so
 the clients that A hosts allow an hour of clock drift. The blocks carry
 no last commit. [`fixtures/synthetic/ibc-v2`](fixtures/synthetic/ibc-v2)
+holds heights 0 to 151; the test requires it byte for byte. To
 holds heights 0 to 124; the test requires it byte for byte. To
 regenerate it:
 
@@ -453,6 +527,34 @@ height before it, H−1:
    each with the pinned anchor and the commit hash with the signed header.
 4. Add the snapshot root, H−1 and the block hash at H−1 under key `N` in
    `checkpoints`.
+
+##### Checkpoints from the QubeLabs archive application database
+
+The QubeLabs tar is a node `data/` directory, not only snapshots. Its
+`application.db` (pebble, 1.56 million files, 3.68 TB) is an archive from
+genesis: the multistore commit info `s/<height>` exists from height 1, the
+legacy IAVL roots (`r` keys) cover the v1 to v3 eras and the IAVL v1 nodes
+(`s` keys) start at 6,680,340. Its latest version is about 15,116,644, the
+end of app version 9. Every planned checkpoint height is in it.
+
+[`archive-export/v046`](archive-export/v046) and
+[`archive-export/v050`](archive-export/v050) export a Go state-sync snapshot
+from that database at any height: they mount the stores named in the commit
+info of that height, load that version and write the snapshot with the SDK
+snapshot manager (format 2 with the celestia-app v3.13.0 SDK fork, format 3
+with `cosmossdk.io/store` v1.1.2 and IAVL v1.2.6). The download scripts are
+in [`archive-export/tools`](archive-export/tools); `lsm.py` reads a
+`pebble manifest dump` and lists the IAVL key kinds and versions per store,
+which is how the archive was recognised. The download needs the tar's byte
+offsets: `tarindex.py` walks the tar headers with HTTP range
+requests (about one hour), and `archive-fetch.py` fetches only the
+`application.db` members in parallel (about 100 MB/s from QubeLabs, so
+about ten hours). The scripts and the index are in
+`gs://fibreda-celestia-rs-genesis/tools/` and
+`gs://fibreda-celestia-rs-genesis/archive/qubelabs-celestia_2026-11-03/`;
+exported checkpoints go to
+`gs://fibreda-celestia-rs-genesis/go-snapshots/<height>/<format>/` (chunks, `metadata.json`)
+after `verify-replay-checkpoint.py` checked them.
 
 ##### Go checkpoint campaign
 
