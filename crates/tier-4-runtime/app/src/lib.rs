@@ -1169,6 +1169,40 @@ impl App {
         }
     }
 
+    /// Waits for the background snapshot, then takes the snapshot of the
+    /// last committed height if that is a snapshot height without one
+    /// (its commit found the previous snapshot still being written, Go
+    /// `Manager.Create`'s conflict) and waits for it too. A replay that
+    /// stops at a height calls this before it exits, so its last
+    /// checkpoint exists.
+    pub fn finish_snapshots(&mut self) {
+        let format = if self.is_sdk_v046_state() {
+            snapshots::FORMAT_V046
+        } else {
+            snapshots::CURRENT_FORMAT
+        };
+        let Some(manager) = &mut self.snapshots else {
+            return;
+        };
+        let _ = manager.wait_for_snapshot();
+        let Ok(height) = u64::try_from(self.last_height) else {
+            return;
+        };
+        if !manager.should_snapshot(height)
+            || manager
+                .list()
+                .is_ok_and(|l| l.iter().any(|s| s.height == height))
+        {
+            return;
+        }
+        match manager.snapshot_in_background_with_format(self.ms.root(), height, format) {
+            Ok(()) => {
+                let _ = manager.wait_for_snapshot();
+            }
+            Err(e) => tracing::error!(height, error = %e, "failed to create state snapshot"),
+        }
+    }
+
     /// `ListSnapshots`.
     #[must_use]
     pub fn list_snapshots(&self) -> abci::ResponseListSnapshots {

@@ -747,6 +747,12 @@ impl<M: Modules> Driver<M> {
     /// results come from nodes that rebuilt it long before, so it is
     /// rebuilt here, where it costs no block gas. Only the memory store is
     /// written: the app hash does not change.
+    ///
+    /// The one height where every validator had just started is block 1,
+    /// and there Go and this driver agree without it: InitGenesis rebuilds
+    /// the memory store, so block 1's BeginBlocker only reads
+    /// `mem_initialized`. A fresh home (height 0) never calls this
+    /// (`init_chain_leaves_the_memory_store_initialized_for_block_1`).
     pub fn init_memory_stores(&mut self, ms: &mut MultiStore) -> Result<()> {
         if self.finalized.is_some() {
             return Err(sdk::error::sdk::logic(
