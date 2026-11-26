@@ -11,6 +11,9 @@ use crate::store::{StoreConfig, StoreError};
 pub const DEFAULT_MAX_CONNECTIONS: i64 = 16;
 /// Go `fibregrpc.DefaultMaxConcurrentStreams`.
 pub const DEFAULT_MAX_CONCURRENT_STREAMS: i64 = 13;
+/// Default `max_inflight_upload_bytes` (2 GiB): about seven maximum
+/// uploads at once, safe on the 16 GB reference machine.
+pub const DEFAULT_MAX_INFLIGHT_UPLOAD_BYTES: i64 = 2 << 30;
 /// Go's default `server_listen_address`.
 pub const DEFAULT_LISTEN_ADDRESS: &str = "0.0.0.0:7980";
 
@@ -125,6 +128,13 @@ pub struct ServerConfig {
     /// Cap on concurrent streams per connection (`max_concurrent_streams`,
     /// default 13).
     pub max_concurrent_streams: i64,
+    /// Process-wide cap on memory held by in-flight uploads
+    /// (`max_inflight_upload_bytes`, default 2 GiB; not in Go). Each
+    /// upload reserves twice the length its gRPC frame declares (receive
+    /// buffer plus decoded copy) before its body is read, and keeps the
+    /// reservation until its handler finishes; uploads that do not fit are
+    /// refused with `ResourceExhausted`.
+    pub max_inflight_upload_bytes: i64,
     /// The `[health]` table.
     pub health: HealthConfig,
     /// Store directory and backend (`storage_backend`; the path is not a
@@ -166,6 +176,7 @@ impl ServerConfig {
                 .map_or(1, std::num::NonZero::get) as i64,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             max_concurrent_streams: DEFAULT_MAX_CONCURRENT_STREAMS,
+            max_inflight_upload_bytes: DEFAULT_MAX_INFLIGHT_UPLOAD_BYTES,
             health: HealthConfig::default(),
             store: StoreConfig::default(),
             unlimited_budget: false,
@@ -228,6 +239,13 @@ impl ServerConfig {
                 "max_concurrent_streams must not exceed {}, got {}",
                 u32::MAX,
                 self.max_concurrent_streams
+            )));
+        }
+        let min_budget = 2 * self.max_message_size as u64;
+        if u64::try_from(self.max_inflight_upload_bytes).unwrap_or(0) < min_budget {
+            return Err(ConfigError(format!(
+                "max_inflight_upload_bytes must be at least {min_budget} (twice the maximum message size), got {}",
+                self.max_inflight_upload_bytes
             )));
         }
         Ok(health)

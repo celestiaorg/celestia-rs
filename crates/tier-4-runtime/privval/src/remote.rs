@@ -25,9 +25,75 @@ const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const PING_INTERVAL: Duration = Duration::from_secs(2);
 const MAX_RESPONSE_BYTES: usize = 10 * 1024; // celestia-core signer endpoint limit
 
+/// Raw-bytes requests ([`RemoteRawBytesSigner`]) queued or in flight at
+/// once; callers beyond it fail at once with a "busy" error.
+pub const RAW_QUEUE_CAP: usize = 2;
+/// A raw-bytes request not sent within this long after it was queued is
+/// dropped unsent (its caller has most likely given up).
+pub const RAW_DEADLINE: Duration = Duration::from_secs(1);
+
 struct Request {
     message: Sum,
     reply: mpsc::SyncSender<Result<Sum>>,
+    /// Raw-bytes requests only: dropped unsent after this instant.
+    deadline: Option<std::time::Instant>,
+    /// Raw-bytes requests only: their queue slot and the shared raw path.
+    slot: Option<RawSlot>,
+}
+
+/// State shared by the raw-bytes handles and the connection worker.
+#[derive(Default)]
+struct RawPath {
+    /// Set once a raw request cost the connection or the signer refused
+    /// `SignRawBytes`: raw signing stays off until the node restarts.
+    disabled: std::sync::OnceLock<String>,
+    /// Raw requests queued or in flight.
+    pending: std::sync::atomic::AtomicUsize,
+}
+
+impl RawPath {
+    fn disable(&self, cause: &str) {
+        let reason = format!(
+            "{cause}. The remote signer must support SignRawBytes (Horcrux v3.3.3-celestia, \
+             Celestia tmkms v0.14.0-celestia or later); fix the signer and restart the node"
+        );
+        if self.disabled.set(reason.clone()).is_ok() {
+            tracing::error!(
+                reason,
+                "raw-bytes signing through the remote signer is disabled to protect consensus"
+            );
+        }
+    }
+
+    fn disabled_error(&self) -> Option<Error> {
+        self.disabled
+            .get()
+            .map(|r| Error::new(format!("remote signer raw-bytes signing is disabled: {r}")))
+    }
+}
+
+/// A raw request's place in the queue; released when the request is done.
+struct RawSlot(std::sync::Arc<RawPath>);
+
+impl RawSlot {
+    fn acquire(path: &std::sync::Arc<RawPath>) -> Result<Self> {
+        use std::sync::atomic::Ordering;
+        if path.pending.fetch_add(1, Ordering::SeqCst) >= RAW_QUEUE_CAP {
+            path.pending.fetch_sub(1, Ordering::SeqCst);
+            return Err(Error::new(
+                "remote signer is busy with other raw-bytes requests",
+            ));
+        }
+        Ok(Self(std::sync::Arc::clone(path)))
+    }
+}
+
+impl Drop for RawSlot {
+    fn drop(&mut self) {
+        self.0
+            .pending
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 /// A socket signer that dials the node. All signing and double-sign state
@@ -37,7 +103,156 @@ pub struct RemotePv {
     chain_id: String,
     pub_key: PubKey,
     requests: async_mpsc::UnboundedSender<Request>,
+    /// Requests of [`RemoteRawBytesSigner`] handles: served after any
+    /// pending consensus request.
+    raw_requests: async_mpsc::UnboundedSender<Request>,
+    raw: std::sync::Arc<RawPath>,
     worker: Option<(oneshot::Sender<()>, JoinHandle<()>)>,
+}
+
+/// A cloneable, thread-safe handle that signs raw bytes (`SignRawBytes`)
+/// through a [`RemotePv`]'s signer connection, for in-process services
+/// other than consensus (the Fibre server).
+///
+/// Raw-bytes requests carry no height / round / step and do not touch the
+/// signer's double-sign state. They share the connection with consensus,
+/// so the handle protects consensus:
+///
+/// - The connection worker always serves a pending vote, proposal or
+///   compact-block request first; a vote that arrives while a raw
+///   exchange is on the wire waits for that one exchange.
+/// - At most [`RAW_QUEUE_CAP`] raw requests are queued or in flight;
+///   callers beyond it fail at once ("busy").
+/// - A raw request still queued [`RAW_DEADLINE`] after it was made is
+///   dropped unsent ("expired").
+/// - A raw request that costs the connection (the signer hangs up, times
+///   out or answers garbage) or that the signer refuses as unsupported
+///   disables the raw path for the rest of the process
+///   ([`RemoteRawBytesSigner::disabled`]): such a signer would otherwise
+///   cost a reconnect, and missed votes, on every Fibre upload.
+///
+/// The handle fails with `remote signer worker stopped` once the
+/// [`RemotePv`] is dropped. Calls block the calling thread until the
+/// signer answers (at most the 5 s request timeout while connected), so
+/// async callers use `spawn_blocking`.
+#[derive(Clone)]
+pub struct RemoteRawBytesSigner {
+    chain_id: String,
+    pub_key: PubKey,
+    requests: async_mpsc::UnboundedSender<Request>,
+    raw: std::sync::Arc<RawPath>,
+}
+
+impl std::fmt::Debug for RemoteRawBytesSigner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RemoteRawBytesSigner")
+            .field("chain_id", &self.chain_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl RemoteRawBytesSigner {
+    /// The consensus public key pinned at connection time.
+    #[must_use]
+    pub fn pub_key(&self) -> PubKey {
+        self.pub_key.clone()
+    }
+
+    /// `SignRawBytes`: signs `RawBytesMessageSignBytes(chain_id, unique_id,
+    /// raw_bytes)` and checks the signature against the pinned key.
+    pub fn sign_raw_bytes(
+        &self,
+        chain_id: &str,
+        unique_id: &str,
+        raw_bytes: &[u8],
+    ) -> Result<Vec<u8>> {
+        if let Some(e) = self.raw.disabled_error() {
+            return Err(e);
+        }
+        let slot = RawSlot::acquire(&self.raw)?;
+        let deadline = std::time::Instant::now() + RAW_DEADLINE;
+        let res = sign_raw(
+            &self.chain_id,
+            &self.pub_key,
+            &self.requests,
+            chain_id,
+            unique_id,
+            raw_bytes,
+            Some((deadline, slot)),
+        );
+        if let Err(e) = &res {
+            let refused = e.0.starts_with("remote signer error")
+                && ["unsupported", "not supported", "unknown", "not implemented"]
+                    .iter()
+                    .any(|w| e.0.to_ascii_lowercase().contains(w));
+            if refused || e.0.starts_with("expected raw bytes signature") {
+                self.raw
+                    .disable(&format!("the remote signer refused SignRawBytes ({e})"));
+            }
+        }
+        res
+    }
+
+    /// Why raw-bytes signing is disabled, once a request cost the signer
+    /// connection or the signer refused `SignRawBytes`; `None` while it
+    /// works. It stays disabled until the node restarts.
+    #[must_use]
+    pub fn disabled(&self) -> Option<String> {
+        self.raw.disabled.get().cloned()
+    }
+}
+
+/// Sends `message` to the connection worker and waits for the answer.
+fn send_request(
+    expected_chain: &str,
+    requests: &async_mpsc::UnboundedSender<Request>,
+    chain_id: &str,
+    message: Sum,
+    raw: Option<(std::time::Instant, RawSlot)>,
+) -> Result<Sum> {
+    if chain_id != expected_chain {
+        return Err(Error::new(format!(
+            "remote signer chain ID mismatch: expected {expected_chain:?}, got {chain_id:?}"
+        )));
+    }
+    let (reply, result) = mpsc::sync_channel(1);
+    let (deadline, slot) = raw.map_or((None, None), |(d, s)| (Some(d), Some(s)));
+    requests
+        .send(Request {
+            message,
+            reply,
+            deadline,
+            slot,
+        })
+        .map_err(|_| worker_stopped())?;
+    result.recv().map_err(|_| worker_stopped())?
+}
+
+fn sign_raw(
+    expected_chain: &str,
+    pub_key: &PubKey,
+    requests: &async_mpsc::UnboundedSender<Request>,
+    chain_id: &str,
+    unique_id: &str,
+    raw_bytes: &[u8],
+    raw: Option<(std::time::Instant, RawSlot)>,
+) -> Result<Vec<u8>> {
+    let bytes = raw_bytes_message_sign_bytes(chain_id, unique_id, raw_bytes).map_err(type_error)?;
+    let request = Sum::SignRawBytesRequest(wire::SignRawBytesRequest {
+        chain_id: chain_id.to_owned(),
+        unique_id: unique_id.to_owned(),
+        raw_bytes: raw_bytes.to_vec(),
+    });
+    let Sum::SignedRawBytesResponse(response) =
+        send_request(expected_chain, requests, chain_id, request, raw)?
+    else {
+        return Err(unexpected("raw bytes signature"));
+    };
+    check_remote_error(response.error)?;
+    if !pub_key.verify_signature(&bytes, &response.signature) {
+        return Err(Error::new("invalid raw bytes signature from remote signer"));
+    }
+    Ok(response.signature)
 }
 
 impl RemotePv {
@@ -46,6 +261,7 @@ impl RemotePv {
     /// Waits for the signer to supply its consensus public key.
     pub fn listen(address: &str, chain_id: &str, node_key: NodeKey) -> Result<Self> {
         let (requests, incoming) = async_mpsc::unbounded_channel();
+        let (raw_requests, raw_incoming) = async_mpsc::unbounded_channel();
         let (ready, started) = mpsc::sync_channel(1);
         let (stop, stopped) = oneshot::channel();
         let worker_chain = chain_id.to_owned();
@@ -59,7 +275,7 @@ impl RemotePv {
                 match result {
                     Ok(runtime) => runtime.block_on(async {
                         tokio::select! {
-                            () = run(&address, &worker_chain, &node_key, incoming, ready) => {},
+                            () = run(&address, &worker_chain, &node_key, Queues { consensus: incoming, raw: raw_incoming }, ready) => {},
                             _ = stopped => {},
                         }
                     }),
@@ -75,6 +291,8 @@ impl RemotePv {
                 chain_id: chain_id.to_owned(),
                 pub_key,
                 requests,
+                raw_requests,
+                raw: std::sync::Arc::default(),
                 worker: Some((stop, thread)),
             }),
             Err(e) => {
@@ -84,18 +302,20 @@ impl RemotePv {
         }
     }
 
-    fn request(&self, chain_id: &str, message: Sum) -> Result<Sum> {
-        if chain_id != self.chain_id {
-            return Err(Error::new(format!(
-                "remote signer chain ID mismatch: expected {:?}, got {chain_id:?}",
-                self.chain_id
-            )));
+    /// A handle that signs raw bytes through this signer's connection
+    /// from other threads (see [`RemoteRawBytesSigner`]).
+    #[must_use]
+    pub fn raw_bytes_signer(&self) -> RemoteRawBytesSigner {
+        RemoteRawBytesSigner {
+            chain_id: self.chain_id.clone(),
+            pub_key: self.pub_key.clone(),
+            requests: self.raw_requests.clone(),
+            raw: std::sync::Arc::clone(&self.raw),
         }
-        let (reply, result) = mpsc::sync_channel(1);
-        self.requests
-            .send(Request { message, reply })
-            .map_err(|_| worker_stopped())?;
-        result.recv().map_err(|_| worker_stopped())?
+    }
+
+    fn request(&self, chain_id: &str, message: Sum) -> Result<Sum> {
+        send_request(&self.chain_id, &self.requests, chain_id, message, None)
     }
 
     fn verify(&self, bytes: &[u8], signature: &[u8], label: &str) -> Result<()> {
@@ -187,19 +407,15 @@ impl PrivValidator for RemotePv {
     }
 
     fn sign_raw_bytes(&self, chain_id: &str, unique_id: &str, raw_bytes: &[u8]) -> Result<Vec<u8>> {
-        let bytes =
-            raw_bytes_message_sign_bytes(chain_id, unique_id, raw_bytes).map_err(type_error)?;
-        let request = Sum::SignRawBytesRequest(wire::SignRawBytesRequest {
-            chain_id: chain_id.to_owned(),
-            unique_id: unique_id.to_owned(),
-            raw_bytes: raw_bytes.to_vec(),
-        });
-        let Sum::SignedRawBytesResponse(response) = self.request(chain_id, request)? else {
-            return Err(unexpected("raw bytes signature"));
-        };
-        check_remote_error(response.error)?;
-        self.verify(&bytes, &response.signature, "raw bytes")?;
-        Ok(response.signature)
+        sign_raw(
+            &self.chain_id,
+            &self.pub_key,
+            &self.requests,
+            chain_id,
+            unique_id,
+            raw_bytes,
+            None,
+        )
     }
 }
 
@@ -346,11 +562,31 @@ fn transport_error(error: io::Error) -> Error {
     Error::new(format!("remote signer connection: {error}"))
 }
 
+/// The connection worker's request queues.
+struct Queues {
+    /// Consensus requests ([`RemotePv`]); closed when it is dropped.
+    consensus: async_mpsc::UnboundedReceiver<Request>,
+    /// [`RemoteRawBytesSigner`] requests, served after consensus ones.
+    raw: async_mpsc::UnboundedReceiver<Request>,
+}
+
+impl Queues {
+    /// The next request, consensus first; `None` once [`RemotePv`] is
+    /// gone.
+    async fn next(&mut self) -> Option<Request> {
+        tokio::select! {
+            biased;
+            request = self.consensus.recv() => request,
+            Some(request) = self.raw.recv() => Some(request),
+        }
+    }
+}
+
 async fn run(
     address: &str,
     chain_id: &str,
     node_key: &NodeKey,
-    mut requests: async_mpsc::UnboundedReceiver<Request>,
+    mut requests: Queues,
     ready: mpsc::SyncSender<Result<PubKey>>,
 ) {
     let start = tokio::time::timeout(STARTUP_TIMEOUT, async {
@@ -405,24 +641,36 @@ async fn reconnect(
     }
 }
 
-async fn reject_while_disconnected(requests: &mut async_mpsc::UnboundedReceiver<Request>) {
-    while let Some(request) = requests.recv().await {
+async fn reject_while_disconnected(requests: &mut Queues) {
+    while let Some(request) = requests.next().await {
         let _ = request
             .reply
             .send(Err(Error::new("remote signer is disconnected")));
     }
 }
 
-async fn serve(
-    session: &mut Session,
-    requests: &mut async_mpsc::UnboundedReceiver<Request>,
-) -> Result<()> {
+async fn serve(session: &mut Session, requests: &mut Queues) -> Result<()> {
     loop {
         tokio::select! {
-            request = requests.recv() => {
+            request = requests.next() => {
                 let Some(request) = request else { return Ok(()) };
+                if request.deadline.is_some_and(|d| std::time::Instant::now() > d) {
+                    let _ = request.reply.send(Err(Error::new(
+                        "remote signer raw-bytes request expired before it was sent",
+                    )));
+                    continue;
+                }
+                if let Some(e) = request.slot.as_ref().and_then(|s| s.0.disabled_error()) {
+                    let _ = request.reply.send(Err(e));
+                    continue;
+                }
                 let result = session.exchange(request.message).await;
                 let connection_error = result.as_ref().err().cloned();
+                if let (Some(error), Some(slot)) = (&connection_error, &request.slot) {
+                    slot.0.disable(&format!(
+                        "a raw-bytes (SignRawBytes) request cost the signer connection: {error}"
+                    ));
+                }
                 // A timed-out request may already have been signed. Let consensus
                 // decide what to request next, with the signer's persisted guard.
                 let _ = request.reply.send(result);
@@ -436,5 +684,316 @@ async fn serve(
                 }
             }
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use p2p::secret_connection::Plain;
+    use tokio::io::AsyncWriteExt as _;
+
+    use super::*;
+    use crate::{FilePv, FilePvKey};
+
+    const CHAIN: &str = "test-chain";
+
+    /// How the fake signer treats requests.
+    #[derive(Clone, Copy)]
+    enum Mode {
+        /// Signs everything.
+        Normal,
+        /// Closes the connection on a `SignRawBytesRequest` (a signer
+        /// without raw-bytes support), then dials again.
+        HangUpOnRaw,
+        /// Answers votes after this delay.
+        SlowVotes(Duration),
+    }
+
+    #[derive(Default)]
+    struct Counters {
+        connections: AtomicUsize,
+        raw: AtomicUsize,
+    }
+
+    /// A socket signer over a Unix socket that signs with a [`FilePv`],
+    /// dials again after a disconnect (as tmkms and Horcrux do) and counts
+    /// its connections and the raw-bytes requests it received.
+    fn spawn_signer(socket: PathBuf, mode: Mode) -> (FilePvKey, Arc<Counters>) {
+        let key =
+            FilePvKey::from_priv_key(crypto::ed25519::private_key_from_seed(&[7; 32])).unwrap();
+        let mut signer = FilePv::new(key.clone(), None, None);
+        let counters = Arc::new(Counters::default());
+        let c = Arc::clone(&counters);
+        thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async move {
+                loop {
+                    let stream = loop {
+                        match tokio::net::UnixStream::connect(&socket).await {
+                            Ok(s) => break s,
+                            Err(_)
+                                if c.connections.load(Ordering::SeqCst) > 0 && !socket.exists() =>
+                            {
+                                return;
+                            }
+                            Err(_) => tokio::time::sleep(Duration::from_millis(10)).await,
+                        }
+                    };
+                    c.connections.fetch_add(1, Ordering::SeqCst);
+                    let (reader, mut writer) = stream.into_split();
+                    let mut reader = Plain(reader);
+                    loop {
+                        let Ok((bytes, _)) = read_delimited(&mut reader, 1 << 20).await else {
+                            break;
+                        };
+                        let request = wire::Message::decode(bytes.as_slice()).unwrap();
+                        let response = match request.sum.unwrap() {
+                            Sum::PubKeyRequest(_) => Sum::PubKeyResponse(wire::PubKeyResponse {
+                                pub_key: Some(signer.pub_key().unwrap().to_proto()),
+                                error: None,
+                            }),
+                            Sum::SignVoteRequest(req) => {
+                                if let Mode::SlowVotes(d) = mode {
+                                    tokio::time::sleep(d).await;
+                                }
+                                let mut vote = req.vote.unwrap();
+                                signer.sign_vote(&req.chain_id, &mut vote).unwrap();
+                                Sum::SignedVoteResponse(wire::SignedVoteResponse {
+                                    vote: Some(vote),
+                                    error: None,
+                                })
+                            }
+                            Sum::SignRawBytesRequest(req) => {
+                                c.raw.fetch_add(1, Ordering::SeqCst);
+                                if let Mode::HangUpOnRaw = mode {
+                                    break;
+                                }
+                                Sum::SignedRawBytesResponse(wire::SignedRawBytesResponse {
+                                    signature: signer
+                                        .sign_raw_bytes(
+                                            &req.chain_id,
+                                            &req.unique_id,
+                                            &req.raw_bytes,
+                                        )
+                                        .unwrap(),
+                                    error: None,
+                                })
+                            }
+                            Sum::PingRequest(_) => Sum::PingResponse(wire::PingResponse {}),
+                            other => panic!("unexpected request {other:?}"),
+                        };
+                        let msg = wire::Message {
+                            sum: Some(response),
+                        };
+                        if writer
+                            .write_all(&msg.encode_length_delimited_to_vec())
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                }
+            });
+        });
+        (key, counters)
+    }
+
+    fn listen(socket: &std::path::Path) -> RemotePv {
+        RemotePv::listen(
+            &format!("unix://{}", socket.display()),
+            CHAIN,
+            NodeKey::from_seed(&[1; 32]),
+        )
+        .unwrap()
+    }
+
+    fn prevote(height: i64) -> types::Vote {
+        types::Vote {
+            r#type: ctypes::vote::PREVOTE_TYPE,
+            height,
+            round: 0,
+            timestamp: Some(pbjson_types::Timestamp {
+                seconds: 1_700_000_000,
+                nanos: 0,
+            }),
+            validator_address: vec![0; 20],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn raw_bytes_handle_shares_the_signer_connection() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("pv.sock");
+        let (key, counters) = spawn_signer(socket.clone(), Mode::Normal);
+        let mut pv = listen(&socket);
+        let handle = pv.raw_bytes_signer();
+        assert_eq!(handle.pub_key(), key.pub_key());
+
+        // Raw-bytes signing from other threads while consensus signs votes.
+        // Callers beyond the small raw queue get a quick "busy" error and
+        // retry here.
+        let workers: Vec<_> = (0..4u8)
+            .map(|i| {
+                let h = handle.clone();
+                thread::spawn(move || {
+                    for j in 0..5u8 {
+                        let msg = [i, j];
+                        let sig = loop {
+                            match h.sign_raw_bytes(CHAIN, "fibre", &msg) {
+                                Ok(sig) => break sig,
+                                Err(e) if e.0.contains("busy") => {
+                                    thread::sleep(Duration::from_millis(1));
+                                }
+                                Err(e) => panic!("{e}"),
+                            }
+                        };
+                        let sb = raw_bytes_message_sign_bytes(CHAIN, "fibre", &msg).unwrap();
+                        assert!(h.pub_key().verify_signature(&sb, &sig));
+                    }
+                })
+            })
+            .collect();
+        for height in 1..=5 {
+            let mut vote = prevote(height);
+            pv.sign_vote(CHAIN, &mut vote).unwrap();
+            assert_eq!(vote.signature.len(), 64);
+        }
+        for w in workers {
+            w.join().unwrap();
+        }
+        assert_eq!(counters.raw.load(Ordering::SeqCst), 20);
+        assert_eq!(counters.connections.load(Ordering::SeqCst), 1);
+        assert_eq!(handle.disabled(), None);
+
+        assert_eq!(
+            handle
+                .sign_raw_bytes("other-chain", "fibre", b"x")
+                .unwrap_err()
+                .0,
+            "remote signer chain ID mismatch: expected \"test-chain\", got \"other-chain\""
+        );
+
+        drop(pv);
+        assert_eq!(
+            handle.sign_raw_bytes(CHAIN, "fibre", b"x").unwrap_err().0,
+            "remote signer worker stopped"
+        );
+    }
+
+    /// A signer that drops the connection on `SignRawBytes` costs exactly
+    /// one reconnect: the raw path is then disabled for good, and votes
+    /// keep signing.
+    #[test]
+    fn a_raw_request_that_costs_the_connection_disables_the_raw_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("pv.sock");
+        let (_, counters) = spawn_signer(socket.clone(), Mode::HangUpOnRaw);
+        let mut pv = listen(&socket);
+        let handle = pv.raw_bytes_signer();
+
+        let err = handle.sign_raw_bytes(CHAIN, "fibre", b"cert").unwrap_err();
+        assert!(err.0.starts_with("remote signer connection"), "{err}");
+        let reason = handle.disabled().expect("raw path disabled");
+        assert!(reason.contains("SignRawBytes"), "{reason}");
+
+        // Consensus recovers after the one reconnect.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let mut height = 1;
+        loop {
+            let mut vote = prevote(height);
+            match pv.sign_vote(CHAIN, &mut vote) {
+                Ok(()) => break,
+                Err(_) if std::time::Instant::now() < deadline => {
+                    height += 1;
+                    thread::sleep(Duration::from_millis(20));
+                }
+                Err(e) => panic!("{e}"),
+            }
+        }
+
+        // Later raw requests fail at once without reaching the signer.
+        for _ in 0..5 {
+            let err = handle.sign_raw_bytes(CHAIN, "fibre", b"again").unwrap_err();
+            assert!(err.0.contains("disabled"), "{err}");
+        }
+        for h in height + 1..height + 4 {
+            pv.sign_vote(CHAIN, &mut prevote(h)).unwrap();
+        }
+        assert_eq!(counters.raw.load(Ordering::SeqCst), 1);
+        assert_eq!(counters.connections.load(Ordering::SeqCst), 2);
+    }
+
+    /// With both queues non-empty the consensus request goes first.
+    #[test]
+    fn consensus_requests_are_served_before_raw_requests() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (consensus_tx, consensus) = async_mpsc::unbounded_channel();
+        let (raw_tx, raw) = async_mpsc::unbounded_channel();
+        let mut queues = Queues { consensus, raw };
+        let request = |message| Request {
+            message,
+            reply: mpsc::sync_channel(1).0,
+            deadline: None,
+            slot: None,
+        };
+        raw_tx
+            .send(request(Sum::PingRequest(wire::PingRequest {})))
+            .unwrap_or_else(|_| panic!("send"));
+        consensus_tx
+            .send(request(Sum::PubKeyRequest(wire::PubKeyRequest::default())))
+            .unwrap_or_else(|_| panic!("send"));
+        let first = rt.block_on(queues.next()).unwrap();
+        assert!(matches!(first.message, Sum::PubKeyRequest(_)));
+        let second = rt.block_on(queues.next()).unwrap();
+        assert!(matches!(second.message, Sum::PingRequest(_)));
+    }
+
+    /// A raw request that waited past its deadline behind a slow vote is
+    /// dropped without reaching the signer; callers beyond the raw queue
+    /// cap fail at once.
+    #[test]
+    fn stale_and_excess_raw_requests_are_not_sent() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("pv.sock");
+        let slow = RAW_DEADLINE + Duration::from_millis(500);
+        let (_, counters) = spawn_signer(socket.clone(), Mode::SlowVotes(slow));
+        let mut pv = listen(&socket);
+        let handle = pv.raw_bytes_signer();
+        let voter = thread::spawn(move || {
+            pv.sign_vote(CHAIN, &mut prevote(1)).unwrap();
+            pv
+        });
+        thread::sleep(Duration::from_millis(100));
+        let raw: Vec<_> = (0..RAW_QUEUE_CAP + 2)
+            .map(|i| {
+                let h = handle.clone();
+                let t =
+                    thread::spawn(move || h.sign_raw_bytes(CHAIN, "fibre", &[0]).unwrap_err().0);
+                if i < RAW_QUEUE_CAP {
+                    thread::sleep(Duration::from_millis(50));
+                }
+                t
+            })
+            .collect();
+        let errors: Vec<String> = raw.into_iter().map(|t| t.join().unwrap()).collect();
+        let _pv = voter.join().unwrap();
+        let expired = errors.iter().filter(|e| e.contains("expired")).count();
+        let busy = errors.iter().filter(|e| e.contains("busy")).count();
+        assert_eq!((expired, busy), (RAW_QUEUE_CAP, 2), "{errors:?}");
+        assert_eq!(counters.raw.load(Ordering::SeqCst), 0);
+        assert_eq!(handle.disabled(), None);
     }
 }

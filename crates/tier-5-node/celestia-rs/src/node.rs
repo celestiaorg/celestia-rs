@@ -217,6 +217,9 @@ pub struct StartOptions {
     pub min_gas_price: Option<math::LegacyDec>,
     /// Prometheus endpoint.
     pub metrics: Option<MetricsOptions>,
+    /// The embedded Fibre server (`[fibre]`, `--fibre`); `None` is off.
+    /// Validated by [`crate::fibre::options`].
+    pub fibre: Option<fibre_server::ServerConfig>,
     /// Shutdown requests (signals, tests).
     pub shutdown: crate::ops::Shutdown,
 }
@@ -258,6 +261,7 @@ impl StartOptions {
             app: app::AppOptions::default(),
             min_gas_price: None,
             metrics: None,
+            fibre: None,
             shutdown: crate::ops::Shutdown::new(),
         }
     }
@@ -390,7 +394,14 @@ fn open_stores_with(
     Ok((bs, ss))
 }
 
-fn validator_signer(opts: &StartOptions, chain_id: &str) -> anyhow::Result<Box<dyn PrivValidator>> {
+/// The consensus signer, and (with Fibre enabled) a separate raw-bytes
+/// signer for the Fibre server over the same key.
+type Signers = (
+    Box<dyn PrivValidator>,
+    Option<Arc<crate::fibre::NodeSigner>>,
+);
+
+fn validator_signer(opts: &StartOptions, chain_id: &str) -> anyhow::Result<Signers> {
     if !opts.priv_validator_laddr.is_empty() {
         let signer = RemotePv::listen(
             &opts.priv_validator_laddr,
@@ -398,7 +409,11 @@ fn validator_signer(opts: &StartOptions, chain_id: &str) -> anyhow::Result<Box<d
             crate::net::node_key(&opts.home)?,
         )
         .with_context(|| format!("priv_validator_laddr {}", opts.priv_validator_laddr))?;
-        return Ok(Box::new(signer));
+        let fibre = opts
+            .fibre
+            .as_ref()
+            .map(|_| Arc::new(crate::fibre::NodeSigner::Remote(signer.raw_bytes_signer())));
+        return Ok((Box::new(signer), fibre));
     }
     let key_path = opts.home.join("config/priv_validator_key.json");
     let state_path = opts.home.join("data/priv_validator_state.json");
@@ -406,7 +421,13 @@ fn validator_signer(opts: &StartOptions, chain_id: &str) -> anyhow::Result<Box<d
     // existing key safe to sign.
     let pv = FilePv::load(&key_path, &state_path)
         .map_err(|e| anyhow!("privval: {e}; refusing to reset signing state"))?;
-    Ok(Box::new(pv))
+    let fibre = match &opts.fibre {
+        Some(_) => Some(Arc::new(crate::fibre::NodeSigner::from_key_file(
+            &key_path,
+        )?)),
+        None => None,
+    };
+    Ok((Box::new(pv), fibre))
 }
 
 /// `celestia-rs start`.
@@ -477,7 +498,7 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
         pool.clone(),
         evpool.executor_handle(),
     );
-    let pv = validator_signer(opts, &genesis.chain_id)?;
+    let (pv, fibre_signer) = validator_signer(opts, &genesis.chain_id)?;
     let pub_key = pv.pub_key().context("get validator public key")?;
     let local_addr = pub_key.address();
     // RPC (ADR 0003 `rpc`): JSON-RPC/WebSocket, celestia-core gRPC, the
@@ -558,6 +579,40 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
     let metrics = match &opts.metrics {
         Some(m) => Some(start_metrics(m, &genesis.chain_id, &pool)?),
         None => None,
+    };
+    // The embedded Fibre server: its own thread and runtime, supervised;
+    // stopped (drained) on shutdown and when this function returns.
+    let _fibre = match (&opts.fibre, fibre_signer) {
+        (Some(cfg), Some(signer)) => {
+            let state = Arc::new(crate::fibre::NodeChainState::new(
+                &genesis.chain_id,
+                app.clone(),
+                bs.clone(),
+                ss.clone(),
+                rpc.env.clone(),
+            ));
+            let validator = sdk::address::to_bech32(sdk::address::VALCONS_PREFIX, &local_addr);
+            let fatal: crate::fibre::FatalCheck = {
+                let signer = Arc::clone(&signer);
+                Arc::new(move || signer.disabled())
+            };
+            let fibre =
+                crate::fibre::Supervisor::start(cfg.clone(), state, signer, validator, fatal)?;
+            if let Some(m) = &metrics {
+                let slot = fibre.metrics();
+                m.append_section(move |labels| {
+                    slot.lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .as_ref()
+                        .map(|s| s.render(labels))
+                        .unwrap_or_default()
+                });
+            }
+            let stop = fibre.stop_token();
+            opts.shutdown.on_trigger(move || stop.cancel());
+            Some(fibre)
+        }
+        _ => None,
     };
     #[cfg(feature = "bridge-p2p")]
     let bridge_peer = bridge_index
