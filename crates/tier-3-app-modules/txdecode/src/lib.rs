@@ -126,14 +126,23 @@ pub(crate) fn v1() -> bool {
     V1.with(std::cell::Cell::get)
 }
 
+/// Restores [`V1`] to its value before [`with_v1`] when dropped, also
+/// while a panic unwinds (the thread may be a pooled worker that decodes
+/// production transactions next).
+struct V1Restore(bool);
+
+impl Drop for V1Restore {
+    fn drop(&mut self) {
+        V1.with(|v| v.set(self.0));
+    }
+}
+
 /// Runs `f` with celestia-app v3.13.0's registry and schema (app version
 /// 1): the gogoproto helpers ([`gogo_repack`], [`gogo_marshaled`],
 /// [`prost_compatible`]) and decoding.
-pub fn with_v1<T>(f: impl FnOnce() -> T) -> T {
-    let prev = V1.with(|v| v.replace(true));
-    let out = f();
-    V1.with(|v| v.set(prev));
-    out
+fn with_v1<T>(f: impl FnOnce() -> T) -> T {
+    let _restore = V1Restore(V1.with(|v| v.replace(true)));
+    f()
 }
 
 /// Whether a gogoproto helper called outside a v1 decode must take the v1
@@ -141,6 +150,18 @@ pub fn with_v1<T>(f: impl FnOnce() -> T) -> T {
 /// driver's scope, app versions 1 to 3, which run celestia-app v3.13.0).
 fn enter_v1() -> bool {
     !v1() && sdk::version::is_sdk_v046(0)
+}
+
+/// Codespace of [`decode_v1`]'s error for a nesting limit of this decoder
+/// that cosmos-sdk v0.46 does not have (see [`is_v1_unsupported_limit`]).
+const V1_UNSUPPORTED_LIMIT_CODESPACE: &str = "txdecode-v1-unsupported-limit";
+
+/// Whether `e` is [`decode_v1`] tripping a nesting limit that Go v0.46's
+/// decoder does not have (`unknownproto`'s recursion limit): Go would
+/// decode further, so the caller must not report a decode failure.
+#[must_use]
+pub fn is_v1_unsupported_limit(e: &SdkError) -> bool {
+    e.codespace == V1_UNSUPPORTED_LIMIT_CODESPACE && e.code == 1
 }
 
 /// celestia-app v3.13.0's `TxConfig.TxDecoder()` (app version 1, as the
@@ -470,8 +491,17 @@ fn reject_tx_fields(
         canonical::check_message(bytes, info, 0).map_err(|e| tx_decode_err(&e))?;
         Ok(false)
     } else {
-        let (has, result) = unknownproto::reject_unknown_fields(bytes, info, allow_non_critical);
-        result.map_err(|e| tx_decode_err(&e))?;
+        let r = unknownproto::reject_unknown_fields(bytes, info, allow_non_critical);
+        if let Err(e) = r.result {
+            // cosmos-sdk v0.46's `RejectUnknownFields` has no recursion
+            // limit: Go would walk on, so this is no decode failure of
+            // the v1 decoder.
+            if r.recursion_limit && v1() {
+                return Err(SdkError::new(V1_UNSUPPORTED_LIMIT_CODESPACE, 1, e.0));
+            }
+            return Err(tx_decode_err(&e));
+        }
+        let has = r.has_unknown_non_criticals;
         Ok(has)
     }
 }
@@ -663,5 +693,33 @@ pub mod testing {
     #[must_use]
     pub fn type_urls() -> &'static [(&'static str, &'static str, u32)] {
         crate::registry::TYPE_URLS
+    }
+}
+
+#[cfg(test)]
+mod v1_scope_tests {
+    /// A panic inside [`super::with_v1`] restores the flag, so a later
+    /// production decode on the same thread uses the production registry.
+    #[test]
+    fn with_v1_restores_the_flag_after_a_panic() {
+        use celestia_proto::Any;
+        use celestia_proto::cosmos::tx::v1beta1::{TxBody, TxRaw};
+        use prost::Message;
+        let r = std::panic::catch_unwind(|| super::with_v1(|| panic!("inside the v1 scope")));
+        assert!(r.is_err());
+        assert!(!super::v1());
+        // A message only the production registry knows.
+        let raw = TxRaw {
+            body_bytes: TxBody {
+                messages: vec![Any::pack(
+                    &celestia_proto::cosmos::bank::v1beta1::MsgUpdateParams::default(),
+                )],
+                ..Default::default()
+            }
+            .encode_to_vec(),
+            ..Default::default()
+        }
+        .encode_to_vec();
+        assert!(super::decode(&raw).is_ok());
     }
 }
