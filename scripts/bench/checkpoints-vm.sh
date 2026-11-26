@@ -105,7 +105,17 @@ setup() {
   run chown bench:bench "$DATA" "$HOMEDIR" "$USERHOME"
   local dev_if
   dev_if=$(ip route show default 2>/dev/null | awk '{print $5; exit}' || true)
-  run tc qdisc replace dev "${dev_if:-ens4}" root tbf rate "$CKPT_EGRESS_CAP" burst 64kb latency 400ms
+  # Internet egress is capped; Cloud Storage (through the private.googleapis.com
+  # VIP, free in region) and the metadata server are not.
+  dev_if=${dev_if:-ens4}
+  run tc qdisc replace dev "$dev_if" root handle 1: htb default 20
+  run tc class replace dev "$dev_if" parent 1: classid 1:10 htb rate 10gbit
+  run tc class replace dev "$dev_if" parent 1: classid 1:20 htb rate "$CKPT_EGRESS_CAP" ceil "$CKPT_EGRESS_CAP"
+  run tc filter replace dev "$dev_if" parent 1: protocol ip prio 1 handle 800::800 u32 match ip dst 199.36.153.8/30 flowid 1:10
+  run tc filter replace dev "$dev_if" parent 1: protocol ip prio 1 handle 800::801 u32 match ip dst 169.254.169.254/32 flowid 1:10
+  local hosts=${DRY:+$DRY/hosts}
+  hosts=${hosts:-/etc/hosts}
+  grep -q ' storage.googleapis.com$' "$hosts" 2>/dev/null || echo '199.36.153.8 storage.googleapis.com' >>"$hosts"
   run modprobe tcp_bbr # celestia-app refuses to start without BBR
   run sysctl -w net.core.default_qdisc=fq net.ipv4.tcp_congestion_control=bbr
 }
@@ -160,6 +170,9 @@ configure() {
   bench_toml_set "$a" "" pruning-keep-recent '"100"'
   bench_toml_set "$a" "" pruning-interval '"10"'
   bench_toml_set "$a" "" min-retain-blocks 3000
+  # The fast-node index only speeds up queries of the latest state; keeping it
+  # costs a write per changed key. Snapshot export reads the trees.
+  bench_toml_set "$a" "" iavl-disable-fastnode true
   bench_toml_set "$a" state-sync snapshot-interval 0
 }
 
@@ -302,6 +315,17 @@ checkpoint() { # checkpoint H V
   mv "$CKPT/$h/checkpoint.tmp" "$CKPT/$h/checkpoint.json"
   sync
   put "ckpt-$h" "$CKPT/$h/checkpoint.json"
+  upload "$h" || echo "checkpoint $h not uploaded; it stays on the checkpoint disk" >&2
+}
+
+# upload H: copy checkpoint H to Cloud Storage under checkpoints/<campaign>/
+# when the VM runs the vmexec agent with a bucket (vmexec create --gcs).
+upload() {
+  [[ -n $DRY ]] || { command -v vmx-gcs >/dev/null && vmx-gcs url probe >/dev/null 2>&1; } || return 0
+  local f
+  while IFS= read -r f; do
+    run vmx-gcs put "$f" "checkpoints/$name/${f#"$CKPT"/}" || return 1
+  done < <(find "$CKPT/$1" -type f | sort)
 }
 
 run_campaign() {

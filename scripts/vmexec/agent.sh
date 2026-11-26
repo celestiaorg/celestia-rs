@@ -99,9 +99,10 @@ gcs() { # gcs put FILE OBJECT | get OBJECT FILE | url OBJECT
   [[ $op == url ]] && { echo "gs://$b/$obj"; return; }
   tok=$(gcs_token) && [[ -n $tok ]] || { echo "vmx-gcs: no service account token" >&2; return 1; }
   case $op in
-    put) curl -fsS --retry 5 -X POST -H "Authorization: Bearer $tok" -H 'Content-Type: application/octet-stream' \
-      --data-binary "@$2" "https://storage.googleapis.com/upload/storage/v1/b/$b/o?uploadType=media&name=${obj//\//%2F}" >/dev/null ;;
-    get) curl -fsS --retry 5 -H "Authorization: Bearer $tok" -o "$3" "https://storage.googleapis.com/storage/v1/b/$b/o/${obj//\//%2F}?alt=media" ;;
+    # XML API PUT streams the file (-T), so large files need no memory.
+    put) curl -fsS --retry 5 -T "$2" -H @<(printf 'Authorization: Bearer %s\n' "$tok") -H 'Content-Type: application/octet-stream' \
+      "https://storage.googleapis.com/$b/$obj" >/dev/null ;;
+    get) curl -fsS --retry 5 -H @<(printf 'Authorization: Bearer %s\n' "$tok") -o "$3" "https://storage.googleapis.com/storage/v1/b/$b/o/${obj//\//%2F}?alt=media" ;;
   esac
 }
 

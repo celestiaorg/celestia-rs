@@ -130,7 +130,7 @@ vmx_job_unit() {
   cat <<EOF
 [Unit]
 Description=vmexec job $1
-After=network-online.target
+After=network-online.target google-startup-scripts.service
 Wants=network-online.target
 
 [Service]
