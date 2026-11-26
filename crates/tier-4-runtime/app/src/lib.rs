@@ -248,6 +248,15 @@ pub fn timeout_info() -> TimeoutInfo {
 }
 
 fn timeout_info_at(version: u64) -> TimeoutInfo {
+    // celestia-app v4.1.0 sets only TimeoutPropose (3.5 s) and
+    // TimeoutCommit (4.2 s) (`pkg/appconsts/v4`).
+    if Release::executing(version).app_version == 4 {
+        return TimeoutInfo {
+            timeout_propose: dur(3, 500_000_000),
+            timeout_commit: dur(4, 200_000_000),
+            ..TimeoutInfo::default()
+        };
+    }
     let v12 = sdk::version::is_v12(version);
     TimeoutInfo {
         timeout_propose: dur(3, 0),
@@ -434,6 +443,9 @@ impl App {
         }
         let mut app = Self::from_multistore(ms);
         app.load_committed_state()?;
+        if v046.is_none() {
+            app.unmount_stores_absent_from_release()?;
+        }
         if v046.is_some() {
             app.legacy = Some(app.new_legacy_driver());
         } else if app.last_height > 0 && legacy::executes(app.app_version()) {
@@ -485,6 +497,28 @@ impl App {
     }
 
     /// Refreshes height, app hash and chain ID from the committed store.
+    /// Unmounts each IAVL store that the last commit info does not list
+    /// and that the release executing the committed app version does not
+    /// have (e.g. `zkism` on an app version 4 state). A store the release
+    /// has but the commit info lacks stays mounted for its upgrade's
+    /// store loader.
+    fn unmount_stores_absent_from_release(&mut self) -> Result<()> {
+        let Some(info) = self.ms.root().last_commit_info().cloned() else {
+            return Ok(());
+        };
+        let release = Release::executing(self.app_version());
+        let absent: Vec<&'static str> = stores::IAVL_STORES
+            .iter()
+            .copied()
+            .filter(|s| info.store_info(s).is_none() && !release.has_store(s))
+            .filter(|s| self.ms.is_mounted(s))
+            .collect();
+        for name in absent {
+            self.ms.unmount_iavl(name).map_err(store_err)?;
+        }
+        Ok(())
+    }
+
     fn load_committed_state(&mut self) -> Result<()> {
         let id = self.ms.root().last_commit_id().map_err(store_err)?;
         self.last_height = id.version;

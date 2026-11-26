@@ -4,7 +4,9 @@
 //!
 //! The test seeds the Go oracle's state after the upgrade block 16 (every
 //! key at height 15 and the KV changes of block 16) into a v4 store set,
-//! opens the node's [`app::App`] on it, and runs blocks 17 to 20. For each
+//! opens the node's [`app::App`] on it, and runs blocks 17 to 20 (each
+//! BlobTx as its inner transaction, as celestia-core v0.38 delivers it).
+//! For each
 //! block it requires the oracle's KV changes of every store, every
 //! transaction result (code, codespace, gas wanted and used, data, log,
 //! info, events) and the block's events, validator updates, consensus
@@ -125,7 +127,10 @@ fn oracle_updates(result: &serde_json::Value) -> Vec<(Vec<u8>, i64)> {
         .map(|u| {
             assert_eq!(u["pub_key_type"], "ed25519");
             let pk = hex::decode(u["pub_key"].as_str().unwrap()).unwrap();
-            (hash::sha256(&pk)[..20].to_vec(), u["power"].as_i64().unwrap())
+            (
+                hash::sha256(&pk)[..20].to_vec(),
+                u["power"].as_i64().unwrap(),
+            )
         })
         .collect()
 }
@@ -175,6 +180,22 @@ fn check_response(res: &ResponseFinalizeBlock, result: &serde_json::Value) -> Ve
         failures.push(format!("timeouts {got_t}"));
     }
     failures
+}
+
+/// `bytes` with each occurrence of `from` replaced by `to` (same length).
+fn replace(bytes: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
+    assert_eq!(from.len(), to.len());
+    let mut out = bytes.to_vec();
+    let mut i = 0;
+    while i + from.len() <= out.len() {
+        if &out[i..i + from.len()] == from {
+            out[i..i + from.len()].copy_from_slice(to);
+            i += from.len();
+        } else {
+            i += 1;
+        }
+    }
+    out
 }
 
 /// celestia-rs executes app version 4 as celestia-app v4.1.0: blocks 17
@@ -227,10 +248,20 @@ fn v4_blocks_match_the_oracle() {
             .iter()
             .map(|s| (s.clone(), contents(app.multistore(), s)))
             .collect();
-        let res = match app.finalize_block(common::finalize_request(
-            &blocks[&height],
-            &vals[&(height - 1)],
-        )) {
+        // The seeded trees do not have the oracle's shape, so the app hash
+        // celestia-rs committed differs from the one the block header
+        // commits to; staking `HistoricalInfo` stores it.
+        let rs_app_hash = app.info().last_block_app_hash;
+        let mut req = common::finalize_request(&blocks[&height], &vals[&(height - 1)]);
+        // celestia-core v0.38 passes each BlobTx's inner transaction to
+        // FinalizeBlock, as the oracle did.
+        for tx in &mut req.txs {
+            if let Some(blob_tx) = txdecode::unmarshal_blob_tx_v9(tx) {
+                *tx = blob_tx.unwrap().tx;
+            }
+        }
+        let go_app_hash = req.header.as_ref().unwrap().app_hash.clone();
+        let res = match app.finalize_block(req) {
             Ok(res) => res,
             Err(e) => {
                 failures.push(format!("height {height}: {}", e.log));
@@ -238,6 +269,22 @@ fn v4_blocks_match_the_oracle() {
             }
         };
         app.commit().unwrap();
+        let committed: Vec<String> = app
+            .multistore()
+            .root()
+            .last_commit_info()
+            .unwrap()
+            .store_infos
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
+        let mut want_stores = stores.clone();
+        want_stores.sort();
+        let mut got_stores = committed;
+        got_stores.sort();
+        if got_stores != want_stores {
+            failures.push(format!("height {height} commit info stores {got_stores:?}"));
+        }
         let result = &results[&height];
         for f in check_tx_results(&res, result) {
             failures.push(format!("height {height} {f}"));
@@ -248,14 +295,35 @@ fn v4_blocks_match_the_oracle() {
         let want = diffs.get(&height).unwrap_or(&empty);
         let mut changed = BTreeSet::new();
         for s in &stores {
-            let got = diff(&before[s], &contents(app.multistore(), s));
+            let mut got = diff(&before[s], &contents(app.multistore(), s));
+            if s == "staking" {
+                for (k, v) in &mut got.set {
+                    if k.first() == Some(&0x50) {
+                        *v = replace(v, &rs_app_hash, &go_app_hash);
+                    }
+                }
+            }
             let w = want.get(s).cloned().unwrap_or_default();
             if got != w {
                 changed.insert(s.clone());
+                let values: Vec<String> = got
+                    .set
+                    .iter()
+                    .filter(|(k, v)| w.set.get(*k).is_some_and(|wv| wv != *v))
+                    .map(|(k, v)| {
+                        format!(
+                            "    {}: rs {} go {}",
+                            hex::encode(k),
+                            hex::encode(v),
+                            hex::encode(&w.set[k])
+                        )
+                    })
+                    .collect();
                 failures.push(format!(
-                    "height {height} store {s}:\n  rs {}\n  go {}",
+                    "height {height} store {s}:\n  rs {}\n  go {}\n{}",
                     describe(&got),
-                    describe(&w)
+                    describe(&w),
+                    values.join("\n")
                 ));
             }
         }
