@@ -1181,16 +1181,30 @@ func sha256Hex(b []byte) string {
 
 func upper(b []byte) string { return strings.ToUpper(hex.EncodeToString(b)) }
 
-// stableLog drops what in a log depends on the machine and the run, which
-// the log (not part of consensus) carries in two cases: the goroutine
-// stack baseapp appends to the log of a recovered panic (code 111222),
-// whose addresses change from run to run, and the stack frames
-// ("<func>\n\t<file>:<line>") that a `%+v` of an error with a recorded
-// stack prints (gov's "failed to run legacy handler" of ibc client
-// proposals), which name the build's module paths.
+// stableLog drops what in a log depends on Go's runtime or the machine
+// (the log is not part of consensus):
+//
+//   - from the log of a recovered panic (code 111222, "recovered: <value>
+//     ...: panic"), celestia's HandlePanicDecorator dump of each message
+//     ("\ncaused by transaction:\n%T{%s}") and baseapp's goroutine stack
+//     ("\nstack:\n..."), whose addresses change from run to run; the log
+//     keeps "recovered: <value>: panic";
+//   - the stack frames ("<func>\n\t<file>:<line>") that a `%+v` of an
+//     error with a recorded stack prints (gov's "failed to run legacy
+//     handler" of ibc client proposals), which name the build's paths.
 func stableLog(log string) string {
-	if i := strings.Index(log, "\nstack:\n"); i >= 0 {
-		log = strings.TrimRight(log[:i], "\n")
+	cut := -1
+	for _, marker := range []string{"\ncaused by transaction:\n", "\nstack:\n"} {
+		if i := strings.Index(log, marker); i >= 0 && (cut < 0 || i < cut) {
+			cut = i
+		}
+	}
+	if cut >= 0 {
+		suffix := ""
+		if strings.HasSuffix(log, ": panic") {
+			suffix = ": panic"
+		}
+		log = log[:cut] + suffix
 	}
 	return stackFrame.ReplaceAllString(log, "")
 }

@@ -421,10 +421,15 @@ fn validate_submit_v1(m: &v1::MsgSubmitProposal) -> Result<()> {
     }
     for (idx, msg) in m.messages.iter().enumerate() {
         if msg.type_url != v1::MsgExecLegacyContent::type_url() {
-            return Err(not_ported(format!(
-                "gov v1 proposal message {}",
-                msg.type_url
-            )));
+            // `msg.ValidateBasic()` of any other message.
+            if let Err(err) = super::msgs::validate_basic(msg) {
+                if err.is_panic() {
+                    return Err(err);
+                }
+                return Err(gerr::invalid_proposal_msg()
+                    .wrap(format!("msg: {idx}, err: {}", err.log)));
+            }
+            continue;
         }
         let e: v1::MsgExecLegacyContent = decode(msg)?;
         if let Err(err) = sdk::address::acc_from_bech32_go(&e.authority) {
@@ -515,15 +520,19 @@ fn run_legacy_content(ctx: &mut Context<'_>, content: &Any) -> Result<()> {
             let c: celestia_proto::ibc::core::client::v1::ClientUpdateProposal = decode(content)?;
             if c.subject_client_id == "09-localhost" || c.substitute_client_id == "09-localhost" {
                 // `ErrInvalidUpdateClientProposal` (client code 24 in v6).
-                return Err(SdkError::new("client", 24, "invalid update client proposal")
-                    .wrap("cannot update localhost client with proposal"));
+                return Err(
+                    SdkError::new("client", 24, "invalid update client proposal")
+                        .wrap("cannot update localhost client with proposal"),
+                );
             }
             match x_ibc::client::get_client_state(ctx, &c.subject_client_id)? {
                 None => Err(x_ibc::errors::client::client_not_found(format!(
                     "subject client with ID {}",
                     c.subject_client_id
                 ))),
-                Some(_) => Err(not_ported("ibc client update proposal of an existing client")),
+                Some(_) => Err(not_ported(
+                    "ibc client update proposal of an existing client",
+                )),
             }
         }
         other => Err(not_ported(format!("gov proposal content {other}"))),
@@ -568,8 +577,11 @@ fn exec_legacy_content(
             // handler's errors carry a stack, printed after a newline
             // (the oracle drops the frames: they name the build's paths).
             let sep = if route == "client" { ", \n" } else { ", " };
-            gerr::invalid_proposal_content()
-                .wrap(format!("failed to run legacy handler {route},{}{}", &sep[1..], e.log))
+            gerr::invalid_proposal_content().wrap(format!(
+                "failed to run legacy handler {route},{}{}",
+                &sep[1..],
+                e.log
+            ))
         })
     })();
     let events = std::mem::replace(&mut ctx.events, outer).take();
@@ -834,7 +846,15 @@ fn non_split(option: i32) -> Vec<v1::WeightedVoteOption> {
 fn exec_msgs(m: &v1::MsgSubmitProposal) -> Result<Vec<v1::MsgExecLegacyContent>> {
     m.messages
         .iter()
-        .map(|a| super::msgs::gogo_view(a).and_then(|a| decode(&a)))
+        .map(|a| {
+            if a.type_url != v1::MsgExecLegacyContent::type_url() {
+                return Err(not_ported(format!(
+                    "gov v1 proposal message {}",
+                    a.type_url
+                )));
+            }
+            super::msgs::gogo_view(a).and_then(|a| decode(&a))
+        })
         .collect()
 }
 

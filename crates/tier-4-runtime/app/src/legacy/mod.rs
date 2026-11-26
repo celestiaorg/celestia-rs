@@ -30,6 +30,8 @@ pub mod authz;
 pub mod blob;
 pub mod blockers;
 pub mod consensus_params;
+pub mod crisis;
+pub mod evidence;
 pub mod feegrant;
 pub mod genesis;
 pub mod gov;
@@ -722,6 +724,11 @@ impl<M: Modules> Driver<M> {
                 return Err(e);
             }
             migrate::remove_stores(ms, block_version, to)?;
+            // `cms.LoadLatestVersionAndUpgrade` reloads the root store:
+            // its memory stores start empty, so the next BeginBlock
+            // rebuilds the capability memory store on the block context's
+            // meter (v0.46 `noGasCtx`), as on every node at the upgrade.
+            ms.clear_memory_stores();
             self.app_version = to;
         }
         ms.flush()?;
