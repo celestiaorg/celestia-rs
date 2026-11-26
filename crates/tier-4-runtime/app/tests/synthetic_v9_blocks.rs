@@ -161,7 +161,7 @@ fn check_response(res: &ResponseFinalizeBlock, result: &serde_json::Value) -> Ve
     if got_cp != result["consensus_param_updates"] {
         failures.push(format!("consensus params {got_cp}"));
     }
-    let timeouts = res.timeout_info.clone().unwrap_or_default();
+    let timeouts = res.timeout_info.unwrap_or_default();
     let ns = |d: Option<pbjson_types::Duration>| {
         d.map(|d| d.seconds * 1_000_000_000 + i64::from(d.nanos))
     };
