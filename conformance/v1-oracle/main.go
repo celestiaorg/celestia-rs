@@ -298,6 +298,7 @@ func run() error {
 	registryOut := flag.String("registry-out", "", "only write the Rust v1 registry and schema tables (registry.go) to this directory")
 	keepRecent := flag.Uint64("keep-recent", 0, "prune all but this many recent IAVL versions (0: keep every version); bounds memory on long runs")
 	synthetic := flag.Bool("synthetic", false, "build the synthetic app version 1 to 3 chain (synthetic.go) instead of reading -genesis and -blocks; writes its genesis.json and blocks.jsonl.gz to -out")
+	handoff := flag.String("handoff", "", "with -synthetic: keep the app home (goleveldb data/application.db and data/upgrade-info.json) in this new directory and write handoff.json there, for conformance/v4-oracle to continue the chain")
 	flag.Parse()
 	if *registryOut != "" {
 		return writeRegistry(*registryOut)
@@ -322,6 +323,10 @@ func run() error {
 		if err := syn.genDoc.SaveAs(*genesisPath); err != nil {
 			return err
 		}
+	}
+	if *handoff != "" && syn == nil {
+		flag.Usage()
+		return errors.New("-handoff needs -synthetic")
 	}
 	if *genesisPath == "" || (*blocksPath == "" && syn == nil) || *out == "" || *heights < 1 || *from < 1 || *from > *heights {
 		flag.Usage()
@@ -372,7 +377,10 @@ func run() error {
 			return err
 		}
 		defer os.RemoveAll(home)
-		genesisApp := newApp(home, 0, upgradeHeightV2)
+		genesisApp, _, err := newApp(home, 0, upgradeHeightV2, false)
+		if err != nil {
+			return err
+		}
 		if _, err := initChain(genesisApp, genDoc); err != nil {
 			return err
 		}
@@ -400,12 +408,19 @@ func run() error {
 	}
 
 	// Heights 1..N.
-	home, err := os.MkdirTemp("", "v1-oracle-replay-")
+	home := *handoff
+	if home == "" {
+		if home, err = os.MkdirTemp("", "v1-oracle-replay-"); err != nil {
+			return err
+		}
+		defer os.RemoveAll(home)
+	} else if err := os.Mkdir(home, 0o755); err != nil {
+		return fmt.Errorf("-handoff: %w", err)
+	}
+	replayApp, replayDB, err := newApp(home, *keepRecent, upgradeHeightV2, *handoff != "")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(home)
-	replayApp := newApp(home, *keepRecent, upgradeHeightV2)
 	res, err := initChain(replayApp, genDoc)
 	if err != nil {
 		return err
@@ -587,6 +602,14 @@ func run() error {
 			}
 		}
 	}
+	if *handoff != "" {
+		if err := replayDB.Close(); err != nil {
+			return err
+		}
+		if err := syn.writeHandoff(filepath.Join(*handoff, "handoff.json"), *heights, vals); err != nil {
+			return err
+		}
+	}
 	if syn != nil {
 		compressed, err := gzipBytes(syn.blocks.Bytes())
 		if err != nil {
@@ -612,14 +635,23 @@ func run() error {
 	return os.WriteFile(filepath.Join(*out, "store-roots.json"), append(encoded, '\n'), 0o644)
 }
 
-func newApp(home string, keepRecent uint64, upgradeHeightV2 int64) *app.App {
+// newApp builds the app over a memory database or, with onDisk, over the
+// goleveldb database data/application.db of home, as celestia-appd opens it.
+func newApp(home string, keepRecent uint64, upgradeHeightV2 int64, onDisk bool) (*app.App, dbm.DB, error) {
+	var db dbm.DB = dbm.NewMemDB()
+	if onDisk {
+		var err error
+		if db, err = dbm.NewGoLevelDB("application", filepath.Join(home, "data")); err != nil {
+			return nil, nil, err
+		}
+	}
 	pruning := pruningtypes.NewPruningOptions(pruningtypes.PruningNothing)
 	if keepRecent > 0 {
 		pruning = pruningtypes.NewCustomPruningOptions(keepRecent, 10)
 	}
 	return app.New(
 		log.NewNopLogger(),
-		dbm.NewMemDB(),
+		db,
 		nil,
 		0,
 		encoding.MakeConfig(app.ModuleEncodingRegisters...),
@@ -629,7 +661,7 @@ func newApp(home string, keepRecent uint64, upgradeHeightV2 int64) *app.App {
 		baseapp.SetPruning(pruning),
 		// The multiplexer forces the inter-block cache on for v3 (#7770).
 		baseapp.SetInterBlockCache(store.NewCommitKVStoreCacheManager()),
-	)
+	), db, nil
 }
 
 // initChain sends Info and InitChain as the Tendermint v0.34 handshake does.
