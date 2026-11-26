@@ -25,6 +25,7 @@ pub use multistore::PruningOptions;
 pub mod query_services;
 pub mod router;
 pub mod stores;
+pub mod tokenfilter;
 pub mod tx;
 pub mod txpipe;
 pub mod upgrades;

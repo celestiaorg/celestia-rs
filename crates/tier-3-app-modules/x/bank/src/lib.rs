@@ -363,6 +363,15 @@ fn module_addr(name: &str) -> Result<Address> {
 /// `BlockedAddr`: all module accounts except gov.
 #[must_use]
 pub fn is_blocked(addr: &[u8]) -> bool {
+    if sdk::version::release(0).double_hashes_blocked_addresses() {
+        // celestia-app v4.1.0 to v6.4.10: `NewModuleAddress` of each module
+        // address's bech32 string; deleting gov's plain address removes
+        // nothing.
+        return x_auth::module_account_perms().any(|(name, _)| {
+            x_auth::bech32(&x_auth::module_address(name))
+                .is_ok_and(|b| x_auth::module_address(&b) == addr)
+        });
+    }
     x_auth::module_account_perms()
         .any(|(name, _)| *name != "gov" && x_auth::module_address(name) == addr)
 }
@@ -710,6 +719,43 @@ pub fn export_genesis(ctx: &mut Context<'_>) -> Result<GenesisState> {
 mod tests {
     use super::*;
     use sdk::{ExecMode, Header, Kind, MultiStore};
+
+    /// celestia-app v4.1.0 to v6.4.10 `BlockedAddresses` hashes each module
+    /// address's bech32 string again (`NewModuleAddress(addr.String())`)
+    /// and deletes only gov's plain address: no module account is blocked,
+    /// and every double-hashed address is (gov's too). From v7 the module
+    /// accounts but gov's are blocked. v4 has no forwarding account.
+    #[test]
+    fn blocked_addresses_follow_the_release() {
+        let prev = sdk::version::app_version();
+        let twice = |name: &str| {
+            x_auth::module_address(&x_auth::bech32(&x_auth::module_address(name)).unwrap())
+        };
+        sdk::version::set_app_version(4);
+        for name in [
+            "fee_collector",
+            "distribution",
+            "gov",
+            "bonded_tokens_pool",
+            "warp",
+        ] {
+            assert!(!is_blocked(&x_auth::module_address(name)), "v4 {name}");
+            assert!(is_blocked(&twice(name)), "v4 double-hashed {name}");
+        }
+        assert!(
+            !is_blocked(&twice("forwarding")),
+            "v4 has no forwarding account"
+        );
+        assert!(x_auth::module_account_perms().all(|(n, _)| *n != "forwarding"));
+        for v in [9, 10] {
+            sdk::version::set_app_version(v);
+            assert!(is_blocked(&x_auth::module_address("distribution")), "v{v}");
+            assert!(!is_blocked(&x_auth::module_address("gov")), "v{v}");
+            assert!(!is_blocked(&twice("distribution")), "v{v}");
+            assert!(x_auth::module_account_perms().any(|(n, _)| *n == "forwarding"));
+        }
+        sdk::version::set_app_version(prev);
+    }
 
     #[test]
     fn send_creates_account_and_moves_funds() -> Result<()> {

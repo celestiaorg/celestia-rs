@@ -202,6 +202,7 @@ fn replace(bytes: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
 /// to 20 make the oracle's KV changes, transaction results and block
 /// responses.
 #[test]
+#[allow(clippy::too_many_lines)]
 fn v4_blocks_match_the_oracle() {
     let diffs = common::diffs_in(&format!("{FIXTURE}/kv-diffs.jsonl.gz"));
     let results: BTreeMap<i64, serde_json::Value> =
