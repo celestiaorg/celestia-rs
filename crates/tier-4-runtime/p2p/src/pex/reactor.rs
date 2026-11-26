@@ -307,7 +307,7 @@ impl PexReactor {
         let book = self.book.get_selection();
         let max_dials = (max_out * 4).min(book.len());
         for addr in book.into_iter().take(max_dials) {
-            if sw.is_dialing_or_existing_address(&addr) {
+            if sw.is_dialing_or_existing_address(&addr) || sw.is_backing_off(&addr) {
                 continue;
             }
             let me = self.clone();
@@ -370,6 +370,9 @@ impl PexReactor {
         let now = Instant::now();
         for addr in addrs {
             let Some(id) = addr.id else { continue };
+            if sw.is_backing_off(&addr) {
+                continue;
+            }
             let recent = lock(&self.state)
                 .crawl_peer_infos
                 .get(&id)
