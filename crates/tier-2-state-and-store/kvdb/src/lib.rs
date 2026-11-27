@@ -621,6 +621,33 @@ impl Default for DbOptions {
     }
 }
 
+/// RocksDB options of database `name`.
+///
+/// The application database (IAVL state) gets a 128 MiB write buffer and
+/// no compact-on-deletion collector. Pruning deletes IAVL nodes some 100
+/// versions after they were written, so most tombstones meet their puts
+/// in the memtable or in the first levels, where ordinary compaction drops
+/// both. The collector instead compacted files again as soon as half of a
+/// window was tombstones, and with a 16 MiB buffer that cost about 16x
+/// write amplification at mainnet height 559k. See ADR 0002.
+#[cfg(feature = "rocksdb")]
+fn rocks_options(name: &str, options: &DbOptions) -> RocksOptions {
+    let rocks = RocksOptions {
+        block_cache_size: options.cache_size,
+        sync_writes: options.sync_writes,
+        ..RocksOptions::default()
+    };
+    if name == "application" {
+        RocksOptions {
+            write_buffer_size: 128 << 20,
+            compact_on_deletion: false,
+            ..rocks
+        }
+    } else {
+        rocks
+    }
+}
+
 /// Opens (or creates) database `name` in directory `dir`
 /// ([`BackendKind::db_path`]).
 ///
@@ -642,19 +669,7 @@ pub fn open_backend(dir: &Path, name: &str, options: &DbOptions) -> Result<Arc<d
     }
     Ok(match options.backend {
         #[cfg(feature = "rocksdb")]
-        BackendKind::RocksDb => {
-            let mut rocks = RocksOptions {
-                block_cache_size: options.cache_size,
-                sync_writes: options.sync_writes,
-                ..RocksOptions::default()
-            };
-            // Application-state pruning generates tombstones every few heights.
-            // Flush them in smaller batches so compaction can reclaim old nodes.
-            if name == "application" {
-                rocks.write_buffer_size = 16 << 20;
-            }
-            Arc::new(RocksBackend::open(path, rocks)?)
-        }
+        BackendKind::RocksDb => Arc::new(RocksBackend::open(path, rocks_options(name, options))?),
         BackendKind::Redb => Arc::new(RedbBackend::open(
             path,
             RedbOptions {
@@ -773,6 +788,33 @@ mod tests {
         assert_eq!(backend.get(b"x").unwrap(), None);
         assert_eq!(backend.get(b"y").unwrap(), Some(b"2".to_vec()));
         backend.sync().unwrap();
+    }
+
+    #[cfg(feature = "rocksdb")]
+    #[test]
+    fn application_db_trades_memtable_memory_for_less_compaction() {
+        let options = DbOptions {
+            cache_size: 64 << 20,
+            ..DbOptions::default()
+        };
+        let app = super::rocks_options("application", &options);
+        assert_eq!(app.write_buffer_size, 128 << 20);
+        assert!(!app.compact_on_deletion);
+        assert_eq!(app.block_cache_size, 64 << 20);
+        assert!(app.sync_writes);
+        // The other databases keep the defaults.
+        for name in ["state", "blockstore", "evidence"] {
+            let rocks = super::rocks_options(name, &options);
+            assert_eq!(
+                rocks,
+                RocksOptions {
+                    block_cache_size: 64 << 20,
+                    ..RocksOptions::default()
+                },
+                "{name}"
+            );
+            assert!(rocks.compact_on_deletion, "{name}");
+        }
     }
 
     #[test]
