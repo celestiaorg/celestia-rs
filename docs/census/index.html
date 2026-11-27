@@ -34,7 +34,8 @@
       </nav>
     </header>
     <nav class="subnav" aria-label="On this page">
-      <a href="#overview">Overview</a><a href="#versions-section">Versions</a
+      <a href="#overview">Overview</a><a href="#go-versions-section">Go versions</a
+      ><a href="#rust-versions-section">celestia-rs versions</a
       ><a href="#rust-nodes-section">celestia-rs nodes</a><a href="#method">Method</a>
     </nav>
     <main id="main">
@@ -43,14 +44,12 @@
         <h1>Consensus nodes by implementation</h1>
         <p class="deck">
           A crawler connects to the consensus P2P network of each chain and reads
-          what every node reports in its handshake: its celestia-core version
-          and its app version. celestia-rs nodes report
-          <code>0.38.17-celestia-rs.&lt;version&gt;</code>; Go nodes report the
-          celestia-core version that their celestia-app release embeds, such as
-          <code>0.38.17</code>. The app version is the protocol version the
-          node runs, such as <code>10</code>. The handshake does not carry the
-          celestia-app release (such as <code>10.6.0</code>), so the crawler
-          reads it from the node's RPC where that RPC is open.
+          the software version that every node reports in its handshake.
+          celestia-rs nodes report <code>0.38.17-celestia-rs.&lt;version&gt;</code>,
+          which gives their celestia-rs version, such as <code>v0.1.0</code>.
+          Go nodes report only the version of the consensus library they embed,
+          so the crawler reads their celestia-app version, such as
+          <code>v10.6.0</code>, from the node's RPC where that RPC is open.
         </p>
         <div class="filters" role="tablist" aria-label="Network">
           <button role="tab" data-network="mainnet" aria-selected="true">Mainnet</button>
@@ -60,9 +59,13 @@
         <div class="tiles" id="tiles"></div>
         <div class="census-charts" id="charts"></div>
       </section>
-      <section id="versions-section">
-        <h2>Versions in the latest crawl</h2>
-        <div class="table-wrap"><table id="versions"></table></div>
+      <section id="go-versions-section">
+        <h2>Go nodes by celestia-app version</h2>
+        <div class="table-wrap"><table id="go-versions"></table></div>
+      </section>
+      <section id="rust-versions-section">
+        <h2>celestia-rs nodes by version</h2>
+        <div class="table-wrap"><table id="rust-versions"></table></div>
       </section>
       <section id="rust-nodes-section">
         <h2>celestia-rs nodes in the latest crawl</h2>
@@ -85,12 +88,11 @@
             crawler.
           </li>
           <li>
-            The handshake carries the celestia-core version and the app
-            (protocol) version, not the celestia-app release. For the release,
-            the crawler asks each observed node's own RPC for
+            The handshake of a Go node does not carry its celestia-app
+            version. The crawler asks each observed node's own RPC for
             <code>/abci_info</code> at the RPC address the node advertises
             (default port 26657). Only nodes with an RPC open to the internet
-            answer; the others show “–”.
+            answer; the others are counted as “Unknown (RPC not reachable)”.
             <span id="release-coverage"></span>
           </li>
           <li>
