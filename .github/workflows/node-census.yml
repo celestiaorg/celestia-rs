@@ -7,7 +7,7 @@ name: node-census
 
 on:
   schedule:
-    - cron: "23 */6 * * *"  # every 6 hours
+    - cron: "23 6 * * *"  # daily, 06:23 UTC
   workflow_dispatch:
 
 permissions:
