@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "New major or minor version, e.g. 0.2.0 (patch versions are released daily)"
+        description: "New version, <major>.<minor>.0, normally 1.0.0 (daily releases cover the rest)"
         required: true
         type: string
 

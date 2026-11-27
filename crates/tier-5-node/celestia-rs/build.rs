@@ -59,8 +59,8 @@ fn main() {
 
     // The version `celestia-rs version` reports: the crate's, or for a
     // daily release (.github/workflows/release.yml) the release's: a plain
-    // `<major>.<minor>.<patch>` on the crate's major.minor line, with a
-    // patch no lower than the crate's (crate 0.1.0 or 0.1.0-rc.9: 0.1.4).
+    // `<major>.<minor>.<patch>` no lower than the crate version's (crate
+    // 0.1.0 or 0.1.0-rc.9: 0.1.4 or 0.2.0, not 0.0.9).
     println!("cargo:rerun-if-env-changed=CELESTIA_RS_RELEASE_VERSION");
     let crate_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
     let version = match std::env::var("CELESTIA_RS_RELEASE_VERSION") {
@@ -71,15 +71,13 @@ fn main() {
                 parts.next().is_none().then_some(parsed)
             };
             let core = crate_version.split('-').next().unwrap_or_default();
-            let valid = match (parse(&v), parse(core)) {
-                (Some((major, minor, patch)), Some(crate_line)) => {
-                    (major, minor) == (crate_line.0, crate_line.1) && patch >= crate_line.2
-                }
-                _ => false,
-            };
+            let valid = matches!(
+                (parse(&v), parse(core)),
+                (Some(release), Some(floor)) if release >= floor
+            );
             assert!(
                 valid,
-                "CELESTIA_RS_RELEASE_VERSION={v} must be <major>.<minor>.<patch> on the crate version's line ({crate_version})"
+                "CELESTIA_RS_RELEASE_VERSION={v} must be <major>.<minor>.<patch>, no lower than the crate version {crate_version}"
             );
             v
         }
