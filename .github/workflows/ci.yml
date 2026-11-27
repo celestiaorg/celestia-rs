@@ -328,6 +328,8 @@ jobs:
           - v6-oracle
           - v8-oracle
           - v9-oracle
+          - v10-oracle
+          - v11-oracle
           - v11-frozen
           - websocket-lifecycle
     env:
@@ -367,7 +369,8 @@ jobs:
           matrix.module == 'websocket-lifecycle' || matrix.module == 'v1-oracle' ||
           matrix.module == 'v4-oracle' || matrix.module == 'v5-oracle' ||
           matrix.module == 'v6-oracle' || matrix.module == 'v8-oracle' ||
-          matrix.module == 'v9-oracle')
+          matrix.module == 'v9-oracle' || matrix.module == 'v10-oracle' ||
+          matrix.module == 'v11-oracle')
         working-directory: conformance/${{ matrix.module }}
         # A cold runner compiles a whole celestia-app release per oracle
         # module (v4-oracle also builds v1-oracle); go test's default
