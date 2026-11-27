@@ -6,28 +6,47 @@ use devnet_conformance::load_exchanges;
 const SIGNAL_HEIGHT: i64 = 5;
 const UPGRADE_HEIGHT: i64 = SIGNAL_HEIGHT + 1;
 
+/// How the node runs the release switch at the v12 upgrade.
+#[derive(Clone, Copy, PartialEq)]
+enum Mode {
+    /// `celestia-rs start` / `follow`: switches to v12 in-process at the
+    /// upgrade height; `reopen` restarts the node after the signal block.
+    Embedded { reopen: bool },
+    /// `celestia-rs abci` under cosmovisor: the v11 release halts at the
+    /// upgrade block (`UPGRADE "v12" NEEDED`, `data/upgrade-info.json`),
+    /// and the reopened node authenticates that file and runs v12.
+    Abci,
+}
+
 #[test]
 fn v12_upgrade_without_restart() -> anyhow::Result<()> {
-    replay_boundary(false)
+    replay_boundary(Mode::Embedded { reopen: false })
 }
 
 #[test]
 fn v12_upgrade_reopens_at_boundary() -> anyhow::Result<()> {
-    replay_boundary(true)
+    replay_boundary(Mode::Embedded { reopen: true })
 }
 
-fn replay_boundary(reopen: bool) -> anyhow::Result<()> {
+#[test]
+fn v12_upgrade_halts_and_resumes_in_abci_mode() -> anyhow::Result<()> {
+    replay_boundary(Mode::Abci)
+}
+
+fn replay_boundary(mode: Mode) -> anyhow::Result<()> {
     let home = tempfile::tempdir()?;
     let options = AppOptions {
         node: NodeOptions {
             home: Some(home.path().to_path_buf()),
-            activate_bundled_upgrades: true,
+            activate_bundled_upgrades: mode != Mode::Abci,
             ..NodeOptions::default()
         },
         ..AppOptions::default()
     };
+    let reopen = mode == Mode::Embedded { reopen: true };
     let mut app = App::open_with(home.path(), options.clone())?;
     let mut verified_heights = Vec::new();
+    let mut halts = Vec::new();
     for exchange in load_exchanges("upgrade/v12-main-upgrade")? {
         match (exchange.request.value, exchange.response.value) {
             (Some(request::Value::InitChain(req)), Some(response::Value::InitChain(go))) => {
@@ -40,7 +59,21 @@ fn replay_boundary(reopen: bool) -> anyhow::Result<()> {
                 Some(response::Value::FinalizeBlock(go)),
             ) => {
                 let height = req.height;
-                let rust = app.finalize_block(req)?;
+                let rust = match app.finalize_block(req.clone()) {
+                    Ok(rust) => rust,
+                    // The operator's restart after the halt.
+                    Err(e) if mode == Mode::Abci && app::is_upgrade_needed(&e.log) => {
+                        assert!(
+                            home.path().join("data/upgrade-info.json").exists(),
+                            "the halt at {height} wrote no upgrade-info.json"
+                        );
+                        halts.push(height);
+                        drop(app);
+                        app = App::open_with(home.path(), options.clone())?;
+                        app.finalize_block(req)?
+                    }
+                    Err(e) => anyhow::bail!("height {height}: {}", e.log),
+                };
                 assert_eq!(rust.app_hash, go.app_hash, "height {height}");
                 assert_eq!(rust.timeout_info, go.timeout_info, "height {height}");
                 if height >= UPGRADE_HEIGHT {
@@ -59,7 +92,12 @@ fn replay_boundary(reopen: bool) -> anyhow::Result<()> {
         }
     }
     assert_eq!(verified_heights, (1..=7).collect::<Vec<_>>());
-    assert!(!home.path().join("data/upgrade-info.json").exists());
+    if mode == Mode::Abci {
+        assert_eq!(halts, [UPGRADE_HEIGHT], "halts for the v12 upgrade");
+    } else {
+        assert!(halts.is_empty());
+        assert!(!home.path().join("data/upgrade-info.json").exists());
+    }
     let expected = app.info();
     assert_eq!(expected.app_version, 12);
     drop(app);

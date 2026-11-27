@@ -987,8 +987,9 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
   `celestia-rs start` and `celestia-rs follow` switch to the next bundled
   release in the same process at the upgrade height, so the v10 to v11
   upgrade (and v11 to v12 on a chain that signals it, such as Mocha)
-  needs no restart and RPC stays up. The v12 rules are matched only
-  against a pre-release celestia-app commit on a short test chain (see
+  needs no restart and RPC stays up. No celestia-app v12 release exists
+  yet: the v12 rules are matched only against the pre-release commit
+  `bb3a9e52d` on a short test chain (see
   [the v12 gap](v11-patch-release.md#known-gap-v12-execution)); an
   app-hash mismatch after a v12 upgrade stops the node. The node switches
   once the block before the upgrade commits the new consensus version
