@@ -329,32 +329,60 @@ pub struct StateMembershipValues {
     pub message_ids: Vec<[u8; 32]>,
 }
 
-/// `StateMembershipValues.Unmarshal`.
+/// `StateMembershipValues.Unmarshal` of celestia-app v9.0.8 and later
+/// (exact length, full reads).
 pub fn unmarshal_state_membership(
     data: &[u8],
 ) -> core::result::Result<StateMembershipValues, String> {
+    unmarshal_state_membership_for(data, true)
+}
+
+/// `StateMembershipValues.Unmarshal`; `exact` selects v9.0.8's rule
+/// (`io.ReadFull`, exact length) over v8.0.8's (`bytes.Reader.Read`).
+pub fn unmarshal_state_membership_for(
+    data: &[u8],
+    exact: bool,
+) -> core::result::Result<StateMembershipValues, String> {
     let mut buf = data;
+    // v8.0.8 reads the fixed fields with `bytes.Reader.Read`: a short read
+    // zero-pads the field without error; only an empty reader errs (EOF).
+    let read_field = |buf: &mut &[u8], out: &mut [u8; 32]| -> core::result::Result<(), String> {
+        if exact {
+            out.copy_from_slice(read_exact(buf, 32)?);
+        } else if buf.is_empty() {
+            return Err("EOF".into());
+        } else {
+            let n = buf.len().min(32);
+            out[..n].copy_from_slice(&buf[..n]);
+            *buf = &buf[n..];
+        }
+        Ok(())
+    };
     let mut state_root = [0u8; 32];
-    state_root
-        .copy_from_slice(read_exact(&mut buf, 32).map_err(|e| format!("read StateRoot: {e}"))?);
+    read_field(&mut buf, &mut state_root).map_err(|e| format!("read StateRoot: {e}"))?;
     let mut merkle_tree_address = [0u8; 32];
-    merkle_tree_address.copy_from_slice(
-        read_exact(&mut buf, 32).map_err(|e| format!("read MerkleTreeAddress: {e}"))?,
-    );
+    read_field(&mut buf, &mut merkle_tree_address)
+        .map_err(|e| format!("read MerkleTreeAddress: {e}"))?;
     let count = read_u64_le(&mut buf).map_err(|e| format!("read message ids length: {e}"))?;
     if count > MAX_MESSAGE_IDS_COUNT {
         return Err(format!(
             "message ids count {count} exceeds maximum allowed {MAX_MESSAGE_IDS_COUNT}"
         ));
     }
+    // count <= MAX_MESSAGE_IDS_COUNT: count * 32 cannot overflow.
     #[allow(clippy::cast_possible_truncation)]
-    if buf.len() as u64 != count * 32 {
+    let need = (count * 32) as usize;
+    if exact && buf.len() != need {
         return Err(format!(
-            "buffer length mismatch: need exactly {}, have {}",
-            count * 32,
+            "buffer length mismatch: need exactly {need}, have {}",
             buf.len()
         ));
     }
+    // v8.0.8 reads the ids from the front and ignores trailing bytes.
+    if buf.len() < need {
+        return Err(format!("buffer too short: need {need}, have {}", buf.len()));
+    }
+    let buf = &buf[..need];
     let message_ids = buf
         .chunks(32)
         .map(|c| {
@@ -499,7 +527,9 @@ pub fn submit_messages(
     let Some(ism) = get_ism(ctx, id.internal_id())? else {
         return Err(ism_not_found(format!("failed to get ism: {id}")));
     };
-    let values = unmarshal_state_membership(&m.public_values).map_err(errs::invalid_type)?;
+    let values =
+        unmarshal_state_membership_for(&m.public_values, ctx.release().zkism_exact_public_values())
+            .map_err(errs::invalid_type)?;
     let root = ism.state.get(..32).unwrap_or(&ism.state);
     if values.state_root[..] != *root {
         return Err(invalid_state_root(format!(
@@ -697,6 +727,48 @@ mod tests {
         bad.proof[300] ^= 1;
         assert!(update_ism(&mut ctx, &bad).is_err());
         Ok(())
+    }
+
+    /// `StateMembershipValues.Unmarshal` per release, against the vectors
+    /// that `conformance/v{8,9}-oracle` (`zkism_values_test.go`) write.
+    #[test]
+    fn state_membership_values_match_go_per_release() {
+        for (release, exact) in [("v8", false), ("v9", true)] {
+            let path = format!(
+                "{}/../../../../conformance/fixtures/zkism/state-membership-{release}.json",
+                env!("CARGO_MANIFEST_DIR")
+            );
+            let cases: Vec<serde_json::Value> =
+                serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+            for c in cases {
+                let name = c["name"].as_str().unwrap();
+                let input = hex::decode(c["input"].as_str().unwrap()).unwrap();
+                let got = unmarshal_state_membership_for(&input, exact);
+                match c["error"].as_str().unwrap() {
+                    "" => {
+                        let v = got.unwrap_or_else(|e| panic!("{release} {name}: {e}"));
+                        assert_eq!(
+                            hex::encode(v.state_root),
+                            c["state_root"],
+                            "{release} {name}"
+                        );
+                        assert_eq!(
+                            hex::encode(v.merkle_tree_address),
+                            c["merkle_tree_address"],
+                            "{release} {name}"
+                        );
+                        let ids: Vec<String> = v.message_ids.iter().map(hex::encode).collect();
+                        let want: Vec<String> = c
+                            .get("message_ids")
+                            .and_then(|i| i.as_array())
+                            .map(|a| a.iter().map(|i| i.as_str().unwrap().to_owned()).collect())
+                            .unwrap_or_default();
+                        assert_eq!(ids, want, "{release} {name}");
+                    }
+                    want => assert_eq!(got.err().as_deref(), Some(want), "{release} {name}"),
+                }
+            }
+        }
     }
 
     #[test]
