@@ -196,9 +196,16 @@ def run(plan_path, results_path, checker):
             for i in range(0, len(todo), 40):
                 fetch(todo[i : i + 40], proc.stdin)
                 print(f"fetched {min(i + 40, len(todo))}/{len(todo)}", file=sys.stderr)
+        except BrokenPipeError:
+            pass  # the checker exited; its status is reported below
         finally:
-            proc.stdin.close()
-            proc.wait()
+            try:
+                proc.stdin.close()
+            except BrokenPipeError:
+                pass
+            code = proc.wait()
+    if code != 0:
+        raise SystemExit(f"{checker} exited with {code}; {results_path} may be incomplete")
 
 
 def report(plan_path, results_path):

@@ -91,11 +91,19 @@ fn check(block: &Value) -> Result<Value, String> {
 
 /// The stateless checks of v9 and later ProcessProposal on each tx: its
 /// size, the BlobTx envelope (go-square v4 rc4 at v9, the canonical v10
-/// decoder after), the SDK decoding, no `MsgPayForBlobs` outside a BlobTx,
+/// decoder after), the SDK decoding (the v9 registry at v9), no `MsgPayForBlobs` outside a BlobTx,
 /// and `ValidateBlobTx` with share commitments. Message caps, the ante
 /// handler and execution need the chain's state and are not run.
 fn stateless_process_proposal(app_version: u64, txs: &[Vec<u8>]) -> Result<(), String> {
     const PFB: &str = "/celestia.blob.v1.MsgPayForBlobs";
+    // v9 ProcessProposal (`process_v9`) decodes with the v9 registry.
+    let decode = |raw: &[u8]| {
+        if app_version == 9 {
+            txdecode::decode_v9(raw)
+        } else {
+            txdecode::decode(raw)
+        }
+    };
     for (i, raw) in txs.iter().enumerate() {
         if raw.len() > app::proposal::MAX_TX_SIZE {
             return Err(format!("tx {i}: {} bytes", raw.len()));
@@ -108,12 +116,12 @@ fn stateless_process_proposal(app_version: u64, txs: &[Vec<u8>]) -> Result<(), S
         match blob {
             Some(Err(e)) => return Err(format!("tx {i}: blob tx: {e:?}")),
             Some(Ok(u)) => {
-                let tx = txdecode::decode(&u.tx).map_err(|e| format!("tx {i}: {}", e.log))?;
+                let tx = decode(&u.tx).map_err(|e| format!("tx {i}: {}", e.log))?;
                 app::proposal::validate_blob_tx(&tx, &u)
                     .map_err(|e| format!("tx {i}: ValidateBlobTx: {}", e.log))?;
             }
             None => {
-                let tx = txdecode::decode(raw).map_err(|e| format!("tx {i}: {}", e.log))?;
+                let tx = decode(raw).map_err(|e| format!("tx {i}: {}", e.log))?;
                 if tx.msgs().iter().any(|m| m.type_url == PFB) {
                     return Err(format!("tx {i}: MsgPayForBlobs outside a BlobTx"));
                 }
