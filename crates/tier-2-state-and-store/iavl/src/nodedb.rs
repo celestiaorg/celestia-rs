@@ -338,6 +338,8 @@ impl NodeDb {
                 };
             }
             Some(CachedNode::Encoded(node)) => {
+                // `decode` checks the record against `r` again (inner
+                // hash, leaf hash); this only fails earlier.
                 if node.reference.hash != r.hash {
                     return Err(mismatch());
                 }

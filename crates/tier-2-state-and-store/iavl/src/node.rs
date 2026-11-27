@@ -69,6 +69,11 @@ pub(crate) struct StoredRef {
 /// the cache. The node is the one loaded for this link's own reference,
 /// so it is always the right node for it, even after a rollback re-creates
 /// the same node key with other content.
+///
+/// Memory: a `Weak` keeps a dropped node's allocation (not its contents)
+/// until the link is next followed or its parent leaves the cache, so at
+/// most two such allocations (about 272 B each) per cached inner node,
+/// plus 32 B per inner node for the two slots themselves.
 #[derive(Debug, Default)]
 pub(crate) struct Remembered(Mutex<Weak<Node>>);
 

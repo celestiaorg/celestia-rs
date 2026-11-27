@@ -2157,6 +2157,15 @@ mod tests {
                     .unwrap();
                 backend.write(batch).unwrap();
             }
+            if i % 13 == 12 {
+                // Roll back two versions: the next commits re-create their
+                // node keys with other content under live remembered links.
+                let mut batch = WriteBatch::new();
+                tree.rollback_to(info.version - 2, &mut batch).unwrap();
+                backend.write(batch).unwrap();
+                obs.working_hashes.push(tree.root_hash());
+                obs.contents.push(entries(tree.iter(None, None)));
+            }
             if i % 9 == 8 {
                 reads += lookups(&ndb);
                 ndb = open_small(&backend, remember);

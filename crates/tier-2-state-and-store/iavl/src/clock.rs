@@ -119,15 +119,21 @@ impl<K: Hash + Eq + Clone, V: Clone + Touched, S: BuildHasher> ClockCache<K, V, 
     }
 
     /// Frees the slot of the first unreferenced entry at or after the hand
-    /// (clearing reference bits on the way) and returns its index.
+    /// (clearing reference bits on the way) and returns its index. Readers
+    /// set touched bits without the cache's lock, so they can keep every
+    /// entry referenced: after one full sweep the entry under the hand is
+    /// evicted anyway, so this always ends.
     fn evict(&mut self) -> usize {
+        let len = self.slots.len();
+        let mut passed = 0;
         loop {
             let i = self.hand;
-            self.hand = (self.hand + 1) % self.slots.len();
+            self.hand = (self.hand + 1) % len;
             let slot = &mut self.slots[i];
             let touched = slot.entry.as_ref().is_some_and(|(_, v)| v.take_touched());
-            if slot.referenced || touched {
+            if (slot.referenced || touched) && passed < len {
                 slot.referenced = false;
+                passed += 1;
                 continue;
             }
             if let Some((k, _)) = slot.entry.take() {
@@ -207,6 +213,26 @@ mod tests {
         assert!(c.get(&1).is_some());
         assert!(c.get(&0).is_none());
         assert!(c.get(&2).is_none());
+    }
+
+    /// A value some reader uses again before every sweep reaches it.
+    #[derive(Clone)]
+    struct AlwaysUsed;
+
+    impl Touched for AlwaysUsed {
+        fn take_touched(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn eviction_ends_even_when_every_value_is_used_again() {
+        let mut c: ClockCache<u32, AlwaysUsed> = ClockCache::new(4);
+        for i in 0..20 {
+            c.put(i, AlwaysUsed);
+            assert!(c.len() <= 4);
+        }
+        assert!(c.get(&19).is_some());
     }
 
     #[test]
