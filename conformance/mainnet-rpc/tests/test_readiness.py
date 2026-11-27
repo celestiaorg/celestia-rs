@@ -23,6 +23,8 @@ class Readiness(unittest.TestCase):
         bindings = json.loads((HERE / "readiness.json").read_text())["bindings"]
         self.assertEqual(LIVING & set(bindings), set())
         self.assertTrue(bindings)
+        # Today every frozen binding is a captured log or a manifest. Widen
+        # this list when another kind of frozen artifact is bound.
         for name in bindings:
             self.assertTrue(name.endswith((".log", "manifest.json")), name)
 

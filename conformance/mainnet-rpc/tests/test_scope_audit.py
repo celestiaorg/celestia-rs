@@ -3,6 +3,7 @@ from copy import deepcopy
 import importlib.util
 import json
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -249,6 +250,29 @@ class ScopedEvidenceAudit(unittest.TestCase):
         self.value = json.loads(audit.AUDIT.read_text())
         self.value["packages"][0]["documentation"]["path"] = "conformance/mainnet-rpc/missing.md"
         with self.assertRaisesRegex(ValueError, "receipt/documentation class"):
+            audit.validate(self.value)
+
+    def test_living_file_must_exist_in_tree_and_not_be_a_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "real.md").write_text("text")
+            (root / "link.md").symlink_to(root / "real.md")
+            self.assertEqual(audit.living(root, {"path": "real.md"}), root / "real.md")
+            for name in ("missing.md", "link.md", "../outside.md"):
+                with self.subTest(name=name):
+                    with self.assertRaisesRegex(ValueError, "missing, symlinked or out-of-tree"):
+                        audit.living(root, {"path": name})
+
+    def test_runtime_source_with_a_hash_is_rejected(self):
+        row = next(row for row in self.value["packages"] if row["runtime_regressions"])
+        row["runtime_regressions"][0]["source"]["sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "bound by path only"):
+            audit.validate(self.value)
+
+    def test_stale_verifier_hash_is_rejected(self):
+        row = next(row for row in self.value["packages"] if row["verifier"])
+        row["verifier"]["sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "hash mismatch"):
             audit.validate(self.value)
 
     def test_verifier_execution_uses_only_registered_python_sources(self):
