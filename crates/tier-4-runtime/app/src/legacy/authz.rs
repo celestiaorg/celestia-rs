@@ -866,8 +866,7 @@ pub(super) fn exec_signer(msg: &Any) -> Result<Option<Vec<u8>>> {
 /// cosmos-sdk fork, `baseapp/msg_service_router.go`): a failure is
 /// returned unless the message has a `GetAmount() sdk.Coin` whose amount
 /// is zero, in which case its handler runs on the invalid message
-/// (`Ok(true)`). A nil amount panics in `IsZero`. Only `MsgDelegate`'s
-/// handler is ported for that case.
+/// (`Ok(true)`). A nil amount panics in `IsZero`.
 fn router_validate_basic(msg: &Any) -> Result<bool> {
     let Err(e) = msgs::validate_basic(msg) else {
         return Ok(false);
@@ -893,13 +892,21 @@ fn router_validate_basic(msg: &Any) -> Result<bool> {
     if !x_staking::msgs::wire_int(&raw).is_ok_and(|a| a.is_zero()) {
         return Err(e);
     }
-    if msg.type_url == staking::MsgDelegate::type_url() {
-        return Ok(true);
+    Ok(true)
+}
+
+/// The msg service router's handler of `msg` (celestia's cosmos-sdk
+/// fork, `baseapp/msg_service_router.go`): `ValidateBasic` (a zero
+/// `GetAmount` skips its error), the circuit breaker, then the msg
+/// server. Events go to `ctx.events`.
+pub(super) fn router_handle(ctx: &mut Context<'_>, m: &Any) -> Result<Any> {
+    let zero_amount = router_validate_basic(m)?;
+    super::tx::circuit_breaker(ctx, &m.type_url)?;
+    if zero_amount {
+        msgs::zero_amount(ctx, m)
+    } else {
+        msgs::route(ctx, m)
     }
-    Err(super::not_ported(errs::invalid_request(format!(
-        "the cosmos-sdk v0.46 handler of {} on a zero amount its ValidateBasic rejects is not ported",
-        msg.type_url
-    ))))
 }
 
 /// `fmt.Sprintf("%v", msg)` of a dispatched message.
@@ -917,12 +924,21 @@ fn exec(ctx: &mut Context<'_>, msg: &authz::MsgExec) -> Result<authz::MsgExecRes
         // The nested message as Go holds it (the `MsgExec` keeps them as
         // received).
         let m = &msgs::gogo_view(m)?;
-        let Some(granter) = exec_signer(m)? else {
-            return Err(super::not_ported(errs::unknown_request(format!(
-                "the cosmos-sdk v0.46 dispatch of {} by MsgExec is not ported",
+        // `msg.GetSigners()` (every type `decode_v1` accepts has them):
+        // exactly one.
+        let signers = super::signers::signers(m)?.ok_or_else(|| {
+            super::not_ported(errs::unknown_request(format!(
+                "the cosmos-sdk v0.46 signers of {}",
                 m.type_url
-            ))));
-        };
+            )))
+        })?;
+        let [granter] = <[Vec<u8>; 1]>::try_from(signers).map_err(|_| {
+            SdkError::new(
+                "authz",
+                9,
+                "authorization can be given to msg with only one signer",
+            )
+        })?;
         if granter != grantee {
             let key = x_authz::grant_key(&grantee, &granter, &m.type_url);
             let Some(grant) = get_grant(ctx, &key)? else {
@@ -953,13 +969,8 @@ fn exec(ctx: &mut Context<'_>, msg: &authz::MsgExec) -> Result<authz::MsgExecRes
         // The router's handler: a fresh event manager, `ValidateBasic`,
         // the circuit breaker (the gatekeeper already accepted every
         // nested message), then the msg server.
-        let zero_amount = router_validate_basic(m).map_err(|e| wrap_failed(e, m))?;
         let outer = std::mem::take(&mut ctx.events);
-        let resp = if zero_amount {
-            msgs::delegate_zero_amount(ctx, m)
-        } else {
-            msgs::route(ctx, m)
-        };
+        let resp = router_handle(ctx, m);
         let nested = std::mem::replace(&mut ctx.events, outer).take();
         let resp = resp.map_err(|e| wrap_failed(e, m))?;
         let before = ctx.events.len();

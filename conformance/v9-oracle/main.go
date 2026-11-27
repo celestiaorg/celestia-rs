@@ -168,8 +168,13 @@ func run() error {
 	genesisPath := flag.String("genesis", "", "the genesis.json of the synthetic chain")
 	heights := flag.Int64("heights", 5, "number of blocks to execute after the hand-off height")
 	out := flag.String("out", "", "output directory")
+	signBytes := flag.String("signbytes", "", "write the sign-bytes vectors (signbytes.go) to this file and exit")
 	probes := flag.Bool("probes", false, "after the usual five blocks, run the probe blocks of probes.go (use -heights 8) and record tx signers")
+	tmclient := flag.Bool("tmclient", false, "after the usual five blocks, run the 07-tendermint client blocks of tmclient.go (use -heights 10)")
 	flag.Parse()
+	if *signBytes != "" {
+		return writeSignBytes(*signBytes, "v9.0.8")
+	}
 	if *home == "" || *genesisPath == "" || *out == "" || *heights < 1 {
 		flag.Usage()
 		return errors.New("missing arguments")
@@ -242,6 +247,7 @@ func run() error {
 		return err
 	}
 	s.probes = *probes
+	s.tmclient = *tmclient
 	kvUpgrade, err := upgradeOnly(*home, ho, s.blockTime(ho.Height+1), prev)
 	if err != nil {
 		return err

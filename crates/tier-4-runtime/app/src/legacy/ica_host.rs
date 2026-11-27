@@ -380,7 +380,7 @@ fn authenticate_tx(
                 m.type_url
             )));
         }
-        let signers = signers(m)?.ok_or_else(|| {
+        let signers = super::signers::signers(m)?.ok_or_else(|| {
             not_ported(&format!("the cosmos-sdk v0.46 signers of {}", m.type_url))
         })?;
         for signer in signers {
@@ -397,55 +397,6 @@ fn authenticate_tx(
         }
     }
     Ok(())
-}
-
-fn decode<M: Message + Default>(m: &Any) -> Result<M> {
-    M::decode(m.value.as_slice()).map_err(|e| errs::tx_decode(e.to_string()))
-}
-
-/// v0.46 `msg.GetSigners()` of a host message: the messages authz
-/// `MsgExec` dispatches ([`super::authz::exec_signer`]), plus the other
-/// messages with a ported handler. An address that does not parse is an
-/// empty signer, as in Go. `None` for a message whose signers are not
-/// ported.
-// v0.46 still reads `MsgCreateValidator.delegator_address`.
-#[allow(deprecated)]
-fn signers(m: &Any) -> Result<Option<Vec<Vec<u8>>>> {
-    use celestia_proto::cosmos::bank::v1beta1 as bank;
-    use celestia_proto::cosmos::gov;
-    use celestia_proto::cosmos::slashing::v1beta1 as slashing;
-    use celestia_proto::cosmos::staking::v1beta1 as staking;
-    use prost::Name;
-    if let Some(s) = super::authz::exec_signer(m)? {
-        return Ok(Some(vec![s]));
-    }
-    let acc = |s: &str| sdk::address::acc_from_bech32_go(s).unwrap_or_default();
-    let val = |s: &str| x_staking::addr::val_from_string(s).unwrap_or_default();
-    let u = m.type_url.as_str();
-    Ok(Some(if u == bank::MsgMultiSend::type_url() {
-        let msg: bank::MsgMultiSend = decode(m)?;
-        msg.inputs.iter().map(|i| acc(&i.address)).collect()
-    } else if u == slashing::MsgUnjail::type_url() {
-        vec![val(&decode::<slashing::MsgUnjail>(m)?.validator_addr)]
-    } else if u == staking::MsgCreateValidator::type_url() {
-        let msg: staking::MsgCreateValidator = decode(m)?;
-        let (del, v) = (acc(&msg.delegator_address), val(&msg.validator_address));
-        if del == v { vec![del] } else { vec![del, v] }
-    } else if u == staking::MsgEditValidator::type_url() {
-        vec![val(
-            &decode::<staking::MsgEditValidator>(m)?.validator_address
-        )]
-    } else if u == gov::v1beta1::MsgDeposit::type_url() {
-        vec![acc(&decode::<gov::v1beta1::MsgDeposit>(m)?.depositor)]
-    } else if u == gov::v1::MsgDeposit::type_url() {
-        vec![acc(&decode::<gov::v1::MsgDeposit>(m)?.depositor)]
-    } else if u == gov::v1beta1::MsgVoteWeighted::type_url() {
-        vec![acc(&decode::<gov::v1beta1::MsgVoteWeighted>(m)?.voter)]
-    } else if u == gov::v1::MsgVoteWeighted::type_url() {
-        vec![acc(&decode::<gov::v1::MsgVoteWeighted>(m)?.voter)]
-    } else {
-        return Ok(None);
-    }))
 }
 
 /// `executeTx`: every message, in one cache context kept only when all
@@ -490,21 +441,7 @@ fn execute_tx(
 /// breaker, the msg server); its events go to the context.
 fn execute_msg(ctx: &mut Context<'_>, m: &Any) -> Result<Any> {
     super::msgs::validate_basic(m)?;
-    let v = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
-    match super::tx::gatekeeper_accepts(v, &m.type_url) {
-        None => {
-            return Err(errs::not_supported(format!(
-                "app version {v} is not supported"
-            )));
-        }
-        Some(false) => {
-            return Err(x_ibc::errors::unregistered(format!(
-                "circuit breaker disables execution of this message: {}",
-                m.type_url
-            )));
-        }
-        Some(true) => {}
-    }
+    super::tx::circuit_breaker(ctx, &m.type_url)?;
     let outer = std::mem::take(&mut ctx.events);
     let res = super::msgs::route(ctx, m);
     let nested = std::mem::replace(&mut ctx.events, outer).take();
@@ -517,6 +454,7 @@ fn execute_msg(ctx: &mut Context<'_>, m: &Any) -> Result<Any> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::signers::signers;
     use super::*;
 
     /// The address hashes the connection, the port, the app hash and the
@@ -618,14 +556,16 @@ mod tests {
         assert_eq!(signers(&any(&dep))?, Some(vec![vec![]]));
         assert_eq!(signers(&any(&vw1))?, Some(vec![a2.clone()]));
         assert_eq!(signers(&any(&vw))?, Some(vec![a1.clone()]));
-        // authz's dispatch list is unchanged; the rest stays not ported.
+        // authz's dispatch list, and every other v1 message
+        // (`legacy::signers`).
         let send = bank::MsgSend {
             from_address: s2,
             ..Default::default()
         };
         assert_eq!(signers(&any(&send))?, Some(vec![a2]));
         let exec = celestia_proto::cosmos::authz::v1beta1::MsgExec::default();
-        assert_eq!(signers(&any(&exec))?, None);
+        // `MsgExec` drops the grantee's address error (empty signer).
+        assert_eq!(signers(&any(&exec))?, Some(vec![vec![]]));
         Ok(())
     }
 

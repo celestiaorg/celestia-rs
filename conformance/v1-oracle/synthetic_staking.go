@@ -16,7 +16,8 @@ package main
 //     validator edit, commission and reward withdrawals to a withdraw
 //     address; a continuous vesting account that delegates locked coins
 //     and a delayed one. val3 misses every commit until it is jailed for
-//     downtime (block 11), then unjails (block 16).
+//     downtime (block 11), then unjails (block 16); in between, bob's
+//     unbonding from val3 cannot be cancelled (jailed validator).
 //   - --v2-upgrade-height 20, then validators signal version 3, which
 //     the EndBlocker of block 24 sets.
 //   - App version 3 (blocks 25 to 32): a periodic fee allowance, an authz
@@ -282,6 +283,17 @@ func (s *synth) stakingTxs(a *app.App, height int64) ([][]byte, error) {
 			return tx(banktypes.NewMsgMultiSend(
 				[]banktypes.Input{banktypes.NewInput(addr("bob"), utia(30))},
 				[]banktypes.Output{banktypes.NewOutput(addr("alice"), utia(10)), banktypes.NewOutput(addr("carol"), utia(20))}))
+		})
+	case 12:
+		// bob unbonds from val3 while it is jailed ...
+		steps = append(steps, func() error {
+			return tx(stakingtypes.NewMsgDelegate(addr("bob"), valAddr("val3"), coin(10*tia)),
+				stakingtypes.NewMsgUndelegate(addr("bob"), valAddr("val3"), coin(5*tia)))
+		})
+	case 13:
+		// ... and cannot cancel it: the validator is jailed (staking 7).
+		steps = append(steps, func() error {
+			return tx(stakingtypes.NewMsgCancelUnbondingDelegation(addr("bob"), valAddr("val3"), 12, coin(tia)))
 		})
 	case 16:
 		// The downtime jail (60 seconds) has passed.
