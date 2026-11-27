@@ -107,7 +107,7 @@ impl Tree {
     pub fn open(ndb: Arc<NodeDb>) -> Result<Self> {
         let mut versions = BTreeMap::new();
         for (version, root) in ndb.roots()? {
-            versions.insert(version, root.map(Link::Stored));
+            versions.insert(version, root.map(Link::stored));
         }
         let (version, root) = versions
             .iter()
@@ -318,14 +318,15 @@ impl Tree {
             Some(root) => Some(match &self.ndb {
                 Some(ndb) => {
                     let mut node_index = 0u32;
-                    Link::Stored(persist(ndb, root, node_version, &mut node_index, batch)?)
+                    let (r, node) = persist(ndb, root, node_version, &mut node_index, batch)?;
+                    Link::Stored(r, remembered(node.as_ref()))
                 }
                 None => assign_hashes(root, node_version),
             }),
         };
         if let Some(ndb) = &self.ndb {
             let root_ref = match &root {
-                Some(Link::Stored(r)) => Some(*r),
+                Some(Link::Stored(r, _)) => Some(*r),
                 _ => None,
             };
             batch.put(ndb.root_key(next_version), encode_root(root_ref.as_ref()));
@@ -576,16 +577,21 @@ impl Tree {
     }
 }
 
-/// Writes the dirty part of `link` (post-order) at `version`.
+fn remembered(node: Option<&Arc<Node>>) -> node::Remembered {
+    node.map_or_else(node::Remembered::default, node::Remembered::of)
+}
+
+/// Writes the dirty part of `link` (post-order) at `version`. Returns the
+/// reference and, when known, the saved node (for the parent to remember).
 fn persist(
     ndb: &NodeDb,
     link: Link,
     version: Version,
     node_index: &mut u32,
     batch: &mut WriteBatch,
-) -> Result<StoredRef> {
+) -> Result<(StoredRef, Option<Arc<Node>>)> {
     let arc = match link {
-        Link::Stored(r) => return Ok(r),
+        Link::Stored(r, child) => return Ok((r, child.get())),
         Link::Mem(arc) => arc,
     };
     if arc.saved_version().is_some() {
@@ -616,8 +622,8 @@ fn persist(
             (r, bytes, saved)
         }
         Node::Inner(inner) => {
-            let left = persist(ndb, inner.left, version, node_index, batch)?;
-            let right = persist(ndb, inner.right, version, node_index, batch)?;
+            let (left, left_node) = persist(ndb, inner.left, version, node_index, batch)?;
+            let (right, right_node) = persist(ndb, inner.right, version, node_index, batch)?;
             let hash = inner_hash(
                 i64::from(inner.height),
                 inner.size,
@@ -644,19 +650,21 @@ fn persist(
                 right.nk,
             );
             let saved = Node::Inner(Inner {
+                touched: crate::node::Touch::default(),
                 key: inner.key,
                 height: inner.height,
                 size: inner.size,
-                left: Link::Stored(left),
-                right: Link::Stored(right),
+                left: Link::Stored(left, remembered(left_node.as_ref())),
+                right: Link::Stored(right, remembered(right_node.as_ref())),
                 version,
                 hash: Some(hash),
             });
             (r, bytes, saved)
         }
     };
-    ndb.put_node(batch, r.nk, bytes, Arc::new(saved));
-    Ok(r)
+    let saved = Arc::new(saved);
+    ndb.put_node(batch, r.nk, bytes, Arc::clone(&saved));
+    Ok((r, Some(saved)))
 }
 
 /// In-memory commit: hash and version every dirty node of `link`.
@@ -786,23 +794,24 @@ impl View<'_> {
     }
 
     fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
-        let Some(mut link) = self.root.cloned() else {
+        let Some(root) = self.root else {
             return Ok(None);
         };
+        // Children are loaded through the parent's own link, so its
+        // remembered child is used (and set) rather than a copy's.
+        let mut node = self.load(root)?;
         loop {
-            let node = self.load(&link)?;
-            match &*node {
+            let child = match &*node {
                 Node::Leaf(leaf) => {
                     return Ok((leaf.key.as_slice() == key).then(|| leaf.value.clone()));
                 }
-                Node::Inner(inner) => {
-                    link = if key < inner.key.as_slice() {
-                        inner.left.clone()
-                    } else {
-                        inner.right.clone()
-                    };
-                }
-            }
+                Node::Inner(inner) => self.load(if key < inner.key.as_slice() {
+                    &inner.left
+                } else {
+                    &inner.right
+                })?,
+            };
+            node = child;
         }
     }
 
@@ -813,7 +822,7 @@ impl View<'_> {
             stack: if invalid_range {
                 Vec::new()
             } else {
-                self.root.cloned().into_iter().collect()
+                self.root.cloned().map(Pending::Root).into_iter().collect()
             },
             start: start.map(<[u8]>::to_vec),
             end: end.map(<[u8]>::to_vec),
@@ -892,13 +901,13 @@ impl View<'_> {
     }
 
     fn existence_proof(&self, key: &[u8]) -> Result<Option<ExistenceProof>> {
-        let Some(mut link) = self.root.cloned() else {
+        let Some(root) = self.root else {
             return Ok(None);
         };
         let mut path = Vec::new();
+        let mut node = self.load(root)?;
         loop {
-            let node = self.load(&link)?;
-            match &*node {
+            let child = match &*node {
                 Node::Leaf(leaf) => {
                     if leaf.key.as_slice() != key {
                         return Ok(None);
@@ -920,7 +929,7 @@ impl View<'_> {
                             left: None,
                             right: Some(inner.right.hash_for(self.version)),
                         });
-                        link = inner.left.clone();
+                        self.load(&inner.left)?
                     } else {
                         path.push(ProofInner {
                             height: inner.height,
@@ -929,10 +938,11 @@ impl View<'_> {
                             left: Some(inner.left.hash_for(self.version)),
                             right: None,
                         });
-                        link = inner.right.clone();
+                        self.load(&inner.right)?
                     }
                 }
-            }
+            };
+            node = child;
         }
     }
 }
@@ -1000,18 +1010,41 @@ pub struct Entry {
 #[derive(Debug)]
 pub struct Iter {
     ndb: Option<Arc<NodeDb>>,
-    stack: Vec<Link>,
+    stack: Vec<Pending>,
     start: Option<Vec<u8>>,
     end: Option<Vec<u8>>,
     reverse: bool,
+}
+
+/// A subtree still to visit: the root, or one side of a loaded parent
+/// (loaded through the parent's own link; see `Remembered`).
+#[derive(Debug)]
+enum Pending {
+    Root(Link),
+    Left(Arc<Node>),
+    Right(Arc<Node>),
+}
+
+impl Pending {
+    fn load(&self, ndb: Option<&NodeDb>) -> Result<Arc<Node>> {
+        let (parent, right) = match self {
+            Self::Root(link) => return load(ndb, link),
+            Self::Left(parent) => (parent, false),
+            Self::Right(parent) => (parent, true),
+        };
+        match &**parent {
+            Node::Inner(inner) => load(ndb, if right { &inner.right } else { &inner.left }),
+            Node::Leaf(_) => Err(Error::Corrupt("leaf has no children")),
+        }
+    }
 }
 
 impl Iterator for Iter {
     type Item = Result<Entry>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(link) = self.stack.pop() {
-            let node = match load(self.ndb.as_deref(), &link) {
+        while let Some(pending) = self.stack.pop() {
+            let node = match pending.load(self.ndb.as_deref()) {
                 Ok(node) => node,
                 Err(err) => {
                     self.stack.clear();
@@ -1046,21 +1079,17 @@ impl Iterator for Iter {
                         .end
                         .as_deref()
                         .is_none_or(|end| end > inner.key.as_slice());
-                    if self.reverse {
-                        if want_left {
-                            self.stack.push(inner.left.clone());
-                        }
-                        if want_right {
-                            self.stack.push(inner.right.clone());
-                        }
+                    let (left, right) = (
+                        want_left.then(|| Pending::Left(Arc::clone(&node))),
+                        want_right.then(|| Pending::Right(Arc::clone(&node))),
+                    );
+                    let (first, second) = if self.reverse {
+                        (left, right)
                     } else {
-                        if want_right {
-                            self.stack.push(inner.right.clone());
-                        }
-                        if want_left {
-                            self.stack.push(inner.left.clone());
-                        }
-                    }
+                        (right, left)
+                    };
+                    self.stack.extend(first);
+                    self.stack.extend(second);
                 }
             }
         }
@@ -1814,7 +1843,7 @@ mod tests {
     fn reachable(tree: &Tree) -> usize {
         let mut seen = std::collections::BTreeSet::new();
         for version in tree.available_versions() {
-            let Some(super::Link::Stored(root)) = tree.versions[&version].clone() else {
+            let Some(super::Link::Stored(root, _)) = tree.versions[&version].clone() else {
                 continue;
             };
             let mut stack = vec![root];
@@ -1825,7 +1854,7 @@ mod tests {
                 let node = tree.ndb.as_ref().unwrap().load(&r).unwrap();
                 if let super::Node::Inner(inner) = &*node {
                     for link in [&inner.left, &inner.right] {
-                        if let super::Link::Stored(c) = link {
+                        if let super::Link::Stored(c, _) = link {
                             stack.push(*c);
                         }
                     }
@@ -1932,6 +1961,330 @@ mod tests {
             cold.disk_reads,
             "a warm read stays in memory"
         );
+    }
+
+    #[test]
+    fn warm_reads_follow_remembered_children_past_the_cache() {
+        let ndb = NodeDb::in_memory(10_000);
+        let mut tree = Tree::open(Arc::clone(&ndb)).unwrap();
+        for i in 0u32..500 {
+            tree.set(i.to_be_bytes().to_vec(), vec![7; 10]).unwrap();
+        }
+        tree.save_version().unwrap();
+        let cache = super::NodeCache::new(10_000);
+        let reopened = Tree::open(NodeDb::new(
+            Arc::clone(ndb.backend()),
+            Vec::new(),
+            Arc::clone(&cache),
+        ))
+        .unwrap();
+        let lookups = || {
+            let s = cache.stats();
+            s.hits + s.misses
+        };
+        let key = 77u32.to_be_bytes();
+        assert_eq!(reopened.get(&key).unwrap(), Some(vec![7; 10]));
+        let before = lookups();
+        assert_eq!(reopened.get(&key).unwrap(), Some(vec![7; 10]));
+        // Only the root is looked up; every child comes from its parent.
+        assert!(lookups() - before <= 1, "{:?}", cache.stats());
+        let snap = reopened.get_immutable(1).unwrap();
+        let before = lookups();
+        assert_eq!(snap.iter(None, None).count(), 500);
+        let first = lookups() - before;
+        let before = lookups();
+        assert_eq!(snap.iter(None, None).count(), 500);
+        assert!(lookups() - before <= 1, "{first} then {:?}", cache.stats());
+    }
+
+    #[test]
+    fn stale_views_never_read_nodes_recreated_by_a_rollback() {
+        for cache in [8, 10_000] {
+            stale_view_after_rollback(cache);
+        }
+    }
+
+    fn stale_view_after_rollback(cache: usize) {
+        let ndb = NodeDb::in_memory(cache);
+        let mut tree = Tree::open(Arc::clone(&ndb)).unwrap();
+        let keys: Vec<Vec<u8>> = (0u32..200).map(|i| i.to_be_bytes().to_vec()).collect();
+        for k in &keys {
+            tree.set(k.clone(), b"v1".to_vec()).unwrap();
+        }
+        tree.save_version().unwrap();
+        for round in [b"v2", b"v3"] {
+            for k in keys.iter().step_by(3) {
+                tree.set(k.clone(), round.to_vec()).unwrap();
+            }
+            tree.save_version().unwrap();
+        }
+        let stale = tree.get_immutable(3).unwrap();
+        let old: Vec<_> = keys.iter().map(|k| stale.get(k).unwrap()).collect();
+        // Roll back to version 1 and write other values at versions 2 and 3:
+        // the same node keys (version, nonce) now name other nodes.
+        let mut batch = WriteBatch::new();
+        tree.rollback_to(1, &mut batch).unwrap();
+        ndb.backend().write(batch).unwrap();
+        for round in [b"w2", b"w3"] {
+            for k in keys.iter().step_by(2) {
+                tree.set(k.clone(), round.to_vec()).unwrap();
+            }
+            tree.save_version().unwrap();
+        }
+        for (k, i) in keys.iter().zip(0..) {
+            let want: &[u8] = if i % 2 == 0 { b"w3" } else { b"v1" };
+            assert_eq!(tree.get(k).unwrap().as_deref(), Some(want));
+        }
+        // The stale view gives its own data or an error, never the new data.
+        for (k, old) in keys.iter().zip(&old) {
+            match stale.get(k) {
+                Ok(v) => assert_eq!(&v, old, "{k:?}"),
+                Err(e) => assert!(
+                    matches!(e, Error::Corrupt(_) | Error::MissingNode { .. }),
+                    "{e:?}"
+                ),
+            }
+        }
+    }
+
+    /// Everything observable about one run of the differential workload.
+    #[derive(Debug, Default, PartialEq)]
+    struct Observed {
+        saves: Vec<super::CommitInfo>,
+        working_hashes: Vec<super::Hash>,
+        proofs: Vec<Option<super::Proof>>,
+        contents: Vec<Vec<(Vec<u8>, Vec<u8>)>>,
+        exports: Vec<Vec<super::ExportNode>>,
+        imported_saves: Vec<super::CommitInfo>,
+        dump: Vec<(Vec<u8>, Vec<u8>)>,
+        imported_dump: Vec<(Vec<u8>, Vec<u8>)>,
+    }
+
+    fn lookups(ndb: &NodeDb) -> u64 {
+        let stats = ndb.cache().stats();
+        stats.hits + stats.misses
+    }
+
+    fn dump(ndb: &NodeDb) -> Vec<(Vec<u8>, Vec<u8>)> {
+        ndb.backend()
+            .prefix_range(&[], false)
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    }
+
+    /// A node store over `backend` with a small cache, so nodes are evicted
+    /// and decoded again often.
+    fn open_small(backend: &Arc<dyn kvdb::KvBackend>, remember: bool) -> Arc<NodeDb> {
+        let ndb = NodeDb::new(Arc::clone(backend), Vec::new(), super::NodeCache::new(8));
+        ndb.set_remember_children(remember);
+        ndb
+    }
+
+    /// Imports `nodes` at `version`, reopens the store cold and commits more
+    /// versions on it.
+    fn import_and_continue(
+        remember: bool,
+        nodes: &[super::ExportNode],
+        version: Version,
+        seed: u64,
+    ) -> (Vec<super::CommitInfo>, Vec<(Vec<u8>, Vec<u8>)>) {
+        let backend: Arc<dyn kvdb::KvBackend> = Arc::new(kvdb::MemBackend::new());
+        let ndb = open_small(&backend, remember);
+        let mut importer = super::Importer::new(Some(Arc::clone(&ndb)), version).unwrap();
+        for node in nodes.iter().cloned() {
+            importer.add(node).unwrap();
+        }
+        let mut batch = WriteBatch::new();
+        importer.commit(&mut batch).unwrap();
+        backend.write(batch).unwrap();
+        let mut tree = Tree::open(open_small(&backend, remember)).unwrap();
+        let saves = workload(8, 30, seed)
+            .iter()
+            .map(|ops| {
+                apply(&mut tree, ops);
+                tree.save_version().unwrap()
+            })
+            .collect();
+        (saves, dump(&ndb))
+    }
+
+    /// Random sets, removes, reads, proofs, rollbacks, reopens with cold
+    /// caches, pruning, export and import, with or without remembered
+    /// children.
+    fn differential_run(remember: bool, seed: u64) -> (Observed, u64) {
+        let backend: Arc<dyn kvdb::KvBackend> = Arc::new(kvdb::MemBackend::new());
+        let mut ndb = open_small(&backend, remember);
+        let mut tree = Tree::open(Arc::clone(&ndb)).unwrap();
+        let mut reads = 0;
+        let mut obs = Observed::default();
+        let workloads = workload(60, 30, seed);
+        let probes = workload(60, 6, seed ^ 0x5eed);
+        for (i, (ops, probe)) in workloads.iter().zip(&probes).enumerate() {
+            if i % 7 == 3 {
+                apply(
+                    &mut tree,
+                    &probe
+                        .iter()
+                        .map(|(_, k, v)| (true, k.clone(), v.clone()))
+                        .collect::<Vec<_>>(),
+                );
+                obs.working_hashes.push(tree.root_hash());
+                tree.rollback();
+            }
+            apply(&mut tree, ops);
+            obs.working_hashes.push(tree.root_hash());
+            for (_, key, _) in probe {
+                obs.proofs.push(tree.get_with_proof(key).unwrap());
+                obs.proofs.push(
+                    tree.get_with_proof(&[key.as_slice(), b"x"].concat())
+                        .unwrap(),
+                );
+                obs.contents.push(
+                    tree.get(key)
+                        .unwrap()
+                        .map(|v| (key.clone(), v))
+                        .into_iter()
+                        .collect(),
+                );
+            }
+            let info = tree.save_version().unwrap();
+            obs.saves.push(info.clone());
+            if i % 5 == 4 {
+                let mut batch = WriteBatch::new();
+                let latest = info.version;
+                tree.prune(|v| v > latest - 4 || v % 6 == 0, &mut batch)
+                    .unwrap();
+                backend.write(batch).unwrap();
+            }
+            if i % 13 == 12 {
+                // Roll back two versions: the next commits re-create their
+                // node keys with other content under live remembered links.
+                let mut batch = WriteBatch::new();
+                tree.rollback_to(info.version - 2, &mut batch).unwrap();
+                backend.write(batch).unwrap();
+                obs.working_hashes.push(tree.root_hash());
+                obs.contents.push(entries(tree.iter(None, None)));
+            }
+            if i % 9 == 8 {
+                reads += lookups(&ndb);
+                ndb = open_small(&backend, remember);
+                tree = Tree::open(Arc::clone(&ndb)).unwrap();
+            }
+            if i % 11 == 10 {
+                for version in tree.available_versions() {
+                    let snap = tree.get_immutable(version).unwrap();
+                    obs.contents
+                        .push(entries(snap.reverse_iter(Some(b"k050"), Some(b"k250"))));
+                    for (_, key, _) in probe {
+                        obs.proofs.push(snap.get_with_proof(key).unwrap());
+                    }
+                }
+            }
+        }
+        for version in tree.available_versions() {
+            obs.exports
+                .push(tree.export(version).unwrap().map(Result::unwrap).collect());
+        }
+        (obs.imported_saves, obs.imported_dump) = import_and_continue(
+            remember,
+            obs.exports.last().unwrap(),
+            tree.version(),
+            seed ^ 0x1a2b,
+        );
+        reads += lookups(&ndb);
+        obs.dump = dump(&ndb);
+        (obs, reads)
+    }
+
+    #[test]
+    fn remembered_children_change_nothing_but_cache_lookups() {
+        for seed in [7, 21, 1_234_567] {
+            let (plain, plain_lookups) = differential_run(false, seed);
+            let (remembered, remembered_lookups) = differential_run(true, seed);
+            assert!(!plain.dump.is_empty());
+            assert_eq!(plain, remembered, "seed {seed}");
+            assert!(
+                remembered_lookups < plain_lookups,
+                "{remembered_lookups} >= {plain_lookups}"
+            );
+        }
+    }
+
+    #[test]
+    fn readers_on_other_threads_share_remembered_children_safely() {
+        let ndb = NodeDb::in_memory(16);
+        let mut tree = Tree::open(Arc::clone(&ndb)).unwrap();
+        for ops in workload(10, 40, 3) {
+            apply(&mut tree, &ops);
+            tree.save_version().unwrap();
+        }
+        let snaps: Vec<ImmutableTree> = tree
+            .available_versions()
+            .into_iter()
+            .map(|v| tree.get_immutable(v).unwrap())
+            .collect();
+        let expected: Vec<_> = snaps.iter().map(|s| entries(s.iter(None, None))).collect();
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                scope.spawn(|| {
+                    for _ in 0..10 {
+                        for (snap, want) in snaps.iter().zip(&expected) {
+                            assert_eq!(&entries(snap.iter(None, None)), want);
+                            for (key, value) in want.iter().step_by(7) {
+                                assert_eq!(snap.get(key).unwrap().as_ref(), Some(value));
+                                let proof = snap.get_with_proof(key).unwrap().unwrap();
+                                Tree::verify_membership(snap.root_hash(), &proof, key, value)
+                                    .unwrap();
+                            }
+                        }
+                    }
+                });
+            }
+            // Meanwhile the writer commits new versions through the same
+            // node store and its 16-node cache.
+            for ops in workload(20, 40, 9) {
+                apply(&mut tree, &ops);
+                tree.save_version().unwrap();
+            }
+        });
+    }
+
+    /// Disk reads of a hot key's walks while one cold read per round churns
+    /// a small cache (remembered children on or off).
+    fn hot_key_reads(remember: bool) -> u64 {
+        let ndb = NodeDb::in_memory(10_000);
+        let mut tree = Tree::open(Arc::clone(&ndb)).unwrap();
+        for i in 0u32..2_000 {
+            tree.set(i.to_be_bytes().to_vec(), vec![7; 10]).unwrap();
+        }
+        tree.save_version().unwrap();
+        let cache = super::NodeCache::new(96);
+        let db = NodeDb::new(Arc::clone(ndb.backend()), Vec::new(), Arc::clone(&cache));
+        db.set_remember_children(remember);
+        let reopened = Tree::open(db).unwrap();
+        let hot = 77u32.to_be_bytes();
+        let mut cold = 1_000u32;
+        let mut hot_reads = 0;
+        for round in 0..200 {
+            let before = cache.stats().disk_reads;
+            assert!(reopened.get(&hot).unwrap().is_some());
+            if round >= 5 {
+                hot_reads += cache.stats().disk_reads - before;
+            }
+            assert!(reopened.get(&cold.to_be_bytes()).unwrap().is_some());
+            cold = (cold * 7 + 13) % 2_000;
+        }
+        hot_reads
+    }
+
+    #[test]
+    fn hot_paths_followed_through_remembered_links_stay_cached() {
+        // Plain cache lookups keep the hot path cached (CLOCK reference
+        // bits). Remembered links bypass the cache; the touched bit gives
+        // the CLOCK the same information, so the hot path stays too.
+        assert_eq!(hot_key_reads(false), 0);
+        assert_eq!(hot_key_reads(true), 0);
     }
 
     #[test]

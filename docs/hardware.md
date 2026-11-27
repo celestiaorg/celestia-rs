@@ -39,12 +39,12 @@ behind these defaults:
 |---|---|---|---|
 | Backend | `--db-backend` | `rocksdb` (`redb` available) | RocksDB disk ≈ 1.1–1.4× live data (peaks 1.85× during compaction); redb 2.7–5× |
 | Backend block cache | `--db-cache-mib` | 512 | Bounded: data, index and filter blocks all live in it; plus ≤ 256 MiB memtables (2 × 128 MiB, application database) |
-| IAVL node cache | app.toml `iavl-cache-size` (`--node-cache-size` for `abci`) | 4,000,000 nodes | at least ~370 B per node (measured at mainnet height ~560k) → about 1.5 GB or more when full; 781,250 (celestia-app's default) is the low-memory setting, ~6% slower at height ~560k |
+| IAVL node cache | app.toml `iavl-cache-size` (`--node-cache-size` for `abci`) | 4,000,000 nodes | about 510 B per cached node (measured at mainnet height ~560k: 3.58M nodes took 1.43 GB more RSS than 0.78M) → about 2.0 GB when full; 781,250 (celestia-app's default) is the low-memory setting, ~6% slower at height ~560k |
 | Pruning | `--pruning-keep-recent` / `--pruning-keep-every` / `--pruning-interval` | 100 / 0 / 1 | Retained history dominates live data; pruning every commit keeps commit p99 < 0.5 s at 600 tx/block |
 
-With the default caches, a node's steady state is about 1.5 GB for the node
+With the default caches, a node's steady state is about 2.0 GB for the node
 cache when full, 512 MiB of block cache, up to 256 MiB of memtables and about
-1.5 GB for the rest of the process: about 3.8 GB, inside the 8 GB budget.
+1.5 GB for the rest of the process: about 4.3 GB, inside the 8 GB budget.
 Homes made by an older `init`, or migrated from Go, keep `iavl-cache-size =
 781250` in `app.toml` until the operator raises it; the node logs a hint
 at startup.

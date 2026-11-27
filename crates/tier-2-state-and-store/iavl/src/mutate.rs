@@ -19,9 +19,19 @@ pub(crate) struct Mutator<'a> {
 pub(crate) fn load(ndb: Option<&NodeDb>, link: &Link) -> Result<Arc<Node>> {
     match link {
         Link::Mem(node) => Ok(Arc::clone(node)),
-        Link::Stored(r) => ndb
-            .ok_or(Error::Corrupt("stored node without node db"))?
-            .load(r),
+        Link::Stored(r, child) => {
+            let ndb = ndb.ok_or(Error::Corrupt("stored node without node db"))?;
+            if !ndb.remembers_children() {
+                return ndb.load(r);
+            }
+            // A remembered child skips the cache lookup.
+            if let Some(node) = child.get() {
+                return Ok(node);
+            }
+            let node = ndb.load(r)?;
+            child.set(&node);
+            Ok(node)
+        }
     }
 }
 
@@ -39,7 +49,7 @@ impl Mutator<'_> {
 
     /// Records that `link` is replaced in the working tree.
     fn discard(&mut self, link: &Link) {
-        if let Link::Stored(r) = link {
+        if let Link::Stored(r, _) = link {
             self.orphans.push(r.nk);
         }
     }
@@ -98,6 +108,7 @@ impl Mutator<'_> {
                 if updated {
                     return Ok((
                         Link::mem(Node::Inner(Inner {
+                            touched: crate::node::Touch::default(),
                             key: inner.key.clone(),
                             height: inner.height,
                             size: inner.size,

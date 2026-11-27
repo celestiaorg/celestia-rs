@@ -9,6 +9,17 @@
 use std::collections::HashMap;
 use std::hash::{BuildHasher, Hash};
 
+/// A value that can be used without a cache lookup (a node followed through
+/// a remembered child link): the sweep treats such use like a hit.
+pub(crate) trait Touched {
+    /// Whether the value was used since the last call (and clears that).
+    fn take_touched(&self) -> bool {
+        false
+    }
+}
+
+impl Touched for u32 {}
+
 struct Slot<K, V> {
     entry: Option<(K, V)>,
     referenced: bool,
@@ -23,7 +34,7 @@ pub(crate) struct ClockCache<K, V, S = foldhash::fast::RandomState> {
     capacity: usize,
 }
 
-impl<K: Hash + Eq + Clone, V: Clone> ClockCache<K, V> {
+impl<K: Hash + Eq + Clone, V: Clone + Touched> ClockCache<K, V> {
     /// An empty cache of `capacity` (at least 1) entries.
     #[must_use]
     pub fn new(capacity: usize) -> Self {
@@ -31,7 +42,7 @@ impl<K: Hash + Eq + Clone, V: Clone> ClockCache<K, V> {
     }
 }
 
-impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> ClockCache<K, V, S> {
+impl<K: Hash + Eq + Clone, V: Clone + Touched, S: BuildHasher> ClockCache<K, V, S> {
     /// An empty cache of `capacity` (at least 1) entries hashing with `s`.
     pub fn with_hasher(capacity: usize, s: S) -> Self {
         Self {
@@ -53,6 +64,13 @@ impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> ClockCache<K, V, S> {
     #[must_use]
     pub fn capacity(&self) -> usize {
         self.capacity
+    }
+
+    /// Every cached value (diagnostics; does not mark them referenced).
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.slots
+            .iter()
+            .filter_map(|slot| slot.entry.as_ref().map(|(_, v)| v))
     }
 
     /// The value of `key`, marking it referenced.
@@ -101,14 +119,21 @@ impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> ClockCache<K, V, S> {
     }
 
     /// Frees the slot of the first unreferenced entry at or after the hand
-    /// (clearing reference bits on the way) and returns its index.
+    /// (clearing reference bits on the way) and returns its index. Readers
+    /// set touched bits without the cache's lock, so they can keep every
+    /// entry referenced: after one full sweep the entry under the hand is
+    /// evicted anyway, so this always ends.
     fn evict(&mut self) -> usize {
+        let len = self.slots.len();
+        let mut passed = 0;
         loop {
             let i = self.hand;
-            self.hand = (self.hand + 1) % self.slots.len();
+            self.hand = (self.hand + 1) % len;
             let slot = &mut self.slots[i];
-            if slot.referenced {
+            let touched = slot.entry.as_ref().is_some_and(|(_, v)| v.take_touched());
+            if (slot.referenced || touched) && passed < len {
                 slot.referenced = false;
+                passed += 1;
                 continue;
             }
             if let Some((k, _)) = slot.entry.take() {
@@ -161,6 +186,53 @@ mod tests {
         assert_eq!(c.get(&3), None);
         assert_eq!(c.get(&10), Some(10));
         assert_eq!(c.get(&11), Some(11));
+    }
+
+    /// A value that records use outside the cache (as a node followed
+    /// through a remembered link does).
+    #[derive(Clone, Default)]
+    struct Used(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+    impl Touched for Used {
+        fn take_touched(&self) -> bool {
+            self.0.swap(false, std::sync::atomic::Ordering::Relaxed)
+        }
+    }
+
+    #[test]
+    fn values_used_outside_the_cache_get_a_second_chance() {
+        let mut c: ClockCache<u32, Used> = ClockCache::new(4);
+        let used: Vec<Used> = (0..4).map(|_| Used::default()).collect();
+        for (i, u) in (0..).zip(&used) {
+            c.put(i, u.clone());
+        }
+        // 1 is used without a cache lookup; two inserts evict 0 and 2.
+        used[1].0.store(true, std::sync::atomic::Ordering::Relaxed);
+        c.put(10, Used::default());
+        c.put(11, Used::default());
+        assert!(c.get(&1).is_some());
+        assert!(c.get(&0).is_none());
+        assert!(c.get(&2).is_none());
+    }
+
+    /// A value some reader uses again before every sweep reaches it.
+    #[derive(Clone)]
+    struct AlwaysUsed;
+
+    impl Touched for AlwaysUsed {
+        fn take_touched(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn eviction_ends_even_when_every_value_is_used_again() {
+        let mut c: ClockCache<u32, AlwaysUsed> = ClockCache::new(4);
+        for i in 0..20 {
+            c.put(i, AlwaysUsed);
+            assert!(c.len() <= 4);
+        }
+        assert!(c.get(&19).is_some());
     }
 
     #[test]

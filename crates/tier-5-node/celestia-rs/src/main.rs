@@ -441,7 +441,7 @@ struct AbciArgs {
     /// Prune every N commits (0 = never prune, archive).
     #[arg(long, default_value_t = 1)]
     pruning_interval: u64,
-    /// Decoded IAVL nodes kept in the node cache (at least ~370 B each).
+    /// Decoded IAVL nodes kept in the node cache (about 510 B each).
     #[arg(long, default_value_t = multistore::DEFAULT_NODE_CACHE_SIZE)]
     node_cache_size: usize,
     /// State database backend (`rocksdb` or `redb`).

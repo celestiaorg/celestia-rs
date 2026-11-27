@@ -7,7 +7,8 @@
 //! height and size, so hashing a dirty parent and AVL rebalancing never
 //! have to load an unchanged sibling from disk.
 
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, Weak};
 
 use crate::{Error, Hash, Result, Version, inner_hash, leaf_hash};
 
@@ -59,11 +60,61 @@ pub(crate) struct StoredRef {
     pub size: i64,
 }
 
+/// The node a stored link last loaded, without keeping it alive.
+///
+/// A walk from a loaded parent follows this instead of looking the child
+/// up in the node cache. It holds a `Weak`, so the cache alone still
+/// decides which nodes stay in memory: once the cache drops the child (and
+/// no reader holds it), `get` returns `None` and the walk falls back to
+/// the cache. The node is the one loaded for this link's own reference,
+/// so it is always the right node for it, even after a rollback re-creates
+/// the same node key with other content.
+///
+/// Memory: a `Weak` keeps a dropped node's allocation (not its contents)
+/// until the link is next followed or its parent leaves the cache, so at
+/// most two such allocations (about 272 B each) per cached inner node,
+/// plus 32 B per inner node for the two slots themselves.
+#[derive(Debug, Default)]
+pub(crate) struct Remembered(Mutex<Weak<Node>>);
+
+impl Remembered {
+    pub fn of(node: &Arc<Node>) -> Self {
+        Self(Mutex::new(Arc::downgrade(node)))
+    }
+
+    pub fn get(&self) -> Option<Arc<Node>> {
+        let node = self.0.lock().ok()?.upgrade()?;
+        node.touch();
+        Some(node)
+    }
+
+    pub fn set(&self, node: &Arc<Node>) {
+        if let Ok(mut weak) = self.0.lock() {
+            *weak = Arc::downgrade(node);
+        }
+    }
+
+    /// Whether this holds the allocation of a node nothing else keeps
+    /// alive (diagnostics: memory kept by remembered links).
+    pub fn holds_dead(&self) -> Option<*const Node> {
+        let weak = self.0.lock().ok()?;
+        (weak.strong_count() == 0 && weak.weak_count() > 0).then(|| weak.as_ptr())
+    }
+}
+
+impl Clone for Remembered {
+    fn clone(&self) -> Self {
+        Self(Mutex::new(
+            self.0.lock().map(|w| w.clone()).unwrap_or_default(),
+        ))
+    }
+}
+
 /// A child pointer.
 #[derive(Debug, Clone)]
 pub(crate) enum Link {
     Mem(Arc<Node>),
-    Stored(StoredRef),
+    Stored(StoredRef, Remembered),
 }
 
 impl Link {
@@ -71,17 +122,21 @@ impl Link {
         Self::Mem(Arc::new(node))
     }
 
+    pub fn stored(r: StoredRef) -> Self {
+        Self::Stored(r, Remembered::default())
+    }
+
     pub fn height(&self) -> i8 {
         match self {
             Self::Mem(node) => node.height(),
-            Self::Stored(r) => r.height,
+            Self::Stored(r, _) => r.height,
         }
     }
 
     pub fn size(&self) -> i64 {
         match self {
             Self::Mem(node) => node.size(),
-            Self::Stored(r) => r.size,
+            Self::Stored(r, _) => r.size,
         }
     }
 
@@ -89,10 +144,31 @@ impl Link {
     pub fn hash_for(&self, version: Version) -> Hash {
         match self {
             Self::Mem(node) => node.hash_for(version),
-            Self::Stored(r) => r.hash,
+            Self::Stored(r, _) => r.hash,
         }
     }
 }
+
+/// Set when a node is used through a remembered child link, which the
+/// node cache does not see; the cache's CLOCK sweep reads and clears it
+/// (see `clock::Touched`). A copy starts clear and it never affects
+/// equality.
+#[derive(Debug, Default)]
+pub(crate) struct Touch(AtomicBool);
+
+impl Clone for Touch {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl PartialEq for Touch {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for Touch {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Leaf {
@@ -101,6 +177,7 @@ pub(crate) struct Leaf {
     /// 0 while dirty.
     pub version: Version,
     pub hash: Option<Hash>,
+    pub touched: Touch,
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +190,7 @@ pub(crate) struct Inner {
     /// 0 while dirty.
     pub version: Version,
     pub hash: Option<Hash>,
+    pub touched: Touch,
 }
 
 #[derive(Debug, Clone)]
@@ -124,11 +202,29 @@ pub(crate) enum Node {
 impl Node {
     pub fn leaf(key: Vec<u8>, value: Vec<u8>) -> Self {
         Self::Leaf(Leaf {
+            touched: Touch::default(),
             key,
             value,
             version: 0,
             hash: None,
         })
+    }
+
+    fn touch_flag(&self) -> &AtomicBool {
+        match self {
+            Self::Leaf(leaf) => &leaf.touched.0,
+            Self::Inner(inner) => &inner.touched.0,
+        }
+    }
+
+    /// Records a use the node cache did not see.
+    pub fn touch(&self) {
+        self.touch_flag().store(true, Ordering::Relaxed);
+    }
+
+    /// Whether the node was touched since the last call (and clears it).
+    pub fn take_touched(&self) -> bool {
+        self.touch_flag().swap(false, Ordering::Relaxed)
     }
 
     pub fn height(&self) -> i8 {
@@ -181,6 +277,7 @@ impl Node {
 /// Builds a dirty inner node over two children.
 pub(crate) fn make_inner(key: Vec<u8>, left: Link, right: Link) -> Node {
     Node::Inner(Inner {
+        touched: Touch::default(),
         key,
         height: left.height().max(right.height()) + 1,
         size: left.size() + right.size(),
@@ -313,7 +410,14 @@ pub(crate) fn decode_node(
         TAG_LEAF => {
             let key = cursor.byte_slice()?.to_vec();
             let value = cursor.byte_slice()?.to_vec();
+            // Inner records carry their hash (checked below); a leaf's is
+            // recomputed, so a record that is not the referenced node
+            // (corruption, or a key re-created after a rollback) fails.
+            if leaf_hash(r.nk.version, &key, &value) != r.hash {
+                return Err(Error::Corrupt("leaf does not match its reference"));
+            }
             Node::Leaf(Leaf {
+                touched: Touch::default(),
                 key,
                 value,
                 version: r.nk.version,
@@ -332,11 +436,12 @@ pub(crate) fn decode_node(
                 (child(cursor.node_key()?)?, child(cursor.node_key()?)?)
             };
             Node::Inner(Inner {
+                touched: Touch::default(),
                 key,
                 height,
                 size,
-                left: Link::Stored(left),
-                right: Link::Stored(right),
+                left: Link::stored(left),
+                right: Link::stored(right),
                 version: r.nk.version,
                 hash: Some(r.hash),
             })
@@ -512,12 +617,18 @@ mod tests {
         };
         assert_eq!(inner.key, b"sep");
         assert_eq!(inner.version, 301);
-        assert!(matches!(inner.right, Link::Stored(r) if r == right));
+        assert!(matches!(inner.right, Link::Stored(r, _) if r == right));
         assert!(decode_node(&bytes[..bytes.len() - 1], &me, child).is_err());
         let leaf = encode_leaf(b"k", b"");
+        let leaf_ref = StoredRef {
+            hash: leaf_hash(left.nk.version, b"k", b""),
+            ..left
+        };
         assert!(
-            matches!(decode_node(&leaf, &left, child).unwrap(), Node::Leaf(l) if l.value.is_empty())
+            matches!(decode_node(&leaf, &leaf_ref, child).unwrap(), Node::Leaf(l) if l.value.is_empty())
         );
+        // A leaf record that is not the referenced node is refused.
+        assert!(decode_node(&leaf, &left, child).is_err());
         assert!(decode_node(&leaf, &me, child).is_err());
         assert_eq!(decode_root(&encode_root(Some(&me))).unwrap(), Some(me));
         assert_eq!(decode_root(&encode_root(None)).unwrap(), None);
