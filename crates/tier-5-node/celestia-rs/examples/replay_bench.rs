@@ -77,8 +77,9 @@ fn args() -> anyhow::Result<Args> {
         base: target.join("replay-base"),
         cache: std::env::var_os("CELESTIA_MAINNET_CACHE")
             .map_or_else(|| target.join("mainnet-cache"), PathBuf::from),
-        // `celestia-rs start` defaults: app.toml `iavl-cache-size`,
-        // `--db-cache-mib`.
+        // What `celestia-rs start` runs on a home from `init`: app.toml
+        // `iavl-cache-size` (template 781,250) and `--db-cache-mib`. A
+        // node with a larger app.toml value needs `--iavl-cache` to match.
         iavl_cache: 781_250,
         db_cache_mib: 512,
         pruning_interval: 1,
@@ -459,6 +460,70 @@ fn print_phases(blocks: usize) {
     }
 }
 
+/// One executed block, for the list of the slowest.
+struct Slow {
+    height: i64,
+    total: Duration,
+    finalize: Duration,
+    commit: Duration,
+    txs: usize,
+}
+
+/// The ten slowest blocks with their FinalizeBlock and Commit time (the
+/// rest is validation and saving), to find what causes the tail.
+fn print_slowest(slow: &mut [Slow]) {
+    slow.sort_by_key(|s| std::cmp::Reverse(s.total));
+    let ms = |d: Duration| d.as_secs_f64() * 1e3;
+    for s in slow.iter().take(10) {
+        println!(
+            "slow block {}: {:.1} ms (finalize {:.1}, commit {:.1}), {} txs",
+            s.height,
+            ms(s.total),
+            ms(s.finalize),
+            ms(s.commit),
+            s.txs,
+        );
+    }
+}
+
+/// Adds block `h`'s FinalizeBlock response to the running `digest` and
+/// checks the app hash against the next block's header.
+fn check_block(
+    exec: &BlockExecutor,
+    state: &State,
+    next: &Block,
+    h: i64,
+    digest: &[u8; 32],
+) -> anyhow::Result<[u8; 32]> {
+    let resp = exec
+        .state_store
+        .load_last_finalize_block_response(h)
+        .map_err(|e| anyhow!("response {h}: {e}"))?;
+    let mut buf = digest.to_vec();
+    buf.extend_from_slice(&resp.encode_to_vec());
+    ensure!(
+        state.app_hash == next.header.app_hash,
+        "app hash after block {h}: ours {}, network {}",
+        hex::encode_upper(&state.app_hash),
+        hex::encode_upper(&next.header.app_hash)
+    );
+    Ok(hash::sha256(&buf))
+}
+
+/// Every result names the cache and pruning settings it measured, so a run
+/// with other settings than the node it is compared with shows.
+fn print_config(a: &Args) {
+    println!(
+        "config: iavl_cache {} nodes, db_cache {} MiB, pruning_interval {}, \
+         background_pruning {}, discard_abci_responses {}",
+        a.iavl_cache,
+        a.db_cache_mib,
+        a.pruning_interval,
+        a.background_pruning,
+        a.discard_abci_responses,
+    );
+}
+
 #[allow(clippy::too_many_lines)] // EXPERIMENT branch
 fn main() -> anyhow::Result<()> {
     let a = args()?;
@@ -490,11 +555,13 @@ fn main() -> anyhow::Result<()> {
         ensure!(first == 1, "base home is past genesis");
     }
     println!("first_height: {first}");
+    print_config(&a);
 
     let blocks = Blocks::load(a.cache.clone(), &a.blocks_jsonl, a.blocks_home.as_deref())?;
     let mut next = blocks.get(first)?;
     let mut times = Vec::new();
     let mut txs = 0usize;
+    let mut slow = Vec::new();
     // Chained SHA-256 of every FinalizeBlock response (tx results with gas
     // and events, block events, updates): equal digests mean identical
     // results. Gas and codes are also checked against the network through
@@ -507,6 +574,7 @@ fn main() -> anyhow::Result<()> {
         let mut block = next;
         next = blocks.get(h + 1)?;
         txs += block.data.txs.len();
+        let before = probes.sample().abci;
         let t = Instant::now();
         let parts = block.make_part_set(BLOCK_PART_SIZE_BYTES)?;
         let id = BlockId {
@@ -538,19 +606,15 @@ fn main() -> anyhow::Result<()> {
         let applied = t_apply.elapsed();
         probes.add(|p| p.apply += applied);
         times.push(t.elapsed());
-        let resp = exec
-            .state_store
-            .load_last_finalize_block_response(h)
-            .map_err(|e| anyhow!("response {h}: {e}"))?;
-        let mut buf = digest.to_vec();
-        buf.extend_from_slice(&resp.encode_to_vec());
-        digest = hash::sha256(&buf);
-        ensure!(
-            state.app_hash == next.header.app_hash,
-            "app hash after block {h}: ours {}, network {}",
-            hex::encode_upper(&state.app_hash),
-            hex::encode_upper(&next.header.app_hash)
-        );
+        let after = probes.sample().abci;
+        slow.push(Slow {
+            height: h,
+            total: *times.last().context("block time")?,
+            finalize: after.finalize.saturating_sub(before.finalize),
+            commit: after.commit.saturating_sub(before.commit),
+            txs: block.data.txs.len(),
+        });
+        digest = check_block(&exec, &state, &next, h, &digest)?;
         if times.len() % 100 == 0 {
             let w = &times[times.len() - 100..];
             let ms = w.iter().sum::<Duration>().as_secs_f64() * 10.0;
@@ -576,6 +640,16 @@ fn main() -> anyhow::Result<()> {
             println!("{line}");
         }
     }
+    print_slowest(&mut slow);
+    // EXPERIMENT: prune counters over the run.
+    let [runs, work, wait, ops] = multistore::prune_counters();
+    #[allow(clippy::cast_precision_loss)]
+    let per_block = |v: u64| v as f64 / 1e6 / times.len().max(1) as f64;
+    println!(
+        "prune: {runs} runs, {ops} batch ops, worker {:.2} ms/block, commit waited {:.2} ms/block",
+        per_block(work),
+        per_block(wait),
+    );
     print_phases(times.len());
     println!(
         "per_block: {}",

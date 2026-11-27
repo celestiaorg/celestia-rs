@@ -278,6 +278,21 @@ pub fn report_all() -> Vec<String> {
                 out.push(format!("  {line}"));
             }
         }
+        // EXPERIMENT: entries and tombstones in the SST files.
+        if let Ok(Some(props)) = db.property_value("rocksdb.aggregated-table-properties") {
+            let keep: Vec<&str> = props
+                .split(';')
+                .map(str::trim)
+                .filter(|p| {
+                    p.starts_with("# entries")
+                        || p.starts_with("# deletions")
+                        || p.starts_with("# range deletions")
+                        || p.starts_with("raw key size")
+                        || p.starts_with("raw value size")
+                })
+                .collect();
+            out.push(format!("  sst: {}", keep.join("; ")));
+        }
         for prop in [
             "rocksdb.block-cache-usage",
             "rocksdb.block-cache-pinned-usage",

@@ -309,6 +309,25 @@ pub struct Store {
     pruner: Pruner,
 }
 
+/// EXPERIMENT: [prunes run, nanoseconds in the prune writes (worker or
+/// inline), nanoseconds commits waited for a background prune, batch ops].
+static PRUNE: [std::sync::atomic::AtomicU64; 4] =
+    [const { std::sync::atomic::AtomicU64::new(0) }; 4];
+
+/// EXPERIMENT: prune counters so far (see `PRUNE`).
+#[must_use]
+pub fn prune_counters() -> [u64; 4] {
+    std::array::from_fn(|i| PRUNE[i].load(std::sync::atomic::Ordering::Relaxed))
+}
+
+fn add_prune(i: usize, v: u64) {
+    PRUNE[i].fetch_add(v, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn nanos(d: std::time::Duration) -> u64 {
+    u64::try_from(d.as_nanos()).unwrap_or(u64::MAX)
+}
+
 type Pins = Arc<Mutex<BTreeMap<Version, usize>>>;
 type Pruner = Arc<PrunerSlot>;
 
@@ -770,6 +789,7 @@ impl Store {
     /// Returns the deleted versions.
     pub fn prune(&mut self) -> Result<Vec<Version>> {
         self.wait_for_pruning()?;
+        let started = std::time::Instant::now();
         let (plans, deleted) = self.plan_prune();
         let mut batch = WriteBatch::new();
         for (name, plan) in &plans {
@@ -782,10 +802,13 @@ impl Store {
             for version in &deleted {
                 batch.delete(commit_info_key(*version));
             }
+            add_prune(3, batch.len() as u64);
             if !batch.is_empty() {
                 db.write(batch).map_err(db_err)?;
             }
         }
+        add_prune(0, 1);
+        add_prune(1, nanos(started.elapsed()));
         Ok(deleted.into_iter().collect())
     }
 
@@ -837,6 +860,7 @@ impl Store {
         let handle = std::thread::Builder::new()
             .name("iavl-prune".into())
             .spawn(move || {
+                let started = std::time::Instant::now();
                 let mut batch = WriteBatch::new();
                 for (_, plan) in &plans {
                     plan.write_to(&mut batch)?;
@@ -844,10 +868,15 @@ impl Store {
                 for version in &deleted {
                     batch.delete(commit_info_key(*version));
                 }
-                if batch.is_empty() {
-                    return Ok(());
-                }
-                db.write(batch).map_err(db_err)
+                add_prune(0, 1);
+                add_prune(3, batch.len() as u64);
+                let result = if batch.is_empty() {
+                    Ok(())
+                } else {
+                    db.write(batch).map_err(db_err)
+                };
+                add_prune(1, nanos(started.elapsed()));
+                result
             })
             .map_err(|e| Error::Db(format!("start the pruning thread: {e}")))?;
         *self.pruner.0.lock().unwrap_or_else(PoisonError::into_inner) = Some(handle);
@@ -864,7 +893,12 @@ impl Store {
             .take();
         match handle {
             None => Ok(()),
-            Some(h) => h.join().unwrap_or_else(|p| std::panic::resume_unwind(p)),
+            Some(h) => {
+                let started = std::time::Instant::now();
+                let r = h.join().unwrap_or_else(|p| std::panic::resume_unwind(p));
+                add_prune(2, nanos(started.elapsed()));
+                r
+            }
         }
     }
 
