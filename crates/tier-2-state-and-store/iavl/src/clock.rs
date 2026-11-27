@@ -55,6 +55,13 @@ impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> ClockCache<K, V, S> {
         self.capacity
     }
 
+    /// Every cached value (diagnostics; does not mark them referenced).
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.slots
+            .iter()
+            .filter_map(|slot| slot.entry.as_ref().map(|(_, v)| v))
+    }
+
     /// The value of `key`, marking it referenced.
     pub fn get(&mut self, key: &K) -> Option<V> {
         let &i = self.map.get(key)?;

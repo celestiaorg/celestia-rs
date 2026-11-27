@@ -143,6 +143,37 @@ impl NodeCache {
         }
     }
 
+    /// Distinct nodes that only remembered links keep allocated: the
+    /// cache dropped them and no reader holds them, but a cached parent's
+    /// link still has a `Weak` to them. The node's contents (key, value,
+    /// children) are already freed; each keeps only its fixed-size
+    /// allocation (`size_of::<Node>()` plus two counters). Diagnostics:
+    /// scans the whole cache.
+    /// Returns their number and the bytes they keep.
+    #[must_use]
+    pub fn remembered_dead_nodes(&self) -> (usize, usize) {
+        let Ok(clock) = self.clock.lock() else {
+            return (0, 0);
+        };
+        let mut dead = std::collections::HashSet::new();
+        for cached in clock.values() {
+            if let CachedNode::Decoded(node) = cached
+                && let Node::Inner(inner) = &**node
+            {
+                for link in [&inner.left, &inner.right] {
+                    if let crate::node::Link::Stored(_, child) = link
+                        && let Some(ptr) = child.holds_dead()
+                    {
+                        dead.insert(ptr.addr());
+                    }
+                }
+            }
+        }
+        // An `Arc` allocation: the node plus the strong and weak counts.
+        let per_node = std::mem::size_of::<Node>() + 2 * std::mem::size_of::<usize>();
+        (dead.len(), dead.len() * per_node)
+    }
+
     fn get(&self, key: &(u64, NodeKey)) -> Option<CachedNode> {
         if COUNT_LOOKUPS.load(Ordering::Relaxed) {
             LOOKUPS.fetch_add(1, Ordering::Relaxed);
@@ -175,6 +206,9 @@ pub struct NodeDb {
     prefix: Vec<u8>,
     cache: Arc<NodeCache>,
     id: u64,
+    /// Test reference only: off, every child step goes through the cache.
+    #[cfg(test)]
+    remember: std::sync::atomic::AtomicBool,
 }
 
 impl fmt::Debug for NodeDb {
@@ -203,6 +237,8 @@ impl NodeDb {
             prefix: prefix.into(),
             cache,
             id: NEXT_DB_ID.fetch_add(1, Ordering::Relaxed),
+            #[cfg(test)]
+            remember: std::sync::atomic::AtomicBool::new(true),
         })
     }
 
@@ -214,6 +250,24 @@ impl NodeDb {
             Vec::new(),
             NodeCache::new(cache_size),
         )
+    }
+
+    /// Whether walks follow the child a link remembers (always outside
+    /// tests).
+    #[inline]
+    #[cfg_attr(not(test), allow(clippy::unused_self))] // Reads `self` in tests.
+    pub(crate) fn remembers_children(&self) -> bool {
+        #[cfg(test)]
+        return self.remember.load(Ordering::Relaxed);
+        #[cfg(not(test))]
+        true
+    }
+
+    /// Turns remembered children off (the reference for differential
+    /// tests).
+    #[cfg(test)]
+    pub(crate) fn set_remember_children(&self, on: bool) {
+        self.remember.store(on, Ordering::Relaxed);
     }
 
     /// The backend.
@@ -261,9 +315,23 @@ impl NodeDb {
     pub(crate) fn load(&self, r: &StoredRef) -> Result<Arc<Node>> {
         let cache_key = (self.id, r.nk);
         let decode = |bytes: &[u8]| decode_node(bytes, r, |nk| self.child_ref(nk));
+        // A node key names one node only while its version exists: a
+        // rollback deletes the version and a later commit re-creates the
+        // key with other content. Checking the hash keeps a reader that
+        // still holds an older parent from reading such a node.
+        let mismatch = || Error::Corrupt("cached node does not match its reference");
         let node = Arc::new(match self.cache.get(&cache_key) {
-            Some(CachedNode::Decoded(node)) => return Ok(node),
+            Some(CachedNode::Decoded(node)) => {
+                return if node.saved_hash() == Some(r.hash) {
+                    Ok(node)
+                } else {
+                    Err(mismatch())
+                };
+            }
             Some(CachedNode::Encoded(node)) => {
+                if node.reference.hash != r.hash {
+                    return Err(mismatch());
+                }
                 self.cache.ref_decodes.fetch_add(1, Ordering::Relaxed);
                 decode(&node.bytes)?
             }

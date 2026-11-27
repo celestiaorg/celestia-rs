@@ -247,6 +247,9 @@ struct Probes {
     /// IAVL node cache: hits, misses, disk reads, disk bytes, reads made
     /// to resolve a child reference, and of those, records later decoded.
     nodes: Box<dyn Fn() -> [u64; 6]>,
+    /// Evicted nodes kept allocated by remembered child links, and their
+    /// bytes (end-of-run diagnostics; scans the cache).
+    remembered_dead: Box<dyn Fn() -> (usize, usize)>,
 }
 
 impl Probes {
@@ -317,6 +320,10 @@ fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State, Probes)>
     let cache = Arc::clone(app.multistore().root().node_cache());
     let probes = Probes {
         abci: Arc::default(),
+        remembered_dead: {
+            let cache = Arc::clone(&cache);
+            Box::new(move || cache.remembered_dead_nodes())
+        },
         nodes: Box::new(move || {
             let s = cache.stats();
             [
@@ -617,6 +624,11 @@ fn main() -> anyhow::Result<()> {
     println!(
         "per_block: {}",
         probes.sample().report(&first_sample, times.len())
+    );
+    let (dead, dead_bytes) = (probes.remembered_dead)();
+    println!(
+        "remembered children: {dead} evicted nodes still allocated ({} KiB)",
+        dead_bytes / 1024
     );
     Ok(())
 }
