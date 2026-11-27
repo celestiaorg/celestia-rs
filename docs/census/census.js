@@ -4,13 +4,24 @@
 // writes to main. `?data=<relative path>` reads a local copy instead.
 const DEFAULT_DATA = "https://raw.githubusercontent.com/celestiaorg/celestia-rs/node-census-data/";
 
+// A same-origin override of the data location, or null. Comparing the
+// resolved origin also rejects forms that browsers normalize to another host,
+// such as a leading double backslash.
+function sameOriginBase(p, here) {
+  if (!p) return null;
+  let u;
+  try {
+    u = new URL(p, here);
+  } catch {
+    return null;
+  }
+  if (u.origin !== new URL(here).origin) return null;
+  return u.href.endsWith("/") ? u.href : u.href + "/";
+}
+
 function dataBase() {
   const p = new URLSearchParams(location.search).get("data");
-  // Relative paths only: the page never fetches from a host named in its URL.
-  if (p && !/^[a-z][a-z0-9+.-]*:|^\/\//i.test(p)) {
-    return p.endsWith("/") ? p : p + "/";
-  }
-  return DEFAULT_DATA;
+  return sameOriginBase(p, location.href) ?? DEFAULT_DATA;
 }
 
 const BASE = dataBase();

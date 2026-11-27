@@ -83,6 +83,20 @@ impl Snapshot {
     }
 }
 
+impl Snapshot {
+    /// Fails for a crawl that observed no node: every probe and RPC request
+    /// failed (an outage on the crawler's side, not an empty network), so
+    /// publishing it would add a false zero point.
+    pub fn ensure_publishable(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.summary.reachable > 0,
+            "{} crawl observed no node; not publishing it",
+            self.network
+        );
+        Ok(())
+    }
+}
+
 /// One point of the time series.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryEntry {
@@ -119,6 +133,7 @@ impl History {
 /// Records a snapshot in a data directory: appends its summary to
 /// `history.json` and replaces `latest/<network>.json`.
 pub fn record_to_dir(dir: &std::path::Path, s: &Snapshot) -> anyhow::Result<()> {
+    s.ensure_publishable()?;
     anyhow::ensure!(
         !s.network.is_empty()
             && s.network

@@ -78,7 +78,9 @@ fn record_writes_history_and_latest_snapshot_per_network() {
     let dir = tempfile::tempdir().unwrap();
     let first = Snapshot::new("mainnet", "celestia", 100, 1, result());
     node_census::report::record_to_dir(dir.path(), &first).unwrap();
-    let second = Snapshot::new("mainnet", "celestia", 200, 1, CrawlResult::default());
+    let mut fewer = result();
+    fewer.reached.truncate(1);
+    let second = Snapshot::new("mainnet", "celestia", 200, 1, fewer);
     node_census::report::record_to_dir(dir.path(), &second).unwrap();
 
     let history: History =
@@ -96,4 +98,19 @@ fn record_rejects_unsafe_network_names() {
     let dir = tempfile::tempdir().unwrap();
     let s = Snapshot::new("../x", "celestia", 100, 1, result());
     assert!(node_census::report::record_to_dir(dir.path(), &s).is_err());
+}
+
+#[test]
+fn record_rejects_a_crawl_that_observed_no_node() {
+    // An outage must not publish a false zero point or replace the latest data.
+    let dir = tempfile::tempdir().unwrap();
+    let empty = Snapshot::new("mainnet", "celestia", 100, 1, CrawlResult::default());
+    assert!(empty.ensure_publishable().is_err());
+    assert!(node_census::report::record_to_dir(dir.path(), &empty).is_err());
+    assert!(!dir.path().join("history.json").exists());
+    assert!(
+        Snapshot::new("mainnet", "celestia", 100, 1, result())
+            .ensure_publishable()
+            .is_ok()
+    );
 }

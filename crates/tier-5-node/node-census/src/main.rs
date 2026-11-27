@@ -137,6 +137,9 @@ async fn main() -> anyhow::Result<()> {
                 unreachable = snapshot.summary.unreachable,
                 "crawl done"
             );
+            // Exit non-zero without an output file, so the workflow keeps the
+            // last good data.
+            snapshot.ensure_publishable()?;
             let mut bz = serde_json::to_vec_pretty(&snapshot)?;
             bz.push(b'\n');
             std::fs::write(&out, bz).with_context(|| format!("write {}", out.display()))?;
@@ -144,16 +147,18 @@ async fn main() -> anyhow::Result<()> {
         Command::Record {
             data_dir,
             snapshots,
-        } => {
-            std::fs::create_dir_all(&data_dir)?;
-            for path in snapshots {
-                let bz =
-                    std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
-                let s: Snapshot = serde_json::from_slice(&bz)
-                    .with_context(|| format!("parse {}", path.display()))?;
-                record_to_dir(&data_dir, &s)?;
-            }
-        }
+        } => record(&data_dir, &snapshots)?,
+    }
+    Ok(())
+}
+
+fn record(data_dir: &std::path::Path, snapshots: &[PathBuf]) -> anyhow::Result<()> {
+    std::fs::create_dir_all(data_dir)?;
+    for path in snapshots {
+        let bz = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
+        let s: Snapshot =
+            serde_json::from_slice(&bz).with_context(|| format!("parse {}", path.display()))?;
+        record_to_dir(data_dir, &s)?;
     }
     Ok(())
 }
