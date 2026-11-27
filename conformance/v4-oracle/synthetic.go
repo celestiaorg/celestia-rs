@@ -131,6 +131,13 @@ type synth struct {
 	// the usual five; tmBase is the client sequence of their first client.
 	tmclient bool
 	tmBase   uint64
+	// evidence runs the equivocation blocks of evidence.go after the usual
+	// five; slashed is the consensus address the evidence slashed.
+	evidence bool
+	slashed  cmttypes.Address
+	// misbehavior is the FinalizeBlock Misbehavior of the block that
+	// block() built last.
+	misbehavior []abci.Misbehavior
 }
 
 func mustHex(s string) []byte {
@@ -369,6 +376,21 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 		}
 		steps = tm
 	}
+	if s.evidence && height-s.handoffHeight-1 >= evidenceOffset {
+		evTx := func(msg sdk.Msg, opts ...user.TxOption) error {
+			bz, _, err := sg.CreateTx([]sdk.Msg{msg}, opts...)
+			if err != nil {
+				return err
+			}
+			out = append(out, bz)
+			return nil
+		}
+		ev, err := s.evidenceSteps(height-s.handoffHeight-1, evTx, addr, send)
+		if err != nil {
+			return nil, err
+		}
+		steps = ev
+	}
 	for _, step := range steps {
 		if err := step(); err != nil {
 			return nil, err
@@ -446,7 +468,12 @@ func (s *synth) block(height int64, txs [][]byte) (*cmttypes.Block, cmttypes.Blo
 	if s.prepared != nil {
 		data, s.prepared = *s.prepared, nil
 	}
-	block := cmttypes.MakeBlock(height, data, s.lastCommit, []cmttypes.Evidence{})
+	evList, misbehavior, err := s.evidenceOf(height)
+	if err != nil {
+		return nil, cmttypes.BlockID{}, err
+	}
+	s.misbehavior = misbehavior
+	block := cmttypes.MakeBlock(height, data, s.lastCommit, evList)
 	block.Header.Populate(
 		cmtversion.Consensus{Block: cmtversionpkg.BlockProtocol, App: s.appVersion},
 		s.chainID,

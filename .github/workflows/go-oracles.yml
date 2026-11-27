@@ -1,0 +1,56 @@
+name: go-oracles
+
+# The Go release oracles: each module builds one celestia-app release and
+# regenerates the committed synthetic-chain fixtures. ci.yml calls this for
+# pull requests that touch conformance/ or these workflows; nightly.yml
+# calls it every night on main. These jobs are not required checks.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oracle:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - v1-oracle
+          - v4-oracle
+          - v5-oracle
+          - v6-oracle
+          - v8-oracle
+          - v9-oracle
+          - v10-oracle
+          - v11-oracle
+    env:
+      GOFLAGS: -mod=mod
+      GOPROXY: https://proxy.golang.org,direct
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: conformance/${{ matrix.module }}/go.mod
+          cache-dependency-path: conformance/${{ matrix.module }}/go.sum
+      - name: Download modules (with retries)
+        working-directory: conformance/${{ matrix.module }}
+        run: |
+          for n in 1 2 3 4 5; do
+            go mod download && exit 0
+            echo "go mod download failed (attempt $n); retrying in $((n * 15))s"
+            sleep $((n * 15))
+          done
+          exit 1
+      - name: Build
+        working-directory: conformance/${{ matrix.module }}
+        # Keep binaries out of the source tree checked by the evidence tests.
+        run: go build -o "$(mktemp -d)/" ./...
+      - name: Test
+        working-directory: conformance/${{ matrix.module }}
+        # A cold runner compiles a whole celestia-app release per oracle
+        # module (v4-oracle also builds v1-oracle); go test's default
+        # 10-minute limit is too tight for that.
+        run: go test -timeout 30m ./...

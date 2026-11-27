@@ -425,6 +425,26 @@ and app hashes. From a copy of its home at 79, it must refuse block 80 when the
 commit holds one bad signature, and when the block's tx is removed (its commit
 signed again for the new part set, so only the data root check fails).
 
+#### Equivocation evidence blocks
+
+`-heights 10 -evidence` (in `v4-oracle` to `v9-oracle`, `evidence.go`) runs
+each release's usual five blocks, then five blocks around a double sign:
+
+- block +5 carries a `DuplicateVoteEvidence`: two conflicting precommits at
+  height +4 by the validator at index 1, signed with its consensus key.
+  The FinalizeBlock request's `Misbehavior` is the evidence's ABCI form, as
+  celestia-core builds it, so x/evidence slashes, jails and tombstones
+  the validator;
+- +6 to +8 touch its delegations: a delegation to it while jailed, an
+  undelegation of part of its self-bond, and a redelegation away from it;
+- +9 is a send.
+
+The fixtures are `fixtures/synthetic/v{4,5,6,8,9}-evidence`. Their
+`tx-results.jsonl.gz` also records the request's `misbehavior` on the evidence
+block. Mainnet carried double-sign evidence twice in these eras: blocks
+8,218,923 (app version 5) and 9,217,879 (app version 6), in
+`fixtures/mainnet/evidence`.
+
 #### Block validation: a commit slot with another address
 
 `median_time_test.go` in `v5-oracle` (celestia-core v1.59.0-tm-v0.38.17),
