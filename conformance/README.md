@@ -425,6 +425,23 @@ and app hashes. From a copy of its home at 79, it must refuse block 80 when the
 commit holds one bad signature, and when the block's tx is removed (its commit
 signed again for the new part set, so only the data root check fails).
 
+#### Block validation: a commit slot with another address
+
+`median_time_test.go` in `v5-oracle` (celestia-core v1.59.0-tm-v0.38.17),
+`v6-oracle` (v0.39.23) and `v10-oracle` (v0.42.8) writes
+`fixtures/blockvalidation/median-time-<core>.json`. Each file records
+`VerifyCommit` (by index) and `MedianTime` for a block's LastCommit whose slot 3
+names an address outside the set or validator 0's address, and holds validator
+3's valid signature (the vote's sign bytes do not cover the address). The
+v0.38 core accepts both and leaves the foreign slot out of the median.
+v0.39.23 and later refuse both in `VerifyCommit` (`validator address
+mismatch`), and their `MedianTime` errs on an address outside the set.
+`cargo test -p celestia-rs --test median_time_vectors` requires celestia-rs to
+give the v0.39.23 and v0.42.8 outcomes. Block validation runs in the node's
+own core, so a Go node today (v10.6.0, core v0.42.8) applies that rule at
+every height, and so does celestia-rs. Regenerate with
+`MEDIAN_WRITE=1 go test -run TestMedianTimeVectors` in each module.
+
 #### App homes between the upgrade oracles
 
 [`fixtures/synthetic/homes`](fixtures/synthetic/homes) holds the app home
