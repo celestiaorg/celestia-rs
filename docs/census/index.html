@@ -8,6 +8,16 @@
       name="description"
       content="How many Celestia consensus nodes on Mainnet and Mocha run celestia-rs and how many run celestia-core (Go), over time."
     />
+    <link rel="canonical" href="https://celestiaorg.github.io/celestia-rs/census/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="celestia-rs" />
+    <meta property="og:title" content="Celestia node census: celestia-rs vs celestia-core" />
+    <meta
+      property="og:description"
+      content="How many Celestia consensus nodes on Mainnet and Mocha run celestia-rs and how many run celestia-core (Go), over time."
+    />
+    <meta property="og:url" content="https://celestiaorg.github.io/celestia-rs/census/" />
+    <meta property="og:image" content="https://celestiaorg.github.io/celestia-rs/site/square.webp" />
     <link rel="stylesheet" href="../site/style.css" />
     <link rel="stylesheet" href="census.css" />
     <script defer src="census.js"></script>
@@ -17,12 +27,18 @@
     <header>
       <a class="brand" href="../"><span class="mark"></span>celestia-rs</a>
       <nav aria-label="Main navigation">
-        <a href="../">Operator guide</a><a href="#method">Method</a
-        ><a href="https://github.com/celestiaorg/celestia-rs">GitHub</a>
+        <a href="../">Home</a
+        ><a href="./" aria-current="page">Node census</a
+        ><a class="ext" href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md">Docs</a
+        ><a class="ext" href="https://github.com/celestiaorg/celestia-rs">GitHub</a>
       </nav>
     </header>
+    <nav class="subnav" aria-label="On this page">
+      <a href="#overview">Overview</a><a href="#versions-section">Versions</a
+      ><a href="#rust-nodes-section">celestia-rs nodes</a><a href="#method">Method</a>
+    </nav>
     <main id="main">
-      <section>
+      <section id="overview">
         <span class="eyebrow">CELESTIA / NODE CENSUS</span>
         <h1>Consensus nodes by implementation</h1>
         <p class="deck">
@@ -40,11 +56,11 @@
         <div class="tiles" id="tiles"></div>
         <div class="census-charts" id="charts"></div>
       </section>
-      <section>
+      <section id="versions-section">
         <h2>Versions in the latest crawl</h2>
         <div class="table-wrap"><table id="versions"></table></div>
       </section>
-      <section>
+      <section id="rust-nodes-section">
         <h2>celestia-rs nodes in the latest crawl</h2>
         <div class="table-wrap"><table id="rust-nodes"></table></div>
       </section>
@@ -81,8 +97,12 @@
       </section>
     </main>
     <footer>
-      <span class="meta">celestia-rs node census</span>
-      <a href="https://github.com/celestiaorg/celestia-rs/tree/node-census-data">Raw data</a>
+      <span class="brand">celestia-rs</span>
+      <nav aria-label="Site">
+        <a href="../about/">About</a><a href="../contact/">Contact</a
+        ><a href="../privacy/">Privacy</a><a href="../llms.txt">llms.txt</a
+        ><a href="https://github.com/celestiaorg/celestia-rs/tree/node-census-data">Raw data</a>
+      </nav>
     </footer>
     <div class="tooltip" id="tooltip" role="status" hidden></div>
   </body>

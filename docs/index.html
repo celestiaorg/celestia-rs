@@ -3,25 +3,75 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>celestia-rs · Node operator guide</title>
+    <title>celestia-rs · Celestia consensus node and data availability bridge in Rust</title>
     <meta
       name="description"
       content="Run a Celestia consensus node and experimental DA bridge in Rust. Explore benchmarks, join Mainnet, and get help operating your node."
     />
+    <meta
+      name="keywords"
+      content="Celestia consensus node,data availability bridge,Rust"
+    />
+    <link rel="canonical" href="https://celestiaorg.github.io/celestia-rs/" />
+    <link
+      rel="alternate"
+      type="text/markdown"
+      href="https://celestiaorg.github.io/celestia-rs/index.md"
+    />
+    <link rel="help" href="https://celestiaorg.github.io/celestia-rs/llms.txt" />
+    <link rel="sitemap" href="https://celestiaorg.github.io/celestia-rs/sitemap.xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="celestia-rs" />
+    <meta property="og:title" content="celestia-rs: Celestia consensus node and DA bridge in Rust" />
+    <meta
+      property="og:description"
+      content="Run a Celestia consensus node and experimental DA bridge in Rust. Explore benchmarks, join Mainnet, and get help operating your node."
+    />
+    <meta property="og:url" content="https://celestiaorg.github.io/celestia-rs/" />
+    <meta property="og:image" content="https://celestiaorg.github.io/celestia-rs/site/square.webp" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "celestia-rs",
+        "alternateName": "Celestia node in Rust",
+        "description": "A Rust implementation of the Celestia consensus node and data availability bridge. It follows Celestia Mainnet and Mocha, verifies blocks, and serves data availability proofs from one process.",
+        "url": "https://celestiaorg.github.io/celestia-rs/",
+        "codeRepository": "https://github.com/celestiaorg/celestia-rs",
+        "sameAs": ["https://github.com/celestiaorg/celestia-rs"],
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Linux, macOS",
+        "programmingLanguage": "Rust",
+        "license": "https://github.com/celestiaorg/celestia-rs/blob/main/LICENSE-APACHE",
+        "keywords": "Celestia consensus node,data availability bridge,Rust",
+        "softwareHelp": "https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "author": {
+          "@type": "Organization",
+          "name": "Celestia",
+          "url": "https://celestia.org",
+          "sameAs": ["https://github.com/celestiaorg"]
+        }
+      }
+    </script>
     <link rel="stylesheet" href="site/style.css" />
     <script defer src="site/copy.js"></script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
     <header>
-      <a class="brand" href="#main"><span class="mark"></span>celestia-rs</a>
+      <a class="brand" href="./"><span class="mark"></span>celestia-rs</a>
       <nav aria-label="Main navigation">
-        <a href="#stack">Features</a><a href="#benchmarks">Benchmarks</a
-        ><a href="#start">Quickstart</a><a href="#faq">FAQ</a
+        <a href="./" aria-current="page">Home</a
         ><a href="census/">Node census</a
-        ><a href="https://github.com/celestiaorg/celestia-rs">GitHub</a>
+        ><a class="ext" href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md">Docs</a
+        ><a class="ext" href="https://github.com/celestiaorg/celestia-rs">GitHub</a>
       </nav>
     </header>
+    <nav class="subnav" aria-label="On this page">
+      <a href="#stack">Features</a><a href="#benchmarks">Benchmarks</a
+      ><a href="#start">Quickstart</a><a href="#faq">FAQ</a>
+    </nav>
     <main id="main">
       <section class="hero">
         <div>
@@ -29,7 +79,7 @@
           <h1>Consensus and bridge in Rust.</h1>
           <p>
             Follow Celestia, verify blocks, and serve data availability proofs
-            from one process. Run a non-validating full node on Celestia Mainnet.
+            from one process. Run a non-validating Celestia consensus node on Mainnet.
           </p>
           <div class="actions">
             <a class="btn" href="#start">Run a node</a
@@ -492,10 +542,14 @@ crontab -e</code></pre></div>
       </section>
     </main>
     <footer>
-      <span class="brand">celestia-rs</span
-      ><a href="https://github.com/celestiaorg/celestia-rs/issues"
-        >Report an issue</a
-      >
+      <span class="brand">celestia-rs</span>
+      <nav aria-label="Site">
+        <a href="about/">About</a><a href="contact/">Contact</a
+        ><a href="privacy/">Privacy</a><a href="llms.txt">llms.txt</a
+        ><a href="https://github.com/celestiaorg/celestia-rs/issues"
+          >Report an issue</a
+        >
+      </nav>
     </footer>
   </body>
 </html>

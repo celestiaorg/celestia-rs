@@ -10,7 +10,7 @@
   box-sizing: border-box;
 }
 html {
-  scroll-padding-top: 1rem;
+  scroll-padding-top: 3.5rem;
 }
 body {
   margin: 0;
@@ -87,6 +87,36 @@ nav a,
 footer {
   font-size: 0.92rem;
   color: var(--muted);
+}
+/* Primary navigation lists pages; the current one is marked. */
+header nav a[aria-current="page"] {
+  color: var(--ink);
+  box-shadow: 0 2px 0 var(--accent);
+}
+nav a.ext::after {
+  content: " \2197";
+  font-size: 0.8em;
+}
+/* Section links for the current page, below the header. */
+.subnav {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  max-width: 1200px;
+  margin: auto;
+  padding: 0.6rem clamp(20px, 4vw, 64px);
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  gap: 1.1rem;
+  font: 0.84rem/1.5 ui-monospace, monospace;
+}
+.subnav::before {
+  content: "On this page";
+  color: var(--accent);
+  margin-right: 0.3rem;
+}
+.subnav a {
+  font: inherit;
 }
 section {
   padding-block: clamp(46px, 6vw, 85px);
