@@ -47,6 +47,7 @@ import (
 	govv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 	paramproposal "github.com/cosmos/cosmos-sdk/x/params/types/proposal"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 	icacontrollertypes "github.com/cosmos/ibc-go/v6/modules/apps/27-interchain-accounts/controller/types"
 	icatypes "github.com/cosmos/ibc-go/v6/modules/apps/27-interchain-accounts/types"
 	transfertypes "github.com/cosmos/ibc-go/v6/modules/apps/transfer/types"
@@ -672,6 +673,7 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 	sendICA(banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 3))))
 
 	runTransferAuthzAndTimeout(t, coord, chainA, chainB, pathAB, timeout)
+	runClientProposals(t, coord, chainA, chainB)
 	// A last empty block commits the last transaction's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc
@@ -1098,4 +1100,51 @@ func sendFailing(t *testing.T, chain *ibctesting.TestChain, msgs ...sdk.Msg) {
 	chain.NextBlock()
 	must(t, chain.SenderAccount.SetSequence(chain.SenderAccount.GetSequence()+1))
 	chain.Coordinator.IncrementTime()
+}
+
+// runClientProposals submits ibc client proposals. Submission runs the
+// proposal handler in a cached context (cosmos-sdk v0.46), so these
+// transactions carry the handler's result and gas: a ClientUpdateProposal
+// that recovers an expired client with an Active substitute (it then
+// passes and runs in the EndBlocker), one whose subject is Active, and an
+// UpgradeProposal (celestia-app refuses it).
+func runClientProposals(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB *ibctesting.TestChain) {
+	expiring := ibctesting.NewPath(chainA, chainB)
+	lagTolerant(expiring.EndpointA)
+	expiring.EndpointA.ClientConfig.(*ibctesting.TendermintConfig).TrustingPeriod = 10 * time.Minute
+	must(t, expiring.EndpointA.CreateClient())
+	coord.IncrementTimeBy(20 * time.Minute)
+	coord.CommitBlock(chainB)
+	substitute := ibctesting.NewPath(chainA, chainB)
+	lagTolerant(substitute.EndpointA)
+	must(t, substitute.EndpointA.CreateClient())
+	submit := func(content govv1beta1.Content, deposit int64) *govv1beta1.MsgSubmitProposal {
+		m, err := govv1beta1.NewMsgSubmitProposal(content, sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, deposit)), chainA.SenderAccount.GetAddress())
+		must(t, err)
+		return m
+	}
+	// The recovery passes: the v3 validator's operator votes yes.
+	_, err := chainA.SendMsgs(submit(clienttypes.NewClientUpdateProposal("recover", "d",
+		expiring.EndpointA.ClientID, substitute.EndpointA.ClientID), govMinDeposit))
+	must(t, err)
+	proposalID, err := chainA.App.(*recApp).GovKeeper.GetProposalID(chainA.GetContext())
+	must(t, err)
+	proposalID--
+	sender, senderKey := chainA.SenderAccount, chainA.SenderPrivKey
+	chainA.SenderAccount, chainA.SenderPrivKey = chainA.SenderAccounts[1].SenderAccount, chainA.SenderAccounts[1].SenderPrivKey
+	_, err = chainA.SendMsgs(govv1beta1.NewMsgVote(chainA.SenderAccount.GetAddress(), proposalID, govv1beta1.OptionYes))
+	must(t, err)
+	chainA.SenderAccount, chainA.SenderPrivKey = sender, senderKey
+	coord.IncrementTimeBy(govPeriod + time.Second)
+	coord.CommitBlock(chainA)
+	coord.CommitBlock(chainA)
+	if p, _ := chainA.App.(*recApp).GovKeeper.GetProposal(chainA.GetContext(), proposalID); p.Status != govv1.StatusPassed {
+		t.Fatalf("client update proposal is %s", p.Status)
+	}
+	sendFailing(t, chainA, submit(clienttypes.NewClientUpdateProposal("active", "d",
+		substitute.EndpointA.ClientID, expiring.EndpointA.ClientID), 0))
+	cs := chainA.GetClientState(substitute.EndpointA.ClientID)
+	up, err := clienttypes.NewUpgradeProposal("upgrade", "d", upgradetypes.Plan{Name: "u", Height: 1_000_000}, cs)
+	must(t, err)
+	sendFailing(t, chainA, submit(up, 0))
 }

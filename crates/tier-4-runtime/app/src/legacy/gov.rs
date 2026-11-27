@@ -57,6 +57,7 @@ const COMMUNITY_POOL_SPEND: &str = "/cosmos.distribution.v1beta1.CommunityPoolSp
 const TEXT_PROPOSAL: &str = "/cosmos.gov.v1beta1.TextProposal";
 const PARAMETER_CHANGE: &str = "/cosmos.params.v1beta1.ParameterChangeProposal";
 const CLIENT_UPDATE: &str = "/ibc.core.client.v1.ClientUpdateProposal";
+const IBC_UPGRADE: &str = "/ibc.core.client.v1.UpgradeProposal";
 
 // ---- keys ---------------------------------------------------------------
 
@@ -372,6 +373,45 @@ fn validate_content(content: &Any) -> Result<()> {
             parse_client_identifier(&c.subject_client_id)?;
             parse_client_identifier(&c.substitute_client_id)
         }
+        // ibc-go v6 `UpgradeProposal.ValidateBasic`: the abstract, the
+        // v0.46 `Plan.ValidateBasic`, a client state (`decode_v1` already
+        // unpacked it as a registered `ClientState`).
+        // v0.46 still reads the plan's deprecated `time` and
+        // `upgraded_client_state`.
+        #[allow(deprecated)]
+        IBC_UPGRADE => {
+            let c: celestia_proto::ibc::core::client::v1::UpgradeProposal = decode(content)?;
+            abstract_(&c.title, &c.description)?;
+            let plan = c.plan.unwrap_or_default();
+            // gogoproto's non-nullable stdtime: absent is Go's zero time.
+            if plan
+                .time
+                .as_ref()
+                .is_some_and(|t| (t.seconds, t.nanos) != (-62_135_596_800, 0))
+            {
+                return Err(errs::invalid_request(
+                    "time-based upgrades have been deprecated in the SDK",
+                ));
+            }
+            if plan.upgraded_client_state.is_some() {
+                return Err(errs::invalid_request(
+                    "upgrade logic for IBC has been moved to the IBC module",
+                ));
+            }
+            if plan.name.is_empty() {
+                return Err(errs::invalid_request("name cannot be empty"));
+            }
+            if plan.height <= 0 {
+                return Err(errs::invalid_request("height must be greater than 0"));
+            }
+            if c.upgraded_client_state.is_none() {
+                return Err(SdkError::new("client", 28, "invalid upgrade proposal")
+                    .wrap("upgraded client state cannot be nil"));
+            }
+            Ok(())
+        }
+        // `decode_v1` rejects any other content type (the v1 registry holds
+        // only these).
         other => Err(not_ported(format!("gov proposal content {other}"))),
     }
 }
@@ -514,9 +554,8 @@ fn run_legacy_content(ctx: &mut Context<'_>, content: &Any) -> Result<()> {
             )
         }
         PARAMETER_CHANGE => super::param_change::handle(ctx, content),
-        // celestia-app v1 `NewClientProposalHandler` → ibc-go v6
-        // `Keeper.ClientUpdateProposal`, up to the subject client's
-        // lookup.
+        // celestia-app `NewClientProposalHandler` → ibc-go v6
+        // `Keeper.ClientUpdateProposal`.
         CLIENT_UPDATE => {
             let c: celestia_proto::ibc::core::client::v1::ClientUpdateProposal = decode(content)?;
             if c.subject_client_id == "09-localhost" || c.substitute_client_id == "09-localhost" {
@@ -526,18 +565,87 @@ fn run_legacy_content(ctx: &mut Context<'_>, content: &Any) -> Result<()> {
                         .wrap("cannot update localhost client with proposal"),
                 );
             }
-            match x_ibc::client::get_client_state(ctx, &c.subject_client_id)? {
-                None => Err(x_ibc::errors::client::client_not_found(format!(
-                    "subject client with ID {}",
-                    c.subject_client_id
-                ))),
-                Some(_) => Err(not_ported(
-                    "ibc client update proposal of an existing client",
-                )),
-            }
+            client_update_proposal(ctx, &c.subject_client_id, &c.substitute_client_id)
         }
+        // celestia-app's `NewClientProposalHandler` refuses it.
+        IBC_UPGRADE => Err(errs::invalid_request("ibc upgrade proposal not supported")),
         other => Err(not_ported(format!("gov proposal content {other}"))),
     }
+}
+
+/// ibc-go v6 `Keeper.ClientUpdateProposal` after the localhost check: the
+/// subject must not be Active (its `Status`, without the allowed-clients
+/// check), the substitute must be newer and Active, then 07-tendermint
+/// `CheckSubstituteAndUpdateState` and the `update_client_proposal` event.
+fn client_update_proposal(
+    ctx: &mut Context<'_>,
+    subject_id: &str,
+    substitute_id: &str,
+) -> Result<()> {
+    use x_ibc::client::ClientState;
+    use x_ibc::errors::client as cerr;
+    use x_ibc::height;
+    use x_ibc::lightclients::tendermint as tmc;
+    let status = |ctx: &mut Context<'_>, id: &str, cs: &ClientState| match cs {
+        ClientState::Tendermint(t) => tmc::status(ctx, id, t),
+        _ => Err(not_ported(
+            "ibc-go v6 status of a client that is not 07-tendermint",
+        )),
+    };
+    let subject = x_ibc::client::client_state(ctx, subject_id)?
+        .ok_or_else(|| cerr::client_not_found(format!("subject client with ID {subject_id}")))?;
+    if status(ctx, subject_id, &subject)? == x_ibc::client::Status::Active {
+        return Err(
+            SdkError::new("client", 24, "invalid update client proposal")
+                .wrap("cannot update Active subject client"),
+        );
+    }
+    let substitute = x_ibc::client::client_state(ctx, substitute_id)?.ok_or_else(|| {
+        cerr::client_not_found(format!("substitute client with ID {substitute_id}"))
+    })?;
+    let (sh, uh) = (subject.latest_height(), substitute.latest_height());
+    if height::gte(&sh, &uh) {
+        return Err(cerr::invalid_height(format!(
+            "subject client state latest height is greater or equal to substitute client state latest height ({} >= {})",
+            height::to_string(&sh),
+            height::to_string(&uh)
+        )));
+    }
+    let st = status(ctx, substitute_id, &substitute)?;
+    if st != x_ibc::client::Status::Active {
+        return Err(cerr::client_not_active(format!(
+            "substitute client is not Active, status is {}",
+            st.as_str()
+        )));
+    }
+    let ClientState::Tendermint(t) = &subject else {
+        return Err(not_ported(
+            "ibc-go v6 client update proposal of a client that is not 07-tendermint",
+        ));
+    };
+    if !matches!(substitute, ClientState::Tendermint(_)) {
+        // Both client state types are `*types.ClientState` in v6.
+        return Err(cerr::invalid_client(
+            "expected type *types.ClientState, got *types.ClientState",
+        ));
+    }
+    tmc::check_substitute_and_update_state(
+        ctx,
+        subject_id,
+        t,
+        substitute_id,
+        &substitute.to_any(),
+    )?;
+    // The updated client takes the substitute's latest height.
+    ctx.events.emit(event(
+        "update_client_proposal",
+        [
+            ("subject_client_id", subject_id.to_owned()),
+            ("client_type", subject.client_type().to_owned()),
+            ("consensus_height", height::to_string(&uh)),
+        ],
+    ));
+    Ok(())
 }
 
 /// The route of a legacy content (`content.ProposalRoute()`).
@@ -546,7 +654,7 @@ fn content_route(content: &Any) -> Result<&'static str> {
         COMMUNITY_POOL_SPEND => Ok("distribution"),
         TEXT_PROPOSAL => Ok("gov"),
         PARAMETER_CHANGE => Ok("params"),
-        CLIENT_UPDATE => Ok("client"),
+        CLIENT_UPDATE | IBC_UPGRADE => Ok("client"),
         other => Err(not_ported(format!("gov proposal content {other}"))),
     }
 }
