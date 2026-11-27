@@ -67,21 +67,36 @@ fn not_ported(what: &str) -> sdk::SdkError {
     sdk::error::sdk::not_supported(format!("app version 1: {what}"))
 }
 
-/// ibc-go v6 `BeginBlocker` (02-client). With an upgrade plan it writes
-/// the upgraded consensus state only when the upgrade store holds an
-/// upgraded client for the plan's height and this is the block before it.
-/// No v1 to v3 message writes an upgraded client (celestia-app refuses the
-/// ibc `UpgradeProposal`, and v1 to v3 route no software upgrade
-/// proposal), so the plan alone (the v4 plan the last v3 `EndBlock`
-/// schedules) changes nothing. The localhost client has the fixed ID
-/// `09-localhost`: `MsgCreateClient.ValidateBasic` refuses a localhost
-/// client, created IDs carry a sequence suffix, and mainnet's genesis has
-/// no clients, so it cannot exist.
+/// ibc-go v6 `BeginBlocker` (02-client). With an upgrade plan whose
+/// upgraded client the upgrade store holds, the block before the plan's
+/// height writes the upgraded consensus state (this block's time and next
+/// validators hash; v6 emits no event, unlike v8). No v1 to v3 message
+/// writes an upgraded client (celestia-app refuses the ibc
+/// `UpgradeProposal`, and v1 to v3 route no software upgrade proposal), so
+/// this does not happen on a v1 to v3 chain. The localhost client has the
+/// fixed ID `09-localhost`: `MsgCreateClient.ValidateBasic` refuses a
+/// localhost client, created IDs carry a sequence suffix, and mainnet's
+/// genesis has no clients, so it cannot exist.
 fn ibc_begin_block(ctx: &mut Context<'_>) -> Result<()> {
+    use prost::Message as _;
     if let Ok(Some(plan)) = x_upgrade::get_upgrade_plan(ctx) {
-        let key = x_upgrade::upgraded_client_key(plan.height);
-        if ctx.get(x_upgrade::STORE_KEY, &key)?.is_some() {
-            return Err(not_ported("ibc-go v6 upgraded consensus state"));
+        let exists = ctx
+            .get(
+                x_upgrade::STORE_KEY,
+                &x_upgrade::upgraded_client_key(plan.height),
+            )?
+            .is_some();
+        if exists && ctx.header.height == plan.height - 1 {
+            let cons = celestia_proto::ibc::lightclients::tendermint::v1::ConsensusState {
+                timestamp: Some(ctx.header.time),
+                root: Some(celestia_proto::ibc::core::commitment::v1::MerkleRoot::default()),
+                next_validators_hash: ctx.header.next_validators_hash.clone(),
+            };
+            ctx.set(
+                x_upgrade::STORE_KEY,
+                x_upgrade::upgraded_cons_state_key(plan.height),
+                celestia_proto::Any::pack(&cons).encode_to_vec(),
+            )?;
         }
     }
     if x_ibc::client::client_state(ctx, x_ibc::client::LOCALHOST_CLIENT_ID)?.is_some() {
@@ -180,36 +195,50 @@ mod tests {
     use prost::Message as _;
     use sdk::{ExecMode, Header, MultiStore};
 
-    /// The v4 plan alone is a no-op for ibc-go v6's `BeginBlocker`; only
-    /// an upgraded client for the plan's height (which v1 to v3 cannot
-    /// write) would make it act.
+    /// ibc-go v6's `BeginBlocker` writes the upgraded consensus state only
+    /// with an upgraded client for the plan's height, at the block before
+    /// it; the plan alone (the v4 plan) is a no-op.
     #[test]
-    fn ibc_begin_block_ignores_a_plan_without_an_upgraded_client() -> Result<()> {
+    fn ibc_begin_block_writes_the_upgraded_consensus_state_only_before_the_plan() -> Result<()> {
         let _v046 = sdk::version::SdkV046Scope::enter(3);
         let mut ms = MultiStore::new();
         let v1 = sdk::version::Release::for_app_version(1).unwrap();
         crate::stores::mount_release(&mut ms, v1)?;
-        let mut ctx = Context::new(
-            &mut ms,
-            Header {
-                height: 9,
-                ..Header::default()
-            },
-            ExecMode::Finalize,
-        );
-        let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
-            name: "v4".into(),
-            height: 10,
-            ..Default::default()
+        let at = |ms: &mut MultiStore, height| {
+            let mut ctx = Context::new(
+                ms,
+                Header {
+                    height,
+                    ..Header::default()
+                },
+                ExecMode::Finalize,
+            );
+            ibc_begin_block(&mut ctx)?;
+            ctx.get(
+                x_upgrade::STORE_KEY,
+                &x_upgrade::upgraded_cons_state_key(10),
+            )
         };
-        ctx.set(x_upgrade::STORE_KEY, vec![0x00], plan.encode_to_vec())?;
-        ibc_begin_block(&mut ctx)?;
-        ctx.set(
-            x_upgrade::STORE_KEY,
-            x_upgrade::upgraded_client_key(10),
-            vec![1],
-        )?;
-        assert!(ibc_begin_block(&mut ctx).is_err());
+        {
+            let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+            let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
+                name: "v4".into(),
+                height: 10,
+                ..Default::default()
+            };
+            ctx.set(x_upgrade::STORE_KEY, vec![0x00], plan.encode_to_vec())?;
+        }
+        assert_eq!(at(&mut ms, 9)?, None);
+        {
+            let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+            ctx.set(
+                x_upgrade::STORE_KEY,
+                x_upgrade::upgraded_client_key(10),
+                vec![1],
+            )?;
+        }
+        assert_eq!(at(&mut ms, 8)?, None);
+        assert!(at(&mut ms, 9)?.is_some());
         Ok(())
     }
 }
