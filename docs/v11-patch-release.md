@@ -117,21 +117,28 @@ capture: Go v11.0.0 runs heights 1 to 5 and signals v12, and the untagged
 celestia-app main commit
 [`bb3a9e52d`](https://github.com/celestiaorg/celestia-app/tree/bb3a9e52d09620323b35b8305922f764b2df6a3e)
 runs heights 6 and 7. `devnet-conformance` `v12_upgrade` requires every
-app hash and the full FinalizeBlock responses from height 6, both
-continuously and after a reopen before the upgrade block. A one-off run in
+app hash and the full FinalizeBlock responses from height 6 in three
+modes: continuously, after a reopen before the upgrade block, and in
+ABCI mode, where the v11 release halts at height 6 with
+`UPGRADE "v12" NEEDED`, writes `upgrade-info.json`, and the reopened
+node authenticates it and runs v12. A one-off run in
 [`replay-43ba527`](evidence/replay-43ba527/README.md) extended this to
 1,000 empty v12 blocks.
 
-- No v12 release tag is pinned. The reference is a development commit, so
-  each network's v12 release needs its own check.
+- No celestia-app v12 release tag or release candidate exists yet
+  (checked 2026-11-27). The v12 rules are pinned to the development
+  commit `bb3a9e52d`. When a tag appears, re-run the capture and the
+  replay against it; each network's v12 release needs its own check.
 - The chain covers the upgrade block and one more. There are no v12
   probe transactions like the v4 to v9 fixtures have, and no synthetic
   segment after v11.
 - There is no Mocha data.
 
-`celestia-rs start` and `celestia-rs follow` still switch to the v12 rules
-in-process when a chain signals v12. A rule that differs from the network
-shows as an app-hash mismatch, which stops the node.
+`celestia-rs start` and `celestia-rs follow` switch to the v12 rules
+in-process when a chain signals v12, as they do for every earlier app
+version. This is the owner's decision (2026-11-27): no extra opt-in gate.
+`celestia-rs abci` halts for the binary swap, like Go. A rule that differs
+from the network shows as an app-hash mismatch, which stops the node.
 
 These tests provide implementation evidence, not a new release qualification
 or permission to alter a live validator. The project milestones still require

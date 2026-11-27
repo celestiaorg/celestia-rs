@@ -33,6 +33,22 @@ pub(super) fn header_topic(network: &str) -> gossipsub::IdentTopic {
     gossipsub::IdentTopic::new(format!("/{network}/header-sub/v0.0.1"))
 }
 
+/// The libp2p identify agent: `celestia-rs/<network>/<bridge|light>/<version>`.
+///
+/// Follows Go celestia-node's `celestia-node/<network>/<type>/<version>/<commit>`
+/// so DA-network crawlers can tell this node from Go and other rust-libp2p peers.
+/// No Go peer behaviour reads the agent; go-libp2p identify only records it.
+pub(super) fn agent_version(network: &str, mode: kad::Mode) -> String {
+    let role = match mode {
+        kad::Mode::Server => "bridge",
+        kad::Mode::Client => "light",
+    };
+    format!(
+        "celestia-rs/{network}/{role}/{}",
+        crate::version::SOFTWARE_VERSION
+    )
+}
+
 // Go RoutingDiscovery uses the SHA2-256 multihash of the topic as the provider key.
 pub(super) fn provider_key() -> kad::RecordKey {
     let mut key = vec![0x12, 32];
@@ -97,6 +113,7 @@ impl Behaviour {
             negotiated: libp2p_stream::Behaviour::new(),
             identify: identify::Behaviour::new(
                 identify::Config::new("ipfs/0.1.0".to_owned(), key.public())
+                    .with_agent_version(agent_version(network, mode))
                     .with_hide_listen_addrs(true),
             ),
             dht,
@@ -261,5 +278,23 @@ impl Peering {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::agent_version;
+    use crate::version::SOFTWARE_VERSION;
+
+    #[test]
+    fn identify_agent_names_rust_implementation_network_and_role() {
+        assert_eq!(
+            agent_version("celestia", libp2p::kad::Mode::Server),
+            format!("celestia-rs/celestia/bridge/{SOFTWARE_VERSION}")
+        );
+        assert_eq!(
+            agent_version("mocha-4", libp2p::kad::Mode::Client),
+            format!("celestia-rs/mocha-4/light/{SOFTWARE_VERSION}")
+        );
     }
 }

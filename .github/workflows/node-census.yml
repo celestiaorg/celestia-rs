@@ -1,0 +1,71 @@
+name: node-census
+
+# Counts the consensus nodes on Mainnet and Mocha that run celestia-rs and
+# celestia-core (Go), and appends the result to the `node-census-data`
+# branch. The dashboard at docs/census/ reads that branch. The job never
+# writes to main.
+
+on:
+  schedule:
+    - cron: "23 6 * * *"  # daily, 06:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: node-census
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  DATA_BRANCH: node-census-data
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked -p node-census
+
+      - name: Crawl
+        run: |
+          mkdir -p "$RUNNER_TEMP/census"
+          for network in mainnet mocha; do
+            target/release/node-census crawl --network "$network" \
+              --out "$RUNNER_TEMP/census/$network.json" ||
+              echo "::warning::$network crawl failed"
+          done
+          ls "$RUNNER_TEMP"/census/*.json
+
+      - name: Create the data branch if it does not exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git ls-remote --exit-code --heads origin "$DATA_BRANCH" >/dev/null; then
+            exit 0
+          fi
+          # An orphan branch: crawl data only, no source tree.
+          tree=$(gh api "repos/$GITHUB_REPOSITORY/git/trees" \
+            -f 'tree[][path]=README.md' -f 'tree[][mode]=100644' -f 'tree[][type]=blob' \
+            -f 'tree[][content]=Node census data written by .github/workflows/node-census.yml on main. Do not edit by hand.' \
+            --jq .sha)
+          commit=$(gh api "repos/$GITHUB_REPOSITORY/git/commits" \
+            -f message="census: start data branch" -f "tree=$tree" --jq .sha)
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f "ref=refs/heads/$DATA_BRANCH" -f "sha=$commit" >/dev/null
+
+      - name: Record and commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --depth=1 origin "$DATA_BRANCH"
+          git worktree add --detach data FETCH_HEAD
+          target/release/node-census record --data-dir data "$RUNNER_TEMP"/census/*.json
+          cd data
+          git add -A
+          python3 ../.github/scripts/commit-signed-changes.py "$DATA_BRANCH" \
+            "census: $(date -u +%Y-%m-%dT%H:%MZ)"

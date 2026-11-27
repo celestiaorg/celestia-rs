@@ -143,6 +143,7 @@ impl Importer {
                 .as_ref()
                 .map(|_| encode_leaf(&node.key, &node.value));
             let saved = Node::Leaf(Leaf {
+                touched: crate::node::Touch::default(),
                 key: node.key,
                 value: node.value,
                 version,
@@ -170,7 +171,7 @@ impl Importer {
                 right.hash_for(version),
             );
             let bytes = match (&left, &right) {
-                (Link::Stored(l), Link::Stored(r)) => Some(encode_inner(
+                (Link::Stored(l, _), Link::Stored(r, _)) => Some(encode_inner(
                     &node.key,
                     node.height,
                     size,
@@ -181,6 +182,7 @@ impl Importer {
                 _ => None,
             };
             let saved = Node::Inner(Inner {
+                touched: crate::node::Touch::default(),
                 key: node.key,
                 height: node.height,
                 size,
@@ -210,7 +212,7 @@ impl Importer {
                         .write(std::mem::take(&mut self.batch))
                         .map_err(db_err)?;
                 }
-                Link::Stored(r)
+                Link::stored(r)
             }
             (None, None) => Link::mem(saved),
             _ => return Err(Error::Corrupt("mixed import links")),
@@ -228,7 +230,7 @@ impl Importer {
         let root = self.stack.pop();
         if let Some(ndb) = &self.ndb {
             let root_ref = match &root {
-                Some(Link::Stored(r)) => Some(*r),
+                Some(Link::Stored(r, _)) => Some(*r),
                 Some(Link::Mem(_)) => return Err(Error::Corrupt("mixed import links")),
                 None => None,
             };

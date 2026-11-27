@@ -4,6 +4,18 @@
 
 ### Added
 
+- `celestia-rs debug-bundle` writes a `.tar.gz` of diagnostics to attach
+  to a bug report: build and host data, the config with secrets redacted,
+  the sign state, the node's RPC state and metrics, and log tails. It never
+  includes private keys. See the operator guide's "Reporting a problem".
+- `main` is released automatically once a day, from its newest commit that
+  passed `ci` (`v<version>-main.<n>`, a pre-release), and release channels
+  (`corto`, `mocha`, `mainnet`) move forward on their own as releases soak
+  on the network before them. `install.sh --channel <name>` installs a
+  channel's release, a new Linux systemd timer follows a channel daily, and
+  the Mac auto-updater now follows each node's channel instead of the
+  newest release. See "Automatic releases and release channels" in
+  `docs/releasing.md`.
 - Validators can run the Fibre data availability server inside
   `celestia-rs start` (a port of celestia-app v11's server), so no separate
   Go `fibre` process is needed. It is off by default: enable it with
@@ -24,10 +36,15 @@
 
 ### Changed
 
+- Block execution is about 11% faster at mainnet heights near 560k: a
+  walk down the state tree follows the child each node last loaded
+  instead of looking every node up in the shared node cache (98% fewer
+  lookups). The cache still decides what stays in memory. A cached node
+  is now also checked against the hash its parent expects.
 - The IAVL node cache defaults to 4,000,000 nodes (was celestia-app's
   781,250 for `start` and 1,000,000 for `follow` and `abci`). At mainnet
   heights near 560k this executes blocks about 6% faster; the cache can
-  use about 1.5 GB or more when full. `init` writes the new value to
+  use about 2.0 GB when full. `init` writes the new value to
   `app.toml`. Homes made before, or migrated from Go, keep
   `iavl-cache-size = 781250` until you edit it, and the node logs a hint
   at startup. 781,250 remains a good setting for machines short of memory.

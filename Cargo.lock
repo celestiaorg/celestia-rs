@@ -1702,6 +1702,7 @@ dependencies = [
  "hash",
  "hex",
  "k256",
+ "rayon",
  "secp256k1",
  "serde",
  "serde_json",
@@ -4830,6 +4831,23 @@ dependencies = [
  "bytes",
  "serde",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "node-census"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "celestia-core-proto",
+ "clap",
+ "p2p",
+ "prost 0.13.5",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

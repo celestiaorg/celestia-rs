@@ -13,9 +13,19 @@ over the DA peer and RPC protocols exercised by the
 
 ## Install
 
+Install the release your network's channel recommends: `mainnet`, `mocha`
+or `corto`.
+
 ```sh
-curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/celestiaorg/celestia-rs/main/scripts/install.sh | sh
+curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/celestiaorg/celestia-rs/main/scripts/install.sh | sh -s -- --channel mainnet
 ```
+
+Run the same command again to update. A channel moves to a newer release
+once that release has run on the network before it. `main` is released
+once a day; Corto gets each release at once, Mocha after 24 hours on Corto,
+Mainnet after 24 hours on Mocha. To update automatically on Linux, install the daily
+[auto-update timer](packaging/linux/celestia-rs-auto-update.service). See
+[releasing](docs/releasing.md#automatic-releases-and-release-channels).
 
 
 ## Status
@@ -23,7 +33,9 @@ curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/celestiao
 **celestia-rs is an early, experimental project under rapid development.**
 Expect breaking changes and rough edges, and don't rely on it for production
 yet. Feedback, bug reports and questions are very welcome: please open an
-issue.
+issue. For a node problem, attach the archive that `celestia-rs
+debug-bundle` writes (see the
+[operator guide](docs/operator-guide.md#9-day-to-day-operations)).
 
 celestia-rs runs a validator on both Mocha and Mainnet, signing blocks
 alongside the Go validators:

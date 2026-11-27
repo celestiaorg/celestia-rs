@@ -1,0 +1,159 @@
+name: release channels
+
+# Moves the release channels (corto, mocha, mainnet) forward as releases
+# soak, by the policy in .github/release-channels.json, and records them on
+# the `release-channels` branch. Nodes follow a channel with
+# `scripts/install.sh --channel <name>` or the auto-updaters. See
+# docs/releasing.md.
+#
+# - Hourly: promote.
+# - Actions → release channels → Run workflow: promote now, or freeze /
+#   unfreeze a channel, yank / unyank a release, or pin a channel to a
+#   release (rollback; also freezes it). A pin, like a promotion, needs the
+#   release to have soaked in the channel before, unless `force` is set.
+# - Pull requests and pushes that change the promotion code: its tests.
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        type: choice
+        options: [promote, freeze, unfreeze, yank, unyank, pin]
+        default: promote
+      channel:
+        description: Channel, for freeze, unfreeze and pin (e.g. mocha)
+        type: string
+        required: false
+      tag:
+        description: Release tag, for yank, unyank and pin (e.g. v0.1.0-main.812)
+        type: string
+        required: false
+      force:
+        description: For pin, skip the check that the release soaked in the channel before
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - .github/scripts/release_channels.py
+      - .github/scripts/test_release_channels.py
+      - .github/release-channels.json
+      - .github/workflows/release-channels.yml
+  push:
+    branches: [main]
+    paths:
+      - .github/scripts/release_channels.py
+      - .github/scripts/test_release_channels.py
+      - .github/release-channels.json
+      - .github/workflows/release-channels.yml
+
+permissions:
+  contents: read
+
+env:
+  BRANCH: release-channels
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 .github/scripts/test_release_channels.py -v
+      - name: The policy is valid
+        run: |
+          python3 -c 'import json, sys; sys.path.insert(0, ".github/scripts"); import release_channels as rc; rc.check_policy(json.load(open(".github/release-channels.json")))'
+
+  channels:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # One writer at a time; the signed-commit helper also rejects a commit
+    # whose base moved.
+    concurrency:
+      group: release-channels
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the channel state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! git ls-remote --exit-code --heads "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY" "$BRANCH" >/dev/null; then
+            # First run: start the branch at main's head. Its files are
+            # never read; only channels.json and channels/ are.
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$(git rev-parse HEAD)" >/dev/null
+            echo "::notice::created branch $BRANCH"
+          fi
+          git clone --quiet --depth 1 --branch "$BRANCH" "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY" state
+      - name: Update the channels
+        id: update
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTION: ${{ inputs.action || 'promote' }}
+          CHANNEL: ${{ inputs.channel }}
+          TAG: ${{ inputs.tag }}
+          FORCE: ${{ inputs.force && '--force' || '' }}
+        run: |
+          set -euo pipefail
+          run() { python3 .github/scripts/release_channels.py --dir state --policy .github/release-channels.json "$@"; }
+          case $ACTION in
+            promote)
+              gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[]' | jq -s . >raw.json
+              # Order releases by their commit's position on main, not by
+              # publication time (parallel builds publish out of order).
+              git fetch --quiet --tags origin
+              jq -r '.[].tag_name' raw.json | while read -r tag; do
+                if p=$(git rev-list --count "refs/tags/$tag" 2>/dev/null); then echo "$tag $p"; fi
+              done >positions.txt
+              jq --rawfile pos positions.txt '
+                ($pos | split("\n") | map(select(length > 0) | split(" ") | {(.[0]): (.[1] | tonumber)}) | add // {}) as $p
+                | map(. + {position: $p[.tag_name]})' raw.json >releases.json
+              run promote --releases releases.json >changes.txt
+              ;;
+            freeze | unfreeze) run "$ACTION" "$CHANNEL" >changes.txt ;;
+            yank | unyank) run "$ACTION" "$TAG" >changes.txt ;;
+            pin)
+              gh release view "$TAG" --json isDraft --jq 'if .isDraft then error("draft") else . end' >/dev/null ||
+                { echo "::error::$TAG is not a published release"; exit 1; }
+              # shellcheck disable=SC2086 # FORCE is empty or one flag
+              run pin "$CHANNEL" "$TAG" $FORCE >changes.txt
+              ;;
+            *) echo "::error::unknown action $ACTION"; exit 1 ;;
+          esac
+          cat changes.txt
+          {
+            echo "## Release channels"
+            echo
+            if [ -s changes.txt ]; then sed 's/^/- /' changes.txt; else echo "No change."; fi
+            echo
+            echo "| channel | release |"
+            echo "| --- | --- |"
+            for f in state/channels/*; do
+              [ -e "$f" ] && echo "| $(basename "$f") | $(cat "$f") |"
+            done
+          } >>"$GITHUB_STEP_SUMMARY"
+      - name: Commit
+        working-directory: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git add -A channels.json channels
+          if git diff --cached --quiet; then
+            echo "no change"
+            exit 0
+          fi
+          message="channels: $(paste -sd ';' ../changes.txt)"
+          # Signed by GitHub, like the release PR's commit.
+          python3 ../.github/scripts/commit-signed-changes.py "$BRANCH" "${message:0:250}"

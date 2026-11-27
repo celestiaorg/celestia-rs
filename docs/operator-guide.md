@@ -710,7 +710,7 @@ firewall.
 | `app.toml pruning` | `default` | celestia-rs maps `default` to the validator-minimal policy (keep 100 versions, prune every commit, ADR 0002) instead of Go's 362,880 versions; `nothing`, `everything` and `custom` (`pruning-keep-recent`, `pruning-interval`) follow Go |
 | `app.toml min-retain-blocks` | 3000 | blocks below `height - min-retain-blocks` (and below the state-sync snapshot window) are pruned from the block store via `ResponseCommit.retain_height`; values 1–2999 are raised to 3000 like celestia-app; 0 keeps all blocks |
 | `app.toml state-sync.snapshot-interval` | 1500 | 0 disables snapshots; snapshots are written in the background (§11.13) |
-| `app.toml iavl-cache-size` | 4000000 | decoded IAVL nodes (at least ~370 B each: about 1.5 GB when full); celestia-app's 781250 is the low-memory setting. Homes from an older `init` or from `migrate` keep 781250 until edited; the node logs a hint at startup |
+| `app.toml iavl-cache-size` | 4000000 | decoded IAVL nodes (about 510 B each: about 2.0 GB when full); celestia-app's 781250 is the low-memory setting. Homes from an older `init` or from `migrate` keep 781250 until edited; the node logs a hint at startup |
 | flags | `--pruning`, `--pruning-keep-recent`, `--pruning-interval`, `--min-retain-blocks`, `--db-cache-mib` (512) | override app.toml |
 
 With the defaults a mainnet validator stays well inside the 350 GB/year
@@ -829,10 +829,11 @@ Verified on the Mocha validator 2026-10-16.
 
 #### Following releases automatically (optional)
 
-`packaging/macos/celestia-rs-auto-update.sh` deploys the newest published
-GitHub release, including release candidates, once every CI check on its
-commit is green. Releases are ordered by publication time; drafts and
-unreleased commits on `main` are excluded. It fetches the exact release tag,
+`packaging/macos/celestia-rs-auto-update.sh` deploys to each node the
+release its network's channel names (`mocha`, `mainnet`; see "Automatic
+releases and release channels" in [releasing.md](releasing.md)), once every
+CI check on its commit is green. Unreleased commits on `main` are never
+deployed. It fetches the exact release tag,
 resolves its commit and builds that source with locked dependencies in
 `~/.celestia-rs/src`. The binary must report both the release version and
 commit before it is swapped in for the Mocha node first. It
@@ -927,6 +928,12 @@ journalctl -u celestia-rs -f
 sudo systemctl stop celestia-rs    # SIGTERM, clean shutdown
 ```
 
+To follow your network's release channel automatically, install
+`packaging/linux/celestia-rs-auto-update.{sh,service,timer}` (steps in the
+`.service` file) and set `CHANNEL` to `mocha` or `mainnet`. Once a day it
+installs the channel's release, restarts the node, and rolls back if the
+node does not catch up ([releasing.md](releasing.md)).
+
 ### Shutdown, the sign state and backups
 
 **SIGTERM / SIGINT** (`launchctl bootout`, `systemctl stop`, Ctrl-C) stop
@@ -987,8 +994,9 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
   `celestia-rs start` and `celestia-rs follow` switch to the next bundled
   release in the same process at the upgrade height, so the v10 to v11
   upgrade (and v11 to v12 on a chain that signals it, such as Mocha)
-  needs no restart and RPC stays up. The v12 rules are matched only
-  against a pre-release celestia-app commit on a short test chain (see
+  needs no restart and RPC stays up. No celestia-app v12 release exists
+  yet: the v12 rules are matched only against the pre-release commit
+  `bb3a9e52d` on a short test chain (see
   [the v12 gap](v11-patch-release.md#known-gap-v12-execution)); an
   app-hash mismatch after a v12 upgrade stops the node. The node switches
   once the block before the upgrade commits the new consensus version
@@ -1028,6 +1036,28 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
   `cometbft_consensus_validator_missed_blocks`, `cometbft_p2p_peers`,
   `cometbft_mempool_size`, …, labelled `chain_id`), so Go dashboards and
   alerts work unchanged.
+- **Reporting a problem:** `celestia-rs debug-bundle` writes
+  `celestia-rs-debug-<UTC time>.tar.gz` in the working directory (or
+  `--output <file>`) and prints its path. Attach it to a
+  [bug report](https://github.com/celestiaorg/celestia-rs/issues/new?template=bug_report.yml).
+  Run it while the node is up, with the same `--home`: it holds the build
+  version, OS, CPU, memory and disk, the open-files limit (on Linux,
+  also the running node's own), the sizes under `config/` and `data/`,
+  a genesis summary (chain ID, SHA-256), `config.toml`, `app.toml` and
+  `client.toml` (values of keys named like token, secret, password or
+  mnemonic, and `user:pass@` in URLs, are replaced by `<redacted>`),
+  `priv_validator_state.json`, the node's `status`, `net_info`,
+  `num_unconfirmed_txs`, `abci_info` and `dump_consensus_state`, the
+  Prometheus metrics, and the tails of the logs: the `celestia-rs`
+  systemd journal on Linux (`--journal-unit` for another unit, `""` for
+  none), `~/Library/Logs/celestia-rs.log` on macOS, each `--log-file
+  <file>`, and the RocksDB `LOG` files. Each log tail is at most 16 MiB
+  (`--max-log-bytes`). A part that cannot be read (for example, a stopped
+  node) is listed in `manifest.json` under `errors`, and the bundle is
+  still written. It never reads `priv_validator_key.json`, `node_key.json`
+  or the keyrings. It does hold your peer addresses, IP addresses and
+  moniker: review it before you post it publicly. `--no-rpc` leaves out
+  the node queries.
 - **Transactions:** `celestia-rs tx bank send`, `tx staking
   delegate|unbond|redelegate|create-validator|edit-validator`, `tx blob
   pay-for-blob`, `tx signal signal|try-upgrade`, `tx slashing unjail`
@@ -1289,7 +1319,7 @@ even when the state is the same.
   pruning = "custom"
   pruning-keep-recent = "100"
   pruning-interval = "100"
-  iavl-cache-size = 8000000   # decoded IAVL nodes, at least ~370 B each
+  iavl-cache-size = 8000000   # decoded IAVL nodes, about 510 B each
   ```
 
   and start with `--db-cache-mib 4096` (RocksDB block cache). To measure
