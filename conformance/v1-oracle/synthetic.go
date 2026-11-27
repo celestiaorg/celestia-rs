@@ -296,6 +296,9 @@ type txBuilder struct {
 	height int64
 	sg     *user.Signer
 	out    [][]byte
+	// app is the app at the last committed height, for chains whose
+	// transactions depend on committed state (ibcchain.go).
+	app *app.App
 }
 
 var utiaFee = []user.TxOption{user.SetGasLimit(syntheticGasLimit), user.SetFee(syntheticFee)}
@@ -367,7 +370,7 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := &txBuilder{height: height, sg: sg}
+	b := &txBuilder{height: height, sg: sg, app: a}
 	if err := s.spec.txs(b); err != nil {
 		return nil, err
 	}

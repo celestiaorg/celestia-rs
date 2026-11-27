@@ -49,6 +49,7 @@ fn main() -> anyhow::Result<()> {
         StoreOptions {
             pruning,
             node_cache_size: cache,
+            ..StoreOptions::default()
         },
     );
     store.mount_store("bank", StoreKind::Iavl)?;
@@ -92,6 +93,7 @@ fn main() -> anyhow::Result<()> {
         StoreOptions {
             pruning,
             node_cache_size: cache,
+            ..StoreOptions::default()
         },
     );
     reopened.mount_store("bank", StoreKind::Iavl)?;

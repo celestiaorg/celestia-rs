@@ -344,7 +344,7 @@ job() {
         local pid i
         pid=$(cat "$j/pid" 2>/dev/null || true)
         [[ -z $pid ]] || kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
-        for ((i = 0; i < 50; i++)); do
+        for ((i = 0; i < 300; i++)); do # up to 30 s on a loaded machine
           if ! pid_alive "$pid"; then break; fi
           sleep 0.1
         done
