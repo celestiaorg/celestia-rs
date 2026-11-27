@@ -192,12 +192,14 @@ fn ibc_tm_tx_results_and_store_changes() {
     }
 }
 
-/// celestia-rs executes the blocks as Go does. It matches every KV
-/// change and app hash through block 35; the rest is still open:
+/// celestia-rs executes the blocks as Go does: every KV change, app hash
+/// and transaction result. Two logs from the shared light client still
+/// differ (code, codespace and gas match): the double-vote text at 23
+/// (celestia-core v1 prints the `Validator`) and the wrong-signature
+/// text at 30 (celestia-core v1 does not check the address of a
+/// signature found by index).
 #[test]
-#[ignore = "tx-result divergences (logs at 12, 23, 30, 35; codespace at 19, 26) \
-            and MsgSubmitMisbehaviour not ported (36): see conformance/README.md"]
 fn ibc_tm_blocks_match_the_oracle() {
     let f = fix();
-    f.run_blocks(f.last_height());
+    f.run_blocks_except_logs(f.last_height(), &[23, 30]);
 }
