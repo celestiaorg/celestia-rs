@@ -534,6 +534,11 @@ fn main() -> anyhow::Result<()> {
         }
     }
     summary(&times, txs, started.elapsed(), &digest);
+    // RocksDB's own counters over the run (the databases were opened for
+    // it): WAL syncs, stalls, flush and compaction volume per level.
+    for line in multistore::kvdb::rocksdb_report() {
+        println!("{line}");
+    }
     println!(
         "per_block: {}",
         probes.sample().report(&first_sample, times.len())

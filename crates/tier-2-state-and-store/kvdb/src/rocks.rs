@@ -147,6 +147,63 @@ impl RocksBackend {
 /// Every RocksDB opened by this process (weak: closing one is fine).
 static OPEN: std::sync::Mutex<Vec<std::sync::Weak<DB>>> = std::sync::Mutex::new(Vec::new());
 
+/// A diagnostic report of every open database: its path, the cumulative
+/// write, WAL, stall and compaction lines of `rocksdb.stats`, and a few
+/// integer properties (L0 files, pending compaction bytes, memtables,
+/// delayed write rate). For benchmarks (`replay_bench`).
+#[must_use]
+pub fn report_all() -> Vec<String> {
+    let dbs: Vec<Arc<DB>> = OPEN
+        .lock()
+        .map(|o| o.iter().filter_map(std::sync::Weak::upgrade).collect())
+        .unwrap_or_default();
+    let mut out = Vec::new();
+    for db in &dbs {
+        out.push(format!("rocksdb {}", db.path().display()));
+        let stats = db
+            .property_value("rocksdb.stats")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let mut in_levels = false;
+        for line in stats.lines() {
+            let t = line.trim_start();
+            if t.starts_with("Level ") {
+                in_levels = true;
+            }
+            let keep = t.starts_with("Cumulative writes")
+                || t.starts_with("Cumulative WAL")
+                || t.starts_with("Cumulative stall")
+                || t.starts_with("Cumulative compaction")
+                || t.starts_with("Flush(GB)")
+                || t.starts_with("Stalls(count)")
+                || (in_levels
+                    && (t.starts_with('L') || t.starts_with("Sum") || t.starts_with("Level ")));
+            if keep {
+                out.push(format!("  {}", line.trim_end()));
+            }
+            if t.starts_with("Sum") {
+                in_levels = false;
+            }
+        }
+        for prop in [
+            "rocksdb.num-files-at-level0",
+            "rocksdb.estimate-pending-compaction-bytes",
+            "rocksdb.cur-size-all-mem-tables",
+            "rocksdb.num-immutable-mem-table",
+            "rocksdb.actual-delayed-write-rate",
+            "rocksdb.is-write-stopped",
+            "rocksdb.estimate-live-data-size",
+            "rocksdb.total-sst-files-size",
+        ] {
+            if let Ok(Some(v)) = db.property_int_value(prop) {
+                out.push(format!("  {prop} = {v}"));
+            }
+        }
+    }
+    out
+}
+
 /// Before the process exits: writes out the memtables of every database
 /// still open and stops its background work (flushes, compactions),
 /// waiting for running jobs. Returns how many were open. Callers must stop

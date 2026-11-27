@@ -35,7 +35,7 @@ use redb::TableDefinition;
 #[cfg(feature = "rocksdb")]
 mod rocks;
 #[cfg(feature = "rocksdb")]
-pub use rocks::{RocksBackend, RocksOptions};
+pub use rocks::{RocksBackend, RocksOptions, report_all as rocksdb_report};
 
 /// Flushes every RocksDB still open and waits for its background work to stop
 /// before process exit (see `rocks::close_all`); 0 without the `rocksdb` feature.
