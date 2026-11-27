@@ -19,7 +19,8 @@ package main
 //     unbonding entry, out of gas in MsgDelegate and MsgUndelegate, a
 //     delegation above the balance, a vote on an unknown proposal, and
 //     MsgExec of zero-amount undelegation, redelegation and cancelled
-//     unbonding);
+//     unbonding, and parameter changes whose values every kind of
+//     Subspace.Update decodes or rejects, in every subspace);
 //   - round 2: a transitive redelegation, MsgExec of an expired grant, a
 //     fee allowance spent past its limit and an expired one.
 //
@@ -43,6 +44,7 @@ import (
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	"github.com/cosmos/cosmos-sdk/x/feegrant"
 	govv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
+	paramproposal "github.com/cosmos/cosmos-sdk/x/params/types/proposal"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
@@ -58,7 +60,52 @@ var failUsers = append([]string{
 	"f-rollback", "f-noauth", "f-nofeegrant", "f-dist", "f-del-unknown",
 	"f-blocked", "f-oog-del", "f-del-poor", "f-vote-unknown",
 	"f-zero-undel", "f-zero-redel", "f-zero-cancel",
-}, failPhaseUsers()...)
+}, append(failPhaseUsers(), failParamUsers()...)...)
+
+// failParams are parameter changes whose submission runs Subspace.Update
+// (amino JSON decoding, then validation) in a cached context: a bad one
+// fails the MsgSubmitProposal transaction.
+var failParams = [][3]string{
+	// uint64
+	{"auth", "MaxMemoCharacters", `5`}, {"auth", "MaxMemoCharacters", `"x"`},
+	{"auth", "MaxMemoCharacters", `"-1"`}, {"auth", "MaxMemoCharacters", `"18446744073709551616"`},
+	{"auth", "MaxMemoCharacters", `null`}, {"auth", "MaxMemoCharacters", `true`},
+	// int64 and time.Duration
+	{"slashing", "SignedBlocksWindow", `5`}, {"slashing", "SignedBlocksWindow", `"9223372036854775808"`},
+	{"slashing", "DowntimeJailDuration", `"1s"`}, {"slashing", "DowntimeJailDuration", `null`},
+	// uint32
+	{"staking", "MaxValidators", `"5"`}, {"staking", "MaxValidators", `-1`},
+	{"staking", "MaxValidators", `1.5`}, {"staking", "MaxValidators", `4294967296`},
+	{"staking", "MaxValidators", `null`},
+	// bool
+	{"transfer", "SendEnabled", `"true"`}, {"transfer", "SendEnabled", `1`}, {"transfer", "SendEnabled", `null`},
+	// sdk.Dec
+	{"distribution", "communitytax", `0.02`}, {"distribution", "communitytax", `null`},
+	// []string
+	{"ibc", "AllowedClients", `"x"`}, {"ibc", "AllowedClients", `[1]`}, {"ibc", "AllowedClients", `null`},
+	// sdk.Coin
+	{"crisis", "ConstantFee", `{"denom":"utia","amount":"1000"}`}, {"crisis", "ConstantFee", `{"denom":"utia","amount":1}`},
+	{"crisis", "ConstantFee", `"x"`}, {"crisis", "ConstantFee", `null`},
+	// consensus params
+	{"baseapp", "BlockParams", `"x"`}, {"baseapp", "BlockParams", `null`},
+	{"baseapp", "EvidenceParams", `{"max_age_num_blocks":"10","max_age_duration":"1000","max_bytes":"100"}`},
+	{"baseapp", "EvidenceParams", `"x"`}, {"baseapp", "VersionParams", `{"app_version":"9"}`},
+	// gov
+	{"gov", "votingparams", `{"voting_period":"1000"}`}, {"gov", "tallyparams", `"x"`},
+	{"gov", "depositparams", `{"min_deposit":[{"denom":"utia","amount":"1"}],"max_deposit_period":"1000"}`},
+	// subspaces by app version
+	{"blobstream", "DataCommitmentWindow", `"100"`}, {"qgb", "DataCommitmentWindow", `"100"`},
+	{"minfee", "NetworkMinGasPrice", `"0.000002"`}, {"packetfowardmiddleware", "FeePercentage", `"0.1"`},
+	{"icahost", "HostEnabled", `false`}, {"mint", "InflationRate", `"1"`}, {"unknown", "Key", `"1"`},
+}
+
+func failParamUsers() []string {
+	out := make([]string, len(failParams))
+	for i := range failParams {
+		out[i] = fmt.Sprintf("f-param-%d", i)
+	}
+	return out
+}
 
 // failPerPhase are cases whose grant or delegation of round 0 must be
 // fresh in each phase: one account per phase.
@@ -239,6 +286,17 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 		self("f-zero-undel", stakingtypes.NewMsgUndelegate(b.addr("f-zero-undel"), val0, coin(0)))
 		self("f-zero-redel", stakingtypes.NewMsgBeginRedelegate(b.addr("f-zero-redel"), val0, val1, coin(0)))
 		self("f-zero-cancel", stakingtypes.NewMsgCancelUnbondingDelegation(b.addr("f-zero-cancel"), val0, b.height-1, coin(0)))
+		for i, c := range failParams {
+			n := fmt.Sprintf("f-param-%d", i)
+			content := paramproposal.NewParameterChangeProposal("p", "d", []paramproposal.ParamChange{paramproposal.NewParamChange(c[0], c[1], c[2])})
+			add(func() error {
+				m, err := govv1beta1.NewMsgSubmitProposal(content, sdk.NewCoins(), b.addr(n))
+				if err != nil {
+					return err
+				}
+				return b.direct(n, nil, m)
+			})
+		}
 		undel := make([]sdk.Msg, 8)
 		for i := range undel {
 			undel[i] = stakingtypes.NewMsgUndelegate(b.addr("f-unbond"), val0, coin(tia/10))

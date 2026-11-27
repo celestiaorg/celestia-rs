@@ -574,10 +574,14 @@ fn exec_legacy_content(
             if e.is_panic() {
                 return e;
             }
-            // Go formats the handler's error with `%+v`: the ibc client
-            // handler's errors carry a stack, printed after a newline
-            // (the oracle drops the frames: they name the build's paths).
-            let sep = if route == "client" { ", \n" } else { ", " };
+            // Go formats the handler's error with `%+v`: an error built
+            // with `sdkerrors.Wrap` (the ibc client handler's, the params
+            // handler's unknown subspace and failed update) carries a
+            // stack, printed after a newline (the oracle drops the
+            // frames: they name the build's paths).
+            let stack = route == "client"
+                || (route == "params" && (e.codespace, e.code) != ("paramfilter", 91_710));
+            let sep = if stack { ", \n" } else { ", " };
             gerr::invalid_proposal_content().wrap(format!(
                 "failed to run legacy handler {route},{}{}",
                 &sep[1..],
