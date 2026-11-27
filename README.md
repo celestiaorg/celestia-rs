@@ -63,7 +63,7 @@ See the [milestones](MILESTONES.md) for qualification progress and the
 - **Go-compatible operator surface:** CLI (`init`, `keys`, `genesis`, `tx`,
   `query`, …), Go keyrings, RPC, gRPC and REST responses checked against Go,
   pruning, Prometheus metrics, double-sign protection.
-- **Built for a Mac Mini M4** (16 GB / 512 GB, [`docs/hardware.md`](docs/hardware.md)):
+- **Built for modest hardware** (target: 8 cores, 16 GB, 500 GB NVMe; [`docs/hardware.md`](docs/hardware.md)):
   release archives for macOS and Linux, launchd and systemd units.
 
 ## Architecture

@@ -12,9 +12,9 @@ The same executable can serve DA from its consensus blockstore through an
 integrated bridge, or run a standalone DA light node that samples shares
 over DA P2P. See the [node architecture](../README.md#architecture).
 
-This guide targets the reference machine, a **Mac Mini M4 (16 GB RAM,
-512 GB SSD)** on macOS; Linux works the same way (systemd instead of
-launchd).
+This guide targets a machine with **8 CPU cores, 16 GB RAM and a 500 GB
+NVMe SSD** ([target hardware](hardware.md)). The examples use macOS; Linux
+works the same way (systemd instead of launchd).
 
 > **Running a Mocha validator on a Mac: section 11. Mainnet: section 12.**
 >
@@ -90,7 +90,7 @@ fine too and builds faster. The first build compiles RocksDB from source
 (a clean `dist` build took 4 minutes on the Mac Mini M4, 2026-10-15). Only
 `curl` is needed at runtime (genesis download, HTTPS RPC).
 
-Targets: `aarch64-apple-darwin` (the reference Mac Mini M4; CI builds and
+Targets: `aarch64-apple-darwin` (Apple silicon; CI builds and
 smoke-tests it on `macos-14`), `x86_64-unknown-linux-gnu`,
 `aarch64-unknown-linux-gnu`. jemalloc is the allocator everywhere (on
 macOS for Rust allocations only; RocksDB's C++ uses the system allocator
@@ -999,7 +999,7 @@ celestia-rs start --home ~/.celestia-rs/mainnet-genesis \
 
 ## 11. Running a Mocha validator on a Mac (M13)
 
-Exact steps for the reference machine (Mac Mini M4, macOS, Apple silicon)
+Exact steps for an Apple silicon Mac (macOS)
 to run a `mocha-5` validator. Mocha runs app version 10 (celestia-app
 v10.4.0-mocha). Every command below was checked against this binary's
 `--help`; the ones marked *(verified)* were also run against Mocha's

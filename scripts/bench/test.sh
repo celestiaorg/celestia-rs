@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Tests the pure helpers in scripts/bench/lib.sh and a dry run of vm.sh.
 # Needs bash, jq, gzip, base64 and awk; no cloud access. CI runs it (ci.yml).
+# shellcheck disable=SC2031 # fixtures source vm.sh in subshells; it sets the same values
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=scripts/bench/lib.sh
@@ -290,6 +291,131 @@ check "bridge serves same 32 reads across 600 heights" bridge_fixture matched
 refute "bridge rejects missed start" bridge_fixture late
 refute "bridge rejects tail moving in window" bridge_fixture pruned
 refute "bridge rejects malformed share" bridge_fixture malformed
+
+# --- block-range campaign: a fixed mainnet block window on both sides ---------
+check  "campaign block-range"   bench_valid campaign block-range
+check  "blocks ok"              bench_valid blocks 1000
+refute "blocks zero"            bench_valid blocks 0
+refute "blocks too many"        bench_valid blocks 100000
+check  "disk pd"                bench_valid disk pd
+check  "disk nvme"              bench_valid disk nvme
+refute "disk other"             bench_valid disk 'nvme;id'
+
+# range-memory.tsv: uptime_s local_h mem_current_B rss_KiB cpu_usec anon_B file_B disk_used_B
+printf '%s\n' '# uptime_s local_h mem_current_B rss_KiB cpu_usec anon_B file_B disk_used_B' \
+  '100.0 1000 400 40 5000000 1 2 900' '105.0 1002 600 60 6000000 1 2 950' \
+  '110.0 - - - - - - -' '115.0 1006 500 50 7000000 1 2 980' '120.5 1010 300 30 8500000 1 2 990' >"$t/range.tsv"
+eq "range stats" '{"entry_h":1000,"exit_h":1010,"elapsed_s":20.5,"cpu_usec":3500000,"samples":4,"mem_peak_B":600,"mem_median_B":450,"rss_peak_KiB":60,"rss_median_KiB":45,"disk_used_peak_B":990}' \
+  "$(bench_range_stats "$t/range.tsv")"
+refute "range stats empty" bench_range_stats /dev/null
+
+# Pair verdicts for the block-range campaign.
+jq -n --arg hash "$(printf 'A%.0s' {1..64})" '{
+  role:"rs", campaign:"block-range", outcome:"ok", snapshot:"16200000",
+  verify:[{height:"16200099", match:true, chain_id:"celestia", local_block_id:$hash, reference_block_id:$hash}],
+  range:{scheduled_start:16201000, blocks:1000, entry_h:16201000, exit_h:16202000, final_app_height:16202000}
+}' >"$rs"
+jq '.role = "go"' "$rs" >"$go"
+eq "block range same height" valid "$(pair block-range)"
+jq '.range.final_app_height = 16202003' "$go" >"$t/higher"
+eq "block range unequal final heights" "discard:different_final_heights:rs=16202000,go=16202003,diff=-3" \
+  "$(bench_pair_verdict block-range "$rs" "$t/higher" || true)"
+refute "block range unequal exits nonzero" bench_pair_verdict block-range "$rs" "$t/higher"
+jq '.range.scheduled_start = 16200500' "$go" >"$t/other"
+eq "block range different schedule" discard:different_range "$(bench_pair_verdict block-range "$rs" "$t/other" || true)"
+for invalid in 'del(.range)' '.range.exit_h = 16201999' '.range.final_app_height = null' '.range.entry_h = 16200999'; do
+  jq "$invalid" "$go" >"$t/incomplete"
+  eq "incomplete range ($invalid)" discard:incomplete_range "$(bench_pair_verdict block-range "$rs" "$t/incomplete" || true)"
+done
+jq '.outcome = "failed" | .reason = "missed_range_start"' "$go" >"$t/failed"
+eq "block range failed side" discard:incomplete_run "$(bench_pair_verdict block-range "$rs" "$t/failed" || true)"
+
+block_range_dry() { # block_range_dry ROLE DIR [ENV...]
+  local role=$1 dir=$2; shift 2
+  env BENCH_DRY_RUN="$dir" BENCH_META_campaign=block-range BENCH_META_role="$role" \
+    BENCH_META_height=10 BENCH_META_rust_commit=58be8ae90d00518800df5506b3a1e988f009c1c6 \
+    BENCH_META_range_start=16205000 BENCH_META_range_blocks=1000 \
+    BENCH_META_trust_height=16200000 BENCH_META_trust_hash="$(printf 'A%.0s' {1..64})" \
+    BENCH_META_peers="$peer" BENCH_META_deadline=4102444800 "$@" bash "$here/vm.sh"
+}
+for r in rs go; do
+  out=$(block_range_dry "$r" "$t/dry-block-range-$r" 2>&1) && rc=0 || rc=$?
+  eq "dry run block-range $r" 0 "$rc"
+  [[ $rc == 0 ]] || printf '%s\n' "$out" | sed 's/^/     | /'
+  check "dry run block-range $r halt height" grep -qx 'halt-height = 16206001' "$t/dry-block-range-$r/data/home/config/app.toml"
+  check "dry run block-range $r summary" jq -e '.campaign == "block-range" and .outcome == "dry_run" and
+    .range.scheduled_start == 16205000 and .range.blocks == 1000 and .range.halt_height == 16206001 and
+    .host.disk_layout == "pd" and (.host | has("cpu_model") and has("gfni") and has("sha_ni") and has("vcpus") and has("mem_KiB"))' \
+    "$t/dry-block-range-$r/attrs/summary"
+  check "dry run block-range $r keeps unit after halt" grep -q -- '-p RemainAfterExit=yes' "$t/dry-block-range-$r/plan"
+done
+check "dry run block-range same app config" cmp "$t/dry-block-range-rs/data/home/config/app.toml" "$t/dry-block-range-go/data/home/config/app.toml"
+check "dry run block-range rs halt flag" grep -q -- '--halt-height 16206001' "$t/dry-block-range-rs/plan"
+check "dry run block-range rs state sync" grep -q -- '--statesync-trust-height 16200000' "$t/dry-block-range-rs/plan"
+check "dry run other campaigns keep units default" bash -c "! grep -q RemainAfterExit '$t/dry-state-sync-rs/plan' '$t/dry-bridge-go/plan'"
+check "dry run other campaigns no halt height" bash -c "! grep -q halt-height '$t/dry-state-sync-go/data/home/config/app.toml'"
+check "dry run default data disk" grep -qx 'mkfs.ext4 -q -m 0 /dev/disk/by-id/google-data' "$t/dry-state-sync-go/plan"
+rc=0
+block_range_dry go "$t/dry-block-range-bad" BENCH_META_range_start=16199000 >/dev/null 2>&1 || rc=$?
+check "dry run rejects range before trust height" test "$rc" -ne 0
+
+# Local NVMe SSDs: one is formatted directly, several are striped.
+mkdir -p "$t/nvme4" "$t/nvme1"
+touch "$t/nvme4/google-local-nvme-ssd-"{0,1,2,3} "$t/nvme1/google-local-nvme-ssd-0"
+block_range_dry rs "$t/dry-nvme4" BENCH_META_disk=nvme BENCH_NVME_DIR="$t/nvme4" >/dev/null 2>&1 && rc=0 || rc=$?
+eq "dry run nvme raid" 0 "$rc"
+check "nvme raid0 of four" grep -q "mdadm --create /dev/md0 --level=0 --raid-devices=4 --run $t/nvme4/google-local-nvme-ssd-0 " "$t/dry-nvme4/plan"
+check "nvme raid formatted" grep -q 'mkfs.ext4 -q -m 0 -E lazy_itable_init=0,lazy_journal_init=0 /dev/md0' "$t/dry-nvme4/plan"
+check "nvme layout recorded" jq -e '.host.disk_layout == "nvme-raid0:4"' "$t/dry-nvme4/attrs/summary"
+block_range_dry go "$t/dry-nvme1" BENCH_META_disk=nvme BENCH_NVME_DIR="$t/nvme1" >/dev/null 2>&1 && rc=0 || rc=$?
+eq "dry run one nvme" 0 "$rc"
+check "one nvme formatted directly" grep -q "mkfs.ext4 -q -m 0 -E lazy_itable_init=0,lazy_journal_init=0 $t/nvme1/google-local-nvme-ssd-0" "$t/dry-nvme1/plan"
+check "one nvme no raid" bash -c "! grep -q mdadm '$t/dry-nvme1/plan'"
+mkdir -p "$t/nvme0"
+rc=0
+block_range_dry go "$t/dry-nvme0" BENCH_META_disk=nvme BENCH_NVME_DIR="$t/nvme0" >/dev/null 2>&1 || rc=$?
+check "no nvme device fails" test "$rc" -ne 0
+
+# The window runner: a scripted chain advancing one block per poll.
+range_fixture() (
+  # shellcheck source=scripts/bench/vm.sh
+  . "$here/vm.sh"
+  STATE=$t/range-$1
+  mkdir -p "$STATE"
+  local fault=$1
+  range_start=1000 range_blocks=20 t0=0 deadline=4102444800 units=(bench-node) role=go
+  echo 990 >"$STATE/h"
+  [[ $fault != late ]] || echo 1001 >"$STATE/h"
+  sleep() { :; }
+  mono() { cat "$STATE/h"; }
+  alive() { return 0; }
+  status() { :; }
+  poll() {
+    local h; read -r h <"$STATE/h"
+    height=$h
+    printf '%s %s %s false 1 1 1 1 900 1\n' "$h" "$h" "$h" >>"$STATE/polls.tsv"
+    # The node halts before executing block 1021 (halt-height 1021).
+    ((h >= 1020)) || echo $((h + 1)) >"$STATE/h"
+  }
+  range_sample() { echo "$(mono) $height 100 10 $((height * 1000)) 1 1 500" >>"$STATE/range-memory.tsv"; }
+  node_app_height() { if [[ $fault == runaway ]]; then echo 1025; else cat "$STATE/h"; fi; }
+  node_halted() { [[ $fault != runaway ]]; }
+  run() { printf '%s\n' "$*" >>"$STATE/plan"; }
+  height=$(cat "$STATE/h")
+  range_run || return 1
+  jq -e '.scheduled_start == 1000 and .blocks == 20 and .entry_h == 1000 and .exit_h == 1020 and
+    .final_app_height == (if $f == "runaway" then 1025 else 1020 end) and .halted == ($f != "runaway") and
+    .retained_earliest == 900 and .retained_latest == 1020' --arg f "$fault" "$STATE/range.json" &&
+    [[ $(awk '!/^#/ {print $2}' "$STATE/range-memory.tsv" | head -1) == 1000 ]] &&
+    grep -q 'systemctl stop bench-node' "$STATE/plan"
+)
+check  "range window from H to H+N" range_fixture matched
+check  "range records a missing halt" range_fixture runaway
+refute "range rejects a late node" range_fixture late
+
+# The local dispatcher and the report have their own tests.
+bash "$here/cloud-test.sh" || fails=$((fails + 1))
+python3 -m unittest discover -s "$here" -p 'test_*.py' || fails=$((fails + 1))
 
 [[ $fails == 0 ]] || { echo "$fails failed"; exit 1; }
 echo "all passed"
