@@ -11,6 +11,7 @@ is tracked in [#181](https://github.com/celestiaorg/celestia-rs/issues/181).
 | ABCI `Info.version`, `/app/version` | `10.6.0`, the explicit celestia-app API compatibility target |
 | ABCI `Info.app_version`, node-info numeric `app` protocol | The application protocol from committed consensus parameters; independent of either software release |
 | `/status` and P2P `node_info.version` | `0.38.17-celestia-rs.<Rust package version>` |
+| DA libp2p identify `agentVersion` | `celestia-rs/<network>/<bridge\|light>/<Rust package version>` |
 | Cosmos gRPC/REST `GetNodeInfo.application_version` | Rust name, application name, package version, git commit, build profile and Rust compiler/target |
 | CLI `version`, `version --long` | Rust software version; long output labels the application/core release target as `compatibility_target` |
 
@@ -27,6 +28,15 @@ invented. Node startup registers the node binary's build information even
 when called through the Rust library. A standalone `app` library without a
 node registration reports that library's package version and leaves binary
 build details empty.
+
+The DA bridge and DA light node send an explicit libp2p identify agent
+instead of rust-libp2p's default, so a DA-network crawler can tell them from
+Go celestia-node and from other rust-libp2p peers such as Lumina. The format
+follows Go's `celestia-node/<network>/<type>/<version>/<commit>`: `<network>`
+is the DA network name (for example `celestia` or `mocha-4`), the role is
+`bridge` for the DHT server and `light` for the DHT client, and the version is
+the Rust package version. It omits the commit. No Go peer behaviour reads the
+agent: go-libp2p identify only records it in the peerstore.
 
 These identity differences from Go are intentional: Go reports `celestia-app`
 as its ABCI application/build name, Comet's Go software version as its
