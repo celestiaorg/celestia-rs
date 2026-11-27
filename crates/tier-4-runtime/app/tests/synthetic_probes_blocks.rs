@@ -210,9 +210,15 @@ fn replace(bytes: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
 
 /// Runs the probe fixture of app version `version` through [`app::App`]
 /// from the state after its upgrade block.
-#[allow(clippy::too_many_lines)]
 fn probes_match_the_oracle(version: u64) {
-    let fixture = format!("{FIXTURES}/v{version}-probes");
+    blocks_match_the_oracle(&format!("{FIXTURES}/v{version}-probes"), version);
+}
+
+/// Runs `fixture`, whose blocks after the upgrade run at app version
+/// `version`, through [`app::App`] from the state after its upgrade block.
+#[allow(clippy::too_many_lines)]
+fn blocks_match_the_oracle(fixture: &str, version: u64) {
+    let fixture = fixture.to_owned();
     let roots = roots(&fixture);
     let handoff = roots["handoff_height"].as_i64().unwrap();
     let upgrade = handoff + 1;
@@ -387,4 +393,14 @@ fn v8_probes_match_the_oracle() {
 #[test]
 fn v9_probes_match_the_oracle() {
     probes_match_the_oracle(9);
+}
+
+/// celestia-app v4.1.0 has no capability module in its module manager, so
+/// `InitMemStore` never runs and every IBC packet message on a channel
+/// opened at v3 fails (D's fixture `synthetic/v3-ibc-v4`): MsgTransfer with
+/// `channel` code 9, MsgRecvPacket and MsgAcknowledgement with
+/// `capability` code 7.
+#[test]
+fn v4_ibc_packets_fail_without_the_capability_module() {
+    blocks_match_the_oracle(&format!("{FIXTURES}/v3-ibc-v4"), 4);
 }
