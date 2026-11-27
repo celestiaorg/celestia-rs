@@ -1,0 +1,130 @@
+.filters {
+  display: flex;
+  gap: 0.5rem;
+  margin-block: 1.5rem 0.5rem;
+}
+.filters button {
+  font: inherit;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.3rem 1rem;
+  cursor: pointer;
+}
+.filters button[aria-selected="true"] {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 1rem;
+  margin-block: 1.5rem;
+}
+.tile {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+}
+.tile b {
+  display: block;
+  font-size: 2rem;
+  line-height: 1.2;
+}
+.tile span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.census-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 1.5rem;
+}
+.census-charts figure {
+  margin: 0;
+}
+.census-charts h3 {
+  font-size: 1rem;
+  margin: 0 0 0.4rem;
+}
+.census-charts svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.census-charts .grid-line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.census-charts .axis {
+  fill: var(--muted);
+  font-size: 11px;
+}
+.census-charts .series {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.census-charts .rust {
+  stroke: #bc92ff;
+  fill: #bc92ff;
+  background: none;
+}
+.census-charts .go {
+  stroke: #70cfc2;
+  fill: #70cfc2;
+  background: none;
+}
+.census-charts .crosshair {
+  stroke: var(--muted);
+  stroke-dasharray: 3 3;
+}
+.census-charts .dot {
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+.tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: #241d3a;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+  z-index: 10;
+}
+.table-wrap {
+  overflow-x: auto;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.95rem;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.4rem 0.8rem 0.4rem 0;
+  border-bottom: 1px solid var(--line);
+}
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+td.num,
+th.num {
+  text-align: right;
+}
+td code {
+  font-size: 0.85rem;
+}
+.method li {
+  margin-block: 0.4rem;
+}
+.census-charts path.series {
+  fill: none;
+}
