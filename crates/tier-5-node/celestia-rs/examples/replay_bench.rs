@@ -26,7 +26,9 @@
 //! `H` (for example a node stopped with `start --halt-height H+1`) and
 //! replays `--blocks` blocks from `H + 1`. The home is copied first (next
 //! to it), unless `--in-place true`, which advances it and makes the run
-//! unrepeatable. Blocks come from `--blocks-jsonl`, then from the block
+//! unrepeatable; in place, `--save-blocks true` is required (the block
+//! store advances with the state) and nothing is pruned (the home may be
+//! an archive). Blocks come from `--blocks-jsonl`, then from the block
 //! store of `--blocks-home` (a stopped node home past `H + blocks`), then
 //! from the `.pb` cache. `--save-blocks true` also stores each block with
 //! its seen commit (the next block's last commit) before executing it, as
@@ -303,6 +305,11 @@ fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State, Probes)>
     opts.db.cache_size = a.db_cache_mib << 20;
     opts.store.pruning.interval = a.pruning_interval;
     opts.store.background_pruning = a.background_pruning;
+    if a.in_place {
+        // Never delete versions of a home we do not own a copy of (it
+        // may be an archive or custom-pruned node).
+        opts.store.pruning = multistore::PruningOptions::nothing();
+    }
     let app = app::App::open_with(home, opts).map_err(|e| anyhow!("open app: {}", e.log))?;
     let (bs, mut ss) = node::open_stores(home)?;
     ss.discard_abci_responses = a.discard_abci_responses;
@@ -406,6 +413,11 @@ fn summary(times: &[Duration], txs: usize, total: Duration, digest: &[u8]) {
 
 fn main() -> anyhow::Result<()> {
     let a = args()?;
+    ensure!(
+        !a.in_place || (a.home.is_some() && a.save_blocks),
+        "--in-place true needs --home and --save-blocks true (the block store must \
+         advance with the state, or the home no longer starts)"
+    );
     // Holds the copied home until the run ends.
     let tmp;
     let home = if let Some(src) = &a.home {
