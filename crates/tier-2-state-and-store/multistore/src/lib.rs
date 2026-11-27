@@ -1848,11 +1848,14 @@ mod tests {
         Ok(())
     }
 
+    /// A full database dump.
+    type Dump = Vec<(Vec<u8>, Vec<u8>)>;
+
     /// Background pruning leaves the database byte for byte as synchronous
     /// pruning does, and the trees drop the pruned versions at commit.
     #[test]
     fn background_pruning_writes_what_synchronous_pruning_writes() -> Result<()> {
-        let run = |background: bool| -> Result<(Vec<Version>, Vec<(Vec<u8>, Vec<u8>)>)> {
+        let run = |background: bool| -> Result<(Vec<Version>, Dump)> {
             let db: Arc<dyn KvBackend> = Arc::new(kvdb::MemBackend::new());
             let mut store = Store::open(
                 Arc::clone(&db),
@@ -1874,7 +1877,7 @@ mod tests {
                 store
                     .get_store_mut("acc")?
                     .set(k.clone(), i.to_be_bytes().to_vec())?;
-                if i % 3 == 0 {
+                if i.is_multiple_of(3) {
                     store.get_store_mut("bank")?.set(k, vec![1; 40])?;
                 }
                 store.commit()?;
@@ -1962,12 +1965,12 @@ mod tests {
             store
                 .get_store_mut("acc")?
                 .set(k.clone(), i.to_be_bytes().to_vec())?;
-            if i % 3 == 0 {
+            if i.is_multiple_of(3) {
                 store.get_store_mut("bank")?.set(k, vec![1; 40])?;
             }
             store.commit()
         };
-        let dump = |db: &dyn KvBackend| -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
+        let dump = |db: &dyn KvBackend| -> Result<Dump> {
             db.range(None, None, false)
                 .map_err(db_err)?
                 .collect::<core::result::Result<Vec<_>, _>>()
