@@ -799,12 +799,21 @@ async fn supervise(inputs: Inputs) {
         *backoff = (*backoff * 2).min(MAX_BACKOFF);
         d
     };
+    // One set of metrics for the supervisor's lifetime: a restarted server
+    // (listener failure, certificate renewal) takes over its predecessor's,
+    // so the exported counters do not drop to zero.
+    let mut kept: Option<Arc<ServerMetrics>> = None;
     while !stop.is_cancelled() {
-        let server = match fibre_server::Server::new(
-            cfg.clone(),
-            Arc::clone(&state),
-            Arc::clone(&signer),
-        ) {
+        let built = match &kept {
+            Some(m) => fibre_server::Server::with_metrics(
+                cfg.clone(),
+                Arc::clone(&state),
+                Arc::clone(&signer),
+                Arc::clone(m),
+            ),
+            None => fibre_server::Server::new(cfg.clone(), Arc::clone(&state), Arc::clone(&signer)),
+        };
+        let server = match built {
             Ok(s) => s,
             Err(e) => {
                 let d = retry(&mut backoff);
@@ -841,7 +850,11 @@ async fn supervise(inputs: Inputs) {
             Some(Ok(())) => {}
         }
         let started_at = std::time::Instant::now();
-        *metrics.lock().unwrap_or_else(PoisonError::into_inner) = Some(server.metrics());
+        kept = Some(server.metrics());
+        metrics
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone_from(&kept);
         tracing::info!(
             listen = %server.listen_address(),
             store = %cfg.store.path.display(),

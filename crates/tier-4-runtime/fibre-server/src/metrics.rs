@@ -146,7 +146,9 @@ fn codes() -> [AtomicU64; 17] {
 /// node renders them with [`Self::render`].
 #[derive(Debug)]
 pub struct ServerMetrics {
-    occupancy: Arc<Occupancy>,
+    /// The current server's limiter; replaced when a restarted server
+    /// takes these metrics over ([`crate::Server::with_metrics`]).
+    occupancy: Mutex<Arc<Occupancy>>,
 
     upload_in_flight: AtomicI64,
     upload_memory_reserved: AtomicI64,
@@ -288,7 +290,7 @@ impl ServerMetrics {
     #[must_use]
     pub fn new(occupancy: Arc<Occupancy>) -> Self {
         Self {
-            occupancy,
+            occupancy: Mutex::new(occupancy),
             upload_in_flight: AtomicI64::new(0),
             upload_memory_reserved: AtomicI64::new(0),
             upload_codes: codes(),
@@ -365,6 +367,23 @@ impl ServerMetrics {
             .fetch_add(pruned as u64, Ordering::Relaxed);
         self.prune_freed_bytes
             .fetch_add(freed.max(0).unsigned_abs(), Ordering::Relaxed);
+    }
+
+    /// Reads occupancy and budget from `occupancy` from now on.
+    pub(crate) fn attach_occupancy(&self, occupancy: Arc<Occupancy>) {
+        *self
+            .occupancy
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = occupancy;
+    }
+
+    fn current_occupancy(&self) -> Arc<Occupancy> {
+        Arc::clone(
+            &self
+                .occupancy
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner),
+        )
     }
 
     pub(crate) fn budget_recompute_failed(&self) {
@@ -564,7 +583,13 @@ impl ServerMetrics {
             &mut out,
             "fibre_server_upload_shard_occupancy_bytes",
             "Shard bytes tracked by the storage limiter: on-disk plus in-flight reserved",
-            self.occupancy.usage(),
+            self.current_occupancy().usage(),
+        );
+        gauge(
+            &mut out,
+            "fibre_server_upload_memory_reserved_bytes",
+            "Bytes reserved by in-flight uploads under max_inflight_upload_bytes",
+            self.upload_memory_reserved.load(Ordering::Relaxed),
         );
         gauge(
             &mut out,
@@ -576,7 +601,7 @@ impl ServerMetrics {
             &mut out,
             "fibre_server_upload_shard_budget_bytes",
             "Current per-node storage budget of the limiter (0: unlimited)",
-            self.occupancy.budget_bytes(),
+            self.current_occupancy().budget_bytes(),
         );
         gauge(
             &mut out,

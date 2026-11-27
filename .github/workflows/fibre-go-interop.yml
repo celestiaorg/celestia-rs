@@ -1,0 +1,112 @@
+name: Fibre server Go interoperability
+# The embedded Fibre server (crates/tier-4-runtime/fibre-server) against the
+# celestia-app v11.0.0 Go Fibre client, and next to Go validators running
+# the Go `fibre` v11.0.0 server (conformance/fibre-interop).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "40 6 * * *"
+  pull_request:
+    paths:
+      - 'crates/tier-4-runtime/fibre-server/**'
+      - 'crates/tier-5-node/celestia-rs/src/fibre.rs'
+      - 'crates/tier-5-node/celestia-rs/src/config.rs'
+      - 'crates/tier-4-runtime/privval/**'
+      - 'conformance/fibre-interop/**'
+      - 'conformance/devnet/lib-mixed.sh'
+      - 'conformance/devnet/build-bins.sh'
+      - '.github/workflows/fibre-go-interop.yml'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  GOFLAGS: -mod=mod
+  GOPROXY: https://proxy.golang.org,direct
+
+jobs:
+  # Four celestia-rs validators; the Go v11 client uploads blobs up to the
+  # 128 MiB protocol maximum, pays, downloads, and covers NotFound, 20
+  # clients past the 16-connection cap, a stopped validator, budget
+  # exhaustion (ResourceExhausted with RetryInfo) and TLS health.
+  rust-validators:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fibre-go-interop
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: conformance/fibre-interop/go.mod
+          cache-dependency-path: conformance/fibre-interop/go.sum
+      - name: Build celestia-rs
+        run: cargo build --locked -p celestia-rs --features da-fibre
+      - name: Go v11 client against celestia-rs validators
+        env:
+          SIZES: 1K,300K,8M,64M,127M
+          CLIENTS: '20'
+          TMPDIR: ${{ runner.temp }}/devnet
+        run: |
+          mkdir -p "$TMPDIR"
+          conformance/fibre-interop/rust-validators.sh target/debug/celestia-rs
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fibre-go-interop-rust-validators
+          path: ${{ runner.temp }}/devnet
+          retention-days: 7
+
+  # Two Go validators (celestia-appd v11.0.0 + Go fibre v11.0.0) and two
+  # celestia-rs validators: shared uploads, MsgPayForFibre with both kinds
+  # of signatures, uploads through the celestia-rs bridge, no app-hash
+  # divergence, downloads from mixed Go and Rust shards.
+  mixed-validators:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fibre-go-interop
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: conformance/fibre-interop/go.mod
+          cache-dependency-path: conformance/fibre-interop/go.sum
+      - id: bins
+        uses: actions/cache@v6
+        with:
+          path: target/devnet-bin-v11
+          key: devnet-bin-app-v11.0.0-fibre-core-v0.42.8-${{ hashFiles('conformance/devnet/build-bins.sh') }}
+      - name: Build celestia-appd and fibre v11.0.0
+        if: steps.bins.outputs.cache-hit != 'true'
+        env:
+          DEVNET_BIN: target/devnet-bin-v11
+          APP_VERSION: v11.0.0
+          CORE_VERSION: v0.42.8
+          APPD_ONLY: '1'
+          FIBRE: '1'
+          GOTOOLCHAIN: go1.26.10
+        run: conformance/devnet/build-bins.sh
+      - name: Build celestia-rs
+        run: cargo build --locked -p celestia-rs --features da-fibre
+      - name: Go and celestia-rs validators
+        env:
+          DEVNET_BIN: ${{ github.workspace }}/target/devnet-bin-v11
+          SIZES: 1K,300K,8M,64M,127M
+          TMPDIR: ${{ runner.temp }}/devnet
+        run: |
+          mkdir -p "$TMPDIR"
+          conformance/fibre-interop/mixed-validators.sh target/debug/celestia-rs
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fibre-go-interop-mixed-validators
+          path: ${{ runner.temp }}/devnet
+          retention-days: 7
