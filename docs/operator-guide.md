@@ -1313,8 +1313,12 @@ even when the state is the same.
   `min-retain-blocks = 0` only for a node meant to serve history.
 - **Speed.** Execution is most of the time. Bigger caches and less
   frequent pruning make catch-up about 30% faster without changing
-  state (mainnet blocks 1–1000: 236 → 165 ms per block on 4 vCPUs). Use
-  them while catching up, if the machine has 8 GB of memory to spare:
+  state (mainnet blocks 1–1000: 236 → 165 ms per block on 4 vCPUs). They
+  cost memory: the node cache below adds about 2.0 GB over the default
+  and `--db-cache-mib 4096` about 3.5 GiB (both fill within minutes), so
+  the node uses about 10-11 GiB, above the 8 GB steady-state budget of
+  [hardware.md](hardware.md). Use them only while catching up, on a
+  machine with 16 GB, and return to the defaults afterwards:
 
   ```toml
   # app.toml

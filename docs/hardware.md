@@ -55,7 +55,7 @@ behind these defaults:
 | Setting | Flag | Default | Budget impact |
 |---|---|---|---|
 | Backend | `--db-backend` | `rocksdb` (`redb` available) | RocksDB disk ≈ 1.1–1.4× live data (peaks 1.85× during compaction); redb 2.7–5× |
-| Backend block cache | `--db-cache-mib` | 512 | Bounded: data, index and filter blocks all live in it; plus ≤ 256 MiB memtables (2 × 128 MiB, application database) |
+| Backend block cache | `--db-cache-mib` | 512 | Bounded: data, index and filter blocks all live in it; plus ≤ 256 MiB memtables (2 × 128 MiB, application database). It fills within minutes of catching up, so RSS grows by about the size raised: `--db-cache-mib 4096` costs about 3.5 GiB more than the default (measured on mainnet `follow` nodes) |
 | IAVL node cache | app.toml `iavl-cache-size` (`--node-cache-size` for `abci`) | 4,000,000 nodes | about 510 B per cached node (measured at mainnet height ~560k: 3.58M nodes took 1.43 GB more RSS than 0.78M) → about 2.0 GB when full; 781,250 (celestia-app's default) is the low-memory setting, ~6% slower at height ~560k |
 | Pruning | `--pruning-keep-recent` / `--pruning-keep-every` / `--pruning-interval` | 100 / 0 / 1 | Retained history dominates live data; pruning every commit keeps commit p99 < 0.5 s at 600 tx/block |
 
@@ -65,6 +65,13 @@ cache when full, 512 MiB of block cache, up to 256 MiB of memtables and about
 Homes made by an older `init`, or migrated from Go, keep `iavl-cache-size =
 781250` in `app.toml` until the operator raises it; the node logs a hint
 at startup.
+
+The catch-up settings in the operator guide ("Block sync mainnet from
+genesis (P2P)", "Speed":
+`iavl-cache-size = 8000000` and `--db-cache-mib 4096`) add about 2.0 GB
+and 3.5 GiB to that, so a catching-up node uses about 10-11 GiB. That is
+inside a 16 GB machine but above the 8 GB steady-state budget: return to
+the defaults once the node has caught up.
 
 Measured with these settings at a heavy synthetic load (600 txs ≈ 2,200
 IAVL writes per block): commit p50 0.30 s / p99 0.48 s / max 0.64 s and
