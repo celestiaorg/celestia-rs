@@ -7,6 +7,7 @@
 #
 #   ... | sh -s -- --version v0.1.0     # a specific release
 #   ... | sh -s -- --prerelease         # newest release, pre-releases included
+#   ... | sh -s -- --channel mainnet    # the release a network's channel names
 #   ... | sh -s -- --no-modify-path     # leave shell profiles alone
 #   ... | sh -s -- --uninstall          # remove the binary and the PATH lines
 #
@@ -22,6 +23,7 @@
 # Environment:
 #   CELESTIA_RS_HOME     install root (default ~/.celestia-rs)
 #   CELESTIA_RS_VERSION  same as --version
+#   CELESTIA_RS_CHANNEL  same as --channel
 #   GITHUB_TOKEN         a GitHub token (or GH_TOKEN): needed while the repo is
 #                        private, and lifts the API rate limit. Without one,
 #                        a logged-in `gh` CLI's token is used if needed.
@@ -34,8 +36,11 @@ REPO=${CELESTIA_RS_REPO:-celestiaorg/celestia-rs}
 # Overridable for mirrors and for scripts/test-install.sh.
 GITHUB_URL=${CELESTIA_RS_GITHUB_URL:-https://github.com}
 GITHUB_API=${CELESTIA_RS_GITHUB_API:-https://api.github.com}
+# Release channels: one file per channel holding its tag, on the
+# release-channels branch (.github/workflows/release-channels.yml).
+CHANNELS_URL=${CELESTIA_RS_CHANNELS_URL:-https://raw.githubusercontent.com/$REPO/release-channels/channels}
 # HTTPS only, unless an override above points at plain http (the tests).
-case "$GITHUB_URL $GITHUB_API" in
+case "$GITHUB_URL $GITHUB_API $CHANNELS_URL" in
   *http://*) proto='=https,http' ;;
   *) proto='=https' ;;
 esac
@@ -61,6 +66,8 @@ USAGE:
 
 OPTIONS:
     -v, --version <TAG>   Install this release (e.g. v0.1.0) instead of the latest
+    -c, --channel <NAME>  Install the release a channel recommends (corto,
+                          mocha, mainnet); re-run to follow the channel
         --prerelease      Allow pre-releases when picking the latest release
         --no-modify-path  Don't add the install directory to PATH in shell profiles
         --uninstall       Remove the installed binary and the PATH setup
@@ -72,6 +79,7 @@ EOF
 
 main() {
   version=${CELESTIA_RS_VERSION:-}
+  channel=${CELESTIA_RS_CHANNEL:-}
   token=${GITHUB_TOKEN:-${GH_TOKEN:-}}
   tried_gh=0
   libc_note=""
@@ -86,6 +94,12 @@ main() {
         shift
         ;;
       --version=*) version=${1#--version=} ;;
+      -c | --channel)
+        [ $# -ge 2 ] || err "$1 needs a value, e.g. $1 mainnet"
+        channel=$2
+        shift
+        ;;
+      --channel=*) channel=${1#--channel=} ;;
       --prerelease) prerelease=1 ;;
       --no-modify-path) modify_path=0 ;;
       --uninstall) uninstall=1 ;;
@@ -121,7 +135,10 @@ main() {
     check_glibc
   fi
 
-  if [ -z "$version" ]; then
+  if [ -n "$channel" ]; then
+    [ -z "$version" ] || err "pass --channel or --version, not both"
+    channel_version "$channel"
+  elif [ -z "$version" ]; then
     latest_version "$prerelease"
   fi
   case $version in
@@ -372,6 +389,25 @@ If GitHub rate-limited this IP, set GITHUB_TOKEN, or pass --version."
   if [ "$1" = 0 ]; then
     say "no stable release yet; using the newest pre-release, $version"
   fi
+}
+
+# Sets $version to the tag channel $1 names.
+channel_version() {
+  case $1 in
+    *[!a-z0-9-]* | "") err "invalid channel name '$1'" ;;
+  esac
+  version=$(get "$CHANNELS_URL/$1" - 2>/dev/null | head -n 1 | tr -d '\r') ||
+    err "cannot read channel $1 from $CHANNELS_URL/$1"
+  [ -n "$version" ] || err "cannot read channel $1 from $CHANNELS_URL/$1"
+  # v<major>.<minor>.<patch>[-<pre-release>], nothing else.
+  case $version in
+    v[0-9]*.[0-9]*.[0-9]* ) ;;
+    *) err "channel $1 names an invalid release tag: $version" ;;
+  esac
+  case ${version#v} in
+    *[!0-9A-Za-z.-]*) err "channel $1 names an invalid release tag: $version" ;;
+  esac
+  say "channel $1: $version"
 }
 
 # Check a public release asset without downloading its body.

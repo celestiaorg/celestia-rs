@@ -829,10 +829,11 @@ Verified on the Mocha validator 2026-10-16.
 
 #### Following releases automatically (optional)
 
-`packaging/macos/celestia-rs-auto-update.sh` deploys the newest published
-GitHub release, including release candidates, once every CI check on its
-commit is green. Releases are ordered by publication time; drafts and
-unreleased commits on `main` are excluded. It fetches the exact release tag,
+`packaging/macos/celestia-rs-auto-update.sh` deploys to each node the
+release its network's channel names (`mocha`, `mainnet`; see "Automatic
+releases and release channels" in [releasing.md](releasing.md)), once every
+CI check on its commit is green. Unreleased commits on `main` are never
+deployed. It fetches the exact release tag,
 resolves its commit and builds that source with locked dependencies in
 `~/.celestia-rs/src`. The binary must report both the release version and
 commit before it is swapped in for the Mocha node first. It
@@ -926,6 +927,12 @@ sudo systemctl daemon-reload && sudo systemctl enable --now celestia-rs
 journalctl -u celestia-rs -f
 sudo systemctl stop celestia-rs    # SIGTERM, clean shutdown
 ```
+
+To follow your network's release channel automatically, install
+`packaging/linux/celestia-rs-auto-update.{sh,service,timer}` (steps in the
+`.service` file) and set `CHANNEL` to `mocha` or `mainnet`. Once a day it
+installs the channel's release, restarts the node, and rolls back if the
+node does not catch up ([releasing.md](releasing.md)).
 
 ### Shutdown, the sign state and backups
 

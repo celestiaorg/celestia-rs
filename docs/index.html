@@ -234,13 +234,16 @@
             verified archival stores or verified replay from genesis; this release
             currently stops during Mainnet genesis initialization.</p>
         </details>
-        <h3>Install the release candidate</h3>
+        <h3>Install the Mainnet release</h3>
         <p>
-          The installer checks the archive’s SHA-256. This example pins the
-          version so you can record exactly what you ran.
+          Install the release the <code>mainnet</code> channel recommends. A
+          release reaches it after 24 hours on Mocha, which gets it after 24
+          hours on Corto. On Mocha, use <code>--channel mocha</code>. The
+          installer checks the archive’s SHA-256, and
+          <code>version --long</code> records exactly what you ran.
         </p>
         <div class="terminal">
-          <pre><code>curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/celestiaorg/celestia-rs/v0.1.0-rc.9/scripts/install.sh | sh -s -- --version v0.1.0-rc.9
+          <pre><code>curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/celestiaorg/celestia-rs/main/scripts/install.sh | sh -s -- --channel mainnet
 ~/.celestia-rs/bin/celestia-rs version --long</code></pre>
         </div>
         <h3>Start from a verified Mainnet snapshot</h3>
@@ -320,8 +323,8 @@
             first. Check OS, architecture, disk, file limits, existing node
             homes, processes and port conflicts. Use a fresh user-owned home and
             an isolated binary install. Leave existing services, keys and
-            firewall rules alone. Use the official release installer pinned to
-            v0.1.0-rc.9 and verify the installed version. Initialize with --network mainnet and configure P2P state sync using a recent trust height and matching block hashes from two independent Mainnet RPCs. Stop if either check fails. Do not replay from genesis, provision cloud resources, fund a wallet or submit transactions. Start the node as my
+            firewall rules alone. Use the official release installer with
+            --channel mainnet and verify the installed version. Initialize with --network mainnet and configure P2P state sync using a recent trust height and matching block hashes from two independent Mainnet RPCs. Stop if either check fails. Do not replay from genesis, provision cloud resources, fund a wallet or submit transactions. Start the node as my
             user, with logs and local-only management endpoints. Leave validator
             signing and the DA bridge disabled. Check the local status twice and
             report the chain ID, heights, peer count and catching_up value. If
@@ -357,8 +360,8 @@
         <details id="automatic-updates">
           <summary>How do I configure automatic updates?</summary>
           <p><strong>macOS with launchd.</strong> The packaged updater builds
-            the latest published release, including release candidates, after
-            its CI passes. It deploys to a Mocha canary first, checks progress
+            the release each node’s channel (<code>mocha</code>,
+            <code>mainnet</code>) recommends, after its CI passes. It deploys to a Mocha canary first, checks progress
             and app hashes, then updates Mainnet. A failed health check triggers
             rollback. This setup expects both managed nodes.</p>
           <ol>
@@ -375,6 +378,12 @@
               Inspect <code>~/Library/Logs/celestia-rs-auto-update.log</code>
               after the first pass.</li>
           </ol>
+          <p><strong>Linux node with the packaged system service.</strong>
+            Install the
+            <a href="https://github.com/celestiaorg/celestia-rs/blob/main/packaging/linux/celestia-rs-auto-update.service">daily auto-update timer</a>
+            and set <code>CHANNEL</code> to <code>mainnet</code> or
+            <code>mocha</code>. It installs the channel’s release, restarts the
+            node, and rolls back if the node does not catch up.</p>
           <p><strong>Linux full node with a systemd user service.</strong>
             For a single non-validating node, the following daily cron job
             uses the checksum-verifying release installer. This example assumes
@@ -384,13 +393,13 @@
             <code>systemctl --user cat celestia-rs.service</code>.</p>
           <p>Save the installer once, then open your user crontab:</p>
           <div class="terminal"><pre><code>mkdir -p ~/.celestia-rs/bin
-curl -fsSL https://raw.githubusercontent.com/celestiaorg/celestia-rs/v0.1.0-rc.9/scripts/install.sh -o ~/.celestia-rs/bin/install-release.sh
+curl -fsSL https://raw.githubusercontent.com/celestiaorg/celestia-rs/main/scripts/install.sh -o ~/.celestia-rs/bin/install-release.sh
 crontab -e</code></pre></div>
           <p>Add this single line. It checks daily at 04:15 local time,
-            includes release candidates, and restarts an active service when
-            its running executable differs from the installed one. Remove
-            <code>--prerelease</code> to follow stable releases only.</p>
-          <div class="terminal"><pre><code>15 4 * * * (export XDG_RUNTIME_DIR="/run/user/$(id -u)"; set -e; unit=celestia-rs.service; systemctl --user is-active --quiet "$unit"; sh "$HOME/.celestia-rs/bin/install-release.sh" --no-modify-path --prerelease; pid=$(systemctl --user show "$unit" -p MainPID --value); if [ "$pid" -gt 0 ] &amp;&amp; ! [ "/proc/$pid/exe" -ef "$HOME/.celestia-rs/bin/celestia-rs" ]; then systemctl --user try-restart "$unit"; fi) &gt;&gt;"$HOME/.celestia-rs/update.log" 2&gt;&amp;1</code></pre></div>
+            installs the <code>mainnet</code> channel’s release, and restarts an
+            active service when its running executable differs from the
+            installed one. On Mocha, use <code>--channel mocha</code>.</p>
+          <div class="terminal"><pre><code>15 4 * * * (export XDG_RUNTIME_DIR="/run/user/$(id -u)"; set -e; unit=celestia-rs.service; systemctl --user is-active --quiet "$unit"; sh "$HOME/.celestia-rs/bin/install-release.sh" --no-modify-path --channel mainnet; pid=$(systemctl --user show "$unit" -p MainPID --value); if [ "$pid" -gt 0 ] &amp;&amp; ! [ "/proc/$pid/exe" -ef "$HOME/.celestia-rs/bin/celestia-rs" ]; then systemctl --user try-restart "$unit"; fi) &gt;&gt;"$HOME/.celestia-rs/update.log" 2&gt;&amp;1</code></pre></div>
           <p>Check <code>~/.celestia-rs/update.log</code> and confirm the node
             advances after restart. Remove the cron entry to pause updates.
             The installer keeps the replaced binary as <code>celestia-rs.prev</code>.
