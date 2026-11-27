@@ -14,6 +14,8 @@ package main
 //	   carol: create client P (trusting 30s, h10 at now-25s)
 //	   val0:  update P to h11 (now-1s)
 //	   val1:  create client M (trusting 1h, h10 at now-10m), for misbehaviour
+//	   val2:  create client R of chain "rev0chain" (revision 0, as several
+//	          mainnet counterparties: trusting 1h, h0-10 at now-10m)
 //	+6 alice: update A to h11, adjacent (now-60s)
 //	   bob:   the same header again (already stored: no-op)
 //	   carol: update E to h11 (client expired)
@@ -22,6 +24,8 @@ package main
 //	          validators with V (1/2 of the trusted power)
 //	   val2:  update A to h30 from h20: set V2 shares 1 of 4 with V1 (1/4
 //	          < 1/3: insufficient trust)
+//	   val3:  update R to h0-15 from h0-10 (non-adjacent, as most mainnet
+//	          updates): three signatures and one nil vote
 //	+7 alice: update A to h31 from h20, time now+5s (within clock drift)
 //	   bob:   update A to h32, time now+30s (beyond clock drift)
 //	   carol: update A to h33 with chain ID cp-9 in the header
@@ -47,6 +51,10 @@ package main
 //	   bob:   update A to h41 (client frozen)
 //	   carol: MsgSubmitMisbehaviour on M: two headers at h13 (trusting
 //	          h10) with different app hashes (freezes M)
+//	   val0:  update R to h0-16 from h0-15 (adjacent): three signatures and
+//	          one nil vote
+//	   val1:  update R to h0-17 from h0-16 (adjacent): three signatures and
+//	          one absent
 
 import (
 	"crypto/sha256"
@@ -97,8 +105,8 @@ func newTMSet(keys []ed25519.PrivKey) tmSet {
 }
 
 // sigMode says how validator i of the set signs: "ok", "bad" (a
-// corrupted signature), "absent", or "as0" (validator 0's address and
-// signature in slot i).
+// corrupted signature), "absent", "nil" (a vote for no block), or "as0"
+// (validator 0's address and signature in slot i).
 type sigMode func(i int) string
 
 func allSign(int) string { return "ok" }
@@ -144,6 +152,11 @@ func tmHeader(chainID string, height int64, t time.Time, set, next tmSet, appHas
 			Type: cmtproto.PrecommitType, Height: height, Round: 0, BlockID: blockID,
 			Timestamp: t.UTC(), ValidatorAddress: signer.Address, ValidatorIndex: int32(i),
 		}
+		flag := cmttypes.BlockIDFlagCommit
+		if m == "nil" {
+			vote.BlockID = cmttypes.BlockID{}
+			flag = cmttypes.BlockIDFlagNil
+		}
 		if m == "as0" {
 			vote.ValidatorIndex = 0
 		}
@@ -155,7 +168,7 @@ func tmHeader(chainID string, height int64, t time.Time, set, next tmSet, appHas
 			sig[0] ^= 0xff
 		}
 		sigs = append(sigs, cmttypes.CommitSig{
-			BlockIDFlag: cmttypes.BlockIDFlagCommit, ValidatorAddress: signer.Address,
+			BlockIDFlag: flag, ValidatorAddress: signer.Address,
 			Timestamp: t.UTC(), Signature: sig,
 		})
 	}
@@ -170,7 +183,7 @@ func hash32(b byte) []byte {
 	return h[:]
 }
 
-func tmMsgHeader(sh *cmttypes.SignedHeader, set tmSet, trusted int64, trustedSet tmSet) (*ibctm.Header, error) {
+func tmMsgHeader(sh *cmttypes.SignedHeader, set tmSet, revision uint64, trusted int64, trustedSet tmSet) (*ibctm.Header, error) {
 	vals, err := set.vals.ToProto()
 	if err != nil {
 		return nil, err
@@ -182,7 +195,7 @@ func tmMsgHeader(sh *cmttypes.SignedHeader, set tmSet, trusted int64, trustedSet
 	return &ibctm.Header{
 		SignedHeader:      sh.ToProto(),
 		ValidatorSet:      vals,
-		TrustedHeight:     clienttypes.NewHeight(1, uint64(trusted)),
+		TrustedHeight:     clienttypes.NewHeight(revision, uint64(trusted)),
 		TrustedValidators: tvals,
 	}, nil
 }
@@ -201,12 +214,13 @@ func (s *synth) tmSteps(
 		s.tmBase = a.IBCKeeper.ClientKeeper.GetNextClientSequence(a.NewContext(true))
 	}
 	clientID := func(i uint64) string { return clienttypes.FormatClientIdentifier("07-tendermint", s.tmBase+i) }
-	idA, idE, idP, idM := clientID(0), clientID(1), clientID(2), clientID(3)
+	idA, idE, idP, idM, idR := clientID(0), clientID(1), clientID(2), clientID(3), clientID(4)
+	const rev0 = "rev0chain"
 
-	create := func(signer string, trusting time.Duration, at time.Time) func() error {
+	createOf := func(signer, chainID string, revision uint64, trusting time.Duration, at time.Time) func() error {
 		return func() error {
-			cs := ibctm.NewClientState(tmChainID, ibctm.DefaultTrustLevel, trusting, 2*trusting, 10*time.Second,
-				clienttypes.NewHeight(1, 10), commitmenttypes.GetSDKSpecs(), []string{"upgrade", "upgradedIBCState"})
+			cs := ibctm.NewClientState(chainID, ibctm.DefaultTrustLevel, trusting, 2*trusting, 10*time.Second,
+				clienttypes.NewHeight(revision, 10), commitmenttypes.GetSDKSpecs(), []string{"upgrade", "upgradedIBCState"})
 			cons := ibctm.NewConsensusState(at.UTC(), commitmenttypes.NewMerkleRoot(hash32(10)), v.vals.Hash())
 			msg, err := clienttypes.NewMsgCreateClient(cs, cons, addr(signer).String())
 			if err != nil {
@@ -214,6 +228,9 @@ func (s *synth) tmSteps(
 			}
 			return txWith(msg, probeGas...)
 		}
+	}
+	create := func(signer string, trusting time.Duration, at time.Time) func() error {
+		return createOf(signer, tmChainID, 1, trusting, at)
 	}
 	type upd struct {
 		chainID    string
@@ -241,7 +258,11 @@ func (s *synth) tmSteps(
 		if err != nil {
 			return nil, err
 		}
-		return tmMsgHeader(sh, u.set, u.trusted, u.trustedSet)
+		revision := uint64(1)
+		if u.chainID == rev0 {
+			revision = 0
+		}
+		return tmMsgHeader(sh, u.set, revision, u.trusted, u.trustedSet)
 	}
 	update := func(signer, client string, u upd) func() error {
 		return func() error {
@@ -267,6 +288,15 @@ func (s *synth) tmSteps(
 	fromA20 := func(h int64, d time.Duration) upd {
 		return upd{height: h, at: at(d), set: v1, next: v1, trusted: 20, trustedSet: v1}
 	}
+	// lastIs: the last validator votes `m`, the others sign.
+	lastIs := func(m string) sigMode {
+		return func(i int) string {
+			if i == 3 {
+				return m
+			}
+			return "ok"
+		}
+	}
 	badFirst := func(i int) string {
 		if i == 0 {
 			return "bad"
@@ -281,6 +311,7 @@ func (s *synth) tmSteps(
 			create("carol", 30*time.Second, at(-25*time.Second)),
 			update("val0", idP, upd{height: 11, at: at(-time.Second), set: v, next: v, trusted: 10, trustedSet: v}),
 			create("val1", time.Hour, at(-10*time.Minute)),
+			createOf("val2", rev0, 0, time.Hour, at(-10*time.Minute)),
 		}, nil
 	case 6:
 		return []func() error{
@@ -290,6 +321,7 @@ func (s *synth) tmSteps(
 			update("val0", idP, upd{height: 12, at: at(-time.Second), set: v, next: v, trusted: 11, trustedSet: v}),
 			update("val1", idA, a20),
 			update("val2", idA, upd{height: 30, at: at(-20 * time.Second), set: v2, next: v2, trusted: 20, trustedSet: v1}),
+			update("val3", idR, upd{chainID: rev0, height: 15, at: at(-10 * time.Second), set: v, next: v, mode: lastIs("nil"), trusted: 10, trustedSet: v}),
 		}, nil
 	case 7:
 		u33 := fromA20(33, -10*time.Second)
@@ -376,10 +408,13 @@ func (s *synth) tmSteps(
 			}
 			return txWith(msg, probeGas...)
 		}
+		t6r := s.blockTime(height - offset + 6).Add(-10 * time.Second)
 		return []func() error{
 			update("alice", idA, conflict),
 			update("bob", idA, fromA20(41, -5*time.Second)),
 			misbehaviour,
+			update("val0", idR, upd{chainID: rev0, height: 16, at: t6r.Add(time.Second), set: v, next: v, mode: lastIs("nil"), trusted: 15, trustedSet: v}),
+			update("val1", idR, upd{chainID: rev0, height: 17, at: t6r.Add(2 * time.Second), set: v, next: v, mode: lastIs("absent"), trusted: 16, trustedSet: v}),
 		}, nil
 	}
 	return nil, nil

@@ -370,6 +370,52 @@ tar -C "$OUT/home" --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -c
   | gzip -n -9 > conformance/fixtures/synthetic/homes/home-25.tar.gz
 ```
 
+#### 07-tendermint client blocks per release
+
+`-heights 10 -tmclient` (in `v4-oracle` to `v9-oracle`, `tmclient.go`) runs
+each release's usual five blocks, then five blocks of `MsgCreateClient`,
+`MsgUpdateClient` and `MsgSubmitMisbehaviour` for a synthetic tendermint
+counterparty. The oracle signs the counterparty's headers with fixed ed25519
+keys, so each header can break exactly one rule:
+
+- adjacent and non-adjacent updates, with 1/2 and 1/4 of the trusted power;
+- an expired client, a header beyond the clock drift, a wrong chain ID;
+- pruning of an expired consensus state;
+- freezing by a conflicting header and by `MsgSubmitMisbehaviour`;
+- a revision 0 counterparty, with nil votes and absent signatures;
+- the order in which the commit checks report errors, on the adjacent path
+  (signatures found by index, with the set-size check) and on the trusting
+  path (signatures found by address): a missing slot with a bad first
+  signature, a bad first signature with enough good ones, too little power,
+  a validator in two slots, a wrong validators hash.
+
+The fixtures are `fixtures/synthetic/v{4,5,6,8,9}-tm`. `cargo test -p app
+--test synthetic_tm_client_oracle` pins Go's code, codespace and log for each
+case and release, and the client store changes. celestia-core 0.39.30 (v8.0.8)
+and later report `validator address mismatch at index 1` for a signature
+found by index under another validator's address; earlier releases report
+`wrong signature (#1)`.
+
+The cases follow what mainnet relayers send. The `update_client_census`
+example decodes each `MsgUpdateClient` in a block stream; on the blocks of
+five 10,000-block windows per era (found with the RPC's `tx_search`), it
+found:
+
+| App version | Updates sampled | Adjacent | With absent signatures | With nil votes | Validator set changed | Revision 0 counterparty |
+| --- | --- | --- | --- | --- | --- | --- |
+| v1 | 61 | 5 | 61 | 0 | 0 | 0 |
+| v2 | 0 (none indexed) | | | | | |
+| v3 | 80 | 0 | 72 | 0 | 0 | 12 |
+| v4 | 100 | 0 | 87 | 0 | 12 | 23 |
+| v5 | 102 | 0 | 100 | 0 | 2 | 2 |
+| v6 | 100 | 0 | 90 | 0 | 9 | 0 |
+| v8 | 103 | 0 | 93 | 2 | 1 | 0 |
+| v9 | 101 | 3 | 88 | 6 | 1 | 0 |
+| v10 | 100 | 0 | 90 | 3 | 2 | 0 |
+
+Most updates are non-adjacent, with absent signatures; nil votes appear from
+v8, and some counterparties use revision 0.
+
 #### Probe blocks per release
 
 `-heights 19 -probes` (in `v4-oracle` to `v9-oracle`, `probes.go`,
