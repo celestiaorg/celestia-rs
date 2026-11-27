@@ -243,8 +243,8 @@ pub const DEFAULT_NODE_CACHE_SIZE: usize = 4_000_000;
 pub struct StoreOptions {
     /// Pruning policy.
     pub pruning: PruningOptions,
-    /// Decoded IAVL nodes cached across all stores (at least ~370 B of
-    /// memory each, measured at mainnet height ~560k).
+    /// Decoded IAVL nodes cached across all stores (about 510 B of memory
+    /// each, measured at mainnet height ~560k).
     pub node_cache_size: usize,
     /// Run the storage part of pruning (orphan scans and deletes) on a
     /// worker thread instead of inside [`Store::commit`] (see
