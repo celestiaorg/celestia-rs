@@ -1765,8 +1765,8 @@ operator key like everyone else and keep the node running.
 
 The procedure is section 11 with:
 
-- `export NODE_HOME=$HOME/.celestia-rs/mainnet`, `--network mainnet` (2
-  built-in seeds and 2 persistent peers), `--chain-id celestia`, RPCs
+- `export NODE_HOME=$HOME/.celestia-rs/mainnet`, `--network mainnet` (3
+  built-in seeds and 4 persistent peers, tested 2026-11-27), `--chain-id celestia`, RPCs
   `https://rpc.celestia.pops.one` and `https://celestia-rpc.polkachu.com`.
 - Real TIA (no faucet). Parameters (2026-10-15): `min_commission_rate`
   0.20, `max_validators` 100 with 96 bonded — the active set is nearly
@@ -1798,6 +1798,13 @@ The procedure is section 11 with:
   `cd conformance/p2pprobe && go build -o p2pprobe . && ROUNDS=2 ./p2pprobe < peers.txt`
   (one `id@host:port` per line; needs outbound TCP to the peers' P2P
   ports).
+  The built-in mainnet list comes from the official lists
+  (`https://raw.githubusercontent.com/celestiaorg/networks/master/celestia/seeds.txt`
+  and `peers.txt`) and the cosmos chain-registry. On 2026-11-27, a fresh
+  home with state sync on got a snapshot offer in 25 s with it. The three
+  seeds alone gave no lasting peer that day, so keep live persistent peers
+  configured. To refresh them:
+  `curl -sL https://raw.githubusercontent.com/celestiaorg/networks/master/celestia/peers.txt | paste -sd, -`.
 - Route B with Polkachu's mainnet snapshot
   (`snapshots.polkachu.com/snapshots/celestia/`, ~640 MB snapshot inside).
 - A separate machine or home from Mocha, its own consensus key and
