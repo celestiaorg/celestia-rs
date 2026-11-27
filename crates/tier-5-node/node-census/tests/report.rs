@@ -12,6 +12,8 @@ fn node(id: &str, version: &str, implementation: Implementation) -> Observed {
         moniker: format!("m-{id}"),
         app_version: 6,
         source: node_census::crawl::Source::P2p,
+        app_release: None,
+        rpc_url: None,
     }
 }
 
@@ -113,4 +115,25 @@ fn record_rejects_a_crawl_that_observed_no_node() {
             .ensure_publishable()
             .is_ok()
     );
+}
+
+#[test]
+fn snapshot_counts_app_releases_of_nodes_that_answered() {
+    let mut r = result();
+    r.reached[1].app_release = Some("6.4.0".into());
+    r.reached[2].app_release = Some("6.4.0".into());
+    r.reached[0].app_release = Some("6.3.1".into());
+    let s = Snapshot::new("mainnet", "celestia", 1, 1, r);
+    assert_eq!(s.summary.app_releases.len(), 2);
+    assert_eq!(s.summary.app_releases["6.4.0"], 2);
+    assert_eq!(s.summary.app_releases["6.3.1"], 1);
+}
+
+#[test]
+fn history_entries_without_app_releases_still_parse() {
+    let old = r#"{"entries":[{"network":"mainnet","crawled_at":1,"summary":{
+        "reachable":3,"direct":1,"rust":1,"go":2,"unknown":0,"unreachable":4,
+        "versions":{"0.38.17":2}}}]}"#;
+    let h: History = serde_json::from_str(old).unwrap();
+    assert!(h.entries[0].summary.app_releases.is_empty());
 }

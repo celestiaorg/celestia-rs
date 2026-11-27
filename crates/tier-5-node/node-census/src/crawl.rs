@@ -63,6 +63,13 @@ pub struct Observed {
     pub app_version: u64,
     /// How the `NodeInfo` was obtained.
     pub source: Source,
+    /// celestia-app release from the node's RPC `/abci_info`, when its RPC
+    /// answered (`result.response.version`, for example `6.4.0`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_release: Option<String>,
+    /// Where to ask for `/abci_info`; never published.
+    #[serde(skip)]
+    pub rpc_url: Option<String>,
 }
 
 /// Where an observation came from.
@@ -87,6 +94,7 @@ pub struct CrawlResult {
 /// The result of one probe.
 struct Probe {
     info: NodeInfo,
+    rpc_url: Option<String>,
     id: String,
     addrs: Vec<NetAddress>,
 }
@@ -175,6 +183,8 @@ pub async fn crawl(cfg: CrawlConfig) -> CrawlResult {
                     moniker: p.info.moniker,
                     app_version: p.info.protocol_version.app,
                     source: Source::P2p,
+                    app_release: None,
+                    rpc_url: p.rpc_url,
                 },
             );
         }
@@ -257,7 +267,13 @@ async fn probe(
         }
     };
     transport.cleanup(remote);
-    Ok(Probe { info, id, addrs })
+    let rpc_url = crate::rpc::rpc_url(&info.other.rpc_address, remote.ip());
+    Ok(Probe {
+        info,
+        rpc_url,
+        id,
+        addrs,
+    })
 }
 
 /// Waits for the first `PexAddrs` message; other channels are drained.

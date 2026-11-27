@@ -25,6 +25,10 @@ pub struct Summary {
     pub unreachable: usize,
     /// Reachable nodes per `NodeInfo.version`.
     pub versions: BTreeMap<String, usize>,
+    /// Nodes per celestia-app release, counting only nodes whose RPC
+    /// `/abci_info` answered. Absent in entries recorded before it existed.
+    #[serde(default)]
+    pub app_releases: BTreeMap<String, usize>,
 }
 
 /// One crawl of one network.
@@ -71,6 +75,9 @@ impl Snapshot {
                 summary.direct += 1;
             }
             *summary.versions.entry(n.version.clone()).or_default() += 1;
+            if let Some(r) = &n.app_release {
+                *summary.app_releases.entry(r.clone()).or_default() += 1;
+            }
         }
         Self {
             network: network.into(),

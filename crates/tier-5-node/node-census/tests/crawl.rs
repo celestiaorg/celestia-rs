@@ -163,6 +163,8 @@ async fn counts_rpc_reported_peers_and_prefers_a_direct_handshake() {
         moniker: "nat".into(),
         app_version: 6,
         source: Source::Rpc,
+        app_release: None,
+        rpc_url: None,
     };
     let reported_go = Observed {
         id: go.addr.id.unwrap().to_string(),
@@ -171,6 +173,8 @@ async fn counts_rpc_reported_peers_and_prefers_a_direct_handshake() {
         moniker: "stale".into(),
         app_version: 0,
         source: Source::Rpc,
+        app_release: None,
+        rpc_url: None,
     };
     let result = crawl(CrawlConfig {
         rpc_peers: vec![
