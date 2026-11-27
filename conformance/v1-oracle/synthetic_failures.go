@@ -31,6 +31,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	kmultisig "github.com/cosmos/cosmos-sdk/crypto/keys/multisig"
@@ -78,6 +79,7 @@ var failUsers = append([]string{
 	"f-nopk",
 	"f-sigs-0", "f-sigs-1", "f-sigs-2", "f-sigs-3", "f-sigs-4", "f-sigs-5", "f-sigs-6", "f-sigs-7",
 	"f-aux-payer", "f-aux", "f-pk-mismatch", "f-ms-0", "f-ms-1", "f-ms-2",
+	"f-bigdec",
 	"f-zero-undel", "f-zero-redel", "f-zero-cancel",
 	"f-exec-nested", "f-exec-multi", "f-exec-vesting", "f-exec-ibc",
 	"f-prop-gov-send", "f-prop-signer", "f-prop-unroutable",
@@ -321,6 +323,11 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 		// counts a nil bit array as size 0, so VerifyMultisignature fails
 		// ("bit array size is incorrect"; sdk 4); v0.50 panics.
 		add(func() error { return b.multisigNoBitArray(send) })
+		// A MsgEditValidator commission rate whose sdk.Dec integer has 316
+		// bits: cosmos-sdk v0.46's Dec.Unmarshal rejects more than 315 bits
+		// (a tx decode error, sdk 2), below cosmossdk.io/math's LegacyDec
+		// limit of 2^256 * 10^18.
+		add(func() error { return b.editCommissionRaw("f-bigdec", "val1", "1"+strings.Repeat("0", 95)) })
 		tx("f-redel", stakingtypes.NewMsgBeginRedelegate(b.addr("f-redel"), val0, val1, coin(5*tia)))
 		with(ph("f-fee-limit"), func(f clienttx.Factory) clienttx.Factory { return f.WithFeeGranter(b.addr("f-fee-granter")) },
 			send(ph("f-fee-limit"), "alice", 1))
@@ -452,6 +459,8 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 		add(func() error { return b.keylessSigners(sigSigners(7), send) })
 		// DIRECT_AUX without a tip, and the multisig key mismatch.
 		add(func() error { return b.directAux("f-aux-payer", "f-aux", nil, send) })
+		// 313 bits: decodes, then ValidateBasic refuses a rate above 1.
+		add(func() error { return b.editCommissionRaw("f-bigdec", "val1", "1"+strings.Repeat("0", 94)) })
 		add(func() error {
 			mpk, _ := b.failMultisigKey()
 			return b.withPubKey("f-pk-mismatch", mpk, send("f-pk-mismatch", "alice", 1))
@@ -746,5 +755,46 @@ func (b *aminoBuilder) multisigNoBitArray(send func(from, to string, n int64) sd
 	}
 	return b.rawTx(&txtypes.TxBody{Messages: []*codectypes.Any{m}}, authInfo, func(int, []byte, []byte) ([]byte, error) {
 		return (&cryptotypes.MultiSignature{Signatures: [][]byte{bytes.Repeat([]byte{1}, 64), bytes.Repeat([]byte{2}, 64)}}).Marshal()
+	}, 1)
+}
+
+// editCommissionRaw adds a DIRECT transaction from signer holding a
+// MsgEditValidator of validator val whose commission_rate is the wire
+// string rate, encoded by hand (sdk.Dec cannot hold every such value).
+func (b *aminoBuilder) editCommissionRaw(signer, val, rate string) error {
+	appendField := func(out []byte, num int, v []byte) []byte {
+		out = binary.AppendUvarint(out, uint64(num<<3|2))
+		out = binary.AppendUvarint(out, uint64(len(v)))
+		return append(out, v...)
+	}
+	desc := appendField(nil, 1, []byte("bigdec"))
+	var msg []byte
+	msg = appendField(msg, 1, desc)
+	msg = appendField(msg, 2, []byte(b.valAddr(val).String()))
+	msg = appendField(msg, 3, []byte(rate))
+	if err := b.claim(signer); err != nil {
+		return err
+	}
+	num, seq, err := b.account(b.addr(signer))
+	if err != nil {
+		return err
+	}
+	_, pk := b.key(signer)
+	pkAny, err := codectypes.NewAnyWithValue(pk)
+	if err != nil {
+		return err
+	}
+	authInfo := &txtypes.AuthInfo{
+		SignerInfos: []*txtypes.SignerInfo{{PublicKey: pkAny, ModeInfo: single(signing.SignMode_SIGN_MODE_DIRECT), Sequence: seq}},
+		Fee:         failFee(),
+	}
+	body := &txtypes.TxBody{Messages: []*codectypes.Any{{TypeUrl: "/cosmos.staking.v1beta1.MsgEditValidator", Value: msg}}}
+	return b.rawTx(body, authInfo, func(_ int, body, auth []byte) ([]byte, error) {
+		doc, err := (&txtypes.SignDoc{BodyBytes: body, AuthInfoBytes: auth, ChainId: appconsts.TestChainID, AccountNumber: num}).Marshal()
+		if err != nil {
+			return nil, err
+		}
+		sig, _, err := b.s.kr.Sign(signer, doc)
+		return sig, err
 	}, 1)
 }
