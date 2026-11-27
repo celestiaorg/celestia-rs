@@ -1387,6 +1387,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn tendermint_errors_take_the_v6_codespace() {
+        let e = v6_codespace(x_ibc::errors::tendermint::invalid_header_height("h"));
+        assert_eq!((e.codespace, e.code), ("tendermint-client", 5));
+        let other = v6_codespace(errs::invalid_request("r"));
+        assert_eq!(other.codespace, "sdk");
+    }
+
+    #[test]
     fn key_path_text_is_v6_merkle_path_string() {
         let path = celestia_proto::ibc::core::commitment::v1::MerklePath {
             key_path: vec![
