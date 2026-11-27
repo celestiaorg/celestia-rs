@@ -124,8 +124,12 @@ install_agent() {
   # long jobs (this killed the first Go checkpoint campaign's driver).
   systemctl disable --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer >/dev/null 2>&1 || true
   mkdir -p /etc/needrestart/conf.d && echo "\$nrconf{restart} = 'l';" >/etc/needrestart/conf.d/vmexec.conf
-  # A disk attached with device name "data" is mounted at /data (formatted only if blank).
+  # A disk attached with device name "data" is mounted at /data (formatted
+  # only if blank). Without one, a local NVMe SSD (-lssd machine types) is
+  # used instead: its data does not survive a stop, so jobs on it must
+  # upload what they need to keep.
   local dev=/dev/disk/by-id/google-data
+  [[ -e $dev ]] || dev=/dev/disk/by-id/google-local-nvme-ssd-0
   if [[ -e $dev ]]; then
     mkdir -p /data
     blkid -p "$dev" >/dev/null 2>&1 || mkfs.ext4 -q -m 0 -E lazy_itable_init=1 "$dev"

@@ -38,7 +38,12 @@ $V delete rs-1
   startup script installs the agent (`vmexec-agent.service`), disables
   unattended upgrades and needrestart restarts, and mounts a disk with device
   name `data` at `/data` (`--data-gb N` creates one, `--attach-disk DISK`
-  attaches an existing one).
+  attaches an existing one). Without such a disk, a local NVMe SSD (for
+  example `--machine-type c3-standard-8-lssd`) is formatted and mounted at
+  `/data` instead. It flushes in ~0.3 ms instead of ~1.3 ms for any
+  persistent disk, which makes replays ~25% faster, but its contents are
+  lost when the VM stops. `VMX_ZONE` picks another zone when a machine type
+  is out of stock.
 - `exec` runs a bash script as root in `/var/lib/vmexec/runs/<id>/` under
   `timeout` (`--timeout`, default 3600 s; status 124 on timeout). You get
   the last ~180 KB of stdout+stderr and the exit status. Longer output stays

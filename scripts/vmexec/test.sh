@@ -92,6 +92,7 @@ check  "heartbeat fresh"     vmx_heartbeat_fresh "$t/hb" 1799999990
 refute "heartbeat stale"     vmx_heartbeat_fresh "$t/hb" 1800000100
 refute "heartbeat missing"   vmx_heartbeat_fresh "$t/nohb" 0
 check  "agent unit after startup script" grep -q 'google-startup-scripts.service' <(sed -n '/^install_agent/,/^}/p' "$here/agent.sh")
+check  "agent mounts a local SSD without a data disk" grep -q 'google-local-nvme-ssd-0' <(sed -n '/^install_agent/,/^}/p' "$here/agent.sh")
 check  "agent restart does not block" grep -q 'systemctl restart --no-block vmexec-agent.service' "$here/agent.sh"
 check  "job unit restart"    grep -q '^Restart=on-failure$' <(vmx_job_unit follow /x/cmd /x/log on-failure)
 
