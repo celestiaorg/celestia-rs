@@ -169,8 +169,15 @@ keyring-backend = "test"
     assert!(out.contains("https://rpc2.example.com"));
     assert!(out.contains("rpc.example.com:443"));
     assert!(out.contains(r#"keyring-backend = "test""#));
-    for secret in ["hunter2", "alice", "s3cr3t", "k3y", "\"pw\""] {
-        assert!(!out.contains(secret), "{secret} left in {out}");
+    // Failure messages name the fixture by index, never the secret text.
+    for (i, secret) in ["hunter2", "alice", "s3cr3t", "k3y", "\"pw\""]
+        .iter()
+        .enumerate()
+    {
+        assert!(
+            !out.contains(secret),
+            "fixture secret #{i} was not redacted"
+        );
     }
     assert!(out.contains("<redacted>"));
 }
@@ -192,15 +199,21 @@ inline_password = """one-line-secret"""
 still = "kept too"
 "#;
     let out = debug_bundle::redact_toml(src);
-    for secret in [
+    for (i, secret) in [
         "line-one-secret",
         "line-two-secret",
         "literal-secret",
         "array-secret-1",
         "nested-secret",
         "one-line-secret",
-    ] {
-        assert!(!out.contains(secret), "{secret} left in {out}");
+    ]
+    .iter()
+    .enumerate()
+    {
+        assert!(
+            !out.contains(secret),
+            "fixture secret #{i} was not redacted"
+        );
     }
     assert!(out.contains(r#"after = "kept""#), "{out}");
     assert!(out.contains(r#"still = "kept too""#), "{out}");
