@@ -507,6 +507,8 @@ fn bulk_node(seed: u8) -> (Switch, Arc<Bulk>) {
 /// directions (the dialer's outbound and the listener's inbound side).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_connection_carries_block_sized_messages_at_the_configured_rate() {
+    const MSG: usize = 80 * 1024;
+    const COUNT: usize = 100;
     let (a, bulk_a) = bulk_node(31);
     a.start().await.unwrap();
     let (b, bulk_b) = bulk_node(32);
@@ -518,8 +520,6 @@ async fn a_connection_carries_block_sized_messages_at_the_configured_rate() {
     let to_a = b.get_peer(&a.node_id()).unwrap();
     let to_b = a.get_peer(&b.node_id()).unwrap();
 
-    const MSG: usize = 80 * 1024;
-    const COUNT: usize = 100;
     for (peer, bulk, side) in [(&to_a, &bulk_a, "outbound"), (&to_b, &bulk_b, "inbound")] {
         let start = std::time::Instant::now();
         for _ in 0..COUNT {
@@ -532,7 +532,6 @@ async fn a_connection_carries_block_sized_messages_at_the_configured_rate() {
         }
         #[allow(clippy::cast_precision_loss)]
         let rate = want as f64 / start.elapsed().as_secs_f64();
-        println!("{side}: {:.0} KB/s", rate / 1024.0);
         // Debug builds reach about 3 MB/s here and release builds over
         // 100 MB/s; a connection held to 512,000 B/s stays below the bound.
         assert!(rate > 2.0 * 512_000.0, "{side}: {rate:.0} B/s");
