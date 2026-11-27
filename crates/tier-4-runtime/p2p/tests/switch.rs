@@ -194,3 +194,130 @@ async fn rejects_self_wrong_network_and_duplicates() {
     c.stop();
     d.stop();
 }
+
+const SLOW: u8 = 0x71;
+
+/// Records the order of `receive` and `remove_peer`; `receive` is slow, as
+/// a busy reactor task is.
+#[derive(Default)]
+struct Slow {
+    events: Mutex<Vec<String>>,
+}
+
+impl Reactor for Slow {
+    fn name(&self) -> String {
+        "SLOW".into()
+    }
+    fn channels(&self) -> Vec<ChannelDescriptor> {
+        vec![ChannelDescriptor::new(SLOW, 5)]
+    }
+    fn receive(&self, env: Envelope) -> Result<(), String> {
+        std::thread::sleep(Duration::from_millis(300));
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("receive {}", String::from_utf8_lossy(&env.message)));
+        Ok(())
+    }
+    fn remove_peer(&self, _peer: &Arc<p2p::Peer>, _reason: &str) {
+        self.events.lock().unwrap().push("remove_peer".into());
+    }
+}
+
+/// As in Go, where the connection's receive routine calls `Receive` before
+/// the switch stops the peer: a message that arrived before the remote
+/// closed reaches the reactor before `remove_peer`. A seed sends its
+/// PexAddrs and then closes, so the reply and the close arrive together.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn messages_before_a_close_reach_reactors_before_remove_peer() {
+    let (a, _echo_a, _pex_a) = node(11, vec![]);
+    let slow = Arc::new(Slow::default());
+    a.add_reactor(slow.clone()).unwrap();
+    a.start().await.unwrap();
+    let a_addr = a.net_address().unwrap();
+    let (b, _echo_b, _pex_b) = node(12, vec![]);
+    b.add_reactor(Arc::new(Slow::default())).unwrap();
+    b.start().await.unwrap();
+    b.dial_peer_with_address(&a_addr).await.unwrap();
+    wait_for(|| a.peers().len() == 1).await;
+
+    let pa = b.get_peer(&a.node_id()).unwrap();
+    // As a seed does after its PexAddrs: send, then flush and close.
+    assert!(pa.send(SLOW, b"last".to_vec()).await);
+    pa.flush_stop();
+
+    wait_for(|| slow.events.lock().unwrap().len() == 2).await;
+    assert_eq!(
+        *slow.events.lock().unwrap(),
+        vec!["receive last".to_owned(), "remove_peer".to_owned()]
+    );
+    a.stop();
+}
+
+/// A switch with a PEX reactor of `config` and its address book.
+fn pex_node(seed: u8, config: PexConfig) -> (Switch, Arc<AddrBook>, Arc<PexReactor>) {
+    let key = NodeKey::from_seed(&[seed; 32]);
+    let info = NodeInfo {
+        protocol_version: ProtocolVersion {
+            p2p: 8,
+            block: 11,
+            app: 0,
+        },
+        network: "test-chain".into(),
+        version: "0.38.17".into(),
+        moniker: format!("node{seed}"),
+        ..NodeInfo::default()
+    };
+    let cfg = SwitchConfig {
+        listen_address: Some("tcp://127.0.0.1:0".into()),
+        allow_duplicate_ip: true,
+        ..SwitchConfig::default()
+    };
+    let sw = Switch::new(cfg, key, info).unwrap();
+    let book = Arc::new(AddrBook::new(None, false));
+    let pex = PexReactor::new(book.clone(), config);
+    sw.set_addr_book(book.clone());
+    sw.add_reactor(pex.clone()).unwrap();
+    (sw, book, pex)
+}
+
+/// A fresh node whose only source is a seed fills its address book from
+/// the seed, which answers the PexRequest and hangs up at once, as a Go
+/// seed-mode node does.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_fresh_node_gets_addresses_from_a_seed_that_hangs_up() {
+    let (seed, seed_book, _) = pex_node(
+        21,
+        PexConfig {
+            seed_mode: true,
+            ..PexConfig::default()
+        },
+    );
+    let src = p2p::NetAddress::parse(&format!(
+        "{}@10.0.0.1:26656",
+        NodeKey::from_seed(&[30; 32]).id()
+    ))
+    .unwrap();
+    for i in 0..20u8 {
+        let a = p2p::NetAddress::parse(&format!(
+            "{}@10.1.{i}.1:26656",
+            NodeKey::from_seed(&[40 + i; 32]).id()
+        ))
+        .unwrap();
+        seed_book.add_address(&a, &src).unwrap();
+    }
+    seed.start().await.unwrap();
+
+    let (client, book, pex) = pex_node(
+        22,
+        PexConfig {
+            seeds: vec![seed.net_address().unwrap().to_string()],
+            ensure_peers_period: Duration::from_millis(300),
+            ..PexConfig::default()
+        },
+    );
+    client.start().await.unwrap();
+    wait_for(|| pex.stats().addrs_received >= 1 && book.size() >= 10).await;
+    client.stop();
+    seed.stop();
+}
