@@ -1,16 +1,33 @@
-# Target hardware
+# Hardware requirements
 
-The target machine for a pruned celestia-rs mainnet validator has
-**8 CPU cores, 16 GB of memory and a 500 GB NVMe SSD**. These are targets
-that the budgets below are designed and tested against. Minimum requirements
-are not established yet. Release binaries run on Apple silicon macOS
-(`aarch64-apple-darwin`) and on `x86_64` and `aarch64` Linux.
+These are the hardware requirements for celestia-rs on Mainnet and Mocha.
+Release binaries run on Apple silicon macOS (`aarch64-apple-darwin`) and on
+`x86_64` and `aarch64` Linux with glibc 2.35 or newer. Use a local NVMe SSD.
 
-| Resource | Target |
-|---|---|
-| CPU | 8 cores |
-| Memory | 16 GB |
-| Disk | 500 GB NVMe SSD |
+| Profile | CPU | Memory | Disk |
+|---|---|---|---|
+| Pruned full node | 8 CPU cores | 16 GB | 500 GB NVMe SSD |
+| Validator (pruned) | 8 CPU cores | 16 GB | 500 GB NVMe SSD |
+| Archive node | 8 CPU cores | 16 GB | 4 TB NVMe SSD, expandable |
+
+Pruned uses `pruning = "default"` and `min-retain-blocks = 3000` in
+`app.toml`. Archive uses `pruning = "nothing"`, `min-retain-blocks = 0` and
+`tx_index.indexer = "kv"`, and keeps every block and app state from the
+height it starts at (its state-sync snapshot). Archive disk grows with the
+chain: 4 TB is a starting size, so plan to add storage. A Go archive of full
+Mainnet history measured about 10 TB in the
+[Celestia hardware guide](https://docs.celestia.org/operate/getting-started/hardware-requirements/).
+
+## Evidence
+
+The [2026-11-26 Mainnet runs](benchmarks/operator-sync-2026-11-26.md) on
+8-vCPU `n2-standard-8` VMs measured celestia-rs at a peak of 6.0 GB of cgroup
+memory during state sync and 4.1 GB over 600 blocks with its DA bridge on.
+The [1,000-block runs](benchmarks/operator-block-range-2026-11-26.md)
+measured a node home of 1.8 and 1.9 GiB after 1,000 blocks. The memory and
+disk budgets below are inside 16 GB and 500 GB with room for compaction and
+snapshots. No run has tested a machine with fewer than 8 vCPUs, so these
+requirements are not lowered below 8 cores and 16 GB.
 
 These targets do not cover Fibre storage. A validator that turns on the
 opt-in [Fibre server](operator-guide.md#fibre-server) must provision storage

@@ -79,7 +79,7 @@ See the [milestones](MILESTONES.md) for qualification progress and the
   from `celestia-rs start` itself (`[fibre] enable = true`), with TLS
   identity, gRPC health and Prometheus metrics; see the
   [operator guide](docs/operator-guide.md#fibre-server).
-- **Built for modest hardware** (target: 8 cores, 16 GB, 500 GB NVMe; [`docs/hardware.md`](docs/hardware.md)):
+- **Built for modest hardware** (pruned node or validator: 8 CPU cores, 16 GB RAM, 500 GB NVMe SSD; archive: 4 TB; [`docs/hardware.md`](docs/hardware.md)):
   release archives for macOS and Linux, launchd and systemd units.
 
 ## Architecture
@@ -126,7 +126,7 @@ configuration, data retention and trust inputs.
 ## Performance vs Go
 
 The current operator benchmark target is [celestia-app v11.0.0](https://github.com/celestiaorg/celestia-app/releases/tag/v11.0.0).
-The [operator comparison protocol](docs/benchmarks/operator-sync.md) covers snapshot and genesis sync to tip, RAM and disk usage. The [first cloud runs](docs/benchmarks/operator-sync-2026-11-25.md) give two valid mainnet state-sync pairs against Go v11.0.0. celestia-rs reached the tip in 482 s and 520 s, and Go in 1,535 s and 2,052 s, with about half of the peak memory and 35% of the disk. In an earlier run, which the protocol discards as a pair, celestia-rs took 3,308 s because snapshot discovery took about 50 minutes, and in one bridge run it did not sync in 60 minutes: the node took up a snapshot 4.6 million heights old. With its integrated DA bridge, celestia-rs peaked at 6.0 GB of memory over the whole run against 27.7 GB for celestia-app plus a celestia-node bridge, but the celestia-node bridge was filling in older DA history, so the two did not do equal work. A third valid pair is pending.
+The [operator comparison protocol](docs/benchmarks/operator-sync.md) covers snapshot sync to tip, RAM and disk usage. In the [2026-11-26 Mainnet runs](docs/benchmarks/operator-sync-2026-11-26.md) on 8-vCPU VMs, celestia-rs reached a verified tip 4.9x and 4.1x as fast as Go (307 s and 329 s against 1,493 s and 1,361 s). Over a matched 600-block DA window, with both sides serving the same reads, celestia-rs used 65% less peak memory than celestia-app plus celestia-node (4.06 GB against 11.54 GB). The [1,000-block runs](docs/benchmarks/operator-block-range-2026-11-26.md) on 32-vCPU VMs measured 75% and 78% less peak process memory, 62% to 64% less disk and about 8x faster snapshot restore; there, slow snapshot discovery on Mainnet made time to tip 0.24x and 1.05x Go's. A discovery fix has landed and awaits a Mainnet rerun.
 
 ### Mac Mini M4 results
 

@@ -43,10 +43,13 @@
         <h1>Consensus nodes by implementation</h1>
         <p class="deck">
           A crawler connects to the consensus P2P network of each chain and reads
-          the software version that every node reports in its handshake.
-          celestia-rs nodes report <code>0.38.17-celestia-rs.&lt;version&gt;</code>;
-          celestia-core (Go) nodes report a plain version such as
-          <code>0.38.17</code>.
+          what every node reports in its handshake: its celestia-core version
+          and its app version. celestia-rs nodes report
+          <code>0.38.17-celestia-rs.&lt;version&gt;</code>; Go nodes report the
+          celestia-core version that their celestia-app release embeds, such as
+          <code>0.38.17</code>. The handshake does not carry the celestia-app
+          release itself, so the app column shows the app (protocol) version
+          the node runs, such as <code>10</code>.
         </p>
         <div class="filters" role="tablist" aria-label="Network">
           <button role="tab" data-network="mainnet" aria-selected="true">Mainnet</button>
@@ -85,9 +88,9 @@
             listed RPC server are not seen. The counts are a lower bound.
           </li>
           <li>
-            “Unknown” is any other version string, for example a seed-only
-            crawler. Bridge and light (DA) nodes use a different network and
-            are not counted here.
+            Nodes with any other version string, for example a seed-only
+            crawler, are left out. Bridge and light (DA) nodes use a different
+            network and are not counted here.
           </li>
           <li>
             Data: the <code>node-census-data</code> branch

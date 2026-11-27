@@ -40,6 +40,7 @@ class Page(HTMLParser):
         self.jsonld = []
         self.navs = {}  # aria-label -> [(text, href, attrs)]
         self.hrefs = []
+        self.inputs = []
         self.text = []
         self._nav = None
         self._a = None
@@ -65,6 +66,8 @@ class Page(HTMLParser):
             self.hrefs.append(a.get("href"))
             if self._nav is not None:
                 self._a = [a, ""]
+        elif tag == "input":
+            self.inputs.append(a)
         elif tag == "script":
             self._script = [a.get("type"), ""]
         if tag in ("script", "style"):
@@ -258,6 +261,92 @@ class MachineReadable(unittest.TestCase):
             self.assertTrue(h.startswith(("https://", "/", "#")), h)
         for _, href, _ in p.links:
             self.assertTrue(href.startswith(("https://", "/")), href)
+
+
+class HomePage(unittest.TestCase):
+    """The home page speaks to operators with current, measured facts."""
+
+    def setUp(self):
+        self.page = parse("index.html")
+        self.text = self.page.main_text()
+
+    def test_no_stale_or_internal_content(self):
+        for phrase in (
+            "we propose",
+            "measurements are pending",
+            "Historical",
+            "Mac Mini",
+            "yet to be established",
+            "has not established",
+            "Bridge configuration and rollback",
+            "Application module inventory",
+            "Apply one profile",
+            "stops during",
+        ):
+            self.assertNotIn(phrase.lower(), self.text.lower(), phrase)
+
+    def test_benchmarks_cite_the_latest_mainnet_runs(self):
+        for report in ("operator-sync-2026-11-26.md", "operator-block-range-2026-11-26.md"):
+            self.assertTrue((DOCS / "benchmarks" / report).is_file(), report)
+            self.assertTrue(
+                any(h and h.endswith("docs/benchmarks/" + report) for h in self.page.hrefs),
+                f"no link to {report}",
+            )
+        self.assertIn("celestia-app v11.0.0", self.text)
+
+    def test_hardware_requirements_per_profile(self):
+        self.assertIn("hardware", self.page.ids)
+        for phrase in ("8 CPU cores", "16 GB RAM", "500 GB NVMe SSD", "4 TB NVMe SSD"):
+            self.assertIn(phrase, self.text, phrase)
+        md = (DOCS / "hardware.md").read_text(encoding="utf-8")
+        self.assertNotIn("not established", md)
+        for phrase in ("8 CPU cores", "16 GB", "500 GB NVMe", "4 TB NVMe"):
+            self.assertIn(phrase, md, phrase)
+
+    def test_setup_options_have_defaults(self):
+        radios = [a for a in self.page.inputs if a.get("type") == "radio"]
+        groups = {}
+        for a in radios:
+            groups.setdefault(a["name"], []).append(a)
+        self.assertEqual(
+            {n: sorted(r["value"] for r in rs) for n, rs in groups.items()},
+            {
+                "network": ["mainnet", "mocha"],
+                "role": ["full", "validator"],
+                "retention": ["archive", "pruned"],
+            },
+        )
+        checked = {a["name"]: a["value"] for a in radios if "checked" in a}
+        self.assertEqual(checked, {"network": "mainnet", "role": "full", "retention": "pruned"})
+
+    def test_agent_prompt_is_copied_not_shown(self):
+        self.assertNotIn("prompt", self.page.ids)
+        self.assertNotIn("Use existing hardware", self.text)
+        js = (DOCS / "site" / "copy.js").read_text(encoding="utf-8")
+        self.assertIn("navigator.clipboard.writeText", js)
+        for word in ("mocha-5", "create-validator", "min-retain-blocks"):
+            self.assertIn(word, js, word)
+
+
+class CensusPage(unittest.TestCase):
+    def setUp(self):
+        self.js = (DOCS / "census" / "census.js").read_text(encoding="utf-8")
+        self.text = parse("census/index.html").main_text()
+
+    def test_one_chart_with_both_implementations(self):
+        self.assertEqual(self.js.count("lineChart({"), 1)
+        self.assertIn('cls: "rust"', self.js)
+        self.assertIn('cls: "go"', self.js)
+
+    def test_no_share_or_unknown_tiles(self):
+        self.assertNotIn("celestia-rs share", self.js)
+        self.assertNotIn("Unknown version", self.js)
+        self.assertIn('implementation !== "unknown"', self.js)
+
+    def test_version_is_labelled_as_celestia_core(self):
+        self.assertIn("celestia-core version", self.js)
+        self.assertIn("App version", self.js)
+        self.assertIn("celestia-app", self.text)
 
 
 if __name__ == "__main__":

@@ -30,7 +30,6 @@ const $ = (id) => document.getElementById(id);
 const fmtDate = (s) =>
   new Date(s * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 const fmtDay = (s) => new Date(s * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-const share = (s) => (s.reachable ? (100 * s.rust) / s.reachable : 0);
 
 function el(tag, attrs = {}, text) {
   const e = document.createElement(tag);
@@ -51,23 +50,36 @@ async function getJSON(path) {
   return r.json();
 }
 
-function niceMax(v) {
+function niceStep(v, integer) {
   if (v <= 0) return 1;
   const p = 10 ** Math.floor(Math.log10(v));
-  for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+  for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) {
+    const step = m * p;
+    if (step >= v && (!integer || Number.isInteger(step))) return step;
+  }
   return 10 * p;
 }
 
-// One single-series line chart with a crosshair tooltip.
-function lineChart({ title, cls, points, format, integer = false }) {
+// A line chart of several series on one axis, with a crosshair tooltip that
+// lists every series at the hovered crawl.
+function lineChart(opts) {
+  const { title, series, format, integer = false } = opts;
   const fig = el("figure");
   fig.append(el("h3", {}, title));
-  const W = 520, H = 200, L = 40, R = 12, T = 10, B = 26;
+  const legend = el("div", { class: "chart-legend" });
+  for (const s of series) {
+    const item = el("span");
+    item.append(el("i", { class: s.cls }), document.createTextNode(s.label));
+    legend.append(item);
+  }
+  fig.append(legend);
+  const W = 960, H = 340, L = 44, R = 16, T = 12, B = 28;
   const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": title });
-  let max = niceMax(Math.max(...points.map((p) => p.y)));
-  // Four grid steps: keep integer axes on whole numbers.
-  if (integer) max = Math.max(4, Math.ceil(max / 4) * 4);
-  const x0 = points[0].x, x1 = points[points.length - 1].x;
+  const all = series.flatMap((s) => s.points);
+  // Four grid steps of a round size; whole numbers on integer axes.
+  const max = 4 * niceStep(Math.max(...all.map((p) => p.y)) / 4, integer);
+  const xs = series[0].points.map((p) => p.x);
+  const x0 = xs[0], x1 = xs[xs.length - 1];
   const sx = (x) => (x1 === x0 ? (L + W - R) / 2 : L + ((x - x0) / (x1 - x0)) * (W - L - R));
   const sy = (y) => T + (1 - y / max) * (H - T - B);
   for (let i = 0; i <= 4; i++) {
@@ -83,37 +95,47 @@ function lineChart({ title, cls, points, format, integer = false }) {
     t.textContent = fmtDay(x);
     root.append(t);
   }
-  if (points.length > 1) {
-    const d = points.map((p, i) => `${i ? "L" : "M"}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join("");
-    root.append(svg("path", { class: `series ${cls}`, d }));
+  const hovers = [];
+  for (const s of series) {
+    if (s.points.length > 1) {
+      const d = s.points.map((p, i) => `${i ? "L" : "M"}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join("");
+      root.append(svg("path", { class: `series ${s.cls}`, d }));
+    }
+    const last = s.points[s.points.length - 1];
+    root.append(svg("circle", { class: `dot ${s.cls}`, cx: sx(last.x), cy: sy(last.y), r: 4 }));
+    const label = svg("text", { class: `end-label ${s.cls}`, x: sx(last.x) - 8, y: sy(last.y) - 8, "text-anchor": "end" });
+    label.textContent = format(last.y);
+    root.append(label);
+    hovers.push(svg("circle", { class: `dot ${s.cls}`, r: 4, visibility: "hidden" }));
   }
-  const last = points[points.length - 1];
-  root.append(svg("circle", { class: `dot ${cls}`, cx: sx(last.x), cy: sy(last.y), r: 4 }));
   const cross = svg("line", { class: "crosshair", y1: T, y2: H - B, visibility: "hidden" });
-  const hover = svg("circle", { class: `dot ${cls}`, r: 4, visibility: "hidden" });
-  root.append(cross, hover);
+  root.append(cross, ...hovers);
   const hit = svg("rect", { x: L, y: 0, width: W - L - R, height: H, fill: "transparent" });
   root.append(hit);
   const tip = $("tooltip");
   hit.addEventListener("pointermove", (ev) => {
     const box = root.getBoundingClientRect();
     const px = ((ev.clientX - box.left) / box.width) * W;
-    let best = points[0];
-    for (const p of points) if (Math.abs(sx(p.x) - px) < Math.abs(sx(best.x) - px)) best = p;
-    cross.setAttribute("x1", sx(best.x));
-    cross.setAttribute("x2", sx(best.x));
-    hover.setAttribute("cx", sx(best.x));
-    hover.setAttribute("cy", sy(best.y));
+    let i = 0;
+    xs.forEach((x, j) => {
+      if (Math.abs(sx(x) - px) < Math.abs(sx(xs[i]) - px)) i = j;
+    });
+    cross.setAttribute("x1", sx(xs[i]));
+    cross.setAttribute("x2", sx(xs[i]));
     cross.setAttribute("visibility", "visible");
-    hover.setAttribute("visibility", "visible");
-    tip.textContent = `${fmtDate(best.x)} · ${format(best.y)}`;
+    series.forEach((s, k) => {
+      hovers[k].setAttribute("cx", sx(s.points[i].x));
+      hovers[k].setAttribute("cy", sy(s.points[i].y));
+      hovers[k].setAttribute("visibility", "visible");
+    });
+    tip.textContent = `${fmtDate(xs[i])} · ${series.map((s) => `${s.label} ${format(s.points[i].y)}`).join(" · ")}`;
     tip.hidden = false;
     tip.style.left = `${ev.clientX + 12}px`;
     tip.style.top = `${ev.clientY + 12}px`;
   });
   hit.addEventListener("pointerleave", () => {
     cross.setAttribute("visibility", "hidden");
-    hover.setAttribute("visibility", "hidden");
+    hovers.forEach((h) => h.setAttribute("visibility", "hidden"));
     tip.hidden = true;
   });
   fig.append(root);
@@ -157,19 +179,20 @@ function render() {
     $("status").textContent = `No crawl data for ${net} yet.`;
     $("tiles").replaceChildren();
     $("charts").replaceChildren();
-    table("versions", ["Version", "Implementation", "Nodes"], [], [2]);
-    table("rust-nodes", ["Node ID", "Moniker", "Version", "Source"], []);
+    table("versions", ["celestia-core version", "Implementation", "App version", "Nodes"], [], [2, 3]);
+    table("rust-nodes", ["Node ID", "Moniker", "Version", "App version", "Source"], []);
     return;
   }
   const s = latest.summary;
+  // Nodes with an unrecognized version string (for example a crawler) are
+  // left out of every count, table and chart.
+  const known = latest.nodes.filter((n) => n.implementation !== "unknown");
   $("status").textContent = `Latest crawl: ${fmtDate(latest.crawled_at)} · chain ${latest.chain_id} · ${entries.length} crawls recorded`;
   const tiles = [
     [s.rust, "celestia-rs nodes"],
     [s.go, "Go nodes"],
-    [`${share(s).toFixed(1)}%`, "celestia-rs share"],
-    [s.reachable, "Observed nodes"],
-    [s.direct, "Reached directly"],
-    [s.unknown, "Unknown version"],
+    [s.rust + s.go, "Observed nodes"],
+    [known.filter((n) => n.source === "p2p").length, "Reached directly"],
   ];
   $("tiles").replaceChildren(
     ...tiles.map(([v, label]) => {
@@ -179,31 +202,40 @@ function render() {
     }),
   );
   const pts = (f) => entries.map((e) => ({ x: e.crawled_at, y: f(e.summary) }));
-  const int = (v) => String(Math.round(v));
   $("charts").replaceChildren(
-    lineChart({ title: "celestia-rs nodes", cls: "rust", points: pts((x) => x.rust), format: int, integer: true }),
-    lineChart({ title: "Go (celestia-core) nodes", cls: "go", points: pts((x) => x.go), format: int, integer: true }),
     lineChart({
-      title: "celestia-rs share of observed nodes",
-      cls: "rust",
-      points: pts(share),
-      format: (v) => `${v.toFixed(1)}%`,
+      title: "Consensus nodes by implementation",
+      series: [
+        { label: "Go (celestia-app)", cls: "go", points: pts((x) => x.go) },
+        { label: "celestia-rs", cls: "rust", points: pts((x) => x.rust) },
+      ],
+      format: (v) => String(Math.round(v)),
+      integer: true,
     }),
   );
-  const impl = Object.fromEntries(latest.nodes.map((n) => [n.version, n.implementation]));
-  const versions = Object.entries(s.versions).sort((a, b) => b[1] - a[1]);
+  // One row per celestia-core version, implementation and app version.
+  const groups = new Map();
+  for (const n of known) {
+    const key = `${n.version}\u0000${n.implementation}\u0000${n.app_version}`;
+    const g = groups.get(key) ?? { version: n.version, implementation: n.implementation, app: n.app_version, count: 0 };
+    g.count += 1;
+    groups.set(key, g);
+  }
+  const implName = { rust: "celestia-rs", go: "Go" };
   table(
     "versions",
-    ["Version", "Implementation", "Nodes"],
-    versions.map(([v, n]) => [el("code", {}, v || "(empty)"), impl[v] ?? "", String(n)]),
-    [2],
+    ["celestia-core version", "Implementation", "App version", "Nodes"],
+    [...groups.values()]
+      .sort((a, b) => b.count - a.count)
+      .map((g) => [el("code", {}, g.version || "(empty)"), implName[g.implementation], g.app ? String(g.app) : "–", String(g.count)]),
+    [2, 3],
   );
   table(
     "rust-nodes",
-    ["Node ID", "Moniker", "Version", "Source"],
-    latest.nodes
+    ["Node ID", "Moniker", "Version", "App version", "Source"],
+    known
       .filter((n) => n.implementation === "rust")
-      .map((n) => [el("code", {}, n.id.slice(0, 12) + "…"), n.moniker, n.version, n.source]),
+      .map((n) => [el("code", {}, n.id.slice(0, 12) + "…"), n.moniker, n.version, n.app_version ? String(n.app_version) : "–", n.source]),
   );
 }
 

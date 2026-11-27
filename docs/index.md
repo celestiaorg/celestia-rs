@@ -35,9 +35,24 @@ enabled, `celestia-rs start` performs both jobs.
 
 ## Benchmarks
 
-Rust and Go sync time, memory and disk measurements:
-<https://celestiaorg.github.io/celestia-rs/benchmarks/README.md>.
-Mainnet cloud measurements against celestia-app v11.0.0 are pending.
+Mainnet runs on 26 Nov 2026 against celestia-app v11.0.0 on identical cloud
+VMs: celestia-rs reached a verified tip 4.9x and 4.1x as fast, restored a
+snapshot about 8x as fast, used 65% less peak memory with its DA bridge
+than celestia-app plus celestia-node, and its node home was 62% smaller after
+1,000 blocks. Reports:
+<https://celestiaorg.github.io/celestia-rs/benchmarks/operator-sync-2026-11-26.md>
+and
+<https://celestiaorg.github.io/celestia-rs/benchmarks/operator-block-range-2026-11-26.md>.
+
+## Hardware requirements
+
+| Profile | CPU | Memory | Disk |
+|---|---|---|---|
+| Pruned full node | 8 CPU cores | 16 GB | 500 GB NVMe SSD |
+| Validator | 8 CPU cores | 16 GB | 500 GB NVMe SSD |
+| Archive node | 8 CPU cores | 16 GB | 4 TB NVMe SSD, expandable |
+
+Details: <https://celestiaorg.github.io/celestia-rs/hardware.md>.
 
 ## Start on Mainnet
 
@@ -54,7 +69,8 @@ curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/celestia
 ```
 
 Then start from a verified state-sync snapshot with the first-launch block in
-the [quickstart](https://celestiaorg.github.io/celestia-rs/#start). The
+the [quickstart](https://celestiaorg.github.io/celestia-rs/#start), which
+has options for Mainnet or Mocha, full node or validator, and pruned or archive. The
 [operator guide](https://celestiaorg.github.io/celestia-rs/operator-guide.md)
 covers configuration, validators, the DA bridge, services and upgrades.
 
