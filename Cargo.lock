@@ -1702,6 +1702,7 @@ dependencies = [
  "hash",
  "hex",
  "k256",
+ "rayon",
  "secp256k1",
  "serde",
  "serde_json",

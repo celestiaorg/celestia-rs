@@ -17,6 +17,8 @@ blst = "=0.3.14"
 curve25519-dalek-ng = "4.1"
 ed25519-consensus = { version = "2.1", default-features = false }
 hash = { path = "../hash" }
+# Shared worker pool for parallel signature checks (`parallel`).
+rayon = "1.12"
 # libsecp256k1 (C, vendored): ~2.5x k256's verification speed (CheckTx).
 secp256k1 = "0.31"
 thiserror = "2"
