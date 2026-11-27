@@ -52,7 +52,7 @@ elif tool == 'git':
     # Tag v0.1.0-rc.6 is commit b..., any other tag commit a...
     if 'fetch' in args: (r/'fetched').write_text(args[-1])
     elif 'rev-parse' in args:
-        print('b'*40 if 'v0.1.0-rc.6' in (r/'fetched').read_text() else 'a'*40)
+        print('b'*40 if any(t in (r/'fetched').read_text() for t in ('v0.1.0-rc.6', 'v0.1.7')) else 'a'*40)
     elif 'checkout' not in args: sys.exit('unexpected git operation')
 elif tool == 'cargo':
     (r/'cargo-env').write_text(os.environ.get('CELESTIA_RS_RELEASE_VERSION', '<unset>'))
@@ -69,8 +69,12 @@ class ReleaseUpdateTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        for name in ("tools", "bin", "src/.git", "src/target/release"):
+        for name in ("tools", "bin", "src/.git", "src/target/release",
+                     "src/crates/tier-5-node/celestia-rs"):
             (self.root/name).mkdir(parents=True, exist_ok=True)
+        # The checked-out source's crate version.
+        (self.root/"src/crates/tier-5-node/celestia-rs/Cargo.toml").write_text(
+            '[package]\nname = "celestia-rs"\nversion = "0.1.0-rc.6"\n')
         for tool in ("curl", "git", "cargo", "sudo", "check-apphash"):
             path = self.root/"tools"/tool
             path.write_text(STUB)
@@ -135,13 +139,14 @@ class ReleaseUpdateTests(unittest.TestCase):
         self.assertIn(OLD, (self.root/"bin/celestia-rs-mainnet").read_text())
         self.assertIn("up to date: v0.1.0-rc.5", result.stdout)
 
-    def test_automatic_release_is_built_with_its_release_version(self):
+    def test_daily_release_is_built_with_its_release_version(self):
+        # Tag v0.1.7, crate version 0.1.0-rc.6: a daily release.
         for name in ("mocha", "mainnet"):
-            self.channel(name, "v0.1.0-rc.6.main.42")
-        binary(self.root/"built", NEW, "0.1.0-rc.6.main.42")
+            self.channel(name, "v0.1.7")
+        binary(self.root/"built", NEW, "0.1.7")
         result = self.run_update()
         self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
-        self.assertEqual((self.root/"cargo-env").read_text(), "0.1.0-rc.6.main.42")
+        self.assertEqual((self.root/"cargo-env").read_text(), "0.1.7")
         self.assertIn(NEW, (self.root/"bin/celestia-rs-mainnet").read_text())
 
     def test_human_release_is_built_without_a_release_version(self):

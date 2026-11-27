@@ -8,6 +8,11 @@ symlink to this file.
 - Open completed pull requests as ready for review and enable auto-merge,
   so required CI controls merging. Do not bypass checks or push directly
   to `main`.
+- Title pull requests as conventional commits,
+  `<type>[(scope)][!]: <description>` (the `pr-title` check enforces it).
+  Add `!` when operators must act on the change (removed or renamed flag,
+  config key or RPC field, on-disk format, consensus-breaking): daily
+  releases bump their version from these titles (`docs/releasing.md`).
 - Do not request human reviews. Pull requests in this repository need no
   human approval; they merge when required CI passes.
 - Do not include implementation plans (step-by-step task lists, agent
