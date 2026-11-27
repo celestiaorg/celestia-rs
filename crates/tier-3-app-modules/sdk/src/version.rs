@@ -713,6 +713,22 @@ impl Release {
         }
     }
 
+    /// `appconsts.MaxAgeNumBlocks`, which the governance consensus param
+    /// filter requires (`EvidenceParams()`), where it differs from the
+    /// v10 default: 242,640 in celestia-app v6.4.4 and v8.0.8, 559,940 in
+    /// v9.0.8. `None` elsewhere: v4.1.0 and v5.0.12 check no evidence
+    /// params; v10.5.0, v10.6.0 and v11.0.0 require 404,400, and v12 its
+    /// own limits. App version 1 keeps v9's answer.
+    #[must_use]
+    pub const fn gov_max_age_num_blocks(&self) -> Option<i64> {
+        match self.app_version {
+            6..=8 => Some(242_640),
+            9 => Some(559_940),
+            _ if self.keeps_v9_rules() => Some(559_940),
+            _ => None,
+        }
+    }
+
     /// x/tx's amino JSON encoder resolves `hyperlane.warp.v1.RemoteRouter`
     /// as a placeholder with no fields (celestia-app v4.1.0 to v6.4.x,
     /// hyperlane-cosmos v1.0.1), so signing a `MsgEnrollRemoteRouter` that
@@ -973,6 +989,8 @@ mod tests {
             assert!(!r.has_token_filter(), "v{v}");
             assert!(!r.legacy_insufficient_fee_message(), "v{v}");
             assert_eq!(r.default_unbonding_time_secs(), None, "v{v}");
+            let max_age = old_v9.then_some(559_940);
+            assert_eq!(r.gov_max_age_num_blocks(), max_age, "v{v}");
             assert!(!r.amino_remote_router_placeholder(), "v{v}");
             assert!(r.amino_vesting_start_time(), "v{v}");
         }
@@ -1026,6 +1044,8 @@ mod tests {
                 assert_eq!(r.legacy_insufficient_fee_message(), v <= 6, "v{v}");
                 let unbonding = v4_v5.then_some(21 * 24 * 3600);
                 assert_eq!(r.default_unbonding_time_secs(), unbonding, "v{v}");
+                let max_age = (v >= 6).then_some(242_640);
+                assert_eq!(r.gov_max_age_num_blocks(), max_age, "v{v}");
                 assert_eq!(r.amino_remote_router_placeholder(), v <= 6, "v{v}");
                 assert_eq!(r.amino_vesting_start_time(), v != 4, "v{v}");
             }
