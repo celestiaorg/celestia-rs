@@ -72,12 +72,24 @@ fn decode<M: Message + Default>(bz: &[u8]) -> Result<M> {
     M::decode(bz).map_err(|e| sdk::error::go_panic(e.to_string()))
 }
 
+/// `address.MustLengthPrefix`: one length byte, then the address; an
+/// empty address stays empty (no length byte). An authz message whose
+/// signer address is empty reaches the grant lookup with an empty granter
+/// at app versions 1 to 3 (mainnet block 1,111,065).
+fn must_length_prefix(addr: &[u8]) -> Vec<u8> {
+    if addr.is_empty() {
+        Vec::new()
+    } else {
+        length_prefixed(addr)
+    }
+}
+
 /// `grantStoreKey`.
 #[must_use]
 pub fn grant_key(grantee: &[u8], granter: &[u8], msg_type: &str) -> Vec<u8> {
     let mut k = vec![GRANT_PREFIX];
-    k.extend_from_slice(&length_prefixed(granter));
-    k.extend_from_slice(&length_prefixed(grantee));
+    k.extend_from_slice(&must_length_prefix(granter));
+    k.extend_from_slice(&must_length_prefix(grantee));
     k.extend_from_slice(&gostr::to_go_bytes(msg_type));
     k
 }
@@ -87,8 +99,8 @@ pub fn grant_key(grantee: &[u8], granter: &[u8], msg_type: &str) -> Vec<u8> {
 pub fn grant_queue_key(exp: &Timestamp, granter: &[u8], grantee: &[u8]) -> Vec<u8> {
     let mut k = vec![GRANT_QUEUE_PREFIX];
     k.extend_from_slice(&format_time_bytes(exp));
-    k.extend_from_slice(&length_prefixed(granter));
-    k.extend_from_slice(&length_prefixed(grantee));
+    k.extend_from_slice(&must_length_prefix(granter));
+    k.extend_from_slice(&must_length_prefix(grantee));
     k
 }
 
@@ -540,4 +552,24 @@ pub fn init_genesis_json(ctx: &mut Context<'_>, genesis: &serde_json::Value) -> 
     let gs: GenesisState = serde_json::from_value(genesis.clone())
         .map_err(|e| sdkerr::json_unmarshal(e.to_string()))?;
     init_genesis(ctx, &gs)
+}
+
+#[cfg(test)]
+mod empty_address_key_tests {
+    use super::*;
+
+    /// `address.MustLengthPrefix` leaves an empty address as is: no length
+    /// byte (mainnet block 1,111,065: `MsgExec` of a `MsgDelegate` with an
+    /// empty delegator).
+    #[test]
+    fn grant_key_has_no_length_byte_for_an_empty_address() {
+        let grantee = [7u8; 20];
+        let mut want = vec![GRANT_PREFIX, 20];
+        want.extend_from_slice(&grantee);
+        want.extend_from_slice(b"/cosmos.staking.v1beta1.MsgDelegate");
+        assert_eq!(
+            grant_key(&grantee, &[], "/cosmos.staking.v1beta1.MsgDelegate"),
+            want
+        );
+    }
 }

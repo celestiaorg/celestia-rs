@@ -102,7 +102,7 @@ its retained operational conditions.
 
 `scope-audit.json` separately indexes the merged evidence available at its exact
 `audited_main` revision. The strict paired-response admission contract above is
-unchanged. A scoped package is a hash-bound review of what the capture and its
+unchanged. A scoped package is a record of what the capture and its
 tests establish; it does not add an exact case or satisfy every branch of its
 tracking issue. `scope_audit.py` requires the complete package/transport/selector
 set and every issue #182–#192, including explicit remaining gaps for issues with
@@ -132,10 +132,11 @@ python3 conformance/mainnet-rpc/coverage.py --verify-scoped --json /tmp/rpc-cove
 The `rpc-evidence` CI job now runs the registered offline current-release
 regressions for limits, WebSocket lifecycle, live transactions and their paired closure, populated staking and governance,
 REST height/POST, Comet HTTP and the merged bounded provider soak. Their verifier sources and primary receipts are
-hash-bound. The full reviewed audit content is canonically hash-bound in code,
-including its merged baseline, deviations, provenance limits and remaining-gap
-text. Rebinding the baseline or hiding a gap requires an explicitly reviewed
-code change. It runs no fresh network capture. The ordinary workspace test job
+hash-bound: they are frozen evidence. Documentation and Rust sources are bound
+by path only, because ordinary pull requests edit them; a source must still
+exist and define the named test function. The audit text (baseline, deviations,
+provenance limits and remaining gaps) is checked for structure and is not
+pinned by a hash. It runs no fresh network capture. The ordinary workspace test job
 also executes the named Rust socket/production/proof regressions; the audit binds
 their exact source files and function names without creating a second Rust
 workspace build. A passing offline verifier confirms its stated captured
