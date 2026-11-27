@@ -33,7 +33,9 @@ Mainnet after 24 hours on Mocha. To update automatically on Linux, install the d
 **celestia-rs is an early, experimental project under rapid development.**
 Expect breaking changes and rough edges, and don't rely on it for production
 yet. Feedback, bug reports and questions are very welcome: please open an
-issue.
+issue. For a node problem, attach the archive that `celestia-rs
+debug-bundle` writes (see the
+[operator guide](docs/operator-guide.md#9-day-to-day-operations)).
 
 celestia-rs runs a validator on both Mocha and Mainnet, signing blocks
 alongside the Go validators:

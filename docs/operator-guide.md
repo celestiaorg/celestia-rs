@@ -1036,6 +1036,28 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
   `cometbft_consensus_validator_missed_blocks`, `cometbft_p2p_peers`,
   `cometbft_mempool_size`, …, labelled `chain_id`), so Go dashboards and
   alerts work unchanged.
+- **Reporting a problem:** `celestia-rs debug-bundle` writes
+  `celestia-rs-debug-<UTC time>.tar.gz` in the working directory (or
+  `--output <file>`) and prints its path. Attach it to a
+  [bug report](https://github.com/celestiaorg/celestia-rs/issues/new?template=bug_report.yml).
+  Run it while the node is up, with the same `--home`: it holds the build
+  version, OS, CPU, memory and disk, the open-files limit (on Linux,
+  also the running node's own), the sizes under `config/` and `data/`,
+  a genesis summary (chain ID, SHA-256), `config.toml`, `app.toml` and
+  `client.toml` (values of keys named like token, secret, password or
+  mnemonic, and `user:pass@` in URLs, are replaced by `<redacted>`),
+  `priv_validator_state.json`, the node's `status`, `net_info`,
+  `num_unconfirmed_txs`, `abci_info` and `dump_consensus_state`, the
+  Prometheus metrics, and the tails of the logs: the `celestia-rs`
+  systemd journal on Linux (`--journal-unit` for another unit, `""` for
+  none), `~/Library/Logs/celestia-rs.log` on macOS, each `--log-file
+  <file>`, and the RocksDB `LOG` files. Each log tail is at most 16 MiB
+  (`--max-log-bytes`). A part that cannot be read (for example, a stopped
+  node) is listed in `manifest.json` under `errors`, and the bundle is
+  still written. It never reads `priv_validator_key.json`, `node_key.json`
+  or the keyrings. It does hold your peer addresses, IP addresses and
+  moniker: review it before you post it publicly. `--no-rpc` leaves out
+  the node queries.
 - **Transactions:** `celestia-rs tx bank send`, `tx staking
   delegate|unbond|redelegate|create-validator|edit-validator`, `tx blob
   pay-for-blob`, `tx signal signal|try-upgrade`, `tx slashing unjail`

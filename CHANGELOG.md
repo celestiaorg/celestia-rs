@@ -4,6 +4,10 @@
 
 ### Added
 
+- `celestia-rs debug-bundle` writes a `.tar.gz` of diagnostics to attach
+  to a bug report: build and host data, the config with secrets redacted,
+  the sign state, the node's RPC state and metrics, and log tails. It never
+  includes private keys. See the operator guide's "Reporting a problem".
 - `main` is released automatically once a day, from its newest commit that
   passed `ci` (`v<version>-main.<n>`, a pre-release), and release channels
   (`corto`, `mocha`, `mainnet`) move forward on their own as releases soak
