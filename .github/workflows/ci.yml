@@ -233,7 +233,7 @@ jobs:
           path: ${{ runner.temp }}/quality
           retention-days: 30
 
-  # Apple silicon (aarch64-apple-darwin) is a release target: build
+  # The reference validator is a Mac Mini M4 (aarch64-apple-darwin): build
   # the node in release mode on Apple silicon and run a fast smoke subset
   # (unit tests of the core crates, one devnet-conformance replay, the CLI
   # on a fresh home). The full suite runs on Linux above.

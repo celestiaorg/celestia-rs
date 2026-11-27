@@ -398,7 +398,10 @@ range_fixture() (
     ((h >= 1020)) || echo $((h + 1)) >"$STATE/h"
   }
   range_sample() { echo "$(mono) $height 100 10 $((height * 1000)) 1 1 500" >>"$STATE/range-memory.tsv"; }
-  node_app_height() { if [[ $fault == runaway ]]; then echo 1025; else cat "$STATE/h"; fi; }
+  node_app_height() { # "exited": the node left at its halt height before its RPC could be read
+    case $fault in runaway) echo 1025 ;; exited) return 1 ;; *) cat "$STATE/h" ;; esac
+  }
+  node_halt_log_height() { [[ $fault == exited ]] && echo 1021; }
   node_halted() { [[ $fault != runaway ]]; }
   run() { printf '%s\n' "$*" >>"$STATE/plan"; }
   height=$(cat "$STATE/h")
@@ -411,6 +414,7 @@ range_fixture() (
 )
 check  "range window from H to H+N" range_fixture matched
 check  "range records a missing halt" range_fixture runaway
+check  "range recovers the height of an exited node" range_fixture exited
 refute "range rejects a late node" range_fixture late
 
 # The local dispatcher and the report have their own tests.

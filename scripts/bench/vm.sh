@@ -527,6 +527,12 @@ node_halted() { # celestia-rs exits cleanly at its halt height; Go stays up afte
   [[ $(systemctl show -p SubState --value "$u" 2>/dev/null) != running ]] && return 0
   journalctl -u "$u" --no-pager -n 3000 2>/dev/null | grep -q 'halt per configuration'
 }
+# node_halt_log_height: the height in the node's "halt per configuration
+# height N" log line. The node halts before it executes N.
+node_halt_log_height() {
+  journalctl -u "${units[0]}" --no-pager -n 3000 2>/dev/null |
+    sed -n 's/.*halt per configuration height \([0-9][0-9]*\).*/\1/p' | tail -1
+}
 # range_halt: wait up to three minutes for the configured halt, recording the
 # last committed app height. Without a halt the node is stopped anyway and
 # its actual final height is reported.
@@ -540,6 +546,11 @@ range_halt() {
     if [[ $final_app_h =~ ^[0-9]+$ ]] && ((final_app_h > halt_height)); then break; fi
     sleep 1
   done
+  # A node that exited at its halt height before its RPC was read left no
+  # app height; its last committed height is one below the logged halt.
+  if [[ $halted == true && ! $final_app_h =~ ^[0-9]+$ ]] && h=$(node_halt_log_height) && [[ $h =~ ^[0-9]+$ ]]; then
+    final_app_h=$((h - 1))
+  fi
   final_status_h=$(awk '$2 ~ /^[0-9]+$/ {h = $2} END {print h}' "$STATE/polls.tsv")
   echo "$final_app_h $final_status_h $halted" >"$STATE/range-halt.txt"
 }
