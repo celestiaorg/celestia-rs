@@ -61,13 +61,17 @@ impl BankKeeper for Bank {
 static BANK: Bank = Bank;
 static ZKISM: x_zkism::msgs::ZkIsm = x_zkism::msgs::ZkIsm;
 
-/// Builds the hyperlane routers with warp and the zkism ISM registered.
+/// Builds the hyperlane routers with warp, and the zkism ISM where the
+/// release has x/zkism (celestia-app v7 on: before it, a ZK-typed id misses
+/// the ISM router, as any unregistered type does).
 #[must_use]
-pub fn deps(warp: &Warp) -> Deps<'_> {
+pub fn deps(warp: &Warp, zkism: bool) -> Deps<'_> {
     let mut d = Deps::new(&BANK);
     // Static, distinct ids: registration cannot fail.
     let _ = warp.register(&mut d);
-    let _ = d.isms.register(x_zkism::msgs::MODULE_TYPE_ZK_ISM, &ZKISM);
+    if zkism {
+        let _ = d.isms.register(x_zkism::msgs::MODULE_TYPE_ZK_ISM, &ZKISM);
+    }
     d
 }
 
@@ -78,7 +82,8 @@ pub fn zkism_create(
     msg: &celestia_proto::celestia::zkism::v1::MsgCreateInterchainSecurityModule,
 ) -> Result<celestia_proto::celestia::zkism::v1::MsgCreateInterchainSecurityModuleResponse> {
     let warp = Warp::celestia();
-    x_zkism::msgs::create_ism(ctx, &deps(&warp), msg)
+    let zkism = ctx.release().has_zkism();
+    x_zkism::msgs::create_ism(ctx, &deps(&warp, zkism), msg)
 }
 
 /// x/forwarding `Forward`.
@@ -87,7 +92,8 @@ pub fn forwarding_forward(
     msg: &celestia_proto::celestia::forwarding::v1::MsgForward,
 ) -> Result<celestia_proto::celestia::forwarding::v1::MsgForwardResponse> {
     let warp = Warp::celestia();
-    x_forwarding::msgs::forward(ctx, &deps(&warp), msg)
+    let zkism = ctx.release().has_zkism();
+    x_forwarding::msgs::forward(ctx, &deps(&warp, zkism), msg)
 }
 
 /// Whether `type_url` is a hyperlane or warp message.
@@ -102,7 +108,7 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
         return None;
     }
     let warp = Warp::celestia();
-    let deps = deps(&warp);
+    let deps = deps(&warp, ctx.release().has_zkism());
     x_hyperlane::handle_msg(ctx, &deps, msg).or_else(|| warp.handle_msg(ctx, &deps, msg))
 }
 
@@ -129,6 +135,48 @@ mod tests {
             assert_eq!(Warp::celestia().enabled_tokens, want, "v{version}");
         }
         sdk::version::set_app_version(prev);
+    }
+
+    /// celestia-app v4 to v6 register no ZK ISM type in the hyperlane ISM
+    /// router (x/zkism arrives in v7): a route to a type-42 id misses the
+    /// router, with no gas, exactly as an unregistered type does. From v7
+    /// the zkism module answers (and reads its store).
+    #[test]
+    fn zk_ism_type_is_routed_only_from_v7() -> Result<()> {
+        let attempt = |version: u64, module_type: u8| -> (String, u64) {
+            let mut ms = MultiStore::new();
+            for (name, kind) in crate::stores::all() {
+                ms.mount(name, kind).unwrap();
+            }
+            let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+            ctx.consensus_params.version = Some(
+                celestia_proto::celestia_core_proto::tendermint::types::VersionParams {
+                    app: version,
+                },
+            );
+            ctx.gas = kvstore::GasMeter::new(10_000_000);
+            let ism = format!("0x{}{:08x}{:016x}", "00".repeat(20), module_type, 1);
+            let msg = Any::pack(&ismpb::MsgCreateRoutingIsm {
+                creator: "celestia1x".into(),
+                routes: vec![ismpb::Route { ism, domain: 1 }],
+            });
+            let err = crate::router::route(&mut ctx, &msg).unwrap_err();
+            (err.log, ctx.gas.consumed())
+        };
+        for version in [4, 5, 6] {
+            let (zk_log, zk_gas) = attempt(version, x_zkism::msgs::MODULE_TYPE_ZK_ISM);
+            let (other_log, other_gas) = attempt(version, 99);
+            assert_eq!(zk_gas, other_gas, "v{version}: {zk_log}");
+            assert_eq!(
+                zk_log.replace("0000002a", "XX"),
+                other_log.replace("00000063", "XX"),
+                "v{version}"
+            );
+        }
+        let (_, zk_gas) = attempt(8, x_zkism::msgs::MODULE_TYPE_ZK_ISM);
+        let (_, other_gas) = attempt(8, 99);
+        assert!(zk_gas > other_gas, "v8: the zkism module reads its store");
+        Ok(())
     }
 
     #[test]
