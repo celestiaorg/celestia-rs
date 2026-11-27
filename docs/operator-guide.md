@@ -963,9 +963,12 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
   `celestia-rs start` and `celestia-rs follow` switch to the next bundled
   release in the same process at the upgrade height, so the v10 to v11
   upgrade (and v11 to v12 on a chain that signals it, such as Mocha)
-  needs no restart and RPC stays up. The node switches once the
-  block before the upgrade commits the new consensus version with the
-  plan due at the next height. When the chain reaches an upgrade this
+  needs no restart and RPC stays up. The v12 rules are matched only
+  against a pre-release celestia-app commit on a short test chain (see
+  [the v12 gap](v11-patch-release.md#known-gap-v12-execution)); an
+  app-hash mismatch after a v12 upgrade stops the node. The node switches
+  once the block before the upgrade commits the new consensus version
+  with the plan due at the next height. When the chain reaches an upgrade this
   binary has no release for, the node stops consensus at the upgrade
   height with `UPGRADE "vN" NEEDED at height: H`, writes
   `data/upgrade-info.json` (cosmovisor's trigger, Go's format) and keeps
