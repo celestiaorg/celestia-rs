@@ -14,9 +14,9 @@
 //! (with the validator set changes the chain makes), every header (time,
 //! hashes, app hash), the data root of each block of app versions 1 to 8,
 //! and ProcessProposal from app version 9. The node stops and restarts
-//! around the upgrades, halts at the v11 upgrade until it is restarted (the
-//! runtime executes v10 until then), and must reproduce every app hash the
-//! oracles committed. A commit with one bad signature, and a block whose
+//! around the upgrades, crosses the v11 upgrade in one process (it switches
+//! to the v11 release in-process, as `celestia-rs start` does), and must
+//! reproduce every app hash the oracles committed. A commit with one bad signature, and a block whose
 //! txs no longer give its data root (its commit signed again for the new
 //! part set), must stop the sync before that block.
 #![allow(
@@ -56,9 +56,9 @@ const STAGES: [&str; 8] = [
 const LAST: i64 = 81;
 /// The first block of each app version after 1.
 const UPGRADES: [i64; 9] = [6, 11, 16, 26, 37, 47, 57, 67, 77];
-/// The first v11 block: a node executing v10 halts there with
-/// `UPGRADE "v11" NEEDED` (and writes `data/upgrade-info.json`); restarted,
-/// it executes v11.
+/// The first v11 block. The node runs the block before it with the v10
+/// release and, once that block commits consensus version 11 with plan
+/// `v11` due, executes this one with the v11 release in the same process.
 const V11_UPGRADE: i64 = 77;
 /// The last block the node can sync: block sync applies block h once it
 /// holds block h+1, whose last commit commits h.
@@ -210,6 +210,8 @@ fn try_sync(
         ..app::AppOptions::default()
     };
     opts.node.home = Some(home.to_path_buf());
+    // `celestia-rs start` activates the bundled releases.
+    opts.node.activate_bundled_upgrades = true;
     let mut app = app::App::open_with(home, opts).unwrap_or_else(|e| panic!("open app: {}", e.log));
     // celestia-app's `--v2-upgrade-height` for this chain (chain ID `test`
     // has no built-in default).
@@ -277,21 +279,14 @@ fn try_sync(
     Ok((out.state, stopped))
 }
 
-/// Block syncs the node at `home` to `stop_height`, restarting it once if
-/// it halts at the v11 upgrade.
+/// Block syncs the node at `home` to `stop_height`; it never halts.
 fn sync_node(home: &Path, archive: &Arc<Reactor>, stop_height: i64) -> nodestore::State {
-    let (state, stopped) = match try_sync(home, archive, stop_height) {
-        Ok(out) => out,
-        Err(e) if app::is_upgrade_needed(&e) && e.contains(&format!("height: {V11_UPGRADE}")) => {
-            assert!(
-                home.join("data/upgrade-info.json").exists(),
-                "the halt wrote no upgrade-info.json"
-            );
-            try_sync(home, archive, stop_height)
-                .unwrap_or_else(|e| panic!("block sync to {stop_height} after restart: {e}"))
-        }
-        Err(e) => panic!("block sync to {stop_height}: {e}"),
-    };
+    let (state, stopped) = try_sync(home, archive, stop_height)
+        .unwrap_or_else(|e| panic!("block sync to {stop_height}: {e}"));
+    assert!(
+        !home.join("data/upgrade-info.json").exists(),
+        "block sync to {stop_height} halted for an upgrade"
+    );
     assert!(
         stopped.is_empty() && state.last_block_height >= stop_height,
         "sync to {stop_height} stopped at {}; peers stopped: {stopped:?}",
@@ -365,9 +360,10 @@ fn sync_tampered(
     )
 }
 
-/// The node block syncs genesis to 80 (block 61 commits it), stopping and
-/// restarting after the block before and the block of each upgrade, and
-/// stores Go's block IDs and app hashes.
+/// The node block syncs genesis to 80 (block 81 commits it), stopping and
+/// restarting after the block before and the block of each upgrade (except
+/// the v11 switch, which one process crosses), and stores Go's block IDs
+/// and app hashes.
 #[test]
 fn block_syncs_the_synthetic_chain_from_genesis_through_every_upgrade() {
     let _ = tracing_subscriber::fmt()
@@ -386,7 +382,13 @@ fn block_syncs_the_synthetic_chain_from_genesis_through_every_upgrade() {
     let genesis = node::load_genesis(home.path()).unwrap();
     let archive = archive_peer(&genesis, &chain);
 
-    let mut stops: Vec<i64> = UPGRADES.iter().flat_map(|u| [u - 1, *u]).collect();
+    // No stop after block 76: one process executes 76 with the v10 release
+    // and 77 with the v11 release.
+    let mut stops: Vec<i64> = UPGRADES
+        .iter()
+        .flat_map(|u| [u - 1, *u])
+        .filter(|h| *h != V11_UPGRADE - 1)
+        .collect();
     stops.extend([SYNCED - 1, SYNCED]);
     let at_79 = tempfile::tempdir().unwrap();
     for stop in stops {
