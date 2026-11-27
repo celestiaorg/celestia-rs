@@ -42,7 +42,8 @@ GitHub pre-release. One release a day, not one per merge, keeps release
 builds (three targets, one on macOS) from competing with PR CI for runners;
 nodes update daily and channels soak for 24 hours, so more frequent
 releases would not reach them sooner. The build sets `CELESTIA_RS_RELEASE_VERSION`, so
-`celestia-rs version` reports the full release version; `build.rs` rejects
+`celestia-rs version`, `--version` and `version --long` report the full
+release version; `build.rs` rejects
 a value that does not extend the crate version. A commit that changes the
 crate version is left to the human release path.
 
@@ -89,7 +90,11 @@ workflow**:
 - `yank <tag>`: no channel takes that release again. Yank every release
   from the bad one up to the fix.
 - `pin <channel> <tag>`: set a channel to a release now, for example to
-  roll `mainnet` back. Pinning also freezes the channel.
+  roll `mainnet` back. Pinning also freezes the channel. Like a promotion,
+  a pin needs the release to have been in the channel before for its soak
+  time (24 hours in `mocha` for `mainnet`); a rollback to the release
+  `mainnet` ran before always passes. Set `force` to skip the check in an
+  emergency.
 - `freeze <channel>` / `unfreeze <channel>`: stop or resume automatic
   promotion, for example around a network upgrade.
 

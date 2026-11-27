@@ -36,7 +36,8 @@ Usage (each command writes the state back to --dir):
   release_channels.py --dir D --policy P promote --releases R [--now ISO]
   release_channels.py --dir D --policy P freeze|unfreeze CHANNEL
   release_channels.py --dir D --policy P yank|unyank TAG
-  release_channels.py --dir D --policy P pin CHANNEL TAG   # also freezes
+  release_channels.py --dir D --policy P pin CHANNEL TAG [--force]
+                       # also freezes; --force skips the soak check
 
 R is the JSON array GitHub's list-releases API returns, optionally with a
 `position` per release. Changes print one per line.
@@ -187,13 +188,25 @@ def unyank(state, tag):
     return [f"{tag}: unyanked"]
 
 
-def pin(state, name, tag, now):
+def pin(state, name, tag, now, policy, force=False):
+    """Sets a channel to a release now and freezes it. Without `force`, the
+    release must have been in the channel's source for its soak time, as
+    for a promotion, so a pin cannot skip a network's bake."""
     check_channel(state, name)
     check_tag(tag)
+    rule = next((c for c in policy["channels"] if c["name"] == name), None)
+    if not force and rule and rule["source"] != RELEASES:
+        cutoff = parse_time(now) - timedelta(hours=rule["soak_hours"])
+        entries = [parse_time(e["at"]) for e in state["channels"][rule["source"]]["history"]
+                   if e["tag"] == tag]
+        if not entries or min(entries) > cutoff:
+            raise ValueError(f"{tag} has not been in {rule['source']} for {rule['soak_hours']:g} "
+                             f"hours; pass --force to pin it anyway")
     current = state["channels"][name]["tag"]
     set_tag(state, name, tag, now, "pin")
     freeze(state, name)
-    return [f"{name}: {current or '(none)'} -> {tag} (pinned, frozen)"]
+    note = "pinned, frozen" + (", forced" if force else "")
+    return [f"{name}: {current or '(none)'} -> {tag} ({note})"]
 
 
 def load(directory, policy):
@@ -233,6 +246,8 @@ def main(argv):
     sp.add_argument("channel")
     sp.add_argument("tag")
     sp.add_argument("--now", help="ISO 8601 UTC time (default: now)")
+    sp.add_argument("--force", action="store_true",
+                    help="pin even if the release has not soaked in the channel's source")
     a = p.parse_args(argv)
 
     now = getattr(a, "now", None) or format_time(datetime.now(timezone.utc))
@@ -247,7 +262,7 @@ def main(argv):
         elif a.cmd in ("yank", "unyank"):
             changes = globals()[a.cmd](state, a.tag)
         else:
-            changes = pin(state, a.channel, a.tag, now)
+            changes = pin(state, a.channel, a.tag, now, policy, force=a.force)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

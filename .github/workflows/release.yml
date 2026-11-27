@@ -217,6 +217,7 @@ jobs:
           echo "$details"
           grep -Fx "commit: $SHA" <<<"$details"
           grep -Fx 'build_profile: dist' <<<"$details"
+          [[ "$("$@" "$bin" --version)" == "celestia-rs $VERSION" ]]
           [[ "$("$@" "$bin" version)" == "$VERSION" ]]
           "$@" "$bin" start --help | grep -- --bridge-p2p-listen
           "$@" "$bin" da-light --help >/dev/null

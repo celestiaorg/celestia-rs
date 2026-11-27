@@ -467,3 +467,25 @@ fn follower_receipts_require_candidate_identity_and_execution() {
         assert!(!path.exists());
     }
 }
+
+/// `--version`, `version` and `version --long` all report the release
+/// version, which for an automatic release is longer than the crate version
+/// (`CELESTIA_RS_RELEASE_VERSION`, docs/releasing.md).
+#[test]
+fn every_version_output_reports_the_release_version() {
+    let run = |args: &[&str]| {
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_celestia-rs"))
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{args:?}");
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let version = celestia_rs::version::SOFTWARE_VERSION;
+    assert_eq!(run(&["version"]).trim(), version);
+    assert_eq!(run(&["--version"]).trim(), format!("celestia-rs {version}"));
+    assert!(
+        run(&["version", "--long"]).contains(&format!("\nversion: {version}\n")),
+        "version --long"
+    );
+}

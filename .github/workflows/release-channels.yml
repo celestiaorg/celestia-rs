@@ -9,7 +9,8 @@ name: release channels
 # - Hourly: promote.
 # - Actions → release channels → Run workflow: promote now, or freeze /
 #   unfreeze a channel, yank / unyank a release, or pin a channel to a
-#   release (rollback; also freezes it).
+#   release (rollback; also freezes it). A pin, like a promotion, needs the
+#   release to have soaked in the channel before, unless `force` is set.
 # - Pull requests and pushes that change the promotion code: its tests.
 
 on:
@@ -30,6 +31,10 @@ on:
         description: Release tag, for yank, unyank and pin (e.g. v0.1.0-main.812)
         type: string
         required: false
+      force:
+        description: For pin, skip the check that the release soaked in the channel before
+        type: boolean
+        default: false
   pull_request:
     paths:
       - .github/scripts/release_channels.py
@@ -98,6 +103,7 @@ jobs:
           ACTION: ${{ inputs.action || 'promote' }}
           CHANNEL: ${{ inputs.channel }}
           TAG: ${{ inputs.tag }}
+          FORCE: ${{ inputs.force && '--force' || '' }}
         run: |
           set -euo pipefail
           run() { python3 .github/scripts/release_channels.py --dir state --policy .github/release-channels.json "$@"; }
@@ -120,7 +126,8 @@ jobs:
             pin)
               gh release view "$TAG" --json isDraft --jq 'if .isDraft then error("draft") else . end' >/dev/null ||
                 { echo "::error::$TAG is not a published release"; exit 1; }
-              run pin "$CHANNEL" "$TAG" >changes.txt
+              # shellcheck disable=SC2086 # FORCE is empty or one flag
+              run pin "$CHANNEL" "$TAG" $FORCE >changes.txt
               ;;
             *) echo "::error::unknown action $ACTION"; exit 1 ;;
           esac

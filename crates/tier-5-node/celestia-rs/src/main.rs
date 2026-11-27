@@ -34,7 +34,7 @@ use clap::{Args, Parser, Subcommand};
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 #[derive(Parser, Debug)]
-#[command(name = "celestia-rs", version, about = "Rust Celestia consensus node")]
+#[command(name = "celestia-rs", version = celestia_rs::version::SOFTWARE_VERSION, about = "Rust Celestia consensus node")]
 struct Cli {
     /// Node home directory.
     #[arg(long, global = true, env = "CELESTIA_RS_HOME")]

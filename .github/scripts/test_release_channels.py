@@ -82,7 +82,7 @@ class PromoteTests(unittest.TestCase):
         self.promote(t(3, 1))
         self.assertEqual(self.current("mocha"), "v0.1.0-main.2")
         # Roll mocha back to main.1; mainnet must not get main.2.
-        rc.pin(self.state, "mocha", "v0.1.0-main.1", t(3, 2))
+        rc.pin(self.state, "mocha", "v0.1.0-main.1", t(3, 2), POLICY, force=True)
         self.promote(t(6, 1))  # main.2 has 72h on mocha, but mocha left it
         self.assertEqual(self.current("mocha"), "v0.1.0-main.1")
         self.assertIsNone(self.current("mainnet"))
@@ -137,17 +137,28 @@ class PromoteTests(unittest.TestCase):
         self.assertEqual(self.current("corto"), "v0.1.0-main.3")
 
     def test_pin_sets_and_freezes(self):
-        rc.pin(self.state, "mainnet", "v0.1.0-main.1", t(5))
+        rc.pin(self.state, "mainnet", "v0.1.0-main.1", t(5), POLICY, force=True)
         self.assertEqual(self.current("mainnet"), "v0.1.0-main.1")
         self.assertIn("mainnet", self.state["frozen"])
         self.assertEqual(self.state["channels"]["mainnet"]["history"][-1],
                          {"tag": "v0.1.0-main.1", "at": t(5), "by": "pin"})
 
+    def test_pin_refuses_a_release_that_has_not_baked_on_the_source(self):
+        self.promote(t(2, 1))  # corto: main.2
+        with self.assertRaisesRegex(ValueError, "has not been in corto for 24"):
+            rc.pin(self.state, "mocha", "v0.1.0-main.2", t(2, 2), POLICY)
+        with self.assertRaisesRegex(ValueError, "has not been in corto"):
+            rc.pin(self.state, "mocha", "v0.1.0-main.1", t(9), POLICY)
+        rc.pin(self.state, "mocha", "v0.1.0-main.2", t(3, 1), POLICY)
+        self.assertEqual(self.current("mocha"), "v0.1.0-main.2")
+        # The first channel takes any published release.
+        rc.pin(self.state, "corto", "v0.1.0-main.1", t(3, 2), POLICY)
+
     def test_unknown_channel_and_bad_tag_are_rejected(self):
         with self.assertRaises(ValueError):
             rc.freeze(self.state, "nope")
         with self.assertRaises(ValueError):
-            rc.pin(self.state, "mocha", "main", t(1))
+            rc.pin(self.state, "mocha", "main", t(1), POLICY, force=True)
 
     def test_policy_must_be_a_chain_of_known_sources(self):
         with self.assertRaises(ValueError):
@@ -155,6 +166,40 @@ class PromoteTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             rc.check_policy({"channels": [{"name": "releases", "source": "releases", "soak_hours": 1}]})
         rc.check_policy(POLICY)
+
+
+class RealPolicyBakeTests(unittest.TestCase):
+    """With .github/release-channels.json, no release reaches mainnet before
+    it has been 24 hours in corto and then 24 hours in mocha."""
+
+    def test_mainnet_only_gets_releases_baked_on_corto_and_mocha(self):
+        import random
+        policy = json.loads((Path(__file__).parents[1] / "release-channels.json").read_text())
+        hours = {c["name"]: c["soak_hours"] for c in policy["channels"]}
+        self.assertEqual(hours, {"corto": 0, "mocha": 24, "mainnet": 24})
+        from datetime import datetime, timedelta
+        rnd = random.Random(7)
+        start = datetime(2026, 12, 1)
+        for trial in range(20):
+            state, releases, n = rc.empty_state(policy), [], 0
+            for hour in range(24 * 21):
+                now = start + timedelta(hours=hour)
+                iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+                # A release most days; positions jump by the day's merges.
+                if hour % 24 == 14 and rnd.random() > 0.1:
+                    n += rnd.randint(1, 60)
+                    releases.append(release(f"v0.1.0-main.{n}", iso))
+                if releases and rnd.random() < 0.01:
+                    rc.yank(state, rnd.choice(releases)["tag_name"])
+                rc.promote(state, policy, releases, iso)
+            entered = {name: {} for name in hours}
+            for name in hours:
+                for e in state["channels"][name]["history"]:
+                    entered[name].setdefault(e["tag"], rc.parse_time(e["at"]))
+            self.assertTrue(entered["mainnet"], "the simulation never reached mainnet")
+            for tag, at in entered["mainnet"].items():
+                self.assertLessEqual(entered["mocha"][tag], at - timedelta(hours=24), tag)
+                self.assertLessEqual(entered["corto"][tag], entered["mocha"][tag] - timedelta(hours=24), tag)
 
 
 class CliTests(unittest.TestCase):
