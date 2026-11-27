@@ -19,7 +19,7 @@ pub fn enabled() -> bool {
     match STATE.load(Ordering::Relaxed) {
         0 => {
             let on = std::env::var("CELESTIA_PHASE_PROFILE").is_ok_and(|v| v == "1");
-            STATE.store(if on { 2 } else { 1 }, Ordering::Relaxed);
+            set_enabled(on);
             on
         }
         s => s == 2,
@@ -29,11 +29,14 @@ pub fn enabled() -> bool {
 /// Turns profiling on or off (tests and benchmarks).
 pub fn set_enabled(on: bool) {
     STATE.store(if on { 2 } else { 1 }, Ordering::Relaxed);
+    multistore::set_count_node_lookups(on);
 }
 
-/// Counts a committed IAVL read.
+/// Counts a committed IAVL read (only while profiling is on).
 pub(crate) fn count_read() {
-    READS.fetch_add(1, Ordering::Relaxed);
+    if enabled() {
+        READS.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 fn counters() -> [u64; 2] {

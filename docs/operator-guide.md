@@ -966,8 +966,8 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
   needs no restart and RPC stays up. The v12 rules are matched only
   against a pre-release celestia-app commit on a short test chain (see
   [the v12 gap](v11-patch-release.md#known-gap-v12-execution)); an
-  app-hash mismatch after a v12 upgrade stops the node. The node switches once the
-  block before the upgrade commits the new consensus version with the
+  app-hash mismatch after a v12 upgrade stops the node. The node
+  switches once the block before the upgrade commits the new consensus version with the
   plan due at the next height. When the chain reaches an upgrade this
   binary has no release for, the node stops consensus at the upgrade
   height with `UPGRADE "vN" NEEDED at height: H`, writes

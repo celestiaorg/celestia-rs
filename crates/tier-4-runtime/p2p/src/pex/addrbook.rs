@@ -418,17 +418,18 @@ impl AddrBook {
         }
     }
 
-    /// `MarkBad`: ban and remove.
-    pub fn mark_bad(&self, addr: &NetAddress, ban_time: Duration) {
+    /// `MarkBad`: ban and remove. `reason` is only logged.
+    pub fn mark_bad(&self, addr: &NetAddress, ban_time: Duration, reason: &str) {
         let mut b = self.lock();
         let Some(id) = addr.id else { return };
         let Some(ka) = b.addr_lookup.get(&id).cloned() else {
+            tracing::debug!(%addr, reason, "Not banning address absent from the book");
             return;
         };
         if let std::collections::hash_map::Entry::Vacant(e) = b.bad_peers.entry(id) {
             let mut ka = ka;
             ka.ban(ban_time);
-            tracing::info!(%addr, "Add address to blacklist");
+            tracing::info!(%addr, reason, "Add address to blacklist");
             e.insert(ka);
         }
         Self::remove_address_locked(&mut b, addr);
@@ -862,7 +863,7 @@ mod tests {
         assert_eq!(book.get_selection().len(), 50);
         let sel = book.get_selection_with_bias(30);
         assert_eq!(sel.len(), 32);
-        book.mark_bad(&addr(4, [1, 2, 4, 1]), Duration::from_secs(0));
+        book.mark_bad(&addr(4, [1, 2, 4, 1]), Duration::from_secs(0), "test");
         assert_eq!(book.size(), 49);
         assert!(book.is_banned(&addr(4, [1, 2, 4, 1])));
         book.reinstate_bad_peers();

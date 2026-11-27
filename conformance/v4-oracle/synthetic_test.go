@@ -42,6 +42,8 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		{"v1-v3-probes", "v1-v3", "v1-v3", "v4-probes", []string{"-heights", "19", "-probes"}},
 		// The 07-tendermint client blocks of tmclient.go after the usual five.
 		{"v1-v3-tm", "v1-v3", "v1-v3", "v4-tm", []string{"-heights", "10", "-tmclient"}},
+		// The equivocation blocks of evidence.go after the usual five.
+		{"v1-v3-evidence", "v1-v3", "v1-v3", "v4-evidence", []string{"-heights", "10", "-evidence"}},
 		{"v3-rich", "v3-rich", "v3-rich", "v3-rich-v4", nil},
 		// Only the history chain's genesis is committed on the v3 side.
 		{"v3-history", "v3-history", "v3-history", "v3-history-v4", nil},

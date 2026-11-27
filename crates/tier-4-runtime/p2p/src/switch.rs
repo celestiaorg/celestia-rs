@@ -128,6 +128,10 @@ enum QueueOutcome {
     Closed,
 }
 
+/// How long a closed peer's queued messages may take to reach the reactors
+/// before the switch removes the peer anyway.
+const REACTOR_DRAIN_LIMIT: Duration = Duration::from_secs(5);
+
 async fn queue_reactor_message<T>(
     tx: &mpsc::Sender<T>,
     message: T,
@@ -481,7 +485,9 @@ impl Switch {
                 _ = quit.changed() => return,
             };
             let src = env.src.clone();
-            if let Err(e) = entry.reactor.receive(env) {
+            let res = entry.reactor.receive(env);
+            src.message_done();
+            if let Err(e) = res {
                 self.stop_peer_for_error(&src, &format!("error in reactor processing: {e}"));
             }
         }
@@ -744,6 +750,40 @@ impl Switch {
         }
     }
 
+    /// Dial now every persistent peer that is neither connected nor being
+    /// dialed, and return how many dials were started. Not in Go.
+    ///
+    /// The reconnect loop ([`Self::reconnect_to_peer`]) tries 20 times and
+    /// then backs off exponentially (3 s, 9 s, 27 s, ...), and a peer that
+    /// drops soon after connecting waits out [`crate::flap`]. A caller that
+    /// needs a persistent peer soon (state sync, while it knows no
+    /// snapshot) calls this at its own, bounded rate so that a slot that
+    /// opens on a full peer is not missed for minutes. It skips the flap
+    /// delay: the caller's rate is the limit. A failed dial hands the peer
+    /// back to the reconnect loop as usual.
+    #[allow(clippy::must_use_candidate)] // the count is informational
+    pub fn redial_persistent_peers(&self) -> usize {
+        if !self.is_running() {
+            return 0;
+        }
+        let ours = self.net_address();
+        let addrs = read(&self.inner.persistent_addrs).clone();
+        let mut started = 0;
+        for a in addrs {
+            if ours.as_ref().is_some_and(|o| a.same(o)) || self.is_dialing_or_existing_address(&a) {
+                continue;
+            }
+            started += 1;
+            let sw = self.clone();
+            tokio::spawn(async move {
+                if let Err(e) = sw.dial_peer_with_address(&a).await {
+                    tracing::debug!(err = %e, addr = %a, "Error redialing persistent peer");
+                }
+            });
+        }
+        started
+    }
+
     /// Start a peer over an upgraded connection and register it with the
     /// reactors (`addPeer`).
     pub fn add_peer(&self, conn: UpgradedConn) -> Result<Arc<Peer>, SwitchError> {
@@ -821,13 +861,22 @@ impl Switch {
                 channel_id: ch,
                 message: msg,
             };
-            if queue_reactor_message(&entry.tx, env, entry.reactor.drop_on_full_queue()).await
-                == QueueOutcome::Closed
-            {
-                return;
+            peer.message_queued();
+            match queue_reactor_message(&entry.tx, env, entry.reactor.drop_on_full_queue()).await {
+                QueueOutcome::Queued => {}
+                QueueOutcome::Dropped => peer.message_done(),
+                QueueOutcome::Closed => {
+                    peer.message_done();
+                    return;
+                }
             }
         }
         if let ConnState::Errored(e) = peer.closed().await {
+            // As Go's receive routine calls Receive before the switch stops
+            // the peer: let the reactors process what the peer sent before
+            // its close (a seed sends PexAddrs, then closes) before
+            // RemovePeer forgets the peer's state.
+            peer.messages_processed(REACTOR_DRAIN_LIMIT).await;
             self.stop_peer_for_error(&peer, &e);
         }
     }
