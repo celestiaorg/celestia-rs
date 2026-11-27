@@ -26,10 +26,10 @@ soak on the network before it.
 ```mermaid
 flowchart LR
   pr[PR merged] --> ci[ci passes on main] --> rel["release v…-main.n<br/>(pre-release)"]
-  rel -->|0 h| quarto
-  quarto -->|24 h in quarto| mocha
-  mocha -->|72 h in mocha| mainnet
-  quarto & mocha & mainnet -.->|daily| nodes[auto-updaters<br/>install.sh --channel]
+  rel -->|0 h| corto
+  corto -->|24 h in corto| mocha
+  mocha -->|24 h in mocha| mainnet
+  corto & mocha & mainnet -.->|daily| nodes[auto-updaters<br/>install.sh --channel]
 ```
 
 **Automatic releases.** When `ci` passes on a push to `main`,
@@ -47,9 +47,9 @@ has a source and a soak time:
 
 | channel | source | soak |
 | --- | --- | --- |
-| `quarto` | releases | 0 h |
-| `mocha` | `quarto` | 24 h |
-| `mainnet` | `mocha` | 72 h |
+| `corto` | releases | 0 h |
+| `mocha` | `corto` | 24 h |
+| `mainnet` | `mocha` | 24 h |
 
 Every hour, **release channels** (`release-channels.yml`) moves each
 channel to the newest release that has been in its source for at least the
@@ -57,8 +57,8 @@ soak time, is not yanked, and is not newer than what the source runs now.
 "Newest" means latest on `main` (the commit's position), not latest
 published: automatic builds run in parallel and can publish out of order.
 It never moves a channel backwards. `main` is linear, so a release that
-entered `mocha` 72 hours ago has run there, inside every later release, for
-72 hours; frequent merges do not starve `mainnet`. The state is on the
+entered `mocha` 24 hours ago has run there, inside every later release, for
+24 hours; frequent merges do not starve `mainnet`. The state is on the
 `release-channels` branch: `channels.json` (tags, history, frozen channels,
 yanked releases) and `channels/<name>`, one file holding the tag. Each
 change is a commit signed by GitHub, so the branch is the audit log.

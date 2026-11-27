@@ -17,7 +17,7 @@ After=network-online.target celestia-rs.service
 
 [Service]
 Type=oneshot
-# The channel of the node's network: quarto, mocha or mainnet.
+# The channel of the node's network: corto, mocha or mainnet.
 Environment=CHANNEL=mocha
 # Must match celestia-rs.service.
 Environment=BIN=/usr/local/bin/celestia-rs

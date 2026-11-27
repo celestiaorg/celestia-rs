@@ -66,7 +66,7 @@ USAGE:
 
 OPTIONS:
     -v, --version <TAG>   Install this release (e.g. v0.1.0) instead of the latest
-    -c, --channel <NAME>  Install the release a channel recommends (quarto,
+    -c, --channel <NAME>  Install the release a channel recommends (corto,
                           mocha, mainnet); re-run to follow the channel
         --prerelease      Allow pre-releases when picking the latest release
         --no-modify-path  Don't add the install directory to PATH in shell profiles

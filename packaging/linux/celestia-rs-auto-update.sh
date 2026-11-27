@@ -22,7 +22,7 @@
 # rolled back, 2 when the pass could not run.
 set -euo pipefail
 
-CHANNEL=${CHANNEL:?set CHANNEL to the channel of the node network: quarto, mocha or mainnet}
+CHANNEL=${CHANNEL:?set CHANNEL to the channel of the node network: corto, mocha or mainnet}
 REPO=${REPO:-celestiaorg/celestia-rs}
 CHANNELS_URL=${CHANNELS_URL:-https://raw.githubusercontent.com/$REPO/release-channels/channels}
 BIN=${BIN:-/usr/local/bin/celestia-rs}

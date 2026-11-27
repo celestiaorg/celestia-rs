@@ -1,7 +1,7 @@
 {
   "channels": [
-    {"name": "quarto", "source": "releases", "soak_hours": 0},
-    {"name": "mocha", "source": "quarto", "soak_hours": 24},
-    {"name": "mainnet", "source": "mocha", "soak_hours": 72}
+    {"name": "corto", "source": "releases", "soak_hours": 0},
+    {"name": "mocha", "source": "corto", "soak_hours": 24},
+    {"name": "mainnet", "source": "mocha", "soak_hours": 24}
   ]
 }

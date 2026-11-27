@@ -6,7 +6,7 @@
 
 - Every PR merged to `main` is released automatically once `ci` passes on
   it (`v<version>-main.<n>`, a pre-release), and release channels
-  (`quarto`, `mocha`, `mainnet`) move forward on their own as releases soak
+  (`corto`, `mocha`, `mainnet`) move forward on their own as releases soak
   on the network before them. `install.sh --channel <name>` installs a
   channel's release, a new Linux systemd timer follows a channel daily, and
   the Mac auto-updater now follows each node's channel instead of the

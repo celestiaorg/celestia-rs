@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Moves celestia-rs release channels forward as releases soak.
 
-A channel (quarto, mocha, mainnet, ...) names the one release that nodes on
+A channel (corto, mocha, mainnet, ...) names the one release that nodes on
 that network should run. .github/release-channels.json is the policy: each
 channel's source (`releases`, or the channel before it) and how many hours a
 release must have been in that source before the channel takes it. The

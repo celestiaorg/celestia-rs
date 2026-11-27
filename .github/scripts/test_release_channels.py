@@ -12,8 +12,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 import release_channels as rc  # noqa: E402
 
 POLICY = {"channels": [
-    {"name": "quarto", "source": "releases", "soak_hours": 0},
-    {"name": "mocha", "source": "quarto", "soak_hours": 24},
+    {"name": "corto", "source": "releases", "soak_hours": 0},
+    {"name": "mocha", "source": "corto", "soak_hours": 24},
     {"name": "mainnet", "source": "mocha", "soak_hours": 72},
 ]}
 
@@ -42,9 +42,9 @@ class PromoteTests(unittest.TestCase):
 
     def test_first_channel_takes_newest_published_release(self):
         changes = self.promote(t(2, 1))
-        self.assertEqual(self.current("quarto"), "v0.1.0-main.2")
+        self.assertEqual(self.current("corto"), "v0.1.0-main.2")
         self.assertIsNone(self.current("mocha"))
-        self.assertEqual(changes, ["quarto: (none) -> v0.1.0-main.2"])
+        self.assertEqual(changes, ["corto: (none) -> v0.1.0-main.2"])
 
     def test_drafts_unpublished_and_invalid_tags_are_ignored(self):
         self.releases += [
@@ -53,10 +53,10 @@ class PromoteTests(unittest.TestCase):
             release("../main", t(2, 2)),
         ]
         self.promote(t(3))
-        self.assertEqual(self.current("quarto"), "v0.1.0-main.2")
+        self.assertEqual(self.current("corto"), "v0.1.0-main.2")
 
     def test_downstream_channel_waits_for_soak_on_its_source(self):
-        self.promote(t(2, 1))  # quarto gets main.2 at day 2 01:00
+        self.promote(t(2, 1))  # corto gets main.2 at day 2 01:00
         self.promote(t(3, 0))  # 23h later
         self.assertIsNone(self.current("mocha"))
         self.promote(t(3, 1))  # 24h later
@@ -66,16 +66,16 @@ class PromoteTests(unittest.TestCase):
         self.assertEqual(self.current("mainnet"), "v0.1.0-main.2")
 
     def test_frequent_releases_do_not_starve_downstream_channels(self):
-        # A release every hour: quarto never keeps one for 24h, but each
-        # one entered quarto and every later release contains it.
+        # A release every hour: corto never keeps one for 24h, but each
+        # one entered corto and every later release contains it.
         for hour in range(30):
             self.releases.append(release(f"v0.1.0-main.{10 + hour}", f"2026-12-03T{hour % 24:02d}:00:00Z"
                                          if hour < 24 else f"2026-12-04T{hour - 24:02d}:00:00Z"))
             self.promote(self.releases[-1]["published_at"])
-        # At day 4 05:00, main.15 has been in quarto (inside every later
+        # At day 4 05:00, main.15 has been in corto (inside every later
         # release) for 24h.
         self.assertEqual(self.current("mocha"), "v0.1.0-main.15")
-        self.assertEqual(self.current("quarto"), "v0.1.0-main.39")
+        self.assertEqual(self.current("corto"), "v0.1.0-main.39")
 
     def test_never_promotes_past_what_the_source_runs_now(self):
         self.promote(t(2, 1))
@@ -93,48 +93,48 @@ class PromoteTests(unittest.TestCase):
         self.state["channels"]["mainnet"] = {"tag": "v0.1.0-main.2", "history": []}
         self.state["channels"]["mocha"] = {"tag": "v0.1.0-main.1",
                                            "history": [{"tag": "v0.1.0-main.1", "at": t(1)}]}
-        self.state["channels"]["quarto"] = {"tag": "v0.1.0-main.1",
+        self.state["channels"]["corto"] = {"tag": "v0.1.0-main.1",
                                             "history": [{"tag": "v0.1.0-main.1", "at": t(1)}]}
-        rc.freeze(self.state, "quarto")
+        rc.freeze(self.state, "corto")
         self.promote(t(20))
         self.assertEqual(self.current("mainnet"), "v0.1.0-main.2")
 
     def test_a_late_published_older_commit_does_not_move_a_channel_back(self):
         self.releases.append(release("v0.1.0-main.4", t(2, 1)))
         self.promote(t(2, 1))
-        self.assertEqual(self.current("quarto"), "v0.1.0-main.4")
+        self.assertEqual(self.current("corto"), "v0.1.0-main.4")
         # main.3's build was slower: published after main.4.
         self.releases.append(release("v0.1.0-main.3", t(2, 2)))
         self.assertEqual(self.promote(t(2, 3)), [])
-        self.assertEqual(self.current("quarto"), "v0.1.0-main.4")
+        self.assertEqual(self.current("corto"), "v0.1.0-main.4")
 
     def test_human_releases_order_by_their_position_field(self):
         self.releases.append(dict(release("v0.1.0", t(2, 2)), position=3))
         self.releases.append(release("v0.1.0-main.4", t(2, 1)))
         self.promote(t(2, 3))
-        self.assertEqual(self.current("quarto"), "v0.1.0-main.4")
+        self.assertEqual(self.current("corto"), "v0.1.0-main.4")
         # A release with no main position cannot be ordered: never taken.
         self.releases = [release("v9.0.0", t(1))]
         self.state = rc.empty_state(POLICY)
         self.assertEqual(self.promote(t(2)), [])
 
     def test_frozen_channel_does_not_move(self):
-        rc.freeze(self.state, "quarto")
+        rc.freeze(self.state, "corto")
         self.assertEqual(self.promote(t(3)), [])
-        self.assertIsNone(self.current("quarto"))
-        rc.unfreeze(self.state, "quarto")
+        self.assertIsNone(self.current("corto"))
+        rc.unfreeze(self.state, "corto")
         self.promote(t(3))
-        self.assertEqual(self.current("quarto"), "v0.1.0-main.2")
+        self.assertEqual(self.current("corto"), "v0.1.0-main.2")
 
     def test_yanked_release_is_skipped_in_favor_of_an_older_soaked_one(self):
-        self.promote(t(1, 1))  # quarto: main.1
-        self.promote(t(2, 1))  # quarto: main.2
+        self.promote(t(1, 1))  # corto: main.1
+        self.promote(t(2, 1))  # corto: main.2
         rc.yank(self.state, "v0.1.0-main.2")
         self.promote(t(3, 1))
         self.assertEqual(self.current("mocha"), "v0.1.0-main.1")
         self.releases.append(release("v0.1.0-main.3", t(3, 2)))
         self.promote(t(3, 2))
-        self.assertEqual(self.current("quarto"), "v0.1.0-main.3")
+        self.assertEqual(self.current("corto"), "v0.1.0-main.3")
 
     def test_pin_sets_and_freezes(self):
         rc.pin(self.state, "mainnet", "v0.1.0-main.1", t(5))
@@ -151,7 +151,7 @@ class PromoteTests(unittest.TestCase):
 
     def test_policy_must_be_a_chain_of_known_sources(self):
         with self.assertRaises(ValueError):
-            rc.check_policy({"channels": [{"name": "mocha", "source": "quarto", "soak_hours": 1}]})
+            rc.check_policy({"channels": [{"name": "mocha", "source": "corto", "soak_hours": 1}]})
         with self.assertRaises(ValueError):
             rc.check_policy({"channels": [{"name": "releases", "source": "releases", "soak_hours": 1}]})
         rc.check_policy(POLICY)
@@ -169,11 +169,11 @@ class CliTests(unittest.TestCase):
             r = subprocess.run(args + ["promote", "--releases", str(d / "releases.json"),
                                        "--now", t(2)], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(r.stdout.strip(), "quarto: (none) -> v0.1.0-main.1")
-            self.assertEqual((out / "channels" / "quarto").read_text(), "v0.1.0-main.1\n")
+            self.assertEqual(r.stdout.strip(), "corto: (none) -> v0.1.0-main.1")
+            self.assertEqual((out / "channels" / "corto").read_text(), "v0.1.0-main.1\n")
             self.assertFalse((out / "channels" / "mocha").exists())
             state = json.loads((out / "channels.json").read_text())
-            self.assertEqual(state["channels"]["quarto"]["tag"], "v0.1.0-main.1")
+            self.assertEqual(state["channels"]["corto"]["tag"], "v0.1.0-main.1")
 
             r = subprocess.run(args + ["yank", "v0.1.0-main.1"], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)

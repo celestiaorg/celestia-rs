@@ -1,6 +1,6 @@
 name: release channels
 
-# Moves the release channels (quarto, mocha, mainnet) forward as releases
+# Moves the release channels (corto, mocha, mainnet) forward as releases
 # soak, by the policy in .github/release-channels.json, and records them on
 # the `release-channels` branch. Nodes follow a channel with
 # `scripts/install.sh --channel <name>` or the auto-updaters. See
