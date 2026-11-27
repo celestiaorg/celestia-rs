@@ -7,8 +7,10 @@
 //! the next block) into the release's store set, opens the node's
 //! [`app::App`] on it, and runs the remaining blocks: the release's usual
 //! blocks and its probe blocks (module rules, governance filters, amino
-//! signed warp transactions, and from v6 packet-forward-middleware and ICA
-//! host packets). For each block it requires the oracle's KV changes of
+//! signed warp transactions, and from v6 packet-forward-middleware
+//! packets). From v6 the fixture's last three blocks (the ICA host channel)
+//! are not run: the interchain account address derives from the header's
+//! app hash, which differs with seeded trees. For each block it requires the oracle's KV changes of
 //! every store, every transaction result (code, codespace, gas wanted and
 //! used, data, log, info, events) and the block's events, validator
 //! updates, consensus params and timeouts. IAVL roots are not compared:
@@ -212,14 +214,25 @@ fn replace(bytes: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
 fn probes_match_the_oracle(version: u64) {
     let fixture = format!("{FIXTURES}/v{version}-probes");
     let roots = roots(&fixture);
-    let upgrade = roots["handoff_height"].as_i64().unwrap() + 1;
-    let last = roots["heights"]
+    let handoff = roots["handoff_height"].as_i64().unwrap();
+    let upgrade = handoff + 1;
+    let fixture_last = roots["heights"]
         .as_array()
         .unwrap()
         .iter()
         .map(|h| h["height"].as_i64().unwrap())
         .max()
         .unwrap();
+    // From v6 the last three blocks open an interchain-account channel and
+    // execute through it. ibc-go `GenerateAddress` derives the account from
+    // the header's app hash, which here is celestia-rs's own (the seeded
+    // trees do not have the oracle's shape), so the account differs by
+    // construction; the run from genesis covers those blocks.
+    let last = if version >= 6 {
+        handoff + 16
+    } else {
+        fixture_last
+    };
 
     let diffs = common::diffs_in(&format!("{fixture}/kv-diffs.jsonl.gz"));
     let results: BTreeMap<i64, serde_json::Value> =
