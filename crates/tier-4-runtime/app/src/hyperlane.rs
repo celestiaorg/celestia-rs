@@ -166,11 +166,11 @@ mod tests {
         for version in [4, 5, 6] {
             let (zk_log, zk_gas) = attempt(version, x_zkism::msgs::MODULE_TYPE_ZK_ISM);
             let (other_log, other_gas) = attempt(version, 99);
-            assert_eq!(zk_gas, other_gas, "v{version}: {zk_log}");
-            assert_eq!(
-                zk_log.replace("0000002a", "XX"),
-                other_log.replace("00000063", "XX"),
-                "v{version}"
+            assert_eq!(zk_gas, other_gas, "v{version}: gas");
+            // Compared without formatting the logs into the message.
+            assert!(
+                zk_log.replace("0000002a", "XX") == other_log.replace("00000063", "XX"),
+                "v{version}: the logs differ beyond the module type"
             );
         }
         let (_, zk_gas) = attempt(8, x_zkism::msgs::MODULE_TYPE_ZK_ISM);
