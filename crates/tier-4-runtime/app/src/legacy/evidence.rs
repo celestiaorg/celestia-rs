@@ -41,8 +41,12 @@ fn evidence(m: &MsgSubmitEvidence) -> Result<Option<Equivocation>> {
 fn validate(m: &MsgSubmitEvidence) -> Result<Equivocation> {
     msgs::acc_address(&m.submitter, "submitter")?;
     let Some(e) = evidence(m)? else {
-        // `ErrInvalidEvidence` (evidence code 2 in v0.46).
-        return Err(sdk::SdkError::new("evidence", 2, "invalid evidence").wrap("missing evidence"));
+        // `GetEvidence` calls `GetCachedValue` on the nil `*Any`. (An `Any`
+        // with an empty type URL never gets here: the tx decoder cannot
+        // resolve it.)
+        return Err(sdk::error::go_panic(
+            "runtime error: invalid memory address or nil pointer dereference",
+        ));
     };
     x_evidence::validate_basic(&e).map_err(sdk::error::internal)?;
     Ok(e)

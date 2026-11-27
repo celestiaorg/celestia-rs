@@ -69,8 +69,11 @@ impl Counted {
     }
 }
 
-/// The counting part of `Tally` (the same in cosmos-sdk v0.46 and v0.50):
-/// deletes the proposal's votes as they are counted.
+/// The counting part of `Tally`: deletes the proposal's votes as they are
+/// counted. The arithmetic is the same in cosmos-sdk v0.46 and v0.50; v0.46
+/// keys validators by the re-encoded operator address (`String()`), which
+/// equals the stored string for every address v0.46 stores (always
+/// canonical).
 pub fn count_votes(ctx: &mut Context<'_>, proposal_id: u64) -> Result<Counted> {
     let mut results: [LegacyDec; 5] = Default::default();
     let mut total = LegacyDec::zero();

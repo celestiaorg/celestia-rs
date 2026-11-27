@@ -47,10 +47,23 @@ pub fn r_byte(c: char) -> Option<u8> {
 
 /// True when `s` (valid UTF-8 bytes) contains a char in R: its UTF-8 is
 /// `F4 8F BE xx` or `F4 8F BF xx`.
+///
+/// Nearly every string has no `F4` byte at all, so a `memchr` scan for it
+/// decides most calls; this runs on every `go_len`, `to_go_bytes` and
+/// `from_go_vec`.
 #[inline]
 fn has_r_bytes(b: &[u8]) -> bool {
-    b.windows(3)
-        .any(|w| w[0] == 0xF4 && w[1] == 0x8F && (w[2] == 0xBE || w[2] == 0xBF))
+    if !b.contains(&0xF4) {
+        return false;
+    }
+    let mut rest = b;
+    while let Some(i) = rest.iter().position(|&x| x == 0xF4) {
+        if let [0x8F, 0xBE | 0xBF, ..] = rest[i + 1..] {
+            return true;
+        }
+        rest = &rest[i + 1..];
+    }
+    false
 }
 
 fn push_bytes_as_r(out: &mut String, bytes: &[u8]) {
@@ -343,6 +356,56 @@ mod tests {
                 roundtrip(&[i, j]);
                 roundtrip(&[0xF4, 0x8F, i, j]);
             }
+        }
+    }
+
+    /// Deterministic byte strings rich in R-char prefixes and invalid runs.
+    fn samples() -> Vec<Vec<u8>> {
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let pieces: [&[u8]; 9] = [
+            b"a",
+            b"celestia1",
+            b"\xf4",
+            b"\xf4\x8f",
+            b"\xf4\x8f\xbe",
+            b"\xf4\x8f\xbf\xbf",
+            b"\xff",
+            "\u{e9}\u{20ac}".as_bytes(),
+            b"\x8f\xbe",
+        ];
+        (0..20_000)
+            .map(|_| {
+                let len = usize::try_from(next() % 12).unwrap_or(0);
+                let mut bytes = Vec::new();
+                for _ in 0..len {
+                    let r = next();
+                    if r % 4 == 0 {
+                        bytes.push(u8::try_from(r >> 8 & 0xff).unwrap_or(0));
+                    } else {
+                        let i = usize::try_from(r >> 8).unwrap_or(0) % pieces.len();
+                        bytes.extend_from_slice(pieces[i]);
+                    }
+                }
+                bytes
+            })
+            .collect()
+    }
+
+    #[test]
+    fn r_byte_scan_matches_the_windowed_definition() {
+        let reference = |b: &[u8]| {
+            b.windows(3)
+                .any(|w| w[0] == 0xF4 && w[1] == 0x8F && (w[2] == 0xBE || w[2] == 0xBF))
+        };
+        for b in samples() {
+            assert_eq!(has_r_bytes(&b), reference(&b), "{b:x?}");
+            roundtrip(&b);
         }
     }
 

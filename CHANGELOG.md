@@ -24,6 +24,18 @@
 
 ### Changed
 
+- The IAVL node cache defaults to 4,000,000 nodes (was celestia-app's
+  781,250 for `start` and 1,000,000 for `follow` and `abci`). At mainnet
+  heights near 560k this executes blocks about 6% faster; the cache can
+  use about 1.5 GB or more when full. `init` writes the new value to
+  `app.toml`. Homes made before, or migrated from Go, keep
+  `iavl-cache-size = 781250` until you edit it, and the node logs a hint
+  at startup. 781,250 remains a good setting for machines short of memory.
+- Block execution is about 15% faster at mainnet heights near 560k: the
+  application database now uses 128 MiB memtables and no longer compacts
+  files early because of deletions, which cut background compaction
+  writes by about two thirds. Disk use is unchanged; peak memory is up to
+  about 200 MiB higher.
 - The released node has 13 fewer third-party crates. Block-part erasure
   coding up to 256 shards now uses in-house code that gives the same
   bytes, and the command line no longer colors its help and error text.

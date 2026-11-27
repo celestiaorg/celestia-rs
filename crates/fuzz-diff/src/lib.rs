@@ -178,7 +178,7 @@ fn rust_aminosign(app_version: u64, input: &[u8]) -> Out {
             ..Out::default()
         };
     }
-    if let Err(e) = x_ante::signing::check_signing_tx_data(&tx) {
+    if let Err(e) = x_ante::signing::check_signing_tx_data(&tx, false) {
         return Out {
             panic: match e {
                 x_ante::Fail::Panic(m) => m,
