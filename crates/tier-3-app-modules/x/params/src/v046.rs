@@ -19,6 +19,11 @@
 use math::{Int, LegacyDec};
 use sdk::{Context, Result};
 
+/// Printable ASCII that Go's HTML-safe JSON string encoding writes as is.
+fn needs_no_escape(b: u8) -> bool {
+    matches!(b, 0x20..=0x7e) && !matches!(b, b'"' | b'\\' | b'<' | b'>' | b'&')
+}
+
 /// Go `encoding/json` string encoding (HTML-safe escaping, `\b` and `\f`
 /// short escapes), as go-amino writes strings; each invalid UTF-8 byte of
 /// the Go string `s` is written as U+FFFD.
@@ -27,6 +32,13 @@ pub fn json_string(s: &str) -> String {
     use std::fmt::Write as _;
     let mut w = String::with_capacity(s.len().saturating_add(2));
     w.push('"');
+    // Addresses, denoms and amounts: printable ASCII that needs no escape
+    // is written as it is (the rune walk below would give the same text).
+    if s.bytes().all(needs_no_escape) {
+        w.push_str(s);
+        w.push('"');
+        return w;
+    }
     for r in gostr::runes(s) {
         let Some(c) = r else {
             w.push_str("\\ufffd");
@@ -559,6 +571,61 @@ pub mod validate {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `json_string` as it was before the ASCII fast path.
+    fn json_string_reference(s: &str) -> String {
+        use std::fmt::Write as _;
+        let mut w = String::new();
+        w.push('"');
+        for r in gostr::runes(s) {
+            let Some(c) = r else {
+                w.push_str("\\ufffd");
+                continue;
+            };
+            match c {
+                '"' => w.push_str("\\\""),
+                '\\' => w.push_str("\\\\"),
+                '\n' => w.push_str("\\n"),
+                '\r' => w.push_str("\\r"),
+                '\t' => w.push_str("\\t"),
+                '\u{8}' => w.push_str("\\b"),
+                '\u{c}' => w.push_str("\\f"),
+                '<' | '>' | '&' | '\u{2028}' | '\u{2029}' => {
+                    let _ = write!(w, "\\u{:04x}", u32::from(c));
+                }
+                c if u32::from(c) < 0x20 => {
+                    let _ = write!(w, "\\u{:04x}", u32::from(c));
+                }
+                c => gostr::push_char(&mut w, c),
+            }
+        }
+        w.push('"');
+        w
+    }
+
+    #[test]
+    fn json_string_fast_path_matches_the_rune_walk() {
+        let mut cases: Vec<String> = [
+            "",
+            "celestia1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5lzv7xu",
+            "1000utia",
+            "a\"b\\c<d>e&f",
+            "\n\r\t\u{8}\u{c}\u{1}\u{1f}\u{7f}",
+            "\u{e9}\u{20ac}\u{1f600}\u{2028}\u{2029}",
+            "memo with spaces ~!@#$%^*()_+{}|:?`-=[];',./",
+        ]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+        cases.push(gostr::from_go_bytes(b"bad\xff\xfe").into_owned());
+        cases.push(gostr::from_go_bytes(b"\xf4\x8f\xbf\xbf").into_owned());
+        for b in 0u8..=255 {
+            cases.push(gostr::from_go_bytes(&[b'x', b, b'y']).into_owned());
+        }
+        for s in &cases {
+            assert_eq!(json_string(s), json_string_reference(s), "{s:?}");
+        }
+    }
 
     #[test]
     fn values_encode_like_go_amino() {
