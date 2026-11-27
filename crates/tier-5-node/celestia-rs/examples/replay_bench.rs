@@ -15,7 +15,8 @@
 //!   [--iavl-cache 4000000] [--db-cache-mib 512] [--pruning-interval 1] \
 //!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl] \
 //!   [--background-pruning true] [--prune-in-place false] \
-//!   [--home DIR [--in-place true]] [--blocks-home DIR] [--save-blocks false]
+//!   [--home DIR [--in-place true]] [--blocks-home DIR] [--save-blocks false] \
+//!   [--per-block-csv blocks.csv]
 //! ```
 //!
 //! `--base` holds a home after InitChain (created on first use), so later
@@ -33,6 +34,10 @@
 //! from the `.pb` cache. `--save-blocks true` also stores each block with
 //! its seen commit (the next block's last commit) before executing it, as
 //! block sync does; this makes the home usable as a `--blocks-home`.
+//!
+//! `--per-block-csv FILE` writes one row per block ([`BlockRow::HEADER`]):
+//! its size and tx count next to its time and node-cache work, to see
+//! which blocks (and so which workloads) are slow.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 use std::path::{Path, PathBuf};
@@ -79,6 +84,7 @@ struct Args {
     prune_in_place: bool,
     blocks_home: Option<PathBuf>,
     save_blocks: bool,
+    per_block_csv: Option<PathBuf>,
 }
 
 fn args() -> anyhow::Result<Args> {
@@ -105,6 +111,7 @@ fn args() -> anyhow::Result<Args> {
         prune_in_place: false,
         blocks_home: None,
         save_blocks: false,
+        per_block_csv: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(k) = it.next() {
@@ -124,6 +131,7 @@ fn args() -> anyhow::Result<Args> {
             "--prune-in-place" => a.prune_in_place = v.parse()?,
             "--blocks-home" => a.blocks_home = Some(v.into()),
             "--save-blocks" => a.save_blocks = v.parse()?,
+            "--per-block-csv" => a.per_block_csv = Some(v.into()),
             _ => bail!("unknown argument {k}"),
         }
     }
@@ -466,25 +474,110 @@ fn print_phases(blocks: usize) {
     }
 }
 
-/// One executed block, for the list of the slowest.
-struct Slow {
+/// One block's measurements: a row of `--per-block-csv`, and what the
+/// slowest-blocks report splits.
+struct BlockRow {
     height: i64,
+    txs: usize,
+    /// Size of the block's parts (header, data with blobs, last commit).
+    block_bytes: i64,
     total: Duration,
     /// Part set, validation and (with `--save-blocks`) block saving.
     checked: Duration,
     finalize: Duration,
     commit: Duration,
-    txs: usize,
+    /// Node cache lookups and disk reads during the block.
+    lookups: u64,
+    disk_reads: u64,
+}
+
+/// `--per-block-csv`: one [`BlockRow`] per block, when asked for.
+struct PerBlockCsv(Option<std::io::BufWriter<std::fs::File>>);
+
+impl PerBlockCsv {
+    fn open(path: Option<&Path>) -> anyhow::Result<Self> {
+        use std::io::Write as _;
+        let Some(path) = path else {
+            return Ok(Self(None));
+        };
+        let file =
+            std::fs::File::create(path).with_context(|| format!("create {}", path.display()))?;
+        let mut w = std::io::BufWriter::new(file);
+        writeln!(w, "{}", BlockRow::HEADER)?;
+        Ok(Self(Some(w)))
+    }
+
+    fn write(&mut self, row: &BlockRow) -> anyhow::Result<()> {
+        use std::io::Write as _;
+        if let Some(w) = self.0.as_mut() {
+            writeln!(w, "{}", row.csv())?;
+        }
+        Ok(())
+    }
+
+    fn finish(self) -> anyhow::Result<()> {
+        use std::io::Write as _;
+        if let Some(mut w) = self.0 {
+            w.flush()?;
+        }
+        Ok(())
+    }
+}
+
+impl BlockRow {
+    /// The ABCI times and node-cache work between two samples; the other
+    /// fields are left zero for the caller.
+    fn between(before: &Sample, after: &Sample) -> Self {
+        let d = |i: usize| after.nodes[i].saturating_sub(before.nodes[i]);
+        Self {
+            height: 0,
+            txs: 0,
+            block_bytes: 0,
+            total: Duration::ZERO,
+            checked: Duration::ZERO,
+            finalize: after.abci.finalize.saturating_sub(before.abci.finalize),
+            commit: after.abci.commit.saturating_sub(before.abci.commit),
+            lookups: d(0) + d(1),
+            disk_reads: d(2),
+        }
+    }
+
+    const HEADER: &str = "height,txs,block_bytes,total_ms,validate_ms,finalize_ms,commit_ms,\
+                          rest_ms,node_lookups,disk_reads";
+
+    /// The rest of applying the block: state and response saving.
+    fn rest(&self) -> Duration {
+        self.total
+            .saturating_sub(self.checked + self.finalize + self.commit)
+    }
+
+    fn csv(&self) -> String {
+        let ms = |d: Duration| d.as_secs_f64() * 1e3;
+        let rest = self.rest();
+        format!(
+            "{},{},{},{:.3},{:.3},{:.3},{:.3},{:.3},{},{}",
+            self.height,
+            self.txs,
+            self.block_bytes,
+            ms(self.total),
+            ms(self.checked),
+            ms(self.finalize),
+            ms(self.commit),
+            ms(rest),
+            self.lookups,
+            self.disk_reads,
+        )
+    }
 }
 
 /// The ten slowest blocks, split into validation (with block saving),
 /// FinalizeBlock, Commit and the rest of applying the block (state and
 /// response saving), to find what causes the tail.
-fn print_slowest(slow: &mut [Slow]) {
+fn print_slowest(slow: &mut [BlockRow]) {
     slow.sort_by_key(|s| std::cmp::Reverse(s.total));
     let ms = |d: Duration| d.as_secs_f64() * 1e3;
     for s in slow.iter().take(10) {
-        let rest = s.total.saturating_sub(s.checked + s.finalize + s.commit);
+        let rest = s.rest();
         println!(
             "slow block {}: {:.1} ms (validate {:.1}, finalize {:.1}, commit {:.1}, \
              rest {:.1}), {} txs",
@@ -614,11 +707,12 @@ fn main() -> anyhow::Result<()> {
     let started = Instant::now();
     let first_sample = probes.sample();
     let mut window = first_sample;
+    let mut csv = PerBlockCsv::open(a.per_block_csv.as_deref())?;
     for h in first..first + a.blocks {
         let mut block = next;
         next = blocks.get(h + 1)?;
         txs += block.data.txs.len();
-        let before = probes.sample().abci;
+        let before_sample = probes.sample();
         let t = Instant::now();
         let parts = block.make_part_set(BLOCK_PART_SIZE_BYTES)?;
         let id = BlockId {
@@ -642,15 +736,17 @@ fn main() -> anyhow::Result<()> {
             .apply_verified_block(&state, id, &mut block)
             .map_err(|e| anyhow!("execute {h}: {e}"))?;
         times.push(t.elapsed());
-        let after = probes.sample().abci;
-        slow.push(Slow {
+        let after_sample = probes.sample();
+        let row = BlockRow {
             height: h,
-            total: *times.last().context("block time")?,
-            checked,
-            finalize: after.finalize.saturating_sub(before.finalize),
-            commit: after.commit.saturating_sub(before.commit),
             txs: block.data.txs.len(),
-        });
+            block_bytes: parts.byte_size(),
+            total: times.last().copied().unwrap_or_default(),
+            checked,
+            ..BlockRow::between(&before_sample, &after_sample)
+        };
+        csv.write(&row)?;
+        slow.push(row);
         digest = check_block(&exec, &state, &next, h, &digest)?;
         if times.len() % 100 == 0 {
             let w = &times[times.len() - 100..];
@@ -663,6 +759,7 @@ fn main() -> anyhow::Result<()> {
             window = now;
         }
     }
+    csv.finish()?;
     summary(&times, txs, started.elapsed(), &digest);
     print_slowest(&mut slow);
     print_phases(times.len());
@@ -672,4 +769,31 @@ fn main() -> anyhow::Result<()> {
         probes.sample().report(&first_sample, times.len())
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn per_block_rows_match_the_header() {
+        let row = BlockRow {
+            height: 2_400_001,
+            txs: 7,
+            block_bytes: 1_234_567,
+            total: Duration::from_micros(45_250),
+            checked: Duration::from_micros(3_000),
+            finalize: Duration::from_micros(30_000),
+            commit: Duration::from_micros(5_500),
+            lookups: 812,
+            disk_reads: 377,
+        };
+        let header = BlockRow::HEADER.split(',').count();
+        let line = row.csv();
+        assert_eq!(line.split(',').count(), header);
+        assert_eq!(
+            line,
+            "2400001,7,1234567,45.250,3.000,30.000,5.500,6.750,812,377"
+        );
+    }
 }
