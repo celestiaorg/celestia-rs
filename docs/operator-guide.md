@@ -959,11 +959,26 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
 - **Halting for an upgrade:** `--halt-height N` (or `app.toml
   halt-height`) stops the node cleanly *before* executing block N, exactly
   like Go; `--halt-time` (Unix seconds) likewise.
-- **Signalled upgrades:** when the chain reaches an app-version upgrade
-  this binary has no handler for, the node stops consensus at the upgrade
+- **Signalled upgrades:** this binary bundles every release up to v12.
+  `celestia-rs start` and `celestia-rs follow` switch to the next bundled
+  release in the same process at the upgrade height, so the v10 to v11
+  upgrade (and v11 to v12 on a chain that signals it, such as Mocha)
+  needs no restart and RPC stays up. The node switches once the
+  block before the upgrade commits the new consensus version with the
+  plan due at the next height. When the chain reaches an upgrade this
+  binary has no release for, the node stops consensus at the upgrade
   height with `UPGRADE "vN" NEEDED at height: H`, writes
   `data/upgrade-info.json` (cosmovisor's trigger, Go's format) and keeps
   RPC up, like a Go node. Stop it and start the upgraded binary.
+  `celestia-rs abci` (external celestia-core, cosmovisor) always halts
+  at the upgrade height like Go; restarted, the same binary
+  authenticates `data/upgrade-info.json` against the committed plan and
+  runs the new release. A governance plan for a bundled release that no
+  signal accompanied (the consensus app version did not change) also
+  halts `start` and `follow`, with `plan vN found without a signalled app
+  version; restart the node to run the bundled vN release`. Restart the
+  same binary: it authenticates `data/upgrade-info.json` and continues.
+  Celestia's upgrades from v4 are signalled, so this is not expected.
 - **Rollback:** `celestia-rs rollback [--height H] [--hard] [--force]`
   checks the retained block, consensus and app histories, then rolls all
   three back to H. Without `--height`, it rolls back one executed height;

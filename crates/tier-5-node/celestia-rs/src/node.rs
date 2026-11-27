@@ -32,6 +32,14 @@ use nodestore::{AppConn, BlockExecutor, BlockStore, GenesisDoc, Handshaker, Stat
 use privval::{FilePv, PrivValidator, RemotePv};
 use prost::Message as _;
 
+/// App options of the embedded node (`celestia-rs start` and
+/// `celestia-rs follow`, which execute blocks in-process): each bundled
+/// release is activated at its upgrade height instead of halting for a
+/// binary swap (ADR 0004). `celestia-rs abci` keeps Go's halt.
+pub fn activate_bundled_releases(options: &mut app::AppOptions) {
+    options.node.activate_bundled_upgrades = true;
+}
+
 /// The Rust app behind [`AppConn`].
 pub struct AppAdapter(pub Arc<Mutex<app::App>>);
 
