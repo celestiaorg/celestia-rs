@@ -34,7 +34,26 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: conformance/${{ matrix.module }}/go.mod
-          cache-dependency-path: conformance/${{ matrix.module }}/go.sum
+          cache: false
+      # Only main (nightly) saves Go caches; see go-modules in ci.yml.
+      - name: Restore Go caches
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ matrix.module }}-${{ hashFiles(format('conformance/{0}/go.mod', matrix.module), format('conformance/{0}/go.sum', matrix.module)) }}
+          restore-keys: go-${{ runner.os }}-${{ matrix.module }}-
+      - name: Cache Go modules and builds
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ matrix.module }}-${{ hashFiles(format('conformance/{0}/go.mod', matrix.module), format('conformance/{0}/go.sum', matrix.module)) }}
+          restore-keys: go-${{ runner.os }}-${{ matrix.module }}-
       - name: Download modules (with retries)
         working-directory: conformance/${{ matrix.module }}
         run: |

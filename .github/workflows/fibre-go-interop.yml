@@ -29,6 +29,11 @@ env:
   GOFLAGS: -mod=mod
   GOPROXY: https://proxy.golang.org,direct
 
+# Cancel superseded runs on the same PR. Other runs get a unique group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Four celestia-rs validators; the Go v11 client uploads blobs up to the
   # 128 MiB protocol maximum, pays, downloads, and covers NotFound, 20
@@ -42,6 +47,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: fibre-go-interop
       - uses: actions/setup-go@v7
         with:
@@ -76,6 +82,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: fibre-go-interop
       - uses: actions/setup-go@v7
         with:
