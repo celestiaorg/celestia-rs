@@ -287,7 +287,11 @@ jobs:
       - uses: actions/checkout@v7.0.1
       # cargo-deny >= 0.18 parses CVSS 4.0 advisories; accepted advisories
       # are listed with reasons in deny.toml and docs/security.md.
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      # Pinned by commit: each action release bundles one cargo-deny
+      # version (v2.1.5: cargo-deny 0.22.1), so a new release reaches this
+      # job only through a Dependabot pull request, not through the moving
+      # v2 tag. Keep nightly.yml on the same pin.
+      - uses: EmbarkStudios/cargo-deny-action@bb119f768ea239e765aeaef5769558d4f21213aa # v2.1.5
         with:
           command: check
           arguments: --all-features
