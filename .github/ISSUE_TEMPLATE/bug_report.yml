@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a problem with a celestia-rs node.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. To help us find the cause, run this
+        command on the node's host, with the same `--home` as the node,
+        while the node is running:
+
+        ```sh
+        celestia-rs debug-bundle
+        ```
+
+        It writes `celestia-rs-debug-<time>.tar.gz` and prints its path.
+        Drag that file into the "Debug bundle" field below. The bundle
+        holds no private keys, but it holds your config, peer and IP
+        addresses, and logs. Review it before you attach it. If you cannot
+        share it publicly, say so and we will find another way.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead? Include error messages.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The commands you ran and the network (mainnet, mocha, arabica, local).
+  - type: textarea
+    id: version
+    attributes:
+      label: Version
+      description: The output of `celestia-rs version --long`.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: bundle
+    attributes:
+      label: Debug bundle
+      description: Attach the `.tar.gz` that `celestia-rs debug-bundle` wrote.

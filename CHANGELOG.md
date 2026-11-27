@@ -4,6 +4,10 @@
 
 ### Added
 
+- `celestia-rs debug-bundle` writes a `.tar.gz` of diagnostics to attach
+  to a bug report: build and host data, the config with secrets redacted,
+  the sign state, the node's RPC state and metrics, and log tails. It never
+  includes private keys. See the operator guide's "Reporting a problem".
 - Validators can run the Fibre data availability server inside
   `celestia-rs start` (a port of celestia-app v11's server), so no separate
   Go `fibre` process is needed. It is off by default: enable it with
