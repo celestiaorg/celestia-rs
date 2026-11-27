@@ -15,7 +15,8 @@
           "0.38.0": 1,
           "0.38.17": 221,
           "0.38.17-celestia-rs.0.1.0-rc.9": 2
-        }
+        },
+        "app_releases": {}
       }
     },
     {
@@ -32,6 +33,47 @@
           "0.0.1": 1,
           "0.38.17": 113,
           "0.38.17-celestia-rs.0.1.0-rc.9": 1
+        },
+        "app_releases": {}
+      }
+    },
+    {
+      "network": "mainnet",
+      "crawled_at": 1795823057,
+      "summary": {
+        "reachable": 225,
+        "direct": 45,
+        "rust": 2,
+        "go": 221,
+        "unknown": 2,
+        "unreachable": 4778,
+        "versions": {
+          "0.0.1": 2,
+          "0.38.17": 221,
+          "0.38.17-celestia-rs.0.1.0-rc.9": 2
+        },
+        "app_releases": {
+          "10.6.0": 6
+        }
+      }
+    },
+    {
+      "network": "mocha",
+      "crawled_at": 1795823176,
+      "summary": {
+        "reachable": 115,
+        "direct": 44,
+        "rust": 1,
+        "go": 113,
+        "unknown": 1,
+        "unreachable": 3820,
+        "versions": {
+          "0.0.1": 1,
+          "0.38.17": 113,
+          "0.38.17-celestia-rs.0.1.0-rc.9": 1
+        },
+        "app_releases": {
+          "11.0.0-mocha": 6
         }
       }
     }

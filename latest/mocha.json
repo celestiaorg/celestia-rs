@@ -1,19 +1,22 @@
 {
   "network": "mocha",
   "chain_id": "mocha-5",
-  "crawled_at": 1795815741,
-  "duration_secs": 73,
+  "crawled_at": 1795823176,
+  "duration_secs": 83,
   "summary": {
     "reachable": 115,
-    "direct": 43,
+    "direct": 44,
     "rust": 1,
     "go": 113,
     "unknown": 1,
-    "unreachable": 3816,
+    "unreachable": 3820,
     "versions": {
       "0.0.1": 1,
       "0.38.17": 113,
       "0.38.17-celestia-rs.0.1.0-rc.9": 1
+    },
+    "app_releases": {
+      "11.0.0-mocha": 6
     }
   },
   "nodes": [
@@ -71,7 +74,8 @@
       "implementation": "go",
       "moniker": "da-proxy-rpc-1-mocha",
       "app_version": 10,
-      "source": "p2p"
+      "source": "p2p",
+      "app_release": "11.0.0-mocha"
     },
     {
       "id": "0b91e5ce659d9b245bf925ef0db99bab90b2f260",
@@ -210,14 +214,6 @@
       "source": "p2p"
     },
     {
-      "id": "3b343f030d2c340db7bbf2f39d786ee4552186be",
-      "version": "0.38.17",
-      "implementation": "go",
-      "moniker": "celestia-mocha-5-consensus",
-      "app_version": 11,
-      "source": "p2p"
-    },
-    {
       "id": "3bb8583bc3f2bb85bab403c1dd034ccd29e9c33c",
       "version": "0.38.17",
       "implementation": "go",
@@ -279,7 +275,8 @@
       "implementation": "go",
       "moniker": "rpc-1.testnet.celestia.nodes.guru",
       "app_version": 10,
-      "source": "rpc"
+      "source": "rpc",
+      "app_release": "11.0.0-mocha"
     },
     {
       "id": "46be3bddeed5840dc1362dae2b0bf046a6b0ec88",
@@ -559,7 +556,15 @@
       "implementation": "go",
       "moniker": "relayer-testnet",
       "app_version": 11,
-      "source": "rpc"
+      "source": "p2p"
+    },
+    {
+      "id": "a98484ac9cb8235bd6a65cdf7648107e3d14dab4",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "kjnodes-testnet-backup",
+      "app_version": 11,
+      "source": "p2p"
     },
     {
       "id": "a9bf63542f6b312d825089474a59f10513799ba9",
@@ -671,7 +676,8 @@
       "implementation": "go",
       "moniker": "mocha-5-validator-pruned-1",
       "app_version": 10,
-      "source": "rpc"
+      "source": "rpc",
+      "app_release": "11.0.0-mocha"
     },
     {
       "id": "c32b25ea4b20b28551e13f37a21d6371b43a2b16",
@@ -687,7 +693,8 @@
       "implementation": "go",
       "moniker": "stk-619",
       "app_version": 11,
-      "source": "p2p"
+      "source": "p2p",
+      "app_release": "11.0.0-mocha"
     },
     {
       "id": "c84cf375c6d6a8d8f765fb191a88774f8b5ed69e",
@@ -695,7 +702,8 @@
       "implementation": "go",
       "moniker": "vmi3661568",
       "app_version": 11,
-      "source": "p2p"
+      "source": "p2p",
+      "app_release": "11.0.0-mocha"
     },
     {
       "id": "ced803cadc846d5e7269dd7222c06c3e9cf35714",
@@ -781,7 +789,7 @@
       "id": "df2aea1cc24721dc9900409bac32ef4488c4a6c3",
       "version": "0.38.17-celestia-rs.0.1.0-rc.9",
       "implementation": "rust",
-      "moniker": "celestia-rs validator",
+      "moniker": "celestia-rs-mocha",
       "app_version": 11,
       "source": "rpc"
     },
@@ -831,7 +839,8 @@
       "implementation": "go",
       "moniker": "mocha-5-consensus-pruned-1",
       "app_version": 10,
-      "source": "p2p"
+      "source": "p2p",
+      "app_release": "11.0.0-mocha"
     },
     {
       "id": "ee9f90974f85c59d3861fc7f7edb10894f6ac3c8",

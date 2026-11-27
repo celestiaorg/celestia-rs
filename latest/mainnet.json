@@ -1,20 +1,22 @@
 {
   "network": "mainnet",
   "chain_id": "celestia",
-  "crawled_at": 1795815642,
-  "duration_secs": 97,
+  "crawled_at": 1795823057,
+  "duration_secs": 116,
   "summary": {
-    "reachable": 226,
-    "direct": 54,
+    "reachable": 225,
+    "direct": 45,
     "rust": 2,
-    "go": 222,
+    "go": 221,
     "unknown": 2,
     "unreachable": 4778,
     "versions": {
       "0.0.1": 2,
-      "0.38.0": 1,
       "0.38.17": 221,
       "0.38.17-celestia-rs.0.1.0-rc.9": 2
+    },
+    "app_releases": {
+      "10.6.0": 6
     }
   },
   "nodes": [
@@ -40,7 +42,7 @@
       "implementation": "go",
       "moniker": "PPBCN_Val",
       "app_version": 10,
-      "source": "p2p"
+      "source": "rpc"
     },
     {
       "id": "06232a730e5d88ccc872c4e77792de8b882a12f6",
@@ -56,7 +58,7 @@
       "implementation": "go",
       "moniker": "Metatarz",
       "app_version": 10,
-      "source": "rpc"
+      "source": "p2p"
     },
     {
       "id": "0c380953bd93a8a2d999c89d26152386429cfdb0",
@@ -139,6 +141,14 @@
       "source": "p2p"
     },
     {
+      "id": "13167f2a8ebb3ee1d473111429ab9b3e03e8f779",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia-mainnet-p2p-sentry-backup-0",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
       "id": "1356ca5fd6446233df03e8fb0832a045f8373744",
       "version": "0.38.17",
       "implementation": "go",
@@ -176,7 +186,7 @@
       "implementation": "go",
       "moniker": "celestia_1",
       "app_version": 10,
-      "source": "rpc"
+      "source": "p2p"
     },
     {
       "id": "194afcb88bd954fc4365f392c09da62c41638e15",
@@ -192,7 +202,8 @@
       "implementation": "go",
       "moniker": "consensus-full-1",
       "app_version": 10,
-      "source": "rpc"
+      "source": "rpc",
+      "app_release": "10.6.0"
     },
     {
       "id": "1a3697e07371c1a69da0beb8b89df9d1336c1a1e",
@@ -216,7 +227,8 @@
       "implementation": "go",
       "moniker": "lunar-consensus-archival-1",
       "app_version": 10,
-      "source": "rpc"
+      "source": "rpc",
+      "app_release": "10.6.0"
     },
     {
       "id": "223ae164c107c3803d42110d59e3eb2d688d23de",
@@ -224,7 +236,7 @@
       "implementation": "go",
       "moniker": "celestia-mainnet-0",
       "app_version": 10,
-      "source": "p2p"
+      "source": "rpc"
     },
     {
       "id": "26c1b180833b1449558450f50c91b859462810fd",
@@ -248,7 +260,7 @@
       "implementation": "go",
       "moniker": "celestia mainnet",
       "app_version": 10,
-      "source": "p2p"
+      "source": "rpc"
     },
     {
       "id": "2bba188e4a77dcc149edff5101bf07c915787490",
@@ -327,14 +339,6 @@
       "version": "0.38.17",
       "implementation": "go",
       "moniker": "CosmicValidator",
-      "app_version": 10,
-      "source": "rpc"
-    },
-    {
-      "id": "39563324652b1ba35774701c01eeb92f4ac3d26f",
-      "version": "0.38.17-celestia-rs.0.1.0-rc.9",
-      "implementation": "rust",
-      "moniker": "rootulp-mainnet",
       "app_version": 10,
       "source": "rpc"
     },
@@ -523,19 +527,19 @@
       "source": "rpc"
     },
     {
-      "id": "4d9149bf3c171d4bde706b6e8a7181183742c253",
-      "version": "0.38.17",
-      "implementation": "go",
-      "moniker": "labs-fra",
-      "app_version": 10,
-      "source": "rpc"
-    },
-    {
       "id": "4e1c2471efb89239fb04a4b75f9f87177fd91d00",
       "version": "0.38.17",
       "implementation": "go",
       "moniker": "Tendermint",
       "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "4e3794b90622879719e446f26c3e6c4bbefcbeb5",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "nd-90a2ab",
+      "app_version": 1,
       "source": "rpc"
     },
     {
@@ -625,6 +629,14 @@
       "moniker": "Cumulo",
       "app_version": 10,
       "source": "rpc"
+    },
+    {
+      "id": "5f9bedf1d4867115f49f0d5062b0790ff0e12e13",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "qn-lsn-fra-14573",
+      "app_version": 10,
+      "source": "p2p"
     },
     {
       "id": "625c10902b0f7e88523bf1ec5bd66ade7a6d59c3",
@@ -747,6 +759,14 @@
       "source": "rpc"
     },
     {
+      "id": "72a42cc718791416c437f3cce49ee47b6809df24",
+      "version": "0.38.17-celestia-rs.0.1.0-rc.9",
+      "implementation": "rust",
+      "moniker": "genesis-sync",
+      "app_version": 1,
+      "source": "rpc"
+    },
+    {
       "id": "73a12427e3ccc1f89f01e0eee62515d7477960ea",
       "version": "0.38.17",
       "implementation": "go",
@@ -824,7 +844,8 @@
       "implementation": "go",
       "moniker": "qubelabs_relayer",
       "app_version": 10,
-      "source": "p2p"
+      "source": "p2p",
+      "app_release": "10.6.0"
     },
     {
       "id": "7f067f54987cccfe489fbe302ff1bf6c56aaf02f",
@@ -865,14 +886,6 @@
       "moniker": "01node",
       "app_version": 10,
       "source": "rpc"
-    },
-    {
-      "id": "8542cd7e6bf9d260fef543bc49e59be5a3fa9074",
-      "version": "0.38.0",
-      "implementation": "go",
-      "moniker": "4be34029c4ec",
-      "app_version": 0,
-      "source": "p2p"
     },
     {
       "id": "858778e45ae394e462633b94b87ba5c27f46d1de",
@@ -918,9 +931,9 @@
       "id": "89b7c6fa4e9141206487feeac02001e2aeae59ff",
       "version": "0.38.17",
       "implementation": "go",
-      "moniker": "qn-lsn-jfk-14923",
+      "moniker": "qn-lsn-jfk-14924",
       "app_version": 10,
-      "source": "p2p"
+      "source": "rpc"
     },
     {
       "id": "89dd719623846f4ff4f04d6537bec944bb7b551f",
@@ -968,7 +981,7 @@
       "implementation": "go",
       "moniker": "Node",
       "app_version": 10,
-      "source": "p2p"
+      "source": "rpc"
     },
     {
       "id": "916919f007b6695549c3f63bc3352289b7534749",
@@ -1000,7 +1013,8 @@
       "implementation": "go",
       "moniker": "celestia-bridge-node-1",
       "app_version": 10,
-      "source": "rpc"
+      "source": "rpc",
+      "app_release": "10.6.0"
     },
     {
       "id": "950bb81041a3b3940dfe9197cb0e096b31f0bf85",
@@ -1016,7 +1030,8 @@
       "implementation": "go",
       "moniker": "consensus-full-seed-1",
       "app_version": 10,
-      "source": "rpc"
+      "source": "rpc",
+      "app_release": "10.6.0"
     },
     {
       "id": "9788802895a7290cde262d08761d31eaff088f45",
@@ -1203,14 +1218,6 @@
       "source": "rpc"
     },
     {
-      "id": "b070d350c5bb87b62e9d4bc5d43a77bdf0fbd878",
-      "version": "0.38.17",
-      "implementation": "go",
-      "moniker": "da-proxy-rpc-pruned-2-mainnet",
-      "app_version": 10,
-      "source": "p2p"
-    },
-    {
       "id": "b146c3d3aa675f1bec39f45f39e3062803033e1c",
       "version": "0.38.17",
       "implementation": "go",
@@ -1272,7 +1279,7 @@
       "implementation": "go",
       "moniker": "LoomNode",
       "app_version": 10,
-      "source": "p2p"
+      "source": "rpc"
     },
     {
       "id": "bb2f4546c04581f5a5cd075a706f4cbff837b72f",
@@ -1304,7 +1311,7 @@
       "implementation": "go",
       "moniker": "celestia-mainnet-p2p-0",
       "app_version": 10,
-      "source": "p2p"
+      "source": "rpc"
     },
     {
       "id": "bdfa2944f6382385ed36944349911f67599cbddc",
@@ -1403,6 +1410,14 @@
       "source": "rpc"
     },
     {
+      "id": "c6add930359cc532496427269d086b58a9e36848",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Cogwheel",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
       "id": "c843a7ac4ee9bdc1e939de53620301964f51d0a8",
       "version": "0.38.17",
       "implementation": "go",
@@ -1440,7 +1455,7 @@
       "implementation": "go",
       "moniker": "mainnet-backup-1",
       "app_version": 10,
-      "source": "p2p"
+      "source": "rpc"
     },
     {
       "id": "cbe4a4c5b55874e568f576670d98df3c075cafce",
@@ -1488,7 +1503,7 @@
       "implementation": "go",
       "moniker": "krews-mainnet-snapshot",
       "app_version": 10,
-      "source": "p2p"
+      "source": "rpc"
     },
     {
       "id": "d535cbf8d0efd9100649aa3f53cb5cbab33ef2d6",
@@ -1624,7 +1639,7 @@
       "implementation": "go",
       "moniker": "Tendermint",
       "app_version": 10,
-      "source": "p2p"
+      "source": "rpc"
     },
     {
       "id": "e8a2bc3681108f862371286094d90018487edeb7",
@@ -1680,7 +1695,8 @@
       "implementation": "go",
       "moniker": "qubelabs-snap",
       "app_version": 10,
-      "source": "rpc"
+      "source": "rpc",
+      "app_release": "10.6.0"
     },
     {
       "id": "f16eda0440baff1ada682be9e4452af4f14f50c4",
@@ -1763,14 +1779,6 @@
       "source": "rpc"
     },
     {
-      "id": "faaa78120174a332e385411457dc0dc47a66a013",
-      "version": "0.38.17",
-      "implementation": "go",
-      "moniker": "validator",
-      "app_version": 10,
-      "source": "rpc"
-    },
-    {
       "id": "fb779c787dda02b66c061ce030f77682494cc4c8",
       "version": "0.38.17",
       "implementation": "go",
@@ -1817,14 +1825,6 @@
       "moniker": "node-name",
       "app_version": 10,
       "source": "rpc"
-    },
-    {
-      "id": "ff016c95251136c729a1f6e60d6dda6db0aeb666",
-      "version": "0.38.17",
-      "implementation": "go",
-      "moniker": "da-proxy-rpc-2-mainnet",
-      "app_version": 10,
-      "source": "p2p"
     }
   ]
 }
