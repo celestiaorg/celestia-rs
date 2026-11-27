@@ -905,6 +905,11 @@ fail at the same point of the ante handler or message handler as Go:
   takes the key from the account; from an account created by a send,
   with no key on chain, it fails with `unrecognized public key type:
   <nil>` (sdk 8);
+- eight signer infos without `public_key` in one transaction: cosmos-sdk
+  v0.46's `CountSubKeys` counts each as one signature, over `TxSigLimit`
+  (7), so it fails with `signatures: 8, limit: 7` (sdk 14, blocks 3, 7,
+  15); seven succeed (blocks 4, 8, 16), and each signer's signature gas
+  uses its account key;
 - BeginBlock evidence at app version 3: val2 double-signs (block 14:
   slashed, jailed and tombstoned), then again (block 15: ignored, already
   tombstoned) with evidence for an address that is not a validator
@@ -990,7 +995,11 @@ ibc-go simapp chains as counterparties:
   an error acknowledgement and its send runs. Then utia goes to B
   through authz `MsgExec` (a GenericAuthorization, and an ibc-go
   TransferAuthorization whose spend limit it uses up), and a plain
-  transfer times out on B and is refunded on A. Last come redundant
+  transfer times out on B and is refunded on A. Two transfers hold
+  invalid UTF-8, which cosmos-sdk v0.46 accepts (gogoproto does not check
+  it): one in the memo (the packet JSON has U+FFFD for each invalid byte;
+  B acknowledges it) and one in the receiver (B writes an error
+  acknowledgement and A refunds it). Last come redundant
   relays, as racing relayers send them: the timeout again, an
   acknowledgement of an acknowledged packet, and a packet from B that A
   receives twice. ibc-go v6 gives each a `NOOP` result (code 0). Then
@@ -1015,7 +1024,7 @@ run's. Each block gets one BeginBlock at one time (ibctesting re-runs
 BeginBlock when its clock moves, which no consensus engine does), so
 the clients that A hosts allow an hour of clock drift. The blocks carry
 no last commit. [`fixtures/synthetic/ibc-v2`](fixtures/synthetic/ibc-v2)
-holds heights 0 to 205; the test requires it byte for byte. To
+holds heights 0 to 215; the test requires it byte for byte. To
 regenerate it:
 
 ```sh

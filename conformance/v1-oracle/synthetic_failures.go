@@ -32,6 +32,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	evidencetypes "github.com/cosmos/cosmos-sdk/x/evidence/types"
 	"github.com/tendermint/tendermint/crypto/ed25519"
@@ -73,6 +74,7 @@ var failUsers = append([]string{
 	"f-rollback", "f-noauth", "f-nofeegrant", "f-dist", "f-del-unknown",
 	"f-blocked", "f-oog-del", "f-del-poor", "f-vote-unknown", "f-ev-epoch", "f-ev-zero",
 	"f-nopk",
+	"f-sigs-0", "f-sigs-1", "f-sigs-2", "f-sigs-3", "f-sigs-4", "f-sigs-5", "f-sigs-6", "f-sigs-7",
 	"f-zero-undel", "f-zero-redel", "f-zero-cancel",
 	"f-exec-nested", "f-exec-multi", "f-exec-vesting", "f-exec-ibc",
 	"f-prop-gov-send", "f-prop-signer", "f-prop-unroutable",
@@ -297,6 +299,9 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 		add(func() error {
 			return b.withoutPubKey("f-nopk-new", signing.SignMode_SIGN_MODE_DIRECT, send("f-nopk-new", "alice", 1))
 		})
+		// Eight signer infos without public_key: cosmos-sdk v0.46's
+		// CountSubKeys counts each as one signature, over TxSigLimit (7).
+		add(func() error { return b.keylessSigners(sigSigners(8), send) })
 		tx("f-redel", stakingtypes.NewMsgBeginRedelegate(b.addr("f-redel"), val0, val1, coin(5*tia)))
 		with(ph("f-fee-limit"), func(f clienttx.Factory) clienttx.Factory { return f.WithFeeGranter(b.addr("f-fee-granter")) },
 			send(ph("f-fee-limit"), "alice", 1))
@@ -423,6 +428,9 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 		add(func() error {
 			return b.withoutPubKey("f-nopk", signing.SignMode_SIGN_MODE_LEGACY_AMINO_JSON, send("f-nopk", "alice", 1))
 		})
+		// Seven: at the limit; each signer's signature gas uses its
+		// account key.
+		add(func() error { return b.keylessSigners(sigSigners(7), send) })
 		tx("f-redel", stakingtypes.NewMsgBeginRedelegate(b.addr("f-redel"), val1, val2, coin(tia)))
 		add(func() error {
 			exec := authz.NewMsgExec(b.addr(ph("f-grantee")), []sdk.Msg{send("f-granter", ph("f-grantee"), 1)})
@@ -474,6 +482,71 @@ func (b *aminoBuilder) withoutPubKey(signer string, mode signing.SignMode, msgs 
 		if raw.Signatures[0], _, err = b.s.kr.Sign(signer, docBz); err != nil {
 			return err
 		}
+	}
+	out, err := raw.Marshal()
+	if err != nil {
+		return err
+	}
+	b.out = append(b.out, out)
+	return nil
+}
+
+// sigSigners are the first n f-sigs accounts.
+func sigSigners(n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = fmt.Sprintf("f-sigs-%d", i)
+	}
+	return out
+}
+
+// keylessSigners adds a DIRECT-mode transaction with one send to alice
+// from each signer, whose signer infos have no public key.
+func (b *aminoBuilder) keylessSigners(signers []string, send func(from, to string, n int64) sdk.Msg) error {
+	var msgs []*codectypes.Any
+	infos := make([]*txtypes.SignerInfo, len(signers))
+	nums := make([]uint64, len(signers))
+	for i, signer := range signers {
+		if err := b.claim(signer); err != nil {
+			return err
+		}
+		num, seq, err := b.account(b.addr(signer))
+		if err != nil {
+			return err
+		}
+		nums[i] = num
+		m, err := codectypes.NewAnyWithValue(send(signer, "alice", 1))
+		if err != nil {
+			return err
+		}
+		msgs = append(msgs, m)
+		infos[i] = &txtypes.SignerInfo{
+			ModeInfo: &txtypes.ModeInfo{Sum: &txtypes.ModeInfo_Single_{Single: &txtypes.ModeInfo_Single{Mode: signing.SignMode_SIGN_MODE_DIRECT}}},
+			Sequence: seq,
+		}
+	}
+	body, err := (&txtypes.TxBody{Messages: msgs}).Marshal()
+	if err != nil {
+		return err
+	}
+	authInfo, err := (&txtypes.AuthInfo{
+		SignerInfos: infos,
+		Fee:         &txtypes.Fee{Amount: sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, aminoFee)), GasLimit: aminoGasLimit},
+	}).Marshal()
+	if err != nil {
+		return err
+	}
+	raw := txtypes.TxRaw{BodyBytes: body, AuthInfoBytes: authInfo}
+	for i, signer := range signers {
+		doc, err := (&txtypes.SignDoc{BodyBytes: body, AuthInfoBytes: authInfo, ChainId: appconsts.TestChainID, AccountNumber: nums[i]}).Marshal()
+		if err != nil {
+			return err
+		}
+		sig, _, err := b.s.kr.Sign(signer, doc)
+		if err != nil {
+			return err
+		}
+		raw.Signatures = append(raw.Signatures, sig)
 	}
 	out, err := raw.Marshal()
 	if err != nil {
