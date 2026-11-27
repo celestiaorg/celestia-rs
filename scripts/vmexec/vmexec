@@ -185,9 +185,12 @@ cmd_create() {
 }
 
 cmd_wait() {
-  local name=$1 deadline=$((SECONDS + ${2:-900}))
+  local name=$1 deadline=$((SECONDS + ${2:-900})) since
+  # The VM's agent writes a heartbeat as it starts; one from before a
+  # stop/start is stale (guest attributes persist), so require a new one.
+  since=${VMX_WAIT_SINCE:-$(date +%s)}
   while ((SECONDS < deadline)); do
-    if ga_get "$name" agent "$tmp/hb"; then echo "agent up on $name" >&2; return 0; fi
+    if ga_get "$name" agent "$tmp/hb" && vmx_heartbeat_fresh "$tmp/hb" "$since"; then echo "agent up on $name" >&2; return 0; fi
     sleep 10
   done
   die "no agent heartbeat from $name; see: vmexec serial $name"
