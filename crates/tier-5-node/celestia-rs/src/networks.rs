@@ -42,18 +42,26 @@ pub const MAINNET: Network = Network {
     genesis_urls: &[
         "https://raw.githubusercontent.com/celestiaorg/networks/master/celestia/genesis.json",
     ],
-    // `scripts/mainnet.sh` lists 13 seeds that were all dead or unusable
-    // on 2026-10-18. These passed a TCP and secret-connection handshake
-    // check that day: the seeds come from the cosmos chain-registry, the
-    // persistent peers (which serve snapshots for state sync) from the
-    // chain-registry and `celestiaorg/networks` peer lists.
+    // Seeds: celestiaorg/networks `celestia/seeds.txt`. Persistent peers:
+    // entries of celestiaorg/networks `celestia/peers.txt` (d9bfa29e,
+    // fc25a389, d513f98b) and of the cosmos chain-registry (ce99d7da) that
+    // served a fresh node on 2026-11-27. With this list, a fresh home with
+    // state sync on (trust height = tip - 10,000) got its first peer in 4 s
+    // and a snapshot offer in 25 s (rs-ctest-1, af22ae29). The seeds alone
+    // gave no lasting peer that day: pops.one hangs up right after the
+    // handshake, itrocket fails the secret connection, celestia-bootstrap
+    // times out. The previous defaults (2026-10-18) were all dead or
+    // filtered. To refresh: probe the official lists (operator guide, §12).
     seeds: &[
-        "8542cd7e6bf9d260fef543bc49e59be5a3fa9074@seed.publicnode.com:26656",
-        "ade4d8bc8cbe014af6ebdf3cb7b1e9ad36f412c0@seeds.polkachu.com:11656",
+        "acca7837e4eb5f9dc7f5a94ed1d82edda6931ff8@seed.celestia.pops.one:26656",
+        "12ad7c73c7e1f2460941326937a039139aa78884@celestia-mainnet-seed.itrocket.net:40656",
+        "975237ec35350f0643bce6618654cd1c76bf1dc0@consensus-full-seed-1.celestia-bootstrap.net:26656",
     ],
     persistent_peers: &[
-        "076c9cc9de3039819a98522aeea39e8c72b49682@peer.celestia.mainnet.dteam.tech:28656",
-        "8dcecfd3fb44990af00408bbd70ab141c33d4513@67.213.115.125:36656",
+        "d9bfa29e0cf9c4ce0cc9c26d98e5d97228f93b0b@65.109.88.38:12056",
+        "fc25a389790d9f1e8dc39496313e1e0fe2b138f7@135.181.138.95:2890",
+        "d513f98bb4f8859f94bde2efc6bf18d29f732c48@188.40.102.137:15656",
+        "ce99d7da2530f75d05880d13d9eda384d5a1afe4@peer.celestia.node75.org:23356",
     ],
     rpc_servers: &["https://celestia-rpc.polkachu.com:443"],
 };
@@ -214,13 +222,20 @@ mod tests {
         }
     }
 
-    /// Mainnet seeds and peers found dead or unusable on 2026-10-18
-    /// (no DNS, no TCP, no secret-connection handshake, or legacy
-    /// propagation only) stay out of the built-in lists.
+    /// Mainnet seeds and peers found dead or unusable (no DNS, no TCP, no
+    /// secret-connection handshake, or legacy propagation only) stay out
+    /// of the built-in lists: those of 2026-10-18 (the itrocket seed
+    /// 12ad7c73 has answered again since), and the previous defaults that
+    /// failed a fresh node on 2026-11-27 (publicnode and polkachu seeds:
+    /// legacy propagation; dteam peer: new node ID; 67.213.115.125: inbound
+    /// full).
     #[test]
     fn mainnet_peers_exclude_dead_nodes() {
-        const DEAD: [&str; 13] = [
-            "12ad7c73c7e1f2460941326937a039139aa78884",
+        const DEAD: [&str; 16] = [
+            "8542cd7e6bf9d260fef543bc49e59be5a3fa9074",
+            "ade4d8bc8cbe014af6ebdf3cb7b1e9ad36f412c0",
+            "076c9cc9de3039819a98522aeea39e8c72b49682",
+            "8dcecfd3fb44990af00408bbd70ab141c33d4513",
             "400f3d9e30b69e78a7fb891f60d76fa3c73f0ecc",
             "59df4b3832446cd0f9c369da01f2aa5fe9647248",
             "86bd5cb6e762f673f1706e5889e039d5406b4b90",

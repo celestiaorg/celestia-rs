@@ -128,10 +128,12 @@ fn gatekeeper_order(msgs: &[Any], depth: usize, out: &mut Vec<String>) -> Result
         if msg.type_url == "/cosmos.authz.v1beta1.MsgExec" {
             // Go's `hasInvalidMsg` recurses without a limit and would go
             // on to the ante handler; this cap bounds the recursion here,
-            // so exceeding it is not ported (the block aborts).
+            // so exceeding it is not ported (the block aborts). Known open
+            // item: a self-exec needs no grant, so Go executes any depth
+            // that fits in a block; mainnet has never been seen to nest.
             if depth > 64 {
                 return Err(super::not_ported(errs::invalid_request(
-                    "max depth exceeded",
+                    "MsgExec nesting deeper than 64 is not supported; Go v3.13.0 has no limit",
                 )));
             }
             // Read as gogoproto decodes it (`decode_v1` accepted it).
