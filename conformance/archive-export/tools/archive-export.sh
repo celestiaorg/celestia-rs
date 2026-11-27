@@ -1,8 +1,9 @@
 #!/bin/bash
 # Export, verify and upload Go state-sync checkpoints from the downloaded
 # QubeLabs archive application.db (/data/appdb). One height per run step;
-# a height with checkpoint.json is skipped on rerun.
-#   HEIGHTS="2371489:v046 6680339:v050 ..." bash archive-export.sh
+# a height with checkpoint.json is skipped on rerun. Up to PARALLEL heights
+# (default 4) of one exporter version are exported at once.
+#   HEIGHTS="2371489:v046 6680339:v050 ..." PARALLEL=4 bash archive-export.sh
 set -uo pipefail
 OUT=/data/ckpt; T=/data/tools; RS=/data/celestia-rs
 HOME_DATA=/data/home/data
@@ -12,6 +13,9 @@ REF=(https://celestia-archive-rpc.polkachu.com https://rpc.celestia.pops.one)
 # boundaries and every 500,000 heights between them.
 if [ -z "${HEIGHTS:-}" ]; then
   HEIGHTS="120000:v046 250000:v046 500000:v046 2371494:v046 2993219:v046 6680339:v046"
+  # Blocks with double-sign evidence (8,218,923 and 9,217,879), replayed
+  # from shortly before.
+  HEIGHTS+=" 8218900:v050 9217850:v050"
   for h in $(seq 750000 250000 6500000); do HEIGHTS+=" $h:v046"; done
   HEIGHTS+=" 2371489:v046 6680339:v050 6748821:v050 8662012:v050 10960599:v050 11771698:v050 15105000:v050"
   for h in $(seq 7000000 500000 15000000); do HEIGHTS+=" $h:v050"; done
@@ -32,7 +36,8 @@ git -C $RS fetch -q --depth 1 origin main && git -C $RS checkout -q --detach FET
 # The verifier comes from main (it accepts the v0.46 duplicated zlib trailer).
 [ -s $RS/conformance/mainnet-rpc/verify-replay-checkpoint.py ] || { echo "no verifier"; exit 1; }
 command -v jq >/dev/null || { apt-get -o DPkg::Lock::Timeout=600 update -q >/dev/null; apt-get -o DPkg::Lock::Timeout=600 install -yq jq >/dev/null; }
-ulimit -n 2000000
+# The archive database has ~1.5M SST files; the exporters keep up to 500,000 open.
+ulimit -n 1048576 2>/dev/null || ulimit -n "$(ulimit -Hn)"
 ref() { # ref PATH JQ: value both archive RPCs agree on
   local a b
   a=$(curl -fsS -m 30 "${REF[0]}/$1" | jq -r "$2") && b=$(curl -fsS -m 30 "${REF[1]}/$1" | jq -r "$2") && [ "$a" = "$b" ] && echo "$a"
@@ -45,17 +50,11 @@ put_retry() { # put_retry FILE OBJECT: upload, five tries
   done
   return 1
 }
-for hv in $HEIGHTS; do
-  h=${hv%%:*} v=${hv#*:} fmt=$([ $v = v046 ] && echo 2 || echo 3)
-  d=$OUT/$h-$v
-  [ -s $d/checkpoint.json ] && { echo "$h $v done"; continue; }
-  rm -rf $d; mkdir -p $d
-  echo "=== $(date -u +%T) export $h with $v"
-  s=$(date +%s)
-  if ! $T/archive-export-$v -db $HOME_DATA -height $h -out $d/snapshots > $d/export.log 2>&1; then
-    echo "export $h $v failed:"; tail -5 $d/export.log; continue
-  fi
-  echo "exported in $(( $(date +%s) - s ))s: $(tail -1 $d/export.log)"
+# finish H V: verify an exported height against the network, write its
+# checkpoint record and upload it (metadata last).
+finish() {
+  local h=$1 v=$2 fmt d app_hash block_hash window args vrc chunks bytes name uploaded f obj
+  fmt=$([ $v = v046 ] && echo 2 || echo 3) d=$OUT/$h-$v
   app_hash=$(ref "block?height=$((h + 1))" .result.block.header.app_hash)
   block_hash=$(ref "block?height=$h" .result.block_id.hash)
   window=$(jq -r --argjson s $((h + 1)) '.windows[] | select(.start_height == $s) | .app_version' $RS/conformance/fixtures/mainnet/replay-windows.json)
@@ -87,7 +86,39 @@ for hv in $HEIGHTS; do
   if [ $uploaded = 0 ]; then
     mv $d/$name $d/upload-failed.json
     echo "$h $v upload incomplete; the next run exports it again"
-    continue
+    return
   fi
   echo "$h $v -> $name, $chunks chunks, $bytes bytes"
+}
+# Heights still to export, in priority order. Each run of the exporter takes
+# the first pending height and up to PARALLEL-1 more pending heights of the
+# same exporter version (scanning ahead), and exports them concurrently from
+# one open database; each is then verified and uploaded on its own.
+PARALLEL=${PARALLEL:-4}
+pending=()
+for hv in $HEIGHTS; do
+  [ -s $OUT/${hv%%:*}-${hv#*:}/checkpoint.json ] && { echo "${hv%%:*} ${hv#*:} done"; continue; }
+  pending+=("$hv")
+done
+while ((${#pending[@]})); do
+  v0=${pending[0]#*:} batch=() rest=()
+  for hv in "${pending[@]}"; do
+    if [ "${hv#*:}" = "$v0" ] && ((${#batch[@]} < PARALLEL)); then batch+=("$hv"); else rest+=("$hv"); fi
+  done
+  pending=("${rest[@]}")
+  hs=$(printf '%s\n' "${batch[@]}" | cut -d: -f1 | paste -sd,)
+  for hv in "${batch[@]}"; do rm -rf $OUT/${hv%%:*}-$v0; mkdir -p $OUT/${hv%%:*}-$v0; done
+  echo "=== $(date -u +%T) export $hs with $v0 (${#batch[@]} at once)"
+  s=$(date +%s)
+  $T/archive-export-$v0 -db $HOME_DATA -height "$hs" -parallel ${#batch[@]} \
+    -out "$OUT/%d-$v0/snapshots" -log "$OUT/%d-$v0/export.log" > $OUT/batch-$v0.log 2>&1
+  echo "batch exited $? after $(( $(date +%s) - s ))s"
+  for hv in "${batch[@]}"; do
+    h=${hv%%:*} d=$OUT/${hv%%:*}-$v0
+    if ! grep -q '^Snapshot created' $d/export.log 2>/dev/null; then
+      echo "export $h $v0 failed:"; tail -5 $d/export.log $OUT/batch-$v0.log 2>/dev/null; continue
+    fi
+    echo "$h exported: $(tail -1 $d/export.log)"
+    finish $h $v0
+  done
 done

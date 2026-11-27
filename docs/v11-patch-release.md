@@ -61,10 +61,26 @@ change withdraw addresses, or add stores. Those operations are not in the tag.
 
 The runtime recognizes a completed v11 upgrade or an explicit v11 genesis.
 A signalled consensus version alone leaves a restored v10 node on v10.
-The runtime authenticates a `v11`
-`upgrade-info.json` against the committed next-height plan before recording
-the executing release. A v10 execution remains v10 until activation/restart;
-historical v9-to-v10 replay remains supported. New genesis defaults and the
+`celestia-rs start` and `celestia-rs follow` switch to the v11 release in
+the same process: after the block that commits consensus version 11, when
+the committed plan `v11` is due at the next height, the node records v11 as
+the executing release and runs the upgrade block with the v11 handler. It
+does not halt, and RPC stays up. The switch also happens when a node opens
+its home at that height, so a node stopped at any point around the upgrade
+restarts into the same state. `celestia-rs abci` keeps Go's behaviour: the
+v10 execution halts at the upgrade block with `UPGRADE "v11" NEEDED` and
+writes `upgrade-info.json`; on restart the runtime authenticates that file
+against the committed next-height plan before recording the executing
+release. A binary without the target release halts in every mode.
+
+The in-process switch needs the signal: it compares the committed consensus
+version with the plan. A governance plan `v11` without a signal leaves the
+consensus version at 10, so `start` and `follow` also halt at the upgrade
+block, with `plan v11 found without a signalled app version; restart the
+node to run the bundled v11 release` after the `UPGRADE "v11" NEEDED`
+error. A restart of the same binary authenticates the `upgrade-info.json`
+it wrote and continues with v11. Mainnet upgrades from v4 are signalled.
+Historical v9-to-v10 replay remains supported. New genesis defaults and the
 existing v10 qualification target are unchanged.
 
 ## SDK inclusion-proof queries after the testnet tags
@@ -85,8 +101,37 @@ fee grants, authz messages and withdrawal destinations. This isolated oracle
 does not measure store gas or prove whole-chain v11 app-hash equivalence.
 Bank integration tests cover ordinary, module and multisend routes. Upgrade
 tests cover Corto-only migration, unchanged version maps, authenticated
-activation and persistence across restart. Existing v10 upgrade replay must
-still halt where its recorded Go binary has no next-version handler.
+activation and persistence across restart. The synthetic chain's app and
+block-sync tests cross the v11 upgrade in one process with Go's app hashes,
+from state-sync-restored homes too, and restart into the same state after a
+stop before or after the switch. The ABCI-mode test still halts where the
+recorded Go v10 binary has no `v11` handler, and a plan this binary has no
+release for halts in every mode.
+
+### Known gap: v12 execution
+
+The v12 rules are checked against Go only partly. The one Go reference is
+the
+[`v12-main-upgrade`](../conformance/fixtures/devnet/upgrade/v12-main-upgrade/README.md)
+capture: Go v11.0.0 runs heights 1 to 5 and signals v12, and the untagged
+celestia-app main commit
+[`bb3a9e52d`](https://github.com/celestiaorg/celestia-app/tree/bb3a9e52d09620323b35b8305922f764b2df6a3e)
+runs heights 6 and 7. `devnet-conformance` `v12_upgrade` requires every
+app hash and the full FinalizeBlock responses from height 6, both
+continuously and after a reopen before the upgrade block. A one-off run in
+[`replay-43ba527`](evidence/replay-43ba527/README.md) extended this to
+1,000 empty v12 blocks.
+
+- No v12 release tag is pinned. The reference is a development commit, so
+  each network's v12 release needs its own check.
+- The chain covers the upgrade block and one more. There are no v12
+  probe transactions like the v4 to v9 fixtures have, and no synthetic
+  segment after v11.
+- There is no Mocha data.
+
+`celestia-rs start` and `celestia-rs follow` still switch to the v12 rules
+in-process when a chain signals v12. A rule that differs from the network
+shows as an app-hash mismatch, which stops the node.
 
 These tests provide implementation evidence, not a new release qualification
 or permission to alter a live validator. The project milestones still require
