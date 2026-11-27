@@ -36,8 +36,9 @@ pub(crate) fn count_read() {
     READS.fetch_add(1, Ordering::Relaxed);
 }
 
-fn counters() -> [u64; 2] {
-    [READS.load(Ordering::Relaxed), multistore::node_lookups()]
+fn counters() -> [u64; 6] {
+    let e = multistore::exp_counters();
+    [READS.load(Ordering::Relaxed), multistore::node_lookups(), e[0], e[1], e[2], e[3]]
 }
 
 /// Sums of one phase.
@@ -51,6 +52,8 @@ pub struct Totals {
     pub reads: u64,
     /// Node-cache lookups.
     pub lookups: u64,
+    /// EXPERIMENT: disk reads by load, by child ref, cold and evicted misses.
+    pub exp: [u64; 4],
 }
 
 /// A running phase; recorded when dropped.
@@ -58,7 +61,7 @@ pub struct Totals {
 pub struct Span {
     name: &'static str,
     start: Instant,
-    at: [u64; 2],
+    at: [u64; 6],
 }
 
 /// Starts phase `name` (`None` when profiling is off).
@@ -82,6 +85,9 @@ impl Drop for Span {
         t.time += self.start.elapsed();
         t.reads += now[0] - self.at[0];
         t.lookups += now[1] - self.at[1];
+        for i in 0..4 {
+            t.exp[i] += now[i + 2] - self.at[i + 2];
+        }
     }
 }
 

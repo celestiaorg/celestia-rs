@@ -15,7 +15,7 @@ use ics23::{ExistenceProof, HashOp, InnerOp, LeafOp, LengthOp};
 use kvdb::{KvBackend, WriteBatch};
 use prost::Message;
 
-pub use iavl::{Hash, Version, node_lookups};
+pub use iavl::{Hash, Version, exp_counters, node_lookups};
 pub use kvdb;
 
 /// IAVL-backed key/value store mounted in a multi-store.

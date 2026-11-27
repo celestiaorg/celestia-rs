@@ -424,6 +424,13 @@ fn print_phases(blocks: usize) {
             t.reads as f64 / n,
             t.lookups as f64 / n,
         );
+        println!(
+            "  disk reads: load {:.0}/block, child ref {:.0}/block; misses cold {:.0}/block, evicted {:.0}/block",
+            t.exp[0] as f64 / n,
+            t.exp[1] as f64 / n,
+            t.exp[2] as f64 / n,
+            t.exp[3] as f64 / n,
+        );
     }
 }
 

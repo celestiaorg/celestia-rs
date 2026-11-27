@@ -30,6 +30,17 @@ const ORPHAN: u8 = b'o';
 
 static NEXT_DB_ID: AtomicU64 = AtomicU64::new(1);
 
+/// EXPERIMENT: [disk reads by load, disk reads by child_ref, cold misses,
+/// misses of keys cached before (evicted)].
+pub static EXP: [AtomicU64; 4] = [const { AtomicU64::new(0) }; 4];
+static SEEN: Mutex<Option<std::collections::HashSet<(u64, NodeKey)>>> = Mutex::new(None);
+
+/// EXPERIMENT counters.
+#[must_use]
+pub fn exp_counters() -> [u64; 4] {
+    std::array::from_fn(|i| EXP[i].load(Ordering::Relaxed))
+}
+
 /// Lookups of every node cache in the process.
 static LOOKUPS: AtomicU64 = AtomicU64::new(0);
 
@@ -142,11 +153,19 @@ impl NodeCache {
             self.hits.fetch_add(1, Ordering::Relaxed);
         } else {
             self.misses.fetch_add(1, Ordering::Relaxed);
+            let seen = SEEN
+                .lock()
+                .ok()
+                .is_some_and(|s| s.as_ref().is_some_and(|s| s.contains(key)));
+            EXP[if seen { 3 } else { 2 }].fetch_add(1, Ordering::Relaxed);
         }
         found
     }
 
     fn put(&self, key: (u64, NodeKey), node: CachedNode) {
+        if let Ok(mut seen) = SEEN.lock() {
+            seen.get_or_insert_with(Default::default).insert(key);
+        }
         if let Ok(mut clock) = self.clock.lock() {
             clock.put(key, node);
         }
@@ -257,7 +276,10 @@ impl NodeDb {
                 self.cache.ref_decodes.fetch_add(1, Ordering::Relaxed);
                 decode(&node.bytes)?
             }
-            None => decode(&self.node_bytes(r.nk)?)?,
+            None => {
+                EXP[0].fetch_add(1, Ordering::Relaxed);
+                decode(&self.node_bytes(r.nk)?)?
+            }
         });
         self.cache
             .put(cache_key, CachedNode::Decoded(Arc::clone(&node)));
@@ -291,6 +313,7 @@ impl NodeDb {
             }),
             Some(CachedNode::Encoded(node)) => Ok(node.reference),
             None => {
+                EXP[1].fetch_add(1, Ordering::Relaxed);
                 let bytes = self.node_bytes(nk)?;
                 self.cache.ref_reads.fetch_add(1, Ordering::Relaxed);
                 let reference = read_ref(&bytes, nk)?;
