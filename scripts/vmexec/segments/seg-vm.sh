@@ -13,9 +13,14 @@ SEG=$1 SRC=$2 H=$3 STOP=$4
 # Block sources: pops and Numia serve every height and scale to ~40 blocks/s
 # at 32 requests in flight (rs-replay/rpctest/, 2026-11-27); Polkachu's
 # archive RPC answers 429 above ~4-8 in flight, so it is not used for fetching.
-# PREFETCH keeps all segments together under ~64 requests per provider.
+# PREFETCH keeps all segments together under ~64 requests per provider:
+# 15 segments x 8 in flight, spread over two providers, is ~60 each.
 RPC=https://rpc.celestia.pops.one,https://public-celestia-rpc.numia.xyz
-PREFETCH=${PREFETCH:-20}
+PREFETCH=${PREFETCH:-8}
+# Optional per-segment block sources (segments/SEG/rpc, one comma-separated
+# line): follow spreads heights over the list, so repeating pops and Numia
+# gives a third server a small fixed share.
+vmx-gcs get segments/$SEG/rpc /data/rpc-$SEG 2>/dev/null && [ -s /data/rpc-$SEG ] && RPC=$(head -1 /data/rpc-$SEG)
 B=/opt/celestia-rs/target/release/celestia-rs
 S=/data/snap; mkdir -p $S/$H
 vmx-gcs get $SRC/2/metadata.json /data/meta-$H.json 2>/dev/null && fmt=2 ||

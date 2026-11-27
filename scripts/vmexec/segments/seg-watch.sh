@@ -1,6 +1,6 @@
 #!/bin/bash
 # Segment watcher (on the segment VM): every 5 min append
-# "time height state reason" to rs-replay/SEG/heights.tsv, upload finished
+# "time height state host reason rss_kib" to rs-replay/SEG/heights-HOST.tsv, upload finished
 # Rust snapshots to rs-snapshots/from-go-SEG/<h>/<f>/ (metadata.json last),
 # and when the replay ends upload the log tail and diagnostics and write
 # segments/SEG/done (reached STOP) or segments/SEG/failed (with the reason).
@@ -39,7 +39,10 @@ while true; do
   if [ $resume_pend = 1 ] && [ $stall_pend = 0 ]; then
     vmx-gcs put /dev/null segments/$SEG/resumed-$HOST >/dev/null 2>&1 && resume_pend=0
   fi
-  printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "${h:--}" "$a" "$HOST" "$reason" >> $T
+  # Last column: the node's RSS in KiB (largest celestia-rs process), so
+  # segments on different builds can be compared over a whole segment.
+  rss=$(ps -o rss= -C celestia-rs 2>/dev/null | sort -n | tail -1 | tr -d ' ')
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "${h:--}" "$a" "$HOST" "$reason" "${rss:--}" >> $T
   vmx-gcs put $T rs-replay/$SEG/heights-$HOST.tsv >/dev/null 2>&1
   for d in $HOME_DIR/data/snapshots/*/*/; do
     [ -d "$d" ] || continue
