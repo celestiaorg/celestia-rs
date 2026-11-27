@@ -2,13 +2,17 @@ name: static analysis
 
 # CodeQL takes about 19 minutes, so it runs on pushes to main (where its
 # alerts land in code scanning), not on pull requests. Kani runs on pull
-# requests that can change its proof: the shares crate and its dependencies.
+# requests that can change its proof: the shares crate, its workspace
+# dependencies (`cargo tree -p shares`), and the build manifests.
 on:
   pull_request:
     paths:
       - .github/workflows/static-analysis.yml
+      - Cargo.toml
       - Cargo.lock
+      - rust-toolchain.toml
       - crates/tier-0-primitives/encoding/**
+      - crates/tier-0-primitives/gostr/**
       - crates/tier-0-primitives/hash/**
       - crates/tier-1-protocol-types/shares/**
   push:
