@@ -1998,6 +1998,36 @@ mod tests {
     }
 
     #[test]
+    fn writes_remember_the_children_they_load_for_later_reads() {
+        let ndb = NodeDb::in_memory(10_000);
+        let mut tree = Tree::open(Arc::clone(&ndb)).unwrap();
+        for i in 0u32..500 {
+            tree.set(i.to_be_bytes().to_vec(), vec![7; 10]).unwrap();
+        }
+        tree.save_version().unwrap();
+        let cache = super::NodeCache::new(10_000);
+        let mut reopened = Tree::open(NodeDb::new(
+            Arc::clone(ndb.backend()),
+            Vec::new(),
+            Arc::clone(&cache),
+        ))
+        .unwrap();
+        let lookups = || {
+            let s = cache.stats();
+            s.hits + s.misses
+        };
+        let key = 77u32.to_be_bytes();
+        // A write descends from the saved root and loads the path to `key`.
+        reopened.set(key.to_vec(), vec![8; 10]).unwrap();
+        let snap = reopened.get_immutable(1).unwrap();
+        let before = lookups();
+        assert_eq!(snap.get(&key).unwrap(), Some(vec![7; 10]));
+        // The saved nodes on that path remember their children, so a read
+        // of the saved version looks up only its root.
+        assert!(lookups() - before <= 1, "{:?}", cache.stats());
+    }
+
+    #[test]
     fn stale_views_never_read_nodes_recreated_by_a_rollback() {
         for cache in [8, 10_000] {
             stale_view_after_rollback(cache);

@@ -94,16 +94,14 @@ impl Mutator<'_> {
             },
             Node::Inner(inner) => {
                 self.discard(link);
-                let mut left = inner.left.clone();
-                let mut right = inner.right.clone();
-                let (updated, old) = if key.as_slice() < inner.key.as_slice() {
-                    let (l, updated, old) = self.set(&left, key, value)?;
-                    left = l;
-                    (updated, old)
+                // Descend through the parent's own link, so the child it
+                // loads is remembered there; only the sibling is copied.
+                let (left, right, updated, old) = if key.as_slice() < inner.key.as_slice() {
+                    let (l, updated, old) = self.set(&inner.left, key, value)?;
+                    (l, inner.right.clone(), updated, old)
                 } else {
-                    let (r, updated, old) = self.set(&right, key, value)?;
-                    right = r;
-                    (updated, old)
+                    let (r, updated, old) = self.set(&inner.right, key, value)?;
+                    (inner.left.clone(), r, updated, old)
                 };
                 if updated {
                     return Ok((
