@@ -195,6 +195,13 @@ pub struct ValidatorSet {
 }
 
 impl ValidatorSet {
+    /// `ValidatorSet.AllKeysHaveSameType`.
+    fn all_keys_have_same_type(&self) -> bool {
+        self.validators
+            .windows(2)
+            .all(|w| std::mem::discriminant(&w[0].pub_key) == std::mem::discriminant(&w[1].pub_key))
+    }
+
     /// `ValidatorSetFromProto` (including its `ValidateBasic`).
     pub fn from_proto(vp: Option<&tm::ValidatorSet>) -> LResult<Self> {
         let vp = vp.ok_or("nil validator set")?;
@@ -586,12 +593,18 @@ struct CommitRules {
 }
 
 impl CommitRules {
+    /// The rules of the release that defines the executing app version:
+    /// app versions 2 and 3 execute as 9 elsewhere, but their light client
+    /// is celestia-app v3.13.0's (celestia-core v1).
     fn of(vals: &ValidatorSet, commit: &tm::Commit) -> Self {
-        let release = sdk::version::release(0);
+        let release = sdk::version::Release::for_app_version(sdk::version::app_version())
+            .unwrap_or_else(|| sdk::version::release(0));
         Self {
+            // `shouldBatchVerify`.
             batch: release.light_commit_batch_verification()
                 && commit.signatures.len() >= 2
-                && matches!(vals.proposer.pub_key, PubKey::Ed25519(_)),
+                && matches!(vals.proposer.pub_key, PubKey::Ed25519(_))
+                && vals.all_keys_have_same_type(),
             address_check: release.light_commit_address_check(),
         }
     }
@@ -671,6 +684,10 @@ fn verify_commit_batch(
         let Some(val) = commit_validator(vals, commit, idx, by_index, rules, &mut seen)? else {
             continue;
         };
+        // ed25519 `BatchVerifier.Add`.
+        if sig.signature.len() != 64 {
+            return Err("invalid signature".into());
+        }
         batch.push((idx, val, vote_sign_bytes(chain_id, commit, idx)));
         tallied = tallied.saturating_add(val.voting_power);
         if tallied > needed {
@@ -1129,6 +1146,22 @@ mod tests {
         sdk::version::set_app_version(6);
         let err = verify_commit_sigs("c", &vals, &c, needed, true).unwrap_err();
         assert!(err.starts_with("wrong signature (#0): "), "{err}");
+        // ed25519 `BatchVerifier.Add` rejects a signature that is not 64
+        // bytes before the tally.
+        sdk::version::set_app_version(10);
+        let (vals, mut c) = signed(40, &[]);
+        c.signatures[3].signature.truncate(63);
+        let err = verify_commit_sigs("c", &vals, &c, 400, true).unwrap_err();
+        assert_eq!(err, "invalid signature");
+        // `shouldBatchVerify` needs every key of one type: a mixed set takes
+        // the single path, where a bad signature at 4 beats a double vote
+        // at 12.
+        let (mut vals, mut c) = signed(40, &[4]);
+        vals.validators[39].pub_key = PubKey::Secp256k1([2; 33]);
+        c.signatures[12].validator_address = c.signatures[2].validator_address.clone();
+        let err = verify_commit_sigs("c", &vals, &c, needed, false).unwrap_err();
+        let sig = hex::encode_upper(&c.signatures[4].signature);
+        assert_eq!(err, format!("wrong signature (#4): {sig}"));
         sdk::version::set_app_version(prev);
     }
 

@@ -1011,6 +1011,8 @@ mod tests {
             assert!(!r.amino_remote_router_placeholder(), "v{v}");
             assert!(r.amino_vesting_start_time(), "v{v}");
             assert_eq!(r.light_commit_batch_verification(), v != 1, "v{v}");
+            // App versions 2 and 3 execute as 9 here; the light client
+            // reads the rules of their own release (`for_app_version`).
             assert_eq!(r.light_commit_address_check(), v != 1, "v{v}");
         }
     }
@@ -1034,6 +1036,10 @@ mod tests {
             assert_eq!(r.cip29_inflation(), matches!(v, 4 | 5), "v{v}");
             let pct = if matches!(v, 4..=6) { 25 } else { 60 };
             assert_eq!(r.max_commission_rate_pct(), pct, "v{v}");
+            // celestia-app v3.13.0's celestia-core v1 has no batch commit
+            // verification and no address check.
+            assert_eq!(r.light_commit_batch_verification(), v >= 4, "v{v}");
+            assert_eq!(r.light_commit_address_check(), v >= 7, "v{v}");
             // celestia-app v4.1.0 and v5.0.12: go-square v2, square size
             // upper bound 128, MaxTxSize 2 MiB; v4 to v8 do not cap the gov
             // max square size.
@@ -1068,6 +1074,8 @@ mod tests {
                 assert_eq!(r.amino_remote_router_placeholder(), v <= 6, "v{v}");
                 assert_eq!(r.amino_vesting_start_time(), v != 4, "v{v}");
                 assert_eq!(r.light_commit_batch_verification(), v != 1, "v{v}");
+                // App versions 2 and 3 execute as 9 here; the light client
+                // reads the rules of their own release (`for_app_version`).
                 assert_eq!(r.light_commit_address_check(), v >= 7, "v{v}");
             }
         }
