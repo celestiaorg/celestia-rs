@@ -1063,6 +1063,64 @@ Regeneration uses the pinned heights and commitments in
 python3 conformance/mainnet-rpc/fetch-replay-blocks.py
 ```
 
+## Fibre server interoperability
+
+[`fibre-interop/`](fibre-interop) checks the embedded Fibre server of
+`celestia-rs start` against the Go implementation of celestia-app
+`v11.0.0`: its Fibre client (package `fibre`: `NewClient`, `Put`,
+`Client.Upload`, `Client.Download`) and, on a mixed network, Go validators
+that run the standalone Go `fibre` server. `main.go` is the Go client
+program (`fibre-interop <command>`); the two scripts start local devnets
+and drive it. [`fibre-go-interop.yml`](../.github/workflows/fibre-go-interop.yml)
+runs both on pull requests that touch the Fibre server, its node wiring or
+the harness, and every day.
+
+```sh
+# Four celestia-rs validators (genesis from the celestia-rs CLI, app
+# version 10). Blob sizes and the number of concurrent clients are inputs.
+SIZES=1K,300K,8M,64M,127M CLIENTS=20 conformance/fibre-interop/rust-validators.sh [target/debug/celestia-rs]
+
+# Two Go validators (celestia-appd v11.0.0 + Go fibre v11.0.0, signing over
+# the node's privval gRPC) and two celestia-rs validators (genesis from
+# celestia-appd v11.0.0, app version 11). Needs the Go binaries and a
+# celestia-rs built with the da-fibre feature (node 2's DA bridge uploads
+# with the Rust client).
+DEVNET_BIN=target/devnet-bin-v11 APP_VERSION=v11.0.0 CORE_VERSION=v0.42.8 \
+  APPD_ONLY=1 FIBRE=1 GOTOOLCHAIN=go1.26.10 conformance/devnet/build-bins.sh
+cargo build -p celestia-rs --features da-fibre
+SIZES=1K,300K,8M,64M,127M conformance/fibre-interop/mixed-validators.sh target/debug/celestia-rs
+```
+
+The scripts need Go (the module pins `go 1.26.10`; `GOTOOLCHAIN=auto`
+downloads it), Python 3 and curl, and use loopback ports from
+`DEVNET_PORT_OFFSET` (21000 and 23000 by default). Logs stay in the
+printed temporary directory when a check fails.
+
+What they check:
+
+- Hosts registered with `tx valaddr set-host`; the Go gRPC health client
+  sees readiness and liveness SERVING over TLS 1.3 on every server.
+- Uploads of every size, a `MsgPayForFibre` with the servers' signatures
+  committed with code 0, downloads byte-identical. Except for the first
+  blob (`fibre.Put`), uploads wait for every validator's signature, so on
+  the mixed network each payment carries Go and Rust signatures.
+- Download of an unknown blob: `fibre.ErrNotFound`.
+- Rust-only network: 20 clients at once (each with its own connection per
+  validator, beyond the 16-connection cap) and 20 Puts on one client
+  (beyond the 13-stream cap), both with the client's default 15 s RPC
+  timeout; `BIG_PUTS` (3) concurrent 127 MiB Puts on one client, which
+  must fit the default `max_inflight_upload_bytes`; a stopped validator (`fibre.Put`
+  still reaches the 2/3 quorum and earlier blobs reconstruct); a raw
+  `UploadShard` loop fills one validator's storage budget (lowered in
+  genesis) until `ResourceExhausted`, whose `RetryInfo` grpc-go must decode
+  as the client's retry logic does.
+- Mixed network: uploads through the celestia-rs DA bridge (lumina's
+  `celestia-fibre` client) to Go and Rust servers, read back with the Go
+  client; `check_chain` and RPC block and app hashes on all nodes; then
+  one Go and one Rust validator stop, and every blob must reconstruct from
+  the remaining Go and Rust shards (each holds 3072 of the 4096 rows
+  needed).
+
 ## When to regenerate
 
 - After mainnet upgrades to a new app version.
