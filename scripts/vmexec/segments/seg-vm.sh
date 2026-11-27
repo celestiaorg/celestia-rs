@@ -10,7 +10,12 @@
 # (rs-snapshots/<START>/), compare-snapshots checks both item by item first.
 set -uo pipefail
 SEG=$1 SRC=$2 H=$3 STOP=$4
-RPC=https://celestia-archive-rpc.polkachu.com,https://rpc.celestia.pops.one
+# Block sources: pops and Numia serve every height and scale to ~40 blocks/s
+# at 32 requests in flight (rs-replay/rpctest/, 2026-11-27); Polkachu's
+# archive RPC answers 429 above ~4-8 in flight, so it is not used for fetching.
+# PREFETCH keeps all segments together under ~64 requests per provider.
+RPC=https://rpc.celestia.pops.one,https://public-celestia-rpc.numia.xyz
+PREFETCH=${PREFETCH:-20}
 B=/opt/celestia-rs/target/release/celestia-rs
 S=/data/snap; mkdir -p $S/$H
 vmx-gcs get $SRC/2/metadata.json /data/meta-$H.json 2>/dev/null && fmt=2 ||
@@ -21,7 +26,7 @@ for ((i = 0; i < n; i++)); do [ -s $S/$H/$fmt/$i ] || vmx-gcs get $SRC/$fmt/$i $
 TH=$(jq -r '.block_hash // empty' /data/meta-$H.json)
 if [ -z "$TH" ]; then
   a=$(curl -fsS -m 30 "https://rpc.celestia.pops.one/block?height=$H" | jq -r .result.block_id.hash)
-  b=$(curl -fsS -m 30 "https://celestia-archive-rpc.polkachu.com/block?height=$H" | jq -r .result.block_id.hash)
+  b=$(curl -fsS -m 30 "https://public-celestia-rpc.numia.xyz/block?height=$H" | jq -r .result.block_id.hash)
   [ -n "$a" ] && [ "$a" = "$b" ] || { echo "archive RPCs disagree on the hash of $H"; exit 1; }
   TH=$a
 fi
@@ -36,5 +41,8 @@ if [ "$SRC" = go-snapshots/$H ] && vmx-gcs get rs-snapshots/$H/$fmt/metadata.jso
   vmx-gcs put /data/compare-$H.txt rs-replay/$SEG/compare-$H.txt
   tail -3 /data/compare-$H.txt
 fi
-export RPC TRUST_HASH=$TH CELESTIA_RS_BIN=$B CELESTIA_RS_HOME=/data/home-$SEG SNAPSHOT_INTERVAL=50000 SNAPSHOT_KEEP=0
+# follow has a --prefetch flag that mainnet-snapshot-follow.sh does not pass.
+printf '#!/bin/bash\nif [ "$1" = follow ]; then exec %s "$@" --prefetch %s; else exec %s "$@"; fi\n' "$B" "$PREFETCH" "$B" >/data/celestia-rs-follow
+chmod 755 /data/celestia-rs-follow
+export RPC TRUST_HASH=$TH CELESTIA_RS_BIN=/data/celestia-rs-follow CELESTIA_RS_HOME=/data/home-$SEG SNAPSHOT_INTERVAL=50000 SNAPSHOT_KEEP=0
 bash /opt/celestia-rs/scripts/mainnet-snapshot-follow.sh $S $H $STOP
