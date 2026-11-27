@@ -588,7 +588,7 @@ struct CommitRules {
     /// verifies one signature at a time.
     batch: bool,
     /// The lookup by index checks the validator address (celestia-core
-    /// v0.39.30 on: celestia-app v8.0.8 on).
+    /// v0.39.23 on: celestia-app v6.4.10 on).
     address_check: bool,
 }
 
@@ -1134,16 +1134,19 @@ mod tests {
         let (vals, c) = signed(40, &[0]);
         let err = verify_commit_sigs("c", &vals, &c, 400, true).unwrap_err();
         assert!(err.contains("insufficient voting power: got 400"), "{err}");
-        // by index: v8 on check the address; v4 to v6 verify the indexed
-        // validator's key
+        // by index: v6 (v6.4.10) on check the address; v4 and v5 verify the
+        // indexed validator's key
         let (vals, mut c) = signed(40, &[]);
         c.signatures.swap(0, 1);
-        let err = verify_commit_sigs("c", &vals, &c, needed, true).unwrap_err();
-        assert!(
-            err.starts_with("validator address mismatch at index 0"),
-            "{err}"
-        );
-        sdk::version::set_app_version(6);
+        for v in [10, 6] {
+            sdk::version::set_app_version(v);
+            let err = verify_commit_sigs("c", &vals, &c, needed, true).unwrap_err();
+            assert!(
+                err.starts_with("validator address mismatch at index 0"),
+                "v{v}: {err}"
+            );
+        }
+        sdk::version::set_app_version(5);
         let err = verify_commit_sigs("c", &vals, &c, needed, true).unwrap_err();
         assert!(err.starts_with("wrong signature (#0): "), "{err}");
         // ed25519 `BatchVerifier.Add` rejects a signature that is not 64

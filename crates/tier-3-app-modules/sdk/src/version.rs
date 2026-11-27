@@ -756,12 +756,13 @@ impl Release {
     }
 
     /// The light client's lookup of commit signatures by index checks each
-    /// validator address (celestia-core v0.39.30 on: celestia-app v8.0.8
-    /// on). Earlier releases verify the signature against the indexed
-    /// validator's key.
+    /// validator address (celestia-core v0.39.23 on: celestia-app v6.4.10,
+    /// mainnet's app version 6 binary, and later). Earlier releases
+    /// (celestia-core v1, v0.38.17, and v0.39.20 of celestia-app v6.4.4)
+    /// verify the signature against the indexed validator's key.
     #[must_use]
     pub const fn light_commit_address_check(&self) -> bool {
-        !matches!(self.app_version, 1..=6)
+        !matches!(self.app_version, 1..=5)
     }
 
     /// go-square v4.0.0-rc4: the square layout counts signer bytes and
@@ -1039,7 +1040,7 @@ mod tests {
             // celestia-app v3.13.0's celestia-core v1 has no batch commit
             // verification and no address check.
             assert_eq!(r.light_commit_batch_verification(), v >= 4, "v{v}");
-            assert_eq!(r.light_commit_address_check(), v >= 7, "v{v}");
+            assert_eq!(r.light_commit_address_check(), v >= 6, "v{v}");
             // celestia-app v4.1.0 and v5.0.12: go-square v2, square size
             // upper bound 128, MaxTxSize 2 MiB; v4 to v8 do not cap the gov
             // max square size.
@@ -1076,7 +1077,7 @@ mod tests {
                 assert_eq!(r.light_commit_batch_verification(), v != 1, "v{v}");
                 // App versions 2 and 3 execute as 9 here; the light client
                 // reads the rules of their own release (`for_app_version`).
-                assert_eq!(r.light_commit_address_check(), v >= 7, "v{v}");
+                assert_eq!(r.light_commit_address_check(), v >= 6, "v{v}");
             }
         }
         let deps = |v| {
