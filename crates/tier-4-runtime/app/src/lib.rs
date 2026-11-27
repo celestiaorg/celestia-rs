@@ -889,6 +889,7 @@ impl App {
         for module in modules::INIT_GENESIS {
             if !stores::exists_at(module, genesis_app_version)
                 || (*module == "capability" && !release.has_capability_module())
+                || (*module == "interchainaccounts" && !release.has_ica_host_module())
             {
                 continue;
             }
@@ -2298,6 +2299,13 @@ mod node_options_tests {
             }
             want.sort();
             assert_eq!(versions, want, "v{version}");
+            // celestia-app v4.1.0 and v5.0.12 have no ICA module: the
+            // genesis's `interchainaccounts` section writes nothing.
+            let icahost = app
+                .ms
+                .range(x_icahost::STORE_KEY, None, None, false)
+                .unwrap();
+            assert_eq!(icahost.is_empty(), version < 6, "v{version}");
         }
     }
 
