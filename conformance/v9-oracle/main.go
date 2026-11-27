@@ -8,7 +8,9 @@
 //	v5-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> -heights 11 -next-handoff
 //	v6-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> -heights 10 -next-handoff
 //	v8-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> -heights 10 -next-handoff
-//	v9-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> [-heights 5]
+//	v9-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> -heights 10 -next-handoff
+//	v10-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> -heights 10 -next-handoff
+//	v11-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> [-heights 5]
 //
 // celestia-app v8 commits block 56, whose EndBlocker sets app version 9,
 // schedules plan "v9" at 57 and writes data/upgrade-info.json; then
@@ -94,8 +96,11 @@ type BlockResults struct {
 	Txs                   []TxResult        `json:"txs"`
 	ValidatorUpdates      []ValidatorUpdate `json:"validator_updates"`
 	ConsensusParamUpdates json.RawMessage   `json:"consensus_param_updates"`
-	AppHash               string            `json:"app_hash"`
-	Timeouts              Timeouts          `json:"timeouts"`
+	// Misbehavior is the request's Misbehavior, for blocks with evidence
+	// (-evidence) only.
+	Misbehavior json.RawMessage `json:"misbehavior,omitempty"`
+	AppHash     string          `json:"app_hash"`
+	Timeouts    Timeouts        `json:"timeouts"`
 	// TimeoutInfo is the whole FinalizeBlock timeout info: celestia-core
 	// v0.40 has more timeouts than Timeouts records.
 	TimeoutInfo json.RawMessage `json:"timeout_info"`
@@ -168,8 +173,16 @@ func run() error {
 	genesisPath := flag.String("genesis", "", "the genesis.json of the synthetic chain")
 	heights := flag.Int64("heights", 5, "number of blocks to execute after the hand-off height")
 	out := flag.String("out", "", "output directory")
+	signBytes := flag.String("signbytes", "", "write the sign-bytes vectors (signbytes.go) to this file and exit")
 	probes := flag.Bool("probes", false, "after the usual five blocks, run the probe blocks of probes.go (use -heights 8) and record tx signers")
+	consensusMode := flag.Bool("consensus", false, "build blocks as a validator would (consensus.go): txs, square size and data root from PrepareProposal, commits signed by the validators' consensus keys")
+	tmclient := flag.Bool("tmclient", false, "after the usual five blocks, run the 07-tendermint client blocks of tmclient.go (use -heights 10)")
+	evidence := flag.Bool("evidence", false, "after the usual five blocks, run the equivocation blocks of evidence.go (use -heights 10)")
+	nextHandoff := flag.Bool("next-handoff", false, "after the last block, require plan \"v10\" at the next height and rewrite handoff.json in the -handoff home for conformance/v10-oracle")
 	flag.Parse()
+	if *signBytes != "" {
+		return writeSignBytes(*signBytes, "v9.0.8")
+	}
 	if *home == "" || *genesisPath == "" || *out == "" || *heights < 1 {
 		flag.Usage()
 		return errors.New("missing arguments")
@@ -242,6 +255,9 @@ func run() error {
 		return err
 	}
 	s.probes = *probes
+	s.consensus = *consensusMode
+	s.tmclient = *tmclient
+	s.evidence = *evidence
 	kvUpgrade, err := upgradeOnly(*home, ho, s.blockTime(ho.Height+1), prev)
 	if err != nil {
 		return err
@@ -251,6 +267,11 @@ func run() error {
 		txs, err := s.txs(a, height)
 		if err != nil {
 			return fmt.Errorf("height %d: %w", height, err)
+		}
+		if s.consensus {
+			if txs, err = s.prepareProposal(a, height, txs); err != nil {
+				return fmt.Errorf("height %d: %w", height, err)
+			}
 		}
 		block, id, err := s.block(height, txs)
 		if err != nil {
@@ -271,6 +292,7 @@ func run() error {
 			Height:             block.Height,
 			Time:               block.Time,
 			DecidedLastCommit:  s.lastCommitInfo(height),
+			Misbehavior:        s.misbehavior,
 			Txs:                inner,
 			Header:             pbHeader,
 		})
@@ -333,8 +355,13 @@ func run() error {
 		if err != nil {
 			return err
 		}
+		misbehavior, err := misbehaviorJSON(s.misbehavior)
+		if err != nil {
+			return err
+		}
 		line, err := json.Marshal(BlockResults{
 			Height:                height,
+			Misbehavior:           misbehavior,
 			Events:                events(res.Events),
 			Txs:                   txResults,
 			ValidatorUpdates:      updates,
@@ -353,6 +380,27 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "height %d: %s (%d txs, %d validator updates, app version %d)\n", height, got, len(res.TxResults), len(updates), s.appVersion)
 	}
 
+	if *nextHandoff {
+		last := ho.Height + *heights
+		plan, err := a.UpgradeKeeper.ReadUpgradeInfoFromDisk()
+		if err != nil {
+			return err
+		}
+		if plan.Name != "v10" || s.appVersion != 10 {
+			return fmt.Errorf("after height %d: upgrade-info.json plan %q, app version %d; want plan v10 and app version 10", last, plan.Name, s.appVersion)
+		}
+		if err := s.writeHandoff(filepath.Join(*home, "handoff.json")); err != nil {
+			return err
+		}
+	}
+	if s.consensus {
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			return err
+		}
+		if err := s.writeLastCommit(*out); err != nil {
+			return err
+		}
+	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return err
 	}

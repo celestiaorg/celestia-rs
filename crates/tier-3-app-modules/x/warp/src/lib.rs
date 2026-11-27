@@ -69,12 +69,18 @@ pub struct Warp {
 }
 
 impl Warp {
-    /// celestia-app v10 configuration: both token types enabled, the gov
-    /// module account as authority.
+    /// celestia-app's configuration for the executing release: both token
+    /// types enabled (collateral only in v4.1.0 and v5.0.12), the gov module
+    /// account as authority.
     #[must_use]
     pub fn celestia() -> Self {
+        let enabled_tokens = if sdk::version::release(0).warp_synthetic_tokens() {
+            vec![TOKEN_TYPE_COLLATERAL, TOKEN_TYPE_SYNTHETIC]
+        } else {
+            vec![TOKEN_TYPE_COLLATERAL]
+        };
         Self {
-            enabled_tokens: vec![TOKEN_TYPE_COLLATERAL, TOKEN_TYPE_SYNTHETIC],
+            enabled_tokens,
             authority: acc_address_string(&x_hyperlane::module_address("gov")),
         }
     }

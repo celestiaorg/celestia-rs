@@ -296,12 +296,18 @@ jobs:
           path: ${{ runner.temp }}/quality
           retention-days: 30
 
+  # The Go release oracles regenerate the committed fixtures from each
+  # celestia-app release. Pull requests run them only when they touch
+  # conformance/ (ci.yml), so this is the daily check on main.
+  go-oracles:
+    uses: ./.github/workflows/go-oracles.yml
+
   # Scheduled runs only (manual runs report to whoever started them): a
   # failure opens a `nightly-failure` issue with the failed jobs and their
   # log tails (or comments on the open one, so a red streak stays one
   # thread) and posts to #protocol-ci; the next green nightly closes it.
   report:
-    needs: [advisories, devnet-bins, devnet-interop, soak, fuzz-diff, cargo-fuzz, coverage]
+    needs: [advisories, devnet-bins, devnet-interop, soak, fuzz-diff, cargo-fuzz, coverage, go-oracles]
     if: always() && github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -523,4 +523,22 @@ mod tests {
         }
         sdk::version::set_app_version(prev);
     }
+
+    /// celestia-app v4.1.0 and v5.0.12 never add the ICA module to the
+    /// module manager, so the ICA host msg service is absent; v6.4.x adds
+    /// it.
+    #[test]
+    fn no_ica_host_msg_routes_before_v6() {
+        let prev = sdk::version::app_version();
+        for (version, routed) in [(4, false), (5, false), (6, true), (9, true), (10, true)] {
+            sdk::version::set_app_version(version);
+            for url in [
+                "/ibc.applications.interchain_accounts.host.v1.MsgUpdateParams",
+                "/ibc.applications.interchain_accounts.host.v1.MsgModuleQuerySafe",
+            ] {
+                assert_eq!(has_handler(url), routed, "v{version} {url}");
+            }
+        }
+        sdk::version::set_app_version(prev);
+    }
 }

@@ -145,6 +145,20 @@ impl SyncTimings {
             + self.apply
     }
 
+    /// The phase times added since `earlier` (an earlier snapshot).
+    #[must_use]
+    pub fn since(&self, earlier: &Self) -> Self {
+        Self {
+            blocks: self.blocks.saturating_sub(earlier.blocks),
+            block_id: self.block_id.saturating_sub(earlier.block_id),
+            verify_commit: self.verify_commit.saturating_sub(earlier.verify_commit),
+            validate: self.validate.saturating_sub(earlier.validate),
+            verify_data: self.verify_data.saturating_sub(earlier.verify_data),
+            save: self.save.saturating_sub(earlier.save),
+            apply: self.apply.saturating_sub(earlier.apply),
+        }
+    }
+
     fn per_block_ms(&self, d: Duration) -> f64 {
         #[allow(clippy::cast_precision_loss)]
         let n = self.blocks.max(1) as f64;
@@ -478,6 +492,11 @@ impl Reactor {
         let mut blocks_synced: u64 = 0;
         let mut last_hundred = Instant::now();
         let mut last_rate = 0.0f64;
+        // Throughput report of the last hundred blocks: the phase times
+        // since the previous report, and the time spent waiting for the
+        // pool to hold the next two blocks.
+        let mut reported = self.timings();
+        let mut waited = Duration::ZERO;
         let initial_commit_has_extensions = state.last_block_height > 0
             && matches!(
                 self.store
@@ -526,8 +545,10 @@ impl Reactor {
                     let secs = last_hundred.elapsed().as_secs_f64().max(1e-9);
                     last_rate = 0.9 * last_rate + 0.1 * (100.0 / secs);
                     let t = self.timings();
+                    let w = t.since(&reported);
+                    let (height, pending, requesters) = self.pool.get_status();
                     tracing::info!(
-                        height = self.pool.height(),
+                        height,
                         max_peer_height = self.pool.max_peer_height(),
                         blocks_per_s = last_rate,
                         block_id_ms = t.per_block_ms(t.block_id),
@@ -536,12 +557,27 @@ impl Reactor {
                         verify_data_ms = t.per_block_ms(t.verify_data),
                         save_ms = t.per_block_ms(t.save),
                         apply_ms = t.per_block_ms(t.apply),
+                        window_s = secs,
+                        window_wait_ms = w.per_block_ms(waited),
+                        window_block_id_ms = w.per_block_ms(w.block_id),
+                        window_verify_commit_ms = w.per_block_ms(w.verify_commit),
+                        window_validate_ms = w.per_block_ms(w.validate),
+                        window_verify_data_ms = w.per_block_ms(w.verify_data),
+                        window_save_ms = w.per_block_ms(w.save),
+                        window_apply_ms = w.per_block_ms(w.apply),
+                        pending,
+                        requesters,
+                        peers = self.pool.num_peers(),
                         "Block Sync Rate"
                     );
+                    reported = t;
+                    waited = Duration::ZERO;
                     last_hundred = Instant::now();
                 }
             } else {
+                let idle = Instant::now();
                 std::thread::sleep(TRY_SYNC_INTERVAL);
+                waited += idle.elapsed();
             }
         }
     }
@@ -812,5 +848,31 @@ impl p2p::Reactor for Reactor {
 
     fn queue_size(&self) -> usize {
         REACTOR_INCOMING_MESSAGE_QUEUE_SIZE
+    }
+}
+
+#[cfg(test)]
+mod timing_tests {
+    use super::*;
+
+    #[test]
+    fn timings_since_an_earlier_snapshot() {
+        let ms = Duration::from_millis;
+        let earlier = SyncTimings {
+            blocks: 100,
+            apply: ms(500),
+            save: ms(50),
+            ..SyncTimings::default()
+        };
+        let now = SyncTimings {
+            blocks: 200,
+            apply: ms(1_700),
+            save: ms(80),
+            ..SyncTimings::default()
+        };
+        let w = now.since(&earlier);
+        assert_eq!((w.blocks, w.apply, w.save), (100, ms(1_200), ms(30)));
+        assert!((w.per_block_ms(w.apply) - 12.0).abs() < 1e-9);
+        assert!((w.per_block_ms(ms(250)) - 2.5).abs() < 1e-9);
     }
 }

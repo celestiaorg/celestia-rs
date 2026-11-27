@@ -539,6 +539,14 @@ impl Release {
         self.sdk_before_v0_52_12()
     }
 
+    /// x/zkism `StateMembershipValues.Unmarshal` requires full reads and an
+    /// exact length (celestia-app v9.0.8 and later); v8.0.8 (and v7, whose
+    /// x/zkism v8 contains) ignores trailing bytes after the message ids.
+    #[must_use]
+    pub const fn zkism_exact_public_values(&self) -> bool {
+        self.app_version >= 9
+    }
+
     /// The release predates celestia-app v10: a v10 change that is not one
     /// of the dependency changes above (x/forwarding, x/zkism, the ante fee
     /// denom check, signal and upgrade switching). x/forwarding is
@@ -639,6 +647,50 @@ impl Release {
         self.app_version != 4
     }
 
+    /// The module manager registers the ICA host module (its msg service,
+    /// genesis and migrations). celestia-app v4.1.0 and v5.0.12 wire only
+    /// its keeper and IBC route; v6.4.x adds the module.
+    #[must_use]
+    pub const fn has_ica_host_module(&self) -> bool {
+        !matches!(self.app_version, 4 | 5)
+    }
+
+    /// x/warp enables synthetic tokens (celestia-app v6.4.x on; v4.1.0 and
+    /// v5.0.12 enable only collateral tokens).
+    #[must_use]
+    pub const fn warp_synthetic_tokens(&self) -> bool {
+        !matches!(self.app_version, 4 | 5)
+    }
+
+    /// x/distribution `WithdrawDelegationRewards` pays a removed
+    /// delegation's `UserOutstandingRewards` (cosmos-sdk v0.51.8 on). The
+    /// v0.50.14 forks (celestia-app v4.1.0, v5.0.12) return
+    /// `ErrNoDelegation` instead.
+    #[must_use]
+    pub const fn withdraws_outstanding_without_delegation(&self) -> bool {
+        !matches!(self.app_version, 4 | 5)
+    }
+
+    /// celestia-core `MaxBlockSizeBytes`, the `block.MaxBytes` cap of
+    /// `ConsensusParams.ValidateBasic`: 100 MB in v1.57.2-tm-v0.38.17 and
+    /// v1.59.0-tm-v0.38.17 (celestia-app v4.1.0, v5.0.12), 128 MiB in the
+    /// v0.39 line.
+    #[must_use]
+    pub const fn max_block_size_bytes(&self) -> i64 {
+        if matches!(self.app_version, 4 | 5) {
+            104_857_600
+        } else {
+            128 * 1024 * 1024
+        }
+    }
+
+    /// BaseApp sets `ExecTxResult.Signers` (cosmos-sdk v1.31.0-sdk-v0.50.14
+    /// on: celestia-app v5.0.12 on; v4.1.0's v1.29.4 does not).
+    #[must_use]
+    pub const fn sets_tx_result_signers(&self) -> bool {
+        self.app_version != 4
+    }
+
     /// The transfer stack's outermost middleware is `x/tokenfilter`
     /// (celestia-app v4.1.0 and v5.0.12; v6.4.10 removed it). The
     /// cosmos-sdk v0.46 driver has its own (app versions 1 to 3).
@@ -701,6 +753,24 @@ impl Release {
     #[must_use]
     pub const fn amino_vesting_start_time(&self) -> bool {
         !matches!(self.cosmos_sdk, CosmosSdk::V0_50Celestia1_29)
+    }
+
+    /// The light client verifies a commit with `verifyCommitBatch` when it
+    /// can (celestia-core v0.38 on: celestia-app v4.1.0 on). celestia-app
+    /// v3.13.0's celestia-core v1 checks one signature at a time.
+    #[must_use]
+    pub const fn light_commit_batch_verification(&self) -> bool {
+        !matches!(self.sdk_line, SdkLine::V046)
+    }
+
+    /// The light client's lookup of commit signatures by index checks each
+    /// validator address (celestia-core v0.39.23 on: celestia-app v6.4.10,
+    /// mainnet's app version 6 binary, and later). Earlier releases
+    /// (celestia-core v1, v0.38.17, and v0.39.20 of celestia-app v6.4.4)
+    /// verify the signature against the indexed validator's key.
+    #[must_use]
+    pub const fn light_commit_address_check(&self) -> bool {
+        !matches!(self.app_version, 1..=5)
     }
 
     /// go-square v4.0.0-rc4: the square layout counts signer bytes and
@@ -937,6 +1007,11 @@ mod tests {
             assert!(r.has_forwarding(), "v{v}");
             assert!(r.has_zkism(), "v{v}");
             assert!(r.has_capability_module(), "v{v}");
+            assert!(r.has_ica_host_module(), "v{v}");
+            assert!(r.warp_synthetic_tokens(), "v{v}");
+            assert!(r.withdraws_outstanding_without_delegation(), "v{v}");
+            assert_eq!(r.max_block_size_bytes(), 128 * 1024 * 1024, "v{v}");
+            assert!(r.sets_tx_result_signers(), "v{v}");
             assert!(!r.has_token_filter(), "v{v}");
             assert!(!r.legacy_insufficient_fee_message(), "v{v}");
             assert_eq!(r.default_unbonding_time_secs(), None, "v{v}");
@@ -944,6 +1019,10 @@ mod tests {
             assert_eq!(r.gov_max_age_num_blocks(), max_age, "v{v}");
             assert!(!r.amino_remote_router_placeholder(), "v{v}");
             assert!(r.amino_vesting_start_time(), "v{v}");
+            assert_eq!(r.light_commit_batch_verification(), v != 1, "v{v}");
+            // App versions 2 and 3 execute as 9 here; the light client
+            // reads the rules of their own release (`for_app_version`).
+            assert_eq!(r.light_commit_address_check(), v != 1, "v{v}");
         }
     }
 
@@ -966,6 +1045,10 @@ mod tests {
             assert_eq!(r.cip29_inflation(), matches!(v, 4 | 5), "v{v}");
             let pct = if matches!(v, 4..=6) { 25 } else { 60 };
             assert_eq!(r.max_commission_rate_pct(), pct, "v{v}");
+            // celestia-app v3.13.0's celestia-core v1 has no batch commit
+            // verification and no address check.
+            assert_eq!(r.light_commit_batch_verification(), v >= 4, "v{v}");
+            assert_eq!(r.light_commit_address_check(), v >= 6, "v{v}");
             // celestia-app v4.1.0 and v5.0.12: go-square v2, square size
             // upper bound 128, MaxTxSize 2 MiB; v4 to v8 do not cap the gov
             // max square size.
@@ -981,6 +1064,16 @@ mod tests {
                 assert_eq!(r.has_forwarding(), v >= 7, "v{v}");
                 assert_eq!(r.has_zkism(), v >= 7, "v{v}");
                 assert_eq!(r.has_capability_module(), v != 4, "v{v}");
+                assert_eq!(r.has_ica_host_module(), !v4_v5, "v{v}");
+                assert_eq!(r.warp_synthetic_tokens(), !v4_v5, "v{v}");
+                assert_eq!(r.withdraws_outstanding_without_delegation(), !v4_v5, "v{v}");
+                let max_block = if v4_v5 {
+                    104_857_600
+                } else {
+                    128 * 1024 * 1024
+                };
+                assert_eq!(r.max_block_size_bytes(), max_block, "v{v}");
+                assert_eq!(r.sets_tx_result_signers(), v != 4, "v{v}");
                 assert_eq!(r.has_token_filter(), v4_v5, "v{v}");
                 assert_eq!(r.legacy_insufficient_fee_message(), v <= 6, "v{v}");
                 let unbonding = v4_v5.then_some(21 * 24 * 3600);
@@ -989,6 +1082,10 @@ mod tests {
                 assert_eq!(r.gov_max_age_num_blocks(), max_age, "v{v}");
                 assert_eq!(r.amino_remote_router_placeholder(), v <= 6, "v{v}");
                 assert_eq!(r.amino_vesting_start_time(), v != 4, "v{v}");
+                assert_eq!(r.light_commit_batch_verification(), v != 1, "v{v}");
+                // App versions 2 and 3 execute as 9 here; the light client
+                // reads the rules of their own release (`for_app_version`).
+                assert_eq!(r.light_commit_address_check(), v >= 6, "v{v}");
             }
         }
         let deps = |v| {

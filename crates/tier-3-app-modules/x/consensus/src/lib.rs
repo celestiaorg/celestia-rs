@@ -40,8 +40,15 @@ fn duration_nanos(d: Option<&pbjson_types::Duration>) -> i128 {
     d.map_or(0, sdk::time::duration_nanos)
 }
 
-/// celestia-core `ConsensusParams.ValidateBasic`.
+/// celestia-core `ConsensusParams.ValidateBasic` (v0.39: `MaxBlockSizeBytes`
+/// 128 MiB).
 pub fn validate_basic(p: &ConsensusParams) -> Result<()> {
+    validate_basic_with(p, MAX_BLOCK_SIZE_BYTES)
+}
+
+/// celestia-core `ConsensusParams.ValidateBasic` with `MaxBlockSizeBytes`
+/// `max_block_size` ([`sdk::version::Release::max_block_size_bytes`]).
+pub fn validate_basic_with(p: &ConsensusParams, max_block_size: i64) -> Result<()> {
     let block = p.block.unwrap_or_default();
     let ev = p.evidence.unwrap_or_default();
     if block.max_bytes == 0 {
@@ -53,9 +60,9 @@ pub fn validate_basic(p: &ConsensusParams) -> Result<()> {
             block.max_bytes
         )));
     }
-    if block.max_bytes > MAX_BLOCK_SIZE_BYTES {
+    if block.max_bytes > max_block_size {
         return Err(plain(format!(
-            "block.MaxBytes is too big. {} > {MAX_BLOCK_SIZE_BYTES}",
+            "block.MaxBytes is too big. {} > {max_block_size}",
             block.max_bytes
         )));
     }
@@ -77,7 +84,7 @@ pub fn validate_basic(p: &ConsensusParams) -> Result<()> {
         ));
     }
     let max_bytes = if block.max_bytes == -1 {
-        MAX_BLOCK_SIZE_BYTES
+        max_block_size
     } else {
         block.max_bytes
     };
@@ -232,7 +239,7 @@ pub fn handle_update_params(
             ),
         }),
     };
-    validate_basic(&next)?;
+    validate_basic_with(&next, ctx.release().max_block_size_bytes())?;
     validate_update(
         &cur,
         msg.abci.as_ref().map(|a| a.vote_extensions_enable_height),
@@ -279,8 +286,50 @@ pub fn handle_update_params(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use celestia_proto::celestia_core_proto::tendermint::types::VersionParams;
+    use celestia_proto::celestia_core_proto::tendermint::types::{
+        BlockParams, EvidenceParams, ValidatorParams, VersionParams,
+    };
     use sdk::{ExecMode, Header, Kind, MultiStore};
+
+    /// celestia-core v1.57.2-tm-v0.38.17 and v1.59.0-tm-v0.38.17
+    /// (celestia-app v4.1.0, v5.0.12) cap `block.MaxBytes` at 100 MB; the
+    /// v0.39 line at 128 MiB.
+    #[test]
+    fn max_block_size_follows_the_release() {
+        let params = |max_bytes| ConsensusParams {
+            block: Some(BlockParams {
+                max_bytes,
+                max_gas: -1,
+            }),
+            evidence: Some(EvidenceParams {
+                max_age_num_blocks: 1,
+                max_age_duration: Some(pbjson_types::Duration {
+                    seconds: 1,
+                    nanos: 0,
+                }),
+                max_bytes: 0,
+            }),
+            validator: Some(ValidatorParams {
+                pub_key_types: vec!["ed25519".into()],
+            }),
+            ..Default::default()
+        };
+        for (app, cap) in [
+            (4, 104_857_600),
+            (5, 104_857_600),
+            (6, MAX_BLOCK_SIZE_BYTES),
+            (10, MAX_BLOCK_SIZE_BYTES),
+        ] {
+            let release = sdk::version::Release::for_app_version(app).unwrap();
+            let max = release.max_block_size_bytes();
+            assert!(validate_basic_with(&params(cap), max).is_ok(), "v{app}");
+            let err = validate_basic_with(&params(cap + 1), max).unwrap_err();
+            assert_eq!(
+                err.log,
+                format!("block.MaxBytes is too big. {} > {cap}", cap + 1)
+            );
+        }
+    }
 
     #[test]
     fn roundtrip() -> Result<()> {

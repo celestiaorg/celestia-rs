@@ -140,6 +140,11 @@ pub struct NodeOptions {
     /// Node home: `x/upgrade` writes `data/upgrade-info.json` there when an
     /// upgrade without a handler is due (cosmovisor's trigger).
     pub home: Option<PathBuf>,
+    /// celestia-app `--v2-upgrade-height`: the v1 to v2 upgrade height of a
+    /// cosmos-sdk v0.46 chain, in place of the chain's default (only
+    /// celestia, mocha and arabica have one). Like the Go flag, it must be
+    /// given again after a restart.
+    pub v2_upgrade_height: Option<i64>,
 }
 
 /// Go's `checkHalt` error prefix.
@@ -365,6 +370,9 @@ impl App {
         self.upgrade
             .skip_heights
             .clone_from(&node.unsafe_skip_upgrades);
+        if let Some(h) = node.v2_upgrade_height {
+            self.set_v2_upgrade_height(h);
+        }
         self.node = node;
     }
 
@@ -889,6 +897,7 @@ impl App {
         for module in modules::INIT_GENESIS {
             if !stores::exists_at(module, genesis_app_version)
                 || (*module == "capability" && !release.has_capability_module())
+                || (*module == "interchainaccounts" && !release.has_ica_host_module())
             {
                 continue;
             }
@@ -1404,6 +1413,9 @@ fn with_mode(events: &mut [abci::Event], mode: &str) {
 /// `BaseApp.extractSigners`: the bech32 addresses of the signer infos'
 /// public keys (nil on any error).
 fn extract_signers(decode: tx::DecodeFn, tx_bytes: &[u8]) -> Vec<String> {
+    if !sdk::version::release(0).sets_tx_result_signers() {
+        return Vec::new();
+    }
     let Ok(tx) = decode(tx_bytes) else {
         return Vec::new();
     };
@@ -1894,6 +1906,27 @@ mod finalize_gas_tests {
     /// must hold an infinite gas meter again, not the last tx's limited one.
     /// EndBlock work (here: executing a passed gov proposal) ran out of gas
     /// on Rust nodes only and halted them.
+    /// cosmos-sdk v1.29.4-sdk-v0.50.14 (celestia-app v4.1.0) never sets
+    /// `ExecTxResult.Signers`; v1.31.0-sdk-v0.50.14 (v5.0.12) on do.
+    #[test]
+    fn tx_result_signers_follow_the_release() {
+        let mut app = App::new();
+        let header = Header {
+            chain_id: "test".into(),
+            height: 5,
+            ..Default::default()
+        };
+        let mut ctx = Context::new(&mut app.ms, header, ExecMode::Finalize);
+        let tx = signed_sends(&mut ctx, 1, 100_000);
+        let prev = sdk::version::app_version();
+        for (version, set) in [(4, false), (5, true), (10, true)] {
+            sdk::version::set_app_version(version);
+            let signers = extract_signers(txpipe::decode_tx, &tx);
+            assert_eq!(signers.len(), usize::from(set), "v{version}");
+        }
+        sdk::version::set_app_version(prev);
+    }
+
     #[test]
     fn end_block_context_gets_an_infinite_gas_meter() {
         let mut app = App::new();
@@ -1941,6 +1974,20 @@ mod finalize_gas_tests {
 #[cfg(test)]
 mod abci_dispatch_tests {
     use super::*;
+
+    /// `NodeOptions::v2_upgrade_height` sets the v1 to v2 upgrade height;
+    /// leaving it unset keeps the one already set.
+    #[test]
+    fn node_options_set_the_v2_upgrade_height() {
+        let mut app = App::new();
+        app.set_node_options(NodeOptions {
+            v2_upgrade_height: Some(1200),
+            ..NodeOptions::default()
+        });
+        assert_eq!(app.v2_upgrade_height, Some(1200));
+        app.set_node_options(NodeOptions::default());
+        assert_eq!(app.v2_upgrade_height, Some(1200));
+    }
 
     /// Guards against the dispatch arms being dropped in a merge: every
     /// request celestia-core sends during normal block production must be
@@ -2274,6 +2321,13 @@ mod node_options_tests {
             }
             want.sort();
             assert_eq!(versions, want, "v{version}");
+            // celestia-app v4.1.0 and v5.0.12 have no ICA module: the
+            // genesis's `interchainaccounts` section writes nothing.
+            let icahost = app
+                .ms
+                .range(x_icahost::STORE_KEY, None, None, false)
+                .unwrap();
+            assert_eq!(icahost.is_empty(), version < 6, "v{version}");
         }
     }
 

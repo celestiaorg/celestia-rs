@@ -26,7 +26,9 @@
 //! `H` (for example a node stopped with `start --halt-height H+1`) and
 //! replays `--blocks` blocks from `H + 1`. The home is copied first (next
 //! to it), unless `--in-place true`, which advances it and makes the run
-//! unrepeatable. Blocks come from `--blocks-jsonl`, then from the block
+//! unrepeatable; in place, `--save-blocks true` is required (the block
+//! store advances with the state) and nothing is pruned (the home may be
+//! an archive). Blocks come from `--blocks-jsonl`, then from the block
 //! store of `--blocks-home` (a stopped node home past `H + blocks`), then
 //! from the `.pb` cache. `--save-blocks true` also stores each block with
 //! its seen commit (the next block's last commit) before executing it, as
@@ -328,6 +330,11 @@ fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State, Probes)>
     opts.store.pruning.interval = a.pruning_interval;
     opts.store.background_pruning = a.background_pruning;
     opts.db.sync_writes = a.sync_writes;
+    if a.in_place {
+        // Never delete versions of a home we do not own a copy of (it
+        // may be an archive or custom-pruned node).
+        opts.store.pruning = multistore::PruningOptions::nothing();
+    }
     let app = app::App::open_with(home, opts).map_err(|e| anyhow!("open app: {}", e.log))?;
     let (bs, mut ss) = node::open_stores_with_options(
         home,
@@ -436,9 +443,30 @@ fn summary(times: &[Duration], txs: usize, total: Duration, digest: &[u8]) {
     println!("responses_digest: {}", hex::encode(digest));
 }
 
+/// Per-phase profile of FinalizeBlock over `blocks` blocks
+/// (`CELESTIA_PHASE_PROFILE=1`).
+#[allow(clippy::cast_precision_loss)]
+fn print_phases(blocks: usize) {
+    let n = blocks.max(1) as f64;
+    for (name, t) in sdk::profile::take() {
+        println!(
+            "phase {name}: {:.2} ms/block, {:.1} per block, reads {:.0}/block, node lookups {:.0}/block",
+            t.time.as_secs_f64() * 1e3 / n,
+            t.count as f64 / n,
+            t.reads as f64 / n,
+            t.lookups as f64 / n,
+        );
+    }
+}
+
 #[allow(clippy::too_many_lines)] // EXPERIMENT branch
 fn main() -> anyhow::Result<()> {
     let a = args()?;
+    ensure!(
+        !a.in_place || (a.home.is_some() && a.save_blocks),
+        "--in-place true needs --home and --save-blocks true (the block store must \
+         advance with the state, or the home no longer starts)"
+    );
     // Holds the copied home until the run ends.
     let tmp;
     let home = if let Some(src) = &a.home {
@@ -548,6 +576,7 @@ fn main() -> anyhow::Result<()> {
             println!("{line}");
         }
     }
+    print_phases(times.len());
     println!(
         "per_block: {}",
         probes.sample().report(&first_sample, times.len())

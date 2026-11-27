@@ -623,6 +623,34 @@ mod tests {
         Ok(())
     }
 
+    /// A capability created in a discarded branch (a failed tx or message)
+    /// and created again by a later branch gets the same index and
+    /// authenticates, as in Go v1.0.1 and v1.0.2
+    /// (`conformance/v9-oracle/capability_test.go`): FinalizeBlock has no
+    /// branch of older state that could re-create an index after the
+    /// block's own creation.
+    #[test]
+    fn capability_recreated_after_a_discarded_branch_authenticates() -> Result<()> {
+        let mut ms = ms();
+        let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
+        init_genesis(
+            &mut ctx,
+            &parse_genesis(&serde_json::json!({"index": "1", "owners": []}))?,
+        )?;
+        let ibc = ScopedKeeper::new("ibc");
+        let failed = ctx.branch();
+        assert_eq!(ibc.new_capability(&mut ctx, "channels/a")?.index, 1);
+        ctx.discard(failed);
+        let cp = ctx.branch();
+        let cap = ibc.new_capability(&mut ctx, "channels/a")?;
+        ctx.write(cp);
+        assert_eq!(cap.index, 1);
+        assert_eq!(get_latest_index(&mut ctx)?, 2);
+        assert_eq!(ibc.get_capability(&mut ctx, "channels/a")?, Some(cap));
+        assert!(ibc.authenticate_capability(&mut ctx, &cap, "channels/a")?);
+        Ok(())
+    }
+
     #[test]
     fn init_mem_store_uses_no_gas_and_index_zero_rejected() -> Result<()> {
         let mut ms = ms();

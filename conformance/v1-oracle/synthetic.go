@@ -104,6 +104,9 @@ type chainSpec struct {
 	// absent reports whether validator i of n misses the commit of block
 	// height.
 	absent func(height int64, i, n int) bool
+	// evidence returns the evidence of block height (nil: none), given
+	// the block's validator set and time.
+	evidence func(height int64, vals *tmtypes.ValidatorSet, t time.Time) []tmtypes.Evidence
 	// modifier, when set, edits the genesis state before Export
 	// (genesis.WithModifiers).
 	modifier func(codec.Codec) genesis.Modifier
@@ -147,11 +150,15 @@ type synth struct {
 	// blocks is blocks.jsonl as the oracle reads it: {"height", "result"}.
 	blocks bytes.Buffer
 
-	lastBlockID     tmtypes.BlockID
-	lastCommit      *tmtypes.Commit
+	lastBlockID tmtypes.BlockID
+	lastCommit  *tmtypes.Commit
+	// byzantine is each block's ByzantineValidators.
+	byzantine       map[int64][]abci.Evidence
 	appHash         []byte
 	lastResultsHash []byte
 	appVersion      uint64
+	// consensus builds blocks as a validator would (consensus.go).
+	consensus bool
 }
 
 // keyMnemonic is the BIP-39 mnemonic of a synthetic account.
@@ -257,6 +264,12 @@ func (s *synth) committed(_ int64, appHash []byte, results []*abci.ResponseDeliv
 }
 
 func (s *synth) unchecked() bool { return false }
+
+// byzantineValidators is RequestBeginBlock.ByzantineValidators of block
+// height: its evidence as celestia-core v0.34 passes it (Evidence.ABCI).
+func (s *synth) byzantineValidators(height int64) []abci.Evidence {
+	return s.byzantine[height]
+}
 
 func (s *synth) blocksJSONL() []byte { return s.blocks.Bytes() }
 
@@ -469,11 +482,30 @@ func (s *synth) block(a *app.App, height int64, vals map[int64]*tmtypes.Validato
 	for i, tx := range txs {
 		data.Txs[i] = tx
 	}
-	block := tmtypes.MakeBlock(height, data, s.lastCommit, []tmtypes.Evidence{})
+	if s.consensus {
+		if data, err = s.prepareProposal(a, height, txs); err != nil {
+			return rpcBlock{}, err
+		}
+	}
+	if s.consensus && s.lastResultsHash == nil {
+		s.lastResultsHash = genesisResultsHash()
+	}
+	blockTime := s.time(height)
+	evidence := []tmtypes.Evidence{}
+	if s.spec.evidence != nil {
+		evidence = append(evidence, s.spec.evidence(height, cur, blockTime)...)
+	}
+	if s.byzantine == nil {
+		s.byzantine = map[int64][]abci.Evidence{}
+	}
+	for _, ev := range evidence {
+		s.byzantine[height] = append(s.byzantine[height], ev.ABCI()...)
+	}
+	block := tmtypes.MakeBlock(height, data, s.lastCommit, evidence)
 	block.Header.Populate(
 		tmversion.Consensus{Block: tmversionpkg.BlockProtocol, App: s.appVersion},
 		s.genDoc.ChainID,
-		syntheticGenesisTime.Add(time.Duration(height)*(15*time.Second+123*time.Millisecond)),
+		blockTime,
 		s.lastBlockID,
 		cur.Hash(),
 		next.Hash(),
@@ -517,6 +549,11 @@ func (s *synth) block(a *app.App, height int64, vals map[int64]*tmtypes.Validato
 			ValidatorAddress: v.Address,
 			Timestamp:        block.Time.Add(time.Second),
 			Signature:        bytes.Repeat([]byte{byte(i + 1)}, 64),
+		}
+		if s.consensus {
+			if sigs[i], err = s.precommit(height, int32(i), v.Address, id); err != nil {
+				return rpcBlock{}, err
+			}
 		}
 	}
 	s.lastCommit = tmtypes.NewCommit(height, 0, id, sigs)

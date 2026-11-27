@@ -119,7 +119,10 @@ updates:
   # No pull requests at all (limit 0 stops version updates, ignoring "*"
   # stops security updates): many modules reproduce celestia-app / celestia-core
   # module graphs exactly and their outputs are committed fixtures, so a
-  # bump is done by hand and the fixtures regenerated. Alerts still show;
+  # bump is done by hand and the fixtures regenerated. For the release
+  # oracles (v1-oracle to v11-oracle) a bump would also change what
+  # "matches Go" means: each pins the exact release it reproduces. Alerts
+  # still show;
   # docs/security.md ("Dependabot") describes how they are triaged.
   - package-ecosystem: gomod
     directories:
@@ -158,6 +161,8 @@ updates:
       - /conformance/v6-oracle
       - /conformance/v8-oracle
       - /conformance/v9-oracle
+      - /conformance/v10-oracle
+      - /conformance/v11-oracle
       - /conformance/v11-frozen
       - /conformance/websocket-lifecycle
     schedule:

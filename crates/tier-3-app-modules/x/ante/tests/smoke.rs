@@ -545,3 +545,28 @@ fn unsupported_msgs_are_rejected_from_app_version_12() {
         );
     }
 }
+
+/// A fee granter without an allowance from app version 4: v0.50 `FeeTx`
+/// returns `[]byte` addresses, which `%s` writes raw. (The v0.46 log,
+/// bech32 with "does not not allow", is checked byte for byte by the
+/// `failures-v1-v3` oracle fixture.)
+#[test]
+fn missing_fee_grant_log_writes_raw_addresses() {
+    let (sk, pk, addr) = key();
+    let header = Header {
+        chain_id: "test".into(),
+        height: 5,
+        ..Default::default()
+    };
+    let mut tx = build_tx(&sk, &pk, &addr, 0, "test", 1);
+    tx.auth_info.fee.as_mut().unwrap().granter = x_auth::bech32(&[9u8; 20]).unwrap();
+    tx.auth_info_bytes = tx.auth_info.encode_to_vec();
+    let mut ms = funded_ms(&header, &addr);
+    let mut ctx = Context::new(&mut ms, header, ExecMode::Finalize);
+    ctx.tx_bytes = tx.tx_bytes.clone();
+    let err = ante_handle(&mut ctx, &tx, false, &StoreDeps::default()).unwrap_err();
+    assert_eq!((err.error.codespace, err.error.code), ("sdk", 38));
+    let mut want = String::from_utf8_lossy(&[9u8; 20]).into_owned();
+    want.push_str(" does not allow to pay fees for ");
+    assert!(err.error.log.starts_with(&want), "{}", err.error.log);
+}

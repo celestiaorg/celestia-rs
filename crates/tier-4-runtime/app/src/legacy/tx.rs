@@ -100,6 +100,22 @@ pub fn gatekeeper_accepts(v: u64, type_url: &str) -> Option<bool> {
     }
 }
 
+/// celestia's `MsgVersioningGateKeeper` as the msg service router's
+/// circuit breaker (`IsAllowed`): every routed message, also one a
+/// `MsgExec`, an interchain account or a gov proposal carries.
+pub(super) fn circuit_breaker(ctx: &Context<'_>, type_url: &str) -> Result<(), SdkError> {
+    let v = header_app_version(ctx);
+    match gatekeeper_accepts(v, type_url) {
+        None => Err(errs::not_supported(format!(
+            "app version {v} is not supported"
+        ))),
+        Some(false) => Err(x_ibc::errors::unregistered(format!(
+            "circuit breaker disables execution of this message: {type_url}"
+        ))),
+        Some(true) => Ok(()),
+    }
+}
+
 fn header_app_version(ctx: &Context<'_>) -> u64 {
     ctx.consensus_params.version.as_ref().map_or(0, |v| v.app)
 }
@@ -298,7 +314,9 @@ fn run(ctx: &mut Context<'_>, block_gas: &mut GasMeter, tx_bytes: &[u8]) -> Ran 
     }
     let events_before = std::mem::take(&mut ctx.events);
     let deps = ante_deps();
+    let span = sdk::profile::span("tx.ante");
     let ante = x_ante::ante_handle_v046(ctx, &tx, false, &deps);
+    drop(span);
     let ante_events = std::mem::replace(&mut ctx.events, events_before).take();
     let gas_wanted = match ante {
         Ok(o) => o.gas_wanted,
@@ -323,7 +341,10 @@ fn run(ctx: &mut Context<'_>, block_gas: &mut GasMeter, tx_bytes: &[u8]) -> Ran 
         result: Err(errs::logic("")),
         block_gas_consumed: false,
     };
-    match run_msgs(ctx, &tx, gas_wanted, block_gas) {
+    let span = sdk::profile::span("tx.msgs");
+    let msgs = run_msgs(ctx, &tx, gas_wanted, block_gas);
+    drop(span);
+    match msgs {
         Ok((msg_responses, log, events)) => {
             ran.block_gas_consumed = true;
             ran.events.extend(events);

@@ -5,21 +5,24 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 // TestSyntheticFixtureIsReproducible rebuilds each synthetic chain and
 // requires the committed fixture byte for byte.
 func TestSyntheticFixtureIsReproducible(t *testing.T) {
-	for chain, dir := range map[string]string{"v1-v3": "v1-v3", "v3-rich": "v3-rich", "gov-v1-v3": "gov-v1-v3", "staking-v1-v3": "staking-v1-v3", "amino-v1-v3": "amino-v1-v3", "v3-ibc": "v3-ibc"} {
+	for chain, dir := range map[string]string{"v1-v3": "v1-v3", "v3-rich": "v3-rich", "gov-v1-v3": "gov-v1-v3", "staking-v1-v3": "staking-v1-v3", "amino-v1-v3": "amino-v1-v3", "failures-v1-v3": "failures-v1-v3", "v3-ibc": "v3-ibc"} {
 		t.Run(chain, func(t *testing.T) { requireReproducible(t, chain, dir) })
 	}
+	// The v1-v3 chain with blocks built as a validator would (consensus.go).
+	t.Run("consensus-v1-v3", func(t *testing.T) { requireReproducible(t, "v1-v3", filepath.Join("consensus", "v1-v3"), "-consensus") })
 }
 
-func requireReproducible(t *testing.T, chain, dir string) {
+func requireReproducible(t *testing.T, chain, dir string, args ...string) {
 	out := t.TempDir()
 	cmd := exec.Command(os.Args[0], "-test.run=TestRunSynthetic", "-test.v")
-	cmd.Env = append(os.Environ(), "V1_ORACLE_SYNTHETIC_OUT="+out, "V1_ORACLE_SYNTHETIC_CHAIN="+chain)
+	cmd.Env = append(os.Environ(), "V1_ORACLE_SYNTHETIC_OUT="+out, "V1_ORACLE_SYNTHETIC_CHAIN="+chain, "V1_ORACLE_SYNTHETIC_ARGS="+strings.Join(args, " "))
 	if bz, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("synthetic run: %v\n%s", err, bz)
 	}
@@ -53,6 +56,7 @@ func TestRunSynthetic(t *testing.T) {
 	if h := os.Getenv("V1_ORACLE_SYNTHETIC_SNAPSHOTS"); h != "" {
 		os.Args = append(os.Args, "-snapshot-at", h)
 	}
+	os.Args = append(os.Args, strings.Fields(os.Getenv("V1_ORACLE_SYNTHETIC_ARGS"))...)
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}
