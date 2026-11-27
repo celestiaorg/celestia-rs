@@ -188,6 +188,7 @@ func run() error {
 	out := flag.String("out", "", "output directory")
 	signBytes := flag.String("signbytes", "", "write the sign-bytes vectors (signbytes.go) to this file and exit")
 	probes := flag.Bool("probes", false, "after the usual five blocks, run the probe blocks of probes.go (use -heights 8) and record tx signers")
+	tmclient := flag.Bool("tmclient", false, "after the usual five blocks, run the 07-tendermint client blocks of tmclient.go (use -heights 10)")
 	nextHandoff := flag.Bool("next-handoff", false, "after the last block, require plan \"v5\" at the next height and rewrite handoff.json in the -handoff home for conformance/v5-oracle")
 	flag.Parse()
 	if *signBytes != "" {
@@ -264,6 +265,7 @@ func run() error {
 		return err
 	}
 	s.probes = *probes
+	s.tmclient = *tmclient
 	kvUpgrade, err := upgradeOnly(*home, ho, s.blockTime(ho.Height+1), prev)
 	if err != nil {
 		return err
