@@ -788,7 +788,7 @@ fn write_divergence_snapshot(app: &Arc<Mutex<app::App>>, dir: &Path, height: i64
     })();
     match result {
         Ok(()) => {
-            tracing::info!(height, dir = %dir.join("snapshot").display(), "divergence snapshot written")
+            tracing::info!(height, dir = %dir.join("snapshot").display(), "divergence snapshot written");
         }
         Err(e) => tracing::error!(height, error = %e, "divergence snapshot failed"),
     }
