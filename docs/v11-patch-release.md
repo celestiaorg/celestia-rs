@@ -108,6 +108,31 @@ stop before or after the switch. The ABCI-mode test still halts where the
 recorded Go v10 binary has no `v11` handler, and a plan this binary has no
 release for halts in every mode.
 
+### Known gap: v12 execution
+
+The v12 rules are checked against Go only partly. The one Go reference is
+the
+[`v12-main-upgrade`](../conformance/fixtures/devnet/upgrade/v12-main-upgrade/README.md)
+capture: Go v11.0.0 runs heights 1 to 5 and signals v12, and the untagged
+celestia-app main commit
+[`bb3a9e52d`](https://github.com/celestiaorg/celestia-app/tree/bb3a9e52d09620323b35b8305922f764b2df6a3e)
+runs heights 6 and 7. `devnet-conformance` `v12_upgrade` requires every
+app hash and the full FinalizeBlock responses from height 6, both
+continuously and after a reopen before the upgrade block. A one-off run in
+[`replay-43ba527`](evidence/replay-43ba527/README.md) extended this to
+1,000 empty v12 blocks.
+
+- No v12 release tag is pinned. The reference is a development commit, so
+  each network's v12 release needs its own check.
+- The chain covers the upgrade block and two more. There are no v12
+  probe transactions like the v4 to v9 fixtures have, and no synthetic
+  segment after v11.
+- There is no Mocha data.
+
+`celestia-rs start` and `celestia-rs follow` still switch to the v12 rules
+in-process when a chain signals v12. A rule that differs from the network
+shows as an app-hash mismatch, which stops the node.
+
 These tests provide implementation evidence, not a new release qualification
 or permission to alter a live validator. The project milestones still require
 candidate-bound replay and observation evidence.
