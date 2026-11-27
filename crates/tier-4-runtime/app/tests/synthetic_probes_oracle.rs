@@ -355,8 +355,12 @@ fn interchain_account_host_from_v6() {
             "{release}"
         );
         assert_eq!(version["host_connection_id"], "connection-0", "{release}");
-        let account = version["address"].as_str().unwrap();
-        assert!(account.starts_with("celestia1"), "{release}: {account}");
+        // The interchain account's public bech32 address.
+        let ica_addr = version["address"].as_str().unwrap();
+        assert!(
+            ica_addr.starts_with("celestia1"),
+            "{release}: the version names no celestia address"
+        );
         assert_eq!(
             attrs(confirm, "channel_open_confirm", "channel_id"),
             ["channel-1"],
@@ -365,7 +369,7 @@ fn interchain_account_host_from_v6() {
         assert!(
             attrs(fund, "transfer", "recipient")
                 .iter()
-                .any(|r| r == account),
+                .any(|r| r == ica_addr),
             "{release}"
         );
         assert_eq!(
@@ -376,7 +380,7 @@ fn interchain_account_host_from_v6() {
         assert!(
             attrs(exec, "transfer", "sender")
                 .iter()
-                .any(|r| r == account),
+                .any(|r| r == ica_addr),
             "{release}"
         );
         let ack = &attrs(exec, "write_acknowledgement", "packet_ack")[0];
