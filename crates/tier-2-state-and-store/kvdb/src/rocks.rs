@@ -12,7 +12,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use rocksdb::{
-    BlockBasedOptions, Cache, DB, DBCompressionType, Options, ReadOptions, WriteOptions,
+    BlockBasedIndexType, BlockBasedOptions, Cache, DB, DBCompressionType, DataBlockIndexType,
+    Options, ReadOptions, WriteOptions,
 };
 
 use crate::{Error, KvBackend, KvIter, KvPair, Op, Result, StorageStats, WriteBatch, empty_range};
@@ -56,6 +57,8 @@ pub struct RocksBackend {
     path: PathBuf,
     options: RocksOptions,
     writes: AtomicU64,
+    /// EXPERIMENT: `CELESTIA_ROCKS_VERIFY_CHECKSUMS=0` skips block checksums on gets.
+    verify_checksums: bool,
 }
 
 impl fmt::Debug for RocksBackend {
@@ -72,18 +75,49 @@ impl RocksBackend {
     pub fn open(path: impl AsRef<Path>, options: RocksOptions) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
         std::fs::create_dir_all(&path).map_err(Error::new)?;
+        // EXPERIMENT knobs (exp/rocks-knobs only).
+        let env = |k: &str| std::env::var(k).ok();
+        let on = |k: &str| env(k).as_deref() == Some("1");
         let cache = Cache::new_lru_cache(options.block_cache_size);
         let mut table = BlockBasedOptions::default();
         table.set_block_cache(&cache);
-        table.set_block_size(16 << 10);
+        let block_kib = env("CELESTIA_ROCKS_BLOCK_KB")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(16);
+        table.set_block_size(block_kib << 10);
         table.set_bloom_filter(10.0, false);
         // Index and filter blocks live in (and are bounded by) the block
         // cache, so RSS stays proportional to `block_cache_size`.
         table.set_cache_index_and_filter_blocks(true);
         table.set_pin_l0_filter_and_index_blocks_in_cache(true);
+        if on("CELESTIA_ROCKS_DATA_HASH_INDEX") {
+            table.set_data_block_index_type(DataBlockIndexType::BinaryAndHash);
+            table.set_data_block_hash_ratio(0.75);
+        }
+        match env("CELESTIA_ROCKS_PIN").as_deref() {
+            // Index and filters never compete with data blocks.
+            Some("all") => table.set_cache_index_and_filter_blocks(false),
+            // Partitioned index and filters; the top level stays pinned.
+            Some("top") => {
+                table.set_index_type(BlockBasedIndexType::TwoLevelIndexSearch);
+                table.set_partition_filters(true);
+                table.set_pin_top_level_index_and_filter(true);
+            }
+            _ => {}
+        }
         table.set_format_version(5);
 
         let mut opts = Options::default();
+        if on("CELESTIA_ROCKS_STATS") {
+            opts.enable_statistics();
+        }
+        if on("CELESTIA_ROCKS_FILTERS_FOR_HITS") {
+            opts.set_optimize_filters_for_hits(true);
+        }
+        if let Some(mib) = env("CELESTIA_ROCKS_ROW_CACHE_MIB").and_then(|v| v.parse::<usize>().ok())
+        {
+            opts.set_row_cache(&Cache::new_lru_cache(mib << 20));
+        }
         opts.create_if_missing(true);
         opts.set_block_based_table_factory(&table);
         opts.set_level_compaction_dynamic_level_bytes(true);
@@ -98,8 +132,6 @@ impl RocksBackend {
         // Zstd at the bottom, where most of the data lives. goleveldb
         // compresses every level (Snappy).
         opts.set_compression_type(DBCompressionType::Lz4);
-        // EXPERIMENT knobs (exp/rocks-knobs only).
-        let env = |k: &str| std::env::var(k).ok();
         opts.set_bottommost_compression_type(match env("CELESTIA_ROCKS_BOTTOM").as_deref() {
             Some("lz4") => DBCompressionType::Lz4,
             Some("none") => DBCompressionType::None,
@@ -130,6 +162,7 @@ impl RocksBackend {
             path,
             options,
             writes: AtomicU64::new(0),
+            verify_checksums: env("CELESTIA_ROCKS_VERIFY_CHECKSUMS").as_deref() != Some("0"),
         })
     }
 
@@ -215,6 +248,44 @@ pub fn report_all() -> Vec<String> {
                 out.push(format!("  {prop} = {v}"));
             }
         }
+        // EXPERIMENT: read-path tickers and histograms (CELESTIA_ROCKS_STATS=1).
+        let tickers = db
+            .property_value("rocksdb.options-statistics")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        for line in tickers.lines() {
+            let keep = [
+                "rocksdb.block.cache.data.",
+                "rocksdb.block.cache.index.",
+                "rocksdb.block.cache.filter.",
+                "rocksdb.block.cache.bytes.read",
+                "rocksdb.bloom.filter.",
+                "rocksdb.row.cache.",
+                "rocksdb.db.get.micros",
+                "rocksdb.bytes.read ",
+                "rocksdb.number.keys.read",
+                "rocksdb.read.block.get.micros",
+                "rocksdb.block.checksum.compute.count",
+                "rocksdb.bytes.decompressed",
+                "rocksdb.decompression.times.nanos",
+                "rocksdb.get.hit.l0",
+                "rocksdb.get.hit.l1",
+                "rocksdb.get.hit.l2andup",
+                "rocksdb.memtable.hit",
+            ];
+            if keep.iter().any(|k| line.starts_with(k)) {
+                out.push(format!("  {line}"));
+            }
+        }
+        for prop in [
+            "rocksdb.block-cache-usage",
+            "rocksdb.block-cache-pinned-usage",
+        ] {
+            if let Ok(Some(v)) = db.property_int_value(prop) {
+                out.push(format!("  {prop} = {v}"));
+            }
+        }
     }
     out
 }
@@ -285,11 +356,14 @@ impl Drop for RocksBackend {
 
 impl KvBackend for RocksBackend {
     fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
-        Ok(self
-            .db
-            .get_pinned(key)
-            .map_err(Error::new)?
-            .map(|v| v.to_vec()))
+        let pinned = if self.verify_checksums {
+            self.db.get_pinned(key)
+        } else {
+            let mut read = ReadOptions::default();
+            read.set_verify_checksums(false);
+            self.db.get_pinned_opt(key, &read)
+        };
+        Ok(pinned.map_err(Error::new)?.map(|v| v.to_vec()))
     }
 
     fn range(&self, start: Option<&[u8]>, end: Option<&[u8]>, reverse: bool) -> Result<KvIter> {
