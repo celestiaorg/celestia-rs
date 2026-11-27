@@ -651,7 +651,11 @@ pub fn open_backend(dir: &Path, name: &str, options: &DbOptions) -> Result<Arc<d
             // Application-state pruning generates tombstones every few heights.
             // Flush them in smaller batches so compaction can reclaim old nodes.
             if name == "application" {
-                rocks.write_buffer_size = 16 << 20;
+                rocks.write_buffer_size = std::env::var("CELESTIA_ROCKS_APP_WRITE_BUFFER_MIB")
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(16)
+                    << 20;
             }
             Arc::new(RocksBackend::open(path, rocks)?)
         }

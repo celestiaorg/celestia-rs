@@ -98,11 +98,26 @@ impl RocksBackend {
         // Zstd at the bottom, where most of the data lives. goleveldb
         // compresses every level (Snappy).
         opts.set_compression_type(DBCompressionType::Lz4);
-        opts.set_bottommost_compression_type(DBCompressionType::Zstd);
+        // EXPERIMENT knobs (exp/rocks-knobs only).
+        let env = |k: &str| std::env::var(k).ok();
+        opts.set_bottommost_compression_type(match env("CELESTIA_ROCKS_BOTTOM").as_deref() {
+            Some("lz4") => DBCompressionType::Lz4,
+            Some("none") => DBCompressionType::None,
+            _ => DBCompressionType::Zstd,
+        });
+        if let Some(mibs) = env("CELESTIA_ROCKS_RATE_MIBS").and_then(|v| v.parse::<i64>().ok()) {
+            opts.set_auto_tuned_ratelimiter(mibs << 20, 100_000, 10);
+        }
         // IAVL pruning deletes old nodes in bulk: SST files whose entries are
         // mostly tombstones are compacted soon instead of when their level
         // happens to be picked, so the space comes back.
-        opts.add_compact_on_deletion_collector_factory(DELETION_WINDOW, DELETION_WINDOW / 2, 0.5);
+        if env("CELESTIA_ROCKS_DELETION_COLLECTOR").as_deref() != Some("0") {
+            opts.add_compact_on_deletion_collector_factory(
+                DELETION_WINDOW,
+                DELETION_WINDOW / 2,
+                0.5,
+            );
+        }
         opts.set_keep_log_file_num(4);
         opts.set_max_log_file_size(16 << 20);
         let db = Arc::new(DB::open(&opts, &path).map_err(Error::new)?);
