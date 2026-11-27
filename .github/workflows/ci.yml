@@ -55,7 +55,10 @@ jobs:
           while IFS= read -r -d '' path; do
             case "$path" in
               README.md|docs/.nojekyll|docs/MODULES.md|docs/hardware.md|docs/operator-guide.md|\
-              docs/index.html|docs/site/copy.js|docs/site/square.webp|docs/site/style.css) ;;
+              docs/index.html|docs/index.md|docs/404.html|docs/llms.txt|docs/sitemap.xml|\
+              docs/about/index.html|docs/contact/index.html|docs/privacy/index.html|\
+              docs/census/index.html|docs/census/census.css|docs/census/census.js|\
+              docs/site/copy.js|docs/site/square.webp|docs/site/style.css|scripts/site/test_site.py) ;;
               *) exit 0 ;;
             esac
           done < "$paths"
@@ -102,6 +105,7 @@ jobs:
           if [[ -f docs/site/copy.js ]]; then
             node --check docs/site/copy.js
           fi
+          python3 -m unittest discover -s scripts/site -p 'test_*.py' -v
       - name: Require both Linux test suites
         if: needs.changes.outputs.docs_only != 'true'
         env:
@@ -127,6 +131,8 @@ jobs:
         run: python3 -m unittest discover -s crates/fuzz-diff/tests -p '*_test.py' -v
       - name: Quality evidence accounting
         run: python3 -m unittest discover -s scripts/quality -p 'test_*.py' -v
+      - name: Operator website
+        run: python3 -m unittest discover -s scripts/site -p 'test_*.py' -v
       - name: Transaction-result receipt failure paths
         run: bash packaging/test-compare-block-results.sh
       - name: Operator benchmark scripts
