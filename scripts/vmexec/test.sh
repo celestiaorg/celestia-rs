@@ -275,6 +275,26 @@ printf '3\n' >"$C/bucket/segments/launch-count"
 refute "ctl launch cap stops launches"       ctl 'launch 250000 go-snapshots/250000 250000 500000 rs-seg-250000'
 refute "ctl launch cap creates no VM"        test -e "$C/vms/rs-seg-250000"
 
+# --- segment watcher: a replay that is active but stuck writes a stalled marker ---------------
+W=$t/watch
+mkdir -p "$W/bin" "$W/data/home-120000/logs" "$W/bucket"
+printf '#!/bin/bash\necho active\n' >"$W/bin/systemctl"
+cat >"$W/bin/vmx-gcs" <<EOF
+#!/bin/bash
+[ "\$1" = put ] && cp "\$2" "$W/bucket/\$(echo "\$3" | tr / _)"
+exit 0
+EOF
+chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs"
+echo 'INFO celestia_rs::follow: followed height=150100 tip=1' >"$W/data/home-120000/logs/follow.log"
+PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=2 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1 &
+wpid=$!
+wait_until 30 test -e "$W/bucket/segments_120000_stalled"
+kill "$wpid" 2>/dev/null || true
+wait "$wpid" 2>/dev/null || true
+check  "watch stall writes the marker"       grep -q 'stalled .* height=150100' "$W/bucket/segments_120000_stalled"
+check  "watch stall uploads the log tail"    test -e "$W/bucket/rs-replay_120000_stall-tail-$(hostname).log"
+refute "watch stall is not a failure"        test -e "$W/bucket/segments_120000_failed"
+
 echo
 if ((fails)); then echo "$fails test(s) failed"; exit 1; fi
 echo "all tests passed"

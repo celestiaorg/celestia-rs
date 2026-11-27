@@ -70,7 +70,7 @@ func main() {
 	}
 	outTmpl := *out
 	if *list {
-		outTmpl = "-"
+		outTmpl = "-%d"
 	}
 	jobs, err := parseJobs(*heights, outTmpl)
 	if err == nil && *logTmpl != "" && len(jobs) > 1 && !strings.Contains(*logTmpl, "%d") {
@@ -268,6 +268,11 @@ func commitStores(db tmdb.DB, height int64, w io.Writer) ([]string, error) {
 	}
 	sort.Strings(names)
 	fmt.Fprintf(w, "height %d: %d stores %v, commit hash %X\n", height, len(names), names, ci.Hash())
+	infos := append([]storetypes.StoreInfo(nil), ci.StoreInfos...)
+	sort.Slice(infos, func(i, j int) bool { return infos[i].Name < infos[j].Name })
+	for _, si := range infos {
+		fmt.Fprintf(w, "store %s root %X version %d\n", si.Name, si.CommitId.Hash, si.CommitId.Version)
+	}
 	return names, nil
 }
 

@@ -134,3 +134,16 @@ func TestParseJobs(t *testing.T) {
 		t.Fatalf("single height keeps -out as is: %+v %v", jobs, err)
 	}
 }
+
+func TestCommitStoresPrintsStoreRoots(t *testing.T) {
+	db := fixtureDB(t, 2)
+	var b bytes.Buffer
+	if _, err := commitStores(db, 2, &b); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"acc", "bank"} {
+		if !bytes.Contains(b.Bytes(), []byte("store "+n+" root ")) {
+			t.Fatalf("no root line for %s in %q", n, b.String())
+		}
+	}
+}
