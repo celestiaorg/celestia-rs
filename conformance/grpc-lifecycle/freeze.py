@@ -255,7 +255,7 @@ def main() -> None:
     assert rs_info["profile"] == "release" and rs_info["locked"] is True
     assert rs_info["package"] == rs_info["binary"] == "celestia-rs"
     assert rs_info["default_features"] is True
-    assert rs_info["features"] == ["rocksdb", "jemalloc"]
+    assert rs_info["features"] == ["rocksdb", "mimalloc"]
     assert rs_info["target"] == "x86_64-unknown-linux-gnu"
     assert rs_info["version_long"] == checked(str(args.rs_bin), "version", "--long")
     assert f"commit: {source_commit}" in rs_info["version_long"].splitlines()

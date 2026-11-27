@@ -37,15 +37,6 @@ use clap::{Args, Parser, Subcommand};
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-/// The global allocator this build uses (`version --long`).
-const ALLOCATOR: &str = if cfg!(feature = "jemalloc") {
-    "jemalloc"
-} else if cfg!(feature = "mimalloc") {
-    "mimalloc"
-} else {
-    "system"
-};
-
 // With both features, mimalloc is a dependency nothing uses.
 
 /// jemalloc (feature `jemalloc`, which wins over `mimalloc`; with
@@ -1231,7 +1222,7 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
                     env!("CELESTIA_RS_GIT_COMMIT"),
                     env!("CELESTIA_RS_BUILD_PROFILE"),
                     env!("CELESTIA_RS_TOOLCHAIN"),
-                    ALLOCATOR,
+                    celestia_rs::version::ALLOCATOR,
                     app::upgrades::APP_VERSION,
                     app::COMPATIBILITY_VERSION,
                     celestia_rs::version::CORE_COMPATIBILITY_VERSION

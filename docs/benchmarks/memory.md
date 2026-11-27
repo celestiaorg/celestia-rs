@@ -201,9 +201,9 @@ Per 10,000-block window (blocks/s, RSS at the window end):
 ## Reproduce
 
 ```bash
-cargo build --release -p celestia-rs                      # default: jemalloc
+cargo build --release -p celestia-rs                      # default: mimalloc
 cp target/release/celestia-rs /tmp/celestia-rs
-cargo build --release -p celestia-rs --features memstats  # heap gauges + profiler
+cargo build --release -p celestia-rs --features memstats  # jemalloc + heap gauges + profiler
 cp target/release/celestia-rs /tmp/celestia-rs-memstats
 SOAK_PROFILE=memory SOAK_SECS=21600 SOAK_RETAIN_BLOCKS=150 SOAK_BIG_EVERY=600 \
   CELESTIA_RS=/tmp/celestia-rs SOAK_RS_N3=/tmp/celestia-rs-memstats SOAK_RS_N4=/tmp/celestia-rs-memstats \

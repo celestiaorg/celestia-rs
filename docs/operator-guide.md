@@ -92,9 +92,11 @@ fine too and builds faster. The first build compiles RocksDB from source
 
 Targets: `aarch64-apple-darwin` (Apple silicon; CI builds and
 smoke-tests it on `macos-14`), `x86_64-unknown-linux-gnu`,
-`aarch64-unknown-linux-gnu`. jemalloc is the allocator everywhere (on
-macOS for Rust allocations only; RocksDB's C++ uses the system allocator
-there).
+`aarch64-unknown-linux-gnu`. mimalloc is the allocator by default; on
+Linux it also serves RocksDB's C++ allocations. `celestia-rs version
+--long` prints the allocator of a binary. To build with jemalloc instead,
+add `--no-default-features --features rocksdb,jemalloc`
+(`docs/benchmarks/memory.md`).
 
 ## 2. Open-files limit
 
