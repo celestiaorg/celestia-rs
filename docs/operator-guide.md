@@ -1781,6 +1781,20 @@ The procedure is section 11 with:
   `persistent_peers` in `$NODE_HOME/config/config.toml`, then restart:
   `curl -s https://rpc.celestia.pops.one/net_info | jq -r '.result.peers[] | "\(.node_info.id)@\(.remote_ip):\(.node_info.listen_addr | split(":") | last)"' | head -12 | paste -sd, -`
   (12 such peers were enough for state sync from height 15,086,000).
+  The node dials the seeds only while its address book has nothing else to
+  dial, as celestia-core does, so dead `persistent_peers` keep it from
+  ever trying them: remove dead ones rather than adding seeds. On
+  2026-11-27 a fresh node (rs-follow-1) found no stable peer from the
+  built-in list or from seven archive peers. It state-synced in about 3
+  minutes after it got a populated address book (`config/addrbook.json`
+  copied from a running node, 2,998 addresses) and that node's 10
+  connected peers as `persistent_peers`. To check a candidate list before
+  you use it, run `conformance/p2pprobe`. It does the P2P handshake and
+  prints each peer's block range; base 1 means the peer serves every block
+  from genesis:
+  `cd conformance/p2pprobe && go build -o p2pprobe . && ROUNDS=2 ./p2pprobe < peers.txt`
+  (one `id@host:port` per line; needs outbound TCP to the peers' P2P
+  ports).
 - Route B with Polkachu's mainnet snapshot
   (`snapshots.polkachu.com/snapshots/celestia/`, ~640 MB snapshot inside).
 - A separate machine or home from Mocha, its own consensus key and
