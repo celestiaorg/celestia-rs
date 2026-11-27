@@ -34,24 +34,6 @@ const FIXTURES: &str = concat!(
     "/../../../conformance/fixtures/synthetic"
 );
 
-/// Fixture expectations that a later patch release of the same app
-/// version supersedes: `(fixture, height, tx index, log)`. celestia-rs runs
-/// app version 6 as celestia-app v6.4.10 (mainnet's binary), whose
-/// celestia-core v0.39.23 checks the validator address of a commit
-/// signature found by index; the `v6-tm` oracle is v6.4.4 (celestia-core
-/// v0.39.20, no check), so its adjacent update with validator 0's address
-/// and signature in slot 1 fails with a wrong signature there and with
-/// the address mismatch under v6.4.10. The code (1, `undefined`), gas and
-/// state are the same.
-const SUPERSEDED: &[(&str, i64, usize, &str)] = &[(
-    "v6-tm",
-    45,
-    6,
-    "failed to execute message; message index: 0: failed to verify header: invalid header: \
-     validator address mismatch at index 1: expected 8BCE656D9CDA26A03C583B5AF64647AEE9F99F5A, \
-     got 6698BE609CDB48337A0F5A72C0FFBC1484E9D7A4",
-)];
-
 fn kv_of(d: &serde_json::Value) -> Kv {
     d["kv"]
         .as_array()
@@ -259,20 +241,10 @@ fn blocks_match_the_oracle(fixture: &str, version: u64) {
     };
 
     let diffs = common::diffs_in(&format!("{fixture}/kv-diffs.jsonl.gz"));
-    let mut results: BTreeMap<i64, serde_json::Value> =
+    let results: BTreeMap<i64, serde_json::Value> =
         common::gz_lines(&format!("{fixture}/tx-results.jsonl.gz"))
             .map(|d| (d["height"].as_i64().unwrap(), d))
             .collect();
-    for (name, height, tx, log) in SUPERSEDED {
-        if fixture.ends_with(&format!("/{name}")) {
-            let entry = &mut results.get_mut(height).unwrap()["txs"][*tx]["log"];
-            assert_ne!(
-                entry, log,
-                "{name} {height} {tx}: already the superseding log"
-            );
-            *entry = serde_json::Value::String((*log).to_owned());
-        }
-    }
     let blocks: BTreeMap<i64, serde_json::Value> =
         common::gz_lines(&format!("{fixture}/blocks.jsonl.gz"))
             .map(|d| (d["height"].as_i64().unwrap(), d["result"].clone()))
