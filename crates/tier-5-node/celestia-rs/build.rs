@@ -57,21 +57,27 @@ fn main() {
     let profile = std::env::var("CELESTIA_RS_BUILD_PROFILE").unwrap_or(inferred_profile);
     println!("cargo:rustc-env=CELESTIA_RS_BUILD_PROFILE={profile}");
 
-    // The version `celestia-rs version` reports: the crate's, or for an
-    // automatic daily release (.github/workflows/release.yml) the
-    // release's, which must extend it (`<crate version>-main.<n>`).
+    // The version `celestia-rs version` reports: the crate's, or for a
+    // daily release (.github/workflows/release.yml) the release's: a plain
+    // `<major>.<minor>.<patch>` no lower than the crate version's (crate
+    // 0.1.0 or 0.1.0-rc.9: 0.1.4 or 0.2.0, not 0.0.9).
     println!("cargo:rerun-if-env-changed=CELESTIA_RS_RELEASE_VERSION");
     let crate_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
     let version = match std::env::var("CELESTIA_RS_RELEASE_VERSION") {
         Ok(v) if !v.is_empty() => {
-            let suffix = v.strip_prefix(crate_version.as_str()).unwrap_or_default();
-            let valid = matches!(suffix.chars().next(), Some('-' | '.'))
-                && suffix[1..].split('.').all(|p| {
-                    !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-                });
+            let parse = |text: &str| -> Option<(u64, u64, u64)> {
+                let mut parts = text.split('.').map(|part| part.parse::<u64>().ok());
+                let parsed = (parts.next()??, parts.next()??, parts.next()??);
+                parts.next().is_none().then_some(parsed)
+            };
+            let core = crate_version.split('-').next().unwrap_or_default();
+            let valid = matches!(
+                (parse(&v), parse(core)),
+                (Some(release), Some(floor)) if release >= floor
+            );
             assert!(
                 valid,
-                "CELESTIA_RS_RELEASE_VERSION={v} must be the crate version {crate_version} followed by a pre-release suffix"
+                "CELESTIA_RS_RELEASE_VERSION={v} must be <major>.<minor>.<patch>, no lower than the crate version {crate_version}"
             );
             v
         }

@@ -25,14 +25,9 @@
     "websocket-lifecycle"
   ],
   "bindings": {
-    "conformance/mainnet-rpc/READINESS.md": "c90b5bc2bf18f5f5b118f2fb75daa6da16bbf2a12168b78877dbc179ea3e4c85",
-    "conformance/mainnet-rpc/readiness.py": "b285feb0f3ab949254967dd7e4576312ae540893039b96be81f1d5f62212b407",
-    "conformance/mainnet-rpc/scope-audit.json": "d2c05126cfafb0cf93759f8a8609e608b0e10c663add3dd654ff8a0a43ea597c",
-    "conformance/mainnet-rpc/scope_audit.py": "f05399eed2cd1b6d1b12ed37fc6ac25ea81b2e49a2573beb3d8f6453e886d803",
     "conformance/mainnet-rpc/module-closure/evidence/manifest.json": "63df8d8c652efa70f3af473140fa538bacd4120946bd34dceb8054c225a58a2b",
     "conformance/mainnet-rpc/persistence/closure-evidence/manifest.json": "e8ce2ef7043048eff4a66a920ac65c8b3ed3cd213f2cdb510dd22264e9a3932b",
     "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/manifest.json": "d13b92ee1861a7a566b31f9e128850c1db4f79eb48ff183b20ed10c2112ee7bc",
-    ".github/workflows/ci.yml": "37e4b703eb5ccfe469617a73a4f7d13ea498c4c61a7ff77e79a2b5399b346400",
     "conformance/mainnet-rpc/validation/api-tests.log": "eaebce54d80d3417b9f9e749c173276baa775ee964bd6266d34274d8f1e6e794",
     "conformance/mainnet-rpc/validation/clippy.log": "319fbcfe472d41732fe7a0252ec2d71cd771c535ed25447b74024bd225d89d92",
     "conformance/mainnet-rpc/validation/go-proofcheck-tests.log": "ec69083e1cec70ec6c0f91b8d6582e1dccdf963d90eadd7fa36002d910bf5bdf",
