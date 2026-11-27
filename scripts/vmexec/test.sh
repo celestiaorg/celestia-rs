@@ -321,7 +321,9 @@ wait_until 30 test -e "$W/bucket/segments_120000_resumed-$(hostname)" || true
 kill "$wpid" 2>/dev/null || true
 wait "$wpid" 2>/dev/null || true
 check  "watch retries a failed resumed put"  test -e "$W/bucket/segments_120000_resumed-$(hostname)"
-check  "watch logs one stalled reason"       test "$(grep -c 'stalled: no progress' "$W/data/heights-120000.tsv")" = 1
+# Counted for the first stall only: on a loaded machine a second stall at
+# 150200 can be detected before the watcher is killed.
+check  "watch logs one stalled reason"       test "$(grep -c 'stalled: no progress past 150100 ' "$W/data/heights-120000.tsv")" = 1
 
 echo
 if ((fails)); then echo "$fails test(s) failed"; exit 1; fi
