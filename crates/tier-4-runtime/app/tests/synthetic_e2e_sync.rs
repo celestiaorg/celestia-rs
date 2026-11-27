@@ -12,8 +12,8 @@
 //! params, timeouts); from block 16 also Go's state in every store.
 //!
 //! - [`one_node_syncs_from_genesis_to_the_last_block`]: one persistent
-//!   home, genesis to 81, restarted only where the runtime halts for the
-//!   v11 upgrade ([`V11_UPGRADE`]).
+//!   home, genesis to 81 with no restart: the embedded node switches to
+//!   the v11 release in-process at [`V11_UPGRADE`].
 //! - [`restarts_around_every_upgrade`]: the node closes and reopens its
 //!   home after the block before, the block at and the block after each
 //!   upgrade height.
@@ -21,6 +21,12 @@
 //!   block; for one height of each app version, a fresh home restores that
 //!   snapshot (format 2 while the state is cosmos-sdk v0.46, format 3
 //!   after) and syncs on to 81.
+//! - [`abci_mode_halts_for_the_v11_upgrade`]: without bundled-release
+//!   activation (`celestia-rs abci` under cosmovisor) the node halts at
+//!   [`V11_UPGRADE`] and resumes once reopened.
+//! - [`a_crash_around_the_v11_switch_resumes_in_the_same_state`]: a node
+//!   killed after it wrote `data/upgrade-info.json`, or after it switched
+//!   but before it committed, restarts into the same state.
 
 #![allow(
     clippy::expect_used,
@@ -58,10 +64,13 @@ const SEGMENTS: [(&str, i64, i64); 7] = [
 const LAST: i64 = 81;
 /// The first block of each app version after 1.
 const UPGRADES: [i64; 9] = [6, 11, 16, 26, 37, 47, 57, 67, 77];
-/// The first v11 block. The runtime executes v10 until a restart finds
-/// `data/upgrade-info.json` naming plan `v11` at the next height (as the
-/// Go multiplexer swaps in the v11 binary): a node executing v10 halts at
-/// this block with `UPGRADE "v11" NEEDED`, and resumes once reopened.
+/// The first v11 block. The embedded node (bundled-release activation, as
+/// `celestia-rs start` runs it) runs the block before it with the v10
+/// release and, once that block commits consensus version 11 with plan
+/// `v11` due, executes this one with the v11 release in the same process;
+/// it writes no `data/upgrade-info.json`. Without activation the v10
+/// release, which has no `v11` handler, fails this block with
+/// `UPGRADE "v11" NEEDED`, writes that file and halts until reopened.
 const V11_UPGRADE: i64 = 77;
 
 fn json(path: &str) -> serde_json::Value {
@@ -253,8 +262,8 @@ impl Chain {
 
     /// Executes and commits block `height` on `app` and requires Go's
     /// results, block response, state (from 16) and app hash. A node that
-    /// halts for the v11 upgrade is reopened with `reopen` (the operator's
-    /// restart) and runs the block again. Returns the node.
+    /// halts for the v11 upgrade (ABCI mode) is reopened with `reopen` (the
+    /// operator's restart) and runs the block again. Returns the node.
     #[must_use]
     fn step(&self, mut app: App, height: i64, label: &str, reopen: &dyn Fn() -> App) -> App {
         let res = match app.finalize_block(self.request(height)) {
@@ -365,6 +374,18 @@ fn open(home: &Path, chain: &Chain, mut options: app::AppOptions) -> App {
     a
 }
 
+/// `options` with bundled-release activation, as `celestia-rs start` runs
+/// the app.
+fn embedded(mut options: app::AppOptions) -> app::AppOptions {
+    options.node.activate_bundled_upgrades = true;
+    options
+}
+
+/// A reopen that must not happen: the embedded node never halts.
+fn no_restart() -> App {
+    panic!("the embedded node halted for an upgrade")
+}
+
 /// A fresh home at genesis, and the chain with its validator sets.
 fn genesis_node(options: app::AppOptions) -> (tempfile::TempDir, App, Chain) {
     let chain = Chain::load();
@@ -377,14 +398,27 @@ fn genesis_node(options: app::AppOptions) -> (tempfile::TempDir, App, Chain) {
 
 #[test]
 fn one_node_syncs_from_genesis_to_the_last_block() {
+    let (_home, mut a, chain) = genesis_node(embedded(app::AppOptions::default()));
+    for h in 1..=LAST {
+        a = chain.step(a, h, "sync", &no_restart);
+    }
+    assert_eq!(a.info().last_block_height, LAST);
+}
+
+#[test]
+fn abci_mode_halts_for_the_v11_upgrade() {
     let (home, mut a, chain) = genesis_node(app::AppOptions::default());
     let restarts = std::cell::Cell::new(0);
     let reopen = || {
         restarts.set(restarts.get() + 1);
+        assert!(
+            home.path().join("data/upgrade-info.json").exists(),
+            "the halt wrote no upgrade-info.json"
+        );
         open(home.path(), &chain, app::AppOptions::default())
     };
     for h in 1..=LAST {
-        a = chain.step(a, h, "sync", &reopen);
+        a = chain.step(a, h, "abci", &reopen);
     }
     // The node executed v10 until it halted at the v11 upgrade block.
     assert_eq!(restarts.get(), 1, "restarts for the v11 upgrade");
@@ -392,15 +426,61 @@ fn one_node_syncs_from_genesis_to_the_last_block() {
 }
 
 #[test]
-fn restarts_around_every_upgrade() {
+fn a_crash_around_the_v11_switch_resumes_in_the_same_state() {
+    // Killed after x/upgrade wrote upgrade-info.json and before the switch:
+    // the halted ABCI-mode node leaves exactly that home behind.
     let (home, mut a, chain) = genesis_node(app::AppOptions::default());
+    for h in 1..V11_UPGRADE {
+        a = chain.step(a, h, "before the crash", &no_restart);
+    }
+    let err = a.finalize_block(chain.request(V11_UPGRADE)).unwrap_err();
+    assert!(app::is_upgrade_needed(&err.log), "{}", err.log);
+    assert!(home.path().join("data/upgrade-info.json").exists());
+    drop(a);
+    let mut a = open(home.path(), &chain, embedded(app::AppOptions::default()));
+    for h in V11_UPGRADE..=LAST {
+        a = chain.step(a, h, "after a crash before the switch", &no_restart);
+    }
+
+    // Killed after the switch executed the upgrade block, before commit.
+    let (home, mut a, chain) = genesis_node(embedded(app::AppOptions::default()));
+    for h in 1..V11_UPGRADE {
+        a = chain.step(a, h, "before the crash", &no_restart);
+    }
+    a.finalize_block(chain.request(V11_UPGRADE)).unwrap();
+    drop(a);
+    let mut a = open(home.path(), &chain, embedded(app::AppOptions::default()));
+    assert_eq!(a.info().last_block_height, V11_UPGRADE - 1);
+    for h in V11_UPGRADE..=LAST {
+        a = chain.step(a, h, "after a crash before the commit", &no_restart);
+    }
+}
+
+#[test]
+fn restarts_around_every_upgrade() {
+    // The embedded node, and the ABCI-mode node (which halts at the v11
+    // upgrade block and resumes once reopened).
+    for options in [
+        embedded(app::AppOptions::default()),
+        app::AppOptions::default(),
+    ] {
+        restart_around_every_upgrade(&options);
+    }
+}
+
+fn restart_around_every_upgrade(options: &app::AppOptions) {
+    let embedded = options.node.activate_bundled_upgrades;
+    let (home, mut a, chain) = genesis_node(options.clone());
     let restart_after: Vec<i64> = UPGRADES.iter().flat_map(|u| [u - 1, *u, u + 1]).collect();
-    let reopen = || open(home.path(), &chain, app::AppOptions::default());
+    let reopen = || {
+        assert!(!embedded, "the embedded node halted for an upgrade");
+        open(home.path(), &chain, options.clone())
+    };
     for h in 1..=LAST {
         a = chain.step(a, h, "restarts", &reopen);
         if restart_after.contains(&h) {
             drop(a);
-            a = open(home.path(), &chain, app::AppOptions::default());
+            a = open(home.path(), &chain, options.clone());
             let info = a.info();
             assert_eq!(info.last_block_height, h, "reopened after {h}");
             assert_eq!(
@@ -417,17 +497,16 @@ const RESTORE_AT: [i64; 10] = [3, 8, 13, 20, 30, 40, 50, 59, 70, 79];
 
 #[test]
 fn state_sync_in_every_era() {
-    let options = app::AppOptions {
+    let options = embedded(app::AppOptions {
         snapshots: snapshots::SnapshotOptions {
             interval: 1,
             keep_recent: 0,
         },
         ..app::AppOptions::default()
-    };
+    });
     let (home, mut a, chain) = genesis_node(options.clone());
-    let reopen = || open(home.path(), &chain, options.clone());
     for h in 1..=LAST {
-        a = chain.step(a, h, "snapshotting node", &reopen);
+        a = chain.step(a, h, "snapshotting node", &no_restart);
         a.wait_for_snapshot();
     }
     let listed = a.list_snapshots().snapshots;
@@ -446,11 +525,11 @@ fn state_sync_in_every_era() {
         };
         assert_eq!(s.format, want_format, "snapshot {h} format");
         let fresh = tempfile::tempdir().unwrap();
-        let restored = app::AppOptions {
+        let restored = embedded(app::AppOptions {
             chain_id: Some("test".to_owned()),
             genesis_app_version: Some(1),
             ..app::AppOptions::default()
-        };
+        });
         let mut b = open(fresh.path(), &chain, restored.clone());
         let want_hash = hex::decode(&chain.blocks[&h].app_hash).unwrap();
         let offer = b.offer_snapshot(abci::RequestOfferSnapshot {
@@ -484,9 +563,7 @@ fn state_sync_in_every_era() {
         assert_eq!(b.info().last_block_height, h, "restored {h}");
         assert_eq!(b.info().last_block_app_hash, want_hash, "restored {h}");
         for next in h + 1..=LAST {
-            b = chain.step(b, next, &format!("restored at {h}"), &|| {
-                open(fresh.path(), &chain, restored.clone())
-            });
+            b = chain.step(b, next, &format!("restored at {h}"), &no_restart);
         }
         println!("restored at {h} (format {}) and synced to {LAST}", s.format);
     }
