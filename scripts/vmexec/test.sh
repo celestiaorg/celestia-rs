@@ -325,6 +325,36 @@ check  "watch retries a failed resumed put"  test -e "$W/bucket/segments_120000_
 # 150200 can be detected before the watcher is killed.
 check  "watch logs one stalled reason"       test "$(grep -c 'stalled: no progress past 150100 ' "$W/data/heights-120000.tsv")" = 1
 
+# --- segment watcher: a stall whose marker could not be put before the height moved is still published, then the resume ---
+W=$t/watch-outage
+mkdir -p "$W/bin" "$W/data/home-120000/logs" "$W/bucket"
+printf '#!/bin/bash\necho active\n' >"$W/bin/systemctl"
+cat >"$W/bin/vmx-gcs" <<EOF
+#!/bin/bash
+# Marker puts fail while $W/outage exists. Successful puts are logged in order.
+[ "\$1" = put ] || exit 0
+k=\$(echo "\$3" | tr / _)
+case \$k in segments_120000_stalled|segments_120000_resumed-*)
+  [ -e "$W/outage" ] && { touch "$W/tried-\$k"; exit 1; } ;;
+esac
+cp "\$2" "$W/bucket/\$k"
+echo "\$k \$(head -c 200 "\$2" | tr '\n' ' ')" >>"$W/puts.log"
+EOF
+chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs"
+touch "$W/outage"
+echo 'INFO celestia_rs::follow: followed height=150100 tip=1' >"$W/data/home-120000/logs/follow.log"
+PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=2 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1 &
+wpid=$!
+wait_until 30 test -e "$W/tried-segments_120000_stalled" || true
+echo 'INFO celestia_rs::follow: followed height=150200 tip=1' >>"$W/data/home-120000/logs/follow.log"
+wait_until 30 grep -q '	150200	' "$W/data/heights-120000.tsv" || true
+rm -f "$W/outage"
+wait_until 30 test -e "$W/bucket/segments_120000_resumed-$(hostname)" || true
+kill "$wpid" 2>/dev/null || true
+wait "$wpid" 2>/dev/null || true
+check  "watch publishes a stall after the height moved"  grep -q '^segments_120000_stalled stalled .* height=150100' "$W/puts.log"
+check  "watch publishes the resume after that stall"     test "$(grep -n -m1 'height=150100' "$W/puts.log" | cut -d: -f1)" -lt "$(grep -n -m1 '^segments_120000_resumed-' "$W/puts.log" | cut -d: -f1 || echo 0)"
+
 echo
 if ((fails)); then echo "$fails test(s) failed"; exit 1; fi
 echo "all tests passed"
