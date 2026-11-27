@@ -7,6 +7,7 @@
 //! height and size, so hashing a dirty parent and AVL rebalancing never
 //! have to load an unchanged sibling from disk.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
 use crate::{Error, Hash, Result, Version, inner_hash, leaf_hash};
@@ -77,7 +78,9 @@ impl Remembered {
     }
 
     pub fn get(&self) -> Option<Arc<Node>> {
-        self.0.lock().ok()?.upgrade()
+        let node = self.0.lock().ok()?.upgrade()?;
+        node.touch();
+        Some(node)
     }
 
     pub fn set(&self, node: &Arc<Node>) {
@@ -141,6 +144,27 @@ impl Link {
     }
 }
 
+/// Set when a node is used through a remembered child link, which the
+/// node cache does not see; the cache's CLOCK sweep reads and clears it
+/// (see `clock::Touched`). A copy starts clear and it never affects
+/// equality.
+#[derive(Debug, Default)]
+pub(crate) struct Touch(AtomicBool);
+
+impl Clone for Touch {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl PartialEq for Touch {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for Touch {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Leaf {
     pub key: Vec<u8>,
@@ -148,6 +172,7 @@ pub(crate) struct Leaf {
     /// 0 while dirty.
     pub version: Version,
     pub hash: Option<Hash>,
+    pub touched: Touch,
 }
 
 #[derive(Debug, Clone)]
@@ -160,6 +185,7 @@ pub(crate) struct Inner {
     /// 0 while dirty.
     pub version: Version,
     pub hash: Option<Hash>,
+    pub touched: Touch,
 }
 
 #[derive(Debug, Clone)]
@@ -171,11 +197,29 @@ pub(crate) enum Node {
 impl Node {
     pub fn leaf(key: Vec<u8>, value: Vec<u8>) -> Self {
         Self::Leaf(Leaf {
+            touched: Touch::default(),
             key,
             value,
             version: 0,
             hash: None,
         })
+    }
+
+    fn touch_flag(&self) -> &AtomicBool {
+        match self {
+            Self::Leaf(leaf) => &leaf.touched.0,
+            Self::Inner(inner) => &inner.touched.0,
+        }
+    }
+
+    /// Records a use the node cache did not see.
+    pub fn touch(&self) {
+        self.touch_flag().store(true, Ordering::Relaxed);
+    }
+
+    /// Whether the node was touched since the last call (and clears it).
+    pub fn take_touched(&self) -> bool {
+        self.touch_flag().swap(false, Ordering::Relaxed)
     }
 
     pub fn height(&self) -> i8 {
@@ -228,6 +272,7 @@ impl Node {
 /// Builds a dirty inner node over two children.
 pub(crate) fn make_inner(key: Vec<u8>, left: Link, right: Link) -> Node {
     Node::Inner(Inner {
+        touched: Touch::default(),
         key,
         height: left.height().max(right.height()) + 1,
         size: left.size() + right.size(),
@@ -367,6 +412,7 @@ pub(crate) fn decode_node(
                 return Err(Error::Corrupt("leaf does not match its reference"));
             }
             Node::Leaf(Leaf {
+                touched: Touch::default(),
                 key,
                 value,
                 version: r.nk.version,
@@ -385,6 +431,7 @@ pub(crate) fn decode_node(
                 (child(cursor.node_key()?)?, child(cursor.node_key()?)?)
             };
             Node::Inner(Inner {
+                touched: Touch::default(),
                 key,
                 height,
                 size,

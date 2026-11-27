@@ -9,6 +9,17 @@
 use std::collections::HashMap;
 use std::hash::{BuildHasher, Hash};
 
+/// A value that can be used without a cache lookup (a node followed through
+/// a remembered child link): the sweep treats such use like a hit.
+pub(crate) trait Touched {
+    /// Whether the value was used since the last call (and clears that).
+    fn take_touched(&self) -> bool {
+        false
+    }
+}
+
+impl Touched for u32 {}
+
 struct Slot<K, V> {
     entry: Option<(K, V)>,
     referenced: bool,
@@ -23,7 +34,7 @@ pub(crate) struct ClockCache<K, V, S = foldhash::fast::RandomState> {
     capacity: usize,
 }
 
-impl<K: Hash + Eq + Clone, V: Clone> ClockCache<K, V> {
+impl<K: Hash + Eq + Clone, V: Clone + Touched> ClockCache<K, V> {
     /// An empty cache of `capacity` (at least 1) entries.
     #[must_use]
     pub fn new(capacity: usize) -> Self {
@@ -31,7 +42,7 @@ impl<K: Hash + Eq + Clone, V: Clone> ClockCache<K, V> {
     }
 }
 
-impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> ClockCache<K, V, S> {
+impl<K: Hash + Eq + Clone, V: Clone + Touched, S: BuildHasher> ClockCache<K, V, S> {
     /// An empty cache of `capacity` (at least 1) entries hashing with `s`.
     pub fn with_hasher(capacity: usize, s: S) -> Self {
         Self {
@@ -114,7 +125,8 @@ impl<K: Hash + Eq + Clone, V: Clone, S: BuildHasher> ClockCache<K, V, S> {
             let i = self.hand;
             self.hand = (self.hand + 1) % self.slots.len();
             let slot = &mut self.slots[i];
-            if slot.referenced {
+            let touched = slot.entry.as_ref().is_some_and(|(_, v)| v.take_touched());
+            if slot.referenced || touched {
                 slot.referenced = false;
                 continue;
             }
@@ -168,6 +180,33 @@ mod tests {
         assert_eq!(c.get(&3), None);
         assert_eq!(c.get(&10), Some(10));
         assert_eq!(c.get(&11), Some(11));
+    }
+
+    /// A value that records use outside the cache (as a node followed
+    /// through a remembered link does).
+    #[derive(Clone, Default)]
+    struct Used(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+    impl Touched for Used {
+        fn take_touched(&self) -> bool {
+            self.0.swap(false, std::sync::atomic::Ordering::Relaxed)
+        }
+    }
+
+    #[test]
+    fn values_used_outside_the_cache_get_a_second_chance() {
+        let mut c: ClockCache<u32, Used> = ClockCache::new(4);
+        let used: Vec<Used> = (0..4).map(|_| Used::default()).collect();
+        for (i, u) in (0..).zip(&used) {
+            c.put(i, u.clone());
+        }
+        // 1 is used without a cache lookup; two inserts evict 0 and 2.
+        used[1].0.store(true, std::sync::atomic::Ordering::Relaxed);
+        c.put(10, Used::default());
+        c.put(11, Used::default());
+        assert!(c.get(&1).is_some());
+        assert!(c.get(&0).is_none());
+        assert!(c.get(&2).is_none());
     }
 
     #[test]

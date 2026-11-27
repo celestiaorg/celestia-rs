@@ -56,6 +56,15 @@ enum CachedNode {
     Encoded(Arc<EncodedNode>),
 }
 
+impl crate::clock::Touched for CachedNode {
+    fn take_touched(&self) -> bool {
+        match self {
+            Self::Decoded(node) => node.take_touched(),
+            Self::Encoded(_) => false,
+        }
+    }
+}
+
 struct EncodedNode {
     reference: StoredRef,
     bytes: Vec<u8>,

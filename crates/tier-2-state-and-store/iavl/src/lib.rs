@@ -650,6 +650,7 @@ fn persist(
                 right.nk,
             );
             let saved = Node::Inner(Inner {
+                touched: crate::node::Touch::default(),
                 key: inner.key,
                 height: inner.height,
                 size: inner.size,
@@ -2235,6 +2236,43 @@ mod tests {
                 tree.save_version().unwrap();
             }
         });
+    }
+
+    /// Disk reads of a hot key's walks while one cold read per round churns
+    /// a small cache (remembered children on or off).
+    fn hot_key_reads(remember: bool) -> u64 {
+        let ndb = NodeDb::in_memory(10_000);
+        let mut tree = Tree::open(Arc::clone(&ndb)).unwrap();
+        for i in 0u32..2_000 {
+            tree.set(i.to_be_bytes().to_vec(), vec![7; 10]).unwrap();
+        }
+        tree.save_version().unwrap();
+        let cache = super::NodeCache::new(96);
+        let db = NodeDb::new(Arc::clone(ndb.backend()), Vec::new(), Arc::clone(&cache));
+        db.set_remember_children(remember);
+        let reopened = Tree::open(db).unwrap();
+        let hot = 77u32.to_be_bytes();
+        let mut cold = 1_000u32;
+        let mut hot_reads = 0;
+        for round in 0..200 {
+            let before = cache.stats().disk_reads;
+            assert!(reopened.get(&hot).unwrap().is_some());
+            if round >= 5 {
+                hot_reads += cache.stats().disk_reads - before;
+            }
+            assert!(reopened.get(&cold.to_be_bytes()).unwrap().is_some());
+            cold = (cold * 7 + 13) % 2_000;
+        }
+        hot_reads
+    }
+
+    #[test]
+    fn hot_paths_followed_through_remembered_links_stay_cached() {
+        // Plain cache lookups keep the hot path cached (CLOCK reference
+        // bits). Remembered links bypass the cache; the touched bit gives
+        // the CLOCK the same information, so the hot path stays too.
+        assert_eq!(hot_key_reads(false), 0);
+        assert_eq!(hot_key_reads(true), 0);
     }
 
     #[test]

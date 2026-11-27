@@ -143,6 +143,7 @@ impl Importer {
                 .as_ref()
                 .map(|_| encode_leaf(&node.key, &node.value));
             let saved = Node::Leaf(Leaf {
+                touched: crate::node::Touch::default(),
                 key: node.key,
                 value: node.value,
                 version,
@@ -181,6 +182,7 @@ impl Importer {
                 _ => None,
             };
             let saved = Node::Inner(Inner {
+                touched: crate::node::Touch::default(),
                 key: node.key,
                 height: node.height,
                 size,

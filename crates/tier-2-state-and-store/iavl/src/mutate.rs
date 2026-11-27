@@ -108,6 +108,7 @@ impl Mutator<'_> {
                 if updated {
                     return Ok((
                         Link::mem(Node::Inner(Inner {
+                            touched: crate::node::Touch::default(),
                             key: inner.key.clone(),
                             height: inner.height,
                             size: inner.size,
