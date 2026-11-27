@@ -106,13 +106,15 @@ setup() {
   local dev_if
   dev_if=$(ip route show default 2>/dev/null | awk '{print $5; exit}' || true)
   # Internet egress is capped; Cloud Storage (through the private.googleapis.com
-  # VIP, free in region) and the metadata server are not.
+  # VIP, free in region), the metadata server and the us-central1 VPC subnet
+  # (peers that sync from this node) are not.
   dev_if=${dev_if:-ens4}
   run tc qdisc replace dev "$dev_if" root handle 1: htb default 20
   run tc class replace dev "$dev_if" parent 1: classid 1:10 htb rate 10gbit
   run tc class replace dev "$dev_if" parent 1: classid 1:20 htb rate "$CKPT_EGRESS_CAP" ceil "$CKPT_EGRESS_CAP"
   run tc filter replace dev "$dev_if" parent 1: protocol ip prio 1 handle 800::800 u32 match ip dst 199.36.153.8/30 flowid 1:10
   run tc filter replace dev "$dev_if" parent 1: protocol ip prio 1 handle 800::801 u32 match ip dst 169.254.169.254/32 flowid 1:10
+  run tc filter replace dev "$dev_if" parent 1: protocol ip prio 1 handle 800::802 u32 match ip dst 10.128.0.0/20 flowid 1:10
   local hosts=${DRY:+$DRY/hosts}
   hosts=${hosts:-/etc/hosts}
   grep -q ' storage.googleapis.com$' "$hosts" 2>/dev/null || echo '199.36.153.8 storage.googleapis.com' >>"$hosts"

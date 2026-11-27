@@ -147,6 +147,7 @@ check "dry run header verify"      grep -q 'verify-replay-checkpoint.py .*/23714
 check "dry run egress cap"         grep -q 'htb rate 4mbit ceil 4mbit' "$p"
 # Cloud Storage uploads and the metadata server bypass the cap.
 check "dry run gcs uncapped"       grep -q 'u32 match ip dst 199.36.153.8/30 flowid 1:10' "$p"
+check "dry run vpc uncapped"       grep -q 'u32 match ip dst 10.128.0.0/20 flowid 1:10' "$p"
 check "dry run metadata uncapped"  grep -q 'u32 match ip dst 169.254.169.254/32 flowid 1:10' "$p"
 check "dry run gcs via private vip" grep -q '199.36.153.8 storage.googleapis.com' "$t/dry/hosts"
 check "dry run bbr"                grep -q 'tcp_congestion_control=bbr' "$p"
