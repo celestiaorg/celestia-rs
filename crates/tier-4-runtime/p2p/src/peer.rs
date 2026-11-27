@@ -4,9 +4,10 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::fmt;
 use std::net::{IpAddr, SocketAddr};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 
 use crate::key::NodeId;
 use crate::mconnection::{
@@ -26,6 +27,10 @@ pub struct Peer {
     remote_addr: SocketAddr,
     mconn: MConnection,
     data: Mutex<HashMap<String, Arc<dyn Any + Send + Sync>>>,
+    /// Messages from this peer queued to reactors and not yet processed.
+    in_flight: AtomicUsize,
+    /// Notified when `in_flight` drops to zero.
+    drained: Notify,
 }
 
 impl fmt::Debug for Peer {
@@ -60,6 +65,8 @@ impl Peer {
             remote_addr: conn.remote_addr,
             mconn,
             data: Mutex::new(HashMap::new()),
+            in_flight: AtomicUsize::new(0),
+            drained: Notify::new(),
         });
         Ok((peer, rx))
     }
@@ -156,6 +163,33 @@ impl Peer {
     /// Stop and close the connection.
     pub fn stop(&self) {
         self.mconn.stop();
+    }
+
+    /// A message from this peer was queued to a reactor.
+    pub(crate) fn message_queued(&self) {
+        self.in_flight.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// A message from this peer was processed (or dropped) by a reactor.
+    pub(crate) fn message_done(&self) {
+        if self.in_flight.fetch_sub(1, Ordering::SeqCst) == 1 {
+            self.drained.notify_waiters();
+        }
+    }
+
+    /// Wait until the reactors have processed every message queued from
+    /// this peer, or until `limit` passes.
+    pub(crate) async fn messages_processed(&self, limit: std::time::Duration) {
+        let wait = async {
+            loop {
+                let notified = self.drained.notified();
+                if self.in_flight.load(Ordering::SeqCst) == 0 {
+                    return;
+                }
+                notified.await;
+            }
+        };
+        let _ = tokio::time::timeout(limit, wait).await;
     }
 
     /// Flush queued messages, then close (`FlushStop`).

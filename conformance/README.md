@@ -425,6 +425,26 @@ and app hashes. From a copy of its home at 79, it must refuse block 80 when the
 commit holds one bad signature, and when the block's tx is removed (its commit
 signed again for the new part set, so only the data root check fails).
 
+#### Equivocation evidence blocks
+
+`-heights 10 -evidence` (in `v4-oracle` to `v9-oracle`, `evidence.go`) runs
+each release's usual five blocks, then five blocks around a double sign:
+
+- block +5 carries a `DuplicateVoteEvidence`: two conflicting precommits at
+  height +4 by the validator at index 1, signed with its consensus key.
+  The FinalizeBlock request's `Misbehavior` is the evidence's ABCI form, as
+  celestia-core builds it, so x/evidence slashes, jails and tombstones
+  the validator;
+- +6 to +8 touch its delegations: a delegation to it while jailed, an
+  undelegation of part of its self-bond, and a redelegation away from it;
+- +9 is a send.
+
+The fixtures are `fixtures/synthetic/v{4,5,6,8,9}-evidence`. Their
+`tx-results.jsonl.gz` also records the request's `misbehavior` on the evidence
+block. Mainnet carried double-sign evidence twice in these eras: blocks
+8,218,923 (app version 5) and 9,217,879 (app version 6), in
+`fixtures/mainnet/evidence`.
+
 #### Block validation: a commit slot with another address
 
 `median_time_test.go` in `v5-oracle` (celestia-core v1.59.0-tm-v0.38.17),
@@ -876,8 +896,14 @@ fail at the same point of the ante handler or message handler as Go:
   that is not a validator, a redelegation to the same validator, a
   transitive redelegation, a send to a blocked module account, an eighth
   unbonding entry, out of gas in `MsgDelegate` and `MsgUndelegate` (at
-  100,000 gas, as mainnet had), a delegation above the balance, and a
-  vote on an unknown proposal.
+  100,000 gas, as mainnet had), a delegation above the balance, a
+  vote on an unknown proposal, and `MsgSubmitEvidence` with an
+  equivocation time at the Unix epoch and at Go's zero time;
+- BeginBlock evidence at app version 3: val2 double-signs (block 14:
+  slashed, jailed and tombstoned), then again (block 15: ignored, already
+  tombstoned) with evidence for an address that is not a validator
+  (ignored in cosmos-sdk v0.46). The synthetic blocks carry the evidence
+  and the oracle passes it as `ByzantineValidators`.
 
 Blob transactions that fail `ValidateBasic` are not in it: ProcessProposal
 rejects a block that holds one. [`fixtures/synthetic/failures-v1-v3`](fixtures/synthetic/failures-v1-v3)
@@ -1023,12 +1049,7 @@ cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
 `cargo test -p app --test ibc_tm_oracle` pins Go's code, codespace and log for
 each tx, and the pruning and freezing store changes. The block replay
 (`ibc_tm_blocks_match_the_oracle`) matches every KV change, app hash and
-tx result through block 38, except two logs of the shared light client
-(code, codespace and gas match), which it allows:
-
-- the `double vote from Validator{…} (0 and 1)` text at block 23;
-- block 30: celestia-core v1 does not check the address of a signature found
-  by index, so it reports `wrong signature (#1): <signature bytes>`.
+tx result, logs included, through block 38.
 
 #### History synthetic chain for the historical info migration
 

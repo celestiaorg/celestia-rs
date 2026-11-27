@@ -30,7 +30,12 @@ package main
 // rejects a block that holds one, so mainnet blocks cannot contain them.
 
 import (
+	"bytes"
 	"fmt"
+	evidencetypes "github.com/cosmos/cosmos-sdk/x/evidence/types"
+	"github.com/tendermint/tendermint/crypto/ed25519"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	tmtypes "github.com/tendermint/tendermint/types"
 	"strings"
 	"time"
 
@@ -65,7 +70,7 @@ var failUsers = append([]string{
 	"f-memo", "f-timeout",
 	// message failures
 	"f-rollback", "f-noauth", "f-nofeegrant", "f-dist", "f-del-unknown",
-	"f-blocked", "f-oog-del", "f-del-poor", "f-vote-unknown",
+	"f-blocked", "f-oog-del", "f-del-poor", "f-vote-unknown", "f-ev-epoch", "f-ev-zero",
 	"f-zero-undel", "f-zero-redel", "f-zero-cancel",
 	"f-exec-nested", "f-exec-multi", "f-exec-vesting", "f-exec-ibc",
 	"f-prop-gov-send", "f-prop-signer", "f-prop-unroutable",
@@ -141,6 +146,48 @@ var failuresSpec = &chainSpec{
 	absent:          func(int64, int, int) bool { return false },
 	rawTxs:          func(s *synth, a *app.App, height int64) ([][]byte, error) { return s.failureTxs(a, height) },
 	noHandoff:       true,
+	evidence:        failureEvidence,
+}
+
+// syntheticValidatorAddress is the consensus address of synthetic
+// validator name.
+func syntheticValidatorAddress(name string) []byte {
+	return ed25519.GenPrivKeyFromSecret([]byte("consensus " + name)).PubKey().Address()
+}
+
+// failureEvidence is BeginBlock double-sign evidence at app version 3:
+// val2 double-signs at block 14 (slashed, jailed and tombstoned), then
+// again at 15 (ignored: tombstoned) along with evidence for an address
+// that is not a validator (ignored in v0.46; cosmos-sdk v0.50 at app
+// version 9 fails BeginBlock).
+func failureEvidence(height int64, vals *tmtypes.ValidatorSet, t time.Time) []tmtypes.Evidence {
+	dup := func(addr []byte, idx int32, power int64) tmtypes.Evidence {
+		vote := func(hash byte) *tmtypes.Vote {
+			return &tmtypes.Vote{
+				Type: tmproto.PrevoteType, Height: height - 1, Round: 0,
+				BlockID:          tmtypes.BlockID{Hash: bytes.Repeat([]byte{hash}, 32), PartSetHeader: tmtypes.PartSetHeader{Total: 1, Hash: bytes.Repeat([]byte{hash}, 32)}},
+				Timestamp:        t.Add(-15 * time.Second),
+				ValidatorAddress: addr, ValidatorIndex: idx,
+				Signature: bytes.Repeat([]byte{hash}, 64),
+			}
+		}
+		return &tmtypes.DuplicateVoteEvidence{
+			VoteA: vote(0xa1), VoteB: vote(0xb2),
+			TotalVotingPower: vals.TotalVotingPower(), ValidatorPower: power,
+			Timestamp: t.Add(-15 * time.Second),
+		}
+	}
+	idx, val := vals.GetByAddress(syntheticValidatorAddress("val2"))
+	switch height {
+	case 14:
+		return []tmtypes.Evidence{dup(val.Address, idx, val.VotingPower)}
+	case 15:
+		return []tmtypes.Evidence{
+			dup(syntheticValidatorAddress("val2"), 2, 10),
+			dup(bytes.Repeat([]byte{0xee}, 20), 0, 10),
+		}
+	}
+	return nil
 }
 
 func (s *synth) failureTxs(a *app.App, height int64) ([][]byte, error) {
@@ -282,6 +329,21 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 			stakingtypes.NewMsgUndelegate(b.addr(ph("f-oog-undel")), val0, coin(tia/2)))
 		tx("f-del-poor", stakingtypes.NewMsgDelegate(b.addr("f-del-poor"), val0, coin(1_000_000*tia)))
 		tx("f-vote-unknown", govv1beta1.NewMsgVote(b.addr("f-vote-unknown"), 999, govv1beta1.OptionYes))
+		// Equivocation.ValidateBasic refuses a time at or before the Unix
+		// epoch, printing it with time.Time.String (a plain Go error: code 1).
+		for _, c := range []struct {
+			name string
+			at   time.Time
+		}{{"f-ev-epoch", time.Unix(0, 0).UTC()}, {"f-ev-zero", time.Time{}}} {
+			name := c.name
+			m, err := evidencetypes.NewMsgSubmitEvidence(b.addr(name), &evidencetypes.Equivocation{
+				Height: 1, Time: c.at, Power: 1, ConsensusAddress: sdk.ConsAddress(b.addr(name)).String(),
+			})
+			if err != nil {
+				return err
+			}
+			tx(name, m)
+		}
 		// MsgExec runs a staking message of a zero amount although its
 		// ValidateBasic fails: v0.46 baseapp's msg service router skips
 		// that error for a zero GetAmount. The grantee is the signer, so

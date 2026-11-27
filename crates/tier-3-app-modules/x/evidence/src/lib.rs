@@ -159,8 +159,8 @@ pub fn begin_block(ctx: &mut Context<'_>) -> Result<()> {
     Ok(())
 }
 
-/// `Equivocation.ValidateBasic` (plain errors).
-fn validate_basic(e: &Equivocation) -> std::result::Result<(), String> {
+/// `Equivocation.ValidateBasic` (plain errors; unchanged since v0.46).
+pub fn validate_basic(e: &Equivocation) -> std::result::Result<(), String> {
     let t = e.time.unwrap_or_else(sdk::time::go_zero);
     if t.seconds <= 0 {
         return Err(format!(

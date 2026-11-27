@@ -128,6 +128,10 @@ enum QueueOutcome {
     Closed,
 }
 
+/// How long a closed peer's queued messages may take to reach the reactors
+/// before the switch removes the peer anyway.
+const REACTOR_DRAIN_LIMIT: Duration = Duration::from_secs(5);
+
 async fn queue_reactor_message<T>(
     tx: &mpsc::Sender<T>,
     message: T,
@@ -481,7 +485,9 @@ impl Switch {
                 _ = quit.changed() => return,
             };
             let src = env.src.clone();
-            if let Err(e) = entry.reactor.receive(env) {
+            let res = entry.reactor.receive(env);
+            src.message_done();
+            if let Err(e) = res {
                 self.stop_peer_for_error(&src, &format!("error in reactor processing: {e}"));
             }
         }
@@ -855,13 +861,22 @@ impl Switch {
                 channel_id: ch,
                 message: msg,
             };
-            if queue_reactor_message(&entry.tx, env, entry.reactor.drop_on_full_queue()).await
-                == QueueOutcome::Closed
-            {
-                return;
+            peer.message_queued();
+            match queue_reactor_message(&entry.tx, env, entry.reactor.drop_on_full_queue()).await {
+                QueueOutcome::Queued => {}
+                QueueOutcome::Dropped => peer.message_done(),
+                QueueOutcome::Closed => {
+                    peer.message_done();
+                    return;
+                }
             }
         }
         if let ConnState::Errored(e) = peer.closed().await {
+            // As Go's receive routine calls Receive before the switch stops
+            // the peer: let the reactors process what the peer sent before
+            // its close (a seed sends PexAddrs, then closes) before
+            // RemovePeer forgets the peer's state.
+            peer.messages_processed(REACTOR_DRAIN_LIMIT).await;
             self.stop_peer_for_error(&peer, &e);
         }
     }
