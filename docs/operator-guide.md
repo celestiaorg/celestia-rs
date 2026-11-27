@@ -959,10 +959,11 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
 - **Halting for an upgrade:** `--halt-height N` (or `app.toml
   halt-height`) stops the node cleanly *before* executing block N, exactly
   like Go; `--halt-time` (Unix seconds) likewise.
-- **Signalled upgrades:** this binary bundles every release up to v11.
+- **Signalled upgrades:** this binary bundles every release up to v12.
   `celestia-rs start` and `celestia-rs follow` switch to the next bundled
   release in the same process at the upgrade height, so the v10 to v11
-  upgrade needs no restart and RPC stays up. The node switches once the
+  upgrade (and v11 to v12 on a chain that signals it, such as Mocha)
+  needs no restart and RPC stays up. The node switches once the
   block before the upgrade commits the new consensus version with the
   plan due at the next height. When the chain reaches an upgrade this
   binary has no release for, the node stops consensus at the upgrade

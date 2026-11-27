@@ -64,12 +64,13 @@ const SEGMENTS: [(&str, i64, i64); 7] = [
 const LAST: i64 = 81;
 /// The first block of each app version after 1.
 const UPGRADES: [i64; 9] = [6, 11, 16, 26, 37, 47, 57, 67, 77];
-/// The first v11 block. The v10 release has no `v11` handler: x/upgrade
-/// fails this block with `UPGRADE "v11" NEEDED` and writes
-/// `data/upgrade-info.json`. The embedded node (bundled-release activation,
-/// as `celestia-rs start` runs it) then authenticates that file against the
-/// committed plan, as a restart does, and executes the block with the v11
-/// release. Without activation the node halts here until reopened.
+/// The first v11 block. The embedded node (bundled-release activation, as
+/// `celestia-rs start` runs it) runs the block before it with the v10
+/// release and, once that block commits consensus version 11 with plan
+/// `v11` due, executes this one with the v11 release in the same process;
+/// it writes no `data/upgrade-info.json`. Without activation the v10
+/// release, which has no `v11` handler, fails this block with
+/// `UPGRADE "v11" NEEDED`, writes that file and halts until reopened.
 const V11_UPGRADE: i64 = 77;
 
 fn json(path: &str) -> serde_json::Value {
@@ -457,11 +458,26 @@ fn a_crash_around_the_v11_switch_resumes_in_the_same_state() {
 
 #[test]
 fn restarts_around_every_upgrade() {
-    let options = embedded(app::AppOptions::default());
+    // The embedded node, and the ABCI-mode node (which halts at the v11
+    // upgrade block and resumes once reopened).
+    for options in [
+        embedded(app::AppOptions::default()),
+        app::AppOptions::default(),
+    ] {
+        restart_around_every_upgrade(&options);
+    }
+}
+
+fn restart_around_every_upgrade(options: &app::AppOptions) {
+    let embedded = options.node.activate_bundled_upgrades;
     let (home, mut a, chain) = genesis_node(options.clone());
     let restart_after: Vec<i64> = UPGRADES.iter().flat_map(|u| [u - 1, *u, u + 1]).collect();
+    let reopen = || {
+        assert!(!embedded, "the embedded node halted for an upgrade");
+        open(home.path(), &chain, options.clone())
+    };
     for h in 1..=LAST {
-        a = chain.step(a, h, "restarts", &no_restart);
+        a = chain.step(a, h, "restarts", &reopen);
         if restart_after.contains(&h) {
             drop(a);
             a = open(home.path(), &chain, options.clone());
