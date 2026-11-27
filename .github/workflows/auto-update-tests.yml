@@ -2,10 +2,10 @@ name: auto-update-tests
 
 on:
   pull_request:
-    paths: ["packaging/macos/**", ".github/workflows/auto-update-tests.yml"]
+    paths: ["packaging/macos/**", "packaging/linux/**", ".github/workflows/auto-update-tests.yml"]
   push:
     branches: [main]
-    paths: ["packaging/macos/**", ".github/workflows/auto-update-tests.yml"]
+    paths: ["packaging/macos/**", "packaging/linux/**", ".github/workflows/auto-update-tests.yml"]
 
 permissions:
   contents: read
@@ -23,3 +23,13 @@ jobs:
           bash packaging/macos/test-auto-update-hold.sh
           bash packaging/macos/test-health.sh
           bash packaging/macos/test-watchdog.sh
+
+  linux-auto-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Channel install, health check and rollback
+        run: |
+          shellcheck packaging/linux/*.sh
+          bash packaging/linux/test-auto-update.sh

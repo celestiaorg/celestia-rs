@@ -15,6 +15,7 @@
 //! | `config view\|get\|set` | `celestia-appd config …` (confix) |
 //! | `rollback [--height N] [--hard] [--force]`, `export` | `celestia-appd rollback`, `export` |
 //! | `comet show-node-id\|show-validator\|show-address` | `celestia-appd comet …` |
+//! | `debug-bundle [--output <file>] [--log-file <file>]` | — (an archive of diagnostics for a bug report) |
 //!
 //! `abci` serves the state machine to Go celestia-core over the ABCI
 //! socket; `export-blocks` dumps the block store for the Go verifier.
@@ -55,7 +56,7 @@ const ALLOCATOR: &str = if cfg!(feature = "jemalloc") {
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 #[derive(Parser, Debug)]
-#[command(name = "celestia-rs", version, about = "Rust Celestia consensus node")]
+#[command(name = "celestia-rs", version = celestia_rs::version::SOFTWARE_VERSION, about = "Rust Celestia consensus node")]
 struct Cli {
     /// Node home directory.
     #[arg(long, global = true, env = "CELESTIA_RS_HOME")]
@@ -177,6 +178,31 @@ enum Cmd {
         /// Node RPC address.
         #[arg(long, default_value = "")]
         node: String,
+    },
+    /// Collect version, host, config (secrets redacted), node state and
+    /// logs into a `.tar.gz` to attach to a bug report. Private keys are
+    /// never included.
+    DebugBundle {
+        /// Archive path (default: `celestia-rs-debug-<UTC time>.tar.gz`
+        /// in the working directory).
+        #[arg(long, short = 'o')]
+        output: Option<PathBuf>,
+        /// Node RPC address (default: client.toml `node`).
+        #[arg(long, default_value = "")]
+        node: String,
+        /// Do not query the running node (RPC and metrics).
+        #[arg(long)]
+        no_rpc: bool,
+        /// A log file to include the tail of (repeatable). Default on
+        /// macOS: `~/Library/Logs/celestia-rs.log` when it exists.
+        #[arg(long = "log-file")]
+        log_files: Vec<PathBuf>,
+        /// systemd unit whose journal to include on Linux (empty: none).
+        #[arg(long, default_value = "celestia-rs")]
+        journal_unit: String,
+        /// Size limit of each log tail, in bytes.
+        #[arg(long, default_value_t = celestia_rs::debug_bundle::DEFAULT_MAX_LOG_BYTES)]
+        max_log_bytes: u64,
     },
     /// View or change config.toml / app.toml / client.toml.
     #[command(subcommand)]
@@ -1147,6 +1173,43 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
         Cmd::Status { node } => {
             tokio::task::spawn_blocking(move || client::status(&home, &node).map(|_| ())).await?
         }
+        Cmd::DebugBundle {
+            output,
+            node,
+            no_rpc,
+            mut log_files,
+            journal_unit,
+            max_log_bytes,
+        } => {
+            if log_files.is_empty() && cfg!(target_os = "macos") {
+                // The launchd job's StandardOutPath (packaging/macos).
+                if let Some(h) = std::env::var_os("HOME") {
+                    let log = PathBuf::from(h).join("Library/Logs/celestia-rs.log");
+                    if log.is_file() {
+                        log_files.push(log);
+                    }
+                }
+            }
+            let opts = celestia_rs::debug_bundle::Options {
+                home,
+                output,
+                node,
+                rpc: !no_rpc,
+                log_files,
+                journal_unit: Some(journal_unit).filter(|u| !u.is_empty()),
+                max_log_bytes,
+            };
+            let path =
+                tokio::task::spawn_blocking(move || celestia_rs::debug_bundle::create(&opts))
+                    .await??;
+            util::err(format!(
+                "Wrote {}. {}",
+                path.display(),
+                celestia_rs::debug_bundle::NOTICE
+            ));
+            util::out(path.display().to_string());
+            Ok(())
+        }
         Cmd::Config(cmd) => match cmd {
             ConfigCmd::View { file } => {
                 util::out(config::view(&home, File::parse(&file)?)?);
@@ -1164,7 +1227,7 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
             if long {
                 util::out(format!(
                     "name: celestia-rs\nversion: {}\ncommit: {}\nbuild_profile: {}\ntoolchain: {}\nallocator: {}\napp_version: {}\ncompatibility_target: celestia-app v{}, celestia-core v{}",
-                    env!("CARGO_PKG_VERSION"),
+                    celestia_rs::version::SOFTWARE_VERSION,
                     env!("CELESTIA_RS_GIT_COMMIT"),
                     env!("CELESTIA_RS_BUILD_PROFILE"),
                     env!("CELESTIA_RS_TOOLCHAIN"),
@@ -1174,7 +1237,7 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
                     celestia_rs::version::CORE_COMPATIBILITY_VERSION
                 ));
             } else {
-                util::out(env!("CARGO_PKG_VERSION"));
+                util::out(celestia_rs::version::SOFTWARE_VERSION);
             }
             Ok(())
         }

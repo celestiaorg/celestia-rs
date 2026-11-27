@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise release selection, rollout and rollback without live services."""
+"""Exercise channel-driven release selection, rollout and rollback without live services."""
 
 import json
 import os
@@ -35,10 +35,10 @@ with (r/'calls').open('a') as f:
     f.write(json.dumps([tool, *args])+'\\n')
 if tool == 'curl':
     url = args[-1]
-    if '/releases?' in url:
-        if (r/'api-error').exists(): sys.exit(22)
-        filename = 'releases-2.json' if '&page=2' in url else 'releases.json'
-        print((r/filename).read_text())
+    if '/channels/' in url:
+        f = r/'channels'/url.rsplit('/', 1)[1]
+        if not f.exists(): sys.exit(22)
+        print(f.read_text())
     elif '/check-runs?' in url:
         print((r/'checks.json').read_text())
     elif url.endswith('/status'):
@@ -49,9 +49,13 @@ if tool == 'curl':
             'catching_up': False}, 'validator_info': {'address': 'VAL', 'voting_power': '0'}}}))
     else: sys.exit('unexpected URL: '+url)
 elif tool == 'git':
-    if 'rev-parse' in args: print('b'*40)
-    elif 'fetch' not in args and 'checkout' not in args: sys.exit('unexpected git operation')
+    # Tag v0.1.0-rc.6 is commit b..., any other tag commit a...
+    if 'fetch' in args: (r/'fetched').write_text(args[-1])
+    elif 'rev-parse' in args:
+        print('b'*40 if any(t in (r/'fetched').read_text() for t in ('v0.1.0-rc.6', 'v0.1.7')) else 'a'*40)
+    elif 'checkout' not in args: sys.exit('unexpected git operation')
 elif tool == 'cargo':
+    (r/'cargo-env').write_text(os.environ.get('CELESTIA_RS_RELEASE_VERSION', '<unset>'))
     shutil.copyfile(r/'built', r/'src/target/release/celestia-rs')
     (r/'src/target/release/celestia-rs').chmod(0o755)
 elif tool == 'check-apphash':
@@ -65,8 +69,12 @@ class ReleaseUpdateTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        for name in ("tools", "bin", "src/.git", "src/target/release"):
+        for name in ("tools", "bin", "src/.git", "src/target/release",
+                     "src/crates/tier-5-node/celestia-rs"):
             (self.root/name).mkdir(parents=True, exist_ok=True)
+        # The checked-out source's crate version.
+        (self.root/"src/crates/tier-5-node/celestia-rs/Cargo.toml").write_text(
+            '[package]\nname = "celestia-rs"\nversion = "0.1.0-rc.6"\n')
         for tool in ("curl", "git", "cargo", "sudo", "check-apphash"):
             path = self.root/"tools"/tool
             path.write_text(STUB)
@@ -74,19 +82,17 @@ class ReleaseUpdateTests(unittest.TestCase):
         for name in ("celestia-rs", "celestia-rs-mainnet"):
             binary(self.root/"bin"/name, OLD, "0.1.0-rc.5")
         binary(self.root/"built", NEW, "0.1.0-rc.6")
-        self.releases([
-            self.release("v0.1.0-rc.7", None, draft=True),
-            self.release("v0.1.0", "2026-11-01T00:00:00Z"),
-            self.release("v0.1.0-rc.6", "2026-11-20T00:00:00Z", prerelease=True),
-        ])
+        self.channel("mocha", "v0.1.0-rc.6")
+        self.channel("mainnet", "v0.1.0-rc.6")
         self.checks("completed", "success")
 
-    @staticmethod
-    def release(tag, published, draft=False, prerelease=False):
-        return dict(tag_name=tag, published_at=published, draft=draft, prerelease=prerelease)
-
-    def releases(self, values):
-        (self.root/"releases.json").write_text(json.dumps(values))
+    def channel(self, name, tag):
+        (self.root/"channels").mkdir(exist_ok=True)
+        path = self.root/"channels"/name
+        if tag is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(tag+"\n")
 
     def checks(self, status, conclusion):
         (self.root/"checks.json").write_text(json.dumps({"check_runs": [
@@ -106,11 +112,15 @@ class ReleaseUpdateTests(unittest.TestCase):
         for name in ("celestia-rs", "celestia-rs-mainnet"):
             self.assertIn(OLD, (self.root/"bin"/name).read_text())
 
-    def test_newest_published_release_includes_candidates_and_excludes_drafts(self):
+    def test_each_node_gets_its_channels_release(self):
         result = self.run_update()
         self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        urls = [c[-1] for c in self.calls if c[0] == "curl" and "/channels/" in c[-1]]
+        self.assertEqual(urls, [
+            "https://raw.githubusercontent.com/celestiaorg/celestia-rs/release-channels/channels/mocha",
+            "https://raw.githubusercontent.com/celestiaorg/celestia-rs/release-channels/channels/mainnet"])
         fetch = [c for c in self.calls if c[0] == "git" and "fetch" in c]
-        self.assertEqual(fetch[0][-1], "refs/tags/v0.1.0-rc.6")
+        self.assertEqual([c[-1] for c in fetch], ["refs/tags/v0.1.0-rc.6"])
         resolve = [c for c in self.calls if c[0] == "git" and "rev-parse" in c]
         self.assertEqual(resolve[0][-1], "FETCH_HEAD^{commit}")
         restarts = [c[-1] for c in self.calls if c[0] == "sudo"]
@@ -119,35 +129,54 @@ class ReleaseUpdateTests(unittest.TestCase):
             self.assertIn(NEW, (self.root/"bin"/name).read_text())
             self.assertIn(OLD, (self.root/"bin"/(name+".prev")).read_text())
 
-    def test_empty_draft_only_invalid_and_failed_release_queries_do_not_deploy(self):
-        for releases in ([], [self.release("v0.2.0", None, draft=True)],
-                         [self.release("../main", "2026-11-20T00:00:00Z")]):
-            with self.subTest(releases=releases):
-                self.releases(releases)
+    def test_mainnet_stays_on_its_channel_while_mocha_moves_ahead(self):
+        self.channel("mainnet", "v0.1.0-rc.5")  # what mainnet runs (commit a...)
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        restarts = [c[-1] for c in self.calls if c[0] == "sudo"]
+        self.assertEqual(restarts, ["system/org.celestia.celestia-rs"])
+        self.assertIn(NEW, (self.root/"bin/celestia-rs").read_text())
+        self.assertIn(OLD, (self.root/"bin/celestia-rs-mainnet").read_text())
+        self.assertIn("up to date: v0.1.0-rc.5", result.stdout)
+
+    def test_daily_release_is_built_with_its_release_version(self):
+        # Tag v0.1.7, crate version 0.1.0-rc.6: a daily release.
+        for name in ("mocha", "mainnet"):
+            self.channel(name, "v0.1.7")
+        binary(self.root/"built", NEW, "0.1.7")
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertEqual((self.root/"cargo-env").read_text(), "0.1.7")
+        self.assertIn(NEW, (self.root/"bin/celestia-rs-mainnet").read_text())
+
+    def test_human_release_is_built_without_a_release_version(self):
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        # build.rs treats an empty value as unset.
+        self.assertIn((self.root/"cargo-env").read_text(), ("", "<unset>"))
+
+    def test_channel_override_variable(self):
+        self.channel("stable", "v0.1.0-rc.5")
+        result = self.run_update(CHANNEL_mainnet="stable")
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertIn(OLD, (self.root/"bin/celestia-rs-mainnet").read_text())
+        self.assertTrue(any(c[-1].endswith("/channels/stable") for c in self.calls if c[0] == "curl"))
+
+    def test_missing_or_invalid_channel_deploys_nothing(self):
+        for tag in (None, "../main", ""):
+            with self.subTest(tag=tag):
+                self.channel("mainnet", tag)
                 result = self.run_update()
                 self.assertEqual(result.returncode, 2, result.stdout+result.stderr)
                 self.no_deployment()
                 self.assertFalse(any(c[0] == "git" for c in self.calls))
-        (self.root/"api-error").touch()
-        self.assertEqual(self.run_update().returncode, 2)
-        self.no_deployment()
-
-    def test_publication_order_across_pages_does_not_use_main_or_tag_creation_order(self):
-        self.releases([self.release('v0.1.0', '2026-11-01T00:00:00Z')]*100)
-        (self.root/'releases-2.json').write_text(json.dumps([
-            self.release('v0.1.0-rc.6', '2026-11-20T00:00:00Z', prerelease=True)]))
-        result = self.run_update(DRY_RUN='1')
-        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
-        self.assertIn('DRY_RUN: built v0.1.0-rc.6', result.stdout)
-        self.assertTrue(any('&page=2' in c[-1] for c in self.calls if c[0] == 'curl'))
-        self.no_deployment()
 
     def test_already_installed_release_does_not_build_or_restart(self):
         for name in ('celestia-rs', 'celestia-rs-mainnet'):
             binary(self.root/'bin'/name, NEW, '0.1.0-rc.6')
         result = self.run_update()
         self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
-        self.assertIn('up to date: every node runs v0.1.0-rc.6', result.stdout)
+        self.assertIn('up to date: v0.1.0-rc.6 (bbbbbbb) on its nodes', result.stdout)
         self.assertFalse(any(c[0] in ('cargo', 'sudo') for c in self.calls))
 
     def test_failed_release_is_not_retried(self):

@@ -288,6 +288,7 @@ run() {
   HOME=$h SHELL=/bin/bash ZDOTDIR="" XDG_CONFIG_HOME="" CELESTIA_RS_HOME="" \
     GITHUB_TOKEN=${T_TOKEN:-} GH_TOKEN="" PATH="$work/gh-${T_GH:-out}:$PATH" \
     CELESTIA_RS_REPO=$repo CELESTIA_RS_GITHUB_URL=$base CELESTIA_RS_GITHUB_API=$base/api \
+    CELESTIA_RS_CHANNELS_URL=$base/$repo/release-channels/channels \
     $shell -s -- "$@" <"$installer" >"$work/out" 2>&1
   status=$?
   set -e
@@ -338,6 +339,41 @@ if run mock/stable --version=0.2.0 && [ "$(installed)" = v0.2.0 ] &&
 
 t="--prerelease picks the newest release, pre-releases included"
 if run mock/stable --prerelease && [ "$(installed)" = v0.3.0-rc.1 ]; then pass "$t"; else fail "$t"; fi
+
+# set_channel REPO NAME TAG: the release-channels branch's channels/NAME.
+set_channel() {
+  mkdir -p "$work/www/$1/release-channels/channels"
+  echo "$3" >"$work/www/$1/release-channels/channels/$2"
+}
+
+t="--channel installs the channel's release"
+new_home channel
+set_channel mock/stable mocha v0.1.0
+if run mock/stable --channel mocha && [ "$(installed)" = v0.1.0 ] &&
+  has_out "channel mocha: v0.1.0"; then pass "$t"; else fail "$t"; fi
+
+t="--channel follows the channel to a pre-release"
+set_channel mock/stable mocha v0.3.0-rc.1
+if run mock/stable --channel=mocha && [ "$(installed)" = v0.3.0-rc.1 ]; then pass "$t"; else fail "$t"; fi
+
+t="CELESTIA_RS_CHANNEL works like --channel"
+set_channel mock/stable mainnet v0.1.0
+(export CELESTIA_RS_CHANNEL=mainnet && run mock/stable) || true
+if [ "$(installed)" = v0.1.0 ]; then pass "$t"; else fail "$t"; fi
+
+t="an unknown channel fails and leaves the installed binary alone"
+if ! run mock/stable --channel nope && has_out "cannot read channel nope" &&
+  [ "$(installed)" = v0.1.0 ]; then pass "$t"; else fail "$t"; fi
+
+t="a channel that names an invalid tag fails"
+set_channel mock/stable broken '../main'
+if ! run mock/stable --channel broken && has_out "invalid release tag" &&
+  [ "$(installed)" = v0.1.0 ]; then pass "$t"; else fail "$t"; fi
+
+t="--channel with --version fails"
+if ! run mock/stable --channel mocha --version v0.1.0 && has_out "not both"; then
+  pass "$t"
+else fail "$t"; fi
 
 t="CELESTIA_RS_VERSION works like --version"
 (export CELESTIA_RS_VERSION=v0.1.0 && run mock/stable) || true

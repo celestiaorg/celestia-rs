@@ -1,7 +1,20 @@
 name: static analysis
 
+# CodeQL takes about 19 minutes, so it runs on pushes to main (where its
+# alerts land in code scanning), not on pull requests. Kani runs on pull
+# requests that can change its proof: the shares crate, its workspace
+# dependencies (`cargo tree -p shares`), and the build manifests.
 on:
   pull_request:
+    paths:
+      - .github/workflows/static-analysis.yml
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - crates/tier-0-primitives/encoding/**
+      - crates/tier-0-primitives/gostr/**
+      - crates/tier-0-primitives/hash/**
+      - crates/tier-1-protocol-types/shares/**
   push:
     branches: [main]
   workflow_dispatch:
@@ -9,9 +22,16 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on the same PR. On main, a running push run always
+# finishes, but a newer push replaces any run still waiting behind it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   codeql:
     name: CodeQL (Rust)
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -1,0 +1,26 @@
+# One pass of packaging/linux/celestia-rs-auto-update.sh: keep the node on
+# the release its network's channel recommends (docs/releasing.md).
+# Started by celestia-rs-auto-update.timer.
+#
+#   sudo cp packaging/linux/celestia-rs-auto-update.sh /usr/local/bin/
+#   sudo cp packaging/linux/celestia-rs-auto-update.{service,timer} /etc/systemd/system/
+#   sudo systemctl edit celestia-rs-auto-update.service   # set CHANNEL (see below)
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now celestia-rs-auto-update.timer
+#   journalctl -u celestia-rs-auto-update
+
+[Unit]
+Description=celestia-rs channel auto-update
+Documentation=https://github.com/celestiaorg/celestia-rs/blob/main/docs/releasing.md
+Wants=network-online.target
+After=network-online.target celestia-rs.service
+
+[Service]
+Type=oneshot
+# The channel of the node's network: corto, mocha or mainnet.
+Environment=CHANNEL=mocha
+# Must match celestia-rs.service.
+Environment=BIN=/usr/local/bin/celestia-rs
+Environment=SERVICE=celestia-rs
+Environment=RPC=http://127.0.0.1:26657
+ExecStart=/usr/local/bin/celestia-rs-auto-update.sh

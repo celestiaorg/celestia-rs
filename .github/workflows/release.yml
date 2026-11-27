@@ -12,6 +12,16 @@ name: release
 #   build runs here rather than on the tag push.
 # - Push of a v* tag by hand: build and publish it, if the tag matches the
 #   crate version.
+# - Daily at 14:00 UTC: an automatic release of the newest main commit
+#   whose ci push run passed, if it is not released yet. Its version comes
+#   from the conventional commits since the last release
+#   (.github/scripts/release_version.py): before 1.0 a breaking change
+#   bumps the minor version, anything else the patch; its notes group the
+#   commits by type. release-channels.yml then promotes
+#   it network by network.
+# - No release is marked "Latest" here: release-channels.yml marks the
+#   mainnet channel's release Latest, so github.com/<repo>/releases/latest
+#   and `install.sh` without --channel get the release mainnet runs.
 # - workflow_dispatch: build the archives as workflow artifacts only.
 
 on:
@@ -20,10 +30,12 @@ on:
     # Not applied to tag pushes.
     paths: [crates/tier-5-node/celestia-rs/Cargo.toml]
     tags: ["v*"]
+  schedule:
+    - cron: "0 14 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name == 'schedule' && 'daily' || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -39,24 +51,109 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     outputs:
       version: ${{ steps.plan.outputs.version }}
+      release_version: ${{ steps.plan.outputs.release_version }}
+      sha: ${{ steps.plan.outputs.sha }}
       tag: ${{ steps.plan.outputs.tag }}
       release: ${{ steps.plan.outputs.release }}
+      notes: ${{ steps.plan.outputs.notes }}
       label: ${{ steps.plan.outputs.label }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          # The daily release counts its commit's position on main.
+          fetch-depth: ${{ github.event_name == 'schedule' && '0' || '1' }}
       - id: plan
         env:
           BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           crate_version() { sed -n 's/^version = "\(.*\)"$/\1/p' | head -n 1; }
           version=$(crate_version <"$MANIFEST")
+          sha=$(git rev-parse HEAD)
+          release_version=""
           tag="v$version"
           release=false
           label="$tag"
+          # tag_once TAG: tag $sha unless TAG exists. Sets release=true when
+          # this run made the tag or a re-run finds it on $sha.
+          tag_once() {
+            local tagged
+            if tagged=$(git ls-remote --exit-code --tags origin "refs/tags/$1^{}" "refs/tags/$1"); then
+              if printf '%s\n' "$tagged" | grep -q "^$sha"; then
+                release=true # a re-run of this release (say, after a failed build)
+              else
+                echo "::notice::$1 already exists on another commit: nothing to release"
+              fi
+              return
+            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$1" -m "celestia-rs $1" "$sha"
+            git push origin "refs/tags/$1"
+            echo "::notice::tagged $sha as $1"
+            release=true
+          }
           case "$GITHUB_EVENT_NAME/$GITHUB_REF_TYPE" in
+            schedule/*)
+              # The newest main commit whose ci push run passed.
+              green=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci --branch main --event push \
+                --status success --limit 1 --json headSha --jq '.[0].headSha // empty')
+              if [ -z "$green" ] || ! git merge-base --is-ancestor "$green" HEAD; then
+                echo "::error::no main commit with a passing ci push run"
+                exit 1
+              fi
+              git checkout -q --detach "$green"
+              sha=$green
+              version=$(crate_version <"$MANIFEST")
+              previous=$(git show "HEAD^:$MANIFEST" 2>/dev/null | crate_version || true)
+              released=$(git tag --points-at "$sha" 'v*' | head -n 1)
+              if [ -n "$released" ] && [ "$GITHUB_RUN_ATTEMPT" = 1 ]; then
+                echo "::notice::${sha:0:7} is already released as $released: nothing to release"
+              elif [ "$previous" != "$version" ]; then
+                echo "::notice::${sha:0:7} sets the version to $version; the push trigger releases it"
+              else
+                # The version from the conventional commits since the last
+                # plain v<major>.<minor>.<patch> tag on this commit's
+                # history (.github/scripts/release_version.py): before 1.0,
+                # a breaking change bumps the minor version, anything else
+                # the patch. A re-run (attempt > 1) of a run that already
+                # tagged this commit resumes that release.
+                plain='^v[0-9]+\.[0-9]+\.[0-9]+$'
+                retag=$(git tag --points-at "$sha" 'v*' | grep -E "$plain" | head -n 1 || true)
+                last=$(git tag --merged "$sha" -l 'v*' | grep -E "$plain" | grep -vx "$retag" | sort -V | tail -n 1 || true)
+                log=$RUNNER_TEMP/commits.log
+                if [ -n "$last" ]; then
+                  git log --format='%s%x1f%b%x1e' "$last..$sha" >"$log"
+                else
+                  : >"$log"
+                fi
+                if [ -n "$retag" ]; then
+                  release_version=${retag#v}
+                else
+                  release_version=$(python3 .github/scripts/release_version.py next \
+                    --crate-version "$version" --last "${last#v}" --log "$log")
+                fi
+                {
+                  echo "notes<<RELEASE_NOTES_EOF"
+                  if [ -n "$last" ]; then
+                    echo "Changes since $last:"
+                    echo
+                    python3 .github/scripts/release_version.py notes --log "$log"
+                  else
+                    echo "The first daily release."
+                  fi
+                  echo "RELEASE_NOTES_EOF"
+                } >>"$GITHUB_OUTPUT"
+                version=$release_version
+                tag="v$version"
+                label="$tag"
+                tag_once "$tag"
+              fi
+              ;;
             push/tag)
               if [ "$GITHUB_REF_NAME" != "$tag" ]; then
                 echo "::error::tag $GITHUB_REF_NAME, but $MANIFEST is at $version. Release with the 'prepare release' workflow (docs/releasing.md), or tag the commit that carries the version."
@@ -71,26 +168,16 @@ jobs:
               fi
               if [ "$previous" = "$version" ]; then
                 echo "::notice::$MANIFEST changed, but not its version ($version): nothing to release"
-              elif tagged=$(git ls-remote --exit-code --tags origin "refs/tags/$tag^{}" "refs/tags/$tag"); then
-                if printf '%s\n' "$tagged" | grep -q "^$GITHUB_SHA"; then
-                  # A re-run of this release (say, after a failed build).
-                  release=true
-                else
-                  echo "::notice::$tag already exists on another commit: nothing to release"
-                fi
               else
-                git config user.name "github-actions[bot]"
-                git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-                git tag -a "$tag" -m "celestia-rs $tag" "$GITHUB_SHA"
-                git push origin "refs/tags/$tag"
-                echo "::notice::tagged $GITHUB_SHA as $tag"
-                release=true
+                tag_once "$tag"
               fi
               ;;
             *) label=$(git rev-parse --short HEAD) ;;
           esac
           {
             echo "version=$version"
+            echo "release_version=$release_version"
+            echo "sha=$sha"
             echo "tag=$tag"
             echo "release=$release"
             echo "label=$label"
@@ -117,6 +204,8 @@ jobs:
             cross: true
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -139,11 +228,14 @@ jobs:
       - name: Build
         env:
           CELESTIA_RS_BUILD_PROFILE: dist
+          # Empty except for automatic releases (see the header).
+          CELESTIA_RS_RELEASE_VERSION: ${{ needs.plan.outputs.release_version }}
         run: cargo build --profile dist --locked -p celestia-rs --features da-light --target ${{ matrix.target }}
       - name: Smoke test
         shell: bash
         env:
           VERSION: ${{ needs.plan.outputs.version }}
+          SHA: ${{ needs.plan.outputs.sha }}
           CROSS: ${{ matrix.cross }}
         run: |
           set -euo pipefail
@@ -154,8 +246,9 @@ jobs:
           bin=target/${{ matrix.target }}/dist/celestia-rs
           details=$("$@" "$bin" version --long)
           echo "$details"
-          grep -Fx "commit: $GITHUB_SHA" <<<"$details"
+          grep -Fx "commit: $SHA" <<<"$details"
           grep -Fx 'build_profile: dist' <<<"$details"
+          [[ "$("$@" "$bin" --version)" == "celestia-rs $VERSION" ]]
           [[ "$("$@" "$bin" version)" == "$VERSION" ]]
           "$@" "$bin" start --help | grep -- --bridge-p2p-listen
           "$@" "$bin" da-light --help >/dev/null
@@ -189,6 +282,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          ref: ${{ needs.plan.outputs.sha }}
           sparse-checkout: CHANGELOG.md
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v8
@@ -205,18 +299,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.plan.outputs.tag }}
+          SHA: ${{ needs.plan.outputs.sha }}
+          AUTOMATIC: ${{ needs.plan.outputs.release_version != '' }}
+          NOTES: ${{ needs.plan.outputs.notes }}
         run: |
           set -euo pipefail
           prerelease=""
           [[ "$TAG" == *-* ]] && prerelease="--prerelease"
-          # The release's CHANGELOG section (bump-version cut it), then
-          # GitHub's generated notes.
-          awk -v h="## $TAG " 'index($0, h) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md >notes.md
+          if [[ "$AUTOMATIC" == true ]]; then
+            # A daily release has no CHANGELOG section of its own.
+            {
+              printf 'Daily release of main at %s. Release channels (docs/releasing.md) decide which network runs it.\n\n' "$SHA"
+              printf '%s\n' "$NOTES"
+            } >notes.md
+            generate=""
+          else
+            # The release's CHANGELOG section (bump-version cut it), then
+            # GitHub's generated notes.
+            awk -v h="## $TAG " 'index($0, h) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md >notes.md
+            generate="--generate-notes"
+          fi
           # Releases are immutable once published: no assets can be added
           # after. So create a draft, attach the archives, then publish. A
           # re-run finds the draft a failed run left behind and finishes it.
           if ! draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
-            gh release create "$TAG" --draft --verify-tag --title "celestia-rs $TAG" --notes-file notes.md --generate-notes $prerelease
+            gh release create "$TAG" --draft --verify-tag --title "$TAG" --notes-file notes.md $generate --latest=false $prerelease
             draft=true
           fi
           if [ "$draft" != true ]; then
@@ -224,4 +331,4 @@ jobs:
             exit 1
           fi
           gh release upload "$TAG" --clobber dist/*.tar.gz dist/*.tar.gz.sha256 dist/SHA256SUMS
-          gh release edit "$TAG" --draft=false
+          gh release edit "$TAG" --draft=false --latest=false

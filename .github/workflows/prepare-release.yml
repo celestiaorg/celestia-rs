@@ -1,6 +1,6 @@
 name: prepare release
 
-# Run from the Actions tab with a version (e.g. 0.1.0-rc.2). Opens a PR,
+# Run from the Actions tab with a new major or minor version (e.g. 0.2.0). Opens a PR,
 # "release: v<version>", that sets the celestia-rs binary's version and cuts
 # the CHANGELOG's Unreleased section (`cargo xtask bump-version`). Merging
 # it releases: release.yml tags the merge commit v<version>, builds the
@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release, e.g. 0.1.0 or 0.1.0-rc.2"
+        description: "New version, <major>.<minor>.0, normally 1.0.0 (daily releases cover the rest)"
         required: true
         type: string
 
@@ -45,6 +45,12 @@ jobs:
         run: |
           set -euo pipefail
           version=${INPUT#v}
+          # Patch releases are daily and automatic (release.yml); release
+          # candidates are not used.
+          if ! [[ $version =~ ^[0-9]+\.[0-9]+\.0$ ]]; then
+            echo "::error::$version: give a new major or minor version, <major>.<minor>.0 (docs/releasing.md)"
+            exit 1
+          fi
           if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
             echo "::error::v$version is already released"
             exit 1
@@ -75,6 +81,6 @@ jobs:
           fi
           gh pr create --base main --head "$branch" --title "release: v$VERSION" --body "Sets the \`celestia-rs\` binary's version to \`$VERSION\` and moves the CHANGELOG's Unreleased entries under \`v$VERSION\` (\`cargo xtask bump-version $VERSION\`).
 
-          **Merging this releases v$VERSION:** release.yml tags the merge commit \`v$VERSION\`, builds the macOS and Linux archives, checks each binary reports \`$VERSION\`, and publishes the release$( [[ "$VERSION" == *-* ]] && echo ' (as a pre-release)'). The installer picks it up from there.$ci_note
+          **Merging this releases v$VERSION:** release.yml tags the merge commit \`v$VERSION\`, builds the macOS and Linux archives, checks each binary reports \`$VERSION\`, and publishes the release. Release channels then promote it network by network, and daily patch releases continue from it.$ci_note
 
           See docs/releasing.md."

@@ -81,6 +81,7 @@ members = [
     "crates/fuzz-diff",
     "crates/tier-5-node/celestia-rs",
     "crates/tier-5-node/keyring",
+    "crates/tier-5-node/node-census",
     "crates/m1-integration",
     "crates/m2-integration",
     "xtask",

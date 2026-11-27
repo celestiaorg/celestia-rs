@@ -77,6 +77,8 @@ crypto = { path = "../../tier-0-primitives/crypto" }
 ctypes = { path = "../../tier-1-protocol-types/ctypes" }
 encoding = { path = "../../tier-0-primitives/encoding" }
 evidence = { path = "../../tier-4-runtime/evidence" }
+# Compresses the `debug-bundle` archive (pure-Rust backend, no C zlib).
+flate2 = { version = "=1.1.2", default-features = false, features = ["rust_backend"] }
 # The embedded Fibre server (`[fibre]`, `start --fibre`; off by default).
 fibre-server = { path = "../../tier-4-runtime/fibre-server" }
 hash = { path = "../../tier-0-primitives/hash" }
@@ -125,7 +127,6 @@ mimalloc = { version = "0.1", optional = true, default-features = false, feature
 rustix = { version = "1.1", features = ["termios"] }
 
 [dev-dependencies]
-flate2 = { version = "=1.1.2", default-features = false, features = ["rust_backend"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 grpc-query = { path = "../../tier-4-runtime/grpc-query" }
 # tests/fibre.rs: lumina's Fibre client (the revision fibre-server tests pin)

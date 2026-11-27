@@ -3,19 +3,148 @@
 A release is a version of the `celestia-rs` binary crate
 (`crates/tier-5-node/celestia-rs/Cargo.toml`), a `v<version>` tag on the
 commit that carries it, and a GitHub release with the archives that
-`scripts/install.sh` installs. `celestia-rs version` prints the crate
+`scripts/install.sh` installs. `celestia-rs version` prints the release
 version, so all three always agree. No one pushes tags or edits versions by
 hand.
 
 The other workspace crates are `publish = false` and stay at 0.0.1; only
 the binary is versioned.
 
+Versions are plain semver, `v<major>.<minor>.<patch>`, with no release
+candidates:
+
+- **Daily releases**, of the newest `main` commit that passed `ci`. No one
+  cuts them. Their version comes from the commits since the last release
+  (see "Version numbers" below): `v0.1.0`, `v0.1.1`, ... and `v0.2.0` after
+  a breaking change.
+- **v1.0.0**, cut by a human with the **prepare release** workflow below.
+  Daily releases never reach 1.0 on their own.
+
+### Version numbers
+
+PRs are squash-merged, so a PR's title is its commit's subject. The
+`pr-title` check requires a conventional commit:
+`<type>[(scope)][!]: <description>`, with type one of `feat`, `fix`,
+`perf`, `refactor`, `docs`, `test`, `ci`, `build`, `chore`, `style`,
+`revert`. Mark a breaking change with `!` (`feat(cli)!: drop --foo`) or a
+`BREAKING CHANGE:` footer. A breaking change is one an operator must act
+on: a removed or renamed flag, config key or RPC field, an on-disk format
+change, or a consensus-breaking change.
+
+The daily release reads the commits since the last release
+(`.github/scripts/release_version.py`):
+
+| | breaking change | `feat` | anything else |
+| --- | --- | --- | --- |
+| before 1.0 | minor (`0.1.4` → `0.2.0`) | patch | patch |
+| from 1.0 | major | minor | patch |
+
+The release notes group the same commits under Breaking changes, Features,
+Fixes and Other changes. A minor bump before 1.0 therefore always means
+"read the breaking changes before you upgrade".
+
+Nodes do not track "the newest release". They follow a **release
+channel**, one per network, which moves forward on its own as releases
+soak on the network before it.
+
+## Automatic releases and release channels
+
+```mermaid
+flowchart LR
+  main["main<br/>(newest commit that passed ci)"] -->|daily, 14:00 UTC| rel["next patch<br/>v0.1.N"]
+  rel -->|0 h| corto
+  corto -->|24 h in corto| mocha
+  mocha -->|24 h in mocha| mainnet
+  corto & mocha & mainnet -.->|daily| nodes[auto-updaters<br/>install.sh --channel]
+```
+
+**Automatic releases.** Every day at 14:00 UTC, `release.yml` takes the
+newest `main` commit whose `ci` push run passed and, if no release has it
+yet, tags it with the next version (see "Version numbers"; with no
+release yet, the crate version's `<major>.<minor>.<patch>`: crate
+`0.1.0-rc.9` gives `v0.1.0`). A re-run of a failed daily run resumes the
+same tag. It builds, smoke-tests and publishes the archives. The
+release's title is its tag. No release is marked GitHub's "Latest" when
+published: **release channels** marks the `mainnet` channel's release
+Latest, so `github.com/<repo>/releases/latest` and `install.sh` without
+`--channel` give the release Mainnet runs. One release a day, not one per merge, keeps release
+builds (three targets, one on macOS) from competing with PR CI for runners;
+nodes update daily and channels soak for 24 hours, so more frequent
+releases would not reach them sooner. The build sets `CELESTIA_RS_RELEASE_VERSION`, so
+`celestia-rs version`, `--version` and `version --long` report the release
+version (the crate version in `Cargo.toml` is only a floor); `build.rs`
+rejects a value that is not a plain `<major>.<minor>.<patch>` at or above
+the crate version. A commit that changes the
+crate version is left to the human release path.
+
+**Channels.** `.github/release-channels.json` is the policy. Each channel
+has a source and a soak time:
+
+| channel | source | soak |
+| --- | --- | --- |
+| `corto` | releases | 0 h |
+| `mocha` | `corto` | 24 h |
+| `mainnet` | `mocha` | 24 h |
+
+Every hour, **release channels** (`release-channels.yml`) moves each
+channel to the newest release that has been in its source for at least the
+soak time, is not yanked, and is not newer than what the source runs now.
+"Newest" means latest on `main` (the commit's position), not latest
+published: automatic builds run in parallel and can publish out of order.
+It never moves a channel backwards. `main` is linear, so a release that
+entered `mocha` 24 hours ago has run there, inside every later release, for
+24 hours; frequent merges do not starve `mainnet`. The state is on the
+`release-channels` branch: `channels.json` (tags, history, frozen channels,
+yanked releases) and `channels/<name>`, one file holding the tag. Each
+change is a commit signed by GitHub, so the branch is the audit log.
+
+**Following a channel.**
+
+- Any machine: `install.sh --channel mainnet` (or
+  `CELESTIA_RS_CHANNEL=mainnet`) installs the channel's release; re-run it
+  to follow.
+- Linux, unattended: `packaging/linux/celestia-rs-auto-update.{sh,service,timer}`.
+  Once a day, at a random time in a 6-hour window so that operators do not
+  restart together, it installs the channel's release with that release's
+  own installer, restarts `celestia-rs`, waits until the node is caught up
+  and advancing, and rolls back to `celestia-rs.prev` if not. Installation
+  steps are in the `.service` file.
+- The Mac validator host: `packaging/macos/celestia-rs-auto-update.sh` puts
+  each node on its own network's channel (`mocha`, `mainnet`;
+  `CHANNEL_<node>` overrides it), builds the exact tagged source, and keeps
+  its canary, app-hash and signing checks.
+
+**When something goes wrong.** Use **Actions → release channels → Run
+workflow**:
+
+- `yank <tag>`: no channel takes that release again. Yank every release
+  from the bad one up to the fix.
+- `pin <channel> <tag>`: set a channel to a release now, for example to
+  roll `mainnet` back. Pinning also freezes the channel. Like a promotion,
+  a pin needs the release to have been in the channel before for its soak
+  time (24 hours in `mocha` for `mainnet`); a rollback to the release
+  `mainnet` ran before always passes. Set `force` to skip the check in an
+  emergency.
+- `freeze <channel>` / `unfreeze <channel>`: stop or resume automatic
+  promotion, for example around a network upgrade.
+
+A pinned or frozen source channel also holds back the channels after it,
+because a channel never takes a release newer than its source runs. Nodes
+pick up a pin at their next daily pass, so after a pin, tell operators to
+run the updater or installer at once if the fix is urgent.
+
+**Limits.** Soak time is the only automatic promotion gate. The workflow
+cannot see node health, so watch the networks and yank or freeze when they
+look wrong. A consensus-breaking release (a new app version) still needs a
+coordinated upgrade height: freeze `mainnet` before it reaches the channel
+and pin it when the network is ready.
+
 ## Release and fix loop
 
-The Mac auto-updater follows the newest published release, including release
-candidates, using its exact tagged source. It runs hourly, deploys to Mocha
-first, checks health and app-hash parity, and rolls back an unhealthy deploy
-before advancing to mainnet. Unreleased commits on `main` do not deploy.
+The Mac auto-updater follows each node's release channel, using the exact
+tagged source. It runs hourly, deploys to Mocha first, checks health and
+app-hash parity, and rolls back an unhealthy deploy before advancing to
+mainnet. Unreleased commits on `main` do not deploy.
 
 Keep monitoring and comparisons against Go active as releases advance. When
 an issue is found, retain its version, height and reproduction evidence,
@@ -24,14 +153,14 @@ below. Normal updates continue without a multi-day deployment hold. A release
 label alone does not establish stability or Go conformance; retained evidence
 must keep its actual version, coverage and any gaps.
 
-## Qualifying a release candidate
+## Qualifying a release
 
 General mainnet recommendation covers the node roles in
 [ADR 0008](adr/0008-mainnet-recommendation.md). A release tag or successful
 build does not close the acceptance criteria in `MILESTONES.md`.
 
-Use `cargo xtask bump-version <version>-rc.<n>` to prepare the candidate,
-commit its source, and retain evidence against that exact commit. Run an
+Pick the daily release to qualify (for example `v0.1.4`) and retain
+evidence against its tagged commit. Run an
 individual check with the evidence wrapper, for example:
 
 ```sh
@@ -61,34 +190,26 @@ record describes one check only. It cannot replace missing F1 evidence or
 the required elapsed nights. Publishing or changing a live validator is a
 separate operator action.
 
-## Choosing the first official version
+## Choosing v1.0.0
 
-For an initial **v0.1.0**, describe the supported networks, app versions,
-node roles and known limitations in the release notes. The README currently
-describes an experimental node. Keep that scope explicit if publishing
-while mainnet qualification is open. The installer selects an official
-release by default, so include the operator-facing changes since the first
-RC, even if the last RC introduced only a small change.
-
-Reserve **v1.0.0** for a defined compatibility commitment. Record which CLI,
+The first daily release is **v0.1.0**, and breaking changes move daily
+releases along 0.x on their own. Reserve **v1.0.0** for a defined compatibility commitment. Record which CLI,
 RPC and on-disk interfaces operators can rely on and how upgrades work. For
 a general mainnet recommendation, use the repository's C1, F1 and Q1 exit
 criteria and link their candidate-specific evidence. [Milestones](../MILESTONES.md)
 and [recommendation scope](adr/0008-mainnet-recommendation.md).
 
-Before promotion, compare the candidate tag with the proposed release
-source. If consensus code changed, qualify a new candidate containing the
-change. Record the candidate and promotion commits and review the final
-diff. Run the **release** workflow manually on the proposed source to
-rehearse all three archive builds without publishing. Check the embedded
-version, commit and build profile, the archive checksums and the installer.
-The **prepare release** workflow creates the PR whose merge publishes.
+Before a minor or major release, run the **release** workflow manually on
+the proposed source to rehearse all three archive builds without
+publishing. Check the embedded version, commit and build profile, the
+archive checksums and the installer. The **prepare release** workflow
+creates the PR whose merge publishes.
 
 ## Cutting a release
 
-1. **Actions → prepare release → Run workflow**, with the version, e.g.
-   `0.1.0-rc.2` or `0.1.0`. A version with a `-` suffix is published as a
-   pre-release.
+1. **Actions → prepare release → Run workflow**, with the new version,
+   `<major>.<minor>.0`, normally `1.0.0`. Patch versions and pre-release
+   suffixes are refused; daily releases cover everything else.
 
    This opens a PR, `release: v<version>`, made by
    `cargo xtask bump-version <version>`: the crate's version in `Cargo.toml`
@@ -104,10 +225,10 @@ The **prepare release** workflow creates the PR whose merge publishes.
 3. That's the release. On the merge, `release.yml` sees the version change,
    tags the merge commit `v<version>`, builds the macOS and Linux archives,
    fails if a binary doesn't report `<version>`, and publishes the release
-   with the CHANGELOG section as its notes. Then `install.yml` installs it
-   with the README's command on macOS and Linux.
+   with the CHANGELOG section as its notes. Release channels then promote
+   it like any daily release.
 
-The same steps work from a checkout: `cargo xtask bump-version 0.1.0-rc.2`,
+The same steps work from a checkout: `cargo xtask bump-version 1.0.0`,
 then open a PR with the result.
 
 ## Guards
@@ -126,6 +247,10 @@ then open a PR with the result.
   version instead.
 
 ## Repository settings
+
+- The **release channels** workflow creates the `release-channels` branch
+  on its first run. Do not protect it with rules that block GitHub
+  Actions from committing to it; do restrict who else may push.
 
 - **Settings → Actions → General → Workflow permissions:** allow GitHub
   Actions to create pull requests (for `prepare release`).

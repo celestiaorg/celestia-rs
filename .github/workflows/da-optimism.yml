@@ -9,6 +9,12 @@ on:
       - 'crates/tier-5-node/celestia-rs/src/bridge/**'
 permissions:
   contents: read
+
+# Cancel superseded runs on the same PR. Other runs get a unique group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   adapter:
     runs-on: ubuntu-latest

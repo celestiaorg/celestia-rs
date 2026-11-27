@@ -4,6 +4,22 @@
 
 ### Added
 
+- `celestia-rs debug-bundle` writes a `.tar.gz` of diagnostics to attach
+  to a bug report: build and host data, the config with secrets redacted,
+  the sign state, the node's RPC state and metrics, and log tails. It never
+  includes private keys. See the operator guide's "Reporting a problem".
+- `main` is released automatically once a day, from its newest commit that
+  passed `ci`, with a plain semver version picked from the conventional
+  commit titles since the last release (before 1.0: a breaking change bumps
+  the minor version, anything else the patch; no more release candidates)
+  and notes grouped by type. PR titles must be conventional commits. Release
+  channels
+  (`corto`, `mocha`, `mainnet`) move forward on their own as releases soak
+  on the network before them. `install.sh --channel <name>` installs a
+  channel's release, a new Linux systemd timer follows a channel daily, and
+  the Mac auto-updater now follows each node's channel instead of the
+  newest release. See "Automatic releases and release channels" in
+  `docs/releasing.md`.
 - Validators can run the Fibre data availability server inside
   `celestia-rs start` (a port of celestia-app v11's server), so no separate
   Go `fibre` process is needed. It is off by default: enable it with
@@ -25,8 +41,8 @@
 ### Changed
 
 - The node uses mimalloc instead of jemalloc as its memory allocator
-  (RocksDB too). Mainnet blocks near height 560k execute about 7% faster;
-  peak memory is about 6% higher. `celestia-rs version --long` prints the
+  (RocksDB too). Mainnet blocks at heights 558k-658k execute about 6%
+  faster; peak memory is about 3-6% higher. `celestia-rs version --long` prints the
   allocator. jemalloc stays available: build with `--no-default-features
   --features rocksdb,jemalloc` (or `rocksdb,memstats` for the heap
   profiler).

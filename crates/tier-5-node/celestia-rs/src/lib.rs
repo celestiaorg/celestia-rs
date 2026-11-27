@@ -10,6 +10,7 @@ pub use bridge::auth::operator_token;
 pub use bridge::peer::light::{LightArgs, run_light};
 pub mod client;
 pub mod config;
+pub mod debug_bundle;
 pub mod export;
 pub mod fibre;
 pub mod follow;

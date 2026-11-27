@@ -9,10 +9,12 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
-# Cancel superseded runs on the same PR. Pushes to branches get a unique group
-# (run_id), so post-merge runs are never cancelled.
+# Cancel superseded runs on the same PR. On main, a running push run always
+# finishes (it saves the shared caches and gives release.yml a green commit),
+# but a newer push replaces any run still waiting behind it, so main runs at
+# most one ci behind the tip instead of one per merge.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -23,7 +25,7 @@ jobs:
       contents: read
     outputs:
       docs_only: ${{ steps.classify.outputs.docs_only }}
-      oracles: ${{ steps.classify.outputs.oracles }}
+      go: ${{ steps.classify.outputs.go }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -46,16 +48,21 @@ jobs:
           git diff --no-renames --name-only -z "$BASE_SHA...$HEAD_SHA" -- > "$paths" || exit 0
           [[ -s "$paths" ]] || exit 0
           git diff --no-renames --name-only -z "$BASE_SHA" HEAD -- >> "$paths" || exit 0
-          # The Go release oracles are skipped only when the diff is known
-          # and touches neither conformance/ nor the workflows that run them.
+          # The Go conformance modules and release oracles are skipped only
+          # when the diff is known and touches neither conformance/ nor the
+          # workflows that run them. The Go modules are self-contained under
+          # conformance/, so no other change can break them.
           # grep reads the file itself: a pipe into `grep -q` can fail under
           # pipefail when grep exits at the first match.
           grep -qzE '^(conformance/|\.github/workflows/(ci|go-oracles)\.yml$)' "$paths" ||
-            echo 'oracles=false' >> "$GITHUB_OUTPUT"
+            echo 'go=false' >> "$GITHUB_OUTPUT"
           while IFS= read -r -d '' path; do
             case "$path" in
               README.md|docs/.nojekyll|docs/MODULES.md|docs/hardware.md|docs/operator-guide.md|\
-              docs/index.html|docs/site/copy.js|docs/site/square.webp|docs/site/style.css) ;;
+              docs/index.html|docs/index.md|docs/404.html|docs/llms.txt|docs/sitemap.xml|\
+              docs/about/index.html|docs/contact/index.html|docs/privacy/index.html|\
+              docs/census/index.html|docs/census/census.css|docs/census/census.js|\
+              docs/site/copy.js|docs/site/square.webp|docs/site/style.css|scripts/site/test_site.py) ;;
               *) exit 0 ;;
             esac
           done < "$paths"
@@ -82,6 +89,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
@@ -102,6 +111,7 @@ jobs:
           if [[ -f docs/site/copy.js ]]; then
             node --check docs/site/copy.js
           fi
+          python3 -m unittest discover -s scripts/site -p 'test_*.py' -v
       - name: Require both Linux test suites
         if: needs.changes.outputs.docs_only != 'true'
         env:
@@ -123,10 +133,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Fuzz evidence accounting
         run: python3 -m unittest discover -s crates/fuzz-diff/tests -p '*_test.py' -v
       - name: Quality evidence accounting
         run: python3 -m unittest discover -s scripts/quality -p 'test_*.py' -v
+      - name: Operator website
+        run: python3 -m unittest discover -s scripts/site -p 'test_*.py' -v
       - name: Transaction-result receipt failure paths
         run: bash packaging/test-compare-block-results.sh
       - name: Operator benchmark scripts
@@ -164,6 +177,8 @@ jobs:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Linux doctests
         run: cargo test --locked --workspace --all-features --doc
 
@@ -184,6 +199,8 @@ jobs:
         run: git fetch --no-tags origin d2e72cbb676814746226224a27ea038fbbd8fcf2
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Verify RPC evidence accounting
         run: python3 -m unittest discover -s conformance/mainnet-rpc/tests -v
       - name: Fresh authz and feegrant capture integrity
@@ -224,6 +241,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: coverage-critical
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo install cargo-llvm-cov --version 0.9.1 --locked
       - name: Measure critical boundary coverage
         run: |
@@ -248,9 +266,10 @@ jobs:
   # the node in release mode on Apple silicon and run a fast smoke subset
   # (unit tests of the core crates, one devnet-conformance replay, the CLI
   # on a fresh home). The full suite runs on Linux above.
+  # This is the slowest job (about 27 minutes), and a platform-only break is
+  # rare, so it runs on pushes to main, not on pull requests.
   macos:
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
+    if: github.event_name != 'pull_request'
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -259,6 +278,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: macos-release
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build celestia-rs (release)
         run: cargo build --release --locked -p celestia-rs
       - name: CLI smoke (init, keys, comet, open-files check)
@@ -304,9 +324,10 @@ jobs:
   # Every Go conformance module (fixture generators, oracles, recorders)
   # must keep building. Module downloads are retried: proxy.golang.org
   # has transient failures, and the module cache is restored between runs.
+  # Pull requests that touch neither conformance/ nor this workflow skip it.
   go-modules:
     needs: changes
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.changes.outputs.go != 'false' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -344,18 +365,32 @@ jobs:
       GOFLAGS: -mod=mod
       GOPROXY: https://proxy.golang.org,direct
     steps:
-      # Keep every required matrix check present on documentation-only PRs.
-      - if: needs.changes.outputs.docs_only == 'true'
-        run: echo 'Go conformance inputs unchanged.'
       - uses: actions/checkout@v7.0.1
-        if: needs.changes.outputs.docs_only != 'true'
       - uses: actions/setup-go@v7
-        if: needs.changes.outputs.docs_only != 'true'
         with:
           go-version-file: conformance/${{ matrix.module }}/go.mod
-          cache-dependency-path: conformance/${{ matrix.module }}/go.sum
+          cache: false
+      # Only main saves Go caches. Pull-request caches are scoped to their
+      # PR, and at about 1 GB per module they evicted main's Rust caches.
+      - name: Restore Go caches
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ matrix.module }}-${{ hashFiles(format('conformance/{0}/go.mod', matrix.module), format('conformance/{0}/go.sum', matrix.module)) }}
+          restore-keys: go-${{ runner.os }}-${{ matrix.module }}-
+      - name: Cache Go modules and builds
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ matrix.module }}-${{ hashFiles(format('conformance/{0}/go.mod', matrix.module), format('conformance/{0}/go.sum', matrix.module)) }}
+          restore-keys: go-${{ runner.os }}-${{ matrix.module }}-
       - name: Download modules (with retries)
-        if: needs.changes.outputs.docs_only != 'true'
         working-directory: conformance/${{ matrix.module }}
         run: |
           for n in 1 2 3 4 5; do
@@ -365,16 +400,14 @@ jobs:
           done
           exit 1
       - name: Build
-        if: needs.changes.outputs.docs_only != 'true'
         working-directory: conformance/${{ matrix.module }}
         # Keep binaries out of the source tree checked by the evidence tests.
         run: go build -o "$(mktemp -d)/" ./...
       - name: Test
         if: >-
-          needs.changes.outputs.docs_only != 'true' && (
           matrix.module == 'fixturegen' || matrix.module == 'antereplay' ||
           matrix.module == 'fuzzoracle/v10' || matrix.module == 'pfm-fork' ||
-          matrix.module == 'websocket-lifecycle')
+          matrix.module == 'websocket-lifecycle'
         working-directory: conformance/${{ matrix.module }}
         run: go test -timeout 30m ./...
 
@@ -387,5 +420,5 @@ jobs:
     needs: changes
     if: >-
       ${{ !cancelled() && github.event_name == 'pull_request' &&
-      needs.changes.outputs.oracles != 'false' }}
+      needs.changes.outputs.go != 'false' }}
     uses: ./.github/workflows/go-oracles.yml

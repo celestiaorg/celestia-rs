@@ -1,7 +1,9 @@
 //! Rust build identity and separately named Go compatibility targets.
 
 /// This node's software version, shared by the CLI and P2P/RPC metadata.
-pub const SOFTWARE_VERSION: &str = env!("CARGO_PKG_VERSION");
+///
+/// The crate version, or an automatic release's version (`build.rs`).
+pub const SOFTWARE_VERSION: &str = env!("CELESTIA_RS_VERSION");
 
 /// A transparent Comet API compatibility prefix and Rust software identity.
 ///
@@ -30,4 +32,28 @@ pub fn register_build_info() {
         env!("CELESTIA_RS_BUILD_PROFILE"),
         env!("CELESTIA_RS_TOOLCHAIN"),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SOFTWARE_VERSION;
+
+    /// Daily release builds set `CELESTIA_RS_RELEASE_VERSION` to a plain
+    /// `<major>.<minor>.<patch>` no lower than the crate version
+    /// (docs/releasing.md); others report the crate version.
+    #[test]
+    fn software_version_is_the_release_version_when_set() {
+        let crate_version = env!("CARGO_PKG_VERSION");
+        let expected = option_env!("CELESTIA_RS_RELEASE_VERSION")
+            .filter(|v| !v.is_empty())
+            .unwrap_or(crate_version);
+        assert_eq!(SOFTWARE_VERSION, expected);
+        let parse = |v: &str| -> Vec<u64> {
+            let core = v.split('-').next().unwrap_or_default();
+            core.split('.')
+                .map(|p| p.parse().unwrap_or_default())
+                .collect()
+        };
+        assert!(parse(SOFTWARE_VERSION) >= parse(crate_version));
+    }
 }
