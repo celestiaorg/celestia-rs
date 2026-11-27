@@ -343,18 +343,31 @@ class CensusPage(unittest.TestCase):
         self.assertNotIn("Unknown version", self.js)
         self.assertIn('implementation !== "unknown"', self.js)
 
-    def test_version_is_labelled_as_celestia_core(self):
-        self.assertIn("celestia-core version", self.js)
-        self.assertIn("App version", self.js)
-        self.assertIn("celestia-app", self.text)
+    def test_no_celestia_core_or_app_version_columns(self):
+        html = (DOCS / "census" / "index.html").read_text(encoding="utf-8")
+        for word in ("celestia-core version", "App version", "app_version", "(protocol) version"):
+            self.assertNotIn(word, self.js, word)
+            self.assertNotIn(word, self.text, word)
+        self.assertNotIn('id="versions"', html)
 
-    def test_celestia_app_release_column_and_coverage(self):
-        # Both tables show the release from /abci_info, "–" when unknown.
-        self.assertEqual(self.js.count('"celestia-app release"'), 4)
+    def test_one_table_per_implementation_with_one_row_per_version(self):
+        html = (DOCS / "census" / "index.html").read_text(encoding="utf-8")
+        for table_id in ("go-versions", "rust-versions", "rust-nodes"):
+            self.assertIn(f'id="{table_id}"', html, table_id)
+        self.assertIn('href="#go-versions-section"', html)
+        self.assertIn('href="#rust-versions-section"', html)
+        self.assertIn("Go nodes by celestia-app version", self.text)
+        self.assertIn("celestia-rs nodes by version", self.text)
+        self.assertIn("Unknown (RPC not reachable)", self.js)
+        # Releases and celestia-rs versions are shown with a leading "v".
+        self.assertIn("rustVersion", self.js)
+        self.assertIn('"-celestia-rs."', self.js)
+        self.assertIn('"celestia-rs version"', self.js)
+
+    def test_release_coverage_is_stated(self):
+        html = (DOCS / "census" / "index.html").read_text(encoding="utf-8")
         self.assertIn("app_release", self.js)
-        self.assertIn('n.app_release ?? "–"', self.js)
-        # The method section states how many nodes answered.
-        self.assertIn('id="release-coverage"', (DOCS / "census" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn('id="release-coverage"', html)
         self.assertIn("/abci_info", self.text)
 
 

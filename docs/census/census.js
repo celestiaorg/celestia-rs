@@ -168,6 +168,32 @@ function table(id, head, rows, numeric = []) {
   t.append(body);
 }
 
+const GO_HEAD = ["celestia-app version", "Nodes"];
+const RUST_HEAD = ["celestia-rs version", "Nodes"];
+const RUST_NODES_HEAD = ["Node ID", "Moniker", "celestia-rs version", "Source"];
+const UNKNOWN_RELEASE = "Unknown (RPC not reachable)";
+
+// `0.38.17-celestia-rs.0.1.0-rc.9` → `v0.1.0-rc.9`; null without the suffix.
+function rustVersion(handshake) {
+  const i = handshake.indexOf("-celestia-rs.");
+  return i < 0 ? null : `v${handshake.slice(i + "-celestia-rs.".length)}`;
+}
+
+// [label, count] rows, one per distinct key(node), most nodes first; nodes
+// whose key is null are counted under `unknown`, always the last row.
+function countRows(nodes, key, unknown) {
+  const counts = new Map();
+  let missing = 0;
+  for (const n of nodes) {
+    const k = key(n);
+    if (k === null) missing += 1;
+    else counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  const rows = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  if (missing) rows.push([unknown, missing]);
+  return rows.map(([label, count]) => [label, String(count)]);
+}
+
 function render() {
   const net = state.network;
   document.querySelectorAll(".filters button").forEach((b) =>
@@ -179,8 +205,9 @@ function render() {
     $("status").textContent = `No crawl data for ${net} yet.`;
     $("tiles").replaceChildren();
     $("charts").replaceChildren();
-    table("versions", ["celestia-core version", "Implementation", "App version", "celestia-app release", "Nodes"], [], [2, 4]);
-    table("rust-nodes", ["Node ID", "Moniker", "Version", "App version", "celestia-app release", "Source"], []);
+    table("go-versions", GO_HEAD, [], [1]);
+    table("rust-versions", RUST_HEAD, [], [1]);
+    table("rust-nodes", RUST_NODES_HEAD, []);
     $("release-coverage").textContent = "";
     return;
   }
@@ -214,45 +241,16 @@ function render() {
       integer: true,
     }),
   );
-  // One row per celestia-core version, implementation, app version and
-  // celestia-app release. The release comes from the node's own RPC
-  // `/abci_info`, so it is unknown for nodes without an open RPC.
-  const groups = new Map();
-  for (const n of known) {
-    const release = n.app_release ?? "–";
-    const key = `${n.version}\u0000${n.implementation}\u0000${n.app_version}\u0000${release}`;
-    const g = groups.get(key) ?? { version: n.version, implementation: n.implementation, app: n.app_version, release, count: 0 };
-    g.count += 1;
-    groups.set(key, g);
-  }
-  const implName = { rust: "celestia-rs", go: "Go" };
-  table(
-    "versions",
-    ["celestia-core version", "Implementation", "App version", "celestia-app release", "Nodes"],
-    [...groups.values()]
-      .sort((a, b) => b.count - a.count)
-      .map((g) => [
-        el("code", {}, g.version || "(empty)"),
-        implName[g.implementation],
-        g.app ? String(g.app) : "–",
-        g.release,
-        String(g.count),
-      ]),
-    [2, 4],
-  );
+  const go = known.filter((n) => n.implementation === "go");
+  const rust = known.filter((n) => n.implementation === "rust");
+  // One row per celestia-app release. The release comes from the node's own
+  // RPC `/abci_info`, so nodes without an open RPC share one row, listed last.
+  table("go-versions", GO_HEAD, countRows(go, (n) => (n.app_release ? `v${n.app_release}` : null), UNKNOWN_RELEASE), [1]);
+  table("rust-versions", RUST_HEAD, countRows(rust, (n) => rustVersion(n.version), "Unknown"), [1]);
   table(
     "rust-nodes",
-    ["Node ID", "Moniker", "Version", "App version", "celestia-app release", "Source"],
-    known
-      .filter((n) => n.implementation === "rust")
-      .map((n) => [
-        el("code", {}, n.id.slice(0, 12) + "…"),
-        n.moniker,
-        n.version,
-        n.app_version ? String(n.app_version) : "–",
-        n.app_release ?? "–",
-        n.source,
-      ]),
+    RUST_NODES_HEAD,
+    rust.map((n) => [el("code", {}, n.id.slice(0, 12) + "…"), n.moniker, rustVersion(n.version) ?? "–", n.source]),
   );
   const answered = known.filter((n) => n.app_release).length;
   $("release-coverage").textContent =
