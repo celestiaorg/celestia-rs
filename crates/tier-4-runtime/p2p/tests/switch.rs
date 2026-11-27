@@ -321,3 +321,95 @@ async fn a_fresh_node_gets_addresses_from_a_seed_that_hangs_up() {
     client.stop();
     seed.stop();
 }
+
+const BLOCK: u8 = 0x72;
+
+/// A reactor whose `receive` blocks until the test releases it, as a stuck
+/// reactor task does.
+#[derive(Default)]
+struct Blocked {
+    released: Mutex<bool>,
+    wake: std::sync::Condvar,
+}
+
+impl Blocked {
+    fn release(&self) {
+        *self.released.lock().unwrap() = true;
+        self.wake.notify_all();
+    }
+}
+
+/// Releases the reactor when dropped, so a failed assertion does not leave
+/// a worker thread blocked and the runtime unable to shut down.
+struct ReleaseOnDrop(Arc<Blocked>);
+
+impl Drop for ReleaseOnDrop {
+    fn drop(&mut self) {
+        self.0.release();
+    }
+}
+
+impl Reactor for Blocked {
+    fn name(&self) -> String {
+        "BLOCK".into()
+    }
+    fn channels(&self) -> Vec<ChannelDescriptor> {
+        vec![ChannelDescriptor::new(BLOCK, 5)]
+    }
+    fn receive(&self, _env: Envelope) -> Result<(), String> {
+        let mut released = self.released.lock().unwrap();
+        while !*released {
+            released = self.wake.wait(released).unwrap();
+        }
+        Ok(())
+    }
+}
+
+/// The wait for a closing peer's messages is bounded: when a reactor never
+/// finishes, the switch still removes the peer after the drain limit (5 s),
+/// and other peers keep exchanging messages during the wait.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_stuck_reactor_delays_peer_removal_by_at_most_the_drain_limit() {
+    let (a, echo_a, _) = node(13, vec![]);
+    let blocked = Arc::new(Blocked::default());
+    a.add_reactor(blocked.clone()).unwrap();
+    let _release = ReleaseOnDrop(blocked);
+    a.start().await.unwrap();
+    let a_addr = a.net_address().unwrap();
+    let (b, _, _) = node(14, vec![]);
+    b.add_reactor(Arc::new(Blocked::default())).unwrap();
+    b.start().await.unwrap();
+    let (c, _, _) = node(15, vec![]);
+    c.start().await.unwrap();
+    b.dial_peer_with_address(&a_addr).await.unwrap();
+    c.dial_peer_with_address(&a_addr).await.unwrap();
+    wait_for(|| a.peers().len() == 2).await;
+
+    // B's last message sticks in A's reactor; then B closes.
+    let pb = b.get_peer(&a.node_id()).unwrap();
+    assert!(pb.send(BLOCK, b"stuck".to_vec()).await);
+    pb.flush_stop();
+    let closed = tokio::time::Instant::now();
+
+    // C is served while A waits for B's messages.
+    let pc = c.get_peer(&a.node_id()).unwrap();
+    assert!(pc.send(ECHO, b"from c".to_vec()).await);
+    wait_for(|| echo_a.got.lock().unwrap().contains(&b"from c".to_vec())).await;
+    assert!(
+        a.get_peer(&b.node_id()).is_some(),
+        "B removed before the limit"
+    );
+
+    // B is removed after the limit even though the reactor never returns.
+    wait_for(|| a.get_peer(&b.node_id()).is_none()).await;
+    let waited = closed.elapsed();
+    assert!(
+        waited >= Duration::from_secs(4) && waited < Duration::from_secs(8),
+        "{waited:?}"
+    );
+    assert!(a.get_peer(&c.node_id()).is_some());
+
+    a.stop();
+    b.stop();
+    c.stop();
+}
