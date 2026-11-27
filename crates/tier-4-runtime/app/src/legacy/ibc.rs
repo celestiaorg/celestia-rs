@@ -401,7 +401,7 @@ fn go_path_escape(s: &str) -> String {
     use std::fmt::Write;
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
-        if b.is_ascii_alphanumeric() || b"-_.~$&+,;=:@".contains(&b) {
+        if b.is_ascii_alphanumeric() || b"-_.~$&+=:@".contains(&b) {
             out.push(char::from(b));
         } else {
             let _ = write!(out, "%{b:02X}");
@@ -1258,6 +1258,9 @@ mod tests {
             v6_key_text(e, &path).log,
             "The key used: /ibc/channelEnds%2Fports%2Ftransfer%2Fchannels%2Fchannel-3: invalid request"
         );
-        assert_eq!(go_path_escape("a b?c@d~"), "a%20b%3Fc@d~");
+        assert_eq!(
+            go_path_escape("a b?c@d~,;$&+=:/"),
+            "a%20b%3Fc@d~%2C%3B$&+=:%2F"
+        );
     }
 }
