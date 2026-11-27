@@ -11,6 +11,7 @@ pub use bridge::peer::light::{LightArgs, run_light};
 pub mod client;
 pub mod config;
 pub mod export;
+pub mod fibre;
 pub mod follow;
 mod follow_receipts;
 pub mod genesis;

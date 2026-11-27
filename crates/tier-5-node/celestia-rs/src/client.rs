@@ -607,6 +607,20 @@ pub fn slashing_unjail(home: &Path, f: &TxFlags) -> anyhow::Result<Value> {
     })
 }
 
+/// `tx valaddr set-host <host>`: registers the signer's validator as a
+/// Fibre provider at `host` (`host:port`), like Go's `celestia-appd tx
+/// valaddr set-host`.
+pub fn valaddr_set_host(home: &Path, f: &TxFlags, host: &str) -> anyhow::Result<Value> {
+    send_tx(home, f, |k| {
+        let msg = celestia_proto::celestia::valaddr::v1::MsgSetFibreProviderInfo {
+            signer: k.bech32(VAL_PREFIX),
+            host: host.to_owned(),
+        };
+        x_valaddr::validate_basic(&msg).map_err(|e| anyhow!("{}", e.log))?;
+        Ok((vec![Any::pack(&msg)], None))
+    })
+}
+
 /// `tx signal try-upgrade`.
 pub fn try_upgrade(home: &Path, f: &TxFlags) -> anyhow::Result<Value> {
     send_tx(home, f, |k| {
@@ -639,6 +653,7 @@ pub fn query<Req: prost::Name>(
 /// Query commands (`query <module> <cmd> [args]`).
 #[allow(clippy::too_many_lines)]
 pub fn query_cmd(home: &Path, node: &str, height: i64, args: &[String]) -> anyhow::Result<Value> {
+    use celestia_proto::celestia::valaddr;
     use celestia_proto::cosmos::{auth, bank, slashing, staking};
     let a = |i: usize| -> anyhow::Result<String> {
         args.get(i)
@@ -748,6 +763,24 @@ pub fn query_cmd(home: &Path, node: &str, height: i64, args: &[String]) -> anyho
             &slashing::v1beta1::QueryParamsResponse::full_name(),
             height,
         ),
+        ["valaddr", "provider", ..] => query(
+            home,
+            node,
+            "/celestia.valaddr.v1.Query/FibreProviderInfo",
+            &valaddr::v1::QueryFibreProviderInfoRequest {
+                validator_consensus_address: a(2)?,
+            },
+            &valaddr::v1::QueryFibreProviderInfoResponse::full_name(),
+            height,
+        ),
+        ["valaddr", "providers", ..] => query(
+            home,
+            node,
+            "/celestia.valaddr.v1.Query/AllBondedFibreProviders",
+            &valaddr::v1::QueryAllBondedFibreProvidersRequest {},
+            &valaddr::v1::QueryAllBondedFibreProvidersResponse::full_name(),
+            height,
+        ),
         ["tx", hash] => {
             let node = Node::new(&node_addr(home, node));
             let v = node.tx(&hash.to_uppercase()).or_else(|e| {
@@ -769,7 +802,7 @@ pub fn query_cmd(home: &Path, node: &str, height: i64, args: &[String]) -> anyho
             Ok(v)
         }
         _ => bail!(
-            "unknown query {:?}; supported: bank balances|total, auth account, staking validators|validator|delegation|delegations|params, slashing signing-info <valcons>|signing-infos|params, tx <hash>, block [height]",
+            "unknown query {:?}; supported: bank balances|total, auth account, staking validators|validator|delegation|delegations|params, slashing signing-info <valcons>|signing-infos|params, valaddr provider <valcons>|providers, tx <hash>, block [height]",
             args.join(" ")
         ),
     }

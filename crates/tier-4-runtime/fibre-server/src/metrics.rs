@@ -149,6 +149,7 @@ pub struct ServerMetrics {
     occupancy: Arc<Occupancy>,
 
     upload_in_flight: AtomicI64,
+    upload_memory_reserved: AtomicI64,
     upload_codes: [AtomicU64; 17],
     upload_duration: Histogram,
     upload_bytes: AtomicU64,
@@ -195,6 +196,9 @@ pub enum RejectReason {
     ShardInvalid,
     /// The request exceeded the codec's row or proof-segment limits.
     CodecLimit,
+    /// The in-flight upload memory budget (`max_inflight_upload_bytes`)
+    /// had no room for the declared message.
+    InflightMemory,
 }
 
 impl RejectReason {
@@ -208,6 +212,7 @@ impl RejectReason {
             Self::AssignmentInvalid => "assignment_invalid",
             Self::ShardInvalid => "shard_invalid",
             Self::CodecLimit => "codec_limit",
+            Self::InflightMemory => "inflight_memory",
         }
     }
 }
@@ -251,7 +256,9 @@ impl RpcTimer<'_> {
 }
 
 impl Drop for RpcTimer<'_> {
-    /// A handler dropped mid-flight (client cancel): counted as `Canceled`.
+    /// A handler dropped mid-flight: a client cancel is counted as
+    /// `Canceled`; a panic unwinding the handler as `Internal`, the status
+    /// the recovery interceptor returns to the client.
     fn drop(&mut self) {
         if !self.done {
             let m = self.metrics;
@@ -259,8 +266,13 @@ impl Drop for RpcTimer<'_> {
                 Rpc::Upload => (&m.upload_in_flight, &m.upload_codes),
                 Rpc::Download => (&m.download_in_flight, &m.download_codes),
             };
+            let code = if std::thread::panicking() {
+                Code::Internal
+            } else {
+                Code::Cancelled
+            };
             in_flight.fetch_sub(1, Ordering::Relaxed);
-            codes[Code::Cancelled as usize].fetch_add(1, Ordering::Relaxed);
+            codes[code as usize].fetch_add(1, Ordering::Relaxed);
         }
     }
 }
@@ -278,6 +290,7 @@ impl ServerMetrics {
         Self {
             occupancy,
             upload_in_flight: AtomicI64::new(0),
+            upload_memory_reserved: AtomicI64::new(0),
             upload_codes: codes(),
             upload_duration: Histogram::new(RPC_BUCKETS),
             upload_bytes: AtomicU64::new(0),
@@ -403,6 +416,23 @@ impl ServerMetrics {
     #[must_use]
     pub fn uploads_in_flight(&self) -> i64 {
         self.upload_in_flight.load(Ordering::Relaxed)
+    }
+
+    /// Bytes reserved by in-flight uploads under
+    /// `max_inflight_upload_bytes`.
+    #[must_use]
+    pub fn upload_memory_reserved(&self) -> i64 {
+        self.upload_memory_reserved.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn add_upload_memory(&self, bytes: i64) {
+        self.upload_memory_reserved
+            .fetch_add(bytes, Ordering::Relaxed);
+    }
+
+    /// Counts an `UploadShard` call refused before its handler ran.
+    pub(crate) fn count_upload_code(&self, code: Code) {
+        self.upload_codes[code as usize].fetch_add(1, Ordering::Relaxed);
     }
 
     /// Rejections with `reason`.
@@ -535,6 +565,12 @@ impl ServerMetrics {
             "fibre_server_upload_shard_occupancy_bytes",
             "Shard bytes tracked by the storage limiter: on-disk plus in-flight reserved",
             self.occupancy.usage(),
+        );
+        gauge(
+            &mut out,
+            "fibre_server_upload_memory_reserved_bytes",
+            "Bytes reserved by in-flight uploads under max_inflight_upload_bytes",
+            self.upload_memory_reserved.load(Ordering::Relaxed),
         );
         gauge(
             &mut out,

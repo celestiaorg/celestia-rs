@@ -327,7 +327,7 @@ impl HealthManager {
             res => {
                 return CheckResult::failed(
                     reason::APP_UNREACHABLE,
-                    "The app node did not answer a valid status request. Check app_grpc_address and that the node is running.",
+                    "The node did not report a valid status (no committed block yet, or its block store failed). Check the node log.",
                     res.err().map(|e| e.text()),
                 );
             }
@@ -336,7 +336,7 @@ impl HealthManager {
             return CheckResult::failed(
                 reason::CHAIN_MISMATCH,
                 format!(
-                    "The app node reports chain ID {}, expected {}.",
+                    "The node reports chain ID {}, expected {}.",
                     gostr::quote(&st.chain_id),
                     gostr::quote(chain_id)
                 ),
@@ -344,11 +344,7 @@ impl HealthManager {
             );
         }
         if st.catching_up {
-            return CheckResult::failed(
-                reason::APP_SYNCING,
-                "The app node is still syncing.",
-                None,
-            );
+            return CheckResult::failed(reason::APP_SYNCING, "The node is still syncing.", None);
         }
         let block_time = st.block_time.unwrap_or(UNIX_EPOCH);
         let age = SystemTime::now()
@@ -373,12 +369,12 @@ impl HealthManager {
             Ok(Ok(_)) => CheckResult::passed(),
             Ok(Err(StateError::ModuleUnavailable(e))) => CheckResult::failed(
                 reason::MODULE_UNAVAILABLE,
-                "The app node has no Fibre module. Check that app_grpc_address is the application gRPC endpoint of a chain with Fibre enabled.",
+                "The app has no Fibre module. Fibre needs app version 10 or later: wait for the chain to upgrade.",
                 Some(e),
             ),
             res => CheckResult::failed(
                 reason::APP_UNREACHABLE,
-                "The app node did not answer the Fibre module query.",
+                "The app did not answer the Fibre module query.",
                 Some(match res {
                     Ok(Err(e)) => e.to_string(),
                     _ => DEADLINE_EXCEEDED.into(),
@@ -393,17 +389,17 @@ impl HealthManager {
         match until(deadline, deps.signer.public_key()).await {
             Err(Probe::TimedOut) => CheckResult::failed(
                 reason::SIGNER_UNREACHABLE,
-                "The signer did not answer within the probe timeout. Check signer_grpc_address and the node's priv_validator_grpc_laddr.",
+                "The validator signer did not answer within the probe timeout. With a remote signer, check it is connected to priv_validator_laddr.",
                 Some(DEADLINE_EXCEEDED.into()),
             ),
             Err(Probe::Failed(e)) => CheckResult::failed(
                 reason::SIGNER_UNREACHABLE,
-                "The signer did not return a public key. Check signer_grpc_address and the node's priv_validator_grpc_laddr.",
+                "The validator signer did not return a public key. With a remote signer, check it is connected to priv_validator_laddr.",
                 Some(e),
             ),
             Ok(pk) if pk != deps.pub_key => CheckResult::failed(
                 reason::SIGNER_KEY_CHANGED,
-                "The signer reports a different public key than at startup. Confirm the validator key and restart.",
+                "The validator signer reports a different public key than at startup. Confirm the validator key and restart the node.",
                 None,
             ),
             Ok(_) => CheckResult::passed(),
@@ -416,7 +412,7 @@ impl HealthManager {
             Err(e) => {
                 return CheckResult::failed(
                     reason::APP_UNREACHABLE,
-                    "Could not fetch the validator set from the app node.",
+                    "Could not load the validator set from the node's state.",
                     Some(e.text()),
                 );
             }
@@ -440,13 +436,13 @@ impl HealthManager {
         match until(deadline, deps.state.provider_registration(&addr)).await {
             Err(e) => CheckResult::failed(
                 reason::APP_UNREACHABLE,
-                "Could not query the Fibre provider registration from the app node.",
+                "Could not query the Fibre provider registration from the app.",
                 Some(e.text()),
             ),
             Ok(reg) if !reg.found => CheckResult::failed(
                 reason::NOT_REGISTERED,
                 format!(
-                    "Register a Fibre provider host for validator {} with MsgSetFibreProviderInfo.",
+                    "Register a Fibre provider host for validator {} with MsgSetFibreProviderInfo (celestia-rs tx valaddr set-host <host:port>).",
                     cons_address(&deps.pub_key)
                 ),
                 None,
@@ -827,7 +823,7 @@ mod tests {
         m.cycle().await;
         assert_eq!(
             m.result("app").unwrap().message,
-            "The app node reports chain ID \"other\", expected \"test-chain\"."
+            "The node reports chain ID \"other\", expected \"test-chain\"."
         );
     }
 
