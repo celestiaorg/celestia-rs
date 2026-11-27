@@ -38,6 +38,8 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		args      []string
 	}{
 		{"v6", "", nil},
+		// The probe blocks of probes.go after the usual five.
+		{"v6-probes", "", []string{"-heights", "19", "-probes"}},
 		// On to the v8 hand-off: the home must become the committed home-46.
 		{"v6-to-v8", "home-46", []string{"-heights", "10", "-next-handoff"}},
 	} {

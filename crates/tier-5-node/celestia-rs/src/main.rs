@@ -317,6 +317,24 @@ struct StartArgs {
     /// `[instrumentation]`).
     #[arg(long = "prometheus-listen-addr")]
     prometheus_listen_addr: Option<String>,
+    /// Run the embedded Fibre server (`--fibre=false` turns it off;
+    /// default: config.toml `[fibre] enable`, off).
+    #[arg(
+        long,
+        env = "CELESTIA_RS_FIBRE",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    fibre: Option<bool>,
+    /// Fibre gRPC listen address, `host:port` (enables the Fibre server;
+    /// default: config.toml `[fibre] server_listen_address`, `0.0.0.0:7980`).
+    #[arg(
+        long = "fibre-listen-address",
+        env = "CELESTIA_RS_FIBRE_LISTEN_ADDRESS"
+    )]
+    fibre_listen_address: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -787,6 +805,9 @@ enum TxCmd {
     /// Slashing transactions.
     #[command(subcommand)]
     Slashing(SlashingTx),
+    /// Fibre provider registry (`x/valaddr`).
+    #[command(subcommand)]
+    Valaddr(ValaddrTx),
     /// Any registered message: `tx <module> <msg> --json '<fields>'`.
     #[command(external_subcommand)]
     Generic(Vec<String>),
@@ -887,6 +908,19 @@ enum SlashingTx {
         json: Option<String>,
     },
     /// Any other slashing message: `<msg> --json '<fields>'`.
+    #[command(external_subcommand)]
+    Other(Vec<String>),
+}
+
+#[derive(Subcommand, Debug)]
+enum ValaddrTx {
+    /// Register the Fibre provider host of the signer's validator:
+    /// `set-host <host:port> --from <validator-account-key>`.
+    SetHost {
+        /// Publicly reachable `host:port` of the Fibre server.
+        host: String,
+    },
+    /// Any other valaddr message: `<msg> --json '<fields>'`.
     #[command(external_subcommand)]
     Other(Vec<String>),
 }
@@ -1199,6 +1233,9 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
         opts.db.cache_size = a.db_cache_mib << 20;
     }
     opts.store.pruning = pruning;
+    // Prune storage off the block execution thread (same deletions, same
+    // retained versions; a crash before a prune lands leaves a superset).
+    opts.store.background_pruning = true;
     if let Ok(n) = usize::try_from(files.int(File::App, "iavl-cache-size"))
         && n > 0
     {
@@ -1467,6 +1504,13 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
         opts.bridge_no_announce.clone_from(&a.bridge_no_announce);
     }
     opts.mempool = config::mempool_options(&files)?;
+    opts.fibre = celestia_rs::fibre::options(
+        &files,
+        &celestia_rs::fibre::FibreFlags {
+            enable: a.fibre,
+            listen_address: a.fibre_listen_address.clone(),
+        },
+    )?;
     opts.priv_validator_laddr = cfg("priv_validator_laddr");
     opts.block_sync = !a.no_block_sync;
     opts.discard_abci_responses = files.bool(File::Config, "storage.discard_abci_responses");
@@ -1880,6 +1924,11 @@ fn tx_cmd(home: &Path, a: TxArgs) -> anyhow::Result<()> {
                 .chain(args.iter().cloned())
                 .collect(),
         ),
+        TxCmd::Valaddr(ValaddrTx::Other(args)) => Some(
+            std::iter::once("valaddr".to_owned())
+                .chain(args.iter().cloned())
+                .collect(),
+        ),
         _ => None,
     };
     if let Some(args) = generic {
@@ -1954,10 +2003,15 @@ fn tx_cmd(home: &Path, a: TxArgs) -> anyhow::Result<()> {
                 None => client::slashing_unjail(home, &f)?,
             };
         }
+        TxCmd::Valaddr(ValaddrTx::SetHost { host }) => {
+            need_from(&f)?;
+            client::valaddr_set_host(home, &f, &host)?;
+        }
         TxCmd::Generic(_)
         | TxCmd::Bank(BankTx::Other(_))
         | TxCmd::Staking(StakingTx::Other(_))
-        | TxCmd::Slashing(SlashingTx::Other(_)) => {
+        | TxCmd::Slashing(SlashingTx::Other(_))
+        | TxCmd::Valaddr(ValaddrTx::Other(_)) => {
             unreachable!("handled above")
         }
     }
@@ -2037,6 +2091,54 @@ mod cli_tests {
             let cli = Cli::try_parse_from(["celestia-rs", "start"]).unwrap();
             assert!(matches!(cli.command, Cmd::Start(args) if args.bridge_rpc_listen.is_none()));
         }
+    }
+
+    fn fibre_flags(args: &[&str]) -> (Option<bool>, Option<String>) {
+        let cli = Cli::try_parse_from(["celestia-rs", "start"].iter().chain(args)).unwrap();
+        let Cmd::Start(a) = cli.command else {
+            panic!("not start")
+        };
+        (a.fibre, a.fibre_listen_address)
+    }
+
+    #[test]
+    fn fibre_flags_override_the_file() {
+        // The environment variables are unset in tests (clap reads them
+        // when the flags are absent).
+        assert_eq!(fibre_flags(&[]), (None, None));
+        assert_eq!(fibre_flags(&["--fibre"]), (Some(true), None));
+        assert_eq!(fibre_flags(&["--fibre=false"]), (Some(false), None));
+        assert_eq!(
+            fibre_flags(&["--fibre-listen-address", "127.0.0.1:7981"]),
+            (None, Some("127.0.0.1:7981".into()))
+        );
+        // `--fibre` takes no separate value: the next word stays a flag.
+        assert_eq!(
+            fibre_flags(&["--fibre", "--fibre-listen-address", ":1"]),
+            (Some(true), Some(":1".into()))
+        );
+        assert!(Cli::try_parse_from(["celestia-rs", "start", "--fibre=maybe"]).is_err());
+    }
+
+    #[test]
+    fn valaddr_set_host_parses() {
+        let cli = Cli::try_parse_from([
+            "celestia-rs",
+            "tx",
+            "valaddr",
+            "set-host",
+            "203.0.113.7:7980",
+            "--from",
+            "validator",
+        ])
+        .unwrap();
+        let Cmd::Tx(t) = cli.command else {
+            panic!("not tx")
+        };
+        assert!(
+            matches!(t.cmd, TxCmd::Valaddr(ValaddrTx::SetHost { ref host }) if host == "203.0.113.7:7980")
+        );
+        assert_eq!(t.flags.from, "validator");
     }
 
     #[test]

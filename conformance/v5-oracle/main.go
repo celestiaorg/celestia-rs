@@ -123,6 +123,8 @@ type TxResult struct {
 	Log       string  `json:"log"`
 	Info      string  `json:"info"`
 	Events    []Event `json:"events"`
+	// Signers is ExecTxResult.Signers, recorded with -probes only.
+	Signers []string `json:"signers,omitempty"`
 }
 
 // Event is an ABCI event with its attributes in order.
@@ -176,6 +178,7 @@ func run() error {
 	heights := flag.Int64("heights", 5, "number of blocks to execute after the hand-off height")
 	out := flag.String("out", "", "output directory")
 	signBytes := flag.String("signbytes", "", "write the sign-bytes vectors (signbytes.go) to this file and exit")
+	probes := flag.Bool("probes", false, "after the usual five blocks, run the probe blocks of probes.go (use -heights 8) and record tx signers")
 	nextHandoff := flag.Bool("next-handoff", false, "after the last block, require plan \"v6\" at the next height and rewrite handoff.json in the -handoff home for conformance/v6-oracle")
 	flag.Parse()
 	if *signBytes != "" {
@@ -251,6 +254,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	s.probes = *probes
 	kvUpgrade, err := upgradeOnly(*home, ho, s.blockTime(ho.Height+1), prev)
 	if err != nil {
 		return err
@@ -317,6 +321,9 @@ func run() error {
 				Info:      r.Info,
 				Events:    events(r.Events),
 			})
+			if s.probes {
+				txResults[len(txResults)-1].Signers = txSigners(r)
+			}
 		}
 		dumped.TxResults = txs3
 		fixture.Heights = append(fixture.Heights, dumped)

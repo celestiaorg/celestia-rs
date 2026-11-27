@@ -336,6 +336,19 @@ impl Ed25519RawBytesSigner {
     }
 }
 
+impl Ed25519RawBytesSigner {
+    /// Overwrites the key with zeros (also done on drop).
+    fn wipe(&mut self) {
+        zeroize::Zeroize::zeroize(&mut self.private_key);
+    }
+}
+
+impl Drop for Ed25519RawBytesSigner {
+    fn drop(&mut self) {
+        self.wipe();
+    }
+}
+
 impl fmt::Debug for Ed25519RawBytesSigner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Ed25519RawBytesSigner")
@@ -931,6 +944,18 @@ pub fn verify_cert(
 mod tests {
     use super::*;
     use serde::Deserialize;
+
+    /// The key is wiped on drop and never printed.
+    #[test]
+    fn raw_bytes_signer_key_is_wiped_and_secret_free() {
+        let seed = [0x5a; 32];
+        let mut s = Ed25519RawBytesSigner::from_seed(&seed);
+        let debug = format!("{s:?}");
+        assert!(!debug.contains(&hex::encode(seed)), "{debug}");
+        assert!(!debug.contains(&hex::encode(&seed[..8])), "{debug}");
+        s.wipe();
+        assert_eq!(s.private_key, [0; 64]);
+    }
 
     #[derive(Deserialize)]
     struct VectorFile {

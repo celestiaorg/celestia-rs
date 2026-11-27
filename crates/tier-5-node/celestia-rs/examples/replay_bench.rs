@@ -14,6 +14,7 @@
 //!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR] \
 //!   [--iavl-cache 781250] [--db-cache-mib 512] [--pruning-interval 1] \
 //!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl] \
+//!   [--background-pruning true] \
 //!   [--home DIR [--in-place true]] [--blocks-home DIR] [--save-blocks false]
 //! ```
 //!
@@ -38,6 +39,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, anyhow, bail, ensure};
 use celestia_rs::{node, sync};
+use ctypes::proto::abci;
 use ctypes::{BLOCK_PART_SIZE_BYTES, Block, BlockId};
 use nodestore::{BlockExecutor, Handshaker, State};
 use prost::Message as _;
@@ -47,6 +49,8 @@ use prost::Message as _;
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
+// Independent command-line switches.
+#[allow(clippy::struct_excessive_bools)]
 struct Args {
     blocks: i64,
     base: PathBuf,
@@ -56,6 +60,7 @@ struct Args {
     pruning_interval: u64,
     discard_abci_responses: bool,
     blocks_jsonl: Vec<PathBuf>,
+    background_pruning: bool,
     home: Option<PathBuf>,
     in_place: bool,
     blocks_home: Option<PathBuf>,
@@ -77,6 +82,8 @@ fn args() -> anyhow::Result<Args> {
         // config.toml `storage.discard_abci_responses` (template: true).
         discard_abci_responses: true,
         blocks_jsonl: Vec::new(),
+        // `celestia-rs start` prunes in the background.
+        background_pruning: true,
         home: None,
         in_place: false,
         blocks_home: None,
@@ -93,6 +100,7 @@ fn args() -> anyhow::Result<Args> {
             "--db-cache-mib" => a.db_cache_mib = v.parse()?,
             "--pruning-interval" => a.pruning_interval = v.parse()?,
             "--discard-abci-responses" => a.discard_abci_responses = v.parse()?,
+            "--background-pruning" => a.background_pruning = v.parse()?,
             "--blocks-jsonl" => a.blocks_jsonl.extend(v.split(',').map(PathBuf::from)),
             "--home" => a.home = Some(v.into()),
             "--in-place" => a.in_place = v.parse()?,
@@ -165,9 +173,125 @@ fn cached_block(cache: &Path, height: i64) -> anyhow::Result<Block> {
     )?)?)
 }
 
+/// Time spent in the app's `FinalizeBlock` and `Commit`.
+#[derive(Debug, Default, Clone, Copy)]
+struct AbciTime {
+    finalize: Duration,
+    commit: Duration,
+}
+
+/// [`node::AppAdapter`] timing `FinalizeBlock` and `Commit`.
+struct Timed {
+    inner: node::AppAdapter,
+    time: Arc<Mutex<AbciTime>>,
+}
+
+impl Timed {
+    fn add(&self, t: Instant, f: impl FnOnce(&mut AbciTime) -> &mut Duration) {
+        let mut time = self
+            .time
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *f(&mut time) += t.elapsed();
+    }
+}
+
+impl nodestore::AppConn for Timed {
+    fn info(&mut self) -> nodestore::Result<abci::ResponseInfo> {
+        self.inner.info()
+    }
+    fn init_chain(
+        &mut self,
+        req: abci::RequestInitChain,
+    ) -> nodestore::Result<abci::ResponseInitChain> {
+        self.inner.init_chain(req)
+    }
+    fn prepare_proposal(
+        &mut self,
+        req: abci::RequestPrepareProposal,
+    ) -> nodestore::Result<abci::ResponsePrepareProposal> {
+        self.inner.prepare_proposal(req)
+    }
+    fn process_proposal(
+        &mut self,
+        req: abci::RequestProcessProposal,
+    ) -> nodestore::Result<abci::ResponseProcessProposal> {
+        self.inner.process_proposal(req)
+    }
+    fn finalize_block(
+        &mut self,
+        req: abci::RequestFinalizeBlock,
+    ) -> nodestore::Result<abci::ResponseFinalizeBlock> {
+        let t = Instant::now();
+        let r = self.inner.finalize_block(req);
+        self.add(t, |a| &mut a.finalize);
+        r
+    }
+    fn commit(&mut self) -> nodestore::Result<abci::ResponseCommit> {
+        let t = Instant::now();
+        let r = self.inner.commit();
+        self.add(t, |a| &mut a.commit);
+        r
+    }
+}
+
+/// Counters read between blocks.
+struct Probes {
+    abci: Arc<Mutex<AbciTime>>,
+    /// IAVL node cache: hits, misses, disk reads, disk bytes, reads made
+    /// to resolve a child reference, and of those, records later decoded.
+    nodes: Box<dyn Fn() -> [u64; 6]>,
+}
+
+impl Probes {
+    fn sample(&self) -> Sample {
+        Sample {
+            abci: *self
+                .abci
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            nodes: (self.nodes)(),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct Sample {
+    abci: AbciTime,
+    nodes: [u64; 6],
+}
+
+impl Sample {
+    /// What happened between `earlier` and `self`, per block over `n`.
+    #[allow(clippy::cast_precision_loss)]
+    fn report(&self, earlier: &Self, n: usize) -> String {
+        let n = n.max(1) as f64;
+        let d = |i: usize| self.nodes[i].saturating_sub(earlier.nodes[i]) as f64;
+        let ms = |a: Duration, b: Duration| a.saturating_sub(b).as_secs_f64() * 1e3 / n;
+        let lookups = d(0) + d(1);
+        format!(
+            "finalize {:.1} ms, commit {:.1} ms; node cache hit {:.1}% of {:.0}/block, \
+             disk reads {:.0}/block (for child refs {:.0}, later traversed {:.0}), \
+             {:.0} KiB/block",
+            ms(self.abci.finalize, earlier.abci.finalize),
+            ms(self.abci.commit, earlier.abci.commit),
+            if lookups > 0.0 {
+                100.0 * d(0) / lookups
+            } else {
+                0.0
+            },
+            lookups / n,
+            d(2) / n,
+            d(4) / n,
+            d(5) / n,
+            d(3) / 1024.0 / n,
+        )
+    }
+}
+
 /// Opens the node at `home` as `celestia-rs start` does (app, stores,
 /// evidence pool, handshake: InitChain on a fresh home).
-fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State)> {
+fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State, Probes)> {
     let genesis = node::load_genesis(home)?;
     let mut opts = app::AppOptions {
         chain_id: Some(genesis.chain_id.clone()),
@@ -178,22 +302,41 @@ fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State)> {
     opts.store.node_cache_size = a.iavl_cache;
     opts.db.cache_size = a.db_cache_mib << 20;
     opts.store.pruning.interval = a.pruning_interval;
+    opts.store.background_pruning = a.background_pruning;
     let app = app::App::open_with(home, opts).map_err(|e| anyhow!("open app: {}", e.log))?;
     let (bs, mut ss) = node::open_stores(home)?;
     ss.discard_abci_responses = a.discard_abci_responses;
     let state = ss.load_from_db_or_genesis(&genesis)?;
     let evpool = sync::open_evidence_pool(home, &ss, &bs, &state)?;
+    let cache = Arc::clone(app.multistore().root().node_cache());
+    let probes = Probes {
+        abci: Arc::default(),
+        nodes: Box::new(move || {
+            let s = cache.stats();
+            [
+                s.hits,
+                s.misses,
+                s.disk_reads,
+                s.disk_bytes,
+                s.ref_reads,
+                s.ref_decodes,
+            ]
+        }),
+    };
     let mut exec = BlockExecutor::new(
         ss.clone(),
         bs.clone(),
-        Box::new(node::AppAdapter(Arc::new(Mutex::new(app)))),
+        Box::new(Timed {
+            inner: node::AppAdapter(Arc::new(Mutex::new(app))),
+            time: Arc::clone(&probes.abci),
+        }),
         Arc::new(nodestore::NopMempool),
         evpool.executor_handle(),
     );
     let state = Handshaker::new(ss, state, bs, &genesis, consensus::ticker::system_now())
         .handshake(&mut exec)
         .map_err(|e| anyhow!("handshake: {e}"))?;
-    Ok((exec, state))
+    Ok((exec, state, probes))
 }
 
 fn copy_dir(from: &Path, to: &Path) -> anyhow::Result<()> {
@@ -241,6 +384,26 @@ fn base_copy(a: &Args) -> anyhow::Result<tempfile::TempDir> {
     Ok(tmp)
 }
 
+/// The run's totals; `app_hash_mismatches: 0` (a mismatch stops the run).
+fn summary(times: &[Duration], txs: usize, total: Duration, digest: &[u8]) {
+    let mut sorted = times.to_vec();
+    sorted.sort();
+    #[allow(clippy::cast_precision_loss)]
+    let n = times.len() as f64;
+    println!("blocks: {}", times.len());
+    println!("txs: {txs}");
+    println!(
+        "exec_ms_per_block: {:.1}",
+        times.iter().sum::<Duration>().as_secs_f64() * 1e3 / n
+    );
+    println!("p50_ms: {:.1}", percentile(&sorted, 0.5));
+    println!("p90_ms: {:.1}", percentile(&sorted, 0.9));
+    println!("max_ms: {:.1}", percentile(&sorted, 1.0));
+    println!("wall_secs: {:.1}", total.as_secs_f64());
+    println!("app_hash_mismatches: 0");
+    println!("responses_digest: {}", hex::encode(digest));
+}
+
 fn main() -> anyhow::Result<()> {
     let a = args()?;
     // Holds the copied home until the run ends.
@@ -260,7 +423,7 @@ fn main() -> anyhow::Result<()> {
         tmp = base_copy(&a)?;
         tmp.path().join("home")
     };
-    let (mut exec, mut state) = open(&home, &a)?;
+    let (mut exec, mut state, probes) = open(&home, &a)?;
     let first = state.last_block_height + 1;
     if a.home.is_none() {
         ensure!(first == 1, "base home is past genesis");
@@ -277,6 +440,8 @@ fn main() -> anyhow::Result<()> {
     // each next header's last_results_hash in validate_block.
     let mut digest = [0u8; 32];
     let started = Instant::now();
+    let first_sample = probes.sample();
+    let mut window = first_sample;
     for h in first..first + a.blocks {
         let mut block = next;
         next = blocks.get(h + 1)?;
@@ -319,25 +484,18 @@ fn main() -> anyhow::Result<()> {
         if times.len() % 100 == 0 {
             let w = &times[times.len() - 100..];
             let ms = w.iter().sum::<Duration>().as_secs_f64() * 10.0;
-            eprintln!("height {h}: {ms:.1} ms/block over the last 100");
+            let now = probes.sample();
+            eprintln!(
+                "height {h}: {ms:.1} ms/block over the last 100 ({})",
+                now.report(&window, 100)
+            );
+            window = now;
         }
     }
-    let total = started.elapsed();
-    let mut sorted = times.clone();
-    sorted.sort();
-    #[allow(clippy::cast_precision_loss)]
-    let n = times.len() as f64;
-    println!("blocks: {}", times.len());
-    println!("txs: {txs}");
+    summary(&times, txs, started.elapsed(), &digest);
     println!(
-        "exec_ms_per_block: {:.1}",
-        times.iter().sum::<Duration>().as_secs_f64() * 1e3 / n
+        "per_block: {}",
+        probes.sample().report(&first_sample, times.len())
     );
-    println!("p50_ms: {:.1}", percentile(&sorted, 0.5));
-    println!("p90_ms: {:.1}", percentile(&sorted, 0.9));
-    println!("max_ms: {:.1}", percentile(&sorted, 1.0));
-    println!("wall_secs: {:.1}", total.as_secs_f64());
-    println!("app_hash_mismatches: 0");
-    println!("responses_digest: {}", hex::encode(digest));
     Ok(())
 }

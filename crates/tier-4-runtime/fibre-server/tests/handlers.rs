@@ -88,6 +88,42 @@ async fn rejects_promises_the_chain_would_reject() {
     t.server.stop(Duration::from_secs(1)).await.unwrap();
 }
 
+/// Junk promises (bad signature, other chain, below the local minimum)
+/// are refused by the stateless checks, in Go's order, without a chain
+/// query: they never reach the node's app lock.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn junk_promises_never_reach_the_chain() {
+    let t = start().await;
+    let f = &t.fixture;
+    let mut bad_sig = f.request();
+    bad_sig.promise.as_mut().unwrap().signature[0] ^= 1;
+    let other_chain = resigned(f, |r| r.promise.as_mut().unwrap().chain_id = "other".into());
+    let cases = [
+        (
+            bad_sig,
+            "payment promise verification failed: payment promise validation failed: signature verification failed",
+        ),
+        (
+            other_chain,
+            "payment promise verification failed: payment promise chain ID mismatch: expected celestia, got other",
+        ),
+    ];
+    for (req, msg) in cases {
+        let err = t.server.upload_shard(req).await.unwrap_err();
+        assert_eq!(err.code(), Code::InvalidArgument);
+        assert_eq!(err.message(), msg);
+    }
+    t.server.set_min_upload_size(i64::MAX);
+    let err = t.server.upload_shard(f.request()).await.unwrap_err();
+    assert!(
+        err.message().contains("below local minimum"),
+        "{}",
+        err.message()
+    );
+    assert_eq!(t.chain.verify_calls.load(Ordering::SeqCst), 0);
+    t.server.stop(Duration::from_secs(1)).await.unwrap();
+}
+
 /// Go TestServerLocalMinUploadSize.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_min_upload_size() {
@@ -272,7 +308,7 @@ async fn start_errors() {
     assert_eq!(
         err,
         StartError::Other(
-            "deriving initial storage budget: full-stake storage budget must be positive (got 0); pass --unlimited-budget to disable the limiter".into()
+            "deriving initial storage budget: full-stake storage budget must be positive (got 0); set unlimited_budget to disable the limiter".into()
         )
     );
     server.stop(Duration::from_secs(1)).await.unwrap();
