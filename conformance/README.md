@@ -772,7 +772,12 @@ fail at the same point of the ante handler or message handler as Go:
   unbonding entry, out of gas in `MsgDelegate` and `MsgUndelegate` (at
   100,000 gas, as mainnet had), a delegation above the balance, a
   vote on an unknown proposal, and `MsgSubmitEvidence` with an
-  equivocation time at the Unix epoch and at Go's zero time.
+  equivocation time at the Unix epoch and at Go's zero time;
+- BeginBlock evidence at app version 3: val2 double-signs (block 14:
+  slashed, jailed and tombstoned), then again (block 15: ignored, already
+  tombstoned) with evidence for an address that is not a validator
+  (ignored in cosmos-sdk v0.46). The synthetic blocks carry the evidence
+  and the oracle passes it as `ByzantineValidators`.
 
 Blob transactions that fail `ValidateBasic` are not in it: ProcessProposal
 rejects a block that holds one. [`fixtures/synthetic/failures-v1-v3`](fixtures/synthetic/failures-v1-v3)

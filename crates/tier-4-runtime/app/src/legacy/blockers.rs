@@ -97,8 +97,7 @@ fn begin_module(ctx: &mut Context<'_>, module: &str, header: &TmHeader) -> Resul
         "mint" => x_mint::begin_block(ctx),
         "distribution" => x_distribution::begin_block(ctx),
         "slashing" => x_slashing::begin_block(ctx),
-        "evidence" if ctx.misbehavior.is_empty() => Ok(()),
-        "evidence" => Err(not_ported("evidence")),
+        "evidence" => super::evidence::begin_block(ctx),
         "staking" => x_staking::abci::begin_block_v046(ctx, header),
         "ibc" => ibc_begin_block(ctx),
         // cosmos-sdk v0.46 has no limit on the grants pruned per block.

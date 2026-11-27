@@ -552,8 +552,13 @@ func execute(cfg runConfig) error {
 				return fmt.Errorf("height %d: %w", height, err)
 			}
 		}
+		byzantine := []abci.Evidence{}
 		if len(block.Block.Evidence.Evidence) != 0 {
-			return fmt.Errorf("height %d: evidence is not supported", height)
+			src, ok := syn.(interface{ byzantineValidators(int64) []abci.Evidence })
+			if !ok {
+				return fmt.Errorf("height %d: evidence is not supported", height)
+			}
+			byzantine = src.byzantineValidators(height)
 		}
 		blockHash, err := hex.DecodeString(block.BlockID.Hash)
 		if err != nil {
@@ -562,9 +567,10 @@ func execute(cfg runConfig) error {
 
 		blockStart := time.Now()
 		begin := replayApp.BeginBlock(abci.RequestBeginBlock{
-			Hash:           blockHash,
-			Header:         *header,
-			LastCommitInfo: lastCommit,
+			Hash:                blockHash,
+			Header:              *header,
+			LastCommitInfo:      lastCommit,
+			ByzantineValidators: byzantine,
 		})
 		blockTimes.begin += time.Since(blockStart)
 		var results []*abci.ResponseDeliverTx

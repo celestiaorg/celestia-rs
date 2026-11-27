@@ -324,18 +324,36 @@ pub fn decided_last_commit(block: &serde_json::Value, last_vals: &ValidatorSet) 
     }
 }
 
+/// The block's evidence as Tendermint v0.34 passes it to BeginBlock
+/// (`DuplicateVoteEvidence.ABCI`). Only duplicate-vote evidence is read.
+pub fn misbehavior(block: &serde_json::Value) -> Vec<abci::Misbehavior> {
+    block["block"]["evidence"]["evidence"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            assert_eq!(e["type"], "tendermint/DuplicateVoteEvidence");
+            let v = &e["value"];
+            abci::Misbehavior {
+                r#type: abci::MisbehaviorType::DuplicateVote as i32,
+                validator: Some(abci::Validator {
+                    address: hex_field(&v["vote_a"]["validator_address"]),
+                    power: int(&v["ValidatorPower"]),
+                }),
+                height: int(&v["vote_a"]["height"]),
+                time: Some(timestamp(v["Timestamp"].as_str().unwrap())),
+                total_voting_power: int(&v["TotalVotingPower"]),
+            }
+        })
+        .collect()
+}
+
 /// `RequestFinalizeBlock` for an archived block.
 pub fn finalize_request(
     block: &serde_json::Value,
     last_vals: &ValidatorSet,
 ) -> RequestFinalizeBlock {
     let h = header(block);
-    assert!(
-        block["block"]["evidence"]["evidence"]
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
     let txs = block["block"]["data"]["txs"]
         .as_array()
         .unwrap()
@@ -350,7 +368,7 @@ pub fn finalize_request(
     RequestFinalizeBlock {
         txs,
         decided_last_commit: Some(decided_last_commit(block, last_vals)),
-        misbehavior: Vec::new(),
+        misbehavior: misbehavior(block),
         hash: hex_field(&block["block_id"]["hash"]),
         height: h.height,
         time: h.time,

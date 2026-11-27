@@ -30,8 +30,12 @@ package main
 // rejects a block that holds one, so mainnet blocks cannot contain them.
 
 import (
+	"bytes"
 	"fmt"
 	evidencetypes "github.com/cosmos/cosmos-sdk/x/evidence/types"
+	"github.com/tendermint/tendermint/crypto/ed25519"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	tmtypes "github.com/tendermint/tendermint/types"
 	"strings"
 	"time"
 
@@ -142,6 +146,48 @@ var failuresSpec = &chainSpec{
 	absent:          func(int64, int, int) bool { return false },
 	rawTxs:          func(s *synth, a *app.App, height int64) ([][]byte, error) { return s.failureTxs(a, height) },
 	noHandoff:       true,
+	evidence:        failureEvidence,
+}
+
+// syntheticValidatorAddress is the consensus address of synthetic
+// validator name.
+func syntheticValidatorAddress(name string) []byte {
+	return ed25519.GenPrivKeyFromSecret([]byte("consensus " + name)).PubKey().Address()
+}
+
+// failureEvidence is BeginBlock double-sign evidence at app version 3:
+// val2 double-signs at block 14 (slashed, jailed and tombstoned), then
+// again at 15 (ignored: tombstoned) along with evidence for an address
+// that is not a validator (ignored in v0.46; cosmos-sdk v0.50 at app
+// version 9 fails BeginBlock).
+func failureEvidence(height int64, vals *tmtypes.ValidatorSet, t time.Time) []tmtypes.Evidence {
+	dup := func(addr []byte, idx int32, power int64) tmtypes.Evidence {
+		vote := func(hash byte) *tmtypes.Vote {
+			return &tmtypes.Vote{
+				Type: tmproto.PrevoteType, Height: height - 1, Round: 0,
+				BlockID:          tmtypes.BlockID{Hash: bytes.Repeat([]byte{hash}, 32), PartSetHeader: tmtypes.PartSetHeader{Total: 1, Hash: bytes.Repeat([]byte{hash}, 32)}},
+				Timestamp:        t.Add(-15 * time.Second),
+				ValidatorAddress: addr, ValidatorIndex: idx,
+				Signature: bytes.Repeat([]byte{hash}, 64),
+			}
+		}
+		return &tmtypes.DuplicateVoteEvidence{
+			VoteA: vote(0xa1), VoteB: vote(0xb2),
+			TotalVotingPower: vals.TotalVotingPower(), ValidatorPower: power,
+			Timestamp: t.Add(-15 * time.Second),
+		}
+	}
+	idx, val := vals.GetByAddress(syntheticValidatorAddress("val2"))
+	switch height {
+	case 14:
+		return []tmtypes.Evidence{dup(val.Address, idx, val.VotingPower)}
+	case 15:
+		return []tmtypes.Evidence{
+			dup(syntheticValidatorAddress("val2"), 2, 10),
+			dup(bytes.Repeat([]byte{0xee}, 20), 0, 10),
+		}
+	}
+	return nil
 }
 
 func (s *synth) failureTxs(a *app.App, height int64) ([][]byte, error) {
