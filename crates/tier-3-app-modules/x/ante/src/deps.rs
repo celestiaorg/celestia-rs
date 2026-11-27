@@ -490,11 +490,15 @@ mod tests {
     /// whose `MaxAgeNumBlocks` is `appconsts.MaxAgeNumBlocks`: 242,640 in
     /// v6.4.4 and v8.0.8, 559,940 in v9.0.8, 404,400 in v10.5.0, v10.6.0
     /// and v11.0.0-mocha (the filter code is the same in all of them).
-    /// (Release 8's own value is in `sdk::version`'s tests until app
-    /// version 8 runs as itself; it runs as 9 here.)
     #[test]
     fn consensus_filter_requires_the_release_max_age_num_blocks() {
-        for (app, want) in [(6, 242_640), (9, 559_940), (10, 404_400), (11, 404_400)] {
+        for (app, want) in [
+            (6, 242_640),
+            (8, 242_640),
+            (9, 559_940),
+            (10, 404_400),
+            (11, 404_400),
+        ] {
             let mut ms = sdk::MultiStore::new();
             let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
             ctx.consensus_params = ConsensusParams {
