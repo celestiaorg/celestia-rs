@@ -787,7 +787,17 @@ ibc-go simapp chains as counterparties:
   receives twice. ibc-go v6 gives each a `NOOP` result (code 0). Then
   three failures that mainnet has: a transfer of more than the balance, a
   transfer whose timeout height B has passed, and an open-ack of an open
-  channel. The fixture keeps its `ibc-v2` name.
+  channel. Then `MsgChannelCloseInit` on a transfer channel (refused);
+  ibc client proposals (an expired client recovered by a passed
+  `ClientUpdateProposal`, one whose subject is Active, and an ibc
+  `UpgradeProposal`, which celestia-app refuses); `MsgUpgradeClient` of a
+  client of B whose upgrade B committed (two failures, the upgrade, then a
+  failure on the upgraded client, which is Expired); `MsgTimeoutOnClose`
+  of a transfer whose channel end on B is CLOSED (set in B's store, as a
+  counterparty that allows closing would; a failure, the refund, then a
+  `NOOP`); and a passed parameter change that sets PFM's `FeePercentage`
+  to 10%, then a forward from B through A to C that pays the fee to the
+  community pool. The fixture keeps its `ibc-v2` name.
 
 The test records A's genesis, each BeginBlock header and the
 transactions of each block. It replays them in a fresh app through the
@@ -796,8 +806,7 @@ run's. Each block gets one BeginBlock at one time (ibctesting re-runs
 BeginBlock when its clock moves, which no consensus engine does), so
 the clients that A hosts allow an hour of clock drift. The blocks carry
 no last commit. [`fixtures/synthetic/ibc-v2`](fixtures/synthetic/ibc-v2)
-holds heights 0 to 151; the test requires it byte for byte. To
-holds heights 0 to 124; the test requires it byte for byte. To
+holds heights 0 to 205; the test requires it byte for byte. To
 regenerate it:
 
 ```sh
