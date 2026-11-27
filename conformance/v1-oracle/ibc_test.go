@@ -679,6 +679,7 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 	runClientProposals(t, coord, chainA, chainB)
 	runClientUpgrade(t, coord, chainA, chainB)
 	runTimeoutOnClose(t, coord, chainA, chainB)
+	runPFMFee(t, coord, chainA, chainB, chainC, pathAB, pathAC, voucher, timeout)
 	// A last empty block commits the last transaction's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc
@@ -1235,5 +1236,61 @@ func runTimeoutOnClose(t *testing.T, coord *ibctesting.Coordinator, chainA, chai
 	_, err = chainA.SendMsgs(msg)
 	must(t, err)
 	_, err = chainA.SendMsgs(msg)
+	must(t, err)
+}
+
+// runPFMFee sets packet-forward-middleware's FeePercentage to 10% by a
+// passed parameter change, then forwards 1,005 utia from B through A to
+// C: A pays the fee, 100.5 rounded half to even (100 utia), from the
+// forward's receiver to the community pool, and forwards 905 utia.
+func runPFMFee(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB, chainC *ibctesting.TestChain,
+	pathAB, pathAC *ibctesting.Path, voucher string, timeout clienttypes.Height,
+) {
+	fee := paramproposal.NewParameterChangeProposal("pfm fee", "a community pool fee",
+		[]paramproposal.ParamChange{paramproposal.NewParamChange("packetfowardmiddleware", "FeePercentage", `"0.100000000000000000"`)})
+	submit, err := govv1beta1.NewMsgSubmitProposal(fee, sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, govMinDeposit)), chainA.SenderAccount.GetAddress())
+	must(t, err)
+	_, err = chainA.SendMsgs(submit)
+	must(t, err)
+	proposalID, err := chainA.App.(*recApp).GovKeeper.GetProposalID(chainA.GetContext())
+	must(t, err)
+	proposalID--
+	sender, senderKey := chainA.SenderAccount, chainA.SenderPrivKey
+	chainA.SenderAccount, chainA.SenderPrivKey = chainA.SenderAccounts[1].SenderAccount, chainA.SenderAccounts[1].SenderPrivKey
+	_, err = chainA.SendMsgs(govv1beta1.NewMsgVote(chainA.SenderAccount.GetAddress(), proposalID, govv1beta1.OptionYes))
+	must(t, err)
+	chainA.SenderAccount, chainA.SenderPrivKey = sender, senderKey
+	coord.IncrementTimeBy(govPeriod + time.Second)
+	coord.CommitBlock(chainA)
+	coord.CommitBlock(chainA)
+	if p, _ := chainA.App.(*recApp).GovKeeper.GetProposal(chainA.GetContext(), proposalID); p.Status != govv1.StatusPassed {
+		t.Fatalf("pfm fee proposal is %s", p.Status)
+	}
+	memo := fmt.Sprintf(`{"forward":{"receiver":"%s","port":"transfer","channel":"%s"}}`, chainC.SenderAccount.GetAddress(), pathAC.EndpointA.ChannelID)
+	must(t, pathAB.EndpointB.UpdateClient())
+	res, err := chainB.SendMsgs(transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointB.ChannelID,
+		sdk.NewInt64Coin(voucher, 1_005), chainB.SenderAccount.GetAddress().String(),
+		chainA.SenderAccount.GetAddress().String(), timeout, 0, memo))
+	must(t, err)
+	inbound, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAB.EndpointA.UpdateClient())
+	res, err = pathAB.EndpointA.RecvPacketWithResult(inbound)
+	must(t, err)
+	forwarded, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	var data transfertypes.FungibleTokenPacketData
+	must(t, transfertypes.ModuleCdc.UnmarshalJSON(forwarded.GetData(), &data))
+	if data.Amount != "905" {
+		t.Fatalf("forwarded %s", data.Amount)
+	}
+	must(t, pathAC.EndpointB.UpdateClient())
+	res, err = pathAC.EndpointB.RecvPacketWithResult(forwarded)
+	must(t, err)
+	ack, err := ibctesting.ParseAckFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAC.EndpointA.UpdateClient())
+	ackProof, ackProofHeight := chainC.QueryProof(host.PacketAcknowledgementKey(forwarded.GetDestPort(), forwarded.GetDestChannel(), forwarded.GetSequence()))
+	_, err = chainA.SendMsgs(channeltypes.NewMsgAcknowledgement(forwarded, ack, ackProof, ackProofHeight, chainA.SenderAccount.GetAddress().String()))
 	must(t, err)
 }
