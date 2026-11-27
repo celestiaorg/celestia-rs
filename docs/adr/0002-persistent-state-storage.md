@@ -257,6 +257,13 @@ hash mismatches in every run):
 | after a full compaction | 755.0 MB | 755.0 MB | 755.0 MB |
 | peak RSS | 1.53 GB | 1.57 GB | 1.62 GB |
 
+The larger buffer is most of the gain (+11.5% alone): fewer, larger L0
+files cut the rewrites of new nodes through the levels even without
+deletes (a run with pruning off showed about the same gain). Removing the
+collector adds the rest (+3.8%), which needs prune tombstones. That run
+had the collector off for every database; this change keeps it for the
+other databases, so the numbers are an upper bound.
+
 Disk use without the collector has the same transient peaks (about
 1.4 GiB) and no growth trend; a full compaction gives the same size within
 a few hundred bytes. The cost is up to 224 MiB more memtable memory (about
