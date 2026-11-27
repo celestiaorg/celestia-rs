@@ -882,6 +882,42 @@ cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
 `cargo test -p app --test ibc_oracle` compares each block as for the
 synthetic chain.
 
+#### 07-tendermint client updates at app versions 1 to 3
+
+`TestIBCTMFixture` (`conformance/v1-oracle/ibc_tm_test.go`) runs chain A of
+the IBC harness alone. After the v1 to v2 upgrade, chain A creates clients of
+a synthetic counterparty whose headers it signs with fixed ed25519 keys, so
+each header breaks exactly one rule. These are the cases of the `-tmclient`
+blocks of `v4-oracle` to `v9-oracle`, plus the ibc-go v6 forms: a misbehaviour
+in `MsgUpdateClient` (a decode error), a conflicting header that freezes the
+client, and `MsgSubmitMisbehaviour` repeated on the frozen client. Each tx
+has its own block (heights 4 to 38). A failed tx uses the sender's sequence
+only when it got past the ante handler, so the test reads the sequence back
+from state.
+[`fixtures/synthetic/ibc-v2-tm`](fixtures/synthetic/ibc-v2-tm) holds the
+blocks. To regenerate it:
+
+```sh
+cd conformance/v1-oracle
+V1_ORACLE_IBC_TM_OUT="$OUT" GOFLAGS=-mod=mod go test -run TestIBCTMFixture .
+cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
+  "$OUT"/tx-results.jsonl.gz "$OUT"/kv-diffs.jsonl.gz \
+  "$OUT"/kv-height-0.jsonl.gz ../fixtures/synthetic/ibc-v2-tm/
+```
+
+`cargo test -p app --test ibc_tm_oracle` pins Go's code, codespace and log for
+each tx, and the pruning and freezing store changes. celestia-rs matches every
+KV change and app hash through block 35. The block replay
+(`ibc_tm_blocks_match_the_oracle`) stays ignored until these are fixed:
+
+- logs at blocks 12 and 35: ibc-go v6 says `client is not active`, not
+  `client state is not active`;
+- codespace `tendermint-client` at blocks 19 and 26;
+- the `double vote from Validator{…} (0 and 1)` text at block 23;
+- block 30: celestia-core v1 does not check the address of a signature found
+  by index, so it reports `wrong signature (#1): <signature bytes>`;
+- block 36: `MsgSubmitMisbehaviour` is not ported for app versions 1 to 3.
+
 #### History synthetic chain for the historical info migration
 
 `v1-oracle -synthetic -chain v3-history` runs the v1-v3 chain's
