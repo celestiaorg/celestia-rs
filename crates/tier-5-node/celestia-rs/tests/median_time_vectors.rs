@@ -36,10 +36,9 @@ fn rust_outcomes(f: &serde_json::Value) -> Vec<(String, Result<String, String>)>
         .collect();
     let set = ctypes::ValidatorSet::new(&vals).unwrap();
     let chain_id = f["chain_id"].as_str().unwrap();
-    let height = f["height"].as_str().map_or_else(
-        || f["height"].as_i64().unwrap(),
-        |h| h.parse().unwrap(),
-    );
+    let height = f["height"]
+        .as_str()
+        .map_or_else(|| f["height"].as_i64().unwrap(), |h| h.parse().unwrap());
     f["cases"]
         .as_array()
         .unwrap()
@@ -102,5 +101,8 @@ fn older_cores_accepted_a_foreign_slot_address() {
             rs[i].0
         );
     }
-    assert_ne!(go[1].1, go[0].1, "v0.38 leaves the foreign slot out of the median");
+    assert_ne!(
+        go[1].1, go[0].1,
+        "v0.38 leaves the foreign slot out of the median"
+    );
 }
