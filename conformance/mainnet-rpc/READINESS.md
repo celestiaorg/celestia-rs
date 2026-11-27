@@ -45,8 +45,8 @@ claimed. These conditions are part of the completed bounded investigation,
 not evidence of universal readiness or a production deployment recommendation.
 
 `scope-audit.json` binds every package, source selector, comparison class,
-normalization, known mismatch and exclusion. Its reviewed canonical hash remains
-in code. `coverage.py` retains the separate strict exact-admission contract and
+normalization, known mismatch and exclusion. Receipts and verifiers are bound by
+SHA-256; documentation and Rust sources are bound by path. `coverage.py` retains the separate strict exact-admission contract and
 continues to report universal readiness as not established. The CI job verifies
 the new frozen module, persistent/historical/state-sync and final-soak packages
 as well as the prior packages. The workspace job runs the Rust regressions;

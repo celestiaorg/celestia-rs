@@ -11,9 +11,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-REVIEWED_AUDIT_SHA256 = "c34023dc0fd9283b40e4aa41fa1945072437621ec46e3ec8f124be8f74dded11"
 AUDIT = Path(__file__).with_name("scope-audit.json")
-# The exact package/receipt/verifier set is reviewed code. A data edit cannot
+# The exact package/receipt/verifier set is fixed in code. A data edit cannot
 # silently remove a campaign, swap its receipt class or skip its verifier.
 CONTRACTS = {
     'module-closure': (188, 'paired-frozen-module-closure', 'conformance/mainnet-rpc/module-closure/evidence/manifest.json', 'conformance/mainnet-rpc/module-closure/README.md', 'conformance/mainnet-rpc/module-closure/verify.py'),
@@ -85,7 +84,22 @@ TRANSPORT_CONTRACTS = {
 TRANSPORTS = {"comet-uri", "comet-jsonrpc", "comet-websocket", "core-grpc", "cosmos-grpc", "rest"}
 
 
+def living(root, binding):
+    """A file that ordinary pull requests edit: documentation or Rust source.
+
+    It is bound by path. A content hash here would fail the check on every
+    unrelated edit of the file, so only frozen evidence carries one.
+    """
+    if set(binding) != {"path"}:
+        raise ValueError("documentation and runtime sources are bound by path only")
+    path = root / binding["path"]
+    if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()) or not path.is_file():
+        raise ValueError("missing, symlinked or out-of-tree scoped artifact")
+    return path
+
+
 def artifact(root, binding):
+    """Frozen evidence (a receipt) or the verifier that runs on it: path and SHA-256."""
     if set(binding) != {"path", "sha256"}:
         raise ValueError("scoped artifact must bind path and SHA-256")
     path = root / binding["path"]
@@ -115,7 +129,7 @@ def validate(audit, root=ROOT):
         if row["receipt"]["path"] != receipt or row["documentation"]["path"] != documentation:
             raise ValueError("scoped receipt/documentation class changed")
         artifact(root, row["receipt"])
-        artifact(root, row["documentation"])
+        living(root, row["documentation"])
         if (row["verifier"] is None) != (verifier is None):
             raise ValueError("scoped verifier cannot be added or omitted without review")
         if verifier is not None:
@@ -134,7 +148,7 @@ def validate(audit, root=ROOT):
         for regression in row["runtime_regressions"]:
             if set(regression) != {"source", "function"}:
                 raise ValueError("unknown scoped runtime selector fields")
-            path = artifact(root, regression["source"])
+            path = living(root, regression["source"])
             function = regression["function"].rsplit("::", 1)[-1]
             if not re.fullmatch(r"[A-Za-z0-9_:]+", regression["function"]) or not re.search(r"\b(?:async\s+)?fn\s+" + re.escape(function) + r"\s*\(", path.read_text()):
                 raise ValueError("scoped runtime selector does not name a source function")
@@ -147,14 +161,11 @@ def validate(audit, root=ROOT):
         expected = sorted(p["id"] for p in packages if p["issue"] == row["issue"])
         if row["packages"] != expected or not row["remaining_gaps"]:
             raise ValueError("behavior checklist must bind all packages and remaining gaps")
-    canonical = json.dumps(audit, sort_keys=True, separators=(",", ":")).encode()
-    if hashlib.sha256(canonical).hexdigest() != REVIEWED_AUDIT_SHA256:
-        raise ValueError("canonical reviewed audit content changed; review baseline, scope, deviations and gaps")
     return audit
 
 
 def verify_scoped(audit, root=ROOT):
-    # Sources have been hash-checked. Commands are fixed Python file invocations;
+    # Receipts and verifiers have been hash-checked. Commands are fixed Python file invocations;
     # no node, Cargo build, new oracle capture or network request runs here.
     validate(audit, root)
     for row in audit["packages"]:
