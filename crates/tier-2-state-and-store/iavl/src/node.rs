@@ -6,9 +6,19 @@
 //! node key `(version, nonce)`. A stored link carries the child's hash,
 //! height and size, so hashing a dirty parent and AVL rebalancing never
 //! have to load an unchanged sibling from disk.
+//!
+//! A compact persisted parent stores only its children's node keys. Decoding
+//! it gives `Lazy` links: the child's hash, height and size are read from the
+//! child record on first use (see [`Link::resolve`]), so a read that walks
+//! one path does not read the records of the siblings it passes.
+//!
+//! Invariant: a dirty node never holds an unresolved `Lazy` link. The
+//! mutator converts every link it moves into a dirty node with
+//! [`Link::settle`], and those links are needed for the new node's hash.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
+use crate::nodedb::NodeDb;
 use crate::{Error, Hash, Result, Version, inner_hash, leaf_hash};
 
 /// IAVL v1 node key: the version that created the node and a per-version
@@ -59,11 +69,40 @@ pub(crate) struct StoredRef {
     pub size: i64,
 }
 
+/// Reference to a persisted node known by key only, resolved on first use.
+#[derive(Debug, Clone)]
+pub(crate) struct LazyRef {
+    pub nk: NodeKey,
+    resolved: OnceLock<StoredRef>,
+}
+
+impl LazyRef {
+    pub fn new(nk: NodeKey) -> Self {
+        Self {
+            nk,
+            resolved: OnceLock::new(),
+        }
+    }
+
+    pub fn get(&self) -> Option<&StoredRef> {
+        self.resolved.get()
+    }
+
+    /// Records the reference read from the child record.
+    pub fn set(&self, r: StoredRef) -> Result<StoredRef> {
+        if r.nk != self.nk {
+            return Err(Error::Corrupt("resolved reference has another node key"));
+        }
+        Ok(*self.resolved.get_or_init(|| r))
+    }
+}
+
 /// A child pointer.
 #[derive(Debug, Clone)]
 pub(crate) enum Link {
     Mem(Arc<Node>),
     Stored(StoredRef),
+    Lazy(LazyRef),
 }
 
 impl Link {
@@ -71,28 +110,66 @@ impl Link {
         Self::Mem(Arc::new(node))
     }
 
-    pub fn height(&self) -> i8 {
+    /// Node key of a persisted child.
+    pub fn node_key(&self) -> Option<NodeKey> {
         match self {
-            Self::Mem(node) => node.height(),
-            Self::Stored(r) => r.height,
+            Self::Mem(_) => None,
+            Self::Stored(r) => Some(r.nk),
+            Self::Lazy(l) => Some(l.nk),
         }
     }
 
-    pub fn size(&self) -> i64 {
+    /// Reads the reference of a `Lazy` link if it is not known yet.
+    pub fn resolve(&self, ndb: Option<&NodeDb>) -> Result<&Self> {
+        if let Self::Lazy(l) = self
+            && l.get().is_none()
+        {
+            let ndb = ndb.ok_or(Error::Corrupt("stored node without node db"))?;
+            l.set(ndb.child_ref(l.nk)?)?;
+        }
+        Ok(self)
+    }
+
+    /// The same child as a `Mem` or `Stored` link, for a dirty node.
+    pub fn settle(&self, ndb: Option<&NodeDb>) -> Result<Self> {
+        Ok(match self.resolve(ndb)? {
+            Self::Lazy(l) => Self::Stored(*l.get().ok_or(UNRESOLVED)?),
+            other => other.clone(),
+        })
+    }
+
+    pub fn stored(&self) -> Option<&StoredRef> {
         match self {
-            Self::Mem(node) => node.size(),
-            Self::Stored(r) => r.size,
+            Self::Mem(_) => None,
+            Self::Stored(r) => Some(r),
+            Self::Lazy(l) => l.get(),
+        }
+    }
+
+    pub fn height(&self) -> Result<i8> {
+        match self {
+            Self::Mem(node) => Ok(node.height()),
+            _ => Ok(self.stored().ok_or(UNRESOLVED)?.height),
+        }
+    }
+
+    pub fn size(&self) -> Result<i64> {
+        match self {
+            Self::Mem(node) => Ok(node.size()),
+            _ => Ok(self.stored().ok_or(UNRESOLVED)?.size),
         }
     }
 
     /// Hash of the subtree; dirty nodes are hashed as if saved at `version`.
-    pub fn hash_for(&self, version: Version) -> Hash {
+    pub fn hash_for(&self, version: Version) -> Result<Hash> {
         match self {
             Self::Mem(node) => node.hash_for(version),
-            Self::Stored(r) => r.hash,
+            _ => Ok(self.stored().ok_or(UNRESOLVED)?.hash),
         }
     }
 }
+
+const UNRESOLVED: Error = Error::Corrupt("child reference used before it was read");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Leaf {
@@ -161,34 +238,37 @@ impl Node {
         (version > 0).then_some(version)
     }
 
-    pub fn hash_for(&self, version: Version) -> Hash {
+    /// Saved hash, or the hash a dirty node gets when saved at `version`.
+    /// Fails only if a dirty node breaks the invariant in the module docs.
+    pub fn hash_for(&self, version: Version) -> Result<Hash> {
         if let Some(hash) = self.saved_hash() {
-            return hash;
+            return Ok(hash);
         }
-        match self {
+        Ok(match self {
             Self::Leaf(leaf) => leaf_hash(version, &leaf.key, &leaf.value),
             Self::Inner(inner) => inner_hash(
                 i64::from(inner.height),
                 inner.size,
                 version,
-                inner.left.hash_for(version),
-                inner.right.hash_for(version),
+                inner.left.hash_for(version)?,
+                inner.right.hash_for(version)?,
             ),
-        }
+        })
     }
 }
 
-/// Builds a dirty inner node over two children.
-pub(crate) fn make_inner(key: Vec<u8>, left: Link, right: Link) -> Node {
-    Node::Inner(Inner {
+/// Builds a dirty inner node over two settled children (see
+/// [`Link::settle`]).
+pub(crate) fn make_inner(key: Vec<u8>, left: Link, right: Link) -> Result<Node> {
+    Ok(Node::Inner(Inner {
         key,
-        height: left.height().max(right.height()) + 1,
-        size: left.size() + right.size(),
+        height: left.height()?.max(right.height()?) + 1,
+        size: left.size()? + right.size()?,
         left,
         right,
         version: 0,
         hash: None,
-    })
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -301,11 +381,12 @@ pub(crate) fn read_ref(bytes: &[u8], nk: NodeKey) -> Result<StoredRef> {
     })
 }
 
-/// Decodes a persisted node reached through `r`.
+/// Decodes a persisted node reached through `r`. `child` makes the link of
+/// a child that a compact record names by key only.
 pub(crate) fn decode_node(
     bytes: &[u8],
     r: &StoredRef,
-    mut child: impl FnMut(NodeKey) -> Result<StoredRef>,
+    mut child: impl FnMut(NodeKey) -> Result<Link>,
 ) -> Result<Node> {
     let mut cursor = Cursor { bytes, pos: 0 };
     let tag = cursor.byte()?;
@@ -327,7 +408,10 @@ pub(crate) fn decode_node(
             }
             let key = cursor.byte_slice()?.to_vec();
             let (left, right) = if tag == TAG_LEGACY_INNER {
-                (cursor.stored_ref()?, cursor.stored_ref()?)
+                (
+                    Link::Stored(cursor.stored_ref()?),
+                    Link::Stored(cursor.stored_ref()?),
+                )
             } else {
                 (child(cursor.node_key()?)?, child(cursor.node_key()?)?)
             };
@@ -335,8 +419,8 @@ pub(crate) fn decode_node(
                 key,
                 height,
                 size,
-                left: Link::Stored(left),
-                right: Link::Stored(right),
+                left,
+                right,
                 version: r.nk.version,
                 hash: Some(r.hash),
             })
@@ -471,8 +555,8 @@ mod tests {
             unreachable!()
         };
         assert_eq!(node.key, b"b");
-        assert_eq!(node.left.hash_for(1), [0xab; 32]);
-        assert_eq!(node.right.hash_for(1), [0xcd; 32]);
+        assert_eq!(node.left.hash_for(1).unwrap(), [0xab; 32]);
+        assert_eq!(node.right.hash_for(1).unwrap(), [0xcd; 32]);
     }
 
     #[test]
@@ -506,7 +590,7 @@ mod tests {
         };
         let bytes = encode_inner(b"sep", 3, 4, &me.hash, left.nk, right.nk);
         assert_eq!(read_ref(&bytes, me.nk).unwrap(), me);
-        let child = |nk| Ok(if nk == left.nk { left } else { right });
+        let child = |nk| Ok(Link::Stored(if nk == left.nk { left } else { right }));
         let Node::Inner(inner) = decode_node(&bytes, &me, child).unwrap() else {
             unreachable!()
         };

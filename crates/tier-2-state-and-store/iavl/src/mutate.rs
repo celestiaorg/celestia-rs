@@ -17,11 +17,11 @@ pub(crate) struct Mutator<'a> {
 }
 
 pub(crate) fn load(ndb: Option<&NodeDb>, link: &Link) -> Result<Arc<Node>> {
+    let ndb = || ndb.ok_or(Error::Corrupt("stored node without node db"));
     match link {
         Link::Mem(node) => Ok(Arc::clone(node)),
-        Link::Stored(r) => ndb
-            .ok_or(Error::Corrupt("stored node without node db"))?
-            .load(r),
+        Link::Stored(r) => ndb()?.load(r),
+        Link::Lazy(l) => ndb()?.load_lazy(l),
     }
 }
 
@@ -39,9 +39,19 @@ impl Mutator<'_> {
 
     /// Records that `link` is replaced in the working tree.
     fn discard(&mut self, link: &Link) {
-        if let Link::Stored(r) = link {
-            self.orphans.push(r.nk);
+        if let Some(nk) = link.node_key() {
+            self.orphans.push(nk);
         }
+    }
+
+    /// `link` as a child of a dirty node (see [`Link::settle`]).
+    fn settle(&self, link: &Link) -> Result<Link> {
+        link.settle(self.ndb)
+    }
+
+    /// A dirty inner node over `left` and `right`.
+    fn inner(&self, key: Vec<u8>, left: &Link, right: &Link) -> Result<Node> {
+        make_inner(key, self.settle(left)?, self.settle(right)?)
     }
 
     /// Inserts or replaces; returns the new subtree, whether an existing key
@@ -56,20 +66,16 @@ impl Mutator<'_> {
         match &*node {
             Node::Leaf(leaf) => match key.as_slice().cmp(leaf.key.as_slice()) {
                 core::cmp::Ordering::Less => Ok((
-                    Link::mem(make_inner(
+                    Link::mem(self.inner(
                         leaf.key.clone(),
-                        Link::mem(Node::leaf(key, value)),
-                        link.clone(),
-                    )),
+                        &Link::mem(Node::leaf(key, value)),
+                        link,
+                    )?),
                     false,
                     None,
                 )),
                 core::cmp::Ordering::Greater => Ok((
-                    Link::mem(make_inner(
-                        key.clone(),
-                        link.clone(),
-                        Link::mem(Node::leaf(key, value)),
-                    )),
+                    Link::mem(self.inner(key.clone(), link, &Link::mem(Node::leaf(key, value)))?),
                     false,
                     None,
                 )),
@@ -84,16 +90,12 @@ impl Mutator<'_> {
             },
             Node::Inner(inner) => {
                 self.discard(link);
-                let mut left = inner.left.clone();
-                let mut right = inner.right.clone();
-                let (updated, old) = if key.as_slice() < inner.key.as_slice() {
-                    let (l, updated, old) = self.set(&left, key, value)?;
-                    left = l;
-                    (updated, old)
+                let (left, right, updated, old) = if key.as_slice() < inner.key.as_slice() {
+                    let (l, updated, old) = self.set(&inner.left, key, value)?;
+                    (l, self.settle(&inner.right)?, updated, old)
                 } else {
-                    let (r, updated, old) = self.set(&right, key, value)?;
-                    right = r;
-                    (updated, old)
+                    let (r, updated, old) = self.set(&inner.right, key, value)?;
+                    (self.settle(&inner.left)?, r, updated, old)
                 };
                 if updated {
                     return Ok((
@@ -110,7 +112,7 @@ impl Mutator<'_> {
                         old,
                     ));
                 }
-                let node = self.balance(make_inner(inner.key.clone(), left, right))?;
+                let node = self.balance(make_inner(inner.key.clone(), left, right)?)?;
                 Ok((Link::mem(node), false, old))
             }
         }
@@ -147,14 +149,14 @@ impl Mutator<'_> {
                     self.discard(link);
                     let Some(left) = result.node else {
                         return Ok(RemoveOutcome {
-                            node: Some(inner.right.clone()),
+                            node: Some(self.settle(&inner.right)?),
                             new_key: Some(inner.key.clone()),
                             value: result.value,
                             removed: true,
                         });
                     };
                     let node =
-                        self.balance(make_inner(inner.key.clone(), left, inner.right.clone()))?;
+                        self.balance(self.inner(inner.key.clone(), &left, &inner.right)?)?;
                     Ok(RemoveOutcome {
                         node: Some(Link::mem(node)),
                         new_key: result.new_key,
@@ -169,14 +171,14 @@ impl Mutator<'_> {
                     self.discard(link);
                     let Some(right) = result.node else {
                         return Ok(RemoveOutcome {
-                            node: Some(inner.left.clone()),
+                            node: Some(self.settle(&inner.left)?),
                             new_key: None,
                             value: result.value,
                             removed: true,
                         });
                     };
                     let node_key = result.new_key.unwrap_or_else(|| inner.key.clone());
-                    let node = self.balance(make_inner(node_key, inner.left.clone(), right))?;
+                    let node = self.balance(self.inner(node_key, &inner.left, &right)?)?;
                     Ok(RemoveOutcome {
                         node: Some(Link::mem(node)),
                         new_key: None,
@@ -191,7 +193,10 @@ impl Mutator<'_> {
     fn child_balance(&self, link: &Link) -> Result<i16> {
         Ok(match &*self.load(link)? {
             Node::Leaf(_) => 0,
-            Node::Inner(inner) => i16::from(inner.left.height()) - i16::from(inner.right.height()),
+            Node::Inner(inner) => {
+                let height = |link: &Link| link.resolve(self.ndb)?.height().map(i16::from);
+                height(&inner.left)? - height(&inner.right)?
+            }
         })
     }
 
@@ -199,7 +204,7 @@ impl Mutator<'_> {
         let Node::Inner(mut inner) = node else {
             return Ok(node);
         };
-        let balance = i16::from(inner.left.height()) - i16::from(inner.right.height());
+        let balance = i16::from(inner.left.height()?) - i16::from(inner.right.height()?);
         if balance > 1 {
             if self.child_balance(&inner.left)? >= 0 {
                 return self.rotate_right(inner);
@@ -220,7 +225,7 @@ impl Mutator<'_> {
     fn rotate_right_link(&mut self, link: &Link) -> Result<Link> {
         let node = self.load(link)?;
         let Node::Inner(inner) = &*node else {
-            return Ok(link.clone());
+            return self.settle(link);
         };
         self.discard(link);
         Ok(Link::mem(self.rotate_right(inner.clone())?))
@@ -229,7 +234,7 @@ impl Mutator<'_> {
     fn rotate_left_link(&mut self, link: &Link) -> Result<Link> {
         let node = self.load(link)?;
         let Node::Inner(inner) = &*node else {
-            return Ok(link.clone());
+            return self.settle(link);
         };
         self.discard(link);
         Ok(Link::mem(self.rotate_left(inner.clone())?))
@@ -240,35 +245,31 @@ impl Mutator<'_> {
         let left = self.load(&node.left)?;
         let Node::Inner(l) = &*left else {
             return Ok(Node::Inner(Inner {
+                left: self.settle(&node.left)?,
+                right: self.settle(&node.right)?,
                 version: 0,
                 hash: None,
                 ..node
             }));
         };
         self.discard(&node.left);
-        let old_root = make_inner(node.key, l.right.clone(), node.right);
-        Ok(make_inner(
-            l.key.clone(),
-            l.left.clone(),
-            Link::mem(old_root),
-        ))
+        let old_root = self.inner(node.key, &l.right, &node.right)?;
+        self.inner(l.key.clone(), &l.left, &Link::mem(old_root))
     }
 
     fn rotate_left(&mut self, node: Inner) -> Result<Node> {
         let right = self.load(&node.right)?;
         let Node::Inner(r) = &*right else {
             return Ok(Node::Inner(Inner {
+                left: self.settle(&node.left)?,
+                right: self.settle(&node.right)?,
                 version: 0,
                 hash: None,
                 ..node
             }));
         };
         self.discard(&node.right);
-        let old_root = make_inner(node.key, node.left, r.left.clone());
-        Ok(make_inner(
-            r.key.clone(),
-            Link::mem(old_root),
-            r.right.clone(),
-        ))
+        let old_root = self.inner(node.key, &node.left, &r.left)?;
+        self.inner(r.key.clone(), &Link::mem(old_root), &r.right)
     }
 }

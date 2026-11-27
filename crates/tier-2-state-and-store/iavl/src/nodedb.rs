@@ -15,13 +15,15 @@
 //! deletes the node.
 
 use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use kvdb::{KvBackend, WriteBatch};
 
 use crate::clock::ClockCache;
-use crate::node::{NODE_KEY_LEN, Node, NodeKey, StoredRef, decode_node, decode_root, read_ref};
+use crate::node::{
+    LazyRef, Link, NODE_KEY_LEN, Node, NodeKey, StoredRef, decode_node, decode_root, read_ref,
+};
 use crate::{Error, Result, Version};
 
 const NODE: u8 = b'n';
@@ -40,8 +42,8 @@ pub fn node_lookups() -> u64 {
     LOOKUPS.load(Ordering::Relaxed)
 }
 
-// Resolving a compact parent's child references reads the child records.
-// Keep those bytes in the same bounded cache until a traversal needs them.
+// Resolving a compact parent's child reference reads the child record. Keep
+// those bytes in the same bounded cache until a traversal needs them.
 #[derive(Clone)]
 enum CachedNode {
     Decoded(Arc<Node>),
@@ -159,12 +161,22 @@ impl NodeCache {
     }
 }
 
+fn decoded_ref(nk: NodeKey, node: &Node) -> Result<StoredRef> {
+    Ok(StoredRef {
+        nk,
+        hash: node.hash_for(nk.version)?,
+        height: node.height(),
+        size: node.size(),
+    })
+}
+
 /// Node storage of one tree.
 pub struct NodeDb {
     backend: Arc<dyn KvBackend>,
     prefix: Vec<u8>,
     cache: Arc<NodeCache>,
     id: u64,
+    eager_children: AtomicBool,
 }
 
 impl fmt::Debug for NodeDb {
@@ -193,6 +205,7 @@ impl NodeDb {
             prefix: prefix.into(),
             cache,
             id: NEXT_DB_ID.fetch_add(1, Ordering::Relaxed),
+            eager_children: AtomicBool::new(false),
         })
     }
 
@@ -204,6 +217,13 @@ impl NodeDb {
             Vec::new(),
             NodeCache::new(cache_size),
         )
+    }
+
+    /// Resolves both child references whenever a node is decoded (the
+    /// former behaviour), instead of on first use. Reference for tests.
+    #[doc(hidden)]
+    pub fn set_eager_children(&self, eager: bool) {
+        self.eager_children.store(eager, Ordering::Relaxed);
     }
 
     /// The backend.
@@ -250,18 +270,55 @@ impl NodeDb {
     /// Loads (through the cache) the node `r` points at.
     pub(crate) fn load(&self, r: &StoredRef) -> Result<Arc<Node>> {
         let cache_key = (self.id, r.nk);
-        let decode = |bytes: &[u8]| decode_node(bytes, r, |nk| self.child_ref(nk));
         let node = Arc::new(match self.cache.get(&cache_key) {
             Some(CachedNode::Decoded(node)) => return Ok(node),
             Some(CachedNode::Encoded(node)) => {
                 self.cache.ref_decodes.fetch_add(1, Ordering::Relaxed);
-                decode(&node.bytes)?
+                self.decode(&node.bytes, r)?
             }
-            None => decode(&self.node_bytes(r.nk)?)?,
+            None => self.decode(&self.node_bytes(r.nk)?, r)?,
         });
         self.cache
             .put(cache_key, CachedNode::Decoded(Arc::clone(&node)));
         Ok(node)
+    }
+
+    /// Loads (through the cache) the node a `Lazy` link points at, and
+    /// records the link's reference from the same read.
+    pub(crate) fn load_lazy(&self, lazy: &LazyRef) -> Result<Arc<Node>> {
+        if let Some(r) = lazy.get() {
+            return self.load(r);
+        }
+        let nk = lazy.nk;
+        let cache_key = (self.id, nk);
+        let node = match self.cache.get(&cache_key) {
+            Some(CachedNode::Decoded(node)) => {
+                lazy.set(decoded_ref(nk, &node)?)?;
+                return Ok(node);
+            }
+            Some(CachedNode::Encoded(node)) => {
+                self.cache.ref_decodes.fetch_add(1, Ordering::Relaxed);
+                let r = lazy.set(node.reference)?;
+                self.decode(&node.bytes, &r)?
+            }
+            None => {
+                let bytes = self.node_bytes(nk)?;
+                let r = lazy.set(read_ref(&bytes, nk)?)?;
+                self.decode(&bytes, &r)?
+            }
+        };
+        let node = Arc::new(node);
+        self.cache
+            .put(cache_key, CachedNode::Decoded(Arc::clone(&node)));
+        Ok(node)
+    }
+
+    fn decode(&self, bytes: &[u8], r: &StoredRef) -> Result<Node> {
+        if self.eager_children.load(Ordering::Relaxed) {
+            decode_node(bytes, r, |nk| Ok(Link::Stored(self.child_ref(nk)?)))
+        } else {
+            decode_node(bytes, r, |nk| Ok(Link::Lazy(LazyRef::new(nk))))
+        }
     }
 
     fn node_bytes(&self, nk: NodeKey) -> Result<Vec<u8>> {
@@ -280,15 +337,11 @@ impl NodeDb {
         Ok(bytes)
     }
 
-    fn child_ref(&self, nk: NodeKey) -> Result<StoredRef> {
+    /// Reads the reference of child `nk` (cached with the record's bytes).
+    pub(crate) fn child_ref(&self, nk: NodeKey) -> Result<StoredRef> {
         let key = (self.id, nk);
         match self.cache.get(&key) {
-            Some(CachedNode::Decoded(node)) => Ok(StoredRef {
-                nk,
-                hash: node.hash_for(nk.version),
-                height: node.height(),
-                size: node.size(),
-            }),
+            Some(CachedNode::Decoded(node)) => decoded_ref(nk, &node),
             Some(CachedNode::Encoded(node)) => Ok(node.reference),
             None => {
                 let bytes = self.node_bytes(nk)?;

@@ -152,8 +152,8 @@ impl Importer {
         } else {
             let n = self.stack.len();
             if n < 2
-                || self.stack[n - 1].height() >= node.height
-                || self.stack[n - 2].height() >= node.height
+                || self.stack[n - 1].height()? >= node.height
+                || self.stack[n - 2].height()? >= node.height
             {
                 return Err(Error::MalformedNode(
                     "inner node without two lower children",
@@ -161,13 +161,13 @@ impl Importer {
             }
             let right = self.stack.pop().ok_or(Error::MalformedNode("stack"))?;
             let left = self.stack.pop().ok_or(Error::MalformedNode("stack"))?;
-            let size = left.size() + right.size();
+            let size = left.size()? + right.size()?;
             let hash = inner_hash(
                 i64::from(node.height),
                 size,
                 version,
-                left.hash_for(version),
-                right.hash_for(version),
+                left.hash_for(version)?,
+                right.hash_for(version)?,
             );
             let bytes = match (&left, &right) {
                 (Link::Stored(l), Link::Stored(r)) => Some(encode_inner(
@@ -229,7 +229,9 @@ impl Importer {
         if let Some(ndb) = &self.ndb {
             let root_ref = match &root {
                 Some(Link::Stored(r)) => Some(*r),
-                Some(Link::Mem(_)) => return Err(Error::Corrupt("mixed import links")),
+                Some(Link::Mem(_) | Link::Lazy(_)) => {
+                    return Err(Error::Corrupt("mixed import links"));
+                }
                 None => None,
             };
             batch.extend(std::mem::take(&mut self.batch));
