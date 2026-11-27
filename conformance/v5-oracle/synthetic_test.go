@@ -1,7 +1,11 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
+	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,50 +19,48 @@ var fixtureFiles = []string{
 	"kv-handoff.jsonl.gz", "kv-upgrade.jsonl.gz", "kv-diffs.jsonl.gz",
 }
 
-// TestSyntheticFixtureIsReproducible runs the v1-v3 synthetic chain through
-// v1-oracle and v4-oracle -next-handoff, continues it across the v5
-// upgrade (and on to the v6 hand-off) and requires the committed fixtures
-// byte for byte.
+// homes holds the committed app homes of the synthetic chain at each
+// hand-off height (the -handoff home after the previous oracle's
+// -next-handoff run), so that this test builds and runs only this oracle.
+var homes = filepath.Join("..", "fixtures", "synthetic", "homes")
+
+// TestSyntheticFixtureIsReproducible continues the synthetic chain from the
+// committed home-25 home across the v5 upgrade and requires the committed
+// fixtures byte for byte.
+// The v5-to-v6 case runs on to the v6 hand-off and requires the home it leaves
+// to be the committed home-36.
 func TestSyntheticFixtureIsReproducible(t *testing.T) {
 	tmp := t.TempDir()
-	bin := map[string]string{}
-	for _, oracle := range []string{"v1-oracle", "v4-oracle"} {
-		bin[oracle] = filepath.Join(tmp, oracle)
-		build := exec.Command("go", "build", "-o", bin[oracle], ".")
-		build.Dir = filepath.Join("..", oracle)
-		if bz, err := build.CombinedOutput(); err != nil {
-			t.Fatalf("build %s: %v\n%s", oracle, err, bz)
-		}
-	}
 	fixtures := filepath.Join("..", "fixtures", "synthetic")
-	v1Out, v4Out, home := filepath.Join(tmp, "v1"), filepath.Join(tmp, "v4"), filepath.Join(tmp, "home")
-	if bz, err := exec.Command(bin["v1-oracle"], "-synthetic", "-chain", "v1-v3", "-kv", "-out", v1Out, "-handoff", home).CombinedOutput(); err != nil {
-		t.Fatalf("v1-oracle: %v\n%s", err, bz)
-	}
-	genesis := filepath.Join(v1Out, "genesis.json")
-	requireSame(t, filepath.Join(fixtures, "v1-v3", "genesis.json"), genesis)
-	if bz, err := exec.Command(bin["v4-oracle"], "-handoff", home, "-genesis", genesis, "-out", v4Out, "-heights", "10", "-next-handoff").CombinedOutput(); err != nil {
-		t.Fatalf("v4-oracle: %v\n%s", err, bz)
-	}
-	requireSame(t, filepath.Join(fixtures, "v4-to-v5", "store-roots.json"), filepath.Join(v4Out, "store-roots.json"))
-
-	// v5 (blocks 26 to 30) and, on a copy of the home, v5-to-v6 (blocks
-	// 26 to 36, on to the v6 hand-off).
-	home6 := filepath.Join(tmp, "home-v6")
-	if err := os.CopyFS(home6, os.DirFS(home)); err != nil {
-		t.Fatal(err)
-	}
+	genesis := filepath.Join(fixtures, "v1-v3", "genesis.json")
 	for _, c := range []struct {
-		home, dir string
+		dir, next string
 		args      []string
 	}{
-		{home, "v5", nil},
-		{home6, "v5-to-v6", []string{"-heights", "11", "-next-handoff"}},
+		{"v5", "", nil},
+		// The probe blocks of probes.go after the usual five.
+		{"v5-probes", "", []string{"-heights", "19", "-probes"}},
+		// The 07-tendermint client blocks of tmclient.go after the usual five.
+		{"v5-tm", "", []string{"-heights", "10", "-tmclient"}},
+		// On to the v6 hand-off: the home must become the committed home-36.
+		{"v5-to-v6", "home-36", []string{"-heights", "11", "-next-handoff"}},
+		// The chain with blocks built as a validator would (consensus.go),
+		// on to the next hand-off.
+		{dir: filepath.Join("consensus", "v5-to-v6"), next: "consensus-36", args: []string{"-heights", "11", "-next-handoff", "-consensus"}},
 	} {
+		// The consensus chain starts from its own home.
+		start := "home-25"
+		if strings.HasPrefix(c.dir, "consensus") {
+			start = "consensus-25"
+		}
+		home := filepath.Join(tmp, "home-"+strings.ReplaceAll(c.dir, string(filepath.Separator), "-"))
+		if err := untar(filepath.Join(homes, start+".tar.gz"), home); err != nil {
+			t.Fatal(err)
+		}
 		out := filepath.Join(tmp, c.dir)
 		cmd := exec.Command(os.Args[0], "-test.run=TestRunSynthetic", "-test.v")
 		cmd.Env = append(os.Environ(),
-			"V5_ORACLE_HANDOFF="+c.home,
+			"V5_ORACLE_HANDOFF="+home,
 			"V5_ORACLE_GENESIS="+genesis,
 			"V5_ORACLE_OUT="+out,
 			"V5_ORACLE_ARGS="+strings.Join(c.args, " "),
@@ -66,8 +68,84 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		if bz, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("synthetic run %s: %v\n%s", c.dir, err, bz)
 		}
-		for _, name := range fixtureFiles {
+		files := fixtureFiles
+		if strings.Contains(strings.Join(c.args, " "), "-consensus") {
+			files = append(append([]string{}, fixtureFiles...), "last-commit.json")
+		}
+		for _, name := range files {
 			requireSame(t, filepath.Join(fixtures, c.dir, name), filepath.Join(out, name))
+		}
+		if c.next != "" {
+			requireHome(t, filepath.Join(homes, c.next+".tar.gz"), home)
+		}
+	}
+}
+
+// requireHome requires the home that a -next-handoff run left to hold the
+// committed home's handoff.json and data/upgrade-info.json: handoff.json
+// records the app hash, which commits to every store.
+func requireHome(t *testing.T, archive, home string) {
+	t.Helper()
+	want := t.TempDir()
+	if err := untar(archive, want); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"handoff.json", filepath.Join("data", "upgrade-info.json")} {
+		w, err := os.ReadFile(filepath.Join(want, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, err := os.ReadFile(filepath.Join(home, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(g, w) {
+			t.Errorf("%s in %s differs from the home this run left; regenerate it (conformance/README.md)", name, archive)
+		}
+	}
+}
+
+// untar extracts a .tar.gz of regular files and directories into dir.
+func untar(archive, dir string) error {
+	f, err := os.Open(archive)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	tr := tar.NewReader(gz)
+	for {
+		h, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(dir, filepath.Clean("/"+h.Name))
+		switch h.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(path, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				return err
+			}
+			out, err := os.Create(path)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(out, tr); err != nil {
+				out.Close()
+				return err
+			}
+			if err := out.Close(); err != nil {
+				return err
+			}
 		}
 	}
 }

@@ -43,6 +43,7 @@ x-fibre = { path = "../fibre" }
 protox = "0.7"
 
 [dev-dependencies]
+flate2 = { version = "=1.1.2", default-features = false, features = ["rust_backend"] }
 hex = "0.4"
 serde = { version = "1", features = ["derive"] }
 zstd = "0.14"

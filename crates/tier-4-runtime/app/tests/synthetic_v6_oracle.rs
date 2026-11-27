@@ -2,13 +2,13 @@
 //! it: `conformance/v5-oracle -heights 11 -next-handoff` (fixture
 //! `conformance/fixtures/synthetic/v5-to-v6`, blocks 26 to 36) and
 //! `conformance/v6-oracle` (fixture `conformance/fixtures/synthetic/v6`,
-//! celestia-app v6.4.4, blocks 37 to 41).
+//! celestia-app v6.4.10, blocks 37 to 41).
 //!
 //! In the v5 blocks alice and carol become validators below v6's 10%
 //! minimum commission, a solo machine (06-solomachine) opens an IBC client,
 //! connection and transfer channel, and its uatom transfer is refused by
 //! x/tokenfilter; the validators signal version 6 and the EndBlocker of
-//! block 36 schedules plan `v6` at 37. celestia-app v6.4.4 opens the same
+//! block 36 schedules plan `v6` at 37. celestia-app v6.4.10 opens the same
 //! database, runs the `v6` handler and executes blocks 37 to 41, where the
 //! solo machine's second transfer mints a voucher. These tests check that
 //! the fixtures continue one chain and pin what Go does at the upgrade.
@@ -172,7 +172,7 @@ fn v6_fixture_files_match_their_record() {
         V5_HANDOFF,
         HANDOFF,
     );
-    check_record(V6, "conformance/v6-oracle", "v6.4.4", HANDOFF, LAST);
+    check_record(V6, "conformance/v6-oracle", "v6.4.10", HANDOFF, LAST);
 }
 
 /// `v5-to-v6` runs the blocks of `v5` first.

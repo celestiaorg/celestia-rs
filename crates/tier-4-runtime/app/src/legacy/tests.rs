@@ -3361,6 +3361,7 @@ fn v046_exec_dispatches_a_nested_grant() {
     let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = v1_store();
     let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
     let (owner, agent, voter) = ([1u8; 20], [2u8; 20], [3u8; 20]);
     let grant = |granter: &[u8], grantee: &[u8], msg: &str| MsgGrant {
         granter: x_auth::bech32(granter).unwrap(),
@@ -3397,6 +3398,7 @@ fn v046_exec_dispatches_gov_messages() {
     let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = v1_store();
     let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
     let me = x_auth::bech32(&[4u8; 20]).unwrap();
     let nested = [
         celestia_proto::Any::pack(&v1beta1::MsgVoteWeighted {

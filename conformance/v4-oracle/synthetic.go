@@ -121,6 +121,16 @@ type synth struct {
 	lastResultsHash []byte
 	appVersion      uint64
 	params          cmttypes.ConsensusParams
+	// probes replaces the blocks after the usual five with probes.go's.
+	probes bool
+	// consensus builds blocks as a validator would (consensus.go); prepared
+	// is the PrepareProposal block data of the next block.
+	consensus bool
+	prepared  *cmttypes.Data
+	// tmclient runs the 07-tendermint client blocks of tmclient.go after
+	// the usual five; tmBase is the client sequence of their first client.
+	tmclient bool
+	tmBase   uint64
 }
 
 func mustHex(s string) []byte {
@@ -270,8 +280,15 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 		}
 		steps = s.richSteps(height-s.handoffHeight-1, addr, valAddr, utia, tx, txWith, send, pfb)
 	}
+	if s.chain == "v3-ibc" {
+		more, err := s.ibcSteps(a, height-s.handoffHeight-1, addr, send, func(bz []byte) { out = append(out, bz) })
+		if err != nil {
+			return nil, err
+		}
+		steps = more
+	}
 	switch offset := height - s.handoffHeight - 1; {
-	case s.chain == "v3-rich":
+	case s.chain == "v3-rich", s.chain == "v3-ibc":
 	case offset == 0:
 		// The upgrade block: the x/upgrade PreBlocker runs plan v4 first.
 		steps = append(steps, func() error { return send("alice", "bob", 1_000) })
@@ -310,6 +327,47 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 		steps = append(steps, func() error { return send("carol", "bob", 43) })
 	case offset == 9:
 		steps = append(steps, func() error { return send("bob", "alice", 47) })
+	}
+	if s.probes && height-s.handoffHeight-1 >= 5 {
+		probeTx := func(msg sdk.Msg, opts ...user.TxOption) error {
+			bz, _, err := sg.CreateTx([]sdk.Msg{msg}, opts...)
+			if err != nil {
+				return err
+			}
+			out = append(out, bz)
+			return nil
+		}
+		aminoTx := func(name string, msg sdk.Msg, opts ...user.TxOption) error {
+			bz, err := s.aminoTx(a, name, msg, opts...)
+			if err != nil {
+				return err
+			}
+			out = append(out, bz)
+			return nil
+		}
+		probe, err := s.probeSteps(height-s.handoffHeight-1, addr, probeTx)
+		if err == nil && probe == nil {
+			probe, err = s.warpProbeSteps(a, height-s.handoffHeight-1, addr, probeTx, aminoTx)
+		}
+		if err != nil {
+			return nil, err
+		}
+		steps = probe
+	}
+	if s.tmclient && height-s.handoffHeight-1 >= 5 {
+		tmTx := func(msg sdk.Msg, opts ...user.TxOption) error {
+			bz, _, err := sg.CreateTx([]sdk.Msg{msg}, opts...)
+			if err != nil {
+				return err
+			}
+			out = append(out, bz)
+			return nil
+		}
+		tm, err := s.tmSteps(a, height-s.handoffHeight-1, height, addr, tmTx)
+		if err != nil {
+			return nil, err
+		}
+		steps = tm
 	}
 	for _, step := range steps {
 		if err := step(); err != nil {
@@ -368,6 +426,10 @@ func (s *synth) richSteps(
 
 // blockTime is the time of block `height`, as v1-oracle sets it.
 func (s *synth) blockTime(height int64) time.Time {
+	if s.consensus {
+		// Block 1 is at the genesis time (v1-oracle -consensus).
+		height--
+	}
 	return s.genesisTime.Add(time.Duration(height) * (15*time.Second + 123*time.Millisecond))
 }
 
@@ -380,6 +442,9 @@ func (s *synth) block(height int64, txs [][]byte) (*cmttypes.Block, cmttypes.Blo
 	data := cmttypes.Data{Txs: make(cmttypes.Txs, len(txs)), SquareSize: 1}
 	for i, tx := range txs {
 		data.Txs[i] = tx
+	}
+	if s.prepared != nil {
+		data, s.prepared = *s.prepared, nil
 	}
 	block := cmttypes.MakeBlock(height, data, s.lastCommit, []cmttypes.Evidence{})
 	block.Header.Populate(
@@ -427,6 +492,11 @@ func (s *synth) block(height int64, txs [][]byte) (*cmttypes.Block, cmttypes.Blo
 			ValidatorAddress: v.Address,
 			Timestamp:        block.Time.Add(time.Second),
 			Signature:        bytes.Repeat([]byte{byte(i + 1)}, 64),
+		}
+		if s.consensus {
+			if sigs[i], err = s.precommit(height, int32(i), v.Address, id); err != nil {
+				return nil, cmttypes.BlockID{}, err
+			}
 		}
 	}
 	s.pendingCommit = &cmttypes.Commit{Height: height, Round: 0, BlockID: id, Signatures: sigs}

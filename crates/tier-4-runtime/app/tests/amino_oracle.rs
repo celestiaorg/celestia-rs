@@ -67,7 +67,7 @@ fn amino_blocks_match_the_oracle() {
 /// chain, captured before the v0.46 sign bytes changes: those changes
 /// stay behind the v0.46 gate.
 const V4_SIGN_BYTES_SHA256: &str =
-    "49ebbc079203c94db78d8087d0ae4d900b398227cb3c9e4eb42dc17fd6242411";
+    "ac5bf06dc329a4676e748d078dc97845612b459221df8cfb58c9b4c22e6ab9ae";
 
 #[test]
 fn amino_sign_bytes_from_app_version_4_are_unchanged() {

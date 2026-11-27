@@ -4,8 +4,20 @@
 
 ### Added
 
+- Validators can run the Fibre data availability server inside
+  `celestia-rs start` (a port of celestia-app v11's server), so no separate
+  Go `fibre` process is needed. It is off by default: enable it with
+  `[fibre] enable = true` in `config.toml` or `--fibre` /
+  `--fibre-listen-address`. It reports on the gRPC health service and the
+  node's Prometheus endpoint, and a Fibre failure never stops consensus.
+  `tx valaddr set-host` and `query valaddr provider|providers` register and
+  check the provider host. See the operator guide's "Fibre server" section.
 - Validators can use compatible Horcrux or tmkms remote signers through
   `priv_validator_laddr`, including Celestia compact-block signing.
+- `celestia-rs start --v2-upgrade-height` (and `abci`) sets the v1 to v2
+  upgrade height of a chain other than celestia, mocha or arabica, as
+  celestia-app's flag does. Without it such a chain never leaves app
+  version 1. Give it again after a restart.
 - `celestia-rs migrate` prepares a stopped Go `celestia-appd` home for
   celestia-rs. It backs up the config, moves the Go databases to `data.go/`,
   keeps `priv_validator_state.json` and can fill in `[statesync]`.

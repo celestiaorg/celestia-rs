@@ -9,8 +9,7 @@
 //! v8.2.0, so they come from [`x_packetforward`] ([`Pfm::Upstream`]). The
 //! keeper steps run here on the ibc-go v6 transfer of
 //! [`super::ibc_transfer`] (no total-escrow tracking). Not ported, and so
-//! aborting the block: a nonzero `FeePercentage` (community pool fee), a
-//! memo whose `forward` decodes to nil (a Go panic), and the refund of a
+//! aborting the block: a memo whose `forward` decodes to nil (a Go panic), and the refund of a
 //! forwarded voucher (burn or mint).
 //!
 //! The voucher refund cannot happen on a celestia-app v1 to v3 chain:
@@ -134,16 +133,40 @@ fn receive_funds(
 }
 
 /// The `FeePercentage` param (`GetFeePercentage`, a read of the
-/// `packetfowardmiddleware` subspace). Only a zero fee is ported: no
-/// community pool payment.
-fn check_zero_fee(ctx: &mut Context<'_>) -> Result<()> {
+/// `packetfowardmiddleware` subspace).
+fn fee_percentage(ctx: &mut Context<'_>) -> Result<math::LegacyDec> {
     let raw = x_params::get_raw(ctx, x_packetforward::MODULE_NAME, b"FeePercentage")?.ok_or_else(
         || sdk::error::go_panic("UnmarshalJSON: packetfowardmiddleware FeePercentage is not set"),
     )?;
-    if raw != br#""0.000000000000000000""# {
-        return Err(not_ported("a nonzero FeePercentage (community pool fee)"));
+    let s: String = serde_json::from_slice(&raw)
+        .map_err(|e| sdk::error::go_panic(format!("UnmarshalJSON: FeePercentage: {e}")))?;
+    math::LegacyDec::from_str_go(&s)
+        .map_err(|e| sdk::error::go_panic(format!("UnmarshalJSON: FeePercentage: {e}")))
+}
+
+/// The fee part of `ForwardTransferPacket`: `RoundInt(amount * fee)` goes
+/// from `receiver` to the community pool (distribution
+/// `FundCommunityPool`); the rest is forwarded.
+fn pay_fee(ctx: &mut Context<'_>, token: &Coin, receiver: &str) -> Result<Coin> {
+    let go_math = |e: math::MathError| sdk::error::go_panic(e.to_string());
+    let fee = math::LegacyDec::from_int(&token.amount)
+        .checked_mul(&fee_percentage(ctx)?)
+        .and_then(|d| d.round_int())
+        .map_err(go_math)?;
+    let packet = Coin {
+        denom: token.denom.clone(),
+        amount: token.amount.checked_sub(&fee).map_err(go_math)?,
+    };
+    if fee.is_positive() {
+        let host = sdk::address::acc_from_bech32_go(receiver).map_err(errs::invalid_address)?;
+        let fee_coins = sdk::coins::Coins::sanitized(vec![Coin {
+            denom: token.denom.clone(),
+            amount: fee,
+        }])?;
+        x_distribution::keeper::fund_community_pool(ctx, &fee_coins, &host)
+            .map_err(|e| errs::insufficient_funds(e.log))?;
     }
-    Ok(())
+    Ok(packet)
 }
 
 /// `ForwardTransferPacket`: the transfer msg server sends the token on,
@@ -160,8 +183,8 @@ fn forward_transfer_packet(
     max_retries: u8,
     timeout: i64,
 ) -> Result<()> {
-    check_zero_fee(ctx)?;
-    let msg = forward_msg_transfer(ctx, md, token, receiver, timeout)?;
+    let packet_coin = pay_fee(ctx, token, receiver)?;
+    let msg = forward_msg_transfer(ctx, md, &packet_coin, receiver, timeout)?;
     let sequence =
         ibc_transfer::transfer_sequence(ctx, &msg).map_err(|e| errs::insufficient_funds(e.log))?;
     let ifp = match in_flight {
@@ -418,10 +441,9 @@ mod tests {
         Ok(())
     }
 
-    /// A nonzero fee aborts (not ported); the zero fee of the v2 migration
-    /// passes.
+    /// The fee param decodes as the amino JSON string of a `Dec`.
     #[test]
-    fn only_a_zero_fee_is_ported() -> Result<()> {
+    fn fee_percentage_decodes_the_param() -> Result<()> {
         let mut ms = v2_store();
         let mut ctx = Context::new(&mut ms, Header::default(), ExecMode::Finalize);
         let set = |ctx: &mut Context<'_>, v: &str| {
@@ -433,9 +455,12 @@ mod tests {
             )
         };
         set(&mut ctx, r#""0.000000000000000000""#)?;
-        check_zero_fee(&mut ctx)?;
+        assert!(fee_percentage(&mut ctx)?.is_zero());
         set(&mut ctx, r#""0.100000000000000000""#)?;
-        assert!(check_zero_fee(&mut ctx).is_err());
+        assert_eq!(
+            fee_percentage(&mut ctx)?.to_string(),
+            "0.100000000000000000"
+        );
         Ok(())
     }
 

@@ -57,6 +57,7 @@ const COMMUNITY_POOL_SPEND: &str = "/cosmos.distribution.v1beta1.CommunityPoolSp
 const TEXT_PROPOSAL: &str = "/cosmos.gov.v1beta1.TextProposal";
 const PARAMETER_CHANGE: &str = "/cosmos.params.v1beta1.ParameterChangeProposal";
 const CLIENT_UPDATE: &str = "/ibc.core.client.v1.ClientUpdateProposal";
+const IBC_UPGRADE: &str = "/ibc.core.client.v1.UpgradeProposal";
 
 // ---- keys ---------------------------------------------------------------
 
@@ -372,6 +373,45 @@ fn validate_content(content: &Any) -> Result<()> {
             parse_client_identifier(&c.subject_client_id)?;
             parse_client_identifier(&c.substitute_client_id)
         }
+        // ibc-go v6 `UpgradeProposal.ValidateBasic`: the abstract, the
+        // v0.46 `Plan.ValidateBasic`, a client state (`decode_v1` already
+        // unpacked it as a registered `ClientState`).
+        // v0.46 still reads the plan's deprecated `time` and
+        // `upgraded_client_state`.
+        #[allow(deprecated)]
+        IBC_UPGRADE => {
+            let c: celestia_proto::ibc::core::client::v1::UpgradeProposal = decode(content)?;
+            abstract_(&c.title, &c.description)?;
+            let plan = c.plan.unwrap_or_default();
+            // gogoproto's non-nullable stdtime: absent is Go's zero time.
+            if plan
+                .time
+                .as_ref()
+                .is_some_and(|t| (t.seconds, t.nanos) != (-62_135_596_800, 0))
+            {
+                return Err(errs::invalid_request(
+                    "time-based upgrades have been deprecated in the SDK",
+                ));
+            }
+            if plan.upgraded_client_state.is_some() {
+                return Err(errs::invalid_request(
+                    "upgrade logic for IBC has been moved to the IBC module",
+                ));
+            }
+            if plan.name.is_empty() {
+                return Err(errs::invalid_request("name cannot be empty"));
+            }
+            if plan.height <= 0 {
+                return Err(errs::invalid_request("height must be greater than 0"));
+            }
+            if c.upgraded_client_state.is_none() {
+                return Err(SdkError::new("client", 28, "invalid upgrade proposal")
+                    .wrap("upgraded client state cannot be nil"));
+            }
+            Ok(())
+        }
+        // `decode_v1` rejects any other content type (the v1 registry holds
+        // only these).
         other => Err(not_ported(format!("gov proposal content {other}"))),
     }
 }
@@ -514,9 +554,8 @@ fn run_legacy_content(ctx: &mut Context<'_>, content: &Any) -> Result<()> {
             )
         }
         PARAMETER_CHANGE => super::param_change::handle(ctx, content),
-        // celestia-app v1 `NewClientProposalHandler` → ibc-go v6
-        // `Keeper.ClientUpdateProposal`, up to the subject client's
-        // lookup.
+        // celestia-app `NewClientProposalHandler` → ibc-go v6
+        // `Keeper.ClientUpdateProposal`.
         CLIENT_UPDATE => {
             let c: celestia_proto::ibc::core::client::v1::ClientUpdateProposal = decode(content)?;
             if c.subject_client_id == "09-localhost" || c.substitute_client_id == "09-localhost" {
@@ -526,18 +565,87 @@ fn run_legacy_content(ctx: &mut Context<'_>, content: &Any) -> Result<()> {
                         .wrap("cannot update localhost client with proposal"),
                 );
             }
-            match x_ibc::client::get_client_state(ctx, &c.subject_client_id)? {
-                None => Err(x_ibc::errors::client::client_not_found(format!(
-                    "subject client with ID {}",
-                    c.subject_client_id
-                ))),
-                Some(_) => Err(not_ported(
-                    "ibc client update proposal of an existing client",
-                )),
-            }
+            client_update_proposal(ctx, &c.subject_client_id, &c.substitute_client_id)
         }
+        // celestia-app's `NewClientProposalHandler` refuses it.
+        IBC_UPGRADE => Err(errs::invalid_request("ibc upgrade proposal not supported")),
         other => Err(not_ported(format!("gov proposal content {other}"))),
     }
+}
+
+/// ibc-go v6 `Keeper.ClientUpdateProposal` after the localhost check: the
+/// subject must not be Active (its `Status`, without the allowed-clients
+/// check), the substitute must be newer and Active, then 07-tendermint
+/// `CheckSubstituteAndUpdateState` and the `update_client_proposal` event.
+fn client_update_proposal(
+    ctx: &mut Context<'_>,
+    subject_id: &str,
+    substitute_id: &str,
+) -> Result<()> {
+    use x_ibc::client::ClientState;
+    use x_ibc::errors::client as cerr;
+    use x_ibc::height;
+    use x_ibc::lightclients::tendermint as tmc;
+    let status = |ctx: &mut Context<'_>, id: &str, cs: &ClientState| match cs {
+        ClientState::Tendermint(t) => tmc::status(ctx, id, t),
+        _ => Err(not_ported(
+            "ibc-go v6 status of a client that is not 07-tendermint",
+        )),
+    };
+    let subject = x_ibc::client::client_state(ctx, subject_id)?
+        .ok_or_else(|| cerr::client_not_found(format!("subject client with ID {subject_id}")))?;
+    if status(ctx, subject_id, &subject)? == x_ibc::client::Status::Active {
+        return Err(
+            SdkError::new("client", 24, "invalid update client proposal")
+                .wrap("cannot update Active subject client"),
+        );
+    }
+    let substitute = x_ibc::client::client_state(ctx, substitute_id)?.ok_or_else(|| {
+        cerr::client_not_found(format!("substitute client with ID {substitute_id}"))
+    })?;
+    let (sh, uh) = (subject.latest_height(), substitute.latest_height());
+    if height::gte(&sh, &uh) {
+        return Err(cerr::invalid_height(format!(
+            "subject client state latest height is greater or equal to substitute client state latest height ({} >= {})",
+            height::to_string(&sh),
+            height::to_string(&uh)
+        )));
+    }
+    let st = status(ctx, substitute_id, &substitute)?;
+    if st != x_ibc::client::Status::Active {
+        return Err(super::ibc::client_not_active(format!(
+            "substitute client is not Active, status is {}",
+            st.as_str()
+        )));
+    }
+    let ClientState::Tendermint(t) = &subject else {
+        return Err(not_ported(
+            "ibc-go v6 client update proposal of a client that is not 07-tendermint",
+        ));
+    };
+    if !matches!(substitute, ClientState::Tendermint(_)) {
+        // Both client state types are `*types.ClientState` in v6.
+        return Err(cerr::invalid_client(
+            "expected type *types.ClientState, got *types.ClientState",
+        ));
+    }
+    tmc::check_substitute_and_update_state(
+        ctx,
+        subject_id,
+        t,
+        substitute_id,
+        &substitute.to_any(),
+    )?;
+    // The updated client takes the substitute's latest height.
+    ctx.events.emit(event(
+        "update_client_proposal",
+        [
+            ("subject_client_id", subject_id.to_owned()),
+            ("client_type", subject.client_type().to_owned()),
+            ("consensus_height", height::to_string(&uh)),
+        ],
+    ));
+    Ok(())
 }
 
 /// The route of a legacy content (`content.ProposalRoute()`).
@@ -546,7 +654,7 @@ fn content_route(content: &Any) -> Result<&'static str> {
         COMMUNITY_POOL_SPEND => Ok("distribution"),
         TEXT_PROPOSAL => Ok("gov"),
         PARAMETER_CHANGE => Ok("params"),
-        CLIENT_UPDATE => Ok("client"),
+        CLIENT_UPDATE | IBC_UPGRADE => Ok("client"),
         other => Err(not_ported(format!("gov proposal content {other}"))),
     }
 }
@@ -574,10 +682,14 @@ fn exec_legacy_content(
             if e.is_panic() {
                 return e;
             }
-            // Go formats the handler's error with `%+v`: the ibc client
-            // handler's errors carry a stack, printed after a newline
-            // (the oracle drops the frames: they name the build's paths).
-            let sep = if route == "client" { ", \n" } else { ", " };
+            // Go formats the handler's error with `%+v`: an error built
+            // with `sdkerrors.Wrap` (the ibc client handler's, the params
+            // handler's unknown subspace and failed update) carries a
+            // stack, printed after a newline (the oracle drops the
+            // frames: they name the build's paths).
+            let stack = route == "client"
+                || (route == "params" && (e.codespace, e.code) != ("paramfilter", 91_710));
+            let sep = if stack { ", \n" } else { ", " };
             gerr::invalid_proposal_content().wrap(format!(
                 "failed to run legacy handler {route},{}{}",
                 &sep[1..],
@@ -590,37 +702,55 @@ fn exec_legacy_content(
 }
 
 /// `Keeper.SubmitProposal` (v0.46) of `MsgExecLegacyContent` messages.
-fn keeper_submit(
-    ctx: &mut Context<'_>,
-    msgs: &[v1::MsgExecLegacyContent],
-    metadata: &str,
-) -> Result<v1::Proposal> {
+fn keeper_submit(ctx: &mut Context<'_>, msgs: &[Any], metadata: &str) -> Result<v1::Proposal> {
     assert_metadata_length(metadata)?;
     let mut msgs_str = String::new();
     let mut anys = Vec::with_capacity(msgs.len());
-    for m in msgs {
+    for a in msgs {
         msgs_str.push(',');
-        msgs_str.push_str(&v1::MsgExecLegacyContent::type_url());
-        // `msg.ValidateBasic()`.
-        let authority = sdk::address::acc_from_bech32_go(&m.authority)
-            .map_err(|e| gerr::invalid_proposal_msg().wrap(sdk::error::internal(e).log))?;
-        // `GetSigners` then the governance account.
-        let gov = gov_account(ctx)?;
-        if authority != gov {
-            return Err(gerr::invalid_signer().wrap(x_auth::bech32(&authority)?));
-        }
-        // The handler on a cache context (writes and events discarded,
-        // gas kept).
-        let cp = ctx.branch();
-        let r = exec_legacy_content(ctx, m);
-        ctx.discard(cp);
-        if let Err(e) = r {
-            if e.is_panic() {
-                return Err(e);
+        msgs_str.push_str(&a.type_url);
+        let a = &super::msgs::gogo_view(a)?;
+        if a.type_url == v1::MsgExecLegacyContent::type_url() {
+            let m: v1::MsgExecLegacyContent = decode(a)?;
+            // `msg.ValidateBasic()`.
+            let authority = sdk::address::acc_from_bech32_go(&m.authority)
+                .map_err(|e| gerr::invalid_proposal_msg().wrap(sdk::error::internal(e).log))?;
+            // `GetSigners` then the governance account.
+            let gov = gov_account(ctx)?;
+            if authority != gov {
+                return Err(gerr::invalid_signer().wrap(x_auth::bech32(&authority)?));
             }
-            return Err(gerr::no_proposal_handler_exists().wrap(e.log));
+            // The handler on a cache context (writes and events
+            // discarded, gas kept).
+            let cp = ctx.branch();
+            let r = exec_legacy_content(ctx, &m);
+            ctx.discard(cp);
+            if let Err(e) = r {
+                if e.is_panic() {
+                    return Err(e);
+                }
+                return Err(gerr::no_proposal_handler_exists().wrap(e.log));
+            }
+        } else {
+            // `ValidateBasic`, one signer that is the governance account,
+            // a route; the message itself runs only once the proposal
+            // passes.
+            super::msgs::validate_basic(a).map_err(|e| gerr::invalid_proposal_msg().wrap(e.log))?;
+            let signers = super::signers::signers(a)?.unwrap_or_default();
+            let [signer] = <[Vec<u8>; 1]>::try_from(signers).map_err(|_| gerr::invalid_signer())?;
+            if signer != gov_account(ctx)? {
+                let text = if signer.is_empty() {
+                    String::new()
+                } else {
+                    x_auth::bech32(&signer)?
+                };
+                return Err(gerr::invalid_signer().wrap(text));
+            }
+            if !routable(&a.type_url) {
+                return Err(gerr::unroutable_proposal_msg().wrap(&a.type_url));
+            }
         }
-        anys.push(txdecode::gogo_repack(&Any::pack(m)));
+        anys.push(txdecode::gogo_repack(a));
     }
     let id = proposal_id(ctx)?;
     let submit = ctx.header.time;
@@ -786,7 +916,7 @@ fn message_event(ctx: &mut Context<'_>, sender: &str) {
 /// v1 `msgServer.SubmitProposal`.
 fn submit_proposal(
     ctx: &mut Context<'_>,
-    msgs: &[v1::MsgExecLegacyContent],
+    msgs: &[Any],
     initial_deposit: &[PbCoin],
     proposer: &str,
     metadata: &str,
@@ -842,21 +972,11 @@ fn non_split(option: i32) -> Vec<v1::WeightedVoteOption> {
     }]
 }
 
-/// The v1 messages of a v1 `MsgSubmitProposal` (only
-/// `MsgExecLegacyContent`, which `ValidateBasic` ensured).
-fn exec_msgs(m: &v1::MsgSubmitProposal) -> Result<Vec<v1::MsgExecLegacyContent>> {
-    m.messages
-        .iter()
-        .map(|a| {
-            if a.type_url != v1::MsgExecLegacyContent::type_url() {
-                return Err(not_ported(format!(
-                    "gov v1 proposal message {}",
-                    a.type_url
-                )));
-            }
-            super::msgs::gogo_view(a).and_then(|a| decode(&a))
-        })
-        .collect()
+/// Whether celestia-app v3.13.0's msg service router has a handler for
+/// `type_url`: every message of the v1 registry except the interchain
+/// accounts controller's (no controller module).
+fn routable(type_url: &str) -> bool {
+    !type_url.starts_with("/ibc.applications.interchain_accounts.controller.")
 }
 
 /// Executes a gov message; `None` for any other message.
@@ -909,14 +1029,25 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
                 content: Some(content),
                 authority: gov,
             };
-            submit_proposal(ctx, &[exec], &m.initial_deposit, &m.proposer, "")
-                .map(|id| Any::pack(&v1beta1::MsgSubmitProposalResponse { proposal_id: id }))
+            submit_proposal(
+                ctx,
+                &[Any::pack(&exec)],
+                &m.initial_deposit,
+                &m.proposer,
+                "",
+            )
+            .map(|id| Any::pack(&v1beta1::MsgSubmitProposalResponse { proposal_id: id }))
         })
     } else if u == v1::MsgSubmitProposal::type_url() {
         decode::<v1::MsgSubmitProposal>(msg).and_then(|m| {
-            let msgs = exec_msgs(&m)?;
-            submit_proposal(ctx, &msgs, &m.initial_deposit, &m.proposer, &m.metadata)
-                .map(|id| Any::pack(&v1::MsgSubmitProposalResponse { proposal_id: id }))
+            submit_proposal(
+                ctx,
+                &m.messages,
+                &m.initial_deposit,
+                &m.proposer,
+                &m.metadata,
+            )
+            .map(|id| Any::pack(&v1::MsgSubmitProposalResponse { proposal_id: id }))
         })
     } else if u == v1::MsgExecLegacyContent::type_url() {
         // Only the gov account can sign it (only a proposal runs it).
@@ -1041,17 +1172,22 @@ pub fn end_block(ctx: &mut Context<'_>) -> Result<()> {
             let mut events = Vec::new();
             let mut failed = false;
             for a in &p.messages {
-                if a.type_url != v1::MsgExecLegacyContent::type_url() {
-                    ctx.events = outer;
-                    ctx.discard(cp);
-                    return Err(not_ported(format!("gov proposal message {}", a.type_url)));
-                }
-                let m: v1::MsgExecLegacyContent = decode(a)?;
-                match exec_legacy_content(ctx, &m) {
+                // The router's handler of the message.
+                let r = if a.type_url == v1::MsgExecLegacyContent::type_url() {
+                    let m: v1::MsgExecLegacyContent = decode(a)?;
+                    exec_legacy_content(ctx, &m)
+                } else {
+                    let inner = std::mem::take(&mut ctx.events);
+                    let r = super::authz::router_handle(ctx, a);
+                    let ev = std::mem::replace(&mut ctx.events, inner).take();
+                    r.map(|_| ev)
+                };
+                match r {
                     Ok(ev) => events.extend(ev),
                     Err(e) if e.is_panic() => {
                         ctx.events = outer;
                         ctx.discard(cp);
+                        // Go's EndBlocker does not recover: the node halts.
                         return Err(not_ported("panic in a gov proposal handler"));
                     }
                     Err(_) => {

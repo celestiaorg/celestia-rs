@@ -17,6 +17,7 @@ pub mod dec_coins;
 pub mod error;
 pub mod event;
 pub mod frozen;
+pub mod profile;
 pub mod router;
 pub mod store;
 pub mod time;

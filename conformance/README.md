@@ -351,6 +351,199 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/home" \
   -genesis "$OUT/v1-v3/genesis.json" -out ../fixtures/synthetic/v4
 ```
 
+#### Sign bytes per release
+
+`go run . -signbytes <out.json>` in `v4-oracle`, `v5-oracle`, `v6-oracle`,
+`v8-oracle` and `v9-oracle` (`signbytes.go`) writes this release's sign
+bytes for a fixed corpus of the messages mainnet signs:
+
+- bank, staking, distribution, slashing;
+- gov v1 and v1beta1;
+- authz, including `MsgExec` of send, delegate and transfer;
+- feegrant, vesting, blob, signal;
+- IBC transfer and core;
+- hyperlane warp and core.
+
+It covers these modes:
+
+- `SIGN_MODE_LEGACY_AMINO_JSON`;
+- `SIGN_MODE_DIRECT_AUX`, with and without an explicit fee payer;
+- `SIGN_MODE_TEXTUAL`, which these releases reject.
+
+When Go fails to make sign bytes, the file records the error.
+[`fixtures/signbytes`](fixtures/signbytes) holds the outputs, gzipped. Each
+module's `go test` requires its file byte for byte.
+`cargo test -p x-ante --test release_sign_bytes` requires Rust to produce the
+same bytes, or an error where Go errs, at each app version.
+
+#### Consensus chain: blocks a node can block sync
+
+`-consensus` (in `v1-oracle -synthetic` and in `v4-oracle` to `v11-oracle`,
+`consensus.go`) builds the blocks of the same chain as a validator would, so
+that a node can block sync them:
+
+- each block's txs, square size and data root come from the app's
+  PrepareProposal, and `data_hash` is that data root. PrepareProposal drops the
+  chain's deliberately failing txs, three in all;
+- each commit is signed by the validators' consensus keys, at the next block's
+  time, so each header time is the weighted median of its last commit;
+- block 1 is at the genesis time, with the genesis state's
+  `last_results_hash`;
+- the last validator is absent from every third commit (as in the default
+  mode), and in `v11-oracle` the validator before it precommits nil every
+  fourth height (the commit of block 80);
+- the last stage writes the commit of its last block to `last-commit.json`.
+
+The default mode keeps unsigned commits and tx-hash data roots, which a node
+rejects. Its fixtures are unchanged.
+[`fixtures/synthetic/consensus`](fixtures/synthetic/consensus) holds the eight
+stages (`v1-v3` to `v11`), and `homes/consensus-{25,36,46,56,66,76}.tar.gz` hold
+the homes between them. The `go test` of each module rebuilds its stage byte for
+byte. To regenerate, run the stages as for the default chain, with
+`-consensus`:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -consensus -kv -out "$OUT/v1-v3" -handoff "$OUT/home"
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -heights 10 -next-handoff -consensus \
+  -genesis "$OUT/v1-v3/genesis.json" -out "$OUT/v4-to-v5"
+# then v5-oracle -heights 11, v6-oracle, v8-oracle, v9-oracle and v10-oracle
+# -heights 10 (each -next-handoff -consensus), v11-oracle -heights 5
+# -consensus; archive the home after each -next-handoff stage as for the
+# default chain.
+```
+
+`cargo test -p celestia-rs --test blocksync_synthetic_genesis` serves these
+blocks from an in-process block sync peer to a fresh node, which syncs from the
+synthetic genesis to block 80 through every upgrade. The node restarts after
+the block before each upgrade and after the upgrade block. At block 77 it halts
+for the v11 upgrade (the runtime executes v10 until a restart finds
+`data/upgrade-info.json`) and is restarted. It checks every commit, header and
+data root (ProcessProposal from app version 9), and must store Go's block IDs
+and app hashes. From a copy of its home at 79, it must refuse block 80 when the
+commit holds one bad signature, and when the block's tx is removed (its commit
+signed again for the new part set, so only the data root check fails).
+
+#### Block validation: a commit slot with another address
+
+`median_time_test.go` in `v5-oracle` (celestia-core v1.59.0-tm-v0.38.17),
+`v6-oracle` (v0.39.23) and `v10-oracle` (v0.42.8) writes
+`fixtures/blockvalidation/median-time-<core>.json`. Each file records
+`VerifyCommit` (by index) and `MedianTime` for a block's LastCommit whose slot 3
+names an address outside the set or validator 0's address, and holds validator
+3's valid signature (the vote's sign bytes do not cover the address). The
+v0.38 core accepts both and leaves the foreign slot out of the median.
+v0.39.23 and later refuse both in `VerifyCommit` (`validator address
+mismatch`), and their `MedianTime` errs on an address outside the set.
+`cargo test -p celestia-rs --test median_time_vectors` requires celestia-rs to
+give the v0.39.23 and v0.42.8 outcomes. Block validation runs in the node's
+own core, so a Go node today (v10.6.0, core v0.42.8) applies that rule at
+every height, and so does celestia-rs. Regenerate with
+`MEDIAN_WRITE=1 go test -run TestMedianTimeVectors` in each module.
+
+#### App homes between the upgrade oracles
+
+[`fixtures/synthetic/homes`](fixtures/synthetic/homes) holds the app home
+(`data/application.db`, `data/upgrade-info.json`, `handoff.json`) that each
+`-next-handoff` run leaves: `home-25` (after `v4-oracle`), `home-36`
+(`v5-oracle`), `home-46` (`v6-oracle`), `home-56` (`v8-oracle`), `home-66`
+(`v9-oracle`) and `home-76` (`v10-oracle`). The `go test` of `v5-oracle` to
+`v11-oracle` starts from the previous stage's home, so each module builds and
+runs only its own oracle. The `go test` that makes a home (`v4-oracle` to
+`v10-oracle`, in the `-next-handoff` case) requires the home it
+leaves to hold the committed `handoff.json`, which records the app hash of
+every store, and `data/upgrade-info.json`. After you regenerate a stage, make
+its archive from the home that the commands below leave, before the next stage
+modifies it:
+
+```sh
+tar -C "$OUT/home" --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - . \
+  | gzip -n -9 > conformance/fixtures/synthetic/homes/home-25.tar.gz
+```
+
+#### 07-tendermint client blocks per release
+
+`-heights 10 -tmclient` (in `v4-oracle` to `v9-oracle`, `tmclient.go`) runs
+each release's usual five blocks, then five blocks of `MsgCreateClient`,
+`MsgUpdateClient` and `MsgSubmitMisbehaviour` for a synthetic tendermint
+counterparty. The oracle signs the counterparty's headers with fixed ed25519
+keys, so each header can break exactly one rule:
+
+- adjacent and non-adjacent updates, with 1/2 and 1/4 of the trusted power;
+- an expired client, a header beyond the clock drift, a wrong chain ID;
+- pruning of an expired consensus state;
+- freezing by a conflicting header and by `MsgSubmitMisbehaviour`;
+- a revision 0 counterparty, with nil votes and absent signatures;
+- the order in which the commit checks report errors, on the adjacent path
+  (signatures found by index, with the set-size check) and on the trusting
+  path (signatures found by address): a missing slot with a bad first
+  signature, a bad first signature with enough good ones, too little power,
+  a validator in two slots, a wrong validators hash;
+- an adjacent update whose commit slot 1 names validator 0's address but holds
+  validator 1's valid signature (the canonical vote holds no address).
+
+The fixtures are `fixtures/synthetic/v{4,5,6,8,9}-tm`. `cargo test -p app
+--test synthetic_tm_client_oracle` pins Go's code, codespace and log for each
+case and release, and the client store changes. celestia-core 0.39.23
+(v6.4.10) and later check the address of a signature found by index: they
+report `validator address mismatch at index 1` for validator 0's signature in
+slot 1 (earlier releases: `wrong signature (#1)`), and refuse validator 1's
+signature under validator 0's address, which v4 and v5 accept.
+
+The cases follow what mainnet relayers send. The `update_client_census`
+example decodes each `MsgUpdateClient` in a block stream; on the blocks of
+five 10,000-block windows per era (found with the RPC's `tx_search`), it
+found:
+
+| App version | Updates sampled | Adjacent | With absent signatures | With nil votes | Validator set changed | Revision 0 counterparty |
+| --- | --- | --- | --- | --- | --- | --- |
+| v1 | 61 | 5 | 61 | 0 | 0 | 0 |
+| v2 | 0 (none indexed) | | | | | |
+| v3 | 80 | 0 | 72 | 0 | 0 | 12 |
+| v4 | 100 | 0 | 87 | 0 | 12 | 23 |
+| v5 | 102 | 0 | 100 | 0 | 2 | 2 |
+| v6 | 100 | 0 | 90 | 0 | 9 | 0 |
+| v8 | 103 | 0 | 93 | 2 | 1 | 0 |
+| v9 | 101 | 3 | 88 | 6 | 1 | 0 |
+| v10 | 100 | 0 | 90 | 3 | 2 | 0 |
+
+Most updates are non-adjacent, with absent signatures; nil votes appear from
+v8, and some counterparties use revision 0.
+
+#### Probe blocks per release
+
+`-heights 19 -probes` (in `v4-oracle` to `v9-oracle`, `probes.go`,
+`warpprobes.go`, `pfmprobes.go` and `icaprobes.go`) runs each release's usual
+five blocks and then fourteen probe blocks of transactions whose outcome differs between releases. Blocks +5 to
++7 hold an ICA host `MsgModuleQuerySafe`, a warp `MsgCreateSyntheticToken`,
+a `MsgWithdrawDelegatorReward` without a delegation, and gov proposals of an
+ICA host `MsgUpdateParams` and of consensus `MsgUpdateParams` with evidence
+`MaxAgeNumBlocks` 242,640, 404,400 and 559,940. Blocks +8 to +13 set up a
+hyperlane route (noop ISM and hook, mailbox) and then send warp transactions
+signed in `SIGN_MODE_LEGACY_AMINO_JSON`: a collateral token, a remote router
+enrollment and two remote transfers. Where Go cannot build the amino sign
+bytes (a `RemoteRouter` before hyperlane-cosmos v1.1.0), the transaction is
+signed over the bytes `unsignable: <error>`. From v6, where the chain has the solo
+machine's transfer channel, blocks +14 and +15 receive solo machine packets
+whose memo asks packet-forward-middleware to forward them: back over
+`channel-0`, and to `channel-9`, which does not exist. Blocks +16 to +18 open an
+interchain-account channel with the solo machine as controller, fund the
+account and execute a `MsgSend` through it. With `-probes` the tx results
+also record `signers` (absent on v4, whose celestia-core has no such field).
+The fixtures are `fixtures/synthetic/v{4,5,6,8,9}-probes`; v4 starts from
+the v3 hand-off, the others from the previous stage's home. `cargo test -p
+app --test synthetic_probes_oracle` pins Go's code and log for each probe
+and release.
+For example, for v6:
+
+```sh
+cd conformance/v6-oracle
+tar -C "$OUT/home" -xzf ../fixtures/synthetic/homes/home-36.tar.gz
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -heights 19 -probes \
+  -genesis ../fixtures/synthetic/v1-v3/genesis.json -out ../fixtures/synthetic/v6-probes
+```
+
 #### Synthetic chain across the v4 to v5 upgrade
 
 `v4-oracle -heights 10 -next-handoff` runs the same chain on to block
@@ -398,9 +591,12 @@ error acknowledgement from x/tokenfilter; the validators signal version
 block 36 sets app version 6 and schedules plan `v6` at 37.
 [`fixtures/synthetic/v5-to-v6`](fixtures/synthetic/v5-to-v6) holds its
 outputs (blocks 26 to 30 are those of `fixtures/synthetic/v5`).
-`v6-oracle` opens the home with celestia-app v6.4.4 (the v6 release that
-the v8 and v9 multiplexers embed; v6.4.10 changes only CheckTx,
-ProcessProposal and the tx cache). The PreBlocker of block 37 runs the
+`v6-oracle` opens the home with celestia-app v6.4.10 (the v6 release that
+the v10.6.0 and v11.0.0 multiplexers embed; the v8 and v9 multiplexers embed
+v6.4.4). Against v6.4.4 it changes the tx cache of CheckTx and
+ProcessProposal, and its celestia-core v0.39.23 adds the light-client check
+of a commit signature's validator address (and an error, not a skipped
+vote, for a commit validator missing from the set in `MedianTime`). The PreBlocker of block 37 runs the
 `v6` handler; blocks 37 to 41 receive a second `uatom` transfer (now a
 voucher), send the voucher, return part of it to the solo machine and
 take its acknowledgement. [`fixtures/synthetic/v6`](fixtures/synthetic/v6)
@@ -477,6 +673,39 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json
   -out ../fixtures/synthetic/v9
 ```
 
+#### Synthetic chain across the v9 to v10 and v10 to v11 upgrades
+
+`v9-oracle -heights 10 -next-handoff` runs the chain on to block 66: the
+validators signal version 10, a `MsgTryUpgrade` in block 63 reaches quorum,
+and the EndBlocker of block 66 sets app version 10 and schedules plan `v10`
+at 67. [`fixtures/synthetic/v9-to-v10`](fixtures/synthetic/v9-to-v10) holds
+its outputs (blocks 57 to 61 are those of `fixtures/synthetic/v9`).
+`v10-oracle` opens the home with celestia-app v10.6.0 (the mainnet parity
+target). Its store loader adds the `fibre` and `valaddr` stores at 67, and the
+PreBlocker runs the `v10` handler. With `-heights 10 -next-handoff` it runs on
+to block 76 and the `v11` plan at 77, in the same way
+([`fixtures/synthetic/v10-to-v11`](fixtures/synthetic/v10-to-v11)).
+`v11-oracle` opens the home with celestia-app v11.0.0 (`58be8ae9`, also
+tagged `v11.0.0-mocha` and `v11.0.0-corto`). The PreBlocker of block 77 runs
+the `v11` handler (module migrations, no store added; the frozen-account lists
+do not name chain `test`), and the program executes blocks 77 to 81
+([`fixtures/synthetic/v11`](fixtures/synthetic/v11)). The `go test` of each
+module rebuilds its fixtures. `cargo test -p app --test synthetic_e2e_sync`
+syncs one node from genesis to 81 with them. To regenerate, after the v8 to v9
+commands (on a fresh home):
+
+```sh
+cd conformance/v9-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v9-to-v10 -heights 10 -next-handoff
+cd ../v10-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v10-to-v11 -heights 10 -next-handoff
+cd ../v11-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v11
+```
+
 #### Rich synthetic chain for the v3 to v4 migrations
 
 `v1-oracle -synthetic -chain v3-rich` builds a second chain (genesis at
@@ -502,6 +731,30 @@ cd ../v4-oracle
 GOFLAGS=-mod=mod go run . -handoff "$OUT/rich-home" \
   -genesis "$OUT/rich/genesis.json" -out ../fixtures/synthetic/v3-rich-v4
 ```
+
+#### IBC synthetic chain across the v3 to v4 upgrade
+
+`v1-oracle -synthetic -chain v3-ibc` (`ibcchain.go`) starts from a genesis
+at app version 3. It opens an IBC client, a connection and a transfer
+channel to a solo machine (06-solomachine, whose proofs are signatures by a
+fixed key), sends 1,000 utia over the channel and receives a solo-machine
+transfer. Its EndBlocker of block 14 schedules plan `v4` at 15.
+
+`v4-oracle` continues it (`ibc.go`) at celestia-app v4.1.0:
+
+- Block 15: a transfer over the v3 channel fails with `channel` code 9,
+  "module does not own channel capability: channel capability not found".
+- Blocks 16 and 17: a receive and the acknowledgement of the v3 transfer
+  fail with `capability` code 7.
+
+v4.1.0 has no capability module in its module manager, so it never
+initializes the in-memory capability index. This is what every IBC packet
+message did on mainnet from 6,680,340 to 6,748,821.
+
+[`fixtures/synthetic/v3-ibc`](fixtures/synthetic/v3-ibc) holds the v3 side
+and [`fixtures/synthetic/v3-ibc-v4`](fixtures/synthetic/v3-ibc-v4) the v4
+side; both `go test`s rebuild them.
+`cargo test -p app --test synthetic_v4_ibc_oracle` pins the outcomes.
 
 #### Governance chain for app versions 1 to 3
 
@@ -603,6 +856,35 @@ heights 0 to 17 (regenerate it as the governance chain, with
 every block, and checks that the app version 4 and later sign bytes of
 its transactions do not change.
 
+#### Failure paths for app versions 1 to 3
+
+`v1-oracle -synthetic -chain failures-v1-v3` (`synthetic_failures.go`)
+signs transactions in DIRECT mode that fail, at app version 1 (blocks 2
+to 4), 2 (blocks 6 to 8) and 3 (blocks 14 to 16). Each failure's code,
+codespace and `gas_used` go into `LastResultsHash`, so celestia-rs must
+fail at the same point of the ante handler or message handler as Go:
+
+- ante handler: a wrong sequence, a wrong chain ID, out of gas in the
+  ante handler and at two points of a message, no fee (passes at app
+  version 1, below the network minimum gas price from app version 2), a
+  fee above the balance, a memo too large, a past timeout height;
+- messages: a multi-message transaction whose second message fails (the
+  first is rolled back), `MsgExec` without a grant and with an expired
+  one, a fee granter without an allowance, an allowance spent past its
+  limit and an expired one, a reward withdrawal without a delegation, an
+  undelegation of more than the delegation, a delegation to an account
+  that is not a validator, a redelegation to the same validator, a
+  transitive redelegation, a send to a blocked module account, an eighth
+  unbonding entry, out of gas in `MsgDelegate` and `MsgUndelegate` (at
+  100,000 gas, as mainnet had), a delegation above the balance, and a
+  vote on an unknown proposal.
+
+Blob transactions that fail `ValidateBasic` are not in it: ProcessProposal
+rejects a block that holds one. [`fixtures/synthetic/failures-v1-v3`](fixtures/synthetic/failures-v1-v3)
+holds heights 0 to 17 (regenerate it as the governance chain, with
+`-chain failures-v1-v3`). `cargo test -p app --test failures_oracle`
+compares every block.
+
 The oracle writes a transaction's log without what depends on Go's
 runtime or the machine (the log is not consensus data): the goroutine
 stack and celestia's "caused by transaction" dump of a recovered panic
@@ -676,9 +958,23 @@ ibc-go simapp chains as counterparties:
   an error acknowledgement and its send runs. Then utia goes to B
   through authz `MsgExec` (a GenericAuthorization, and an ibc-go
   TransferAuthorization whose spend limit it uses up), and a plain
-  transfer times out on B and is refunded on A. The fixture keeps its
-  `ibc-v2` name.
-  executes a send over it. The fixture keeps its `ibc-v2` name.
+  transfer times out on B and is refunded on A. Last come redundant
+  relays, as racing relayers send them: the timeout again, an
+  acknowledgement of an acknowledged packet, and a packet from B that A
+  receives twice. ibc-go v6 gives each a `NOOP` result (code 0). Then
+  three failures that mainnet has: a transfer of more than the balance, a
+  transfer whose timeout height B has passed, and an open-ack of an open
+  channel. Then `MsgChannelCloseInit` on a transfer channel (refused);
+  ibc client proposals (an expired client recovered by a passed
+  `ClientUpdateProposal`, one whose subject is Active, and an ibc
+  `UpgradeProposal`, which celestia-app refuses); `MsgUpgradeClient` of a
+  client of B whose upgrade B committed (two failures, the upgrade, then a
+  failure on the upgraded client, which is Expired); `MsgTimeoutOnClose`
+  of a transfer whose channel end on B is CLOSED (set in B's store, as a
+  counterparty that allows closing would; a failure, the refund, then a
+  `NOOP`); and a passed parameter change that sets PFM's `FeePercentage`
+  to 10%, then a forward from B through A to C that pays the fee to the
+  community pool. The fixture keeps its `ibc-v2` name.
 
 The test records A's genesis, each BeginBlock header and the
 transactions of each block. It replays them in a fresh app through the
@@ -687,8 +983,7 @@ run's. Each block gets one BeginBlock at one time (ibctesting re-runs
 BeginBlock when its clock moves, which no consensus engine does), so
 the clients that A hosts allow an hour of clock drift. The blocks carry
 no last commit. [`fixtures/synthetic/ibc-v2`](fixtures/synthetic/ibc-v2)
-holds heights 0 to 151; the test requires it byte for byte. To
-holds heights 0 to 124; the test requires it byte for byte. To
+holds heights 0 to 205; the test requires it byte for byte. To
 regenerate it:
 
 ```sh
@@ -701,6 +996,39 @@ cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
 
 `cargo test -p app --test ibc_oracle` compares each block as for the
 synthetic chain.
+
+#### 07-tendermint client updates at app versions 1 to 3
+
+`TestIBCTMFixture` (`conformance/v1-oracle/ibc_tm_test.go`) runs chain A of
+the IBC harness alone. After the v1 to v2 upgrade, chain A creates clients of
+a synthetic counterparty whose headers it signs with fixed ed25519 keys, so
+each header breaks exactly one rule. These are the cases of the `-tmclient`
+blocks of `v4-oracle` to `v9-oracle`, plus the ibc-go v6 forms: a misbehaviour
+in `MsgUpdateClient` (a decode error), a conflicting header that freezes the
+client, and `MsgSubmitMisbehaviour` repeated on the frozen client. Each tx
+has its own block (heights 4 to 38). A failed tx uses the sender's sequence
+only when it got past the ante handler, so the test reads the sequence back
+from state.
+[`fixtures/synthetic/ibc-v2-tm`](fixtures/synthetic/ibc-v2-tm) holds the
+blocks. To regenerate it:
+
+```sh
+cd conformance/v1-oracle
+V1_ORACLE_IBC_TM_OUT="$OUT" GOFLAGS=-mod=mod go test -run TestIBCTMFixture .
+cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
+  "$OUT"/tx-results.jsonl.gz "$OUT"/kv-diffs.jsonl.gz \
+  "$OUT"/kv-height-0.jsonl.gz ../fixtures/synthetic/ibc-v2-tm/
+```
+
+`cargo test -p app --test ibc_tm_oracle` pins Go's code, codespace and log for
+each tx, and the pruning and freezing store changes. The block replay
+(`ibc_tm_blocks_match_the_oracle`) matches every KV change, app hash and
+tx result through block 38, except two logs of the shared light client
+(code, codespace and gas match), which it allows:
+
+- the `double vote from Validator{…} (0 and 1)` text at block 23;
+- block 30: celestia-core v1 does not check the address of a signature found
+  by index, so it reports `wrong signature (#1): <signature bytes>`.
 
 #### History synthetic chain for the historical info migration
 
@@ -953,6 +1281,64 @@ Regeneration uses the pinned heights and commitments in
 ```sh
 python3 conformance/mainnet-rpc/fetch-replay-blocks.py
 ```
+
+## Fibre server interoperability
+
+[`fibre-interop/`](fibre-interop) checks the embedded Fibre server of
+`celestia-rs start` against the Go implementation of celestia-app
+`v11.0.0`: its Fibre client (package `fibre`: `NewClient`, `Put`,
+`Client.Upload`, `Client.Download`) and, on a mixed network, Go validators
+that run the standalone Go `fibre` server. `main.go` is the Go client
+program (`fibre-interop <command>`); the two scripts start local devnets
+and drive it. [`fibre-go-interop.yml`](../.github/workflows/fibre-go-interop.yml)
+runs both on pull requests that touch the Fibre server, its node wiring or
+the harness, and every day.
+
+```sh
+# Four celestia-rs validators (genesis from the celestia-rs CLI, app
+# version 10). Blob sizes and the number of concurrent clients are inputs.
+SIZES=1K,300K,8M,64M,127M CLIENTS=20 conformance/fibre-interop/rust-validators.sh [target/debug/celestia-rs]
+
+# Two Go validators (celestia-appd v11.0.0 + Go fibre v11.0.0, signing over
+# the node's privval gRPC) and two celestia-rs validators (genesis from
+# celestia-appd v11.0.0, app version 11). Needs the Go binaries and a
+# celestia-rs built with the da-fibre feature (node 2's DA bridge uploads
+# with the Rust client).
+DEVNET_BIN=target/devnet-bin-v11 APP_VERSION=v11.0.0 CORE_VERSION=v0.42.8 \
+  APPD_ONLY=1 FIBRE=1 GOTOOLCHAIN=go1.26.10 conformance/devnet/build-bins.sh
+cargo build -p celestia-rs --features da-fibre
+SIZES=1K,300K,8M,64M,127M conformance/fibre-interop/mixed-validators.sh target/debug/celestia-rs
+```
+
+The scripts need Go (the module pins `go 1.26.10`; `GOTOOLCHAIN=auto`
+downloads it), Python 3 and curl, and use loopback ports from
+`DEVNET_PORT_OFFSET` (21000 and 23000 by default). Logs stay in the
+printed temporary directory when a check fails.
+
+What they check:
+
+- Hosts registered with `tx valaddr set-host`; the Go gRPC health client
+  sees readiness and liveness SERVING over TLS 1.3 on every server.
+- Uploads of every size, a `MsgPayForFibre` with the servers' signatures
+  committed with code 0, downloads byte-identical. Except for the first
+  blob (`fibre.Put`), uploads wait for every validator's signature, so on
+  the mixed network each payment carries Go and Rust signatures.
+- Download of an unknown blob: `fibre.ErrNotFound`.
+- Rust-only network: 20 clients at once (each with its own connection per
+  validator, beyond the 16-connection cap) and 20 Puts on one client
+  (beyond the 13-stream cap), both with the client's default 15 s RPC
+  timeout; `BIG_PUTS` (3) concurrent 127 MiB Puts on one client, which
+  must fit the default `max_inflight_upload_bytes`; a stopped validator (`fibre.Put`
+  still reaches the 2/3 quorum and earlier blobs reconstruct); a raw
+  `UploadShard` loop fills one validator's storage budget (lowered in
+  genesis) until `ResourceExhausted`, whose `RetryInfo` grpc-go must decode
+  as the client's retry logic does.
+- Mixed network: uploads through the celestia-rs DA bridge (lumina's
+  `celestia-fibre` client) to Go and Rust servers, read back with the Go
+  client; `check_chain` and RPC block and app hashes on all nodes; then
+  one Go and one Rust validator stop, and every blob must reconstruct from
+  the remaining Go and Rust shards (each holds 3072 of the 4096 rows
+  needed).
 
 ## When to regenerate
 

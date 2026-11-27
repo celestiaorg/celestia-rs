@@ -755,12 +755,22 @@
         },
         {
           "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1zq7dv9l7tnrwh0ey3j2twhzw3xrnzs3qvmq8p7",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A9YS2dlo85MUhLqVxnlejoRW8d6I6NZ8BM/A8kmD1jbd"
+          },
+          "account_number": "72",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
           "address": "celestia1cf2va2zf9v8fc670z2a3x9a280auw9gycg3lkw",
           "pub_key": {
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AlXjaoLnCxer2gzBJP1Iuup5ZP8EYMNANC3wECPekoo1"
           },
-          "account_number": "72",
+          "account_number": "73",
           "sequence": "0"
         },
         {
@@ -770,7 +780,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A60n/jbQO1aLKvH1t9BVjTNZ1ZesafNtLBVl/PjvrBlv"
           },
-          "account_number": "73",
+          "account_number": "74",
           "sequence": "0"
         },
         {
@@ -780,7 +790,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Aju8Y2CmkkokWs4g5W0wWkuGejFLgzarkVfmMeggdQ6H"
           },
-          "account_number": "74",
+          "account_number": "75",
           "sequence": "0"
         },
         {
@@ -790,7 +800,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "As9ACb8iT+hKjZuNekzAYK/Y17KoxiN04HGmEyUdxFd/"
           },
-          "account_number": "75",
+          "account_number": "76",
           "sequence": "0"
         },
         {
@@ -800,7 +810,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A4zFWrPIVUKyk7rEd8GzbqRnzs2vDLSEF3JarVRKWNzK"
           },
-          "account_number": "76",
+          "account_number": "77",
           "sequence": "0"
         },
         {
@@ -810,7 +820,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "ArMrvPbfF2nf/VW9TN0t1C9/GT8a4wAaxSJrQ8Zk70hO"
           },
-          "account_number": "77",
+          "account_number": "78",
           "sequence": "0"
         },
         {
@@ -820,7 +830,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AsyNDz4jdcTJLDlwZzWzcb8oQcTPfdGaWQ5w6cCyiB5d"
           },
-          "account_number": "78",
+          "account_number": "79",
           "sequence": "0"
         },
         {
@@ -830,7 +840,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Ah47Y8QWbCIW/SUXWejxgt3q2lmebr+A5xicY9eAwCCk"
           },
-          "account_number": "79",
+          "account_number": "80",
           "sequence": "0"
         },
         {
@@ -840,7 +850,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AtvCpS1J0+a/OEVPbwNAZPKxnKdt/ZF07WL+ROuBuQah"
           },
-          "account_number": "80",
+          "account_number": "81",
           "sequence": "0"
         },
         {
@@ -850,7 +860,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A5O5k/RP2UaTSZTxEtA70EMGMz+sla9Cj8KFAtZyER5H"
           },
-          "account_number": "81",
+          "account_number": "82",
           "sequence": "0"
         },
         {
@@ -860,7 +870,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AoBjNQWa3k2O8uKW9lB/WVLncPzHlX9c98+s7jxY/ste"
           },
-          "account_number": "82",
+          "account_number": "83",
           "sequence": "0"
         },
         {
@@ -870,7 +880,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A+Hkxo3Ax2listBho4rSKcgX1UMroXlbDV/q12uXU3MV"
           },
-          "account_number": "83",
+          "account_number": "84",
           "sequence": "0"
         },
         {
@@ -880,7 +890,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A7C48ImW74L53SbT8FWlNqEMIdDXeWBYxmftGYAs/ATa"
           },
-          "account_number": "84",
+          "account_number": "85",
           "sequence": "0"
         },
         {
@@ -890,7 +900,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A7WH/rkJcmCcflg96AiqZDq9ocl0b288hUE13JiOUupr"
           },
-          "account_number": "85",
+          "account_number": "86",
           "sequence": "0"
         },
         {
@@ -900,7 +910,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A4gcUcP/GDjLrM1h3OlSXEEM2YWqUowxplp3YWXxFrWG"
           },
-          "account_number": "86",
+          "account_number": "87",
           "sequence": "0"
         },
         {
@@ -910,7 +920,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A8gdlGcMgHF0P2ll4TTwa4BYRrg5ka21w4D9btI29MQX"
           },
-          "account_number": "87",
+          "account_number": "88",
           "sequence": "0"
         },
         {
@@ -920,7 +930,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AlckAe0lRAssgTkB8lMHWBcq9kjh5UFrGlJpWVsBJoia"
           },
-          "account_number": "88",
+          "account_number": "89",
           "sequence": "0"
         },
         {
@@ -930,7 +940,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A5QXBmZ+Wd8fCXYF2wmhLb89n+w9V7IdPD54rjjIwsnB"
           },
-          "account_number": "89",
+          "account_number": "90",
           "sequence": "0"
         },
         {
@@ -940,7 +950,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Ann3wpDboU8G7KCIpLhfDrfQLtOfLhRLkNG4V/sMxUwL"
           },
-          "account_number": "90",
+          "account_number": "91",
           "sequence": "0"
         },
         {
@@ -950,7 +960,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Aixu1GjVhx9AAM9gfbUrkmJ7eclCfCLko/9sxGq+8Ol0"
           },
-          "account_number": "91",
+          "account_number": "92",
           "sequence": "0"
         }
       ]
@@ -1020,6 +1030,15 @@
         },
         {
           "address": "celestia1p9w403tnhxx9h0n8m54genzkr5fem8qknwgylw",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1zq7dv9l7tnrwh0ey3j2twhzw3xrnzs3qvmq8p7",
           "coins": [
             {
               "denom": "utia",

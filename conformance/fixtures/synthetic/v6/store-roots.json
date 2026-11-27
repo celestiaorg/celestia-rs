@@ -1,7 +1,7 @@
 {
   "chain_id": "test",
   "generator": "conformance/v6-oracle",
-  "celestia_app": "v6.4.4",
+  "celestia_app": "v6.4.10",
   "genesis_sha256": "f43692b8ed456dd39f75ac30807d4339be48aedabb222d05b8ec1947c1bdb65b",
   "handoff_height": 36,
   "heights": [
