@@ -799,12 +799,21 @@ async fn supervise(inputs: Inputs) {
         *backoff = (*backoff * 2).min(MAX_BACKOFF);
         d
     };
+    // One set of metrics for the supervisor's lifetime: a restarted server
+    // (listener failure, certificate renewal) takes over its predecessor's,
+    // so the exported counters do not drop to zero.
+    let mut kept: Option<Arc<ServerMetrics>> = None;
     while !stop.is_cancelled() {
-        let server = match fibre_server::Server::new(
-            cfg.clone(),
-            Arc::clone(&state),
-            Arc::clone(&signer),
-        ) {
+        let built = match &kept {
+            Some(m) => fibre_server::Server::with_metrics(
+                cfg.clone(),
+                Arc::clone(&state),
+                Arc::clone(&signer),
+                Arc::clone(m),
+            ),
+            None => fibre_server::Server::new(cfg.clone(), Arc::clone(&state), Arc::clone(&signer)),
+        };
+        let server = match built {
             Ok(s) => s,
             Err(e) => {
                 let d = retry(&mut backoff);
@@ -841,7 +850,11 @@ async fn supervise(inputs: Inputs) {
             Some(Ok(())) => {}
         }
         let started_at = std::time::Instant::now();
-        *metrics.lock().unwrap_or_else(PoisonError::into_inner) = Some(server.metrics());
+        kept = Some(server.metrics());
+        metrics
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone_from(&kept);
         tracing::info!(
             listen = %server.listen_address(),
             store = %cfg.store.path.display(),
@@ -1028,9 +1041,16 @@ mod tests {
             block: false,
         });
         let sup = panicky(dir.path(), Arc::clone(&chain), DRAIN_TIMEOUT);
-        std::thread::sleep(Duration::from_millis(1600));
-        // The panicking call, then the restarted supervisor's start.
-        assert!(chain.calls.load(std::sync::atomic::Ordering::SeqCst) >= 2);
+        // The panicking call, then the restarted supervisor's start (after a
+        // 1 s backoff). Poll: a loaded machine can take much longer.
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        while chain.calls.load(std::sync::atomic::Ordering::SeqCst) < 2 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the supervisor did not start again"
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
         drop(sup);
     }
 
@@ -1075,6 +1095,12 @@ mod tests {
                 })
             })
             .collect();
+        // Wait until the cap is reached, then check that it is not passed.
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        while queries.preparing() < MAX_VIEW_PREPARATIONS {
+            assert!(std::time::Instant::now() < deadline, "no query prepared");
+            std::thread::sleep(Duration::from_millis(20));
+        }
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(queries.preparing(), MAX_VIEW_PREPARATIONS);
         drop(held);

@@ -14,8 +14,8 @@
 //!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR] \
 //!   [--iavl-cache 781250] [--db-cache-mib 512] [--pruning-interval 1] \
 //!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl] \
-//!   [--home DIR [--in-place true]] [--blocks-home DIR] [--save-blocks false] \
-//!   [--sync-writes true]
+//!   [--background-pruning true] [--sync-writes true] \
+//!   [--home DIR [--in-place true]] [--blocks-home DIR] [--save-blocks false]
 //! ```
 //!
 //! `--base` holds a home after InitChain (created on first use), so later
@@ -60,6 +60,7 @@ struct Args {
     pruning_interval: u64,
     discard_abci_responses: bool,
     blocks_jsonl: Vec<PathBuf>,
+    background_pruning: bool,
     sync_writes: bool,
     home: Option<PathBuf>,
     in_place: bool,
@@ -82,6 +83,8 @@ fn args() -> anyhow::Result<Args> {
         // config.toml `storage.discard_abci_responses` (template: true).
         discard_abci_responses: true,
         blocks_jsonl: Vec::new(),
+        // `celestia-rs start` prunes in the background.
+        background_pruning: true,
         // `celestia-rs start` fsyncs every write (Go parity).
         sync_writes: true,
         home: None,
@@ -100,6 +103,7 @@ fn args() -> anyhow::Result<Args> {
             "--db-cache-mib" => a.db_cache_mib = v.parse()?,
             "--pruning-interval" => a.pruning_interval = v.parse()?,
             "--discard-abci-responses" => a.discard_abci_responses = v.parse()?,
+            "--background-pruning" => a.background_pruning = v.parse()?,
             "--sync-writes" => a.sync_writes = v.parse()?,
             "--blocks-jsonl" => a.blocks_jsonl.extend(v.split(',').map(PathBuf::from)),
             "--home" => a.home = Some(v.into()),
@@ -322,6 +326,7 @@ fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State, Probes)>
     opts.store.node_cache_size = a.iavl_cache;
     opts.db.cache_size = a.db_cache_mib << 20;
     opts.store.pruning.interval = a.pruning_interval;
+    opts.store.background_pruning = a.background_pruning;
     opts.db.sync_writes = a.sync_writes;
     let app = app::App::open_with(home, opts).map_err(|e| anyhow!("open app: {}", e.log))?;
     let (bs, mut ss) = node::open_stores_with_options(

@@ -608,21 +608,27 @@ pub fn start(opts: &StartOptions) -> anyhow::Result<()> {
                 let signer = Arc::clone(&signer);
                 Arc::new(move || signer.disabled())
             };
-            let fibre =
-                crate::fibre::Supervisor::start(cfg.clone(), state, signer, validator, fatal)?;
-            if let Some(m) = &metrics {
-                let slot = fibre.metrics();
-                m.append_section(move |labels| {
-                    slot.lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .as_ref()
-                        .map(|s| s.render(labels))
-                        .unwrap_or_default()
-                });
-            }
-            let stop = fibre.stop_token();
-            opts.shutdown.on_trigger(move || stop.cancel());
-            Some(fibre)
+            optional_fibre(crate::fibre::Supervisor::start(
+                cfg.clone(),
+                state,
+                signer,
+                validator,
+                fatal,
+            ))
+            .inspect(|fibre| {
+                if let Some(m) = &metrics {
+                    let slot = fibre.metrics();
+                    m.append_section(move |labels| {
+                        slot.lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .as_ref()
+                            .map(|s| s.render(labels))
+                            .unwrap_or_default()
+                    });
+                }
+                let stop = fibre.stop_token();
+                opts.shutdown.on_trigger(move || stop.cancel());
+            })
         }
         _ => None,
     };
@@ -1156,4 +1162,30 @@ pub fn export_blocks(home: &Path, out: &Path) -> anyhow::Result<()> {
     std::fs::write(out, serde_json::to_vec_pretty(&doc)?)?;
     tracing::info!(n = bs.height() - bs.base() + 1, out = %out.display(), "exported blocks");
     Ok(())
+}
+
+/// Fibre is optional: a supervisor that cannot start (no thread or runtime,
+/// e.g. under a thread limit) is logged and the node runs without it.
+fn optional_fibre<T>(started: anyhow::Result<T>) -> Option<T> {
+    match started {
+        Ok(s) => Some(s),
+        Err(e) => {
+            tracing::error!(error = %format!("{e:#}"), "fibre server not started; consensus is not affected");
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fibre_supervisor_that_cannot_start_does_not_stop_the_node() {
+        let failed: anyhow::Result<u8> = Err(anyhow!(
+            "start the fibre runtime: Resource temporarily unavailable"
+        ));
+        assert_eq!(optional_fibre(failed), None);
+        assert_eq!(optional_fibre(Ok(7u8)), Some(7));
+    }
 }
