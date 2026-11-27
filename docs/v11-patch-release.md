@@ -72,6 +72,14 @@ v10 execution halts at the upgrade block with `UPGRADE "v11" NEEDED` and
 writes `upgrade-info.json`; on restart the runtime authenticates that file
 against the committed next-height plan before recording the executing
 release. A binary without the target release halts in every mode.
+
+The in-process switch needs the signal: it compares the committed consensus
+version with the plan. A governance plan `v11` without a signal leaves the
+consensus version at 10, so `start` and `follow` also halt at the upgrade
+block, with `plan v11 found without a signalled app version; restart the
+node to run the bundled v11 release` after the `UPGRADE "v11" NEEDED`
+error. A restart of the same binary authenticates the `upgrade-info.json`
+it wrote and continues with v11. Mainnet upgrades from v4 are signalled.
 Historical v9-to-v10 replay remains supported. New genesis defaults and the
 existing v10 qualification target are unchanged.
 

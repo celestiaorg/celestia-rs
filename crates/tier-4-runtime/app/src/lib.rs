@@ -193,6 +193,53 @@ pub fn dump_upgrade_info(
     std::fs::write(dir.join("upgrade-info.json"), format!("{{{body}}}"))
 }
 
+/// A PreBlocker error at `height`. For a due upgrade without a handler in
+/// the executing release (`UPGRADE "x" NEEDED`) it writes
+/// `data/upgrade-info.json` and logs the halt.
+fn upgrade_halt(
+    node: &NodeOptions,
+    ctx: &mut Context<'_>,
+    mut e: SdkError,
+    height: i64,
+    execution_version: u64,
+) -> SdkError {
+    if !is_upgrade_needed(&e.log) {
+        return e;
+    }
+    let plan = x_upgrade::get_upgrade_plan(ctx).ok().flatten();
+    if let (Some(home), Some(plan)) = (&node.home, &plan)
+        && let Err(io) = dump_upgrade_info(home, height, plan)
+    {
+        return sdk::error::sdk::logic(format!("unable to write upgrade info to filesystem: {io}"));
+    }
+    // The embedded node activates a bundled release at the commit before
+    // its upgrade, once the signal has raised the consensus version. A
+    // governance plan alone leaves it on the old release: the restart
+    // authenticates the upgrade info written above.
+    if node.activate_bundled_upgrades
+        && let Some(plan) = &plan
+        && bundled_release(&plan.name).is_some_and(|target| target > execution_version)
+    {
+        e.log = format!(
+            "{}; plan {} found without a signalled app version; restart the node to run the bundled {} release",
+            e.log, plan.name, plan.name
+        );
+    }
+    tracing::error!("{}", e.log);
+    e
+}
+
+/// The app version of the bundled release that executes upgrade plan
+/// `name` (the releases a node can record as its executing release).
+fn bundled_release(name: &str) -> Option<u64> {
+    match name {
+        "v10" => Some(upgrades::APP_VERSION),
+        "v11" => Some(upgrades::V11_APP_VERSION),
+        "v12" => Some(upgrades::V12_APP_VERSION),
+        _ => None,
+    }
+}
+
 /// Metadata key of the chain ID in the state database.
 const CHAIN_ID_KEY: &[u8] = b"chain_id";
 /// Node-local activation of v10 semantics after a governance/cosmovisor
@@ -698,11 +745,8 @@ impl App {
             .map_err(|e| {
             sdk::error::sdk::logic(format!("unable to decode upgrade info: {e}"))
         })?;
-        let target = match disk.name.as_str() {
-            "v10" => upgrades::APP_VERSION,
-            "v11" => upgrades::V11_APP_VERSION,
-            "v12" => upgrades::V12_APP_VERSION,
-            _ => return Ok(()),
+        let Some(target) = bundled_release(&disk.name) else {
+            return Ok(());
         };
 
         let next_height = self.last_height.saturating_add(1);
@@ -971,18 +1015,13 @@ impl App {
             match handoff::pre_block(&mut ctx, module, execution_version, &mut self.upgrade) {
                 Ok(changed) => params_changed |= changed,
                 Err(e) => {
-                    if is_upgrade_needed(&e.log) {
-                        if let (Some(home), Ok(Some(plan))) =
-                            (&self.node.home, x_upgrade::get_upgrade_plan(&mut ctx))
-                            && let Err(io) = dump_upgrade_info(home, req.height, &plan)
-                        {
-                            return Err(sdk::error::sdk::logic(format!(
-                                "unable to write upgrade info to filesystem: {io}"
-                            )));
-                        }
-                        tracing::error!("{}", e.log);
-                    }
-                    return Err(e);
+                    return Err(upgrade_halt(
+                        &self.node,
+                        &mut ctx,
+                        e,
+                        req.height,
+                        execution_version,
+                    ));
                 }
             }
         }
@@ -2110,6 +2149,68 @@ mod node_options_tests {
         for name in stores::ADDED_IN_V10 {
             assert!(reopened.ms.is_mounted(name), "{name} must survive restart");
         }
+    }
+
+    /// A governance-only `v11` plan (consensus version still 10): the
+    /// bundled release is not activated at the commit before, so the v10
+    /// execution halts at the upgrade block with an explicit message. A
+    /// restart authenticates the upgrade info it wrote and runs v11.
+    #[test]
+    fn governance_only_bundled_plan_halts_with_a_restart_message() {
+        let home = tempfile::tempdir().unwrap();
+        let plan = celestia_proto::cosmos::upgrade::v1beta1::Plan {
+            name: "v11".into(),
+            height: 2,
+            ..Default::default()
+        };
+        let mut app = App::open_with(home.path(), AppOptions::default()).unwrap();
+        let mut ctx = Context::new(
+            &mut app.ms,
+            Header {
+                height: 1,
+                ..Default::default()
+            },
+            ExecMode::Finalize,
+        );
+        x_consensus::set_params(
+            &mut ctx,
+            &ConsensusParams {
+                version: Some(VersionParams { app: 10 }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        x_upgrade::schedule_upgrade(&mut ctx, &plan).unwrap();
+        drop(ctx);
+        app.ms.flush().unwrap();
+        app.ms.commit().unwrap();
+        drop(app);
+        let embedded = || {
+            let mut options = v10_options(home.path());
+            options.node.activate_bundled_upgrades = true;
+            options
+        };
+        let mut app = App::open_with(home.path(), embedded()).unwrap();
+        assert_eq!(app.execution_version(), 10);
+        let err = app
+            .finalize_block(abci::RequestFinalizeBlock {
+                height: 2,
+                ..Default::default()
+            })
+            .unwrap_err();
+        assert!(is_upgrade_needed(&err.log), "{}", err.log);
+        assert!(
+            err.log.ends_with(
+                "plan v11 found without a signalled app version; restart the node to run the bundled v11 release"
+            ),
+            "{}",
+            err.log
+        );
+        assert!(home.path().join("data/upgrade-info.json").exists());
+        drop(app);
+        let app = App::open_with(home.path(), embedded()).unwrap();
+        assert_eq!(app.execution_version(), 11);
+        assert_eq!(app.info().last_block_height, 1);
     }
 
     #[test]

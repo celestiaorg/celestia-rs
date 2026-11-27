@@ -16,9 +16,11 @@
 //! and ProcessProposal from app version 9. The node stops and restarts
 //! around the upgrades, crosses the v11 upgrade in one process (it switches
 //! to the v11 release in-process, as `celestia-rs start` does), and must
-//! reproduce every app hash the oracles committed. A commit with one bad signature, and a block whose
-//! txs no longer give its data root (its commit signed again for the new
-//! part set), must stop the sync before that block.
+//! reproduce every app hash the oracles committed. `celestia-rs follow`
+//! crosses the v11 upgrade over JSON-RPC in one run as well. A commit with
+//! one bad signature, and a block whose txs no longer give its data root
+//! (its commit signed again for the new part set), must stop the sync
+//! before that block.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -210,8 +212,8 @@ fn try_sync(
         ..app::AppOptions::default()
     };
     opts.node.home = Some(home.to_path_buf());
-    // `celestia-rs start` activates the bundled releases.
-    opts.node.activate_bundled_upgrades = true;
+    // As `celestia-rs start` wires the app.
+    node::activate_bundled_releases(&mut opts);
     let mut app = app::App::open_with(home, opts).unwrap_or_else(|e| panic!("open app: {}", e.log));
     // celestia-app's `--v2-upgrade-height` for this chain (chain ID `test`
     // has no built-in default).
@@ -509,4 +511,174 @@ fn refuses_tampered_block_80(at_79: &Path, genesis: &nodestore::GenesisDoc, chai
             .any(|r| r.contains("application has rejected syncing block")),
         "a tampered tx: {stopped:?}"
     );
+}
+
+/// An offline celestia-core JSON-RPC server for `celestia-rs follow`:
+/// `/status` and `/block?height=h` for every block of `chain`.
+struct RpcServer {
+    address: String,
+    stopped: Arc<std::sync::atomic::AtomicBool>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+impl RpcServer {
+    fn new(chain: &Chain) -> Self {
+        use std::io::{Read as _, Write as _};
+        use std::sync::atomic::Ordering;
+        use std::time::Duration;
+        let block_id = |i: usize| {
+            chain
+                .blocks
+                .get(i + 1)
+                .map_or(&chain.last_commit.block_id, |next| {
+                    &next.header.last_block_id
+                })
+        };
+        let last = chain.blocks.len() - 1;
+        let mut replies = HashMap::new();
+        replies.insert(
+            "/status".to_owned(),
+            serde_json::json!({
+                "node_info": {"network": chain.blocks[0].header.chain_id, "id": "offline-fixture"},
+                "sync_info": {
+                    "latest_block_height": LAST.to_string(),
+                    "latest_block_hash": hex::encode_upper(&block_id(last).hash),
+                    "earliest_block_height": "1",
+                    "catching_up": false
+                }
+            }),
+        );
+        for (i, block) in chain.blocks.iter().enumerate() {
+            let mut encoded = String::new();
+            rpc::encode::block(block).write(&mut encoded);
+            let mut id = String::new();
+            rpc::encode::block_id(block_id(i)).write(&mut id);
+            replies.insert(
+                format!("/block?height={}", block.header.height),
+                serde_json::json!({
+                    "block_id": serde_json::from_str::<serde_json::Value>(&id).unwrap(),
+                    "block": serde_json::from_str::<serde_json::Value>(&encoded).unwrap(),
+                }),
+            );
+        }
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        listener.set_nonblocking(true).unwrap();
+        let stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let done = Arc::clone(&stopped);
+        let worker = std::thread::spawn(move || {
+            while !done.load(Ordering::SeqCst) {
+                let Ok((mut connection, _)) = listener.accept() else {
+                    std::thread::sleep(Duration::from_millis(5));
+                    continue;
+                };
+                connection.set_nonblocking(false).unwrap();
+                connection
+                    .set_read_timeout(Some(Duration::from_secs(1)))
+                    .unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0; 1024];
+                while request.len() < 8192 && !request.windows(4).any(|b| b == b"\r\n\r\n") {
+                    let Ok(n) = connection.read(&mut buffer) else {
+                        break;
+                    };
+                    if n == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&buffer[..n]);
+                }
+                let line = String::from_utf8_lossy(&request);
+                let path = line.split_whitespace().nth(1).unwrap_or("");
+                let body = replies
+                    .get(path)
+                    .map_or_else(
+                        || serde_json::json!({"jsonrpc": "2.0", "id": 1, "error": {"code": -32603, "message": "height unavailable", "data": path}}),
+                        |result| serde_json::json!({"jsonrpc": "2.0", "id": 1, "result": result}),
+                    )
+                    .to_string();
+                let _ = write!(
+                    connection,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+            }
+        });
+        Self {
+            address,
+            stopped,
+            worker: Some(worker),
+        }
+    }
+}
+
+impl Drop for RpcServer {
+    fn drop(&mut self) {
+        self.stopped
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
+/// `celestia-rs follow` from the synthetic genesis to 79 over JSON-RPC (a
+/// finite run through H authenticates header H+1, which block H+2
+/// commits):
+/// one run crosses the v11 upgrade (the bundled release activates
+/// in-process, as under `celestia-rs start`) and commits Go's app hashes.
+#[test]
+fn follows_the_synthetic_chain_across_the_v11_upgrade() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .try_init();
+    let chain = chain();
+    let server = RpcServer::new(&chain);
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join("config")).unwrap();
+    std::fs::copy(
+        format!("{FIXTURES}/v1-v3/genesis.json"),
+        home.path().join("config/genesis.json"),
+    )
+    .unwrap();
+    let mut app = app::AppOptions::default();
+    app.node.v2_upgrade_height = Some(v2_upgrade_height());
+    // As `celestia-rs follow` wires the app.
+    node::activate_bundled_releases(&mut app);
+    let opts = celestia_rs::follow::FollowOptions {
+        home: home.path().to_path_buf(),
+        rpc: vec![server.address.clone()],
+        chain_id: None,
+        snapshot: None,
+        snapshot_height: None,
+        trust_hash: None,
+        // The fixture chain dates from 2024 and 2025.
+        trust_period: 100_000 * 3600 * 1_000_000_000,
+        stop_height: SYNCED - 1,
+        prefetch: 4,
+        verify_data: true,
+        witness_interval: 0,
+        app,
+        shutdown: Shutdown::new(),
+    };
+    let out = celestia_rs::follow::follow(&opts).unwrap_or_else(|e| panic!("follow: {e:#}"));
+    assert_eq!((out.first, out.last), (1, SYNCED - 1));
+    assert!(
+        !home.path().join("data/upgrade-info.json").exists(),
+        "follow halted for an upgrade"
+    );
+    let (_, ss) = node::open_stores(home.path()).unwrap();
+    for h in [V11_UPGRADE - 1, V11_UPGRADE, SYNCED - 1] {
+        let got = ss
+            .load_finalize_block_response(h)
+            .unwrap()
+            .unwrap()
+            .app_hash;
+        assert_eq!(
+            hex::encode_upper(got),
+            chain.app_hash[&h],
+            "app hash after {h}"
+        );
+    }
 }

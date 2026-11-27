@@ -1267,7 +1267,7 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
         min_retain = 3000;
     }
     opts.node = app::NodeOptions {
-        activate_bundled_upgrades: args.is_some(),
+        activate_bundled_upgrades: false,
         enable_subspace_queries: files.bool(File::App, "enable-subspace-queries"),
         min_retain_blocks: min_retain,
         halt_height: args
@@ -1282,6 +1282,9 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
         v2_upgrade_height: args.and_then(|a| a.v2_upgrade_height),
         home: Some(home.to_path_buf()),
     };
+    if args.is_some() {
+        node::activate_bundled_releases(&mut opts);
+    }
     Ok(opts)
 }
 
@@ -1350,9 +1353,7 @@ fn follow_app_options(a: &FollowArgs) -> app::AppOptions {
         keep_recent: a.snapshot_keep_recent,
     };
     app.node.min_retain_blocks = a.keep_blocks;
-    // Like `start`: switch to the bundled release at its upgrade height
-    // (ADR 0004) rather than halt for a binary swap.
-    app.node.activate_bundled_upgrades = true;
+    node::activate_bundled_releases(&mut app);
     app.node
         .unsafe_skip_upgrades
         .clone_from(&a.unsafe_skip_upgrades);

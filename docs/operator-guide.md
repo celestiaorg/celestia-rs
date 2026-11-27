@@ -972,7 +972,12 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
   `celestia-rs abci` (external celestia-core, cosmovisor) always halts
   at the upgrade height like Go; restarted, the same binary
   authenticates `data/upgrade-info.json` against the committed plan and
-  runs the new release.
+  runs the new release. A governance plan for a bundled release that no
+  signal accompanied (the consensus app version did not change) also
+  halts `start` and `follow`, with `plan vN found without a signalled app
+  version; restart the node to run the bundled vN release`. Restart the
+  same binary: it authenticates `data/upgrade-info.json` and continues.
+  Celestia's upgrades from v4 are signalled, so this is not expected.
 - **Rollback:** `celestia-rs rollback [--height H] [--hard] [--force]`
   checks the retained block, consensus and app histories, then rolls all
   three back to H. Without `--height`, it rolls back one executed height;
