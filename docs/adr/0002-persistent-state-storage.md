@@ -213,7 +213,8 @@ caller iterates from the single committing thread, so chunk boundaries are
 not observable.
 
 Node defaults (`celestia-rs abci --home`): `--db-backend rocksdb`,
-`--db-cache-mib 512`, `--node-cache-size 1000000`,
+`--db-cache-mib 512`, `--node-cache-size 4000000` (also the `app.toml`
+template's `iavl-cache-size`, which `start` reads),
 `--pruning-keep-recent 100 --pruning-keep-every 0 --pruning-interval 1`.
 State lives in `<home>/data/application.rocksdb/` (RocksDB) or
 `application.redb` (the extension is the backend name, so it never collides

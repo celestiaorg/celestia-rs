@@ -527,6 +527,21 @@ fn add_fibre_key(doc: &mut toml_edit::DocumentMut, key: &str, value: &str) -> an
 mod tests {
     use super::*;
 
+    /// `app.toml` is Go's `celestia-appd init` template with one documented
+    /// divergence: a larger IAVL node cache (`iavl-cache-size`, Go
+    /// 781250). Putting Go's line back must give Go's text exactly.
+    #[test]
+    fn app_template_is_go_except_the_node_cache_size() {
+        let ours = "iavl-cache-size = 4000000\n";
+        assert_eq!(APP_TEMPLATE.matches(ours).count(), 1);
+        let go = APP_TEMPLATE.replace(ours, "iavl-cache-size = 781250\n");
+        // SHA-256 of celestia-app v10's `celestia-appd init` app.toml.
+        assert_eq!(
+            hex::encode(hash::sha256(go.as_bytes())),
+            "edcc567f81b7f2b6882f492366addaadad8a65892cdc322ca06c30e69e6b7094"
+        );
+    }
+
     #[test]
     fn durations() {
         assert_eq!(parse_duration_ms("10s"), Some(10_000));

@@ -441,8 +441,8 @@ struct AbciArgs {
     /// Prune every N commits (0 = never prune, archive).
     #[arg(long, default_value_t = 1)]
     pruning_interval: u64,
-    /// Decoded IAVL nodes kept in the LRU cache (~200 B each).
-    #[arg(long, default_value_t = 1_000_000)]
+    /// Decoded IAVL nodes kept in the node cache (at least ~370 B each).
+    #[arg(long, default_value_t = multistore::DEFAULT_NODE_CACHE_SIZE)]
     node_cache_size: usize,
     /// State database backend (`rocksdb` or `redb`).
     #[arg(long, default_value_t = multistore::kvdb::BackendKind::default())]
@@ -1248,6 +1248,16 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
         && n > 0
     {
         opts.store.node_cache_size = n;
+    }
+    if opts.store.node_cache_size < multistore::DEFAULT_NODE_CACHE_SIZE {
+        // Homes made before the larger default (or migrated from Go) keep
+        // celestia-app's 781250 until the operator edits app.toml.
+        tracing::info!(
+            configured = opts.store.node_cache_size,
+            suggested = multistore::DEFAULT_NODE_CACHE_SIZE,
+            "app.toml iavl-cache-size is below the default; a larger node cache executes \
+             blocks faster if the memory is available (docs/hardware.md)"
+        );
     }
     opts.snapshots = snapshots::SnapshotOptions {
         interval: u64::try_from(files.int(File::App, "state-sync.snapshot-interval")).unwrap_or(0),

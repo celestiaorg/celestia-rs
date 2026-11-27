@@ -710,7 +710,7 @@ firewall.
 | `app.toml pruning` | `default` | celestia-rs maps `default` to the validator-minimal policy (keep 100 versions, prune every commit, ADR 0002) instead of Go's 362,880 versions; `nothing`, `everything` and `custom` (`pruning-keep-recent`, `pruning-interval`) follow Go |
 | `app.toml min-retain-blocks` | 3000 | blocks below `height - min-retain-blocks` (and below the state-sync snapshot window) are pruned from the block store via `ResponseCommit.retain_height`; values 1–2999 are raised to 3000 like celestia-app; 0 keeps all blocks |
 | `app.toml state-sync.snapshot-interval` | 1500 | 0 disables snapshots; snapshots are written in the background (§11.13) |
-| `app.toml iavl-cache-size` | 781250 | decoded IAVL nodes (~250 B each) |
+| `app.toml iavl-cache-size` | 4000000 | decoded IAVL nodes (at least ~370 B each: about 1.5 GB when full); celestia-app's 781250 is the low-memory setting. Homes from an older `init` or from `migrate` keep 781250 until edited; the node logs a hint at startup |
 | flags | `--pruning`, `--pruning-keep-recent`, `--pruning-interval`, `--min-retain-blocks`, `--db-cache-mib` (512) | override app.toml |
 
 With the defaults a mainnet validator stays well inside the 350 GB/year
@@ -1289,7 +1289,7 @@ even when the state is the same.
   pruning = "custom"
   pruning-keep-recent = "100"
   pruning-interval = "100"
-  iavl-cache-size = 8000000   # decoded IAVL nodes, ~250 B each
+  iavl-cache-size = 8000000   # decoded IAVL nodes, at least ~370 B each
   ```
 
   and start with `--db-cache-mib 4096` (RocksDB block cache). To measure
