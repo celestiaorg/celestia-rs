@@ -134,7 +134,9 @@ install_agent() {
   cat >/etc/systemd/system/vmexec-agent.service <<EOF
 [Unit]
 Description=vmexec agent
-After=network-online.target
+# After the startup script: at boot it mounts /data, and a request run
+# before that would write under the mount point and vanish.
+After=network-online.target google-startup-scripts.service
 Wants=network-online.target
 
 [Service]
@@ -147,7 +149,8 @@ WantedBy=multi-user.target
 EOF
   systemctl daemon-reload
   systemctl enable vmexec-agent.service >/dev/null 2>&1
-  systemctl restart vmexec-agent.service
+  # --no-block: the unit is ordered after this very startup script.
+  systemctl restart --no-block vmexec-agent.service
 }
 
 # --- running requests -----------------------------------------------------------

@@ -87,6 +87,12 @@ check  "raw split roundtrip" cmp "$t/rand" "$t/rand3"
 mkdir -p "$t/done/aaaaaa1"
 eq     "new keys"            $'bbbbbb2\nccccccc3' "$(vmx_new_keys $'startup-script\nvmx-req-ccccccc3\nvmx-req-aaaaaa1\nvmx-req-bbbbbb2\nvmx-req-BAD!' "$t/done")"
 eq     "quote"               "a\\ b c c\\;d" "$(vmx_shell_quote 'a b' c 'c;d')"
+printf 'version=1\ntime=%s\n' "$(date -u -d @1800000000 +%FT%TZ)" >"$t/hb"
+check  "heartbeat fresh"     vmx_heartbeat_fresh "$t/hb" 1799999990
+refute "heartbeat stale"     vmx_heartbeat_fresh "$t/hb" 1800000100
+refute "heartbeat missing"   vmx_heartbeat_fresh "$t/nohb" 0
+check  "agent unit after startup script" grep -q 'google-startup-scripts.service' <(sed -n '/^install_agent/,/^}/p' "$here/agent.sh")
+check  "agent restart does not block" grep -q 'systemctl restart --no-block vmexec-agent.service' "$here/agent.sh"
 check  "job unit restart"    grep -q '^Restart=on-failure$' <(vmx_job_unit follow /x/cmd /x/log on-failure)
 
 # --- git bundle of unpushed commits ---------------------------------------------------------
