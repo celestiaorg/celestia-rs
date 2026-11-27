@@ -1041,9 +1041,16 @@ mod tests {
             block: false,
         });
         let sup = panicky(dir.path(), Arc::clone(&chain), DRAIN_TIMEOUT);
-        std::thread::sleep(Duration::from_millis(1600));
-        // The panicking call, then the restarted supervisor's start.
-        assert!(chain.calls.load(std::sync::atomic::Ordering::SeqCst) >= 2);
+        // The panicking call, then the restarted supervisor's start (after a
+        // 1 s backoff). Poll: a loaded machine can take much longer.
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        while chain.calls.load(std::sync::atomic::Ordering::SeqCst) < 2 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the supervisor did not start again"
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
         drop(sup);
     }
 
@@ -1088,6 +1095,12 @@ mod tests {
                 })
             })
             .collect();
+        // Wait until the cap is reached, then check that it is not passed.
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        while queries.preparing() < MAX_VIEW_PREPARATIONS {
+            assert!(std::time::Instant::now() < deadline, "no query prepared");
+            std::thread::sleep(Duration::from_millis(20));
+        }
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(queries.preparing(), MAX_VIEW_PREPARATIONS);
         drop(held);
