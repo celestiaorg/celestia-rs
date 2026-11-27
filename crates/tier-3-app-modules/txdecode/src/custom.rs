@@ -11,6 +11,9 @@ pub(crate) const LEGACY_DEC: &str = "cosmossdk.io/math.LegacyDec";
 pub(crate) const HEX_ADDRESS: &str = "github.com/bcp-innovations/hyperlane-cosmos/util.HexAddress";
 pub(crate) const ECDSA_PK: &str = "ecdsaPK";
 
+/// cosmos-sdk v0.46 `maxDecBitLen` (`types/decimal.go`).
+pub(crate) const V046_MAX_DEC_BIT_LEN: u64 = 256 + 59;
+
 /// Custom types this module implements.
 pub(crate) const SUPPORTED: &[&str] = &[INT, LEGACY_DEC, HEX_ADDRESS, ECDSA_PK];
 
@@ -48,6 +51,15 @@ pub(crate) fn unmarshal(
                 return Ok(prev);
             }
             let v = math::LegacyDec::unmarshal(data).map_err(|e| big_err(data, &e))?;
+            // cosmos-sdk v0.46's own `sdk.Dec` (the v1 schema's decimal
+            // fields) rejects an integer above `maxDecBitLen` (256 + 59
+            // bits), below `LegacyDec`'s 2^256 * 10^18 limit.
+            let bits = v.as_scaled().bits();
+            if crate::v1() && bits > V046_MAX_DEC_BIT_LEN {
+                return Err(GoError::new(format!(
+                    "decimal out of range; got: {bits}, max: {V046_MAX_DEC_BIT_LEN}"
+                )));
+            }
             Ok(Some(v.marshal()))
         }
         HEX_ADDRESS => Ok(Some(hex_address(data)?)),
