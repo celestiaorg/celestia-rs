@@ -15,7 +15,9 @@
 //! deletes the node.
 
 use std::fmt;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+#[cfg(test)]
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use kvdb::{KvBackend, WriteBatch};
@@ -176,6 +178,9 @@ pub struct NodeDb {
     prefix: Vec<u8>,
     cache: Arc<NodeCache>,
     id: u64,
+    /// Test reference only: resolve both children at decode (the former
+    /// behaviour).
+    #[cfg(test)]
     eager_children: AtomicBool,
 }
 
@@ -205,6 +210,7 @@ impl NodeDb {
             prefix: prefix.into(),
             cache,
             id: NEXT_DB_ID.fetch_add(1, Ordering::Relaxed),
+            #[cfg(test)]
             eager_children: AtomicBool::new(false),
         })
     }
@@ -220,9 +226,9 @@ impl NodeDb {
     }
 
     /// Resolves both child references whenever a node is decoded (the
-    /// former behaviour), instead of on first use. Reference for tests.
-    #[doc(hidden)]
-    pub fn set_eager_children(&self, eager: bool) {
+    /// former behaviour), instead of on first use.
+    #[cfg(test)]
+    pub(crate) fn set_eager_children(&self, eager: bool) {
         self.eager_children.store(eager, Ordering::Relaxed);
     }
 
@@ -313,12 +319,13 @@ impl NodeDb {
         Ok(node)
     }
 
+    #[cfg_attr(not(test), allow(clippy::unused_self))] // The eager test reference reads `self`.
     fn decode(&self, bytes: &[u8], r: &StoredRef) -> Result<Node> {
+        #[cfg(test)]
         if self.eager_children.load(Ordering::Relaxed) {
-            decode_node(bytes, r, |nk| Ok(Link::Stored(self.child_ref(nk)?)))
-        } else {
-            decode_node(bytes, r, |nk| Ok(Link::Lazy(LazyRef::new(nk))))
+            return decode_node(bytes, r, |nk| Ok(Link::Stored(self.child_ref(nk)?)));
         }
+        decode_node(bytes, r, |nk| Ok(Link::Lazy(LazyRef::new(nk))))
     }
 
     fn node_bytes(&self, nk: NodeKey) -> Result<Vec<u8>> {

@@ -2124,6 +2124,138 @@ mod tests {
         }
     }
 
+    /// Node keys on the path to `key` and of the siblings beside it.
+    fn path_and_siblings(tree: &Tree, key: &[u8]) -> (Vec<super::NodeKey>, Vec<super::NodeKey>) {
+        let (mut path, mut siblings) = (Vec::new(), Vec::new());
+        let mut link = tree.root.clone().unwrap();
+        loop {
+            path.push(link.node_key().unwrap());
+            let node = super::mutate::load(tree.ndb.as_deref(), &link).unwrap();
+            let super::Node::Inner(inner) = &*node else {
+                return (path, siblings);
+            };
+            let (next, sibling) = if key < inner.key.as_slice() {
+                (&inner.left, &inner.right)
+            } else {
+                (&inner.right, &inner.left)
+            };
+            siblings.push(sibling.node_key().unwrap());
+            link = next.clone();
+        }
+    }
+
+    /// A tree over 200 keys, reopened with a cold cache in either mode.
+    fn cold_tree(eager: bool) -> Tree {
+        let backend: Arc<dyn kvdb::KvBackend> = Arc::new(kvdb::MemBackend::new());
+        let mut tree = Tree::open(open_small(&backend, eager)).unwrap();
+        for i in 0u32..200 {
+            tree.set(i.to_be_bytes().to_vec(), vec![1; 4]).unwrap();
+        }
+        tree.save_version().unwrap();
+        Tree::open(open_small(&backend, eager)).unwrap()
+    }
+
+    fn delete_record(tree: &Tree, nk: super::NodeKey) {
+        let ndb = tree.ndb.as_ref().unwrap();
+        let mut batch = WriteBatch::new();
+        ndb.delete_node(&mut batch, nk);
+        ndb.backend().write(batch).unwrap();
+    }
+
+    fn is_missing(result: Result<impl std::fmt::Debug, Error>, nk: super::NodeKey) -> bool {
+        matches!(result, Err(Error::MissingNode { version, nonce })
+            if version == nk.version && nonce == nk.nonce)
+    }
+
+    #[test]
+    fn missing_child_records_fail_reads_and_writes_that_need_them() {
+        let key = 77u32.to_be_bytes();
+        for eager in [true, false] {
+            // A record on the read path.
+            let tree = cold_tree(eager);
+            let (path, siblings) = path_and_siblings(&tree, &key);
+            let tree = cold_tree(eager);
+            let leaf = *path.last().unwrap();
+            delete_record(&tree, leaf);
+            assert!(is_missing(tree.get(&key), leaf));
+
+            // A sibling record: proofs and writes need its hash.
+            let sibling = *siblings.last().unwrap();
+            for write in [true, false] {
+                let mut tree = cold_tree(eager);
+                delete_record(&tree, sibling);
+                if !eager {
+                    // Like Go IAVL, a read loads only the nodes on its path.
+                    assert_eq!(tree.get(&key).unwrap(), Some(vec![1; 4]));
+                }
+                assert!(is_missing(tree.get_with_proof(&key), sibling));
+                let result = if write {
+                    tree.set(key.to_vec(), vec![2; 4]).map(|_| ())
+                } else {
+                    tree.remove(&key).map(|_| ())
+                };
+                assert!(is_missing(result, sibling), "eager {eager} write {write}");
+                assert_eq!(tree.version(), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn pruning_old_versions_keeps_lazy_links_of_retained_versions_resolvable() {
+        let run = |eager: bool| {
+            let backend: Arc<dyn kvdb::KvBackend> = Arc::new(kvdb::MemBackend::new());
+            let mut tree = Tree::open(open_small(&backend, eager)).unwrap();
+            for ops in workload(10, 40, 5) {
+                apply(&mut tree, &ops);
+                tree.save_version().unwrap();
+            }
+            // Decode nodes of the latest version, leaving sibling links
+            // unresolved, and hold a snapshot of a version about to go.
+            let mut tree = Tree::open(open_small(&backend, eager)).unwrap();
+            let old = tree.get_immutable(9).unwrap();
+            let keys: Vec<Vec<u8>> = (0..300).map(|i| format!("k{i:03}").into_bytes()).collect();
+            let values: Vec<_> = keys.iter().map(|k| tree.get(k).unwrap()).collect();
+            let old_values: Vec<_> = keys.iter().map(|k| old.get(k).unwrap()).collect();
+            for ops in workload(3, 40, 6) {
+                apply(&mut tree, &ops);
+                tree.save_version().unwrap();
+            }
+            let retained_hash = tree.get_immutable(10).unwrap().root_hash();
+            let mut batch = WriteBatch::new();
+            tree.prune(|v| v == 10, &mut batch).unwrap();
+            backend.write(batch).unwrap();
+            // The retained version still reads, proves and changes in full.
+            let retained = tree.get_immutable(10).unwrap();
+            let mut proofs = Vec::new();
+            for (k, v) in keys.iter().zip(&values) {
+                assert_eq!(&retained.get(k).unwrap(), v);
+                proofs.push(retained.get_with_proof(k).unwrap());
+            }
+            // A held snapshot of a pruned version returns its own data or a
+            // missing-node error, never other data.
+            for (k, v) in keys.iter().zip(&old_values) {
+                match old.get_with_proof(k) {
+                    Ok(proof) => {
+                        assert_eq!(&old.get(k).unwrap(), v);
+                        assert!(proof.is_some());
+                    }
+                    Err(e) => assert!(matches!(e, Error::MissingNode { .. }), "{e:?}"),
+                }
+            }
+            for (k, _) in keys.iter().zip(&values).step_by(3) {
+                tree.set(k.clone(), b"new".to_vec()).unwrap();
+            }
+            let info = tree.save_version().unwrap();
+            (
+                retained_hash,
+                proofs,
+                info,
+                dump(tree.ndb.as_ref().unwrap()),
+            )
+        };
+        assert_eq!(run(true), run(false));
+    }
+
     #[test]
     fn unchanged_and_emptied_versions_round_trip() {
         let ndb = NodeDb::in_memory(100);
