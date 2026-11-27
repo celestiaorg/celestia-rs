@@ -48,8 +48,9 @@ jobs:
           git diff --no-renames --name-only -z "$BASE_SHA" HEAD -- >> "$paths" || exit 0
           # The Go release oracles are skipped only when the diff is known
           # and touches neither conformance/ nor the workflows that run them.
-          tr '\0' '\n' < "$paths" |
-            grep -qE '^(conformance/|\.github/workflows/(ci|go-oracles)\.yml$)' ||
+          # grep reads the file itself: a pipe into `grep -q` can fail under
+          # pipefail when grep exits at the first match.
+          grep -qzE '^(conformance/|\.github/workflows/(ci|go-oracles)\.yml$)' "$paths" ||
             echo 'oracles=false' >> "$GITHUB_OUTPUT"
           while IFS= read -r -d '' path; do
             case "$path" in
