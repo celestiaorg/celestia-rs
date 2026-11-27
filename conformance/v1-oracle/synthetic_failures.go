@@ -33,6 +33,8 @@ import (
 	"bytes"
 	"fmt"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	kmultisig "github.com/cosmos/cosmos-sdk/crypto/keys/multisig"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	evidencetypes "github.com/cosmos/cosmos-sdk/x/evidence/types"
 	"github.com/tendermint/tendermint/crypto/ed25519"
@@ -75,6 +77,7 @@ var failUsers = append([]string{
 	"f-blocked", "f-oog-del", "f-del-poor", "f-vote-unknown", "f-ev-epoch", "f-ev-zero",
 	"f-nopk",
 	"f-sigs-0", "f-sigs-1", "f-sigs-2", "f-sigs-3", "f-sigs-4", "f-sigs-5", "f-sigs-6", "f-sigs-7",
+	"f-aux-payer", "f-aux", "f-pk-mismatch", "f-ms-0", "f-ms-1", "f-ms-2",
 	"f-zero-undel", "f-zero-redel", "f-zero-cancel",
 	"f-exec-nested", "f-exec-multi", "f-exec-vesting", "f-exec-ibc",
 	"f-prop-gov-send", "f-prop-signer", "f-prop-unroutable",
@@ -258,6 +261,8 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 		// creates f-nopk-new without one.
 		tx("f-nopk", send("f-nopk", "alice", 1))
 		tx("alice", send("alice", "f-nopk-new", tia))
+		// Creates the f-ms multisig account (no key on chain).
+		tx("bob", banktypes.NewMsgSend(b.addr("bob"), b.failMultisigAddr(), coins(tia)))
 		tx("f-redel", stakingtypes.NewMsgDelegate(b.addr("f-redel"), val0, coin(10*tia)))
 		tx("f-unbond", stakingtypes.NewMsgDelegate(b.addr("f-unbond"), val0, coin(10*tia)))
 		tx(ph("f-redel-self"), stakingtypes.NewMsgDelegate(b.addr(ph("f-redel-self")), val0, coin(tia)))
@@ -302,6 +307,20 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 		// Eight signer infos without public_key: cosmos-sdk v0.46's
 		// CountSubKeys counts each as one signature, over TxSigLimit (7).
 		add(func() error { return b.keylessSigners(sigSigners(8), send) })
+		// A DIRECT_AUX signer that is not the fee payer, with a tip:
+		// cosmos-sdk v0.46 signs over AuthInfo.Tip (v0.50's x/tx does not)
+		// and has no tip decorator, so the tip moves nothing.
+		add(func() error { return b.directAux("f-aux-payer", "f-aux", coins(7), send) })
+		// Signer info public keys whose address is not the signer's: a
+		// single key and a multisig key (SetPubKeyDecorator, sdk 8).
+		add(func() error {
+			_, pk := b.key("alice")
+			return b.withPubKey("f-pk-mismatch", pk, send("f-pk-mismatch", "alice", 1))
+		})
+		// A multisig mode info without a bit array: cosmos-sdk v0.46
+		// counts a nil bit array as size 0, so VerifyMultisignature fails
+		// ("bit array size is incorrect"; sdk 4); v0.50 panics.
+		add(func() error { return b.multisigNoBitArray(send) })
 		tx("f-redel", stakingtypes.NewMsgBeginRedelegate(b.addr("f-redel"), val0, val1, coin(5*tia)))
 		with(ph("f-fee-limit"), func(f clienttx.Factory) clienttx.Factory { return f.WithFeeGranter(b.addr("f-fee-granter")) },
 			send(ph("f-fee-limit"), "alice", 1))
@@ -431,6 +450,12 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 		// Seven: at the limit; each signer's signature gas uses its
 		// account key.
 		add(func() error { return b.keylessSigners(sigSigners(7), send) })
+		// DIRECT_AUX without a tip, and the multisig key mismatch.
+		add(func() error { return b.directAux("f-aux-payer", "f-aux", nil, send) })
+		add(func() error {
+			mpk, _ := b.failMultisigKey()
+			return b.withPubKey("f-pk-mismatch", mpk, send("f-pk-mismatch", "alice", 1))
+		})
 		tx("f-redel", stakingtypes.NewMsgBeginRedelegate(b.addr("f-redel"), val1, val2, coin(tia)))
 		add(func() error {
 			exec := authz.NewMsgExec(b.addr(ph("f-grantee")), []sdk.Msg{send("f-granter", ph("f-grantee"), 1)})
@@ -554,4 +579,172 @@ func (b *aminoBuilder) keylessSigners(signers []string, send func(from, to strin
 	}
 	b.out = append(b.out, out)
 	return nil
+}
+
+// failMultisigKey is the 2-of-3 key of f-ms-0, f-ms-1 and f-ms-2.
+func (b *aminoBuilder) failMultisigKey() (*kmultisig.LegacyAminoPubKey, []cryptotypes.PubKey) {
+	return b.multisigKey([]string{"f-ms-0", "f-ms-1", "f-ms-2"})
+}
+
+func (b *aminoBuilder) failMultisigAddr() sdk.AccAddress {
+	pk, _ := b.failMultisigKey()
+	return sdk.AccAddress(pk.Address())
+}
+
+// rawTx signs body and authInfo in DIRECT mode for each of signers
+// (whose sign doc fn returns the bytes) and adds the transaction.
+func (b *aminoBuilder) rawTx(body *txtypes.TxBody, authInfo *txtypes.AuthInfo, sign func(i int, body, authInfo []byte) ([]byte, error), n int) error {
+	bodyBz, err := body.Marshal()
+	if err != nil {
+		return err
+	}
+	authBz, err := authInfo.Marshal()
+	if err != nil {
+		return err
+	}
+	raw := txtypes.TxRaw{BodyBytes: bodyBz, AuthInfoBytes: authBz}
+	for i := 0; i < n; i++ {
+		sig, err := sign(i, bodyBz, authBz)
+		if err != nil {
+			return err
+		}
+		raw.Signatures = append(raw.Signatures, sig)
+	}
+	out, err := raw.Marshal()
+	if err != nil {
+		return err
+	}
+	b.out = append(b.out, out)
+	return nil
+}
+
+func single(mode signing.SignMode) *txtypes.ModeInfo {
+	return &txtypes.ModeInfo{Sum: &txtypes.ModeInfo_Single_{Single: &txtypes.ModeInfo_Single{Mode: mode}}}
+}
+
+func failFee() *txtypes.Fee {
+	return &txtypes.Fee{Amount: sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, aminoFee)), GasLimit: aminoGasLimit}
+}
+
+// directAux adds a transaction with a send from payer (the fee payer,
+// DIRECT) and one from aux (SIGN_MODE_DIRECT_AUX), with tip (from aux)
+// when not nil.
+func (b *aminoBuilder) directAux(payer, aux string, tip sdk.Coins, send func(from, to string, n int64) sdk.Msg) error {
+	signers := []string{payer, aux}
+	var msgs []*codectypes.Any
+	infos := make([]*txtypes.SignerInfo, 2)
+	nums := make([]uint64, 2)
+	seqs := make([]uint64, 2)
+	pks := make([]*codectypes.Any, 2)
+	for i, signer := range signers {
+		if err := b.claim(signer); err != nil {
+			return err
+		}
+		num, seq, err := b.account(b.addr(signer))
+		if err != nil {
+			return err
+		}
+		nums[i], seqs[i] = num, seq
+		m, err := codectypes.NewAnyWithValue(send(signer, "alice", 1))
+		if err != nil {
+			return err
+		}
+		msgs = append(msgs, m)
+		_, pk := b.key(signer)
+		if pks[i], err = codectypes.NewAnyWithValue(pk); err != nil {
+			return err
+		}
+		mode := signing.SignMode_SIGN_MODE_DIRECT
+		if i == 1 {
+			mode = signing.SignMode_SIGN_MODE_DIRECT_AUX
+		}
+		infos[i] = &txtypes.SignerInfo{PublicKey: pks[i], ModeInfo: single(mode), Sequence: seq}
+	}
+	authInfo := &txtypes.AuthInfo{SignerInfos: infos, Fee: failFee()}
+	if tip != nil {
+		authInfo.Tip = &txtypes.Tip{Amount: tip, Tipper: b.addr(aux).String()}
+	}
+	return b.rawTx(&txtypes.TxBody{Messages: msgs}, authInfo, func(i int, body, auth []byte) ([]byte, error) {
+		var doc []byte
+		var err error
+		if i == 0 {
+			doc, err = (&txtypes.SignDoc{BodyBytes: body, AuthInfoBytes: auth, ChainId: appconsts.TestChainID, AccountNumber: nums[0]}).Marshal()
+		} else {
+			doc, err = (&txtypes.SignDocDirectAux{BodyBytes: body, PublicKey: pks[1], ChainId: appconsts.TestChainID,
+				AccountNumber: nums[1], Sequence: seqs[1], Tip: authInfo.Tip}).Marshal()
+		}
+		if err != nil {
+			return nil, err
+		}
+		sig, _, err := b.s.kr.Sign(signers[i], doc)
+		return sig, err
+	}, 2)
+}
+
+// withPubKey adds a DIRECT transaction of msgs from signer whose signer
+// info carries pk.
+func (b *aminoBuilder) withPubKey(signer string, pk cryptotypes.PubKey, msgs ...sdk.Msg) error {
+	if err := b.claim(signer); err != nil {
+		return err
+	}
+	num, seq, err := b.account(b.addr(signer))
+	if err != nil {
+		return err
+	}
+	pkAny, err := codectypes.NewAnyWithValue(pk)
+	if err != nil {
+		return err
+	}
+	var anys []*codectypes.Any
+	for _, m := range msgs {
+		a, err := codectypes.NewAnyWithValue(m)
+		if err != nil {
+			return err
+		}
+		anys = append(anys, a)
+	}
+	authInfo := &txtypes.AuthInfo{
+		SignerInfos: []*txtypes.SignerInfo{{PublicKey: pkAny, ModeInfo: single(signing.SignMode_SIGN_MODE_DIRECT), Sequence: seq}},
+		Fee:         failFee(),
+	}
+	return b.rawTx(&txtypes.TxBody{Messages: anys}, authInfo, func(_ int, body, auth []byte) ([]byte, error) {
+		doc, err := (&txtypes.SignDoc{BodyBytes: body, AuthInfoBytes: auth, ChainId: appconsts.TestChainID, AccountNumber: num}).Marshal()
+		if err != nil {
+			return nil, err
+		}
+		sig, _, err := b.s.kr.Sign(signer, doc)
+		return sig, err
+	}, 1)
+}
+
+// multisigNoBitArray adds a send from the f-ms multisig account whose
+// multi mode info has two DIRECT sub-modes and no bit array.
+func (b *aminoBuilder) multisigNoBitArray(send func(from, to string, n int64) sdk.Msg) error {
+	if err := b.claim("multisig-f-ms"); err != nil {
+		return err
+	}
+	mpk, _ := b.failMultisigKey()
+	addr := b.failMultisigAddr()
+	_, seq, err := b.account(addr)
+	if err != nil {
+		return err
+	}
+	pkAny, err := codectypes.NewAnyWithValue(mpk)
+	if err != nil {
+		return err
+	}
+	m, err := codectypes.NewAnyWithValue(banktypes.NewMsgSend(addr, b.addr("alice"), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 1))))
+	if err != nil {
+		return err
+	}
+	mi := &txtypes.ModeInfo{Sum: &txtypes.ModeInfo_Multi_{Multi: &txtypes.ModeInfo_Multi{
+		ModeInfos: []*txtypes.ModeInfo{single(signing.SignMode_SIGN_MODE_DIRECT), single(signing.SignMode_SIGN_MODE_DIRECT)},
+	}}}
+	authInfo := &txtypes.AuthInfo{
+		SignerInfos: []*txtypes.SignerInfo{{PublicKey: pkAny, ModeInfo: mi, Sequence: seq}},
+		Fee:         failFee(),
+	}
+	return b.rawTx(&txtypes.TxBody{Messages: []*codectypes.Any{m}}, authInfo, func(int, []byte, []byte) ([]byte, error) {
+		return (&cryptotypes.MultiSignature{Signatures: [][]byte{bytes.Repeat([]byte{1}, 64), bytes.Repeat([]byte{2}, 64)}}).Marshal()
+	}, 1)
 }

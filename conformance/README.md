@@ -910,6 +910,15 @@ fail at the same point of the ante handler or message handler as Go:
   (7), so it fails with `signatures: 8, limit: 7` (sdk 14, blocks 3, 7,
   15); seven succeed (blocks 4, 8, 16), and each signer's signature gas
   uses its account key;
+- `SIGN_MODE_DIRECT_AUX` from a signer that is not the fee payer, with a
+  tip (block 3) and without one (block 4): both succeed, as cosmos-sdk
+  v0.46 signs over `AuthInfo.Tip` and has no tip decorator;
+- signer info public keys whose address is not the signer's, a single
+  key (block 3) and a multisig key (block 4): `pubKey does not match
+  signer address` (sdk 8);
+- a multisig mode info without a bit array (block 3): cosmos-sdk v0.46
+  counts a nil bit array as size 0, so signature verification fails
+  (sdk 4), where v0.50 panics;
 - BeginBlock evidence at app version 3: val2 double-signs (block 14:
   slashed, jailed and tombstoned), then again (block 15: ignored, already
   tombstoned) with evidence for an address that is not a validator

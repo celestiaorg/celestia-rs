@@ -98,17 +98,19 @@ pub struct SignerData {
 
 /// `wrapper.GetSigningTxData`: panics like Go on signer infos without a
 /// public key or multi mode infos without a bit array. cosmos-sdk v0.46
-/// (`sdk_v046`, app versions 1 to 3) has no public key check there: a
-/// signer info may omit the key, and signature verification takes it
-/// from the account (mainnet block 713,480).
+/// (`sdk_v046`, app versions 1 to 3) has neither check: a signer info may
+/// omit the key, and signature verification takes it from the account
+/// (mainnet block 713,480); a nil bit array fails verification.
 pub fn check_signing_tx_data(tx: &Tx, sdk_v046: bool) -> R<()> {
-    fn adapt(mi: &celestia_proto::cosmos::tx::v1beta1::ModeInfo) -> R<()> {
+    fn adapt(mi: &celestia_proto::cosmos::tx::v1beta1::ModeInfo, sdk_v046: bool) -> R<()> {
         use celestia_proto::cosmos::tx::v1beta1::mode_info::Sum;
         if let Some(Sum::Multi(m)) = &mi.sum {
             for inner in &m.mode_infos {
-                adapt(inner)?;
+                adapt(inner, sdk_v046)?;
             }
-            if m.bitarray.is_none() {
+            // v0.46 has no adapter: its `CompactBitArray.Count()` of nil
+            // is 0, so `VerifyMultisignature` fails instead.
+            if m.bitarray.is_none() && !sdk_v046 {
                 return panic("runtime error: invalid memory address or nil pointer dereference");
             }
         }
@@ -116,7 +118,7 @@ pub fn check_signing_tx_data(tx: &Tx, sdk_v046: bool) -> R<()> {
     }
     for si in &tx.auth_info.signer_infos {
         if let Some(mi) = &si.mode_info {
-            adapt(mi)?;
+            adapt(mi, sdk_v046)?;
         }
         if si.public_key.is_none() && !sdk_v046 {
             return panic("signerInfo.PublicKey cannot be nil");
@@ -178,8 +180,14 @@ fn direct_aux_sign_bytes(sd: &SignerData, tx: &Tx) -> R<Result<Vec<u8>, String>>
         chain_id: sd.chain_id.clone(),
         account_number: sd.account_number,
         sequence: sd.sequence,
+        // cosmos-sdk v0.46 (app versions 1 to 3) signs over the tip
+        // (`x/auth/tx/direct_aux.go`); v0.50's `x/tx` handler does not.
         #[allow(deprecated)]
-        tip: None,
+        tip: if sdk::version::is_sdk_v046(0) {
+            tx.auth_info.tip.clone()
+        } else {
+            None
+        },
     }
     .encode_to_vec()))
 }
