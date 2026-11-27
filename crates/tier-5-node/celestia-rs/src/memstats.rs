@@ -7,9 +7,9 @@
 //!   database (app state, block store, state store, evidence, indexers);
 //! - `memstats_process_threads`, `memstats_process_open_fds` (Linux).
 //!
-//! The binary runs on jemalloc by default (feature `jemalloc`; unprefixed
-//! on Linux, so RocksDB's C++ allocations use it too). With
-//! `--features memstats` it also exports
+//! The binary runs on mimalloc by default; feature `jemalloc` (unprefixed
+//! on Linux, so RocksDB's C++ allocations use it too) switches to
+//! jemalloc. `--features memstats` implies it and also exports
 //! `memstats_heap_{allocated,active,resident,mapped,retained,metadata}_bytes`
 //! from jemalloc's statistics and builds jemalloc's heap profiler:
 //! `MALLOC_CONF=prof:true,lg_prof_interval:34,prof_prefix:/dir/jeprof`

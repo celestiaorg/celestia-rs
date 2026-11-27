@@ -285,6 +285,7 @@ fn version() -> Value {
         "commit": env!("CELESTIA_RS_GIT_COMMIT"),
         "build_profile": env!("CELESTIA_RS_BUILD_PROFILE"),
         "toolchain": env!("CELESTIA_RS_TOOLCHAIN"),
+        "allocator": crate::version::ALLOCATOR,
         "app_version": app::upgrades::APP_VERSION,
         "compatibility_target": {
             "celestia_app": app::COMPATIBILITY_VERSION,
@@ -298,6 +299,9 @@ fn features() -> Vec<&'static str> {
     let mut f = Vec::new();
     if cfg!(feature = "rocksdb") {
         f.push("rocksdb");
+    }
+    if cfg!(feature = "mimalloc") {
+        f.push("mimalloc");
     }
     if cfg!(feature = "jemalloc") {
         f.push("jemalloc");
@@ -851,6 +855,19 @@ fn tar_gz(root: &str, entries: &[Entry]) -> anyhow::Result<Vec<u8>> {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundle_version_names_the_allocator() {
+        let v = version();
+        assert_eq!(v["allocator"], crate::version::ALLOCATOR);
+        let features = v["features"].as_array().unwrap();
+        for (name, enabled) in [
+            ("mimalloc", cfg!(feature = "mimalloc")),
+            ("jemalloc", cfg!(feature = "jemalloc")),
+        ] {
+            assert_eq!(features.iter().any(|f| f == name), enabled, "{name}");
+        }
+    }
 
     #[test]
     fn root_is_the_archive_name_without_extension() {

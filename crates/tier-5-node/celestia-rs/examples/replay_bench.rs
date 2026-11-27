@@ -46,7 +46,18 @@ use ctypes::{BLOCK_PART_SIZE_BYTES, Block, BlockId};
 use nodestore::{BlockExecutor, Handshaker, State};
 use prost::Message as _;
 
-/// The node binary's allocator (`celestia-rs` default feature `jemalloc`).
+/// mimalloc (default feature `mimalloc`; its `malloc` also serves
+/// RocksDB's C++ allocations). With feature `jemalloc` too (e.g.
+/// `--features memstats` or `--all-features`), jemalloc is used instead:
+/// nothing then refers to mimalloc, so it is not linked at all (do not add
+/// a `use mimalloc as _`: it would link both, and both define `malloc`).
+#[cfg(all(feature = "mimalloc", not(feature = "jemalloc")))]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+/// jemalloc (feature `jemalloc`, which wins over `mimalloc`; with
+/// `memstats` also its statistics and heap profiler, see
+/// `celestia_rs::memstats`).
 #[cfg(feature = "jemalloc")]
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
@@ -544,6 +555,18 @@ fn print_config(a: &Args) {
          discard_abci_responses {}",
         a.iavl_cache, a.db_cache_mib, a.discard_abci_responses,
     );
+    let allocator = if cfg!(feature = "jemalloc") {
+        "jemalloc"
+    } else if cfg!(feature = "mimalloc") {
+        "mimalloc"
+    } else {
+        "system"
+    };
+    let env: Vec<String> = std::env::vars()
+        .filter(|(k, _)| k == "MALLOC_CONF" || k.starts_with("MIMALLOC_"))
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect();
+    println!("allocator: {allocator} [{}]", env.join(" "));
 }
 
 fn main() -> anyhow::Result<()> {

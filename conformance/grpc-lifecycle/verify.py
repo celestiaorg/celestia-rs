@@ -306,8 +306,15 @@ def verify_rs_receipt(
     assert receipt["profile"] == "release"
     assert receipt["package"] == receipt["binary"] == "celestia-rs"
     assert receipt["locked"] is True and receipt["default_features"] is True
-    assert receipt["features"] == ["rocksdb", "jemalloc"]
     lines = receipt["version_long"].splitlines()
+    # Default features select the allocator: jemalloc until 2026-11-27
+    # (receipts from then carry no `allocator:` line), mimalloc since; the
+    # binary's own `allocator:` line must then agree.
+    allocators = [line.removeprefix("allocator: ") for line in lines
+                  if line.startswith("allocator: ")]
+    allocator = allocators[0] if allocators else "jemalloc"
+    assert len(allocators) <= 1 and allocator in ("jemalloc", "mimalloc")
+    assert receipt["features"] == ["rocksdb", allocator]
     assert f"commit: {source_commit}" in lines
     assert "build_profile: release" in lines
     assert "name: celestia-rs" in lines

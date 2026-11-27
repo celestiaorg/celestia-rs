@@ -72,12 +72,15 @@ peak RSS 1.25 GiB for the storage layer — well inside the 8 GB budget and the
 block time. Raise `--db-cache-mib` (e.g. 2048) on machines that serve
 queries; lower `--pruning-keep-recent` to shrink disk further.
 
-The binary uses jemalloc as its global allocator (default feature
-`jemalloc`; RocksDB's C++ allocations go through it too on Linux). On
-glibc malloc the node's RSS settled at 4-5x its live heap; with jemalloc
-RSS stays within ~1.5x of the heap (`docs/benchmarks/memory.md`).
-`--features memstats` adds heap gauges and jemalloc's heap profiler for
-leak hunting.
+The binary uses mimalloc as its global allocator (default feature
+`mimalloc`; RocksDB's C++ allocations go through it too).
+`celestia-rs version --long` prints it. Over 100,000 mainnet blocks
+(heights 558k-658k) it executes blocks about 6% faster than jemalloc,
+with about 3-4% more peak and end memory (`docs/benchmarks/memory.md`). On glibc malloc the node's RSS
+settled at 4-5x its live heap. jemalloc remains a build option
+(`--no-default-features --features rocksdb,jemalloc`), and
+`--no-default-features --features rocksdb,memstats` adds jemalloc heap
+gauges and its heap profiler for leak hunting.
 
 RocksDB keeps up to 512 SST files open: raise the macOS shell default
 (`ulimit -n 4096`) before starting the node.

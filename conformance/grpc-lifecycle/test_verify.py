@@ -447,6 +447,28 @@ class ProvenanceMutationResistance(unittest.TestCase):
                 VERIFY.verify_rs_receipt(mutated, "1" * 40, "3" * 64, "2" * 64,
                                          receipt["version_long"])
 
+    def test_rs_receipt_allocator_matches_the_binary(self):
+        # Receipts frozen before the mimalloc default (no `allocator:` line)
+        # say jemalloc; newer ones name the allocator the binary reports.
+        legacy = self.rs_receipt()
+        VERIFY.verify_rs_receipt(legacy, "1" * 40, "3" * 64, "2" * 64,
+                                 legacy["version_long"])
+        current = copy.deepcopy(legacy)
+        current["features"] = ["rocksdb", "mimalloc"]
+        current["version_long"] += "\nallocator: mimalloc"
+        VERIFY.verify_rs_receipt(current, "1" * 40, "3" * 64, "2" * 64,
+                                 current["version_long"])
+        for features, line in ((["rocksdb", "jemalloc"], "allocator: mimalloc"),
+                               (["rocksdb", "mimalloc"], None),
+                               (["rocksdb", "system"], None)):
+            mutated = copy.deepcopy(legacy)
+            mutated["features"] = features
+            if line:
+                mutated["version_long"] += "\n" + line
+            with self.assertRaises(AssertionError):
+                VERIFY.verify_rs_receipt(mutated, "1" * 40, "3" * 64, "2" * 64,
+                                         mutated["version_long"])
+
     def fixture(self, base: Path):
         capture = base / "capture"
         capture.mkdir()

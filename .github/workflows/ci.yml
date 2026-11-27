@@ -162,6 +162,10 @@ jobs:
           tool: cargo-nextest@0.9.152
       - name: Linux unit and integration tests
         run: cargo nextest run --locked --workspace --all-features --profile ci
+      # `--all-features` selects jemalloc; the shipped default build uses
+      # mimalloc. Build that binary and check it reports mimalloc.
+      - name: Default-feature binary uses mimalloc
+        run: cargo nextest run --locked -p celestia-rs --test allocator --profile ci
 
   doctests:
     needs: changes
@@ -283,6 +287,7 @@ jobs:
           B=target/release/celestia-rs
           H=$(mktemp -d)/node
           $B version --long
+          $B version --long | grep -qx 'allocator: mimalloc'
           $B init smoke --chain-id smoke-1 --home "$H"
           test -s "$H/config/priv_validator_key.json"
           test -s "$H/data/priv_validator_state.json"

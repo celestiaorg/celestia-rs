@@ -28,8 +28,20 @@ use celestia_rs::config::{ConfigFiles, File};
 use celestia_rs::{client, config, genesis, init, keys, networks, node, ops, util};
 use clap::{Args, Parser, Subcommand};
 
-/// jemalloc (default feature `jemalloc`; with `memstats` also its
-/// statistics and heap profiler, see `celestia_rs::memstats`).
+/// mimalloc (default feature `mimalloc`; its `malloc` also serves
+/// RocksDB's C++ allocations). With feature `jemalloc` too (e.g.
+/// `--features memstats` or `--all-features`), jemalloc is used instead:
+/// nothing then refers to mimalloc, so it is not linked at all (do not add
+/// a `use mimalloc as _`: it would link both, and both define `malloc`).
+#[cfg(all(feature = "mimalloc", not(feature = "jemalloc")))]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+// With both features, mimalloc is a dependency nothing uses.
+
+/// jemalloc (feature `jemalloc`, which wins over `mimalloc`; with
+/// `memstats` also its statistics and heap profiler, see
+/// `celestia_rs::memstats`).
 #[cfg(feature = "jemalloc")]
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
@@ -1205,11 +1217,12 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
         Cmd::Version { long } => {
             if long {
                 util::out(format!(
-                    "name: celestia-rs\nversion: {}\ncommit: {}\nbuild_profile: {}\ntoolchain: {}\napp_version: {}\ncompatibility_target: celestia-app v{}, celestia-core v{}",
+                    "name: celestia-rs\nversion: {}\ncommit: {}\nbuild_profile: {}\ntoolchain: {}\nallocator: {}\napp_version: {}\ncompatibility_target: celestia-app v{}, celestia-core v{}",
                     celestia_rs::version::SOFTWARE_VERSION,
                     env!("CELESTIA_RS_GIT_COMMIT"),
                     env!("CELESTIA_RS_BUILD_PROFILE"),
                     env!("CELESTIA_RS_TOOLCHAIN"),
+                    celestia_rs::version::ALLOCATOR,
                     app::upgrades::APP_VERSION,
                     app::COMPATIBILITY_VERSION,
                     celestia_rs::version::CORE_COMPATIBILITY_VERSION

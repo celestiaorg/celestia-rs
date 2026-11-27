@@ -21,6 +21,17 @@ pub fn node_version() -> String {
 /// The celestia-core release targeted by the node implementation.
 pub const CORE_COMPATIBILITY_VERSION: &str = "0.42.8";
 
+/// The global allocator the binary uses: jemalloc when feature `jemalloc`
+/// is on (it wins over the default `mimalloc`), else mimalloc, else the
+/// system allocator.
+pub const ALLOCATOR: &str = if cfg!(feature = "jemalloc") {
+    "jemalloc"
+} else if cfg!(feature = "mimalloc") {
+    "mimalloc"
+} else {
+    "system"
+};
+
 /// Records this binary's actual build identity for Cosmos `GetNodeInfo`.
 ///
 /// Also called by library node startup, so embedded node users do not silently

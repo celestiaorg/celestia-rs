@@ -13,7 +13,7 @@ publish = false
 workspace = true
 
 [features]
-default = ["rocksdb", "jemalloc"]
+default = ["rocksdb", "mimalloc"]
 # Experimental in-process DA bridge. Runtime opt-in via --bridge-rpc-listen.
 da-fibre = ["da-light", "dep:celestia-fibre", "dep:celestia-grpc", "dep:fibre-types", "dep:k256", "dep:fibre-prost"]
 da-webtransport = ["bridge-p2p", "dep:rustls", "dep:rcgen", "dep:time", "dep:if-watch", "dep:shiguredo_http3", "dep:tobi_quic", "dep:tobi_webtransport", "dep:x509-parser"]
@@ -23,13 +23,17 @@ bridge = ["axum/ws", "app/bridge", "dep:cap-std", "dep:hmac", "dep:sha2", "dep:t
 bridge-p2p = ["bridge", "dep:rustls-pki-types", "dep:libp2p", "dep:libp2p-autonat", "dep:libp2p-stream", "dep:multistream-select", "dep:futures"]
 # RocksDB state backend (default); `--no-default-features` builds redb only.
 rocksdb = ["app/rocksdb", "api-server/rocksdb"]
-# jemalloc as the global allocator (default; unprefixed on Linux, so
-# RocksDB's C++ allocations use it too). On glibc malloc the node's RSS
+# mimalloc as the global allocator (default). It overrides malloc, so
+# RocksDB's C++ allocations use it too. On glibc malloc the node's RSS
 # was 4-5x its live heap (docs/benchmarks/memory.md).
+mimalloc = ["dep:mimalloc"]
+# jemalloc instead of mimalloc (unprefixed on Linux, so RocksDB uses it
+# too). It wins when both are enabled; then mimalloc is not linked.
 jemalloc = ["dep:tikv-jemallocator"]
 # Memory diagnostics (docs/benchmarks/memory.md): jemalloc statistics on
 # the Prometheus endpoint (`memstats_heap_*`) and jemalloc's heap profiler
-# (`MALLOC_CONF=prof:true,...`). Not part of the default build.
+# (`MALLOC_CONF=prof:true,...`). Not part of the default build; it
+# switches the allocator to jemalloc.
 memstats = ["jemalloc", "dep:tikv-jemalloc-ctl", "tikv-jemallocator/profiling", "tikv-jemallocator/stats"]
 
 [dependencies]
@@ -117,6 +121,7 @@ tokio-util = { version = "0.7", features = ["compat"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tikv-jemallocator = { version = "0.7", optional = true, features = ["unprefixed_malloc_on_supported_platforms"] }
 tikv-jemalloc-ctl = { version = "0.7", optional = true, features = ["stats"] }
+mimalloc = { version = "0.1", optional = true, default-features = false, features = ["override"] }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1.1", features = ["termios"] }
