@@ -744,6 +744,40 @@ impl Switch {
         }
     }
 
+    /// Dial now every persistent peer that is neither connected nor being
+    /// dialed, and return how many dials were started. Not in Go.
+    ///
+    /// The reconnect loop ([`Self::reconnect_to_peer`]) tries 20 times and
+    /// then backs off exponentially (3 s, 9 s, 27 s, ...), and a peer that
+    /// drops soon after connecting waits out [`crate::flap`]. A caller that
+    /// needs a persistent peer soon (state sync, while it knows no
+    /// snapshot) calls this at its own, bounded rate so that a slot that
+    /// opens on a full peer is not missed for minutes. It skips the flap
+    /// delay: the caller's rate is the limit. A failed dial hands the peer
+    /// back to the reconnect loop as usual.
+    #[allow(clippy::must_use_candidate)] // the count is informational
+    pub fn redial_persistent_peers(&self) -> usize {
+        if !self.is_running() {
+            return 0;
+        }
+        let ours = self.net_address();
+        let addrs = read(&self.inner.persistent_addrs).clone();
+        let mut started = 0;
+        for a in addrs {
+            if ours.as_ref().is_some_and(|o| a.same(o)) || self.is_dialing_or_existing_address(&a) {
+                continue;
+            }
+            started += 1;
+            let sw = self.clone();
+            tokio::spawn(async move {
+                if let Err(e) = sw.dial_peer_with_address(&a).await {
+                    tracing::debug!(err = %e, addr = %a, "Error redialing persistent peer");
+                }
+            });
+        }
+        started
+    }
+
     /// Start a peer over an upgraded connection and register it with the
     /// reactors (`addPeer`).
     pub fn add_peer(&self, conn: UpgradedConn) -> Result<Arc<Peer>, SwitchError> {

@@ -194,3 +194,32 @@ async fn rejects_self_wrong_network_and_duplicates() {
     c.stop();
     d.stop();
 }
+
+/// `redial_persistent_peers` dials a disconnected persistent peer at once,
+/// without waiting for the reconnect loop's next try, and leaves connected
+/// peers alone.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn redial_persistent_peers_dials_now() {
+    let (a, _echo_a, _pex_a) = node(9, vec![]);
+    a.start().await.unwrap();
+    let a_addr = a.net_address().unwrap();
+    let (b, _echo_b, _pex_b) = node(10, vec![a_addr.to_string()]);
+    b.start().await.unwrap();
+    wait_for(|| b.peers().len() == 1).await;
+
+    // Connected: nothing to redial.
+    assert_eq!(b.redial_persistent_peers(), 0);
+
+    // A graceful stop starts no reconnect loop, so B stays disconnected.
+    let pa = b.get_peer(&a.node_id()).unwrap();
+    b.stop_peer_gracefully(&pa, "ECHO");
+    b.stop_peer_gracefully(&pa, "PEX");
+    assert!(b.peers().is_empty());
+    wait_for(|| a.peers().is_empty()).await;
+
+    assert_eq!(b.redial_persistent_peers(), 1);
+    wait_for(|| b.get_peer(&a.node_id()).is_some_and(|p| p.is_persistent())).await;
+
+    a.stop();
+    b.stop();
+}
