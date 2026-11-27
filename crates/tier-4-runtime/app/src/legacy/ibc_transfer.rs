@@ -307,7 +307,7 @@ fn send_packet(
     };
     let status = tmc::status(ctx, &client_id, &cs)?;
     if status != x_ibc::client::Status::Active {
-        return Err(clerr::client_not_active(format!(
+        return Err(super::ibc::client_not_active(format!(
             "cannot send packet using client ({client_id}) with status {}",
             status.as_str()
         )));
