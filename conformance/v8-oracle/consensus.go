@@ -75,6 +75,21 @@ func (s *synth) precommit(height int64, index int32, address cmttypes.Address, i
 	return cmttypes.CommitSig{BlockIDFlag: cmttypes.BlockIDFlagCommit, ValidatorAddress: address, Timestamp: at, Signature: sig}, nil
 }
 
+// isConsensusKeyOf reports whether account `name`'s consensus key (either
+// derivation of consensusKey) has address `address`.
+func (s *synth) isConsensusKeyOf(name string, address cmttypes.Address) bool {
+	seed := sha256.Sum256([]byte("celestia-rs synthetic consensus key " + name))
+	for _, key := range []ed25519.PrivKey{
+		ed25519.GenPrivKeyFromSecret([]byte("consensus " + name)),
+		ed25519.GenPrivKeyFromSecret(seed[:]),
+	} {
+		if key.PubKey().Address().String() == address.String() {
+			return true
+		}
+	}
+	return false
+}
+
 // consensusKey is the consensus key of the chain's validator at address:
 // genesis validators use v1-oracle's GenPrivKeyFromSecret("consensus " +
 // name), validators created later the v5-oracle seed.

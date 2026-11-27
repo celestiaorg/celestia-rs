@@ -96,8 +96,11 @@ type BlockResults struct {
 	Txs                   []TxResult        `json:"txs"`
 	ValidatorUpdates      []ValidatorUpdate `json:"validator_updates"`
 	ConsensusParamUpdates json.RawMessage   `json:"consensus_param_updates"`
-	AppHash               string            `json:"app_hash"`
-	Timeouts              Timeouts          `json:"timeouts"`
+	// Misbehavior is the request's Misbehavior, for blocks with evidence
+	// (-evidence) only.
+	Misbehavior json.RawMessage `json:"misbehavior,omitempty"`
+	AppHash     string          `json:"app_hash"`
+	Timeouts    Timeouts        `json:"timeouts"`
 	// TimeoutInfo is the whole FinalizeBlock timeout info: celestia-core
 	// v0.40 has more timeouts than Timeouts records.
 	TimeoutInfo json.RawMessage `json:"timeout_info"`
@@ -174,6 +177,7 @@ func run() error {
 	probes := flag.Bool("probes", false, "after the usual five blocks, run the probe blocks of probes.go (use -heights 8) and record tx signers")
 	consensusMode := flag.Bool("consensus", false, "build blocks as a validator would (consensus.go): txs, square size and data root from PrepareProposal, commits signed by the validators' consensus keys")
 	tmclient := flag.Bool("tmclient", false, "after the usual five blocks, run the 07-tendermint client blocks of tmclient.go (use -heights 10)")
+	evidence := flag.Bool("evidence", false, "after the usual five blocks, run the equivocation blocks of evidence.go (use -heights 10)")
 	nextHandoff := flag.Bool("next-handoff", false, "after the last block, require plan \"v10\" at the next height and rewrite handoff.json in the -handoff home for conformance/v10-oracle")
 	flag.Parse()
 	if *signBytes != "" {
@@ -253,6 +257,7 @@ func run() error {
 	s.probes = *probes
 	s.consensus = *consensusMode
 	s.tmclient = *tmclient
+	s.evidence = *evidence
 	kvUpgrade, err := upgradeOnly(*home, ho, s.blockTime(ho.Height+1), prev)
 	if err != nil {
 		return err
@@ -287,6 +292,7 @@ func run() error {
 			Height:             block.Height,
 			Time:               block.Time,
 			DecidedLastCommit:  s.lastCommitInfo(height),
+			Misbehavior:        s.misbehavior,
 			Txs:                inner,
 			Header:             pbHeader,
 		})
@@ -349,8 +355,13 @@ func run() error {
 		if err != nil {
 			return err
 		}
+		misbehavior, err := misbehaviorJSON(s.misbehavior)
+		if err != nil {
+			return err
+		}
 		line, err := json.Marshal(BlockResults{
 			Height:                height,
+			Misbehavior:           misbehavior,
 			Events:                events(res.Events),
 			Txs:                   txResults,
 			ValidatorUpdates:      updates,
