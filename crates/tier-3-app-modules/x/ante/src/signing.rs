@@ -97,8 +97,11 @@ pub struct SignerData {
 }
 
 /// `wrapper.GetSigningTxData`: panics like Go on signer infos without a
-/// public key or multi mode infos without a bit array.
-pub fn check_signing_tx_data(tx: &Tx) -> R<()> {
+/// public key or multi mode infos without a bit array. cosmos-sdk v0.46
+/// (`sdk_v046`, app versions 1 to 3) has no public key check there: a
+/// signer info may omit the key, and signature verification takes it
+/// from the account (mainnet block 713,480).
+pub fn check_signing_tx_data(tx: &Tx, sdk_v046: bool) -> R<()> {
     fn adapt(mi: &celestia_proto::cosmos::tx::v1beta1::ModeInfo) -> R<()> {
         use celestia_proto::cosmos::tx::v1beta1::mode_info::Sum;
         if let Some(Sum::Multi(m)) = &mi.sum {
@@ -115,7 +118,7 @@ pub fn check_signing_tx_data(tx: &Tx) -> R<()> {
         if let Some(mi) = &si.mode_info {
             adapt(mi)?;
         }
-        if si.public_key.is_none() {
+        if si.public_key.is_none() && !sdk_v046 {
             return panic("signerInfo.PublicKey cannot be nil");
         }
     }
