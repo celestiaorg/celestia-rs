@@ -324,17 +324,16 @@ pub fn decided_last_commit(block: &serde_json::Value, last_vals: &ValidatorSet) 
     }
 }
 
-/// `DuplicateVoteEvidence.ABCI()` for each piece of the block's evidence:
-/// the validator and its power, the votes' height, the evidence timestamp
-/// and the total voting power. Only duplicate-vote evidence is expected.
-fn misbehavior(block: &serde_json::Value) -> Vec<abci::Misbehavior> {
+/// The block's evidence as Tendermint v0.34 passes it to BeginBlock
+/// (`DuplicateVoteEvidence.ABCI`). Only duplicate-vote evidence is read.
+pub fn misbehavior(block: &serde_json::Value) -> Vec<abci::Misbehavior> {
     block["block"]["evidence"]["evidence"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|ev| {
-            assert_eq!(ev["type"], "tendermint/DuplicateVoteEvidence");
-            let v = &ev["value"];
+        .map(|e| {
+            assert_eq!(e["type"], "tendermint/DuplicateVoteEvidence");
+            let v = &e["value"];
             abci::Misbehavior {
                 r#type: abci::MisbehaviorType::DuplicateVote as i32,
                 validator: Some(abci::Validator {

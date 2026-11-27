@@ -14,8 +14,8 @@ BENCH_GENESIS_URL=https://raw.githubusercontent.com/celestiaorg/networks/master/
 BENCH_GENESIS_SHA256=9727aac9bbfb021ce7fc695a92f901986421283a891b89e0af97bc9fad187793
 BENCH_REF_RPCS=(https://rpc.celestia.pops.one https://celestia-rpc.polkachu.com)
 # Seeds and peers built into celestia-rs (crates/tier-5-node/celestia-rs/src/networks.rs).
-BENCH_SEEDS=8542cd7e6bf9d260fef543bc49e59be5a3fa9074@seed.publicnode.com:26656,ade4d8bc8cbe014af6ebdf3cb7b1e9ad36f412c0@seeds.polkachu.com:11656
-BENCH_PEERS=076c9cc9de3039819a98522aeea39e8c72b49682@peer.celestia.mainnet.dteam.tech:28656,8dcecfd3fb44990af00408bbd70ab141c33d4513@67.213.115.125:36656
+BENCH_SEEDS=acca7837e4eb5f9dc7f5a94ed1d82edda6931ff8@seed.celestia.pops.one:26656,12ad7c73c7e1f2460941326937a039139aa78884@celestia-mainnet-seed.itrocket.net:40656,975237ec35350f0643bce6618654cd1c76bf1dc0@consensus-full-seed-1.celestia-bootstrap.net:26656
+BENCH_PEERS=d9bfa29e0cf9c4ce0cc9c26d98e5d97228f93b0b@65.109.88.38:12056,fc25a389790d9f1e8dc39496313e1e0fe2b138f7@135.181.138.95:2890,d513f98bb4f8859f94bde2efc6bf18d29f732c48@188.40.102.137:15656,ce99d7da2530f75d05880d13d9eda384d5a1afe4@peer.celestia.node75.org:23356
 BENCH_BRIDGE_HEIGHTS=600
 BENCH_BRIDGE_STRIDE=20
 
@@ -27,7 +27,9 @@ bench_claim_driver() { mkdir "$1/started" 2>/dev/null; }
 bench_valid() {
   local peer='[0-9a-f]{40}@[A-Za-z0-9.-]{1,253}:[0-9]{1,5}'
   case $1 in
-    campaign) [[ $2 =~ ^(genesis-prefix|state-sync|bridge)$ ]] ;;
+    campaign) [[ $2 =~ ^(genesis-prefix|state-sync|bridge|block-range)$ ]] ;;
+    blocks) [[ $2 =~ ^[1-9][0-9]{0,3}$ ]] ;;
+    disk) [[ $2 =~ ^(pd|nvme)$ ]] ;;
     role) [[ $2 =~ ^(rs|go)$ ]] ;;
     height | trust_height) [[ $2 =~ ^[1-9][0-9]{0,7}$ ]] ;;
     pairs) [[ $2 =~ ^[1-3]$ ]] ;;
@@ -67,7 +69,7 @@ bench_pair_verdict() {
   local -a snapshots=()
   case $campaign in
     genesis-prefix) echo not_applicable; return 0 ;;
-    state-sync | bridge) ;;
+    state-sync | bridge | block-range) ;;
     *) echo discard:unknown_campaign; return 1 ;;
   esac
   for summary in "$2" "$3"; do
@@ -104,6 +106,22 @@ bench_pair_verdict() {
       elif [$r.tail, $r.start, $r.end] != [$g.tail, $g.start, $g.end] then "discard:different_da_ranges"
       elif $r != $g then "discard:different_workloads"
       else "valid" end') || { echo discard:incomplete_bridge_receipt; return 1; }
+  fi
+  if [[ $campaign == block-range ]]; then
+    # Both nodes must cover the same scheduled window and stop at the same
+    # committed height. A height gap is reported, never treated as equal.
+    verdict=$(jq -nr --slurpfile rs "$2" --slurpfile go "$3" '
+      def positive_height: type == "number" and . > 0 and . == floor;
+      def complete:
+        type == "object" and (.scheduled_start | positive_height) and (.blocks | positive_height) and
+        (.entry_h | positive_height) and (.exit_h | positive_height) and (.final_app_height | positive_height) and
+        .entry_h >= .scheduled_start and .exit_h >= .scheduled_start + .blocks;
+      $rs[0].range as $r | $go[0].range as $g |
+      if ([$r, $g] | all(.[]; complete) | not) then "discard:incomplete_range"
+      elif [$r.scheduled_start, $r.blocks] != [$g.scheduled_start, $g.blocks] then "discard:different_range"
+      elif $r.final_app_height != $g.final_app_height then
+        "discard:different_final_heights:rs=\($r.final_app_height),go=\($g.final_app_height),diff=\($r.final_app_height - $g.final_app_height)"
+      else "valid" end') || { echo discard:incomplete_range; return 1; }
   fi
   echo "$verdict"
   [[ $verdict == valid ]]
@@ -173,4 +191,20 @@ bench_peers() {
 # bench_max FILE COL: numeric maximum of a whitespace-separated column.
 bench_max() {
   awk -v c="$2" '$c ~ /^[0-9]+(\.[0-9]+)?$/ && (!s || $c + 0 > m) { m = $c + 0; s = 1 } END { if (s) printf "%.0f\n", m }' "$1"
+}
+
+# bench_range_stats FILE: JSON statistics of a range-memory.tsv (columns
+# uptime_s local_h mem_current_B rss_KiB cpu_usec anon_B file_B disk_used_B).
+# Rows with a non-numeric field are skipped. Fails without a sample.
+bench_range_stats() {
+  jq -Rsc '
+    def median: sort | length as $n | if $n % 2 == 1 then .[($n - 1) / 2] else (.[$n / 2 - 1] + .[$n / 2]) / 2 end;
+    [split("\n")[] | select(test("^[0-9]")) | [splits("[ \t]+")]
+      | select(length >= 8 and all(.[:8][]; test("^[0-9]+(\\.[0-9]+)?$"))) | map(tonumber)]
+    | select(length > 0)
+    | {entry_h: .[0][1], exit_h: .[-1][1], elapsed_s: ((.[-1][0] - .[0][0]) * 10 | round / 10),
+       cpu_usec: (.[-1][4] - .[0][4]), samples: length,
+       mem_peak_B: (map(.[2]) | max), mem_median_B: (map(.[2]) | median),
+       rss_peak_KiB: (map(.[3]) | max), rss_median_KiB: (map(.[3]) | median),
+       disk_used_peak_B: (map(.[7]) | max)}' "$1" | grep .
 }

@@ -896,8 +896,14 @@ fail at the same point of the ante handler or message handler as Go:
   that is not a validator, a redelegation to the same validator, a
   transitive redelegation, a send to a blocked module account, an eighth
   unbonding entry, out of gas in `MsgDelegate` and `MsgUndelegate` (at
-  100,000 gas, as mainnet had), a delegation above the balance, and a
-  vote on an unknown proposal.
+  100,000 gas, as mainnet had), a delegation above the balance, a
+  vote on an unknown proposal, and `MsgSubmitEvidence` with an
+  equivocation time at the Unix epoch and at Go's zero time;
+- BeginBlock evidence at app version 3: val2 double-signs (block 14:
+  slashed, jailed and tombstoned), then again (block 15: ignored, already
+  tombstoned) with evidence for an address that is not a validator
+  (ignored in cosmos-sdk v0.46). The synthetic blocks carry the evidence
+  and the oracle passes it as `ByzantineValidators`.
 
 Blob transactions that fail `ValidateBasic` are not in it: ProcessProposal
 rejects a block that holds one. [`fixtures/synthetic/failures-v1-v3`](fixtures/synthetic/failures-v1-v3)
@@ -1043,12 +1049,7 @@ cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
 `cargo test -p app --test ibc_tm_oracle` pins Go's code, codespace and log for
 each tx, and the pruning and freezing store changes. The block replay
 (`ibc_tm_blocks_match_the_oracle`) matches every KV change, app hash and
-tx result through block 38, except two logs of the shared light client
-(code, codespace and gas match), which it allows:
-
-- the `double vote from Validator{…} (0 and 1)` text at block 23;
-- block 30: celestia-core v1 does not check the address of a signature found
-  by index, so it reports `wrong signature (#1): <signature bytes>`.
+tx result, logs included, through block 38.
 
 #### History synthetic chain for the historical info migration
 

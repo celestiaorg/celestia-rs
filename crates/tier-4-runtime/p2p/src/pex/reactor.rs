@@ -246,7 +246,8 @@ impl PexReactor {
     async fn dial_peer(&self, sw: &Switch, addr: &NetAddress) -> Result<(), String> {
         let (attempts, last) = self.dial_attempts_info(addr);
         if attempts > MAX_ATTEMPTS_TO_DIAL && !sw.is_peer_persistent(addr) {
-            self.book.mark_bad(addr, DEFAULT_BAN_TIME);
+            self.book
+                .mark_bad(addr, DEFAULT_BAN_TIME, "reached max dial attempts");
             return Err(format!(
                 "reached max attempts {MAX_ATTEMPTS_TO_DIAL} to dial"
             ));
@@ -428,7 +429,7 @@ impl PexReactor {
 
     fn stop_and_ban(&self, sw: &Switch, src: &Arc<Peer>, err: &str) {
         sw.stop_peer_for_error(src, err);
-        self.book.mark_bad(src.socket_addr(), DEFAULT_BAN_TIME);
+        self.book.mark_bad(src.socket_addr(), DEFAULT_BAN_TIME, err);
     }
 }
 
@@ -562,7 +563,7 @@ impl Reactor for PexReactor {
                 if let Err(e) = self.receive_addrs(&addrs, &src) {
                     sw.stop_peer_for_error(&src, &e);
                     if e.starts_with("unsolicited") {
-                        self.book.mark_bad(src.socket_addr(), DEFAULT_BAN_TIME);
+                        self.book.mark_bad(src.socket_addr(), DEFAULT_BAN_TIME, &e);
                     }
                 }
             }

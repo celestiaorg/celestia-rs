@@ -1,9 +1,20 @@
 # Target hardware
 
-The reference machine for running a celestia-rs mainnet validator is a
-**Mac Mini M4 (base): 10-core CPU, 16 GB unified memory, 512 GB SSD**,
-macOS on `aarch64-apple-darwin`. Linux `x86_64`/`aarch64` are supported for
-development and CI.
+The target machine for a pruned celestia-rs mainnet validator has
+**8 CPU cores, 16 GB of memory and a 500 GB NVMe SSD**. These are targets
+that the budgets below are designed and tested against. Minimum requirements
+are not established yet. Release binaries run on Apple silicon macOS
+(`aarch64-apple-darwin`) and on `x86_64` and `aarch64` Linux.
+
+| Resource | Target |
+|---|---|
+| CPU | 8 cores |
+| Memory | 16 GB |
+| Disk | 500 GB NVMe SSD |
+
+These targets do not cover Fibre storage. A validator that turns on the
+opt-in [Fibre server](operator-guide.md#fibre-server) must provision storage
+for Fibre shards separately.
 
 ## Budgets
 
@@ -52,6 +63,6 @@ RocksDB keeps up to 512 SST files open: raise the macOS shell default
 - Default consensus pruning keeps recent state and blocks inside the
   evidence and unbonding window.
 - Erasure coding, NMT hashing and signature verification must be
-  multi-core-aware but must not assume more than 10 cores.
+  multi-core-aware but must not assume more than 8 cores.
 - No dependency may require x86-only intrinsics; everything must build for
   `aarch64-apple-darwin`.

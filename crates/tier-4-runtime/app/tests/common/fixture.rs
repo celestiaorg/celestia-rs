@@ -131,16 +131,8 @@ impl Fixture {
     /// store, its store roots, the app hash, every transaction result and
     /// the block's events, validator updates, consensus params and
     /// timeouts.
-    pub fn run_blocks(&self, through: i64) {
-        self.run_blocks_except_logs(through, &[]);
-    }
-
-    /// [`Self::run_blocks`], but at the heights in `log_only` a transaction
-    /// may differ from the oracle in its log alone (an open log
-    /// divergence; logs are not in `LastResultsHash`). Every other field,
-    /// the KV changes and the app hash must still match.
     #[allow(clippy::too_many_lines)]
-    pub fn run_blocks_except_logs(&self, through: i64, log_only: &[i64]) {
+    pub fn run_blocks(&self, through: i64) {
         let genesis = self.genesis();
         let r = self.roots();
         let heights = r["heights"].as_array().unwrap();
@@ -242,10 +234,7 @@ impl Fixture {
                     want_roots["app_hash"]
                 ));
             }
-            let tx_failures = check_tx_results(&res, &results[&height]);
-            failures.extend(tx_failures.into_iter().filter(|f| {
-                !(log_only.contains(&height) && f.lines().skip(1).all(|l| l.starts_with("  log: ")))
-            }));
+            failures.extend(check_tx_results(&res, &results[&height]));
             failures.extend(check_response(&res, &results[&height]));
             assert!(
                 failures.is_empty(),

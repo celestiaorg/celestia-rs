@@ -234,8 +234,8 @@ fn blocks_match_the_oracle(fixture: &str, version: u64) {
     // the header's app hash, which here is celestia-rs's own (the seeded
     // trees do not have the oracle's shape), so the account differs by
     // construction; the run from genesis covers those blocks.
-    let last = if version >= 6 {
-        fixture_last.min(handoff + 16)
+    let last = if version >= 6 && fixture.ends_with("-probes") {
+        handoff + 16
     } else {
         fixture_last
     };
@@ -471,4 +471,33 @@ fn v8_evidence_matches_the_oracle() {
 #[test]
 fn v9_evidence_matches_the_oracle() {
     evidence_matches_the_oracle(9);
+}
+
+/// 07-tendermint client updates per release (D's fixtures
+/// `synthetic/v{4,5,6,8,9}-tm`): adjacent and non-adjacent updates,
+/// insufficient trust, clock drift, misbehaviour, expiry, pruning and the
+/// commit check error order, with Go's logs.
+#[test]
+fn v4_tm_client_matches_the_oracle() {
+    blocks_match_the_oracle(&format!("{FIXTURES}/v4-tm"), 4);
+}
+
+#[test]
+fn v5_tm_client_matches_the_oracle() {
+    blocks_match_the_oracle(&format!("{FIXTURES}/v5-tm"), 5);
+}
+
+#[test]
+fn v6_tm_client_matches_the_oracle() {
+    blocks_match_the_oracle(&format!("{FIXTURES}/v6-tm"), 6);
+}
+
+#[test]
+fn v8_tm_client_matches_the_oracle() {
+    blocks_match_the_oracle(&format!("{FIXTURES}/v8-tm"), 8);
+}
+
+#[test]
+fn v9_tm_client_matches_the_oracle() {
+    blocks_match_the_oracle(&format!("{FIXTURES}/v9-tm"), 9);
 }
