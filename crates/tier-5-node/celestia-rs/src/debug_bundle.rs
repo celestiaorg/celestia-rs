@@ -336,9 +336,9 @@ fn system(home: &Path) -> Value {
         "os": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
         "cpus": std::thread::available_parallelism().map_or(0, std::num::NonZero::get),
-        // The limit of this shell; the node inherits it when started from
-        // the same environment.
-        "open_files_limit": crate::ops::open_files_limit(),
+        // The limit of this command's shell; `node_processes` has the
+        // running node's own limit (Linux).
+        "shell_open_files_limit": crate::ops::open_files_limit(),
         "time": util::now_rfc3339(),
     });
     let mut set = |k: &str, val: Option<String>| {
@@ -385,7 +385,61 @@ fn system(home: &Path) -> Value {
             .ok()
             .and_then(|s| s.split_whitespace().next().map(str::to_owned)),
     );
+    if Path::new("/proc/self/limits").exists() {
+        v["node_processes"] = node_open_files_limits(Path::new("/proc"), std::process::id());
+    }
     v
+}
+
+/// The other `celestia-rs` processes under `proc` (procfs) with their
+/// soft open-files limit: the limit the running node really has.
+fn node_open_files_limits(proc: &Path, own_pid: u32) -> Value {
+    let mut out = Vec::new();
+    let Ok(rd) = std::fs::read_dir(proc) else {
+        return Value::Array(out);
+    };
+    let mut pids: Vec<u32> = rd
+        .flatten()
+        .filter_map(|e| e.file_name().to_str()?.parse().ok())
+        .filter(|&pid| pid != own_pid)
+        .collect();
+    pids.sort_unstable();
+    for pid in pids {
+        let dir = proc.join(pid.to_string());
+        let Ok(cmdline) = std::fs::read(dir.join("cmdline")) else {
+            continue;
+        };
+        let args: Vec<String> = cmdline
+            .split(|&b| b == 0)
+            .filter(|a| !a.is_empty())
+            .map(|a| String::from_utf8_lossy(a).into_owned())
+            .collect();
+        let Some(program) = args.first() else {
+            continue;
+        };
+        if Path::new(program).file_name().and_then(|n| n.to_str()) != Some("celestia-rs") {
+            continue;
+        }
+        let limit = std::fs::read_to_string(dir.join("limits"))
+            .ok()
+            .and_then(|l| {
+                l.lines()
+                    .find_map(|line| line.strip_prefix("Max open files"))
+                    .and_then(|rest| rest.split_whitespace().next().map(str::to_owned))
+            })
+            .map(|soft| {
+                soft.parse::<u64>()
+                    .map_or_else(|_| json!(soft), |n| json!(n))
+            });
+        // The node's flags help diagnosis; URL credentials are removed.
+        let command = redact_url_credentials(&args.join(" "));
+        out.push(json!({
+            "pid": pid,
+            "command": command,
+            "open_files_soft_limit": limit,
+        }));
+    }
+    Value::Array(out)
 }
 
 /// Total size and file count of `path` (recursive; symlinks not followed).
@@ -464,14 +518,21 @@ const SECRET_WORDS: [&str; 9] = [
 #[must_use]
 pub fn redact_toml(src: &str) -> String {
     let mut out = String::with_capacity(src.len());
+    // The open value of a redacted key that continues on later lines.
+    let mut open: Option<Open> = None;
     for line in src.split_inclusive('\n') {
         let (body, eol) = match line.strip_suffix('\n') {
             Some(b) => (b, "\n"),
             None => (line, ""),
         };
+        if let Some(o) = open.take() {
+            // A continuation line of a redacted value: drop it.
+            open = o.feed(body);
+            continue;
+        }
         let trimmed = body.trim_start();
         if !trimmed.starts_with('#')
-            && let Some((key, _)) = body.split_once('=')
+            && let Some((key, value)) = body.split_once('=')
         {
             let k = key.trim().trim_matches(['"', '\'']).to_ascii_lowercase();
             let k = k.replace('-', "_");
@@ -479,6 +540,7 @@ pub fn redact_toml(src: &str) -> String {
                 out.push_str(key.trim_end());
                 out.push_str(" = \"<redacted>\"");
                 out.push_str(eol);
+                open = Open::start(value.trim_start());
                 continue;
             }
         }
@@ -486,6 +548,62 @@ pub fn redact_toml(src: &str) -> String {
         out.push_str(eol);
     }
     out
+}
+
+/// A TOML value that does not end on its first line.
+#[derive(Debug, Clone, Copy)]
+enum Open {
+    /// A `"""` or `'''` string, until the delimiter.
+    String(&'static str),
+    /// An array or inline table, until its brackets balance.
+    Brackets(i64),
+}
+
+impl Open {
+    /// The open state after the first line of `value`, if any.
+    fn start(value: &str) -> Option<Self> {
+        for delim in ["\"\"\"", "'''"] {
+            if let Some(rest) = value.strip_prefix(delim) {
+                return (!rest.contains(delim)).then_some(Self::String(delim));
+            }
+        }
+        if value.starts_with(['[', '{']) {
+            return Self::Brackets(0).feed(value);
+        }
+        None
+    }
+
+    /// The state after `line`; `None` once the value has ended.
+    fn feed(self, line: &str) -> Option<Self> {
+        match self {
+            Self::String(delim) => (!line.contains(delim)).then_some(self),
+            Self::Brackets(mut depth) => {
+                let mut quote: Option<char> = None;
+                let mut escaped = false;
+                for c in line.chars() {
+                    match quote {
+                        Some(q) => {
+                            if escaped {
+                                escaped = false;
+                            } else if c == '\\' && q == '"' {
+                                escaped = true;
+                            } else if c == q {
+                                quote = None;
+                            }
+                        }
+                        None => match c {
+                            '"' | '\'' => quote = Some(c),
+                            '[' | '{' => depth += 1,
+                            ']' | '}' => depth -= 1,
+                            '#' => break,
+                            _ => {}
+                        },
+                    }
+                }
+                (depth > 0).then_some(Self::Brackets(depth))
+            }
+        }
+    }
 }
 
 /// Replaces `user:pass@` after each `://` with `<redacted>@`.
@@ -523,9 +641,11 @@ fn tail(path: &Path, max: u64) -> anyhow::Result<Vec<u8>> {
     Ok(buf)
 }
 
-/// The tail of a systemd unit's journal.
+/// The tail of a systemd unit's journal, read as a stream so that
+/// `max` also bounds memory use.
 fn journal(unit: &str, max: u64) -> anyhow::Result<Vec<u8>> {
-    let out = std::process::Command::new("journalctl")
+    use std::process::{Command, Stdio};
+    let mut child = Command::new("journalctl")
         .args([
             "--no-pager",
             "-o",
@@ -535,17 +655,57 @@ fn journal(unit: &str, max: u64) -> anyhow::Result<Vec<u8>> {
             "-u",
             unit,
         ])
-        .output()
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .context("run journalctl")?;
-    if !out.status.success() {
-        bail!(
-            "journalctl: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
+    let stderr = child.stderr.take();
+    // Drain stderr on its own thread so that neither pipe fills up.
+    let errors = std::thread::spawn(move || {
+        stderr
+            .and_then(|e| tail_reader(e, 64 << 10).ok())
+            .map(|(b, _)| b)
+            .unwrap_or_default()
+    });
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow!("journalctl: no stdout"))?;
+    let read = tail_reader(stdout, max);
+    let status = child.wait().context("wait for journalctl")?;
+    let errors = errors.join().unwrap_or_default();
+    if !status.success() {
+        bail!("journalctl: {}", String::from_utf8_lossy(&errors).trim());
     }
-    let data = out.stdout;
+    Ok(read?.0)
+}
+
+/// Reads `r` to its end and keeps its last `max` bytes, holding at most
+/// about `2 * max` bytes at once. Returns the tail and the largest
+/// buffer size reached.
+fn tail_reader(mut r: impl std::io::Read, max: u64) -> std::io::Result<(Vec<u8>, usize)> {
     let max = usize::try_from(max).unwrap_or(usize::MAX);
-    Ok(data[data.len().saturating_sub(max)..].to_vec())
+    let mut buf = Vec::new();
+    let mut chunk = vec![0u8; 64 << 10];
+    let mut peak = 0;
+    loop {
+        let n = match r.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        buf.extend_from_slice(&chunk[..n]);
+        peak = peak.max(buf.len());
+        if buf.len() > max.saturating_mul(2) {
+            buf.drain(..buf.len() - max);
+        }
+    }
+    if buf.len() > max {
+        buf.drain(..buf.len() - max);
+    }
+    Ok((buf, peak))
 }
 
 /// RocksDB `LOG` files of the databases under `data/` (two levels deep),
@@ -720,6 +880,57 @@ mod tests {
         assert_eq!(&h[..90], "f".repeat(90).as_bytes());
         assert_eq!(&h[345..465], "d".repeat(120).as_bytes());
         assert!(tar_header(&"x".repeat(300), 1, 0).is_err());
+    }
+
+    #[test]
+    fn tail_reader_keeps_only_the_last_bytes() {
+        /// 500 reads of 1000 bytes; the last read is all `a`.
+        struct Chunks(u8, u32);
+        impl std::io::Read for Chunks {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.1 == 0 {
+                    return Ok(0);
+                }
+                self.1 -= 1;
+                let n = buf.len().min(1000);
+                buf[..n].fill(if self.1 == 0 { b'a' } else { self.0 });
+                Ok(n)
+            }
+        }
+        let (tail, peak) = tail_reader(Chunks(b'z', 500), 2500).unwrap();
+        assert_eq!(tail.len(), 2500);
+        assert!(tail.ends_with(&[b'a'; 1000]));
+        // The buffer stays bounded, not the 500 kB read.
+        assert!(peak <= 2 * 2500 + 64 * 1024, "{peak}");
+        let (short, _) = tail_reader(&b"abc"[..], 10).unwrap();
+        assert_eq!(short, b"abc");
+    }
+
+    #[test]
+    fn node_open_files_limits_come_from_proc() {
+        let proc = tempfile::tempdir().unwrap();
+        let limits = "Limit                     Soft Limit           Hard Limit           Units\n\
+            Max open files            65536                524288               files\n";
+        for (pid, cmdline) in [
+            ("101", "/usr/local/bin/celestia-rs\0start\0--home\0/x\0"),
+            ("102", "celestia-rs\0debug-bundle\0"),
+            ("103", "/usr/bin/other\0start\0"),
+        ] {
+            let d = proc.path().join(pid);
+            std::fs::create_dir(&d).unwrap();
+            std::fs::write(d.join("cmdline"), cmdline).unwrap();
+            std::fs::write(d.join("limits"), limits).unwrap();
+        }
+        std::fs::create_dir(proc.path().join("self")).unwrap();
+        // Only the node process, not this command or other programs.
+        assert_eq!(
+            node_open_files_limits(proc.path(), 102),
+            json!([{
+                "pid": 101,
+                "command": "/usr/local/bin/celestia-rs start --home /x",
+                "open_files_soft_limit": 65536,
+            }])
+        );
     }
 
     #[test]

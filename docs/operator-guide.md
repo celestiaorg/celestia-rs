@@ -1034,7 +1034,8 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
   `--output <file>`) and prints its path. Attach it to a
   [bug report](https://github.com/celestiaorg/celestia-rs/issues/new?template=bug_report.yml).
   Run it while the node is up, with the same `--home`: it holds the build
-  version, OS, CPU, memory and disk, the sizes under `config/` and `data/`,
+  version, OS, CPU, memory and disk, the open-files limit (on Linux,
+  also the running node's own), the sizes under `config/` and `data/`,
   a genesis summary (chain ID, SHA-256), `config.toml`, `app.toml` and
   `client.toml` (values of keys named like token, secret, password or
   mnemonic, and `user:pass@` in URLs, are replaced by `<redacted>`),

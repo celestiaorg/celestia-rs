@@ -176,6 +176,39 @@ keyring-backend = "test"
 }
 
 #[test]
+fn multiline_secret_values_are_redacted_whole() {
+    let src = r#"password = """
+line-one-secret
+line-two-secret"""
+api_key = '''
+literal-secret
+'''
+tokens = [
+  "array-secret-1",
+  ["nested-secret"],
+]
+after = "kept"
+inline_password = """one-line-secret"""
+still = "kept too"
+"#;
+    let out = debug_bundle::redact_toml(src);
+    for secret in [
+        "line-one-secret",
+        "line-two-secret",
+        "literal-secret",
+        "array-secret-1",
+        "nested-secret",
+        "one-line-secret",
+    ] {
+        assert!(!out.contains(secret), "{secret} left in {out}");
+    }
+    assert!(out.contains(r#"after = "kept""#), "{out}");
+    assert!(out.contains(r#"still = "kept too""#), "{out}");
+    // The redacted text is still valid TOML.
+    out.parse::<toml::Table>().unwrap();
+}
+
+#[test]
 fn bundled_config_files_are_redacted() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();
