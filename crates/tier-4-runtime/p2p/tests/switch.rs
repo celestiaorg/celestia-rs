@@ -45,6 +45,23 @@ impl Reactor for Echo {
 }
 
 fn node(seed: u8, persistent: Vec<String>) -> (Switch, Arc<Echo>, Arc<PexReactor>) {
+    let (sw, echo) = echo_node(seed, persistent);
+    let book = Arc::new(AddrBook::new(None, false));
+    let pex = PexReactor::new(
+        book.clone(),
+        PexConfig {
+            ensure_peers_period: Duration::from_millis(300),
+            ..PexConfig::default()
+        },
+    );
+    sw.set_addr_book(book);
+    sw.add_reactor(pex.clone()).unwrap();
+    (sw, echo, pex)
+}
+
+/// A switch with the echo reactor only: no PEX reactor, so nothing but the
+/// switch itself dials.
+fn echo_node(seed: u8, persistent: Vec<String>) -> (Switch, Arc<Echo>) {
     let key = NodeKey::from_seed(&[seed; 32]);
     let info = NodeInfo {
         protocol_version: ProtocolVersion {
@@ -72,17 +89,7 @@ fn node(seed: u8, persistent: Vec<String>) -> (Switch, Arc<Echo>, Arc<PexReactor
     let sw = Switch::new(cfg, key, info).unwrap();
     let echo = Arc::new(Echo::default());
     sw.add_reactor(echo.clone()).unwrap();
-    let book = Arc::new(AddrBook::new(None, false));
-    let pex = PexReactor::new(
-        book.clone(),
-        PexConfig {
-            ensure_peers_period: Duration::from_millis(300),
-            ..PexConfig::default()
-        },
-    );
-    sw.set_addr_book(book);
-    sw.add_reactor(pex.clone()).unwrap();
-    (sw, echo, pex)
+    (sw, echo)
 }
 
 async fn wait_for(mut f: impl FnMut() -> bool) {
@@ -200,10 +207,13 @@ async fn rejects_self_wrong_network_and_duplicates() {
 /// peers alone.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn redial_persistent_peers_dials_now() {
-    let (a, _echo_a, _pex_a) = node(9, vec![]);
+    // No PEX reactors: their address-book dials (B's first ensure-peers
+    // pass at start, A's later ones) would race the switch's own dials,
+    // and the loser could reconnect the nodes after the stop below.
+    let (a, _echo_a) = echo_node(9, vec![]);
     a.start().await.unwrap();
     let a_addr = a.net_address().unwrap();
-    let (b, _echo_b, _pex_b) = node(10, vec![a_addr.to_string()]);
+    let (b, _echo_b) = echo_node(10, vec![a_addr.to_string()]);
     b.start().await.unwrap();
     wait_for(|| b.peers().len() == 1).await;
 
@@ -213,9 +223,13 @@ async fn redial_persistent_peers_dials_now() {
     // A graceful stop starts no reconnect loop, so B stays disconnected.
     let pa = b.get_peer(&a.node_id()).unwrap();
     b.stop_peer_gracefully(&pa, "ECHO");
-    b.stop_peer_gracefully(&pa, "PEX");
     assert!(b.peers().is_empty());
     wait_for(|| a.peers().is_empty()).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert!(
+        a.peers().is_empty() && b.peers().is_empty(),
+        "A and B reconnected before redial_persistent_peers"
+    );
 
     assert_eq!(b.redial_persistent_peers(), 1);
     wait_for(|| b.get_peer(&a.node_id()).is_some_and(|p| p.is_persistent())).await;

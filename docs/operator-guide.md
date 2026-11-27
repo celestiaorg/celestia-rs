@@ -1848,8 +1848,13 @@ The procedure is section 11 with:
   configured. Public seeds are often full: a node at its inbound limit
   closes the connection right after the handshake, before it sends any
   addresses (a packet capture of `seed.celestia.pops.one` that day showed
-  this; it is an RPC full node with full inbound slots). Persistent peers
-  or a populated address book are the reliable route. To refresh them:
+  this; it is an RPC full node with full inbound slots). A seeds-only
+  bootstrap works only when a seed has a free slot: on 2026-11-27 a fresh
+  node with only the three built-in seeds found peers in 2 of 6 attempts
+  over 25 minutes, each time through the one seed that accepted it. The
+  node retries the seeds on its own, but the built-in persistent peers (or
+  a populated address book) are what make a fresh node reliable. To
+  refresh them:
   `curl -sL https://raw.githubusercontent.com/celestiaorg/networks/master/celestia/peers.txt | paste -sd, -`.
 - Route B with Polkachu's mainnet snapshot
   (`snapshots.polkachu.com/snapshots/celestia/`, ~640 MB snapshot inside).
