@@ -20,7 +20,7 @@ const FIXTURES: &str = concat!(
 const RELEASES: [&str; 5] = ["v4", "v5", "v6", "v8", "v9"];
 
 /// The cases, in block order: (block offset, tx index, what it does).
-const CASES: [(i64, usize, &str); 32] = [
+const CASES: [(i64, usize, &str); 33] = [
     (5, 0, "create A"),
     (5, 1, "create E"),
     (5, 2, "create P"),
@@ -53,6 +53,11 @@ const CASES: [(i64, usize, &str); 32] = [
     (9, 2, "submit misbehaviour on M"),
     (9, 3, "R adjacent with a nil vote"),
     (9, 4, "R adjacent with an absent signature"),
+    (
+        9,
+        5,
+        "R adjacent: slot 1 names validator 0, signed by validator 1",
+    ),
 ];
 
 /// The tx results of the client blocks of `release`, by (offset, index).
@@ -92,6 +97,17 @@ fn want(release: &str, case: (i64, usize)) -> (u64, &'static str, String) {
     let ok = (0, "", String::new());
     match case {
         (5, _) | (6, 0 | 1 | 3 | 4 | 6) | (7, 0) | (9, 0 | 2 | 3 | 4) => ok,
+        // The signature is validator 1's over a canonical vote, which holds
+        // no address: only the address check refuses the slot.
+        (9, 5) if matches!(release, "v4" | "v5") => ok,
+        // R's validator set is V (keys 0 to 3).
+        (9, 5) => (
+            1,
+            "undefined",
+            format!(
+                "{verify}invalid header: validator address mismatch at index 1: expected 6698BE609CDB48337A0F5A72C0FFBC1484E9D7A4, got 3C42D1F02FBE21EED19B09E099106DFC90964C17"
+            ),
+        ),
         (6, 2) => (
             29,
             "client",
@@ -126,10 +142,10 @@ fn want(release: &str, case: (i64, usize)) -> (u64, &'static str, String) {
         // By index, the set size is checked before any signature.
         (8, 3) => (1, "undefined", format!("{verify}invalid header: Invalid commit -- wrong set size: 4 vs 3")),
         (8, 4) => (1, "undefined", format!("{verify}{}", wrong_sig(0))),
-        // celestia-core 0.39.30 (v8.0.8) and later check the address of a
+        // celestia-core 0.39.23 (v6.4.10) and later check the address of a
         // signature found by index; earlier releases verify it against the
         // validator at that index.
-        (8, 6) if matches!(release, "v8" | "v9") => (
+        (8, 6) if matches!(release, "v6" | "v8" | "v9") => (
             1,
             "undefined",
             format!(
@@ -172,7 +188,8 @@ fn tm_client_tx_results_per_release() {
 /// The ibc store changes of the client blocks: the update of P in block +6
 /// prunes P's expired h10 consensus state (and its processed height, time
 /// and iteration key); block +9 writes new client states for A and M (now
-/// frozen) and R (updated to h0-17), and none for E, which never updated.
+/// frozen) and R (updated to h0-17, and to h0-18 where the slot address is
+/// not checked), and none for E, which never updated.
 #[test]
 fn tm_client_store_changes_per_release() {
     for release in RELEASES {
@@ -222,6 +239,12 @@ fn tm_client_store_changes_per_release() {
                 format!("{}/clientState", id(4)),
             ],
             "{release}"
+        );
+        let r18 = format!("{}/consensusStates/0-18", id(4));
+        assert_eq!(
+            ibc(9).set.contains_key(r18.as_bytes()),
+            matches!(release, "v4" | "v5"),
+            "{release}: {r18}"
         );
         for offset in 6..=9 {
             assert!(

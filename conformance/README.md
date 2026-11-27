@@ -453,14 +453,17 @@ keys, so each header can break exactly one rule:
   (signatures found by index, with the set-size check) and on the trusting
   path (signatures found by address): a missing slot with a bad first
   signature, a bad first signature with enough good ones, too little power,
-  a validator in two slots, a wrong validators hash.
+  a validator in two slots, a wrong validators hash;
+- an adjacent update whose commit slot 1 names validator 0's address but holds
+  validator 1's valid signature (the canonical vote holds no address).
 
 The fixtures are `fixtures/synthetic/v{4,5,6,8,9}-tm`. `cargo test -p app
 --test synthetic_tm_client_oracle` pins Go's code, codespace and log for each
-case and release, and the client store changes. celestia-core 0.39.30 (v8.0.8)
-and later report `validator address mismatch at index 1` for a signature
-found by index under another validator's address; earlier releases report
-`wrong signature (#1)`.
+case and release, and the client store changes. celestia-core 0.39.23
+(v6.4.10) and later check the address of a signature found by index: they
+report `validator address mismatch at index 1` for validator 0's signature in
+slot 1 (earlier releases: `wrong signature (#1)`), and refuse validator 1's
+signature under validator 0's address, which v4 and v5 accept.
 
 The cases follow what mainnet relayers send. The `update_client_census`
 example decodes each `MsgUpdateClient` in a block stream; on the blocks of
@@ -562,9 +565,12 @@ error acknowledgement from x/tokenfilter; the validators signal version
 block 36 sets app version 6 and schedules plan `v6` at 37.
 [`fixtures/synthetic/v5-to-v6`](fixtures/synthetic/v5-to-v6) holds its
 outputs (blocks 26 to 30 are those of `fixtures/synthetic/v5`).
-`v6-oracle` opens the home with celestia-app v6.4.4 (the v6 release that
-the v8 and v9 multiplexers embed; v6.4.10 changes only CheckTx,
-ProcessProposal and the tx cache). The PreBlocker of block 37 runs the
+`v6-oracle` opens the home with celestia-app v6.4.10 (the v6 release that
+the v10.6.0 and v11.0.0 multiplexers embed; the v8 and v9 multiplexers embed
+v6.4.4). Against v6.4.4 it changes the tx cache of CheckTx and
+ProcessProposal, and its celestia-core v0.39.23 adds the light-client check
+of a commit signature's validator address (and an error, not a skipped
+vote, for a commit validator missing from the set in `MedianTime`). The PreBlocker of block 37 runs the
 `v6` handler; blocks 37 to 41 receive a second `uatom` transfer (now a
 voucher), send the voucher, return part of it to the solo machine and
 take its acknowledgement. [`fixtures/synthetic/v6`](fixtures/synthetic/v6)

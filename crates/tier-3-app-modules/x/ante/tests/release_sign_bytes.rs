@@ -1,5 +1,5 @@
 //! Sign bytes per release, against the Go sign mode handlers of celestia-app
-//! v4.1.0, v5.0.12, v6.4.4, v8.0.8 and v9.0.8 (`go run . -signbytes` in
+//! v4.1.0, v5.0.12, v6.4.10, v8.0.8 and v9.0.8 (`go run . -signbytes` in
 //! `conformance/v{4,5,6,8,9}-oracle`, fixtures
 //! `conformance/fixtures/signbytes/v*.json.gz`).
 //!
@@ -140,7 +140,7 @@ fn v5_sign_bytes_match_go() {
 
 #[test]
 fn v6_sign_bytes_match_go() {
-    check("v6", 6, "v6.4.4");
+    check("v6", 6, "v6.4.10");
 }
 
 #[test]
