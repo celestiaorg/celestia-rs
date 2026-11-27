@@ -10,12 +10,111 @@ hand.
 The other workspace crates are `publish = false` and stay at 0.0.1; only
 the binary is versioned.
 
+There are two kinds of release:
+
+- **Automatic releases**, once a day, of the newest `main` commit that
+  passed `ci`: `v<crate version>-main.<n>`. No one cuts them.
+- **Human releases** (`v0.1.0`, `v0.1.0-rc.10`), cut with the
+  **prepare release** workflow below, for milestones and release notes.
+
+Nodes do not track "the newest release". They follow a **release
+channel**, one per network, which moves forward on its own as releases
+soak on the network before it.
+
+## Automatic releases and release channels
+
+```mermaid
+flowchart LR
+  main["main<br/>(newest commit that passed ci)"] -->|daily, 14:00 UTC| rel["release v…-main.n<br/>(pre-release)"]
+  rel -->|0 h| corto
+  corto -->|24 h in corto| mocha
+  mocha -->|24 h in mocha| mainnet
+  corto & mocha & mainnet -.->|daily| nodes[auto-updaters<br/>install.sh --channel]
+```
+
+**Automatic releases.** Every day at 14:00 UTC, `release.yml` takes the
+newest `main` commit whose `ci` push run passed and, if no release has it
+yet, tags it `v<crate version>-main.<n>` (or
+`<crate version>.main.<n>` when the crate version is already a
+pre-release, e.g. `v0.1.0-rc.9.main.812`), where `n` is the commit's
+position on `main`. It builds, smoke-tests and publishes the archives as a
+GitHub pre-release. One release a day, not one per merge, keeps release
+builds (three targets, one on macOS) from competing with PR CI for runners;
+nodes update daily and channels soak for 24 hours, so more frequent
+releases would not reach them sooner. The build sets `CELESTIA_RS_RELEASE_VERSION`, so
+`celestia-rs version`, `--version` and `version --long` report the full
+release version; `build.rs` rejects
+a value that does not extend the crate version. A commit that changes the
+crate version is left to the human release path.
+
+**Channels.** `.github/release-channels.json` is the policy. Each channel
+has a source and a soak time:
+
+| channel | source | soak |
+| --- | --- | --- |
+| `corto` | releases | 0 h |
+| `mocha` | `corto` | 24 h |
+| `mainnet` | `mocha` | 24 h |
+
+Every hour, **release channels** (`release-channels.yml`) moves each
+channel to the newest release that has been in its source for at least the
+soak time, is not yanked, and is not newer than what the source runs now.
+"Newest" means latest on `main` (the commit's position), not latest
+published: automatic builds run in parallel and can publish out of order.
+It never moves a channel backwards. `main` is linear, so a release that
+entered `mocha` 24 hours ago has run there, inside every later release, for
+24 hours; frequent merges do not starve `mainnet`. The state is on the
+`release-channels` branch: `channels.json` (tags, history, frozen channels,
+yanked releases) and `channels/<name>`, one file holding the tag. Each
+change is a commit signed by GitHub, so the branch is the audit log.
+
+**Following a channel.**
+
+- Any machine: `install.sh --channel mainnet` (or
+  `CELESTIA_RS_CHANNEL=mainnet`) installs the channel's release; re-run it
+  to follow.
+- Linux, unattended: `packaging/linux/celestia-rs-auto-update.{sh,service,timer}`.
+  Once a day, at a random time in a 6-hour window so that operators do not
+  restart together, it installs the channel's release with that release's
+  own installer, restarts `celestia-rs`, waits until the node is caught up
+  and advancing, and rolls back to `celestia-rs.prev` if not. Installation
+  steps are in the `.service` file.
+- The Mac validator host: `packaging/macos/celestia-rs-auto-update.sh` puts
+  each node on its own network's channel (`mocha`, `mainnet`;
+  `CHANNEL_<node>` overrides it), builds the exact tagged source, and keeps
+  its canary, app-hash and signing checks.
+
+**When something goes wrong.** Use **Actions → release channels → Run
+workflow**:
+
+- `yank <tag>`: no channel takes that release again. Yank every release
+  from the bad one up to the fix.
+- `pin <channel> <tag>`: set a channel to a release now, for example to
+  roll `mainnet` back. Pinning also freezes the channel. Like a promotion,
+  a pin needs the release to have been in the channel before for its soak
+  time (24 hours in `mocha` for `mainnet`); a rollback to the release
+  `mainnet` ran before always passes. Set `force` to skip the check in an
+  emergency.
+- `freeze <channel>` / `unfreeze <channel>`: stop or resume automatic
+  promotion, for example around a network upgrade.
+
+A pinned or frozen source channel also holds back the channels after it,
+because a channel never takes a release newer than its source runs. Nodes
+pick up a pin at their next daily pass, so after a pin, tell operators to
+run the updater or installer at once if the fix is urgent.
+
+**Limits.** Soak time is the only automatic promotion gate. The workflow
+cannot see node health, so watch the networks and yank or freeze when they
+look wrong. A consensus-breaking release (a new app version) still needs a
+coordinated upgrade height: freeze `mainnet` before it reaches the channel
+and pin it when the network is ready.
+
 ## Release and fix loop
 
-The Mac auto-updater follows the newest published release, including release
-candidates, using its exact tagged source. It runs hourly, deploys to Mocha
-first, checks health and app-hash parity, and rolls back an unhealthy deploy
-before advancing to mainnet. Unreleased commits on `main` do not deploy.
+The Mac auto-updater follows each node's release channel, using the exact
+tagged source. It runs hourly, deploys to Mocha first, checks health and
+app-hash parity, and rolls back an unhealthy deploy before advancing to
+mainnet. Unreleased commits on `main` do not deploy.
 
 Keep monitoring and comparisons against Go active as releases advance. When
 an issue is found, retain its version, height and reproduction evidence,
@@ -126,6 +225,10 @@ then open a PR with the result.
   version instead.
 
 ## Repository settings
+
+- The **release channels** workflow creates the `release-channels` branch
+  on its first run. Do not protect it with rules that block GitHub
+  Actions from committing to it; do restrict who else may push.
 
 - **Settings → Actions → General → Workflow permissions:** allow GitHub
   Actions to create pull requests (for `prepare release`).

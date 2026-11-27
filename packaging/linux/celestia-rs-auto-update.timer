@@ -1,0 +1,13 @@
+# Runs celestia-rs-auto-update.service once a day, at a random time within
+# 6 hours, so that operators on one network do not all restart together.
+
+[Unit]
+Description=Daily celestia-rs channel auto-update
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
