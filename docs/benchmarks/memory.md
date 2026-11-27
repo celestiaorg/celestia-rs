@@ -9,7 +9,8 @@ glibc build's RSS kept rising to 4.9x its live heap (1.66 GB for ~340 MB
 live), while jemalloc builds held RSS at ~1.3x the heap (430-440 MB).
 **Fix: celestia-rs now uses jemalloc as its global allocator by default**
 (feature `jemalloc`), with `--features memstats` for heap gauges and
-jemalloc's heap profiler.
+jemalloc's heap profiler. (Since 2026-11-27 the default is mimalloc; see
+"Allocator: mimalloc by default" below.)
 
 ## Setup
 
@@ -129,6 +130,33 @@ block's parts landed between two group checks (Go behaves the same), and
 groups stayed far below the 1 GB total (largest 242 MB on V1); V2 ran with
 a 1 MiB head and a 16 MiB total and never exceeded the total by more than
 one head (15 files).
+
+## Allocator: mimalloc by default (2026-11-27)
+
+celestia-rs now uses mimalloc (v3.3.2, `override`, so RocksDB's C++
+allocations use it too) instead of jemalloc by default. The jemalloc
+build stays available (feature `jemalloc`, implied by `memstats`).
+
+Mainnet replay, heights 558,371-573,370 (15,000 blocks), IAVL node cache
+4,000,000, block cache 512 MiB, copied pruned home, NVMe. Every run gave
+the same `responses_digest` (`d4bff64d...30dd`).
+
+| run | allocator | blocks/s | exec mean / p90 ms | finalize ms | peak RSS | end RSS |
+|---|---|---|---|---|---|---|
+| A0 (x6) | jemalloc, default options | 26.42-26.70 | 36.1-36.5 / 49.8-50.4 | 23.1-23.4 | 3.13-3.19 GB | 3.12 GB |
+| A1 | jemalloc `background_thread:true` | 27.47 | 35.1 / 47.6 | 22.1 | 3.15 GB | |
+| A2 | jemalloc `background_thread:true,tcache_max:32768` | 27.52 | 35.0 / 47.8 | 22.1 | 3.16 GB | |
+| A3 (x3) | mimalloc, default options | 28.48-28.60 | 33.7-33.9 / 46.2-46.3 | 21.1 | 3.31-3.34 GB | 3.10-3.20 GB |
+
+- mimalloc: +7.1% blocks/s against the jemalloc mean (26.6), peak RSS
+  about +6%, end RSS about equal.
+- jemalloc's background purge thread alone gives +3.3%; a larger thread
+  cache adds nothing.
+- glibc malloc was not measured again: it fails on memory (4.9x the live
+  heap in the soak above).
+
+Long run (100,000 blocks each for jemalloc and mimalloc, RSS sampled):
+SOAK RESULT PENDING.
 
 ## Reproduce
 

@@ -24,6 +24,12 @@
 
 ### Changed
 
+- The node uses mimalloc instead of jemalloc as its memory allocator
+  (RocksDB too). Mainnet blocks near height 560k execute about 7% faster;
+  peak memory is about 6% higher. `celestia-rs version --long` prints the
+  allocator. jemalloc stays available: build with `--no-default-features
+  --features rocksdb,jemalloc` (or `rocksdb,memstats` for the heap
+  profiler).
 - Block execution is about 11% faster at mainnet heights near 560k: a
   walk down the state tree follows the child each node last loaded
   instead of looking every node up in the shared node cache (98% fewer
