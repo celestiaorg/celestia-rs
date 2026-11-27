@@ -269,7 +269,7 @@ pub fn sig_verification(
                 sequence: acc.sequence(),
                 pub_key: pk.to_any(),
             };
-            signing::check_signing_tx_data(tx)?;
+            signing::check_signing_tx_data(tx, ctx.is_sdk_v046())?;
             if let Err(err) = signing::verify_signature(&pk, &sd, sig.data.as_ref(), tx)? {
                 let msg = if only_legacy_amino_signers(sig.data.as_ref()) {
                     format!(

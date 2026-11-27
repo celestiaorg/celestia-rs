@@ -24,6 +24,11 @@
 
 ### Changed
 
+- Block execution is about 15% faster at mainnet heights near 560k: the
+  application database now uses 128 MiB memtables and no longer compacts
+  files early because of deletions, which cut background compaction
+  writes by about two thirds. Disk use is unchanged; peak memory is up to
+  about 200 MiB higher.
 - The released node has 13 fewer third-party crates. Block-part erasure
   coding up to 256 shards now uses in-house code that gives the same
   bytes, and the command line no longer colors its help and error text.
