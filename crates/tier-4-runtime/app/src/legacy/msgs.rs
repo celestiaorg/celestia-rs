@@ -233,6 +233,7 @@ fn module_validate_basic(msg: &Any) -> Option<Result<()>> {
         .or_else(|| super::ibc_transfer::validate_basic(msg))
         .or_else(|| super::ibc_timeout::validate_basic(msg))
         .or_else(|| super::ibc::validate_basic(msg))
+        .map(|r| r.map_err(super::ibc::v6_codespace))
         .or_else(|| super::authz::validate_basic(msg))
         .or_else(|| super::qgb::validate_basic(msg))
         .or_else(|| super::gov::validate_basic(msg))
@@ -377,16 +378,16 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
         return Ok(Any::pack(&unjail(ctx, &decode(msg)?)?));
     }
     if let Some(r) = super::ibc::route(ctx, msg) {
-        return r;
+        return r.map_err(super::ibc::v6_codespace);
     }
     if let Some(r) = super::ibc_channel::route(ctx, msg) {
-        return r;
+        return r.map_err(super::ibc::v6_codespace);
     }
     if let Some(r) = super::ibc_transfer::route(ctx, msg) {
-        return r;
+        return r.map_err(super::ibc::v6_codespace);
     }
     if let Some(r) = super::ibc_timeout::route(ctx, msg) {
-        return r;
+        return r.map_err(super::ibc::v6_codespace);
     }
     if let Some(r) = super::authz::route(ctx, msg) {
         return r;
