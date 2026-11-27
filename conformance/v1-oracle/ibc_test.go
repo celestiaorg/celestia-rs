@@ -676,6 +676,7 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 	sendICA(banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 3))))
 
 	runTransferAuthzAndTimeout(t, coord, chainA, chainB, pathAB, timeout)
+	runInvalidUTF8Transfers(t, chainA, chainB, pathAB, timeout)
 	runClientProposals(t, coord, chainA, chainB)
 	runClientUpgrade(t, coord, chainA, chainB)
 	runTimeoutOnClose(t, coord, chainA, chainB)
@@ -1293,4 +1294,25 @@ func runPFMFee(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB, chai
 	ackProof, ackProofHeight := chainC.QueryProof(host.PacketAcknowledgementKey(forwarded.GetDestPort(), forwarded.GetDestChannel(), forwarded.GetSequence()))
 	_, err = chainA.SendMsgs(channeltypes.NewMsgAcknowledgement(forwarded, ack, ackProof, ackProofHeight, chainA.SenderAccount.GetAddress().String()))
 	must(t, err)
+}
+
+// runInvalidUTF8Transfers sends transfers whose memo, then receiver, holds
+// invalid UTF-8: cosmos-sdk v0.46 decodes messages with gogoproto, which
+// does not check UTF-8, so both execute; B acknowledges the first and
+// writes an error acknowledgement for the second (receiver not bech32).
+func runInvalidUTF8Transfers(t *testing.T, chainA, chainB *ibctesting.TestChain, pathAB *ibctesting.Path, timeout clienttypes.Height) {
+	for _, m := range []struct{ receiver, memo string }{
+		{chainB.SenderAccount.GetAddress().String(), "memo \xff\xfe <&> \xc3"},
+		{"recv\xffer", ""},
+	} {
+		res, err := chainA.SendMsgs(transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+			sdk.NewInt64Coin(appconsts.BondDenom, 1_234), chainA.SenderAccount.GetAddress().String(),
+			m.receiver, timeout, 0, m.memo))
+		must(t, err)
+		packet, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+		must(t, err)
+		t.Logf("invalid-utf8 packet data: %q", packet.GetData())
+		must(t, pathAB.EndpointB.UpdateClient())
+		must(t, pathAB.RelayPacket(packet))
+	}
 }

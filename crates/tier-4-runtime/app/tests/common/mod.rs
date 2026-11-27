@@ -473,6 +473,14 @@ pub fn oracle_block_events(result: &serde_json::Value) -> Vec<Event> {
 /// The first difference between two event lists, for a readable failure.
 pub fn first_event_difference(got: &[Event], want: &[Event]) -> Option<String> {
     for (i, (g, w)) in got.iter().zip(want).enumerate() {
+        // The oracle's JSON holds each invalid UTF-8 byte of a Go string as
+        // U+FFFD; the wire carries the bytes (`gostr`).
+        let mut g = g.clone();
+        for a in &mut g.attributes {
+            a.key = gostr::lossy(&a.key).into_owned();
+            a.value = gostr::lossy(&a.value).into_owned();
+        }
+        let g = &g;
         if g != w {
             return Some(format!("event {i}: rs {g:?}\ngo {w:?}"));
         }

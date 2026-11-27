@@ -87,8 +87,10 @@ versions and that every stored node is reachable from a retained root).
 
 The reader accepts both the original inner nodes with inline child hashes
 (tag 1) and compact inner nodes (tag 2). New commits and snapshot imports
-write tag 2. The application RocksDB uses 16 MiB memtables and a 32 MiB
-WAL cap so that obsolete IAVL versions enter compaction sooner.
+write tag 2. The application RocksDB first used 16 MiB memtables, a 32 MiB
+WAL cap and the compact-on-deletion collector, so that obsolete IAVL versions
+entered compaction sooner. It now uses 128 MiB memtables and no collector
+(see "Application database compaction" below).
 Existing homes upgrade on write. Untouched historical nodes
 keep their existing format until pruned. To downgrade after writing, restore
 a pre-upgrade backup or import a compatible snapshot.
@@ -211,7 +213,8 @@ caller iterates from the single committing thread, so chunk boundaries are
 not observable.
 
 Node defaults (`celestia-rs abci --home`): `--db-backend rocksdb`,
-`--db-cache-mib 512`, `--node-cache-size 1000000`,
+`--db-cache-mib 512`, `--node-cache-size 4000000` (also the `app.toml`
+template's `iavl-cache-size`, which `start` reads),
 `--pruning-keep-recent 100 --pruning-keep-every 0 --pruning-interval 1`.
 State lives in `<home>/data/application.rocksdb/` (RocksDB) or
 `application.redb` (the extension is the backend name, so it never collides
@@ -219,3 +222,58 @@ with Go's goleveldb `application.db` in a shared home); `celestia-rs start`
 keeps its block and state stores the same way (`blockstore.*`, `state.*`,
 64 MiB cache each). Opening a database written by the other backend is
 refused instead of silently starting from an empty state.
+
+## Application database compaction (2026-11-27)
+
+Background compaction of the application RocksDB used about two thirds of
+the node's CPU time at mainnet height 559k. Two settings caused most of it:
+
+- The compact-on-deletion collector marks an SST file for compaction when
+  half of a 32,768-entry window are tombstones. IAVL pruning deletes each
+  node about 100 versions (pruning-keep-recent) after it was written. Most
+  of these tombstones are written while the node is still in the memtable
+  or in the first levels, where ordinary compaction drops the put and the
+  tombstone together. The collector compacted those files again before
+  that happened.
+- 16 MiB memtables flushed small L0 files that compaction then rewrote
+  through every level.
+
+The application database now uses a 128 MiB write buffer (at most two
+memtables, WAL capped at 256 MiB) and no collector. The block store, state
+store and evidence store keep the collector and 64 MiB buffers: they delete
+data long after it was written (old blocks and states), which is the case
+the collector is for.
+
+Measured on mainnet blocks 558,371 to 583,000 (24,630 blocks, local NVMe,
+node cache 781,250, block cache 512 MiB, same responses digest and no app
+hash mismatches in every run):
+
+| | old settings | 128 MiB buffer | 128 MiB buffer, no collector |
+|---|---|---|---|
+| blocks/s | 18.79 | 20.96 | 21.67 (+15%) |
+| exec ms mean / p50 / p90 | 51.5 / 44.2 / 72.6 | 46.0 / 41.3 / 64.5 | 44.5 / 40.5 / 62.1 |
+| compaction written | 82.8 GB (1,440 s) | 43.6 GB (773 s) | 29.4 GB (504 s) |
+| L6 write amplification | 16.4 | | 7.6 |
+| SST bytes at the end | 850.2 MB | 844.2 MB | 855.6 MB |
+| after a full compaction | 755.0 MB | 755.0 MB | 755.0 MB |
+| peak RSS | 1.53 GB | 1.57 GB | 1.62 GB |
+
+The larger buffer is most of the gain (+11.5% alone): fewer, larger L0
+files cut the rewrites of new nodes through the levels even without
+deletes (a run with pruning off showed about the same gain). Removing the
+collector adds the rest (+3.8%), which needs prune tombstones. That run
+had the collector off for every database; this change keeps it for the
+other databases, so the numbers are an upper bound.
+
+Tail latency: the first time a node runs with these settings, the first
+128 MiB flush (about 730 blocks after start at height 559k) starts a full
+L0 → L5 → L6 compaction cascade (about 600 MB in, 8 s). One synced write
+then waits about 1 s, once. Afterwards, an L5 → L6 compaction every few
+thousand blocks can delay a synced write by about 0.5 s. Commits over
+100 ms are rarer than before (about 6 instead of 16 per 5,000 blocks).
+
+Disk use without the collector has the same transient peaks (about
+1.4 GiB) and no growth trend; a full compaction gives the same size within
+a few hundred bytes. The cost is up to 224 MiB more memtable memory (about
+90 MB more peak RSS measured).
+

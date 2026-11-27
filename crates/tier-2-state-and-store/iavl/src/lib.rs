@@ -1394,7 +1394,10 @@ fn node_hash(
     leaf: Option<(&[u8], &[u8])>,
     children: Option<(Hash, Hash)>,
 ) -> Hash {
-    let mut bytes = Vec::new();
+    // Three varints (at most 10 bytes each), then two length-prefixed
+    // hashes or a length-prefixed key and value hash: one allocation.
+    let key_len = leaf.map_or(0, |(key, _)| key.len() + 10);
+    let mut bytes = Vec::with_capacity(30 + 2 * (HASH_SIZE + 1) + key_len);
     encode_varint(&mut bytes, height);
     encode_varint(&mut bytes, size);
     encode_varint(&mut bytes, version);

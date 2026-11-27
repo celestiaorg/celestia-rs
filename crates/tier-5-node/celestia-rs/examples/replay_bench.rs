@@ -12,7 +12,7 @@
 //! ```sh
 //! cargo run --release -p celestia-rs --example replay_bench -- \
 //!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR] \
-//!   [--iavl-cache 781250] [--db-cache-mib 512] [--pruning-interval 1] \
+//!   [--iavl-cache 4000000] [--db-cache-mib 512] [--pruning-interval 1] \
 //!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl] \
 //!   [--background-pruning true] [--prune-in-place false] \
 //!   [--home DIR [--in-place true]] [--blocks-home DIR] [--save-blocks false]
@@ -78,9 +78,10 @@ fn args() -> anyhow::Result<Args> {
         cache: std::env::var_os("CELESTIA_MAINNET_CACHE")
             .map_or_else(|| target.join("mainnet-cache"), PathBuf::from),
         // What `celestia-rs start` runs on a home from `init`: app.toml
-        // `iavl-cache-size` (template 781,250) and `--db-cache-mib`. A
-        // node with a larger app.toml value needs `--iavl-cache` to match.
-        iavl_cache: 781_250,
+        // `iavl-cache-size` (template 4,000,000) and `--db-cache-mib`. A
+        // node with another app.toml value (a home made before that
+        // default or migrated from Go: 781,250) needs `--iavl-cache`.
+        iavl_cache: multistore::DEFAULT_NODE_CACHE_SIZE,
         db_cache_mib: 512,
         pruning_interval: 1,
         // config.toml `storage.discard_abci_responses` (template: true).
@@ -250,9 +251,23 @@ struct Probes {
     /// Evicted nodes kept allocated by remembered child links, and their
     /// bytes (end-of-run diagnostics; scans the cache).
     remembered_dead: Box<dyn Fn() -> (usize, usize)>,
+    /// IAVL node cache: cached nodes and capacity.
+    cache_len: Box<dyn Fn() -> (usize, usize)>,
 }
 
 impl Probes {
+    /// How full the node cache is: with the process's peak RSS this gives
+    /// the memory per cached node.
+    fn print_cache(&self) {
+        let (len, capacity) = (self.cache_len)();
+        println!("node cache: {len} of {capacity} nodes");
+        let (dead, dead_bytes) = (self.remembered_dead)();
+        println!(
+            "remembered children: {dead} evicted nodes still allocated ({} KiB)",
+            dead_bytes / 1024
+        );
+    }
+
     fn sample(&self) -> Sample {
         Sample {
             abci: *self
@@ -323,6 +338,13 @@ fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State, Probes)>
         remembered_dead: {
             let cache = Arc::clone(&cache);
             Box::new(move || cache.remembered_dead_nodes())
+        },
+        cache_len: {
+            let cache = Arc::clone(&cache);
+            Box::new(move || {
+                let s = cache.stats();
+                (s.len, s.capacity)
+            })
         },
         nodes: Box::new(move || {
             let s = cache.stats();
@@ -621,14 +643,10 @@ fn main() -> anyhow::Result<()> {
     summary(&times, txs, started.elapsed(), &digest);
     print_slowest(&mut slow);
     print_phases(times.len());
+    probes.print_cache();
     println!(
         "per_block: {}",
         probes.sample().report(&first_sample, times.len())
-    );
-    let (dead, dead_bytes) = (probes.remembered_dead)();
-    println!(
-        "remembered children: {dead} evicted nodes still allocated ({} KiB)",
-        dead_bytes / 1024
     );
     Ok(())
 }

@@ -128,8 +128,15 @@ pub fn validate_sig_count(ctx: &mut Context<'_>, tx: &Tx) -> R<()> {
     let params = x_auth::get_params(ctx)?;
     let pubkeys = txview::pub_keys(tx)?;
     let mut count: u64 = 0;
-    for pk in pubkeys.iter().flatten() {
-        count += pk.count_sub_keys();
+    for pk in &pubkeys {
+        // `CountSubKeys`: cosmos-sdk v0.46 (app versions 1 to 3) counts a
+        // signer info without a public key as one signature (its type
+        // assertion fails); v0.50 counts it as none.
+        count += match pk {
+            Some(pk) => pk.count_sub_keys(),
+            None if ctx.is_sdk_v046() => 1,
+            None => 0,
+        };
         if count > params.tx_sig_limit {
             return Err(errs::too_many_signatures(format!(
                 "signatures: {count}, limit: {}",
@@ -269,7 +276,7 @@ pub fn sig_verification(
                 sequence: acc.sequence(),
                 pub_key: pk.to_any(),
             };
-            signing::check_signing_tx_data(tx)?;
+            signing::check_signing_tx_data(tx, ctx.is_sdk_v046())?;
             if let Err(err) = signing::verify_signature(&pk, &sd, sig.data.as_ref(), tx)? {
                 let msg = if only_legacy_amino_signers(sig.data.as_ref()) {
                     format!(
