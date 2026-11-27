@@ -1783,7 +1783,10 @@ The procedure is section 11 with:
   (12 such peers were enough for state sync from height 15,086,000).
   The node dials the seeds only while its address book has nothing else to
   dial, as celestia-core does, so dead `persistent_peers` keep it from
-  ever trying them: remove dead ones rather than adding seeds. On
+  ever trying them. Remove dead ones rather than adding seeds, and also
+  clear them from the address book, which keeps every dialed persistent
+  peer: stop the node and delete `config/addrbook.json` (or remove their
+  entries) before you restart. On
   2026-11-27 a fresh node (rs-follow-1) found no stable peer from the
   built-in list or from seven archive peers. It state-synced in about 3
   minutes after it got a populated address book (`config/addrbook.json`
