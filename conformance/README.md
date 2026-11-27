@@ -351,6 +351,25 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/home" \
   -genesis "$OUT/v1-v3/genesis.json" -out ../fixtures/synthetic/v4
 ```
 
+#### App homes between the upgrade oracles
+
+[`fixtures/synthetic/homes`](fixtures/synthetic/homes) holds the app home
+(`data/application.db`, `data/upgrade-info.json`, `handoff.json`) that each
+`-next-handoff` run leaves: `home-25` (after `v4-oracle`), `home-36`
+(`v5-oracle`), `home-46` (`v6-oracle`) and `home-56` (`v8-oracle`). The `go test`
+of `v5-oracle` to `v9-oracle` starts from the previous stage's home, so each
+module builds and runs only its own oracle. The `go test` that makes a home
+(`v4-oracle` to `v8-oracle`, in the `-next-handoff` case) requires the home it
+leaves to hold the committed `handoff.json`, which records the app hash of
+every store, and `data/upgrade-info.json`. After you regenerate a stage, make
+its archive from the home that the commands below leave, before the next stage
+modifies it:
+
+```sh
+tar -C "$OUT/home" --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - . \
+  | gzip -n -9 > conformance/fixtures/synthetic/homes/home-25.tar.gz
+```
+
 #### Synthetic chain across the v4 to v5 upgrade
 
 `v4-oracle -heights 10 -next-handoff` runs the same chain on to block
@@ -502,6 +521,30 @@ cd ../v4-oracle
 GOFLAGS=-mod=mod go run . -handoff "$OUT/rich-home" \
   -genesis "$OUT/rich/genesis.json" -out ../fixtures/synthetic/v3-rich-v4
 ```
+
+#### IBC synthetic chain across the v3 to v4 upgrade
+
+`v1-oracle -synthetic -chain v3-ibc` (`ibcchain.go`) starts from a genesis
+at app version 3. It opens an IBC client, a connection and a transfer
+channel to a solo machine (06-solomachine, whose proofs are signatures by a
+fixed key), sends 1,000 utia over the channel and receives a solo-machine
+transfer. Its EndBlocker of block 14 schedules plan `v4` at 15.
+
+`v4-oracle` continues it (`ibc.go`) at celestia-app v4.1.0:
+
+- Block 15: a transfer over the v3 channel fails with `channel` code 9,
+  "module does not own channel capability: channel capability not found".
+- Blocks 16 and 17: a receive and the acknowledgement of the v3 transfer
+  fail with `capability` code 7.
+
+v4.1.0 has no capability module in its module manager, so it never
+initializes the in-memory capability index. This is what every IBC packet
+message did on mainnet from 6,680,340 to 6,748,821.
+
+[`fixtures/synthetic/v3-ibc`](fixtures/synthetic/v3-ibc) holds the v3 side
+and [`fixtures/synthetic/v3-ibc-v4`](fixtures/synthetic/v3-ibc-v4) the v4
+side; both `go test`s rebuild them.
+`cargo test -p app --test synthetic_v4_ibc_oracle` pins the outcomes.
 
 #### Governance chain for app versions 1 to 3
 
