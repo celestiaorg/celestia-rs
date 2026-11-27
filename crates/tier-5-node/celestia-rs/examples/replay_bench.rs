@@ -14,7 +14,7 @@
 //!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR] \
 //!   [--iavl-cache 781250] [--db-cache-mib 512] [--pruning-interval 1] \
 //!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl] \
-//!   [--background-pruning true] \
+//!   [--background-pruning true] [--prune-in-place false] \
 //!   [--home DIR [--in-place true]] [--blocks-home DIR] [--save-blocks false]
 //! ```
 //!
@@ -28,7 +28,7 @@
 //! to it), unless `--in-place true`, which advances it and makes the run
 //! unrepeatable; in place, `--save-blocks true` is required (the block
 //! store advances with the state) and nothing is pruned (the home may be
-//! an archive). Blocks come from `--blocks-jsonl`, then from the block
+//! an archive) unless `--prune-in-place true`. Blocks come from `--blocks-jsonl`, then from the block
 //! store of `--blocks-home` (a stopped node home past `H + blocks`), then
 //! from the `.pb` cache. `--save-blocks true` also stores each block with
 //! its seen commit (the next block's last commit) before executing it, as
@@ -65,6 +65,7 @@ struct Args {
     background_pruning: bool,
     home: Option<PathBuf>,
     in_place: bool,
+    prune_in_place: bool,
     blocks_home: Option<PathBuf>,
     save_blocks: bool,
 }
@@ -89,6 +90,7 @@ fn args() -> anyhow::Result<Args> {
         background_pruning: true,
         home: None,
         in_place: false,
+        prune_in_place: false,
         blocks_home: None,
         save_blocks: false,
     };
@@ -107,6 +109,7 @@ fn args() -> anyhow::Result<Args> {
             "--blocks-jsonl" => a.blocks_jsonl.extend(v.split(',').map(PathBuf::from)),
             "--home" => a.home = Some(v.into()),
             "--in-place" => a.in_place = v.parse()?,
+            "--prune-in-place" => a.prune_in_place = v.parse()?,
             "--blocks-home" => a.blocks_home = Some(v.into()),
             "--save-blocks" => a.save_blocks = v.parse()?,
             _ => bail!("unknown argument {k}"),
@@ -304,13 +307,8 @@ fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State, Probes)>
     opts.node.home = Some(home.to_path_buf());
     opts.store.node_cache_size = a.iavl_cache;
     opts.db.cache_size = a.db_cache_mib << 20;
-    opts.store.pruning.interval = a.pruning_interval;
+    opts.store.pruning = pruning(a, opts.store.pruning);
     opts.store.background_pruning = a.background_pruning;
-    if a.in_place {
-        // Never delete versions of a home we do not own a copy of (it
-        // may be an archive or custom-pruned node).
-        opts.store.pruning = multistore::PruningOptions::nothing();
-    }
     let app = app::App::open_with(home, opts).map_err(|e| anyhow!("open app: {}", e.log))?;
     let (bs, mut ss) = node::open_stores(home)?;
     ss.discard_abci_responses = a.discard_abci_responses;
@@ -432,23 +430,30 @@ fn print_phases(blocks: usize) {
 struct Slow {
     height: i64,
     total: Duration,
+    /// Part set, validation and (with `--save-blocks`) block saving.
+    checked: Duration,
     finalize: Duration,
     commit: Duration,
     txs: usize,
 }
 
-/// The ten slowest blocks with their FinalizeBlock and Commit time (the
-/// rest is validation and saving), to find what causes the tail.
+/// The ten slowest blocks, split into validation (with block saving),
+/// FinalizeBlock, Commit and the rest of applying the block (state and
+/// response saving), to find what causes the tail.
 fn print_slowest(slow: &mut [Slow]) {
     slow.sort_by_key(|s| std::cmp::Reverse(s.total));
     let ms = |d: Duration| d.as_secs_f64() * 1e3;
     for s in slow.iter().take(10) {
+        let rest = s.total.saturating_sub(s.checked + s.finalize + s.commit);
         println!(
-            "slow block {}: {:.1} ms (finalize {:.1}, commit {:.1}), {} txs",
+            "slow block {}: {:.1} ms (validate {:.1}, finalize {:.1}, commit {:.1}, \
+             rest {:.1}), {} txs",
             s.height,
             ms(s.total),
+            ms(s.checked),
             ms(s.finalize),
             ms(s.commit),
+            ms(rest),
             s.txs,
         );
     }
@@ -478,17 +483,37 @@ fn check_block(
     Ok(hash::sha256(&buf))
 }
 
+/// The pruning the run uses, from `default` (the app's). In place it
+/// keeps every version unless `--prune-in-place true`: never delete
+/// versions of a home we do not own a copy of (it may be an archive or a
+/// custom-pruned node).
+fn pruning(a: &Args, default: multistore::PruningOptions) -> multistore::PruningOptions {
+    if a.in_place && !a.prune_in_place {
+        multistore::PruningOptions::nothing()
+    } else {
+        multistore::PruningOptions {
+            interval: a.pruning_interval,
+            ..default
+        }
+    }
+}
+
 /// Every result names the cache and pruning settings it measured, so a run
 /// with other settings than the node it is compared with shows.
 fn print_config(a: &Args) {
+    let p = pruning(a, app::AppOptions::default().store.pruning);
+    let pruning = if p.interval == 0 {
+        "NOTHING (every version kept)".to_owned()
+    } else {
+        format!(
+            "keep_recent {} keep_every {} interval {}, background {}",
+            p.keep_recent, p.keep_every, p.interval, a.background_pruning
+        )
+    };
     println!(
-        "config: iavl_cache {} nodes, db_cache {} MiB, pruning_interval {}, \
-         background_pruning {}, discard_abci_responses {}",
-        a.iavl_cache,
-        a.db_cache_mib,
-        a.pruning_interval,
-        a.background_pruning,
-        a.discard_abci_responses,
+        "config: iavl_cache {} nodes, db_cache {} MiB, pruning {pruning}, \
+         discard_abci_responses {}",
+        a.iavl_cache, a.db_cache_mib, a.discard_abci_responses,
     );
 }
 
@@ -560,6 +585,7 @@ fn main() -> anyhow::Result<()> {
                 .save_block(&mut block, &parts, commit)
                 .map_err(|e| anyhow!("save block {h}: {e}"))?;
         }
+        let checked = t.elapsed();
         state = exec
             .apply_verified_block(&state, id, &mut block)
             .map_err(|e| anyhow!("execute {h}: {e}"))?;
@@ -568,6 +594,7 @@ fn main() -> anyhow::Result<()> {
         slow.push(Slow {
             height: h,
             total: *times.last().context("block time")?,
+            checked,
             finalize: after.finalize.saturating_sub(before.finalize),
             commit: after.commit.saturating_sub(before.commit),
             txs: block.data.txs.len(),
