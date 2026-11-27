@@ -14,7 +14,7 @@
 //!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR] \
 //!   [--iavl-cache 781250] [--db-cache-mib 512] [--pruning-interval 1] \
 //!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl] \
-//!   [--background-pruning true] \
+//!   [--background-pruning true] [--prune-in-place false] \
 //!   [--home DIR [--in-place true]] [--blocks-home DIR] [--save-blocks false]
 //! ```
 //!
@@ -28,7 +28,7 @@
 //! to it), unless `--in-place true`, which advances it and makes the run
 //! unrepeatable; in place, `--save-blocks true` is required (the block
 //! store advances with the state) and nothing is pruned (the home may be
-//! an archive). Blocks come from `--blocks-jsonl`, then from the block
+//! an archive) unless `--prune-in-place true`. Blocks come from `--blocks-jsonl`, then from the block
 //! store of `--blocks-home` (a stopped node home past `H + blocks`), then
 //! from the `.pb` cache. `--save-blocks true` also stores each block with
 //! its seen commit (the next block's last commit) before executing it, as
@@ -65,6 +65,7 @@ struct Args {
     background_pruning: bool,
     home: Option<PathBuf>,
     in_place: bool,
+    prune_in_place: bool,
     blocks_home: Option<PathBuf>,
     save_blocks: bool,
 }
@@ -76,8 +77,9 @@ fn args() -> anyhow::Result<Args> {
         base: target.join("replay-base"),
         cache: std::env::var_os("CELESTIA_MAINNET_CACHE")
             .map_or_else(|| target.join("mainnet-cache"), PathBuf::from),
-        // `celestia-rs start` defaults: app.toml `iavl-cache-size`,
-        // `--db-cache-mib`.
+        // What `celestia-rs start` runs on a home from `init`: app.toml
+        // `iavl-cache-size` (template 781,250) and `--db-cache-mib`. A
+        // node with a larger app.toml value needs `--iavl-cache` to match.
         iavl_cache: 781_250,
         db_cache_mib: 512,
         pruning_interval: 1,
@@ -88,6 +90,7 @@ fn args() -> anyhow::Result<Args> {
         background_pruning: true,
         home: None,
         in_place: false,
+        prune_in_place: false,
         blocks_home: None,
         save_blocks: false,
     };
@@ -106,6 +109,7 @@ fn args() -> anyhow::Result<Args> {
             "--blocks-jsonl" => a.blocks_jsonl.extend(v.split(',').map(PathBuf::from)),
             "--home" => a.home = Some(v.into()),
             "--in-place" => a.in_place = v.parse()?,
+            "--prune-in-place" => a.prune_in_place = v.parse()?,
             "--blocks-home" => a.blocks_home = Some(v.into()),
             "--save-blocks" => a.save_blocks = v.parse()?,
             _ => bail!("unknown argument {k}"),
@@ -303,13 +307,8 @@ fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State, Probes)>
     opts.node.home = Some(home.to_path_buf());
     opts.store.node_cache_size = a.iavl_cache;
     opts.db.cache_size = a.db_cache_mib << 20;
-    opts.store.pruning.interval = a.pruning_interval;
+    opts.store.pruning = pruning(a, opts.store.pruning);
     opts.store.background_pruning = a.background_pruning;
-    if a.in_place {
-        // Never delete versions of a home we do not own a copy of (it
-        // may be an archive or custom-pruned node).
-        opts.store.pruning = multistore::PruningOptions::nothing();
-    }
     let app = app::App::open_with(home, opts).map_err(|e| anyhow!("open app: {}", e.log))?;
     let (bs, mut ss) = node::open_stores(home)?;
     ss.discard_abci_responses = a.discard_abci_responses;
@@ -427,6 +426,97 @@ fn print_phases(blocks: usize) {
     }
 }
 
+/// One executed block, for the list of the slowest.
+struct Slow {
+    height: i64,
+    total: Duration,
+    /// Part set, validation and (with `--save-blocks`) block saving.
+    checked: Duration,
+    finalize: Duration,
+    commit: Duration,
+    txs: usize,
+}
+
+/// The ten slowest blocks, split into validation (with block saving),
+/// FinalizeBlock, Commit and the rest of applying the block (state and
+/// response saving), to find what causes the tail.
+fn print_slowest(slow: &mut [Slow]) {
+    slow.sort_by_key(|s| std::cmp::Reverse(s.total));
+    let ms = |d: Duration| d.as_secs_f64() * 1e3;
+    for s in slow.iter().take(10) {
+        let rest = s.total.saturating_sub(s.checked + s.finalize + s.commit);
+        println!(
+            "slow block {}: {:.1} ms (validate {:.1}, finalize {:.1}, commit {:.1}, \
+             rest {:.1}), {} txs",
+            s.height,
+            ms(s.total),
+            ms(s.checked),
+            ms(s.finalize),
+            ms(s.commit),
+            ms(rest),
+            s.txs,
+        );
+    }
+}
+
+/// Adds block `h`'s FinalizeBlock response to the running `digest` and
+/// checks the app hash against the next block's header.
+fn check_block(
+    exec: &BlockExecutor,
+    state: &State,
+    next: &Block,
+    h: i64,
+    digest: &[u8; 32],
+) -> anyhow::Result<[u8; 32]> {
+    let resp = exec
+        .state_store
+        .load_last_finalize_block_response(h)
+        .map_err(|e| anyhow!("response {h}: {e}"))?;
+    let mut buf = digest.to_vec();
+    buf.extend_from_slice(&resp.encode_to_vec());
+    ensure!(
+        state.app_hash == next.header.app_hash,
+        "app hash after block {h}: ours {}, network {}",
+        hex::encode_upper(&state.app_hash),
+        hex::encode_upper(&next.header.app_hash)
+    );
+    Ok(hash::sha256(&buf))
+}
+
+/// The pruning the run uses, from `default` (the app's). In place it
+/// keeps every version unless `--prune-in-place true`: never delete
+/// versions of a home we do not own a copy of (it may be an archive or a
+/// custom-pruned node).
+fn pruning(a: &Args, default: multistore::PruningOptions) -> multistore::PruningOptions {
+    if a.in_place && !a.prune_in_place {
+        multistore::PruningOptions::nothing()
+    } else {
+        multistore::PruningOptions {
+            interval: a.pruning_interval,
+            ..default
+        }
+    }
+}
+
+/// Every result names the cache and pruning settings it measured, so a run
+/// with other settings than the node it is compared with shows.
+fn print_config(a: &Args) {
+    let p = pruning(a, app::AppOptions::default().store.pruning);
+    let pruning = if p.interval == 0 {
+        "NOTHING (every version kept)".to_owned()
+    } else {
+        format!(
+            "keep_recent {} keep_every {} interval {}, background {}",
+            p.keep_recent, p.keep_every, p.interval, a.background_pruning
+        )
+    };
+    println!(
+        "config: iavl_cache {} nodes, db_cache {} MiB, pruning {pruning}, \
+         discard_abci_responses {}",
+        a.iavl_cache, a.db_cache_mib, a.discard_abci_responses,
+    );
+}
+
 fn main() -> anyhow::Result<()> {
     let a = args()?;
     ensure!(
@@ -457,11 +547,13 @@ fn main() -> anyhow::Result<()> {
         ensure!(first == 1, "base home is past genesis");
     }
     println!("first_height: {first}");
+    print_config(&a);
 
     let blocks = Blocks::load(a.cache.clone(), &a.blocks_jsonl, a.blocks_home.as_deref())?;
     let mut next = blocks.get(first)?;
     let mut times = Vec::new();
     let mut txs = 0usize;
+    let mut slow = Vec::new();
     // Chained SHA-256 of every FinalizeBlock response (tx results with gas
     // and events, block events, updates): equal digests mean identical
     // results. Gas and codes are also checked against the network through
@@ -474,6 +566,7 @@ fn main() -> anyhow::Result<()> {
         let mut block = next;
         next = blocks.get(h + 1)?;
         txs += block.data.txs.len();
+        let before = probes.sample().abci;
         let t = Instant::now();
         let parts = block.make_part_set(BLOCK_PART_SIZE_BYTES)?;
         let id = BlockId {
@@ -492,23 +585,21 @@ fn main() -> anyhow::Result<()> {
                 .save_block(&mut block, &parts, commit)
                 .map_err(|e| anyhow!("save block {h}: {e}"))?;
         }
+        let checked = t.elapsed();
         state = exec
             .apply_verified_block(&state, id, &mut block)
             .map_err(|e| anyhow!("execute {h}: {e}"))?;
         times.push(t.elapsed());
-        let resp = exec
-            .state_store
-            .load_last_finalize_block_response(h)
-            .map_err(|e| anyhow!("response {h}: {e}"))?;
-        let mut buf = digest.to_vec();
-        buf.extend_from_slice(&resp.encode_to_vec());
-        digest = hash::sha256(&buf);
-        ensure!(
-            state.app_hash == next.header.app_hash,
-            "app hash after block {h}: ours {}, network {}",
-            hex::encode_upper(&state.app_hash),
-            hex::encode_upper(&next.header.app_hash)
-        );
+        let after = probes.sample().abci;
+        slow.push(Slow {
+            height: h,
+            total: *times.last().context("block time")?,
+            checked,
+            finalize: after.finalize.saturating_sub(before.finalize),
+            commit: after.commit.saturating_sub(before.commit),
+            txs: block.data.txs.len(),
+        });
+        digest = check_block(&exec, &state, &next, h, &digest)?;
         if times.len() % 100 == 0 {
             let w = &times[times.len() - 100..];
             let ms = w.iter().sum::<Duration>().as_secs_f64() * 10.0;
@@ -521,6 +612,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
     summary(&times, txs, started.elapsed(), &digest);
+    print_slowest(&mut slow);
     print_phases(times.len());
     println!(
         "per_block: {}",

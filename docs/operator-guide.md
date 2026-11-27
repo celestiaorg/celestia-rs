@@ -728,6 +728,30 @@ fsynced every 2 s. On start the node replays the records after the last
 builds before rotation (a lone `data/cs.wal/wal`) is read as is: it
 becomes `wal.000` at the first rotation.
 
+**Disk latency, not disk throughput, limits catch-up.** Every block
+ends with about five synced RocksDB WAL writes: 2 to the state DB, 1.7
+to the application DB and 1 to the block store, measured with `strace`.
+On a network block device each flush costs a fixed round trip,
+whatever IOPS or throughput is provisioned. On a cloud VM, prefer a local
+NVMe SSD for a node that has to catch up. Measured on Google Cloud in
+November 2026 with `replay_bench` over mainnet blocks 558,371–560,000
+(state restored from a Go snapshot at 558,370), default settings:
+
+| data disk | fsync (fio 4k, avg) | ms/block | finalize / commit / rest ms | blocks/s |
+|---|---|---|---|---|
+| pd-balanced 200 GB, c3-standard-8 | 1.30 ms | 63–66 | 33 / 9–11 / 18–19 | 15.2 |
+| pd-ssd 500 GB, c3-standard-8 | 1.31 ms | 63–64 | 33 / 9–10 / 18 | 15.2 |
+| local NVMe SSD, n2-standard-8 | 0.29 ms | 66–71 | 46 / 8–9 / 7–11 | 14.4 |
+| any disk, writes not synced (bench only) | – | 42 (c3), 61 (n2) | 32 / 5 / 2 (c3) | 23 (c3) |
+
+The "rest" column is almost entirely synced writes queued behind
+RocksDB compaction (no write stalls were recorded). Provisioning a
+faster network disk does not shorten it. Local NVMe cuts it from about
+18 ms to 5–10 ms per block; the n2 row is slower overall only because
+of its older CPU (finalize 46 ms vs 33 ms on c3). Builds:
+replay_bench from commits dedf4c4 and ece8241 (bench-only changes on
+top of `main` 145cc06).
+
 ## 8. Running as a service
 
 ### macOS: launchd
@@ -959,11 +983,29 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
 - **Halting for an upgrade:** `--halt-height N` (or `app.toml
   halt-height`) stops the node cleanly *before* executing block N, exactly
   like Go; `--halt-time` (Unix seconds) likewise.
-- **Signalled upgrades:** when the chain reaches an app-version upgrade
-  this binary has no handler for, the node stops consensus at the upgrade
+- **Signalled upgrades:** this binary bundles every release up to v12.
+  `celestia-rs start` and `celestia-rs follow` switch to the next bundled
+  release in the same process at the upgrade height, so the v10 to v11
+  upgrade (and v11 to v12 on a chain that signals it, such as Mocha)
+  needs no restart and RPC stays up. The v12 rules are matched only
+  against a pre-release celestia-app commit on a short test chain (see
+  [the v12 gap](v11-patch-release.md#known-gap-v12-execution)); an
+  app-hash mismatch after a v12 upgrade stops the node. The node switches
+  once the block before the upgrade commits the new consensus version
+  with the plan due at the next height. When the chain reaches an upgrade this
+  binary has no release for, the node stops consensus at the upgrade
   height with `UPGRADE "vN" NEEDED at height: H`, writes
   `data/upgrade-info.json` (cosmovisor's trigger, Go's format) and keeps
   RPC up, like a Go node. Stop it and start the upgraded binary.
+  `celestia-rs abci` (external celestia-core, cosmovisor) always halts
+  at the upgrade height like Go; restarted, the same binary
+  authenticates `data/upgrade-info.json` against the committed plan and
+  runs the new release. A governance plan for a bundled release that no
+  signal accompanied (the consensus app version did not change) also
+  halts `start` and `follow`, with `plan vN found without a signalled app
+  version; restart the node to run the bundled vN release`. Restart the
+  same binary: it authenticates `data/upgrade-info.json` and continues.
+  Celestia's upgrades from v4 are signalled, so this is not expected.
 - **Rollback:** `celestia-rs rollback [--height H] [--hard] [--force]`
   checks the retained block, consensus and app histories, then rolls all
   three back to H. Without `--height`, it rolls back one executed height;

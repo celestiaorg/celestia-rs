@@ -1267,7 +1267,7 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
         min_retain = 3000;
     }
     opts.node = app::NodeOptions {
-        activate_bundled_upgrades: args.is_some(),
+        activate_bundled_upgrades: false,
         enable_subspace_queries: files.bool(File::App, "enable-subspace-queries"),
         min_retain_blocks: min_retain,
         halt_height: args
@@ -1282,6 +1282,9 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
         v2_upgrade_height: args.and_then(|a| a.v2_upgrade_height),
         home: Some(home.to_path_buf()),
     };
+    if args.is_some() {
+        node::activate_bundled_releases(&mut opts);
+    }
     Ok(opts)
 }
 
@@ -1350,6 +1353,7 @@ fn follow_app_options(a: &FollowArgs) -> app::AppOptions {
         keep_recent: a.snapshot_keep_recent,
     };
     app.node.min_retain_blocks = a.keep_blocks;
+    node::activate_bundled_releases(&mut app);
     app.node
         .unsafe_skip_upgrades
         .clone_from(&a.unsafe_skip_upgrades);
@@ -2177,6 +2181,29 @@ mod cli_tests {
             "celestia-rs follow --rpc http://a --snapshot-interval 10000 --snapshot-keep-recent 0",
         );
         assert_eq!((on.interval, on.keep_recent), (10_000, 0));
+    }
+
+    /// `follow` executes every block in-process like `start`, so it also
+    /// switches to a bundled release at its upgrade instead of halting;
+    /// `abci` leaves the switch to cosmovisor.
+    #[test]
+    fn follow_and_start_activate_bundled_releases() {
+        let Cmd::Follow(a) = Cli::try_parse_from(["celestia-rs", "follow", "--rpc", "http://a"])
+            .expect("parse CLI")
+            .command
+        else {
+            panic!("not follow");
+        };
+        assert!(follow_app_options(&a).node.activate_bundled_upgrades);
+        let home = tempfile::tempdir().expect("tempdir");
+        let Cmd::Start(a) = Cli::try_parse_from(["celestia-rs", "start"])
+            .expect("parse CLI")
+            .command
+        else {
+            panic!("not start");
+        };
+        let opts = app_options(home.path(), Some(&a)).expect("app options");
+        assert!(opts.node.activate_bundled_upgrades);
     }
 
     fn skip_heights(args: &[&str]) -> Vec<i64> {

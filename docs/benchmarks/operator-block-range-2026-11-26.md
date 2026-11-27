@@ -76,18 +76,55 @@ local height. Both come from `polls.tsv` (5 s sampling).
 celestia-rs restores a snapshot about 8 times as fast as Go. But celestia-rs
 needed 2, 14 and 26 minutes to find a peer that offered a snapshot at or above
 its trust height, where Go needed about 1 minute. The discovery loop is the
-same algorithm as in Go (`statesync/src/syncer.rs`, 15 s rounds), so the likely
-cause is how quickly celestia-rs connects to peers that serve snapshots. This
-is not diagnosed. The [2026-11-26 operator runs](operator-sync-2026-11-26.md)
-on `n2-standard-8` did not show it: celestia-rs reached the tip in 307 s and
-329 s there.
+same algorithm as in Go (`statesync/src/syncer.rs`, 15 s rounds). The
+[2026-11-26 operator runs](operator-sync-2026-11-26.md) on `n2-standard-8` did
+not show it: celestia-rs reached the tip in 307 s and 329 s there.
+
+### Diagnosis
+
+The discovery loop and the snapshot messages are correct: when a peer that
+serves snapshots accepts the connection, celestia-rs logs `Discovered new
+snapshot` in less than 1 s. The delay is the wait for such a peer.
+
+- Open inbound slots are scarce. In a probe of the 20 peers from the reference
+  `net_info`, 14 accepted TCP and then sent nothing (the listener of a full Go
+  node does not accept), 2 refused TCP, 2 closed the connection and 2 started
+  the handshake. One of those 2 served snapshots. It was open in some probes
+  and full in others, and no silent peer answered in a 240 s wait. Both seeds are rejected on both sides (`peer is only
+  using legacy propagation`), and of 293 address-book addresses that timed
+  out, none answered a 5 s TCP probe.
+- The order of arrival decided each pair. The node logs show that the Go node
+  started 71 s to 73 s before celestia-rs in all three pairs and discovered
+  its snapshot 12 s to 52 s after its start, before celestia-rs was running.
+  In run `221446` the second Go node started 13 s after the first and
+  discovered nothing in one hour. Go and celestia-rs dialed the same peers
+  and logged the same errors.
+- A late node then waited on the redial schedule. Both implementations redial
+  a persistent peer 20 times (about every 6.5 s) and then back off
+  exponentially (3 s, 9 s, 27 s, 81 s, 243 s, ...). After about 3.5 minutes a
+  node tries each provider once in many minutes and misses the slots that
+  open.
+
+The fix: while celestia-rs knows no snapshot, each discovery round (15 s)
+also redials the persistent peers that are not connected. In a 420 s local
+mainnet run with these peers, the tries to the provider went from 25 (3 of
+them after the first 3.5 minutes) to 56 (one about every 8 s to the end).
+This does not create capacity: if no provider has an open slot, discovery
+still waits.
+
+To confirm on mainnet, start a cold node with `--log_level debug` and measure
+the time from `starting state sync` to the first `Discovered new snapshot`.
+During the wait, `Redialing persistent peers for snapshots redialed=N` must
+appear every 15 s, also after the first 4 minutes. For a fair pair, start
+both nodes at the same time: in these runs the Go node always started first.
 
 ## Limits
 
 - Two valid pairs. All runs used live public peers, so the figures are
   observations and not guarantees.
-- The time to the tip is not a stable comparison until snapshot discovery in
-  celestia-rs is understood.
+- The time to the tip is not a stable comparison while the two nodes of a
+  pair start at different times and compete for the same open peer slots (see
+  Diagnosis).
 - The nodes were freshly state-synced, so the disk figures show the footprint
   of a new node and not long-term growth.
 - celestia-rs logs the configured halt as `CONSENSUS FAILURE: ... halt per

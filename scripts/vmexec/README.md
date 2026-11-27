@@ -38,7 +38,12 @@ $V delete rs-1
   startup script installs the agent (`vmexec-agent.service`), disables
   unattended upgrades and needrestart restarts, and mounts a disk with device
   name `data` at `/data` (`--data-gb N` creates one, `--attach-disk DISK`
-  attaches an existing one).
+  attaches an existing one). Without such a disk, a local NVMe SSD (for
+  example `--machine-type c3-standard-8-lssd`) is formatted and mounted at
+  `/data` instead. It flushes in ~0.3 ms instead of ~1.3 ms for any
+  persistent disk, which makes replays ~25% faster, but its contents are
+  lost when the VM stops. `VMX_ZONE` picks another zone when a machine type
+  is out of stock.
 - `exec` runs a bash script as root in `/var/lib/vmexec/runs/<id>/` under
   `timeout` (`--timeout`, default 3600 s; status 124 on timeout). You get
   the last ~180 KB of stdout+stderr and the exit status. Longer output stays
@@ -88,3 +93,22 @@ it.
   rate limited (30 in 3 s worked).
 - Tests: `bash scripts/vmexec/test.sh` runs everything offline against a
   fake `gcloud` and the agent in `VMX_FAKE` mode.
+
+## Replay segments (scripts/vmexec/segments)
+
+`controller.sh` runs as a `--boot --restart` job on a small VM with the
+cloud-platform scope (`seg-controller-1`), so segments do not depend on a
+workstation. Every 5 minutes it launches a local-SSD VM
+(`c3-standard-8-lssd`, zones a/b/c/f, else `c3-standard-8` + 200 GB
+pd-balanced) for each Go export `go-snapshots/<H>/2/metadata.json` in its
+plan (at most 3 at once, 40 launches in total, 48 h each). The VM restores
+the export with `seg-vm.sh` and replays to the next planned height,
+writing Rust snapshots every 50,000 heights. `seg-watch.sh` uploads them
+to `rs-snapshots/from-go-<H>/<h>/<f>/`, plus heights and stop logs under
+`rs-replay/<H>/`, and finally `segments/<H>/done` or `failed`. The
+controller then deletes the VM. If a segment's VM vanishes first (local
+SSD lost on stop or preemption), it relaunches from the newest Rust
+snapshot, at most 3 times. A Go export with a Rust snapshot of the same
+height (`rs-snapshots/<H>/`, from the P2P genesis run) is also checked
+with `celestia-rs compare-snapshots` (`rs-replay/<H>/compare-<H>.txt`).
+Stop the controller with `touch /var/lib/vmexec/controller-stop` on its VM.

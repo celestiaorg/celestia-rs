@@ -166,3 +166,13 @@ vmx_bundle() {
   # Header lines "-<sha> <subject>" before the first blank line are the prerequisites.
   sed -n '/^$/q; s/^-\([0-9a-f]\{40\}\).*/\1/p' "$2"
 }
+
+# vmx_heartbeat_fresh FILE SINCE_EPOCH: the heartbeat's time= is no older
+# than SINCE_EPOCH - 30 s. Guest attributes survive a stop/start, so a
+# heartbeat from before a restart must not count as "agent up".
+vmx_heartbeat_fresh() {
+  local t
+  t=$(sed -n 's/^time=//p' "$1" 2>/dev/null) && [[ -n $t ]] || return 1
+  t=$(date -u -d "$t" +%s 2>/dev/null) || return 1
+  ((t >= $2 - 30))
+}
