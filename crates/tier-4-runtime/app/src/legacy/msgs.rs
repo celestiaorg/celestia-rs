@@ -377,16 +377,16 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
         return Ok(Any::pack(&unjail(ctx, &decode(msg)?)?));
     }
     if let Some(r) = super::ibc::route(ctx, msg) {
-        return r;
+        return r.map_err(super::ibc::v6_codespace);
     }
     if let Some(r) = super::ibc_channel::route(ctx, msg) {
-        return r;
+        return r.map_err(super::ibc::v6_codespace);
     }
     if let Some(r) = super::ibc_transfer::route(ctx, msg) {
-        return r;
+        return r.map_err(super::ibc::v6_codespace);
     }
     if let Some(r) = super::ibc_timeout::route(ctx, msg) {
-        return r;
+        return r.map_err(super::ibc::v6_codespace);
     }
     if let Some(r) = super::authz::route(ctx, msg) {
         return r;

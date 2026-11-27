@@ -20,6 +20,15 @@ use x_ibc::{client, commitment, connection, height, host};
 
 const TENDERMINT: &str = "07-tendermint";
 
+/// ibc-go v6 registers the 07-tendermint errors under the codespace
+/// `tendermint-client` (v8: `07-tendermint`; codes and texts are equal).
+pub(super) fn v6_codespace(mut e: sdk::SdkError) -> sdk::SdkError {
+    if e.codespace == "07-tendermint" {
+        e.codespace = "tendermint-client";
+    }
+    e
+}
+
 /// ibc-go v6 `ErrClientNotActive` (v8 renamed it "client state is not
 /// active").
 pub(super) fn client_not_active(log: String) -> sdk::SdkError {
@@ -127,6 +136,9 @@ fn validate_basic_v6(msg: &Any) -> Option<Result<()>> {
             host::client_identifier_validator(&m.client_id)
         }));
     }
+    if msg.type_url == clpb::MsgSubmitMisbehaviour::type_url() {
+        return Some(decode(msg).and_then(|m| validate_submit_misbehaviour_v6(&m)));
+    }
     if msg.type_url == copb::MsgConnectionOpenInit::type_url() {
         return Some(decode(msg).and_then(|m: copb::MsgConnectionOpenInit| {
             host::client_identifier_validator(&m.client_id)
@@ -210,6 +222,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
     }
     if msg.type_url == clpb::MsgUpgradeClient::type_url() {
         return Some(decode(msg).and_then(|m| upgrade_client(ctx, &m)));
+    }
+    if msg.type_url == clpb::MsgSubmitMisbehaviour::type_url() {
+        return Some(decode(msg).and_then(|m| submit_misbehaviour(ctx, &m)));
     }
     if msg.type_url == copb::MsgConnectionOpenTry::type_url() {
         return Some(decode(msg).and_then(|m| conn_open_try(ctx, &m)));
@@ -408,6 +423,134 @@ fn go_path_escape(s: &str) -> String {
         }
     }
     out
+}
+
+/// v6 `MsgSubmitMisbehaviour.ValidateBasic`: it also requires the
+/// misbehaviour's own client ID to equal the message's.
+fn validate_submit_misbehaviour_v6(m: &clpb::MsgSubmitMisbehaviour) -> Result<()> {
+    check_signer_v6(&m.signer)?;
+    let mb = unpack_misbehaviour_v6(m.misbehaviour.as_ref())?;
+    tmc::validate_misbehaviour_basic(&mb)?;
+    #[allow(deprecated)]
+    let inner = &mb.client_id;
+    if *inner != m.client_id {
+        return Err(clerr::invalid_misbehaviour(format!(
+            "misbehaviour client-id doesn't match client-id from message ({inner} \u{2260} {})",
+            m.client_id
+        )));
+    }
+    host::client_identifier_validator(&m.client_id)
+}
+
+/// v6 `UnpackMisbehaviour` of a 07-tendermint misbehaviour.
+fn unpack_misbehaviour_v6(any: Option<&Any>) -> Result<tmpb::Misbehaviour> {
+    let Some(any) = any else {
+        return Err(errs::unpack_any("protobuf Any message cannot be nil"));
+    };
+    match tmc::unpack_client_message(any) {
+        Some(Ok(tmc::ClientMessage::Misbehaviour(mb))) => Ok(*mb),
+        Some(Ok(tmc::ClientMessage::Header(_))) => Err(errs::unpack_any(
+            "cannot unpack Any into Misbehaviour *types.Any",
+        )),
+        Some(Err(e)) => Err(e),
+        None => Err(super::not_ported(errs::not_supported(format!(
+            "the ibc-go v6 misbehaviour type {}",
+            any.type_url
+        )))),
+    }
+}
+
+/// `MsgSubmitMisbehaviour` (02-client keeper
+/// `CheckMisbehaviourAndUpdateState` and its 07-tendermint v6 namesake).
+fn submit_misbehaviour(ctx: &mut Context<'_>, m: &clpb::MsgSubmitMisbehaviour) -> Result<Any> {
+    let mb = unpack_misbehaviour_v6(m.misbehaviour.as_ref())?;
+    check_misbehaviour_v6(ctx, &mb)
+        .map_err(|e| e.wrap("failed to process misbehaviour for IBC client"))?;
+    Ok(Any::pack(&clpb::MsgSubmitMisbehaviourResponse {}))
+}
+
+fn check_misbehaviour_v6(ctx: &mut Context<'_>, mb: &tmpb::Misbehaviour) -> Result<()> {
+    #[allow(deprecated)]
+    let client_id = mb.client_id.clone();
+    let cs = match client::client_state(ctx, &client_id)? {
+        Some(client::ClientState::Tendermint(cs)) => *cs,
+        Some(_) => {
+            return Err(super::not_ported(errs::not_supported(
+                "ibc-go v6 misbehaviour of a client that is not 07-tendermint",
+            )));
+        }
+        None => {
+            return Err(clerr::client_not_found(format!(
+                "cannot check misbehaviour for client with ID {client_id}"
+            )));
+        }
+    };
+    let status = tmc::status(ctx, &client_id, &cs)?;
+    if status != client::Status::Active {
+        return Err(client_not_active(format!(
+            "cannot process misbehaviour for client ({client_id}) with status {}",
+            status.as_str()
+        )));
+    }
+    tmc::validate_misbehaviour_basic(mb)?;
+    let h1 = mb.header_1.clone().unwrap_or_default();
+    let h2 = mb.header_2.clone().unwrap_or_default();
+    let time = |h: &tmpb::Header| {
+        x_ibc::lightclients::light::ts_nanos(
+            h.signed_header
+                .as_ref()
+                .and_then(|s| s.header.as_ref())
+                .and_then(|h| h.time.as_ref()),
+        )
+    };
+    if tmc::header_height(&h1)? == tmc::header_height(&h2)? {
+        // `ValidateBasic` checked both block IDs, so `BlockIDFromProto`
+        // succeeds.
+        let hash = |h: &tmpb::Header| {
+            h.signed_header
+                .as_ref()
+                .and_then(|s| s.commit.as_ref())
+                .and_then(|c| c.block_id.as_ref())
+                .map(|b| b.hash.clone())
+                .unwrap_or_default()
+        };
+        if hash(&h1) == hash(&h2) {
+            return Err(clerr::invalid_misbehaviour(
+                "headers block hashes are equal",
+            ));
+        }
+    } else if time(&h1) > time(&h2) {
+        return Err(clerr::invalid_misbehaviour(
+            "headers are not at same height and are monotonically increasing",
+        ));
+    }
+    let mut trusted = Vec::with_capacity(2);
+    for h in [&h1, &h2] {
+        let th = h.trusted_height.unwrap_or_default();
+        // v6 wraps the missing state with the header's proto text.
+        let cons = tmc::get_consensus_state(ctx, &client_id, &th)?.ok_or_else(|| {
+            super::not_ported(errs::not_supported(
+                "the v6 log of a misbehaviour header without a trusted consensus state",
+            ))
+        })?;
+        trusted.push(cons);
+    }
+    let now = tmc::block_time(ctx);
+    tmc::check_misbehaviour_header(&cs, &trusted[0], &h1, now)
+        .map_err(|e| e.wrap("verifying Header1 in Misbehaviour failed"))?;
+    tmc::check_misbehaviour_header(&cs, &trusted[1], &h2, now)
+        .map_err(|e| e.wrap("verifying Header2 in Misbehaviour failed"))?;
+    let mut cs = cs;
+    cs.frozen_height = Some(FROZEN);
+    tmc::set_client_state(ctx, &client_id, &cs)?;
+    ctx.events.emit(event(
+        "client_misbehaviour",
+        [
+            ("client_id", client_id.clone()),
+            ("client_type", TENDERMINT.to_owned()),
+        ],
+    ));
+    Ok(())
 }
 
 /// `MsgUpgradeClient` (02-client keeper `UpgradeClient` and 07-tendermint
