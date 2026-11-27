@@ -12,8 +12,7 @@
         "sha256": "5841f957ee0a8c497aa6623b955bf9af41af74d13612685a86f973b5b34518b4"
       },
       "documentation": {
-        "path": "conformance/grpc-reflection/README.md",
-        "sha256": "218c47496c00f08aa321aa4f1f2133e8a129df61664421504080dd99bee136a2"
+        "path": "conformance/grpc-reflection/README.md"
       },
       "verifier": null,
       "transports": [
@@ -37,15 +36,13 @@
       "runtime_regressions": [
         {
           "source": {
-            "path": "crates/tier-4-runtime/grpc-reflection/tests/transport.rs",
-            "sha256": "98b592b50b10bb29f3b8a35456bc5200404c79fa6df8c5e6df1287019c38feee"
+            "path": "crates/tier-4-runtime/grpc-reflection/tests/transport.rs"
           },
           "function": "sdk_v1alpha_matches_go_socket_streams"
         },
         {
           "source": {
-            "path": "crates/tier-4-runtime/grpc-reflection/tests/transport.rs",
-            "sha256": "98b592b50b10bb29f3b8a35456bc5200404c79fa6df8c5e6df1287019c38feee"
+            "path": "crates/tier-4-runtime/grpc-reflection/tests/transport.rs"
           },
           "function": "core_v1_and_v1alpha_match_go_socket_streams"
         }
@@ -60,8 +57,7 @@
         "sha256": "a4dd9b702f6826192c672cd0f69fcee868a0d097895fc63fd5cf8b7d256411d7"
       },
       "documentation": {
-        "path": "conformance/grpc-limits/README.md",
-        "sha256": "fc49d223902f8c1899cb7b2fb9b8998fb3ef3d7dad1e0effff9ac08c4c66225c"
+        "path": "conformance/grpc-limits/README.md"
       },
       "verifier": {
         "path": "conformance/grpc-limits/verify.py",
@@ -85,8 +81,7 @@
       "runtime_regressions": [
         {
           "source": {
-            "path": "crates/tier-5-node/celestia-rs/tests/grpc_limits.rs",
-            "sha256": "cb5bc0c5672d64bdd9018318125612eb63a900ace4af24fe8cd6650a5f9e06f8"
+            "path": "crates/tier-5-node/celestia-rs/tests/grpc_limits.rs"
           },
           "function": "custom_app_limits_reach_module_and_block_api_and_core_capacity_recovers"
         }
@@ -101,8 +96,7 @@
         "sha256": "8d280b7a269407e19158e7e6c0e8f80d35d99d8591fc466c58df9e0defe050a2"
       },
       "documentation": {
-        "path": "conformance/grpc-lifecycle/README.md",
-        "sha256": "9268e7870ecb8a67c716d2b32b731facaaf4255bfe63ad03a18dfb6debf41e0c"
+        "path": "conformance/grpc-lifecycle/README.md"
       },
       "verifier": {
         "path": "conformance/grpc-lifecycle/verify.py",
@@ -144,8 +138,7 @@
         "sha256": "2707d1f08740929c9631d5db398a7675b5451c953dcee32eb15216fee728a1b0"
       },
       "documentation": {
-        "path": "docs/rpc-version-identity.md",
-        "sha256": "621e8b9ef528de3e78cb4a5afa2cd8fdfa0a395b3389753b32ae7343f3bdcc88"
+        "path": "docs/rpc-version-identity.md"
       },
       "verifier": null,
       "transports": [
@@ -165,8 +158,7 @@
       "runtime_regressions": [
         {
           "source": {
-            "path": "crates/tier-5-node/celestia-rs/tests/runtime_metadata.rs",
-            "sha256": "f9036202d41b98c2bc445c88ef3ca6bef0c1776c1fd13e1d105294dff239aca6"
+            "path": "crates/tier-5-node/celestia-rs/tests/runtime_metadata.rs"
           },
           "function": "production_listeners_report_build_and_compatibility_separately"
         }
@@ -181,8 +173,7 @@
         "sha256": "e79fb36cd98b5e00114ab3878ee9f1c2f400158a19e6896cf2a694b7390890dd"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/simulation/README.md",
-        "sha256": "1011c9f380bc0bef2fe82169a57365d9fa8a5d40db2a021ce0897c7ca5d9efdf"
+        "path": "conformance/mainnet-rpc/simulation/README.md"
       },
       "verifier": null,
       "transports": [
@@ -202,8 +193,7 @@
       "runtime_regressions": [
         {
           "source": {
-            "path": "crates/devnet-conformance/tests/simulation_errors.rs",
-            "sha256": "eea6a471de30d7bcdffcb268e4ac51f9f105dd58575ffb7e43725b640298dc49"
+            "path": "crates/devnet-conformance/tests/simulation_errors.rs"
           },
           "function": "current_release_simulation_errors"
         }
@@ -218,8 +208,7 @@
         "sha256": "b7ba4357f0b675b58d69c033f4c9427a26dacc021470c05ff267cd20cb4be9d9"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/empty-query/README.md",
-        "sha256": "83f50921b6883312613316ee29c2cb0e03f515b7d2a66d28ce5d5c1ed63baaf4"
+        "path": "conformance/mainnet-rpc/empty-query/README.md"
       },
       "verifier": null,
       "transports": [
@@ -239,8 +228,7 @@
       "runtime_regressions": [
         {
           "source": {
-            "path": "crates/tier-4-runtime/rpc/tests/empty_query.rs",
-            "sha256": "6c06cd5abc93d17533af6ff8916701c9bb8440b8214f29f6117e589d6a39c3c9"
+            "path": "crates/tier-4-runtime/rpc/tests/empty_query.rs"
           },
           "function": "p2p_empty_query_matches_current_go_over_reusable_http_and_websocket"
         }
@@ -255,8 +243,7 @@
         "sha256": "6aa37a8c13820dd411cb1c70e85a5631c66102ac012193624a3f5061042da398"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/live-tx/README.md",
-        "sha256": "58925b644a718b4e1f4ee7fe88326687c23bce5a2baf9e1237205b03a2d7307a"
+        "path": "conformance/mainnet-rpc/live-tx/README.md"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/tests/test_live_tx.py",
@@ -288,8 +275,7 @@
       "runtime_regressions": [
         {
           "source": {
-            "path": "crates/tier-5-node/celestia-rs/tests/live_tx_transports.rs",
-            "sha256": "95770f7db84e26084102aad9c84c1e2fe47eb287b7738099223e96dd1832c665"
+            "path": "crates/tier-5-node/celestia-rs/tests/live_tx_transports.rs"
           },
           "function": "admitted_live_transactions_match_rust_production_transports"
         }
@@ -304,8 +290,7 @@
         "sha256": "f9b9a635587c189c1f36fa6bc1b484bf9a6ea3c9e813ef727a8f2ece1a5a5752"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/live-tx-closure/README.md",
-        "sha256": "6fd5b30df5b9f41f19677f462e9844584d38d9c035de47b36ecbed643d0417f9"
+        "path": "conformance/mainnet-rpc/live-tx-closure/README.md"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/tests/test_live_tx_closure.py",
@@ -349,8 +334,7 @@
         "sha256": "164bee6d21c3a4b34fc37ffdfd8b2b41de65638890805917959f3b282f5ef9c4"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/populated-staking/README.md",
-        "sha256": "1351afddf45b3b2f00d565ae4ee14084956e853072053af82c51b2fc2f84d20c"
+        "path": "conformance/mainnet-rpc/populated-staking/README.md"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/tests/test_populated_staking.py",
@@ -375,8 +359,7 @@
       "runtime_regressions": [
         {
           "source": {
-            "path": "crates/devnet-conformance/tests/populated_staking_transports.rs",
-            "sha256": "ad31407b96c2deac211d4051bdec998ffea8fc800b1e4fab62782e062fe8bd4d"
+            "path": "crates/devnet-conformance/tests/populated_staking_transports.rs"
           },
           "function": "admitted_populated_inputs_match_all_rust_transports"
         }
@@ -391,8 +374,7 @@
         "sha256": "4d330e5d6de9a046f1e7d3b80444cd4fe5fd596b64c734447e13d728006e021e"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/populated-governance/README.md",
-        "sha256": "0f0e35a8db68e3778b5b53d574c94f275e523b034e91634a12ffd266c0ead628"
+        "path": "conformance/mainnet-rpc/populated-governance/README.md"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/populated-governance/verify.py",
@@ -419,8 +401,7 @@
       "runtime_regressions": [
         {
           "source": {
-            "path": "crates/devnet-conformance/tests/populated_governance_transports.rs",
-            "sha256": "b8887e0637866c5a762124e4c4e31cee54d683cea9de0a72e049cfb1311c66c1"
+            "path": "crates/devnet-conformance/tests/populated_governance_transports.rs"
           },
           "function": "admitted_populated_inputs_match_all_rust_transports"
         }
@@ -435,8 +416,7 @@
         "sha256": "a49de6cb8347d59f31df52c41de954d80e9cdda0651f65c59067bb937a017b62"
       },
       "documentation": {
-        "path": "conformance/websocket-lifecycle/README.md",
-        "sha256": "22a2f2c60654f03fdfbde0f6b3aeae13f10cbca8e0915ddadf44833440181c64"
+        "path": "conformance/websocket-lifecycle/README.md"
       },
       "verifier": {
         "path": "conformance/websocket-lifecycle/verify-closure.py",
@@ -465,22 +445,19 @@
       "runtime_regressions": [
         {
           "source": {
-            "path": "crates/tier-4-runtime/rpc/src/server.rs",
-            "sha256": "348c4d3e52805fc33ffd702c4af164a5a9ae8f78e10923f271815b3c2a714120"
+            "path": "crates/tier-4-runtime/rpc/src/server.rs"
           },
           "function": "websocket_write_is_bounded"
         },
         {
           "source": {
-            "path": "crates/tier-4-runtime/rpc/tests/corpus.rs",
-            "sha256": "53aba60660302305ec0f6b78ad122707b0b9b469ab8a5caf7608cb633c15d407"
+            "path": "crates/tier-4-runtime/rpc/tests/corpus.rs"
           },
           "function": "websocket_disconnects_reclaim_subscriptions_and_allow_reconnect"
         },
         {
           "source": {
-            "path": "crates/tier-4-runtime/rpc/tests/corpus.rs",
-            "sha256": "53aba60660302305ec0f6b78ad122707b0b9b469ab8a5caf7608cb633c15d407"
+            "path": "crates/tier-4-runtime/rpc/tests/corpus.rs"
           },
           "function": "websocket_origins_match_go_and_deliver_events"
         }
@@ -495,8 +472,7 @@
         "sha256": "1af1afdce59ca3a5939781c0c4121682b25185f3c38f4429dd9e1d7f67f41758"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/rest-boundaries/README.md",
-        "sha256": "364706f0b15645bf4ce7d2d954da5dc3389eed24990bbb9969c0a7678655f75d"
+        "path": "conformance/mainnet-rpc/rest-boundaries/README.md"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/rest-boundaries/verify.py",
@@ -517,8 +493,7 @@
       "runtime_regressions": [
         {
           "source": {
-            "path": "crates/tier-4-runtime/api-server/src/rest.rs",
-            "sha256": "f6ed3e6d7c942c9be8b206c5e3779b7ac5e7b2452a35bf9094a3045c6117f8e6"
+            "path": "crates/tier-4-runtime/api-server/src/rest.rs"
           },
           "function": "go_rest_height_boundaries"
         }
@@ -533,8 +508,7 @@
         "sha256": "cb12190d6e9409eb4645aa7f2a0d69c7ac3d4901d0284a48526ba878570a2068"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/rest-post-boundaries/README.md",
-        "sha256": "e5ac9c82467c6113ccc2d776c9e03c0b38124b2e23d89610d677a62a76d48eb5"
+        "path": "conformance/mainnet-rpc/rest-post-boundaries/README.md"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/rest-post-boundaries/verify.py",
@@ -565,8 +539,7 @@
         "sha256": "13ea54964fc445e3992b2fc92eac53c409f2b9ac159bd8ec8813ca7cd98ec10c"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-10-31-809bfca/README.md",
-        "sha256": "93cbe6c3896fde1b6f7412724673cdb70c6b5e4464d2d9a200ae4fc266bd61cd"
+        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-10-31-809bfca/README.md"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-10-31-809bfca/verify.py",
@@ -600,8 +573,7 @@
         "sha256": "4d740160ec07a490b3ebd2994faeaeeef46d49a665cca50be72922e8c5ddcf36"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/comet-http-boundaries/v10.5.0/README.md",
-        "sha256": "286732d65fb18793364091d64fbbf700c3048de3e333b16b2d913ad575c7645f"
+        "path": "conformance/mainnet-rpc/comet-http-boundaries/v10.5.0/README.md"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/comet-http-boundaries/v10.5.0/verify.py",
@@ -627,8 +599,7 @@
       "runtime_regressions": [
         {
           "source": {
-            "path": "crates/tier-4-runtime/rpc/tests/http_boundaries.rs",
-            "sha256": "c596a37a90980c28fb2d8c12b5d37bf817bdca689ef3c68cdc6ff879adb8ac2d"
+            "path": "crates/tier-4-runtime/rpc/tests/http_boundaries.rs"
           },
           "function": "tagged_go_comet_http_boundaries_match_over_real_sockets"
         }
@@ -643,8 +614,7 @@
         "sha256": "75d95311e78695991f5cc696791a1447b99302a663e2594f1a60aa793410258e"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/README.md",
-        "sha256": "d6912f5096be8da148ca62e4bc4c3747c1d8d3f105d1f927de3e8126657da007"
+        "path": "conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/README.md"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/verify.py",
@@ -682,22 +652,19 @@
       "runtime_regressions": [
         {
           "source": {
-            "path": "crates/tier-4-runtime/rpc/tests/http_boundaries.rs",
-            "sha256": "c596a37a90980c28fb2d8c12b5d37bf817bdca689ef3c68cdc6ff879adb8ac2d"
+            "path": "crates/tier-4-runtime/rpc/tests/http_boundaries.rs"
           },
           "function": "tagged_go_proxy_and_framing_boundaries_match_or_are_bounded"
         },
         {
           "source": {
-            "path": "crates/tier-4-runtime/rpc/tests/http_boundaries.rs",
-            "sha256": "c596a37a90980c28fb2d8c12b5d37bf817bdca689ef3c68cdc6ff879adb8ac2d"
+            "path": "crates/tier-4-runtime/rpc/tests/http_boundaries.rs"
           },
           "function": "tagged_go_tls_and_config_boundaries_match_or_are_bounded"
         },
         {
           "source": {
-            "path": "crates/tier-5-node/celestia-rs/src/rpc_service.rs",
-            "sha256": "98773a0d7700ac3785b4125c31f036eb4d1d5a2748a8d8fa4e8995657e50591c"
+            "path": "crates/tier-5-node/celestia-rs/src/rpc_service.rs"
           },
           "function": "tls_public_rpc_keeps_app_get_latest_block_on_private_loopback"
         }
@@ -712,8 +679,7 @@
         "sha256": "63df8d8c652efa70f3af473140fa538bacd4120946bd34dceb8054c225a58a2b"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/module-closure/README.md",
-        "sha256": "bab6c7981fafae168bfbfd75f88278278597ee4766ff03d63d2e39ad172369c4"
+        "path": "conformance/mainnet-rpc/module-closure/README.md"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/module-closure/verify.py",
@@ -744,22 +710,19 @@
       "runtime_regressions": [
         {
           "source": {
-            "path": "crates/devnet-conformance/tests/populated_module_matrix.rs",
-            "sha256": "ee89c113cd9ceb1b439cb28e3be5bd68862760933c0e54ebc031a6f02687d599"
+            "path": "crates/devnet-conformance/tests/populated_module_matrix.rs"
           },
           "function": "populated_module_matrix_matches_real_transports_and_proofs"
         },
         {
           "source": {
-            "path": "crates/tier-4-runtime/grpc-transport/tests/query_headers.rs",
-            "sha256": "67b81f6640f903f81097c135bbb90fcaf54b862bd3537cade245f4d4f0271f36"
+            "path": "crates/tier-4-runtime/grpc-transport/tests/query_headers.rs"
           },
           "function": "sdk_error_preserves_initial_height_and_sends_status_in_trailers"
         },
         {
           "source": {
-            "path": "crates/tier-4-runtime/grpc-transport/tests/query_headers.rs",
-            "sha256": "67b81f6640f903f81097c135bbb90fcaf54b862bd3537cade245f4d4f0271f36"
+            "path": "crates/tier-4-runtime/grpc-transport/tests/query_headers.rs"
           },
           "function": "pre_dispatch_error_remains_trailers_only_without_a_height"
         }
@@ -774,8 +737,7 @@
         "sha256": "e8ce2ef7043048eff4a66a920ac65c8b3ed3cd213f2cdb510dd22264e9a3932b"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/persistence/CLOSURE.md",
-        "sha256": "86f27ee61a3d13debd6f4a35e8114e329f288aec4459407655183a958965a8e5"
+        "path": "conformance/mainnet-rpc/persistence/CLOSURE.md"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/persistence/verify_closure.py",
@@ -818,8 +780,7 @@
         "sha256": "d13b92ee1861a7a566b31f9e128850c1db4f79eb48ff183b20ed10c2112ee7bc"
       },
       "documentation": {
-        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/README.md",
-        "sha256": "33b423776a631e58388540dc4154a92d136591d3659ce8c7ee93a2bb87e089b8"
+        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/README.md"
       },
       "verifier": {
         "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/verify.py",
