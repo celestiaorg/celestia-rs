@@ -57,7 +57,7 @@ impl Recorder {
         recorder.record("run_start", json!({
             "candidate_commit":config.candidate_commit,
             "binary_sha256":binary_sha256,
-            "software_version":env!("CARGO_PKG_VERSION"),
+            "software_version":crate::version::SOFTWARE_VERSION,
             "chain_id":chain,
             "requested_stop_height":opts.stop_height,
             "process_proposal_checked":opts.verify_data,

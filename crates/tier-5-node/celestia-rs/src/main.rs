@@ -1143,7 +1143,7 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
             if long {
                 util::out(format!(
                     "name: celestia-rs\nversion: {}\ncommit: {}\nbuild_profile: {}\ntoolchain: {}\napp_version: {}\ncompatibility_target: celestia-app v{}, celestia-core v{}",
-                    env!("CARGO_PKG_VERSION"),
+                    celestia_rs::version::SOFTWARE_VERSION,
                     env!("CELESTIA_RS_GIT_COMMIT"),
                     env!("CELESTIA_RS_BUILD_PROFILE"),
                     env!("CELESTIA_RS_TOOLCHAIN"),
@@ -1152,7 +1152,7 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
                     celestia_rs::version::CORE_COMPATIBILITY_VERSION
                 ));
             } else {
-                util::out(env!("CARGO_PKG_VERSION"));
+                util::out(celestia_rs::version::SOFTWARE_VERSION);
             }
             Ok(())
         }

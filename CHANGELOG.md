@@ -4,6 +4,14 @@
 
 ### Added
 
+- Every PR merged to `main` is released automatically once `ci` passes on
+  it (`v<version>-main.<n>`, a pre-release), and release channels
+  (`quarto`, `mocha`, `mainnet`) move forward on their own as releases soak
+  on the network before them. `install.sh --channel <name>` installs a
+  channel's release, a new Linux systemd timer follows a channel daily, and
+  the Mac auto-updater now follows each node's channel instead of the
+  newest release. See "Automatic releases and release channels" in
+  `docs/releasing.md`.
 - Validators can run the Fibre data availability server inside
   `celestia-rs start` (a port of celestia-app v11's server), so no separate
   Go `fibre` process is needed. It is off by default: enable it with

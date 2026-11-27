@@ -10,12 +10,100 @@ hand.
 The other workspace crates are `publish = false` and stay at 0.0.1; only
 the binary is versioned.
 
+There are two kinds of release:
+
+- **Automatic releases**, one for every PR merged to `main` once `ci`
+  passes on it: `v<crate version>-main.<n>`. No one cuts them.
+- **Human releases** (`v0.1.0`, `v0.1.0-rc.10`), cut with the
+  **prepare release** workflow below, for milestones and release notes.
+
+Nodes do not track "the newest release". They follow a **release
+channel**, one per network, which moves forward on its own as releases
+soak on the network before it.
+
+## Automatic releases and release channels
+
+```mermaid
+flowchart LR
+  pr[PR merged] --> ci[ci passes on main] --> rel["release v…-main.n<br/>(pre-release)"]
+  rel -->|0 h| quarto
+  quarto -->|24 h in quarto| mocha
+  mocha -->|72 h in mocha| mainnet
+  quarto & mocha & mainnet -.->|daily| nodes[auto-updaters<br/>install.sh --channel]
+```
+
+**Automatic releases.** When `ci` passes on a push to `main`,
+`release.yml` tags that commit `v<crate version>-main.<n>` (or
+`<crate version>.main.<n>` when the crate version is already a
+pre-release, e.g. `v0.1.0-rc.9.main.812`), where `n` is the commit's
+position on `main`. It builds, smoke-tests and publishes the archives as a
+GitHub pre-release. The build sets `CELESTIA_RS_RELEASE_VERSION`, so
+`celestia-rs version` reports the full release version; `build.rs` rejects
+a value that does not extend the crate version. A commit that changes the
+crate version is left to the human release path.
+
+**Channels.** `.github/release-channels.json` is the policy. Each channel
+has a source and a soak time:
+
+| channel | source | soak |
+| --- | --- | --- |
+| `quarto` | releases | 0 h |
+| `mocha` | `quarto` | 24 h |
+| `mainnet` | `mocha` | 72 h |
+
+Every hour, **release channels** (`release-channels.yml`) moves each
+channel to the newest release that has been in its source for at least the
+soak time, is not yanked, and is not newer than what the source runs now.
+It never moves a channel backwards. `main` is linear, so a release that
+entered `mocha` 72 hours ago has run there, inside every later release, for
+72 hours; frequent merges do not starve `mainnet`. The state is on the
+`release-channels` branch: `channels.json` (tags, history, frozen channels,
+yanked releases) and `channels/<name>`, one file holding the tag. Each
+change is a commit signed by GitHub, so the branch is the audit log.
+
+**Following a channel.**
+
+- Any machine: `install.sh --channel mainnet` (or
+  `CELESTIA_RS_CHANNEL=mainnet`) installs the channel's release; re-run it
+  to follow.
+- Linux, unattended: `packaging/linux/celestia-rs-auto-update.{sh,service,timer}`.
+  Once a day, at a random time in a 6-hour window so that operators do not
+  restart together, it installs the channel's release with that release's
+  own installer, restarts `celestia-rs`, waits until the node is caught up
+  and advancing, and rolls back to `celestia-rs.prev` if not. Installation
+  steps are in the `.service` file.
+- The Mac validator host: `packaging/macos/celestia-rs-auto-update.sh` puts
+  each node on its own network's channel (`mocha`, `mainnet`;
+  `CHANNEL_<node>` overrides it), builds the exact tagged source, and keeps
+  its canary, app-hash and signing checks.
+
+**When something goes wrong.** Use **Actions → release channels → Run
+workflow**:
+
+- `yank <tag>`: no channel takes that release again. Yank every release
+  from the bad one up to the fix.
+- `pin <channel> <tag>`: set a channel to a release now, for example to
+  roll `mainnet` back. Pinning also freezes the channel.
+- `freeze <channel>` / `unfreeze <channel>`: stop or resume automatic
+  promotion, for example around a network upgrade.
+
+A pinned or frozen source channel also holds back the channels after it,
+because a channel never takes a release newer than its source runs. Nodes
+pick up a pin at their next daily pass, so after a pin, tell operators to
+run the updater or installer at once if the fix is urgent.
+
+**Limits.** Soak time is the only automatic promotion gate. The workflow
+cannot see node health, so watch the networks and yank or freeze when they
+look wrong. A consensus-breaking release (a new app version) still needs a
+coordinated upgrade height: freeze `mainnet` before it reaches the channel
+and pin it when the network is ready.
+
 ## Release and fix loop
 
-The Mac auto-updater follows the newest published release, including release
-candidates, using its exact tagged source. It runs hourly, deploys to Mocha
-first, checks health and app-hash parity, and rolls back an unhealthy deploy
-before advancing to mainnet. Unreleased commits on `main` do not deploy.
+The Mac auto-updater follows each node's release channel, using the exact
+tagged source. It runs hourly, deploys to Mocha first, checks health and
+app-hash parity, and rolls back an unhealthy deploy before advancing to
+mainnet. Unreleased commits on `main` do not deploy.
 
 Keep monitoring and comparisons against Go active as releases advance. When
 an issue is found, retain its version, height and reproduction evidence,
@@ -126,6 +214,10 @@ then open a PR with the result.
   version instead.
 
 ## Repository settings
+
+- The **release channels** workflow creates the `release-channels` branch
+  on its first run. Do not protect it with rules that block GitHub
+  Actions from committing to it; do restrict who else may push.
 
 - **Settings → Actions → General → Workflow permissions:** allow GitHub
   Actions to create pull requests (for `prepare release`).

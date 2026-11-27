@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Deploys the newest published celestia-rs release (including release
-# candidates) to this Mac's nodes, one at a time, canary first
-# (docs/operator-guide.md §8).
+# Deploys to each of this Mac's nodes the release its network's channel
+# recommends (docs/releasing.md, "Release channels"), one node at a time,
+# canary first (docs/operator-guide.md §8).
 #
 #   celestia-rs-auto-update.sh            # one pass; run hourly by launchd
 #   DRY_RUN=1 celestia-rs-auto-update.sh  # build, but deploy nothing
@@ -9,11 +9,11 @@
 #   celestia-rs-auto-update.sh watchdog   # restart a node stuck behind, unjail
 #                                         # a jailed validator; run every minute
 #
-# One pass:
-#   1. Resolve the newest published release and fetch its exact tag into
-#      $SRC. Drafts and unreleased main commits are never deployed. Stop if
-#      every node already runs it, the commit failed a deploy before, or
-#      its CI is not green yet.
+# One pass, for each release the nodes' channels name (a node's channel is
+# its name: mocha, mainnet; CHANNEL_<name> overrides it):
+#   1. Fetch the release's exact tag into $SRC. Unreleased main commits are
+#      never deployed. Skip the release if its nodes already run it, the
+#      commit failed a deploy before, or its CI is not green yet.
 #   2. Build it (`cargo build --release --locked --features da-light`) and check that the
 #      binary reports that commit.
 #   3. For each node in NODES order (Mocha first): keep the running binary
@@ -37,6 +37,7 @@ SRC=${SRC:-$CELESTIA_RS_DIR/src}
 BIN=${BIN:-$CELESTIA_RS_DIR/bin}
 STATE=${STATE:-$CELESTIA_RS_DIR/auto-update}
 REPO=${REPO:-celestiaorg/celestia-rs}
+CHANNELS_URL=${CHANNELS_URL:-https://raw.githubusercontent.com/$REPO/release-channels/channels}
 SOAK_SECS=${SOAK_SECS:-900}
 MIN_BLOCKS=${MIN_BLOCKS:-20}
 SIGN_WINDOW=${SIGN_WINDOW:-20}
@@ -265,38 +266,42 @@ fi
 
 # --- 1. what is there to deploy ---------------------------------------
 
-# /releases/latest excludes prereleases. This validator follows release
-# candidates too, ordered by publication time rather than tag creation time.
-releases='[]'
-page=1
-while :; do
-  batch=$(curl -fsS --connect-timeout 10 --max-time 30 \
-    "https://api.github.com/repos/$REPO/releases?per_page=100&page=$page") || die "cannot query releases"
-  jq -e 'type == "array"' <<<"$batch" >/dev/null || die "invalid releases response"
-  releases=$(printf '%s\n%s\n' "$releases" "$batch" | jq -s 'add')
-  (($(jq 'length' <<<"$batch") == 100)) || break
-  page=$((page + 1))
+# Each node's release, from its channel.
+TAGS=()
+for n in "${NODES[@]}"; do
+  IFS='|' read -r name _ _ _ _ <<<"$n"
+  var=CHANNEL_$name
+  channel=${!var:-$name}
+  [[ $channel =~ ^[a-z0-9-]+$ ]] || die "invalid channel for $name: $channel"
+  tag=$(curl -fsS --connect-timeout 10 --max-time 30 "$CHANNELS_URL/$channel" | head -n 1 | tr -d '\r') ||
+    die "cannot read channel $channel"
+  [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || die "channel $channel names an invalid release tag: $tag"
+  TAGS+=("$tag")
 done
-TAG=$(jq -er '[.[] | select(.draft == false and .published_at != null)]
-  | sort_by(.published_at) | last | .tag_name // empty' <<<"$releases") ||
-  die "no published release available"
-[[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || die "invalid release tag: $TAG"
+
+# deploy TAG: steps 1-3 for the nodes whose channel names TAG. Returns 0
+# when there is nothing to do or the deploy succeeded; exits 1 after a
+# rollback, so no later release or node is touched.
+deploy() {
+local TAG=$1 SHA NEW stale=() targets=() i n name label bin local_rpc ref canary start runs total pending failed
+for i in "${!NODES[@]}"; do
+  [[ ${TAGS[$i]} == "$TAG" ]] && targets+=("${NODES[$i]}")
+done
 [[ -d $SRC/.git ]] || git clone --quiet "https://github.com/$REPO.git" "$SRC"
 git -C "$SRC" fetch --quiet origin "refs/tags/$TAG"
 SHA=$(git -C "$SRC" rev-parse 'FETCH_HEAD^{commit}')
 
-stale=()
-for n in "${NODES[@]}"; do
+for n in "${targets[@]}"; do
   IFS='|' read -r name _ bin _ _ <<<"$n"
   [[ $(binary_commit "$bin") == "$SHA" && $(binary_version "$bin") == "${TAG#v}" ]] || stale+=("$name")
 done
 if ((${#stale[@]} == 0)); then
-  log "up to date: every node runs $TAG (${SHA:0:7})"
-  exit 0
+  log "up to date: $TAG (${SHA:0:7}) on its nodes"
+  return 0
 fi
 if grep -qx "$SHA" "$STATE/bad-commits"; then
   log "skip ${SHA:0:7}: a deploy of it was rolled back before"
-  exit 0
+  return 0
 fi
 
 # Every check run on the commit must have finished green.
@@ -308,11 +313,11 @@ failed=$(jq -r '[.check_runs[] | select(.status == "completed"
   and (.conclusion | IN("success", "skipped", "neutral") | not)) | .name] | join(", ")' <<<"$runs")
 if ((total == 0 || pending > 0)); then
   log "wait: CI for ${SHA:0:7} not finished ($pending of $total runs pending)"
-  exit 0
+  return 0
 fi
 if [[ -n $failed ]]; then
   log "skip ${SHA:0:7}: CI failed ($failed)"
-  exit 0
+  return 0
 fi
 log "deploy $TAG (${SHA:0:7}) to: ${stale[*]}"
 
@@ -328,13 +333,13 @@ NEW=$SRC/target/release/celestia-rs
 
 if [[ $DRY_RUN == 1 ]]; then
   log "DRY_RUN: built $TAG (${SHA:0:7}); would deploy to ${stale[*]}"
-  exit 0
+  return 0
 fi
 
 # --- 3. deploy ----------------------------------------------------------
 
 canary=""
-for n in "${NODES[@]}"; do
+for n in "${targets[@]}"; do
   IFS='|' read -r name label bin local_rpc ref <<<"$n"
   [[ $(binary_commit "$bin") == "$SHA" && $(binary_version "$bin") == "${TAG#v}" ]] && continue
 
@@ -375,4 +380,13 @@ for n in "${NODES[@]}"; do
   fi
   exit 1
 done
-log "done: every node runs $TAG (${SHA:0:7})"
+log "done: $TAG (${SHA:0:7}) on ${stale[*]}"
+}
+
+# Each distinct release once, in NODES order (Mocha's first).
+done_tags=" "
+for tag in "${TAGS[@]}"; do
+  [[ $done_tags == *" $tag "* ]] && continue
+  done_tags+="$tag "
+  deploy "$tag"
+done
