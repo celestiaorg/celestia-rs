@@ -127,6 +127,8 @@ jobs:
           shellcheck -x scripts/bench/*.sh
           bash scripts/bench/test.sh
           bash scripts/bench/checkpoints-test.sh
+          shellcheck -x -S warning scripts/vmexec/*.sh scripts/vmexec/vmexec
+          bash scripts/vmexec/test.sh
       - name: Mixed devnet crash-boundary checks
         run: python3 -m unittest discover -s conformance/devnet/tests -v
       - name: gRPC limit evidence integrity
@@ -301,6 +303,8 @@ jobs:
           - devnet-oracle
           - evidencevectors
           - fibre-client
+          - fibre-interop
+          - fibre-server
           - fixturegen
           - fuzzoracle/v9
           - fuzzoracle/v10
@@ -320,6 +324,12 @@ jobs:
           - strict-txdecode
           - v1-oracle
           - v4-oracle
+          - v5-oracle
+          - v6-oracle
+          - v8-oracle
+          - v9-oracle
+          - v10-oracle
+          - v11-oracle
           - v11-frozen
           - websocket-lifecycle
     env:
@@ -357,6 +367,12 @@ jobs:
           matrix.module == 'fixturegen' || matrix.module == 'antereplay' ||
           matrix.module == 'fuzzoracle/v10' || matrix.module == 'pfm-fork' ||
           matrix.module == 'websocket-lifecycle' || matrix.module == 'v1-oracle' ||
-          matrix.module == 'v4-oracle')
+          matrix.module == 'v4-oracle' || matrix.module == 'v5-oracle' ||
+          matrix.module == 'v6-oracle' || matrix.module == 'v8-oracle' ||
+          matrix.module == 'v9-oracle' || matrix.module == 'v10-oracle' ||
+          matrix.module == 'v11-oracle')
         working-directory: conformance/${{ matrix.module }}
-        run: go test ./...
+        # A cold runner compiles a whole celestia-app release per oracle
+        # module (v4-oracle also builds v1-oracle); go test's default
+        # 10-minute limit is too tight for that.
+        run: go test -timeout 30m ./...

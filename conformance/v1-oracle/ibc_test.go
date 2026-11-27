@@ -40,17 +40,26 @@ import (
 	"github.com/cosmos/cosmos-sdk/store/rootmulti"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
+	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
+	govv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
+	paramproposal "github.com/cosmos/cosmos-sdk/x/params/types/proposal"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 	icacontrollertypes "github.com/cosmos/ibc-go/v6/modules/apps/27-interchain-accounts/controller/types"
 	icatypes "github.com/cosmos/ibc-go/v6/modules/apps/27-interchain-accounts/types"
 	transfertypes "github.com/cosmos/ibc-go/v6/modules/apps/transfer/types"
 	clienttypes "github.com/cosmos/ibc-go/v6/modules/core/02-client/types"
 	channeltypes "github.com/cosmos/ibc-go/v6/modules/core/04-channel/types"
+	commitmenttypes "github.com/cosmos/ibc-go/v6/modules/core/23-commitment/types"
 	host "github.com/cosmos/ibc-go/v6/modules/core/24-host"
+	"github.com/cosmos/ibc-go/v6/modules/core/exported"
+	ibctmtypes "github.com/cosmos/ibc-go/v6/modules/light-clients/07-tendermint/types"
 	ibctesting "github.com/cosmos/ibc-go/v6/testing"
 	"github.com/cosmos/ibc-go/v6/testing/mock"
+	ibcsimapp "github.com/cosmos/ibc-go/v6/testing/simapp"
 	proto "github.com/gogo/protobuf/proto"
 	abci "github.com/tendermint/tendermint/abci/types"
 	tmjson "github.com/tendermint/tendermint/libs/json"
@@ -59,6 +68,14 @@ import (
 	tmtypes "github.com/tendermint/tendermint/types"
 	tmversionpkg "github.com/tendermint/tendermint/version"
 )
+
+// ibcSnapshotHeights are the heights of the IBC chain's state-sync
+// snapshots (fixtures/synthetic/ibc-v2-snapshots): a PFM forward in flight
+// (39), the interchain account channel just opened (72), app version 3
+// with the new validator (100), the reopened account channel (120).
+var ibcSnapshotHeights = []uint64{39, 72, 100, 120}
+
+const ibcSnapshotFixtureDir = "../fixtures/synthetic/ibc-v2-snapshots"
 
 const (
 	ibcChainA             = "test"
@@ -247,6 +264,8 @@ func newCelestiaChain(t *testing.T, coord *ibctesting.Coordinator, rec *ibcRecor
 	ecfg := encoding.MakeConfig(app.ModuleEncodingRegisters...)
 
 	genesisState := app.NewDefaultGenesisState(ecfg.Codec)
+	// 40 second gov periods, so that a proposal passes within the run.
+	genesisState = govGenesis(ecfg.Codec)(genesisState)
 	genesisState[authtypes.ModuleName] = a.AppCodec().MustMarshalJSON(authtypes.NewGenesisState(authtypes.DefaultParams(), accs))
 	bondAmt := sdk.TokensFromConsensusPower(1, sdk.DefaultPowerReduction)
 	var validators []stakingtypes.Validator
@@ -620,6 +639,47 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 		t.Fatalf("reopened account %s, want %s", addr, icaAddr)
 	}
 	sendICA(banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 2))))
+	// A multi-send from the account (its signers are every input).
+	sendICA(banktypes.NewMsgMultiSend(
+		[]banktypes.Input{banktypes.NewInput(icaAcc, sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 30)))},
+		[]banktypes.Output{
+			banktypes.NewOutput(chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 10))),
+			banktypes.NewOutput(chainA.SenderAccounts[2].SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 20))),
+		}))
+
+	// Governance narrows the host's allow list to MsgSend (as mainnet's
+	// proposal 3 replaced the v2 migration's "*"): the v3 validator's
+	// operator votes yes, the proposal passes, and then the account's
+	// delegation is refused (an error acknowledgement) and a send runs.
+	allowList := paramproposal.NewParameterChangeProposal("ica allow list", "narrow the host allow list",
+		[]paramproposal.ParamChange{paramproposal.NewParamChange("icahost", "AllowMessages", `["/cosmos.bank.v1beta1.MsgSend"]`)})
+	submit, err := govv1beta1.NewMsgSubmitProposal(allowList, sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, govMinDeposit)), chainA.SenderAccount.GetAddress())
+	must(t, err)
+	_, err = chainA.SendMsgs(submit)
+	must(t, err)
+	proposalID, err := chainA.App.(*recApp).GovKeeper.GetProposalID(chainA.GetContext())
+	must(t, err)
+	proposalID--
+	sender, senderKey := chainA.SenderAccount, chainA.SenderPrivKey
+	chainA.SenderAccount, chainA.SenderPrivKey = chainA.SenderAccounts[1].SenderAccount, chainA.SenderAccounts[1].SenderPrivKey
+	_, err = chainA.SendMsgs(govv1beta1.NewMsgVote(chainA.SenderAccount.GetAddress(), proposalID, govv1beta1.OptionYes))
+	must(t, err)
+	chainA.SenderAccount, chainA.SenderPrivKey = sender, senderKey
+	// The open block keeps its time; the next one ends the voting period.
+	coord.IncrementTimeBy(govPeriod + time.Second)
+	coord.CommitBlock(chainA)
+	coord.CommitBlock(chainA)
+	if p, _ := chainA.App.(*recApp).GovKeeper.GetProposal(chainA.GetContext(), proposalID); p.Status != govv1.StatusPassed {
+		t.Fatalf("allow list proposal is %s", p.Status)
+	}
+	sendICA(stakingtypes.NewMsgDelegate(icaAcc, val, sdk.NewInt64Coin(appconsts.BondDenom, 1_000)))
+	sendICA(banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 3))))
+
+	runTransferAuthzAndTimeout(t, coord, chainA, chainB, pathAB, timeout)
+	runClientProposals(t, coord, chainA, chainB)
+	runClientUpgrade(t, coord, chainA, chainB)
+	runTimeoutOnClose(t, coord, chainA, chainB)
+	runPFMFee(t, coord, chainA, chainB, chainC, pathAB, pathAC, voucher, timeout)
 	// A last empty block commits the last transaction's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc
@@ -905,11 +965,14 @@ func TestIBCFixture(t *testing.T) {
 		withKV:          true,
 		upgradeHeightV2: ibcUpgradeHeightV2,
 		src:             &recorded{rec: rec},
+		snapshotAt:      ibcSnapshotHeights,
+		snapshotDir:     filepath.Join(out, "snapshots"),
 	}))
 	must(t, os.Remove(filepath.Join(out, "kv-height-0-modules.jsonl.gz")))
 	if write {
 		return
 	}
+	requireSnapshots(t, filepath.Join(out, "snapshots"), ibcSnapshotFixtureDir, ibcSnapshotHeights)
 	for _, name := range ibcFixtureFiles {
 		want, err := os.ReadFile(filepath.Join(ibcFixtureDir, name))
 		must(t, err)
@@ -919,4 +982,315 @@ func TestIBCFixture(t *testing.T) {
 			t.Errorf("%s differs from the committed fixture; regenerate it (conformance/README.md)", name)
 		}
 	}
+}
+
+// runTransferAuthzAndTimeout sends utia from A to B through authz MsgExec
+// (a GenericAuthorization, then an ibc-go TransferAuthorization whose
+// spend limit the transfer uses up), and a plain transfer that times out
+// on B, so that A refunds it on MsgTimeout.
+func runTransferAuthzAndTimeout(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB *ibctesting.TestChain,
+	pathAB *ibctesting.Path, timeout clienttypes.Height,
+) {
+	granter := chainA.SenderAccount.GetAddress()
+	utia := func(n int64) sdk.Coin { return sdk.NewInt64Coin(appconsts.BondDenom, n) }
+	transfer := func(amount int64, timeoutTimestamp uint64, h clienttypes.Height) *transfertypes.MsgTransfer {
+		return transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID, utia(amount),
+			granter.String(), chainB.SenderAccount.GetAddress().String(), h, timeoutTimestamp, "")
+	}
+	// asSender runs f with chain A's sender account i.
+	asSender := func(i int, f func()) {
+		sender, key := chainA.SenderAccount, chainA.SenderPrivKey
+		chainA.SenderAccount, chainA.SenderPrivKey = chainA.SenderAccounts[i].SenderAccount, chainA.SenderAccounts[i].SenderPrivKey
+		f()
+		chainA.SenderAccount, chainA.SenderPrivKey = sender, key
+	}
+	generic, err := authz.NewMsgGrant(granter, chainA.SenderAccounts[2].SenderAccount.GetAddress(),
+		authz.NewGenericAuthorization(sdk.MsgTypeURL(&transfertypes.MsgTransfer{})), nil)
+	must(t, err)
+	limited, err := authz.NewMsgGrant(granter, chainA.SenderAccounts[3].SenderAccount.GetAddress(),
+		transfertypes.NewTransferAuthorization(transfertypes.Allocation{
+			SourcePort: ibctesting.TransferPort, SourceChannel: pathAB.EndpointA.ChannelID,
+			SpendLimit: sdk.NewCoins(utia(7_000)),
+		}), nil)
+	must(t, err)
+	_, err = chainA.SendMsgs(generic, limited)
+	must(t, err)
+	var lastSent channeltypes.Packet
+	for _, g := range []struct {
+		sender int
+		amount int64
+	}{{2, 4_000}, {3, 7_000}} {
+		var res *sdk.Result
+		asSender(g.sender, func() {
+			exec := authz.NewMsgExec(chainA.SenderAccount.GetAddress(), []sdk.Msg{transfer(g.amount, 0, timeout)})
+			res, err = chainA.SendMsgs(&exec)
+			must(t, err)
+		})
+		packet, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+		must(t, err)
+		must(t, pathAB.EndpointB.UpdateClient())
+		must(t, pathAB.RelayPacket(packet))
+		lastSent = packet
+	}
+
+	// A transfer that times out on B: one minute, never relayed.
+	res, err := chainA.SendMsgs(transfer(9_000, uint64(chainA.CurrentHeader.Time.Add(time.Minute).UnixNano()), clienttypes.ZeroHeight()))
+	must(t, err)
+	lost, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	coord.IncrementTimeBy(2 * time.Minute)
+	coord.CommitBlock(chainB)
+	must(t, pathAB.EndpointA.UpdateClient())
+	proof, proofHeight := chainB.QueryProof(host.PacketReceiptKey(lost.GetDestPort(), lost.GetDestChannel(), lost.GetSequence()))
+	next, found := chainB.App.GetIBCKeeper().ChannelKeeper.GetNextSequenceRecv(chainB.GetContext(), lost.GetDestPort(), lost.GetDestChannel())
+	if !found {
+		t.Fatal("no next sequence receive on B")
+	}
+	timeoutMsg := channeltypes.NewMsgTimeout(lost, next, proof, proofHeight, granter.String())
+	_, err = chainA.SendMsgs(timeoutMsg)
+	must(t, err)
+
+	// Redundant relays, as racing relayers send them: ibc-go v6 turns each
+	// into a NOOP result. The packet commitment of the timeout and of the
+	// acknowledged packet is gone, so both return before any proof check;
+	// a second receive verifies the proof, then finds the receipt.
+	_, err = chainA.SendMsgs(timeoutMsg)
+	must(t, err)
+	ackProof, ackHeight := chainB.QueryProof(host.PacketAcknowledgementKey(lastSent.GetDestPort(), lastSent.GetDestChannel(), lastSent.GetSequence()))
+	_, err = chainA.SendMsgs(channeltypes.NewMsgAcknowledgement(lastSent,
+		channeltypes.NewResultAcknowledgement([]byte{1}).Acknowledgement(), ackProof, ackHeight, granter.String()))
+	must(t, err)
+	inboundSend := transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointB.ChannelID,
+		sdk.NewInt64Coin(sdk.DefaultBondDenom, 1_000), chainB.SenderAccount.GetAddress().String(),
+		chainA.SenderAccount.GetAddress().String(), clienttypes.NewHeight(1, 10_000), 0, "")
+	res, err = chainB.SendMsgs(inboundSend)
+	must(t, err)
+	inbound, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAB.EndpointA.UpdateClient())
+	recvProof, recvHeight := chainB.QueryProof(host.PacketCommitmentKey(inbound.GetSourcePort(), inbound.GetSourceChannel(), inbound.GetSequence()))
+	recv := channeltypes.NewMsgRecvPacket(inbound, recvProof, recvHeight, granter.String())
+	for i := 0; i < 2; i++ {
+		_, err = chainA.SendMsgs(recv)
+		must(t, err)
+	}
+
+	// Failures mainnet has: a transfer of more than the balance (sdk 5),
+	// a transfer whose timeout height B has passed (channel 14), and an
+	// open-ack of an open channel (channel 5).
+	sendFailing(t, chainA, transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		sdk.NewInt64Coin(appconsts.BondDenom, 1_000_000_000_000_000), chainA.SenderAccount.GetAddress().String(),
+		chainB.SenderAccount.GetAddress().String(), clienttypes.NewHeight(1, 10_000), 0, ""))
+	sendFailing(t, chainA, transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		sdk.NewInt64Coin(appconsts.BondDenom, 1_000), chainA.SenderAccount.GetAddress().String(),
+		chainB.SenderAccount.GetAddress().String(), clienttypes.NewHeight(0, 1), 0, ""))
+	sendFailing(t, chainA, channeltypes.NewMsgChannelOpenAck(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		pathAB.EndpointB.ChannelID, transfertypes.Version, []byte{1}, clienttypes.NewHeight(0, 1),
+		chainA.SenderAccount.GetAddress().String()))
+	// A user may not close a transfer channel: the callback refuses
+	// before the channel keeper runs.
+	sendFailing(t, chainA, channeltypes.NewMsgChannelCloseInit(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		chainA.SenderAccount.GetAddress().String()))
+}
+
+// sendFailing delivers a transaction whose messages fail after the ante
+// handler, then moves the chain on as SendMsgs does after a success.
+func sendFailing(t *testing.T, chain *ibctesting.TestChain, msgs ...sdk.Msg) {
+	chain.Coordinator.UpdateTimeForChain(chain)
+	_, _, err := ibcsimapp.SignAndDeliver(t, chain.TxConfig, chain.App.GetBaseApp(), chain.GetContext().BlockHeader(),
+		msgs, chain.ChainID, []uint64{chain.SenderAccount.GetAccountNumber()},
+		[]uint64{chain.SenderAccount.GetSequence()}, true, false, chain.SenderPrivKey)
+	if err == nil {
+		t.Fatal("transaction passed")
+	}
+	chain.NextBlock()
+	must(t, chain.SenderAccount.SetSequence(chain.SenderAccount.GetSequence()+1))
+	chain.Coordinator.IncrementTime()
+}
+
+// runClientProposals submits ibc client proposals. Submission runs the
+// proposal handler in a cached context (cosmos-sdk v0.46), so these
+// transactions carry the handler's result and gas: a ClientUpdateProposal
+// that recovers an expired client with an Active substitute (it then
+// passes and runs in the EndBlocker), one whose subject is Active, and an
+// UpgradeProposal (celestia-app refuses it).
+func runClientProposals(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB *ibctesting.TestChain) {
+	expiring := ibctesting.NewPath(chainA, chainB)
+	lagTolerant(expiring.EndpointA)
+	expiring.EndpointA.ClientConfig.(*ibctesting.TendermintConfig).TrustingPeriod = 10 * time.Minute
+	must(t, expiring.EndpointA.CreateClient())
+	coord.IncrementTimeBy(20 * time.Minute)
+	coord.CommitBlock(chainB)
+	substitute := ibctesting.NewPath(chainA, chainB)
+	lagTolerant(substitute.EndpointA)
+	must(t, substitute.EndpointA.CreateClient())
+	submit := func(content govv1beta1.Content, deposit int64) *govv1beta1.MsgSubmitProposal {
+		m, err := govv1beta1.NewMsgSubmitProposal(content, sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, deposit)), chainA.SenderAccount.GetAddress())
+		must(t, err)
+		return m
+	}
+	// The recovery passes: the v3 validator's operator votes yes.
+	_, err := chainA.SendMsgs(submit(clienttypes.NewClientUpdateProposal("recover", "d",
+		expiring.EndpointA.ClientID, substitute.EndpointA.ClientID), govMinDeposit))
+	must(t, err)
+	proposalID, err := chainA.App.(*recApp).GovKeeper.GetProposalID(chainA.GetContext())
+	must(t, err)
+	proposalID--
+	sender, senderKey := chainA.SenderAccount, chainA.SenderPrivKey
+	chainA.SenderAccount, chainA.SenderPrivKey = chainA.SenderAccounts[1].SenderAccount, chainA.SenderAccounts[1].SenderPrivKey
+	_, err = chainA.SendMsgs(govv1beta1.NewMsgVote(chainA.SenderAccount.GetAddress(), proposalID, govv1beta1.OptionYes))
+	must(t, err)
+	chainA.SenderAccount, chainA.SenderPrivKey = sender, senderKey
+	coord.IncrementTimeBy(govPeriod + time.Second)
+	coord.CommitBlock(chainA)
+	coord.CommitBlock(chainA)
+	if p, _ := chainA.App.(*recApp).GovKeeper.GetProposal(chainA.GetContext(), proposalID); p.Status != govv1.StatusPassed {
+		t.Fatalf("client update proposal is %s", p.Status)
+	}
+	sendFailing(t, chainA, submit(clienttypes.NewClientUpdateProposal("active", "d",
+		substitute.EndpointA.ClientID, expiring.EndpointA.ClientID), 0))
+	cs := chainA.GetClientState(substitute.EndpointA.ClientID)
+	up, err := clienttypes.NewUpgradeProposal("upgrade", "d", upgradetypes.Plan{Name: "u", Height: 1_000_000}, cs)
+	must(t, err)
+	sendFailing(t, chainA, submit(up, 0))
+}
+
+// runClientUpgrade upgrades a client of B on A with MsgUpgradeClient. B
+// commits an upgraded client and consensus state in its upgrade store
+// (as its x/upgrade does before an upgrade height); A's client sets both
+// deprecated allow flags, which v6 carries into the new client state.
+// Failures first: an upgraded client whose custom fields are not zero
+// (v6 proves the client as sent, so the proof fails), an upgraded height
+// that is not above the client's; then the upgrade, and a second one on
+// the upgraded client (its consensus state has a zero timestamp, so the
+// client is Expired).
+func runClientUpgrade(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB *ibctesting.TestChain) {
+	path := ibctesting.NewPath(chainA, chainB)
+	lagTolerant(path.EndpointA)
+	cfg := path.EndpointA.ClientConfig.(*ibctesting.TendermintConfig)
+	cfg.AllowUpdateAfterExpiry, cfg.AllowUpdateAfterMisbehaviour = true, true
+	must(t, path.EndpointA.CreateClient())
+	cs := chainA.GetClientState(path.EndpointA.ClientID).(*ibctmtypes.ClientState)
+	// B's chain ID has no revision; the upgraded one has revision 1.
+	newChainID := cs.ChainId + "-1"
+	upgraded := ibctmtypes.NewClientState(newChainID, ibctmtypes.DefaultTrustLevel, cfg.TrustingPeriod,
+		cfg.UnbondingPeriod+cfg.TrustingPeriod, cfg.MaxClockDrift, clienttypes.NewHeight(1, 1),
+		commitmenttypes.GetSDKSpecs(), ibctesting.UpgradePath, false, false)
+	zeroed := upgraded.ZeroCustomFields()
+	cons := &ibctmtypes.ConsensusState{NextValidatorsHash: []byte("nextValsHash")}
+	lastHeight := chainB.GetContext().BlockHeight() + 1
+	keeper := chainB.App.(*ibcsimapp.SimApp).UpgradeKeeper
+	clientBz, err := clienttypes.MarshalClientState(chainB.App.AppCodec(), zeroed)
+	must(t, err)
+	consBz, err := clienttypes.MarshalConsensusState(chainB.App.AppCodec(), cons)
+	must(t, err)
+	must(t, keeper.SetUpgradedClient(chainB.GetContext(), lastHeight, clientBz))
+	must(t, keeper.SetUpgradedConsensusState(chainB.GetContext(), lastHeight, consBz))
+	coord.CommitBlock(chainB)
+	must(t, path.EndpointA.UpdateClient())
+	trusted := chainA.GetClientState(path.EndpointA.ClientID).GetLatestHeight().GetRevisionHeight()
+	proofClient, _ := chainB.QueryUpgradeProof(upgradetypes.UpgradedClientKey(lastHeight), trusted)
+	proofCons, _ := chainB.QueryUpgradeProof(upgradetypes.UpgradedConsStateKey(lastHeight), trusted)
+	msg := func(c exported.ClientState) *clienttypes.MsgUpgradeClient {
+		m, err := clienttypes.NewMsgUpgradeClient(path.EndpointA.ClientID, c, cons, proofClient, proofCons, chainA.SenderAccount.GetAddress().String())
+		must(t, err)
+		return m
+	}
+	sendFailing(t, chainA, msg(upgraded))
+	low := *zeroed.(*ibctmtypes.ClientState)
+	low.LatestHeight = clienttypes.NewHeight(0, 1)
+	sendFailing(t, chainA, msg(&low))
+	_, err = chainA.SendMsgs(msg(zeroed))
+	must(t, err)
+	sendFailing(t, chainA, msg(zeroed))
+}
+
+// runTimeoutOnClose refunds a transfer with MsgTimeoutOnClose. B's
+// transfer module cannot close a channel, so the test sets B's channel
+// end CLOSED in B's store, as a counterparty chain that allows closing
+// would. A first sends the proofs swapped (the closed-channel proof
+// fails), then the timeout, then the timeout again (NOOP).
+func runTimeoutOnClose(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB *ibctesting.TestChain) {
+	path := transferPath(chainA, chainB)
+	coord.Setup(path)
+	res, err := chainA.SendMsgs(transfertypes.NewMsgTransfer(ibctesting.TransferPort, path.EndpointA.ChannelID,
+		sdk.NewInt64Coin(appconsts.BondDenom, 7_000), chainA.SenderAccount.GetAddress().String(),
+		chainB.SenderAccount.GetAddress().String(), clienttypes.NewHeight(1, 10_000), 0, ""))
+	must(t, err)
+	packet, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	keeper := chainB.App.(*ibcsimapp.SimApp).IBCKeeper.ChannelKeeper
+	ch, ok := keeper.GetChannel(chainB.GetContext(), path.EndpointB.ChannelConfig.PortID, path.EndpointB.ChannelID)
+	if !ok {
+		t.Fatal("no channel on B")
+	}
+	ch.State = channeltypes.CLOSED
+	keeper.SetChannel(chainB.GetContext(), path.EndpointB.ChannelConfig.PortID, path.EndpointB.ChannelID, ch)
+	coord.CommitBlock(chainB)
+	must(t, path.EndpointA.UpdateClient())
+	proofClose, proofHeight := chainB.QueryProof(host.ChannelKey(packet.GetDestPort(), packet.GetDestChannel()))
+	proofUnreceived, _ := chainB.QueryProof(host.PacketReceiptKey(packet.GetDestPort(), packet.GetDestChannel(), packet.GetSequence()))
+	signer := chainA.SenderAccount.GetAddress().String()
+	sendFailing(t, chainA, channeltypes.NewMsgTimeoutOnClose(packet, 1, proofClose, proofUnreceived, proofHeight, signer))
+	msg := channeltypes.NewMsgTimeoutOnClose(packet, 1, proofUnreceived, proofClose, proofHeight, signer)
+	_, err = chainA.SendMsgs(msg)
+	must(t, err)
+	_, err = chainA.SendMsgs(msg)
+	must(t, err)
+}
+
+// runPFMFee sets packet-forward-middleware's FeePercentage to 10% by a
+// passed parameter change, then forwards 1,005 utia from B through A to
+// C: A pays the fee, 100.5 rounded half to even (100 utia), from the
+// forward's receiver to the community pool, and forwards 905 utia.
+func runPFMFee(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB, chainC *ibctesting.TestChain,
+	pathAB, pathAC *ibctesting.Path, voucher string, timeout clienttypes.Height,
+) {
+	fee := paramproposal.NewParameterChangeProposal("pfm fee", "a community pool fee",
+		[]paramproposal.ParamChange{paramproposal.NewParamChange("packetfowardmiddleware", "FeePercentage", `"0.100000000000000000"`)})
+	submit, err := govv1beta1.NewMsgSubmitProposal(fee, sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, govMinDeposit)), chainA.SenderAccount.GetAddress())
+	must(t, err)
+	_, err = chainA.SendMsgs(submit)
+	must(t, err)
+	proposalID, err := chainA.App.(*recApp).GovKeeper.GetProposalID(chainA.GetContext())
+	must(t, err)
+	proposalID--
+	sender, senderKey := chainA.SenderAccount, chainA.SenderPrivKey
+	chainA.SenderAccount, chainA.SenderPrivKey = chainA.SenderAccounts[1].SenderAccount, chainA.SenderAccounts[1].SenderPrivKey
+	_, err = chainA.SendMsgs(govv1beta1.NewMsgVote(chainA.SenderAccount.GetAddress(), proposalID, govv1beta1.OptionYes))
+	must(t, err)
+	chainA.SenderAccount, chainA.SenderPrivKey = sender, senderKey
+	coord.IncrementTimeBy(govPeriod + time.Second)
+	coord.CommitBlock(chainA)
+	coord.CommitBlock(chainA)
+	if p, _ := chainA.App.(*recApp).GovKeeper.GetProposal(chainA.GetContext(), proposalID); p.Status != govv1.StatusPassed {
+		t.Fatalf("pfm fee proposal is %s", p.Status)
+	}
+	memo := fmt.Sprintf(`{"forward":{"receiver":"%s","port":"transfer","channel":"%s"}}`, chainC.SenderAccount.GetAddress(), pathAC.EndpointA.ChannelID)
+	must(t, pathAB.EndpointB.UpdateClient())
+	res, err := chainB.SendMsgs(transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointB.ChannelID,
+		sdk.NewInt64Coin(voucher, 1_005), chainB.SenderAccount.GetAddress().String(),
+		chainA.SenderAccount.GetAddress().String(), timeout, 0, memo))
+	must(t, err)
+	inbound, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAB.EndpointA.UpdateClient())
+	res, err = pathAB.EndpointA.RecvPacketWithResult(inbound)
+	must(t, err)
+	forwarded, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	var data transfertypes.FungibleTokenPacketData
+	must(t, transfertypes.ModuleCdc.UnmarshalJSON(forwarded.GetData(), &data))
+	if data.Amount != "905" {
+		t.Fatalf("forwarded %s", data.Amount)
+	}
+	must(t, pathAC.EndpointB.UpdateClient())
+	res, err = pathAC.EndpointB.RecvPacketWithResult(forwarded)
+	must(t, err)
+	ack, err := ibctesting.ParseAckFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAC.EndpointA.UpdateClient())
+	ackProof, ackProofHeight := chainC.QueryProof(host.PacketAcknowledgementKey(forwarded.GetDestPort(), forwarded.GetDestChannel(), forwarded.GetSequence()))
+	_, err = chainA.SendMsgs(channeltypes.NewMsgAcknowledgement(forwarded, ack, ackProof, ackProofHeight, chainA.SenderAccount.GetAddress().String()))
+	must(t, err)
 }

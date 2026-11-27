@@ -38,8 +38,9 @@ allow-wildcard-paths = true
 deny = []
 
 # Every crate comes from crates.io, from this repository (`vendor/`,
-# workspace paths), or from one of the two git repositories below, which
-# the optional DA bridge features pin by commit (`rev`). A dependency from
+# workspace paths), or from one of the two git repositories below, pinned
+# by commit (`rev`): the optional DA bridge features use both, and the
+# fibre-server crate always uses lumina's `rsema1d`. A dependency from
 # another registry or git URL fails the check instead of entering the
 # lockfile unnoticed.
 [sources]

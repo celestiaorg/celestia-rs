@@ -1,0 +1,46 @@
+{
+ "active_proposal:proposal_passed": {
+  "total": "3",
+  "heights": [
+   8349638,
+   8794914,
+   9140612
+  ]
+ },
+ "inactive_proposal:proposal_passed": {
+  "total": "0",
+  "heights": []
+ },
+ "active_proposal:proposal_rejected": {
+  "total": "0",
+  "heights": []
+ },
+ "inactive_proposal:proposal_rejected": {
+  "total": "0",
+  "heights": []
+ },
+ "active_proposal:proposal_failed": {
+  "total": "0",
+  "heights": []
+ },
+ "inactive_proposal:proposal_failed": {
+  "total": "0",
+  "heights": []
+ },
+ "active_proposal:proposal_dropped": {
+  "total": "0",
+  "heights": []
+ },
+ "inactive_proposal:proposal_dropped": {
+  "total": "0",
+  "heights": []
+ },
+ "active_proposal:expedited_proposal_rejected": {
+  "total": "0",
+  "heights": []
+ },
+ "inactive_proposal:expedited_proposal_rejected": {
+  "total": "0",
+  "heights": []
+ }
+}

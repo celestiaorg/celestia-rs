@@ -4,7 +4,8 @@
 // tell which store, and which key, differs from Go.
 //
 //	v1-oracle -genesis genesis.json -blocks blocks.jsonl.gz \
-//	  [-windows replay-windows.json] [-from 1] -heights 10 -out <dir> [-kv] [-keep-recent N]
+//	  [-windows replay-windows.json] [-from 1] -heights 10 -out <dir> [-kv] [-keep-recent N] \
+//	  [-db memdb|goleveldb] [-timing]
 //	v1-oracle -registry-out <dir>
 //
 // celestia-app v3.13.0 is the binary that the Go multiplexer runs for app
@@ -43,6 +44,12 @@
 // of blocks F..N (from the state at F-1). The blocks file must hold every
 // height from 1 to N+1.
 //
+// With -db goleveldb the replaying app stores its state on disk as
+// celestia-appd does (the default memdb keeps it in memory), and -timing
+// prints the mean time per block of BeginBlock, DeliverTx, EndBlock and
+// Commit every 100 blocks: a Go reference for celestia-rs replay timings.
+// Neither changes the outputs.
+//
 // Keys and values are hex; stores are sorted by name and keys by bytes.
 // store-roots.json records the SHA-256 of each uncompressed dump and of
 // tx-results.jsonl.
@@ -61,6 +68,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -297,10 +305,22 @@ func run() error {
 	withKV := flag.Bool("kv", false, "also write the KV dump at height 0 and the per-block KV diffs")
 	registryOut := flag.String("registry-out", "", "only write the Rust v1 registry and schema tables (registry.go) to this directory")
 	keepRecent := flag.Uint64("keep-recent", 0, "prune all but this many recent IAVL versions (0: keep every version); bounds memory on long runs")
+	dbBackend := flag.String("db", "memdb", "application database: memdb, or goleveldb in a temporary directory (the celestia-appd default; for timing)")
+	timing := flag.Bool("timing", false, "print the mean time per block of BeginBlock, DeliverTx, EndBlock and Commit every 100 blocks (stderr)")
 	synthetic := flag.Bool("synthetic", false, "build the synthetic app version 1 to 3 chain (synthetic.go) instead of reading -genesis and -blocks; writes its genesis.json and blocks.jsonl.gz to -out")
 	chain := flag.String("chain", "v1-v3", "with -synthetic: the synthetic chain, v1-v3 (synthetic.go) or v3-rich (rich.go)")
+	consensusMode := flag.Bool("consensus", false, "with -synthetic: build blocks as a validator would (txs, square size and data root from PrepareProposal; commits signed by the validators' consensus keys, at the next block's time)")
+	snapshotAt := flag.String("snapshot-at", "", "comma-separated heights: after the run, write a cosmos-sdk v0.46 state-sync snapshot (format 2) of each with the SDK's snapshot manager, as celestia-appd does, to -snapshot-dir")
+	snapshotDir := flag.String("snapshot-dir", "", "with -snapshot-at: the snapshot store directory (default <out>/snapshots); the chunks of height h are <dir>/<h>/2/<i>")
 	handoff := flag.String("handoff", "", "with -synthetic: keep the app home (goleveldb data/application.db and data/upgrade-info.json) in this new directory and write handoff.json there, for conformance/v4-oracle to continue the chain")
 	flag.Parse()
+	switch *dbBackend {
+	case "memdb", "goleveldb":
+		appDB = *dbBackend
+	default:
+		return fmt.Errorf("-db %q: want memdb or goleveldb", *dbBackend)
+	}
+	printTiming = *timing
 	if *registryOut != "" {
 		return writeRegistry(*registryOut)
 	}
@@ -322,17 +342,34 @@ func run() error {
 		if err != nil {
 			return err
 		}
+		syn.consensus = *consensusMode
 		cfg.heights = spec.heights
 		cfg.upgradeHeightV2 = spec.upgradeHeightV2
 		cfg.src = syn
 		cfg.chain = *chain
 		cfg.handoff = *handoff
+		if *handoff != "" && spec.noHandoff {
+			return fmt.Errorf("-handoff: chain %s does not schedule the v4 upgrade", *chain)
+		}
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			return err
 		}
 		cfg.genesisPath = filepath.Join(*out, "genesis.json")
 		if err := syn.genDoc.SaveAs(cfg.genesisPath); err != nil {
 			return err
+		}
+	}
+	if *snapshotAt != "" {
+		for _, f := range strings.Split(*snapshotAt, ",") {
+			h, err := strconv.ParseUint(strings.TrimSpace(f), 10, 64)
+			if err != nil || h == 0 {
+				return fmt.Errorf("-snapshot-at: bad height %q", f)
+			}
+			cfg.snapshotAt = append(cfg.snapshotAt, h)
+		}
+		cfg.snapshotDir = *snapshotDir
+		if cfg.snapshotDir == "" {
+			cfg.snapshotDir = filepath.Join(*out, "snapshots")
 		}
 	}
 	if *handoff != "" && cfg.src == nil {
@@ -361,6 +398,10 @@ type runConfig struct {
 	// directory and write handoff.json for conformance/v4-oracle; chain is
 	// the chain's -chain name.
 	handoff, chain string
+	// snapshotAt are the heights to snapshot after the run, into
+	// snapshotDir.
+	snapshotAt  []uint64
+	snapshotDir string
 }
 
 // blockSource builds a chain's blocks on the replaying app's state.
@@ -464,10 +505,15 @@ func execute(cfg runConfig) error {
 	} else if err := os.Mkdir(home, 0o755); err != nil {
 		return fmt.Errorf("-handoff: %w", err)
 	}
-	replayApp, replayDB, err := newAppDB(home, *keepRecent, upgradeHeightV2, cfg.handoff != "")
+	replayApp, replayDB, err := newAppDB(home, *keepRecent, upgradeHeightV2, cfg.handoff != "" || appDB == "goleveldb")
 	if err != nil {
 		return err
 	}
+	snaps, err := newSnapshotter(replayApp, cfg.snapshotDir, cfg.snapshotAt)
+	if err != nil {
+		return err
+	}
+	defer snaps.close()
 	res, err := initChain(replayApp, genDoc)
 	if err != nil {
 		return err
@@ -516,11 +562,13 @@ func execute(cfg runConfig) error {
 			return err
 		}
 
+		blockStart := time.Now()
 		begin := replayApp.BeginBlock(abci.RequestBeginBlock{
 			Hash:           blockHash,
 			Header:         *header,
 			LastCommitInfo: lastCommit,
 		})
+		blockTimes.begin += time.Since(blockStart)
 		var results []*abci.ResponseDeliverTx
 		txResults := [][3]int64{}
 		txData := []string{}
@@ -537,7 +585,10 @@ func execute(cfg runConfig) error {
 			if blobTx, isBlobTx := tmtypes.UnmarshalBlobTx(tx); isBlobTx {
 				tx = blobTx.Tx
 			}
+			deliverStart := time.Now()
 			r := replayApp.DeliverTx(abci.RequestDeliverTx{Tx: tx})
+			blockTimes.deliver += time.Since(deliverStart)
+			blockTimes.txs++
 			results = append(results, &r)
 			txResults = append(txResults, [3]int64{int64(r.Code), r.GasWanted, r.GasUsed})
 			txData = append(txData, hex.EncodeToString(r.Data))
@@ -549,13 +600,26 @@ func execute(cfg runConfig) error {
 				GasWanted: r.GasWanted,
 				GasUsed:   r.GasUsed,
 				Data:      hex.EncodeToString(r.Data),
-				Log:       r.Log,
+				Log:       stableLog(r.Log),
 				Info:      r.Info,
 				Events:    events(r.Events),
 			})
 		}
+		endStart := time.Now()
 		end := replayApp.EndBlock(abci.RequestEndBlock{Height: height})
+		commitStart := time.Now()
 		commit := replayApp.Commit()
+		blockTimes.end += commitStart.Sub(endStart)
+		blockTimes.commit += time.Since(commitStart)
+		blockTimes.blocks++
+		if printTiming && height%100 == 0 {
+			blockTimes.print(height)
+		}
+		// A node snapshots a height right after committing it, with the
+		// store set of that height.
+		if err := snaps.at(height); err != nil {
+			return err
+		}
 
 		got := upper(commit.Data)
 		if syn != nil {
@@ -631,6 +695,9 @@ func execute(cfg runConfig) error {
 		fmt.Fprintf(os.Stderr, "height %d: %s (%d txs, %d validator updates)\n", height, got, len(results), len(updates))
 	}
 
+	if printTiming && blockTimes.blocks%100 != 0 {
+		blockTimes.print(*heights)
+	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return err
 	}
@@ -689,6 +756,29 @@ func execute(cfg runConfig) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(*out, "store-roots.json"), append(encoded, '\n'), 0o644)
+}
+
+// appDB is the application database backend (-db).
+var appDB = "memdb"
+
+// printTiming reports block execution times (-timing).
+var printTiming bool
+
+// blockTimes sums the ABCI call times of the replayed blocks (-timing):
+// the work celestia-appd does per block, without this program's checks
+// and dumps.
+var blockTimes abciTimes
+
+type abciTimes struct {
+	begin, deliver, end, commit time.Duration
+	blocks, txs                 int64
+}
+
+func (t *abciTimes) print(height int64) {
+	ms := func(d time.Duration) float64 { return float64(d.Microseconds()) / 1e3 / float64(t.blocks) }
+	total := t.begin + t.deliver + t.end + t.commit
+	fmt.Fprintf(os.Stderr, "timing through height %d (%s): %.1f ms/block (BeginBlock %.1f, DeliverTx %.1f, EndBlock %.1f, Commit %.1f), %d txs\n",
+		height, appDB, ms(total), ms(t.begin), ms(t.deliver), ms(t.end), ms(t.commit), t.txs)
 }
 
 // newApp builds the app over a memory database.
@@ -1147,3 +1237,33 @@ func sha256Hex(b []byte) string {
 }
 
 func upper(b []byte) string { return strings.ToUpper(hex.EncodeToString(b)) }
+
+// stableLog drops what in a log depends on Go's runtime or the machine
+// (the log is not part of consensus):
+//
+//   - from the log of a recovered panic (code 111222, "recovered: <value>
+//     ...: panic"), celestia's HandlePanicDecorator dump of each message
+//     ("\ncaused by transaction:\n%T{%s}") and baseapp's goroutine stack
+//     ("\nstack:\n..."), whose addresses change from run to run; the log
+//     keeps "recovered: <value>: panic";
+//   - the stack frames ("<func>\n\t<file>:<line>") that a `%+v` of an
+//     error with a recorded stack prints (gov's "failed to run legacy
+//     handler" of ibc client proposals), which name the build's paths.
+func stableLog(log string) string {
+	cut := -1
+	for _, marker := range []string{"\ncaused by transaction:\n", "\nstack:\n"} {
+		if i := strings.Index(log, marker); i >= 0 && (cut < 0 || i < cut) {
+			cut = i
+		}
+	}
+	if cut >= 0 {
+		suffix := ""
+		if strings.HasSuffix(log, ": panic") {
+			suffix = ": panic"
+		}
+		log = log[:cut] + suffix
+	}
+	return stackFrame.ReplaceAllString(log, "")
+}
+
+var stackFrame = regexp.MustCompile(`(?m)^[^\t\n][^\n]*\n\t[^\n]+\.go:\d+\n`)

@@ -144,8 +144,20 @@ check "dry run halts after H"      grep -q 'halt-height = 2371490' "$t/dry/plan.
 check "dry run halts after H 2"    grep -q 'halt-height = 6748822' "$t/dry/plan.app.toml.6748821"
 check "dry run window verify"      grep -q 'verify-replay-checkpoint.py .*/6748821/3$' "$p"
 check "dry run header verify"      grep -q 'verify-replay-checkpoint.py .*/2371489/2 --app-hash' "$p"
-check "dry run egress cap"         grep -q 'tbf rate 4mbit' "$p"
+check "dry run egress cap"         grep -q 'htb rate 4mbit ceil 4mbit' "$p"
+# Cloud Storage uploads and the metadata server bypass the cap.
+check "dry run gcs uncapped"       grep -q 'u32 match ip dst 199.36.153.8/30 flowid 1:10' "$p"
+check "dry run metadata uncapped"  grep -q 'u32 match ip dst 169.254.169.254/32 flowid 1:10' "$p"
+check "dry run gcs via private vip" grep -q '199.36.153.8 storage.googleapis.com' "$t/dry/hosts"
 check "dry run bbr"                grep -q 'tcp_congestion_control=bbr' "$p"
+# Unattended upgrades once restarted the driver through needrestart; the
+# restarted driver then failed on the apt lock and stopped the node.
+check "dry run no unattended upgrades" grep -q 'systemctl disable --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer' "$p"
+check "dry run uploads each checkpoint" grep -q 'vmx-gcs put .*/ckpt/6748821/3/0 checkpoints/mainnet-1/6748821/3/0$' "$p"
+check "dry run raw results to bucket" grep -q 'vmx-gcs put .*/raw.tar checkpoints/mainnet-1/raw/[0-9TZ]*.tar$' "$p"
+check "dry run raw not in attributes" test ! -e "$t/dry/attrs/raw-0"
+check "dry run uploads metadata"  grep -q 'vmx-gcs put .*/ckpt/2371489/checkpoint.json checkpoints/mainnet-1/2371489/checkpoint.json$' "$p"
+check "dry run apt waits for the lock" grep -q 'apt-get -o DPkg::Lock::Timeout=900 update' "$p"
 check "dry run checkpoint copied"  test -s "$t/dry/ckpt/2371489/2/0"
 check "dry run frees the node copy" grep -q 'passthrough v3 snapshots delete 2371489 2 --home' "$p"
 check "dry run metadata"           jq -e '.height == 2371489 and .format == 2 and .app_version == "1" and .embedded_tag == "v3.13.0"' "$t/dry/ckpt/2371489/checkpoint.json"
@@ -154,6 +166,7 @@ check "dry run summary"            jq -e '.outcome == "dry_run" and (.checkpoint
 check "dry run publishes each"     test -s "$t/dry/attrs/ckpt-6748821"
 check "dry run never formats used disks" bash -c "! grep -q mkfs '$p'"
 check "dry run discards abci responses" grep -q 'discard_abci_responses = true' "$t/dry/data/home/config/config.toml"
+check "dry run no iavl fast nodes"  grep -q '^iavl-disable-fastnode = true' "$t/dry/data/home/config/app.toml"
 check "dry run archive peers"      grep -q "persistent_peers = \".*${CKPT_ARCHIVE_PEERS%%,*}" "$t/dry/data/home/config/config.toml"
 # A rerun with the same disks resumes: done checkpoints are not exported again.
 rc=0; dry "$t/dry" 2371489,6748821,8662012 >/dev/null 2>&1 || rc=$?

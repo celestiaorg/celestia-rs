@@ -15,7 +15,7 @@ use ics23::{ExistenceProof, HashOp, InnerOp, LeafOp, LengthOp};
 use kvdb::{KvBackend, WriteBatch};
 use prost::Message;
 
-pub use iavl::{Hash, Version};
+pub use iavl::{Hash, Version, node_lookups};
 pub use kvdb;
 
 /// IAVL-backed key/value store mounted in a multi-store.
@@ -241,6 +241,11 @@ pub struct StoreOptions {
     /// Decoded IAVL nodes cached across all stores (roughly 200–300 B of
     /// memory each).
     pub node_cache_size: usize,
+    /// Run the storage part of pruning (orphan scans and deletes) on a
+    /// worker thread instead of inside [`Store::commit`] (see
+    /// [`Store::wait_for_pruning`]). The pruned versions leave the trees at
+    /// commit either way.
+    pub background_pruning: bool,
 }
 
 impl Default for StoreOptions {
@@ -248,6 +253,7 @@ impl Default for StoreOptions {
         Self {
             pruning: PruningOptions::validator(),
             node_cache_size: 1_000_000,
+            background_pruning: false,
         }
     }
 }
@@ -297,9 +303,32 @@ pub struct Store {
     commit_timestamp: Option<prost_types::Timestamp>,
     /// Versions pruning must keep (in-flight snapshots), with pin counts.
     pins: Pins,
+    /// Whether commits prune storage on a worker thread.
+    background_pruning: bool,
+    /// The running background prune, if any.
+    pruner: Pruner,
 }
 
 type Pins = Arc<Mutex<BTreeMap<Version, usize>>>;
+type Pruner = Arc<PrunerSlot>;
+
+/// The running background prune; finished (its result dropped) when the
+/// last store clone holding it goes away, so it never outlives the store.
+#[derive(Debug, Default)]
+struct PrunerSlot(Mutex<Option<std::thread::JoinHandle<Result<()>>>>);
+
+impl Drop for PrunerSlot {
+    fn drop(&mut self) {
+        if let Some(h) = self
+            .0
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+        {
+            let _ = h.join();
+        }
+    }
+}
 
 /// Keeps a committed version from being pruned while it is alive (see
 /// [`Store::pin_version`]).
@@ -347,6 +376,8 @@ impl Store {
             pending_metadata: Vec::new(),
             commit_timestamp: None,
             pins: Pins::default(),
+            background_pruning: false,
+            pruner: Pruner::default(),
         }
     }
 
@@ -371,6 +402,7 @@ impl Store {
             db: Some(db),
             cache: NodeCache::new(options.node_cache_size),
             pruning: options.pruning,
+            background_pruning: options.background_pruning,
             ..Self::new()
         }
     }
@@ -705,7 +737,11 @@ impl Store {
         self.version = next_version;
         self.last_commit_info = Some(commit_info);
         if self.pruning.due(next_version) {
-            self.prune()?;
+            if self.background_pruning && self.db.is_some() {
+                self.prune_in_background()?;
+            } else {
+                self.prune()?;
+            }
         }
         Ok(commit_id)
     }
@@ -733,22 +769,14 @@ impl Store {
     /// backend batch. Pinned versions ([`Self::pin_version`]) are kept.
     /// Returns the deleted versions.
     pub fn prune(&mut self) -> Result<Vec<Version>> {
-        let latest = self.version;
-        let pruning = self.pruning;
-        let pinned: BTreeSet<Version> = self
-            .pins
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .keys()
-            .copied()
-            .collect();
+        self.wait_for_pruning()?;
+        let (plans, deleted) = self.plan_prune();
         let mut batch = WriteBatch::new();
-        let mut deleted = BTreeSet::new();
-        for store in self.stores.values_mut() {
-            deleted.extend(store.tree_mut().prune(
-                |v| pruning.retains(v, latest) || pinned.contains(&v),
-                &mut batch,
-            )?);
+        for (name, plan) in &plans {
+            plan.write_to(&mut batch)?;
+            if let Some(store) = self.stores.get_mut(name) {
+                store.tree_mut().forget_versions(plan);
+            }
         }
         if let Some(db) = &self.db {
             for version in &deleted {
@@ -761,10 +789,90 @@ impl Store {
         Ok(deleted.into_iter().collect())
     }
 
+    /// The prune plan of every store and the union of their deleted
+    /// versions.
+    fn plan_prune(&self) -> (Vec<(String, iavl::PrunePlan)>, BTreeSet<Version>) {
+        let latest = self.version;
+        let pruning = self.pruning;
+        let pinned: BTreeSet<Version> = self
+            .pins
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .keys()
+            .copied()
+            .collect();
+        let mut deleted = BTreeSet::new();
+        let plans: Vec<(String, iavl::PrunePlan)> = self
+            .stores
+            .iter()
+            .map(|(name, store)| {
+                let plan = store
+                    .tree()
+                    .plan_prune(|v| pruning.retains(v, latest) || pinned.contains(&v));
+                deleted.extend(plan.versions());
+                (name.clone(), plan)
+            })
+            .collect();
+        (plans, deleted)
+    }
+
+    /// [`Self::prune`] with the storage work on a worker thread: the
+    /// versions leave the trees now; their roots, orphan records, nodes and
+    /// commit infos are deleted by the worker in one batch. A previous
+    /// background prune is finished first (its error is returned here).
+    fn prune_in_background(&mut self) -> Result<()> {
+        self.wait_for_pruning()?;
+        let (plans, deleted) = self.plan_prune();
+        if deleted.is_empty() {
+            return Ok(());
+        }
+        for (name, plan) in &plans {
+            if let Some(store) = self.stores.get_mut(name) {
+                store.tree_mut().forget_versions(plan);
+            }
+        }
+        let Some(db) = self.db.clone() else {
+            return Ok(());
+        };
+        let handle = std::thread::Builder::new()
+            .name("iavl-prune".into())
+            .spawn(move || {
+                let mut batch = WriteBatch::new();
+                for (_, plan) in &plans {
+                    plan.write_to(&mut batch)?;
+                }
+                for version in &deleted {
+                    batch.delete(commit_info_key(*version));
+                }
+                if batch.is_empty() {
+                    return Ok(());
+                }
+                db.write(batch).map_err(db_err)
+            })
+            .map_err(|e| Error::Db(format!("start the pruning thread: {e}")))?;
+        *self.pruner.0.lock().unwrap_or_else(PoisonError::into_inner) = Some(handle);
+        Ok(())
+    }
+
+    /// Waits for a background prune to finish and returns its result.
+    pub fn wait_for_pruning(&self) -> Result<()> {
+        let handle = self
+            .pruner
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        match handle {
+            None => Ok(()),
+            Some(h) => h.join().unwrap_or_else(|p| std::panic::resume_unwind(p)),
+        }
+    }
+
     /// Go `rootmulti.Store.RollbackToVersion`: deletes every version above
     /// `target` in every store and makes `target` the latest commit, in one
     /// backend batch. Uncommitted changes are discarded.
     pub fn rollback_to_version(&mut self, target: Version) -> Result<CommitId> {
+        self.wait_for_pruning()?;
         if target <= 0 {
             return Err(Error::InvalidVersion { version: target });
         }
@@ -848,6 +956,8 @@ impl Store {
             pending_metadata: Vec::new(),
             commit_timestamp: None,
             pins: Pins::default(),
+            background_pruning: false,
+            pruner: Pruner::default(),
         })
     }
 
@@ -1707,6 +1817,7 @@ mod tests {
             StoreOptions {
                 pruning: PruningOptions::latest_only(),
                 node_cache_size: 16,
+                ..StoreOptions::default()
             },
         );
         store.mount_store("acc", StoreKind::Iavl)?;
@@ -1734,6 +1845,211 @@ mod tests {
         drop(pin);
         commit(&mut store, 8)?;
         assert_eq!(store.available_versions(), vec![8]);
+        Ok(())
+    }
+
+    /// A full database dump.
+    type Dump = Vec<(Vec<u8>, Vec<u8>)>;
+
+    /// Background pruning leaves the database byte for byte as synchronous
+    /// pruning does, and the trees drop the pruned versions at commit.
+    #[test]
+    fn background_pruning_writes_what_synchronous_pruning_writes() -> Result<()> {
+        let run = |background: bool| -> Result<(Vec<Version>, Dump)> {
+            let db: Arc<dyn KvBackend> = Arc::new(kvdb::MemBackend::new());
+            let mut store = Store::open(
+                Arc::clone(&db),
+                StoreOptions {
+                    pruning: PruningOptions {
+                        keep_recent: 3,
+                        keep_every: 0,
+                        interval: 4,
+                    },
+                    node_cache_size: 64,
+                    background_pruning: background,
+                },
+            );
+            store.mount_store("acc", StoreKind::Iavl)?;
+            store.mount_store("bank", StoreKind::Iavl)?;
+            store.load_latest_version()?;
+            for i in 0u32..60 {
+                let k = (i * 7 % 23).to_be_bytes().to_vec();
+                store
+                    .get_store_mut("acc")?
+                    .set(k.clone(), i.to_be_bytes().to_vec())?;
+                if i.is_multiple_of(3) {
+                    store.get_store_mut("bank")?.set(k, vec![1; 40])?;
+                }
+                store.commit()?;
+            }
+            let versions = store.available_versions();
+            store.wait_for_pruning()?;
+            let dump = db
+                .range(None, None, false)
+                .map_err(db_err)?
+                .collect::<core::result::Result<Vec<_>, _>>()
+                .map_err(db_err)?;
+            Ok((versions, dump))
+        };
+        let (sync_versions, sync_db) = run(false)?;
+        let (bg_versions, bg_db) = run(true)?;
+        assert_eq!(bg_versions, sync_versions);
+        assert!(sync_versions.len() < 10 && sync_versions.last() == Some(&60));
+        assert_eq!(bg_db, sync_db);
+        Ok(())
+    }
+    /// Disk of a process that dies during its `crash_at`-th background
+    /// prune: that prune's batch and every later write are lost.
+    #[derive(Debug)]
+    struct CrashingBackend {
+        disk: kvdb::MemBackend,
+        crash_at: usize,
+        prunes: std::sync::atomic::AtomicUsize,
+        crashed: std::sync::atomic::AtomicBool,
+    }
+
+    impl KvBackend for CrashingBackend {
+        fn get(&self, key: &[u8]) -> kvdb::Result<Option<Vec<u8>>> {
+            self.disk.get(key)
+        }
+        fn range(
+            &self,
+            start: Option<&[u8]>,
+            end: Option<&[u8]>,
+            reverse: bool,
+        ) -> kvdb::Result<kvdb::KvIter> {
+            self.disk.range(start, end, reverse)
+        }
+        fn write(&self, batch: WriteBatch) -> kvdb::Result<()> {
+            use std::sync::atomic::Ordering::SeqCst;
+            if std::thread::current().name() == Some("iavl-prune")
+                && self.prunes.fetch_add(1, SeqCst) + 1 == self.crash_at
+            {
+                self.crashed.store(true, SeqCst);
+            }
+            if self.crashed.load(SeqCst) {
+                return Ok(());
+            }
+            self.disk.write(batch)
+        }
+        fn sync(&self) -> kvdb::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// A crash before a background prune's batch lands leaves the pruned
+    /// versions on disk: reopening gives the latest commit and a superset of
+    /// what synchronous pruning keeps, and the next prune converges to the
+    /// synchronous database.
+    #[test]
+    fn crash_during_background_pruning_reopens_to_a_superset() -> Result<()> {
+        let pruning = PruningOptions {
+            keep_recent: 3,
+            keep_every: 0,
+            interval: 4,
+        };
+        let options = |background_pruning| StoreOptions {
+            pruning,
+            node_cache_size: 64,
+            background_pruning,
+        };
+        let open = |db: Arc<dyn KvBackend>, background| -> Result<Store> {
+            let mut store = Store::open(db, options(background));
+            store.mount_store("acc", StoreKind::Iavl)?;
+            store.mount_store("bank", StoreKind::Iavl)?;
+            store.load_latest_version()?;
+            Ok(store)
+        };
+        let block = |store: &mut Store, i: u32| -> Result<CommitId> {
+            let k = (i * 7 % 23).to_be_bytes().to_vec();
+            store
+                .get_store_mut("acc")?
+                .set(k.clone(), i.to_be_bytes().to_vec())?;
+            if i.is_multiple_of(3) {
+                store.get_store_mut("bank")?.set(k, vec![1; 40])?;
+            }
+            store.commit()
+        };
+        let dump = |db: &dyn KvBackend| -> Result<Dump> {
+            db.range(None, None, false)
+                .map_err(db_err)?
+                .collect::<core::result::Result<Vec<_>, _>>()
+                .map_err(db_err)
+        };
+        for crash_at in 1..=4 {
+            let sync_db: Arc<dyn KvBackend> = Arc::new(kvdb::MemBackend::new());
+            let mut sync = open(Arc::clone(&sync_db), false)?;
+            let disk = kvdb::MemBackend::new();
+            let crashing = Arc::new(CrashingBackend {
+                disk: disk.clone(),
+                crash_at,
+                prunes: 0.into(),
+                crashed: false.into(),
+            });
+            let mut bg = open(crashing.clone(), true)?;
+            let mut i = 0;
+            while !crashing.crashed.load(std::sync::atomic::Ordering::SeqCst) {
+                assert_eq!(block(&mut bg, i)?, block(&mut sync, i)?, "commit {i}");
+                bg.wait_for_pruning()?;
+                i += 1;
+            }
+            drop(bg);
+            let mut reopened = open(Arc::new(disk.clone()), true)?;
+            assert_eq!(reopened.last_commit_id()?, sync.last_commit_id()?);
+            let kept = sync.available_versions();
+            let on_disk = reopened.available_versions();
+            assert!(
+                kept.iter().all(|v| on_disk.contains(v)) && on_disk.len() > kept.len(),
+                "crash {crash_at}: {on_disk:?} is not a strict superset of {kept:?}"
+            );
+            // Commit through the next two prunes on both.
+            for j in i..i + 2 * 4 {
+                assert_eq!(block(&mut reopened, j)?, block(&mut sync, j)?, "commit {j}");
+            }
+            reopened.wait_for_pruning()?;
+            assert_eq!(reopened.available_versions(), sync.available_versions());
+            assert_eq!(dump(&disk)?, dump(sync_db.as_ref())?, "crash {crash_at}");
+        }
+        Ok(())
+    }
+
+    /// A rollback issued while a background prune runs waits for it, and
+    /// leaves what a synchronous store leaves.
+    #[test]
+    fn rollback_waits_for_background_pruning() -> Result<()> {
+        let run = |background_pruning: bool| -> Result<_> {
+            let db: Arc<dyn KvBackend> = Arc::new(kvdb::MemBackend::new());
+            let mut store = Store::open(
+                Arc::clone(&db),
+                StoreOptions {
+                    pruning: PruningOptions {
+                        keep_recent: 3,
+                        keep_every: 0,
+                        interval: 4,
+                    },
+                    node_cache_size: 64,
+                    background_pruning,
+                },
+            );
+            store.mount_store("acc", StoreKind::Iavl)?;
+            store.load_latest_version()?;
+            for i in 0u32..20 {
+                store
+                    .get_store_mut("acc")?
+                    .set(i.to_be_bytes().to_vec(), vec![1; 40])?;
+                store.commit()?;
+            }
+            // Version 20 started a prune; roll back over it at once.
+            let id = store.rollback_to_version(18)?;
+            let versions = store.available_versions();
+            let dump = db
+                .range(None, None, false)
+                .map_err(db_err)?
+                .collect::<core::result::Result<Vec<_>, _>>()
+                .map_err(db_err)?;
+            Ok((id, versions, dump))
+        };
+        assert_eq!(run(true)?, run(false)?);
         Ok(())
     }
 }

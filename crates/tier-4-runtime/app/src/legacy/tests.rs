@@ -2240,10 +2240,8 @@ fn not_ported_in_genesis_and_blockers_is_not_lost() {
 /// The v1 runTx decodes with the v1 registry: a message outside it (a
 /// later release's bank `MsgUpdateParams`) fails the transaction as Go
 /// does (a decode error, no gas wanted, no record); blobstream's
-/// `MsgRegisterEVMAddress` decodes and fails its `ValidateBasic`; a
-/// registered message whose `ValidateBasic` is not ported (crisis
-/// `MsgVerifyInvariant`)
-/// aborts the block before any ante handler state change.
+/// `MsgRegisterEVMAddress` decodes and fails its `ValidateBasic`, and so
+/// does crisis `MsgVerifyInvariant` without a sender.
 #[test]
 fn v1_run_tx_decodes_with_the_v1_registry() {
     let run = |msg: celestia_proto::Any| {
@@ -2281,12 +2279,11 @@ fn v1_run_tx_decodes_with_the_v1_registry() {
         &celestia_proto::cosmos::crisis::v1beta1::MsgVerifyInvariant::default(),
     );
     let (out, record) = run(crisis);
-    assert!(out.result.is_err());
-    let what = record.expect("not recorded");
-    assert!(
-        what.contains("ValidateBasic of /cosmos.crisis.v1beta1.MsgVerifyInvariant"),
-        "{what}"
-    );
+    let e = out.result.expect_err("an empty sender");
+    assert_eq!(e.codespace, "sdk", "{}", e.log);
+    assert_eq!(e.code, 7, "{}", e.log);
+    assert!(e.log.starts_with("invalid sender address: "), "{}", e.log);
+    assert!(record.is_none());
 }
 
 /// Runs a v1 transaction through `runTx`: its outcome and the not-ported
@@ -3364,6 +3361,7 @@ fn v046_exec_dispatches_a_nested_grant() {
     let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = v1_store();
     let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
     let (owner, agent, voter) = ([1u8; 20], [2u8; 20], [3u8; 20]);
     let grant = |granter: &[u8], grantee: &[u8], msg: &str| MsgGrant {
         granter: x_auth::bech32(granter).unwrap(),
@@ -3400,6 +3398,7 @@ fn v046_exec_dispatches_gov_messages() {
     let _v046 = sdk::version::SdkV046Scope::enter(1);
     let mut ms = v1_store();
     let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+    ctx.consensus_params.version = Some(VersionParams { app: 1 });
     let me = x_auth::bech32(&[4u8; 20]).unwrap();
     let nested = [
         celestia_proto::Any::pack(&v1beta1::MsgVoteWeighted {

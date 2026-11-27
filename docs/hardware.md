@@ -12,8 +12,9 @@ are not established yet. Release binaries run on Apple silicon macOS
 | Memory | 16 GB |
 | Disk | 500 GB NVMe SSD |
 
-celestia-rs has no Fibre storage server ([ADR 0007](adr/0007-app-v10-5.md)).
-These targets do not cover Fibre storage.
+These targets do not cover Fibre storage. A validator that turns on the
+opt-in [Fibre server](operator-guide.md#fibre-server) must provision storage
+for Fibre shards separately.
 
 ## Budgets
 

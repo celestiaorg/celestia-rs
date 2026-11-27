@@ -32,6 +32,11 @@ macro_rules! routes {
             {
                 return false;
             }
+            // celestia-app v4.1.0 to v6.4.10 register no x/forwarding or
+            // x/zkism msg service.
+            if txdecode::absent_from_release(type_url) {
+                return false;
+            }
             $( if type_url == <$ty>::type_url() { return true; } )*
             $( if type_url == <$wty>::type_url() { return true; } )*
             crate::hyperlane::has_handler(type_url) || crate::ibc::has_handler(type_url)
@@ -500,5 +505,40 @@ mod tests {
         .unwrap_err();
         assert_eq!(e.log, "owner address cannot be empty: invalid address");
         assert!(!has_handler(&ctl::MsgRegisterInterchainAccount::type_url()));
+    }
+
+    /// celestia-app v4.1.0 routes no x/forwarding or x/zkism message;
+    /// app version 9 routes both.
+    #[test]
+    fn no_forwarding_or_zkism_routes_before_v7() {
+        let prev = sdk::version::app_version();
+        for (version, routed) in [(4, false), (9, true), (10, true)] {
+            sdk::version::set_app_version(version);
+            for url in [
+                "/celestia.forwarding.v1.MsgForward",
+                "/celestia.zkism.v1.MsgSubmitMessages",
+            ] {
+                assert_eq!(has_handler(url), routed, "v{version} {url}");
+            }
+        }
+        sdk::version::set_app_version(prev);
+    }
+
+    /// celestia-app v4.1.0 and v5.0.12 never add the ICA module to the
+    /// module manager, so the ICA host msg service is absent; v6.4.x adds
+    /// it.
+    #[test]
+    fn no_ica_host_msg_routes_before_v6() {
+        let prev = sdk::version::app_version();
+        for (version, routed) in [(4, false), (5, false), (6, true), (9, true), (10, true)] {
+            sdk::version::set_app_version(version);
+            for url in [
+                "/ibc.applications.interchain_accounts.host.v1.MsgUpdateParams",
+                "/ibc.applications.interchain_accounts.host.v1.MsgModuleQuerySafe",
+            ] {
+                assert_eq!(has_handler(url), routed, "v{version} {url}");
+            }
+        }
+        sdk::version::set_app_version(prev);
     }
 }

@@ -5,7 +5,7 @@
 //!
 //! A [`Tree`] is either purely in memory ([`Tree::new`]) or backed by a
 //! [`NodeDb`] ([`Tree::open`]): nodes persisted under their IAVL v1 node key
-//! `(version, nonce)`, loaded lazily through a bounded LRU [`NodeCache`].
+//! `(version, nonce)`, loaded lazily through a bounded CLOCK [`NodeCache`].
 //! Between commits only the dirty (modified) nodes of the working tree live
 //! in memory. Both modes share the hashing code, so root hashes are
 //! identical (and match Go IAVL v1).
@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+mod clock;
 pub mod error;
 mod export;
 mod mutate;
@@ -29,7 +30,7 @@ pub use error::{Error, Result};
 pub use export::{ExportNode, Exporter, Importer};
 pub use kvdb;
 pub use node::NodeKey;
-pub use nodedb::{CacheStats, NodeCache, NodeDb};
+pub use nodedb::{CacheStats, NodeCache, NodeDb, node_lookups};
 
 use kvdb::WriteBatch;
 use mutate::{Mutator, load};
@@ -361,6 +362,18 @@ impl Tree {
         keep: impl Fn(Version) -> bool,
         batch: &mut WriteBatch,
     ) -> Result<Vec<Version>> {
+        let plan = self.plan_prune(keep);
+        plan.write_to(batch)?;
+        self.forget_versions(&plan);
+        Ok(plan.versions())
+    }
+
+    /// The versions [`Self::prune`] would delete and what it needs to queue
+    /// their storage deletions, without changing the tree: run
+    /// [`PrunePlan::write_to`] (on any thread; it reads only the orphan
+    /// records of the deleted versions) and [`Self::forget_versions`].
+    #[must_use]
+    pub fn plan_prune(&self, keep: impl Fn(Version) -> bool) -> PrunePlan {
         let latest = self.version;
         let delete: BTreeSet<Version> = self
             .versions
@@ -368,31 +381,29 @@ impl Tree {
             .copied()
             .filter(|v| *v != latest && !keep(*v))
             .collect();
-        if delete.is_empty() {
-            return Ok(Vec::new());
+        let retained: BTreeSet<Version> = self
+            .versions
+            .keys()
+            .copied()
+            .filter(|v| !delete.contains(v))
+            .collect();
+        PrunePlan {
+            ndb: if delete.is_empty() {
+                None
+            } else {
+                self.ndb.clone()
+            },
+            delete,
+            retained,
         }
-        if let Some(ndb) = &self.ndb {
-            let retained: BTreeSet<Version> = self
-                .versions
-                .keys()
-                .copied()
-                .filter(|v| !delete.contains(v))
-                .collect();
-            for &d in &delete {
-                batch.delete(ndb.root_key(d));
-                for nk in ndb.orphans(d)? {
-                    batch.delete(ndb.orphan_key(d, nk));
-                    match retained.range(nk.version..d).next_back() {
-                        Some(&t) => batch.put(ndb.orphan_key(t, nk), Vec::new()),
-                        None => ndb.delete_node(batch, nk),
-                    }
-                }
-            }
-        }
-        for d in &delete {
+    }
+
+    /// Drops the versions of `plan` from the tree (they can no longer be
+    /// loaded); their storage goes with [`PrunePlan::write_to`].
+    pub fn forget_versions(&mut self, plan: &PrunePlan) {
+        for d in &plan.delete {
             self.versions.remove(d);
         }
-        Ok(delete.into_iter().collect())
     }
 
     /// Deletes every committed version above `target` and makes `target`
@@ -935,6 +946,44 @@ pub struct CommitInfo {
     pub root_hash: Hash,
     /// Number of entries in the committed tree.
     pub size: usize,
+}
+
+/// The storage deletions of a prune ([`Tree::plan_prune`]): owns what it
+/// reads, so it can run apart from the tree.
+#[derive(Debug, Clone)]
+pub struct PrunePlan {
+    ndb: Option<Arc<NodeDb>>,
+    delete: BTreeSet<Version>,
+    retained: BTreeSet<Version>,
+}
+
+impl PrunePlan {
+    /// The versions deleted, ascending.
+    #[must_use]
+    pub fn versions(&self) -> Vec<Version> {
+        self.delete.iter().copied().collect()
+    }
+
+    /// Queues the deletions into `batch`: each deleted version's root and
+    /// orphan records; a node orphaned after a deleted version moves to the
+    /// newest older retained version still containing it, or is deleted
+    /// when there is none (retained versions keep their exact hashes).
+    pub fn write_to(&self, batch: &mut WriteBatch) -> Result<()> {
+        let Some(ndb) = &self.ndb else {
+            return Ok(());
+        };
+        for &d in &self.delete {
+            batch.delete(ndb.root_key(d));
+            for nk in ndb.orphans(d)? {
+                batch.delete(ndb.orphan_key(d, nk));
+                match self.retained.range(nk.version..d).next_back() {
+                    Some(&t) => batch.put(ndb.orphan_key(t, nk), Vec::new()),
+                    None => ndb.delete_node(batch, nk),
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Owned key/value iterator entry.
@@ -1848,6 +1897,38 @@ mod tests {
             tree.get_immutable(3),
             Err(Error::VersionNotFound { version: 3 })
         ));
+    }
+
+    #[test]
+    fn cold_reads_are_counted_as_disk_reads() {
+        let ndb = NodeDb::in_memory(100);
+        let mut tree = Tree::open(Arc::clone(&ndb)).unwrap();
+        for i in 0u32..200 {
+            tree.set(i.to_be_bytes().to_vec(), vec![7; 10]).unwrap();
+        }
+        tree.save_version().unwrap();
+        let cache = super::NodeCache::new(1_000);
+        let reopened = Tree::open(NodeDb::new(
+            Arc::clone(ndb.backend()),
+            Vec::new(),
+            Arc::clone(&cache),
+        ))
+        .unwrap();
+        let before = cache.stats();
+        assert_eq!(
+            reopened.get(&77u32.to_be_bytes()).unwrap(),
+            Some(vec![7; 10])
+        );
+        let cold = cache.stats();
+        assert!(cold.disk_reads > before.disk_reads, "{cold:?}");
+        assert!(cold.disk_bytes > before.disk_bytes, "{cold:?}");
+        assert!(cold.ref_reads <= cold.disk_reads, "{cold:?}");
+        reopened.get(&77u32.to_be_bytes()).unwrap();
+        assert_eq!(
+            cache.stats().disk_reads,
+            cold.disk_reads,
+            "a warm read stays in memory"
+        );
     }
 
     #[test]

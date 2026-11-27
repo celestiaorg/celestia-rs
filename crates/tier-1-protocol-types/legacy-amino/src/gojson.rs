@@ -309,7 +309,7 @@ impl Scan<'_> {
 }
 
 /// Go `checkValid`: the scanner error for invalid JSON.
-pub(crate) fn check_valid(s: &[u8]) -> Result<(), String> {
+pub fn check_valid(s: &[u8]) -> Result<(), String> {
     let mut sc = Scan { s, i: 0 };
     sc.value()?;
     sc.end_value(Ctx::Top).map(|_| ())
@@ -330,14 +330,16 @@ fn skip(s: &[u8], mut i: usize) -> usize {
 }
 
 /// Trims whitespace around a (valid) value.
-pub(crate) fn trim(s: &[u8]) -> &[u8] {
+#[must_use]
+pub fn trim(s: &[u8]) -> &[u8] {
     let a = skip(s, 0);
     let b = value_end(s, a);
     &s[a..b]
 }
 
 /// The JSON kind Go names in `UnmarshalTypeError` (`None` for null).
-pub(crate) fn kind_name(raw: &[u8]) -> Option<&'static str> {
+#[must_use]
+pub fn kind_name(raw: &[u8]) -> Option<&'static str> {
     match raw.first() {
         Some(b'{') => Some("object"),
         Some(b'[') => Some("array"),
@@ -348,12 +350,15 @@ pub(crate) fn kind_name(raw: &[u8]) -> Option<&'static str> {
     }
 }
 
-pub(crate) fn type_error(kind: &str, go: &str) -> String {
+/// Go's `UnmarshalTypeError` text.
+#[must_use]
+pub fn type_error(kind: &str, go: &str) -> String {
     format!("json: cannot unmarshal {kind} into Go value of type {go}")
 }
 
 /// Members of a (valid, trimmed) object: decoded key and raw value.
-pub(crate) fn object_entries(raw: &[u8]) -> Vec<(Vec<u8>, &[u8])> {
+#[must_use]
+pub fn object_entries(raw: &[u8]) -> Vec<(Vec<u8>, &[u8])> {
     let mut out = Vec::new();
     let mut i = skip(raw, 1);
     if raw.get(i) == Some(&b'}') {
@@ -375,7 +380,8 @@ pub(crate) fn object_entries(raw: &[u8]) -> Vec<(Vec<u8>, &[u8])> {
 }
 
 /// Elements of a (valid, trimmed) array.
-pub(crate) fn array_items(raw: &[u8]) -> Vec<&[u8]> {
+#[must_use]
+pub fn array_items(raw: &[u8]) -> Vec<&[u8]> {
     let mut out = Vec::new();
     let mut i = skip(raw, 1);
     if raw.get(i) == Some(&b']') {
@@ -402,7 +408,8 @@ fn push_char(out: &mut Vec<u8>, c: char) {
 }
 
 /// Go `unquote` of a (valid) string literal.
-pub(crate) fn unquote(raw: &[u8]) -> Vec<u8> {
+#[must_use]
+pub fn unquote(raw: &[u8]) -> Vec<u8> {
     let s = &raw[1..raw.len() - 1];
     let mut out = Vec::with_capacity(s.len());
     let mut i = 0;
@@ -454,7 +461,7 @@ pub(crate) fn unquote(raw: &[u8]) -> Vec<u8> {
 }
 
 /// `json.Unmarshal(raw, &string)`: `Ok(None)` for null.
-pub(crate) fn unmarshal_string(raw: &[u8], go: &str) -> Result<Option<Vec<u8>>, String> {
+pub fn unmarshal_string(raw: &[u8], go: &str) -> Result<Option<Vec<u8>>, String> {
     match kind_name(raw) {
         None => Ok(None),
         Some("string") => Ok(Some(unquote(raw))),
@@ -463,7 +470,7 @@ pub(crate) fn unmarshal_string(raw: &[u8], go: &str) -> Result<Option<Vec<u8>>, 
 }
 
 /// `json.Unmarshal(raw, &bool)`.
-pub(crate) fn unmarshal_bool(raw: &[u8], go: &str) -> Result<Option<bool>, String> {
+pub fn unmarshal_bool(raw: &[u8], go: &str) -> Result<Option<bool>, String> {
     match raw.first() {
         Some(b't') => Ok(Some(true)),
         Some(b'f') => Ok(Some(false)),
@@ -473,7 +480,7 @@ pub(crate) fn unmarshal_bool(raw: &[u8], go: &str) -> Result<Option<bool>, Strin
 }
 
 /// `json.Unmarshal(raw, &intN)` / `&uintN` (`raw` is any valid value).
-pub(crate) fn unmarshal_int(
+pub fn unmarshal_int(
     raw: &[u8],
     go: &str,
     signed: bool,

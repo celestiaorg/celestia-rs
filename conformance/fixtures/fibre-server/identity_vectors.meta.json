@@ -1,0 +1,12 @@
+{
+  "scenario": "fibre-server-tlsid",
+  "source_chain": "n/a (byte-exact copy of celestia-app fibre/internal/tlsid/testdata/identity_vectors.json)",
+  "source_heights": [],
+  "app_version": "v11",
+  "celestia_app_commit": "v11.0.0",
+  "go_version": "1.26.10",
+  "go_packages": [
+    "github.com/celestiaorg/celestia-app/v11/fibre/internal/tlsid v11.0.0"
+  ],
+  "regen_command": "copy celestia-app v11.0.0 fibre/internal/tlsid/testdata/identity_vectors.json to conformance/fixtures/fibre-server/"
+}

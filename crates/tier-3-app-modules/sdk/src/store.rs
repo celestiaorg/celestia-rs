@@ -88,6 +88,73 @@ impl From<kvstore::Error> for StoreError {
     }
 }
 
+type BaseIter = Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>), StoreError>> + Send>;
+
+/// A cache layer write in a range: the value, or `None` for a delete.
+type Write = (Vec<u8>, Option<Vec<u8>>);
+
+/// Lazy merged range of a [`MultiStore`] store (see
+/// [`MultiStore::lazy_range`]): committed entries, read on demand, merged
+/// with a snapshot of the cache layers' writes; a layered write shadows the
+/// committed value and a layered delete hides it.
+pub struct LazyRange {
+    base: std::iter::Peekable<BaseIter>,
+    overlay: std::iter::Peekable<std::vec::IntoIter<Write>>,
+    reverse: bool,
+    failed: bool,
+}
+
+impl std::fmt::Debug for LazyRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LazyRange")
+            .field("reverse", &self.reverse)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Iterator for LazyRange {
+    type Item = Result<(Vec<u8>, Vec<u8>), StoreError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.failed {
+            return None;
+        }
+        loop {
+            let from_base = match (self.base.peek(), self.overlay.peek()) {
+                (None, None) => return None,
+                (Some(Err(_)), _) => {
+                    self.failed = true;
+                    return self.base.next();
+                }
+                (Some(Ok(_)), None) => true,
+                (None, Some(_)) => false,
+                (Some(Ok((bk, _))), Some((ok, _))) => {
+                    let mut ord = bk.cmp(ok);
+                    if self.reverse {
+                        ord = ord.reverse();
+                    }
+                    match ord {
+                        std::cmp::Ordering::Less => true,
+                        std::cmp::Ordering::Greater => false,
+                        std::cmp::Ordering::Equal => {
+                            // The layered write wins over the committed value.
+                            self.base.next();
+                            false
+                        }
+                    }
+                }
+            };
+            if from_base {
+                return self.base.next();
+            }
+            if let Some((k, Some(v))) = self.overlay.next() {
+                return Some(Ok((k, v)));
+            }
+            // A layered delete: skip the key.
+        }
+    }
+}
+
 impl Default for MultiStore {
     fn default() -> Self {
         Self::new()
@@ -285,7 +352,10 @@ impl MultiStore {
 
     fn committed_get(&self, store: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
         match self.kind(store)? {
-            Kind::Iavl => Ok(self.root.get_store(store)?.get(key)?),
+            Kind::Iavl => {
+                crate::profile::count_read();
+                Ok(self.root.get_store(store)?.get(key)?)
+            }
             Kind::Transient | Kind::Memory => {
                 Ok(self.volatile.get(store).and_then(|m| m.get(key)).cloned())
             }
@@ -348,36 +418,63 @@ impl MultiStore {
         end: Option<&[u8]>,
         reverse: bool,
     ) -> Result<Entries, StoreError> {
+        self.lazy_range(store, start, end, reverse)?.collect()
+    }
+
+    /// [`Self::range`] as a lazy iterator: the committed IAVL entries are
+    /// read only as far as the caller iterates, merged with the cache
+    /// layers' writes in the range (copied when the iterator is created,
+    /// so later writes do not change what it yields, as with `range`).
+    pub fn lazy_range(
+        &self,
+        store: &str,
+        start: Option<&[u8]>,
+        end: Option<&[u8]>,
+        reverse: bool,
+    ) -> Result<LazyRange, StoreError> {
         self.check_nil(store)?;
         let lo = start.map_or(Bound::Unbounded, |s| Bound::Included(s.to_vec()));
         let hi = end.map_or(Bound::Unbounded, |e| Bound::Excluded(e.to_vec()));
-        let mut merged: BTreeMap<Vec<u8>, Option<Vec<u8>>> = BTreeMap::new();
-        match self.kind(store)? {
-            Kind::Iavl => {
-                for e in self.root.get_store(store)?.iter(start, end)? {
-                    merged.insert(e.key, Some(e.value));
-                }
-            }
+        let base: BaseIter = match self.kind(store)? {
+            Kind::Iavl => Box::new(
+                self.root
+                    .get_store(store)?
+                    .lazy_iter(start, end, reverse)?
+                    .map(|e| e.map(|e| (e.key, e.value)).map_err(StoreError::from)),
+            ),
             Kind::Transient | Kind::Memory => {
-                if let Some(m) = self.volatile.get(store) {
-                    for (k, v) in m.range((lo.clone(), hi.clone())) {
-                        merged.insert(k.clone(), Some(v.clone()));
-                    }
+                let mut entries: Entries = self
+                    .volatile
+                    .get(store)
+                    .map(|m| {
+                        m.range((lo.clone(), hi.clone()))
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if reverse {
+                    entries.reverse();
                 }
+                Box::new(entries.into_iter().map(Ok))
             }
-        }
+        };
+        let mut writes: BTreeMap<Vec<u8>, Option<Vec<u8>>> = BTreeMap::new();
         for layer in &self.stacks[self.active] {
             if let Some(w) = layer.get(store) {
                 for (k, v) in w.range((lo.clone(), hi.clone())) {
-                    merged.insert(k.clone(), v.clone());
+                    writes.insert(k.clone(), v.clone());
                 }
             }
         }
-        let iter = merged.into_iter().filter_map(|(k, v)| v.map(|v| (k, v)));
-        Ok(if reverse {
-            iter.rev().collect()
-        } else {
-            iter.collect()
+        let mut overlay: Vec<Write> = writes.into_iter().collect();
+        if reverse {
+            overlay.reverse();
+        }
+        Ok(LazyRange {
+            base: base.peekable(),
+            overlay: overlay.into_iter().peekable(),
+            reverse,
+            failed: false,
         })
     }
 
@@ -535,6 +632,103 @@ mod stack_tests {
         m.commit()?;
         m.reset_check();
         assert_eq!(m.get("a", b"k")?, Some(b"final".to_vec()));
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod range_iter_tests {
+    use super::*;
+
+    type Bounds<'a> = (Option<&'a [u8]>, Option<&'a [u8]>);
+
+    /// A committed store plus two cache layers with sets and deletes that
+    /// shadow committed keys, add new ones and delete layered ones.
+    fn layered() -> Result<MultiStore, StoreError> {
+        let mut m = MultiStore::new();
+        m.mount("a", Kind::Iavl)?;
+        m.mount("t", Kind::Transient)?;
+        for i in 0u8..40 {
+            m.set("a", vec![b'k', i], vec![i])?;
+        }
+        m.flush()?;
+        m.commit()?;
+        for i in (0u8..40).step_by(3) {
+            m.set("a", vec![b'k', i], vec![i, 1])?;
+        }
+        for i in (1u8..40).step_by(5) {
+            m.delete("a", &[b'k', i])?;
+        }
+        m.set("a", vec![b'j'], vec![9])?;
+        m.set("a", vec![b'k', 200], vec![2])?;
+        m.branch();
+        m.set("a", vec![b'k', 2], vec![2, 2])?;
+        m.delete("a", &[b'k', 3])?;
+        m.set("a", vec![b'k', 1], vec![1, 2])?;
+        m.set("t", vec![b'x'], vec![1])?;
+        m.set("t", vec![b'w'], vec![2])?;
+        Ok(m)
+    }
+
+    /// What `range` must return: the live view of every key, in order.
+    fn model(
+        m: &MultiStore,
+        store: &str,
+        start: Option<&[u8]>,
+        end: Option<&[u8]>,
+        reverse: bool,
+    ) -> Result<Entries, StoreError> {
+        let mut out = Vec::new();
+        for k in (0u8..=255).flat_map(|b| [vec![b'j'], vec![b'k', b], vec![b'w'], vec![b'x']]) {
+            if start.is_some_and(|s| k.as_slice() < s) || end.is_some_and(|e| k.as_slice() >= e) {
+                continue;
+            }
+            if let Some(v) = m.get(store, &k)? {
+                out.push((k, v));
+            }
+        }
+        out.sort();
+        out.dedup();
+        if reverse {
+            out.reverse();
+        }
+        Ok(out)
+    }
+
+    #[test]
+    fn lazy_range_equals_the_merged_view() -> Result<(), StoreError> {
+        let m = layered()?;
+        let bounds: [Bounds<'_>; 5] = [
+            (None, None),
+            (Some(b"k"), Some(b"l")),
+            (Some(&[b'k', 2]), Some(&[b'k', 30])),
+            (Some(&[b'k', 39]), None),
+            (Some(b"z"), None),
+        ];
+        for store in ["a", "t"] {
+            for (start, end) in bounds {
+                for reverse in [false, true] {
+                    let want = model(&m, store, start, end, reverse)?;
+                    let got: Entries = m
+                        .lazy_range(store, start, end, reverse)?
+                        .collect::<Result<_, _>>()?;
+                    assert_eq!(got, want, "{store} {start:?}..{end:?} rev {reverse}");
+                    assert_eq!(m.range(store, start, end, reverse)?, want);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn lazy_range_stops_early() -> Result<(), StoreError> {
+        let m = layered()?;
+        let mut it = m.lazy_range("a", Some(b"k"), None, false)?;
+        assert_eq!(it.next().transpose()?, Some((vec![b'k', 0], vec![0, 1])));
+        assert_eq!(it.next().transpose()?, Some((vec![b'k', 1], vec![1, 2])));
+        let mut rev = m.lazy_range("a", None, Some(b"k"), true)?;
+        assert_eq!(rev.next().transpose()?, Some((vec![b'j'], vec![9])));
+        assert_eq!(rev.next().transpose()?, None);
         Ok(())
     }
 }

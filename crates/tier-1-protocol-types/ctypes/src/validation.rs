@@ -285,14 +285,12 @@ fn verify_commit_batch(
             needed,
         });
     }
-    for (idx, val, sign_bytes) in &batch {
-        let cs = &commit.signatures[*idx];
-        if !val.pub_key.verify_signature(sign_bytes, &cs.signature) {
-            return Err(Error::msg(format!(
-                "wrong signature (#{idx}): {}",
-                hex_upper(cs.to_string().as_bytes())
-            )));
-        }
+    if let Some(idx) = first_invalid_signature(commit, &batch) {
+        let cs = &commit.signatures[idx];
+        return Err(Error::msg(format!(
+            "wrong signature (#{idx}): {}",
+            hex_upper(cs.to_string().as_bytes())
+        )));
     }
     if batch.is_empty() {
         return Err(Error::msg(
@@ -300,6 +298,20 @@ fn verify_commit_batch(
         ));
     }
     Ok(())
+}
+
+/// The commit index of the first entry of `batch` (in batch order) whose
+/// signature does not verify, checked in parallel for large batches
+/// ([`crypto::parallel::first_failure`]: the sequential answer).
+fn first_invalid_signature(
+    commit: &Commit,
+    batch: &[(usize, Validator, Vec<u8>)],
+) -> Option<usize> {
+    crypto::parallel::first_failure(batch, |(idx, val, sign_bytes)| {
+        val.pub_key
+            .verify_signature(sign_bytes, &commit.signatures[*idx].signature)
+    })
+    .map(|i| batch[i].0)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -388,4 +400,95 @@ fn verify_basic_vals_and_commit(
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod parallel_tests {
+    use super::*;
+    use crate::commit::CommitSig;
+    use crate::pubkey::PubKey;
+    use crate::time::Time;
+
+    /// A commit for `block_id` signed by `n` validators (seeded keys),
+    /// with the signatures at `bad` (validator-set order) corrupted.
+    fn signed_commit(n: u8, bad: &[usize]) -> (ValidatorSet, BlockId, Commit) {
+        let keys: Vec<_> = (0..n)
+            .map(|i| crypto::ed25519::private_key_from_seed(&[i + 1; 32]))
+            .collect();
+        let vals: Vec<Validator> = keys
+            .iter()
+            .map(|k| {
+                let pk = crypto::ed25519::public_key_from_private_key(k).unwrap_or_default();
+                Validator::new(PubKey::Ed25519(pk), 10)
+            })
+            .collect();
+        let set = ValidatorSet::new(&vals).unwrap_or_default();
+        let block_id = BlockId {
+            hash: vec![7; 32],
+            part_set_header: crate::part_set::PartSetHeader {
+                total: 1,
+                hash: vec![9; 32],
+            },
+        };
+        let mut commit = Commit {
+            height: 5,
+            round: 0,
+            block_id: block_id.clone(),
+            signatures: set
+                .validators
+                .iter()
+                .enumerate()
+                .map(|(i, v)| CommitSig {
+                    block_id_flag: BLOCK_ID_FLAG_COMMIT,
+                    validator_address: v.address.clone(),
+                    timestamp: Time::from_unix(1_700_000_000 + i64::try_from(i).unwrap_or(0), 0),
+                    signature: vec![0; 64],
+                })
+                .collect(),
+        };
+        for i in 0..set.validators.len() {
+            let addr = &set.validators[i].address;
+            let key = keys
+                .iter()
+                .find(|k| {
+                    crypto::ed25519::public_key_from_private_key(k)
+                        .is_ok_and(|pk| PubKey::Ed25519(pk).address() == *addr)
+                })
+                .copied()
+                .unwrap_or([0; 64]);
+            let sb = commit
+                .vote_sign_bytes("chain", idx_i32(i))
+                .unwrap_or_default();
+            let mut sig = crypto::ed25519::sign(&key, &sb).unwrap_or([0; 64]).to_vec();
+            if bad.contains(&i) {
+                sig[0] ^= 1;
+            }
+            commit.signatures[i].signature = sig;
+        }
+        (set, block_id, commit)
+    }
+
+    #[test]
+    fn many_signatures_verify() {
+        let (set, id, commit) = signed_commit(40, &[]);
+        assert!(verify_commit("chain", &set, &id, 5, &commit).is_ok());
+    }
+
+    /// With several invalid signatures, the first one in validator-set
+    /// order is reported, whatever order they are checked in.
+    #[test]
+    fn first_invalid_signature_is_reported() {
+        let (set, id, commit) = signed_commit(40, &[30, 7]);
+        let err = verify_commit("chain", &set, &id, 5, &commit)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(err.starts_with("wrong signature (#7)"), "{err}");
+        let (set, id, commit) = signed_commit(40, &[39]);
+        let err = verify_commit("chain", &set, &id, 5, &commit)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(err.starts_with("wrong signature (#39)"), "{err}");
+    }
 }

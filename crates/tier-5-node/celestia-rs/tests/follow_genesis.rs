@@ -334,3 +334,31 @@ fn genesis_follower_preserves_unsupported_initial_height_rejection() {
         "{error}"
     );
 }
+
+/// With a snapshot interval the follower writes state-sync snapshots of
+/// the heights it executes, and a run that stops at a snapshot height
+/// waits for that snapshot (a resumable checkpoint) before it returns.
+/// (This chain's state is small, so its snapshot usually finishes before
+/// the run returns even without the wait; mainnet's does not.)
+#[test]
+fn follower_keeps_the_snapshot_of_its_stop_height() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source");
+    make_chain(&source, 1);
+    let server = Server::new(&source, false);
+    let home = temp.path().join("follower");
+    let mut opts = options(&source, &home, &server, 3);
+    opts.app.snapshots = snapshots::SnapshotOptions {
+        interval: 3,
+        keep_recent: 0,
+    };
+    follow::follow(&opts).unwrap();
+    let snapshots = home.join("data/snapshots");
+    let formats: Vec<_> = std::fs::read_dir(snapshots.join("3"))
+        .unwrap_or_else(|e| panic!("snapshot 3: {e}"))
+        .map(|e| e.unwrap().path())
+        .collect();
+    assert_eq!(formats.len(), 1, "{formats:?}");
+    assert!(formats[0].join("metadata").exists(), "{formats:?}");
+    assert!(formats[0].join("0").exists(), "{formats:?}");
+}

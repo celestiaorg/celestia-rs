@@ -9,7 +9,9 @@
 //! v1-v3 chain) and `fixtures/synthetic/v3-rich-v4` (12 validators with
 //! missed blocks, 1,080 delegations, merged unbonding entries, a
 //! redelegation, a vesting account, gov proposals, authz and fee grants,
-//! an IBC client, connection and channel).
+//! an IBC client, connection and channel) and
+//! `fixtures/synthetic/v3-history-v4` (1,005 historical infos, more than
+//! staking's historical info key migration moves at once).
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
@@ -22,7 +24,7 @@ use common::check::{contents, describe, diff};
 use sdk::{Context, ExecMode, Header, MultiStore};
 
 /// The fixture directories of the synthetic chains.
-const FIXTURES: [&str; 2] = [
+const FIXTURES: [&str; 3] = [
     concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../conformance/fixtures/synthetic/v4"
@@ -30,6 +32,10 @@ const FIXTURES: [&str; 2] = [
     concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../conformance/fixtures/synthetic/v3-rich-v4"
+    ),
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../conformance/fixtures/synthetic/v3-history-v4"
     ),
 ];
 
@@ -364,4 +370,47 @@ fn v4_begin_blockers_finish_the_continuations() {
         "slashing: rs vs go {}",
         describe(&diff(&w, &got))
     );
+}
+
+/// The history chain: staking's v5 migration moves 1,000 of the 1,005
+/// v0.46 historical info keys and records the next one at 0x82; the
+/// BeginBlocker of the upgrade block moves the rest and deletes the
+/// cursor, as in Go's state after the upgrade block (the BeginBlocker's
+/// own historical info of the upgrade height aside).
+#[test]
+fn v4_history_chain_finishes_the_historical_info_cursor() {
+    use x_upgrade::UpgradeHandlers as _;
+    let f = fixtures().nth(2).unwrap();
+    let handlers = app::upgrades::Handlers::of_release(4);
+    assert!(handlers.has_handler("v4"));
+    let mut ms = handoff(f);
+    {
+        let mut c = ctx(f, &mut ms);
+        let plan = x_upgrade::get_upgrade_plan(&mut c).unwrap().unwrap();
+        x_upgrade::apply_upgrade(&mut c, &handlers, &plan).unwrap();
+        let cursor = c
+            .get("staking", &[0x82])
+            .unwrap()
+            .expect("historical info cursor after the migration");
+        x_staking::migrations::migrate_historical_info_keys(&mut c, Some(&cursor), 1_000).unwrap();
+    }
+    let mut want = handoff_state(f);
+    for (store, d) in &common::diffs_in(&format!("{}/kv-diffs.jsonl.gz", f.dir))[&f.upgrade] {
+        let kv = want.entry(store.clone()).or_default();
+        for k in &d.delete {
+            kv.remove(k);
+        }
+        kv.extend(d.set.clone());
+    }
+    let own = [&[0x50][..], &f.upgrade.to_be_bytes()].concat();
+    let pick = |kv: &Kv| -> Kv {
+        kv.iter()
+            .filter(|(k, _)| (k[0] == 0x50 || k[0] == 0x82) && **k != own)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    };
+    let got = pick(&contents(&ms, "staking"));
+    let w = pick(&want["staking"]);
+    assert!(got.len() > 1_000, "historical infos: {}", got.len());
+    assert!(got == w, "staking: rs vs go {}", describe(&diff(&w, &got)));
 }

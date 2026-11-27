@@ -1,6 +1,6 @@
 //! IBC wiring (`app/app.go`): the ICS-26 router (transfer wrapped by packet
-//! forward middleware with 0 retries and a 10 minute forward timeout; the
-//! ICA host), and the msg routes of IBC core, ICS-20 and the ICA host.
+//! forward middleware with 0 retries and a 10 minute forward timeout, and
+//! by the token filter at app versions 4 and 5; the ICA host), and the msg routes of IBC core, ICS-20 and the ICA host.
 
 use celestia_proto::Any;
 use celestia_proto::ibc::applications::interchain_accounts::host::v1::MsgModuleQuerySafe;
@@ -15,7 +15,7 @@ use x_transfer::relay::TransferModule;
 /// The app's `porttypes.Router`.
 #[derive(Debug, Clone)]
 pub struct IbcRouter {
-    transfer: PacketForwardMiddleware<TransferModule>,
+    transfer: crate::tokenfilter::TokenFilter<PacketForwardMiddleware<TransferModule>>,
     icahost: x_icahost::host::HostModule<crate::router::AppRouter>,
 }
 
@@ -46,7 +46,7 @@ pub fn ica_registry() -> x_icahost::host::Registry {
 impl Default for IbcRouter {
     fn default() -> Self {
         Self {
-            transfer: PacketForwardMiddleware::new(TransferModule),
+            transfer: crate::tokenfilter::TokenFilter(PacketForwardMiddleware::new(TransferModule)),
             icahost: x_icahost::host::HostModule {
                 router: crate::router::AppRouter,
                 registry: x_icahost::host::Registry {
@@ -78,7 +78,8 @@ pub fn has_handler(type_url: &str) -> bool {
     x_ibc::msgs::is_ibc_msg(type_url)
         || type_url == transfer::MsgTransfer::type_url()
         || type_url == transfer::MsgUpdateParams::type_url()
-        || x_icahost::host::is_host_msg(type_url)
+        || (x_icahost::host::is_host_msg(type_url)
+            && sdk::version::release(0).has_ica_host_module())
 }
 
 /// See [`x_ibc::lightclients::light::set_max_block_parts_count`] (fixture

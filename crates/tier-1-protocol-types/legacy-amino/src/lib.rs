@@ -33,6 +33,16 @@ pub(crate) fn go_lossy(b: &[u8]) -> String {
 
 mod binary;
 mod gojson;
+
+/// Go `encoding/json` scalar decoding as go-amino calls it (validity
+/// scanner, `json.Unmarshal` into scalars and raw-message splitting), for
+/// callers that decode amino JSON against their own schemas.
+pub mod gojson_scalar {
+    pub use crate::gojson::{
+        array_items, check_valid, kind_name, object_entries, trim, type_error, unmarshal_bool,
+        unmarshal_int, unmarshal_string, unquote,
+    };
+}
 mod json;
 mod schema;
 mod time;

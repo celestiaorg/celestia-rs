@@ -68,7 +68,17 @@ fn lookup(type_url: &[u8]) -> Option<&'static (&'static str, &'static str, u32)>
         .binary_search_by(|(u, _, _)| u.as_bytes().cmp(type_url))
         .ok()
         .map(|i| &TYPE_URLS[i])
-        .filter(|(u, _, _)| !(crate::v9() && added_in_v10(u)))
+        .filter(|(u, _, _)| !(crate::v9() && (added_in_v10(u) || absent_from_release(u))))
+}
+
+/// Whether the executing release ([`sdk::version::release`]) registers no
+/// module for `type_url`: x/forwarding and x/zkism before celestia-app v7
+/// (app versions 4 to 6).
+#[must_use]
+pub fn absent_from_release(type_url: &str) -> bool {
+    let release = sdk::version::release(0);
+    (type_url.starts_with("/celestia.forwarding.v1.") && !release.has_forwarding())
+        || (type_url.starts_with("/celestia.zkism.v1.") && !release.has_zkism())
 }
 
 /// Type URLs celestia-app v9.0.8 (built without the `fibre` tag, with
@@ -114,6 +124,32 @@ pub(crate) fn field_exists(message: &str, num: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// celestia-app v4.1.0 registers neither x/forwarding nor x/zkism (v7
+    /// added both): their types do not resolve at app version 4, and do
+    /// at app version 9.
+    #[test]
+    fn forwarding_and_zkism_types_are_absent_before_v7() {
+        let prev = sdk::version::app_version();
+        for (version, present) in [(4, false), (9, true)] {
+            sdk::version::set_app_version(version);
+            crate::with_v9(|| {
+                for url in [
+                    "/celestia.forwarding.v1.MsgForward",
+                    "/celestia.zkism.v1.MsgSubmitMessages",
+                ] {
+                    assert_eq!(
+                        resolve(url.as_bytes()).is_some(),
+                        present,
+                        "v{version} {url}"
+                    );
+                    assert_eq!(absent_from_release(url), !present, "v{version} {url}");
+                }
+                assert!(resolve(b"/cosmos.bank.v1beta1.MsgSend").is_some());
+            });
+        }
+        sdk::version::set_app_version(prev);
+    }
 
     #[test]
     fn sorted_and_resolvable() {

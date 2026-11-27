@@ -73,12 +73,42 @@ fn coins_string(coins: &[FeeCoin]) -> R<String> {
 }
 
 /// `verifyMinFee`.
-fn verify_min_fee(fee: &Int, gas: u64, min_gas_price: &LegacyDec, msg: &str) -> R<()> {
+fn verify_min_fee(
+    ctx: &Context<'_>,
+    fee: &Int,
+    gas: u64,
+    min_gas_price: &LegacyDec,
+    msg: &str,
+) -> R<()> {
+    let legacy = ctx.release().legacy_insufficient_fee_message();
+    verify_min_fee_with(fee, gas, min_gas_price, msg, legacy)
+}
+
+/// `verifyMinFee`. `legacy`: celestia-app v4.1.0 to v6.4.10's message (the
+/// provided gas price, the ceiled min fee and the min gas price as
+/// decimals).
+fn verify_min_fee_with(
+    fee: &Int,
+    gas: u64,
+    min_gas_price: &LegacyDec,
+    msg: &str,
+    legacy: bool,
+) -> R<()> {
     let min_fee = min_gas_price
         .checked_mul_int(&Int::from_u64(gas))
         .and_then(|d| d.ceil())
         .or_else(|e| panic(e.to_string()))?;
     let required = min_fee.truncate_int();
+    if legacy && fee < &required {
+        // `LegacyNewDecFromInt(fee).QuoInt64(int64(gas))`.
+        let provided = LegacyDec::from_int(fee)
+            .checked_quo_int64(gas as i64)
+            .or_else(|e| panic(e.to_string()))?;
+        return Err(errs::insufficient_fee(format!(
+            "{msg}; got fee: {fee} and gas price of {provided} but required at least: {min_fee} and a minimum gas price of {min_gas_price}"
+        ))
+        .into());
+    }
     if fee < &required {
         return Err(errs::insufficient_fee(format!(
             "{msg}; got: {fee}{BOND_DENOM}, required: {required}{BOND_DENOM} (min gas price: {} {BOND_DENOM}/gas)",
@@ -174,6 +204,7 @@ fn validate_tx_fee(
             .unwrap_or_else(default_min_gas_price);
         if !min.is_zero() {
             verify_min_fee(
+                ctx,
                 &fee,
                 gas,
                 &min,
@@ -183,6 +214,7 @@ fn validate_tx_fee(
     }
     let network = deps.network_min_gas_price(ctx)?;
     verify_min_fee(
+        ctx,
         &fee,
         gas,
         &network,
@@ -218,11 +250,12 @@ fn validate_tx_fee_v046(
         && let Some(min) = deps.node_min_gas_price()
         && !min.is_zero()
     {
-        verify_min_fee(
+        verify_min_fee_with(
             &fee,
             gas,
             &min,
             "insufficient minimum gas price for this node",
+            false,
         )?;
     }
     let app = ctx.consensus_params.version.as_ref().map_or(0, |v| v.app);
@@ -283,7 +316,7 @@ fn deduct_fee_with(
             validate_tx_fee(ctx, &coins, gas, deps)?
         };
     }
-    check_deduct_fee(ctx, tx, &coins, deps)?;
+    check_deduct_fee(ctx, tx, &coins, deps, v046)?;
     Ok(priority)
 }
 
@@ -292,7 +325,17 @@ fn check_deduct_fee(
     tx: &Tx,
     fee: &[FeeCoin],
     deps: &impl AnteDeps,
+    v046: bool,
 ) -> R<()> {
+    // v0.46 `FeeTx` returns `sdk.AccAddress`, which `%s` prints in
+    // bech32; v0.50 returns `[]byte`, printed raw.
+    let addr = |a: &[u8]| {
+        if v046 {
+            txview::bytes_to_bech32(a)
+        } else {
+            gostr::from_go_bytes(a).into_owned()
+        }
+    };
     let fee_payer = txview::fee_payer(tx)?;
     let fee_granter = txview::fee_granter(tx)?;
     let mut deduct_from = fee_payer.clone();
@@ -303,13 +346,17 @@ fn check_deduct_fee(
                 if is_out_of_gas(&e) {
                     return Err(e.into());
                 }
-                // `%s` of the `[]byte` addresses `FeeTx` returns: the raw
-                // bytes.
+                // v0.46 has "does not not allow".
+                let verb = if v046 {
+                    "does not not allow"
+                } else {
+                    "does not allow"
+                };
                 return Err(e
                     .wrap(format!(
-                        "{} does not allow to pay fees for {}",
-                        gostr::from_go_bytes(&granter),
-                        gostr::from_go_bytes(&fee_payer)
+                        "{} {verb} to pay fees for {}",
+                        addr(&granter),
+                        addr(&fee_payer)
                     ))
                     .into());
             }
@@ -317,11 +364,9 @@ fn check_deduct_fee(
         deduct_from = granter;
     }
     if x_auth::get_account(ctx, &deduct_from)?.is_none() {
-        // `deductFeesFrom` is a `[]byte` variable: `%s` prints the raw
-        // bytes.
         return Err(errs::unknown_address(format!(
             "fee payer address: {} does not exist",
-            gostr::from_go_bytes(&deduct_from)
+            addr(&deduct_from)
         ))
         .into());
     }
@@ -374,4 +419,46 @@ fn deduct_fees(ctx: &mut Context<'_>, from: &[u8], fee: &[FeeCoin]) -> R<()> {
         return Err(errs::insufficient_funds(e.log).into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod release_tests {
+    use super::*;
+
+    /// celestia-app v4.1.0 to v6.4.10 word an insufficient fee with the
+    /// provided gas price, the ceiled min fee and the min gas price as
+    /// decimals; v7.0.3 and later as utia amounts.
+    #[test]
+    fn insufficient_fee_message_follows_the_release() {
+        let min = LegacyDec::new_with_prec(2, 3).unwrap();
+        let fee = Int::from_u64(100);
+        let legacy = verify_min_fee_with(
+            &fee,
+            200_000,
+            &min,
+            "insufficient gas price for the network",
+            true,
+        )
+        .unwrap_err();
+        let log = |f: Fail| match f {
+            Fail::Err(e) => e.log,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(
+            log(legacy),
+            "insufficient gas price for the network; got fee: 100 and gas price of 0.000500000000000000 but required at least: 400.000000000000000000 and a minimum gas price of 0.002000000000000000: insufficient fee"
+        );
+        let current = verify_min_fee_with(
+            &fee,
+            200_000,
+            &min,
+            "insufficient gas price for the network",
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(
+            log(current),
+            "insufficient gas price for the network; got: 100utia, required: 400utia (min gas price: 0.002 utia/gas): insufficient fee"
+        );
+    }
 }

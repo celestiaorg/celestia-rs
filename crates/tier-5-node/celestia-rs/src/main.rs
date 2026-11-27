@@ -109,6 +109,23 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Compare two state-sync snapshots (`<dir>/<height>/<format>/<chunk>`,
+    /// Go's layout) item by item; exits non-zero at the first difference.
+    /// Snapshots of the same state from Go and celestia-rs hold equal
+    /// items in the same order, but their zlib chunk bytes differ.
+    CompareSnapshots {
+        /// Snapshot height.
+        #[arg(long)]
+        height: u64,
+        /// Snapshot format (2: cosmos-sdk v0.46, app versions 1 to 3;
+        /// 3: from app version 4).
+        #[arg(long, default_value_t = snapshots::CURRENT_FORMAT)]
+        format: u32,
+        /// First snapshot directory.
+        a: PathBuf,
+        /// Second snapshot directory.
+        b: PathBuf,
+    },
     /// Serve the state machine to celestia-core over ABCI (socket).
     Abci(Box<AbciArgs>),
     /// Manage keys (test / file keyrings, Go-compatible).
@@ -296,10 +313,33 @@ struct StartArgs {
     /// State database cache in MiB.
     #[arg(long, default_value_t = 512)]
     db_cache_mib: usize,
+    /// celestia-app `--v2-upgrade-height`: the v1 to v2 upgrade height of
+    /// a chain without a built-in one (celestia, mocha and arabica have
+    /// theirs). Give it again after a restart, as with Go.
+    #[arg(long = "v2-upgrade-height")]
+    v2_upgrade_height: Option<i64>,
     /// Prometheus listen address (enables metrics; default: config.toml
     /// `[instrumentation]`).
     #[arg(long = "prometheus-listen-addr")]
     prometheus_listen_addr: Option<String>,
+    /// Run the embedded Fibre server (`--fibre=false` turns it off;
+    /// default: config.toml `[fibre] enable`, off).
+    #[arg(
+        long,
+        env = "CELESTIA_RS_FIBRE",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    fibre: Option<bool>,
+    /// Fibre gRPC listen address, `host:port` (enables the Fibre server;
+    /// default: config.toml `[fibre] server_listen_address`, `0.0.0.0:7980`).
+    #[arg(
+        long = "fibre-listen-address",
+        env = "CELESTIA_RS_FIBRE_LISTEN_ADDRESS"
+    )]
+    fibre_listen_address: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -312,8 +352,9 @@ struct FollowArgs {
     #[arg(long = "chain-id")]
     chain_id: Option<String>,
     /// First start: directory holding a Go SDK state-sync snapshot
-    /// (`<height>/3/<chunk>`, a Go node's `data/snapshots`). If omitted,
-    /// initialize from the independently supplied `config/genesis.json`.
+    /// (`<height>/<format>/<chunk>`, a Go node's `data/snapshots`: format 3,
+    /// or format 2 for app versions 1 to 3). If omitted, initialize from
+    /// the independently supplied `config/genesis.json`.
     #[arg(long)]
     snapshot: Option<PathBuf>,
     /// New JSONL receipt file; records each executed height after the following
@@ -363,6 +404,14 @@ struct FollowArgs {
     /// State database cache in MiB.
     #[arg(long, default_value_t = 512)]
     db_cache_mib: usize,
+    /// Write a state-sync snapshot to `<home>/data/snapshots` every N
+    /// executed heights (0 = never): format 2 at app versions 1 to 3,
+    /// format 3 from app version 4, restorable with `--snapshot`.
+    #[arg(long, default_value_t = 0)]
+    snapshot_interval: u64,
+    /// Snapshots kept (0 = all).
+    #[arg(long, default_value_t = 2)]
+    snapshot_keep_recent: u32,
     /// Upgrade heights to skip while executing followed blocks.
     #[arg(
         long = "unsafe-skip-upgrades",
@@ -416,6 +465,9 @@ struct AbciArgs {
     /// Go `halt-height`.
     #[arg(long, default_value_t = 0)]
     halt_height: u64,
+    /// celestia-app `--v2-upgrade-height` (see `start`).
+    #[arg(long = "v2-upgrade-height")]
+    v2_upgrade_height: Option<i64>,
     /// Go `--unsafe-skip-upgrades`: comma-separated upgrade heights to skip.
     #[arg(
         long = "unsafe-skip-upgrades",
@@ -761,6 +813,9 @@ enum TxCmd {
     /// Slashing transactions.
     #[command(subcommand)]
     Slashing(SlashingTx),
+    /// Fibre provider registry (`x/valaddr`).
+    #[command(subcommand)]
+    Valaddr(ValaddrTx),
     /// Any registered message: `tx <module> <msg> --json '<fields>'`.
     #[command(external_subcommand)]
     Generic(Vec<String>),
@@ -861,6 +916,19 @@ enum SlashingTx {
         json: Option<String>,
     },
     /// Any other slashing message: `<msg> --json '<fields>'`.
+    #[command(external_subcommand)]
+    Other(Vec<String>),
+}
+
+#[derive(Subcommand, Debug)]
+enum ValaddrTx {
+    /// Register the Fibre provider host of the signer's validator:
+    /// `set-host <host:port> --from <validator-account-key>`.
+    SetHost {
+        /// Publicly reachable `host:port` of the Fibre server.
+        host: String,
+    },
+    /// Any other valaddr message: `<msg> --json '<fields>'`.
     #[command(external_subcommand)]
     Other(Vec<String>),
 }
@@ -1024,6 +1092,25 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
         Cmd::Start(args) => start(&home, *args).await,
         Cmd::Follow(args) => follow(&home, *args).await,
         Cmd::ExportBlocks { out } => node::export_blocks(&home, &out),
+        Cmd::CompareSnapshots {
+            height,
+            format,
+            a,
+            b,
+        } => {
+            let c = snapshots::compare_dirs(&a, &b, height, format)?;
+            util::out(format!(
+                "snapshot {height} format {format}: chunks {} and {}, chunk bytes identical: {}",
+                c.chunks.0, c.chunks.1, c.chunk_bytes_identical
+            ));
+            match c.first_difference {
+                None => {
+                    util::out(format!("{} items equal, in the same order", c.items));
+                    Ok(())
+                }
+                Some(d) => bail!("first difference: {d}"),
+            }
+        }
         Cmd::Abci(args) => abci(&home, cli.home.is_some(), *args).await,
         Cmd::Keys(cmd) => keys_cmd(&home, cmd),
         Cmd::Genesis(cmd) => genesis_cmd(&home, cmd),
@@ -1154,6 +1241,9 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
         opts.db.cache_size = a.db_cache_mib << 20;
     }
     opts.store.pruning = pruning;
+    // Prune storage off the block execution thread (same deletions, same
+    // retained versions; a crash before a prune lands leaves a superset).
+    opts.store.background_pruning = true;
     if let Ok(n) = usize::try_from(files.int(File::App, "iavl-cache-size"))
         && n > 0
     {
@@ -1189,6 +1279,7 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
         unsafe_skip_upgrades: args
             .map(|a| a.unsafe_skip_upgrades.clone())
             .unwrap_or_default(),
+        v2_upgrade_height: args.and_then(|a| a.v2_upgrade_height),
         home: Some(home.to_path_buf()),
     };
     Ok(opts)
@@ -1242,11 +1333,11 @@ fn prepare_network(home: &Path, name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn follow(home: &Path, a: FollowArgs) -> anyhow::Result<()> {
-    anyhow::ensure!(
-        !a.light_only || a.unsafe_skip_upgrades.is_empty(),
-        "--unsafe-skip-upgrades requires block execution; remove --light-only"
-    );
+/// App options of the follower: snapshots only when asked (resumable
+/// checkpoints of a replay); blocks below `height - keep_blocks` are
+/// pruned (the follower does not serve the network, so Go's 3000 floor is
+/// moot).
+fn follow_app_options(a: &FollowArgs) -> app::AppOptions {
     let mut app = app::AppOptions::default();
     app.store.pruning = multistore::PruningOptions {
         keep_recent: a.pruning_keep_recent,
@@ -1254,14 +1345,23 @@ async fn follow(home: &Path, a: FollowArgs) -> anyhow::Result<()> {
         interval: 1,
     };
     app.db.cache_size = a.db_cache_mib << 20;
-    // No snapshots; blocks below `height - keep_blocks` are pruned (the
-    // follower does not serve the network, so Go's 3000 floor is moot).
     app.snapshots = snapshots::SnapshotOptions {
-        interval: 0,
-        keep_recent: 0,
+        interval: a.snapshot_interval,
+        keep_recent: a.snapshot_keep_recent,
     };
     app.node.min_retain_blocks = a.keep_blocks;
-    app.node.unsafe_skip_upgrades = a.unsafe_skip_upgrades.clone();
+    app.node
+        .unsafe_skip_upgrades
+        .clone_from(&a.unsafe_skip_upgrades);
+    app
+}
+
+async fn follow(home: &Path, a: FollowArgs) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !a.light_only || a.unsafe_skip_upgrades.is_empty(),
+        "--unsafe-skip-upgrades requires block execution; remove --light-only"
+    );
+    let app = follow_app_options(&a);
     let trust_hash = if a.trust_hash.is_empty() {
         None
     } else {
@@ -1413,6 +1513,13 @@ async fn start(home: &Path, a: StartArgs) -> anyhow::Result<()> {
         opts.bridge_no_announce.clone_from(&a.bridge_no_announce);
     }
     opts.mempool = config::mempool_options(&files)?;
+    opts.fibre = celestia_rs::fibre::options(
+        &files,
+        &celestia_rs::fibre::FibreFlags {
+            enable: a.fibre,
+            listen_address: a.fibre_listen_address.clone(),
+        },
+    )?;
     opts.priv_validator_laddr = cfg("priv_validator_laddr");
     opts.block_sync = !a.no_block_sync;
     opts.discard_abci_responses = files.bool(File::Config, "storage.discard_abci_responses");
@@ -1524,6 +1631,7 @@ async fn abci(home: &Path, home_given: bool, a: AbciArgs) -> anyhow::Result<()> 
         halt_time: 0,
         unsafe_skip_upgrades: a.unsafe_skip_upgrades.clone(),
         home: (!a.in_memory && home_given).then(|| home.to_path_buf()),
+        v2_upgrade_height: a.v2_upgrade_height,
     };
     let mut app = if !home_given || a.in_memory {
         let mut app = app::App::new();
@@ -1826,6 +1934,11 @@ fn tx_cmd(home: &Path, a: TxArgs) -> anyhow::Result<()> {
                 .chain(args.iter().cloned())
                 .collect(),
         ),
+        TxCmd::Valaddr(ValaddrTx::Other(args)) => Some(
+            std::iter::once("valaddr".to_owned())
+                .chain(args.iter().cloned())
+                .collect(),
+        ),
         _ => None,
     };
     if let Some(args) = generic {
@@ -1900,10 +2013,15 @@ fn tx_cmd(home: &Path, a: TxArgs) -> anyhow::Result<()> {
                 None => client::slashing_unjail(home, &f)?,
             };
         }
+        TxCmd::Valaddr(ValaddrTx::SetHost { host }) => {
+            need_from(&f)?;
+            client::valaddr_set_host(home, &f, &host)?;
+        }
         TxCmd::Generic(_)
         | TxCmd::Bank(BankTx::Other(_))
         | TxCmd::Staking(StakingTx::Other(_))
-        | TxCmd::Slashing(SlashingTx::Other(_)) => {
+        | TxCmd::Slashing(SlashingTx::Other(_))
+        | TxCmd::Valaddr(ValaddrTx::Other(_)) => {
             unreachable!("handled above")
         }
     }
@@ -1985,6 +2103,54 @@ mod cli_tests {
         }
     }
 
+    fn fibre_flags(args: &[&str]) -> (Option<bool>, Option<String>) {
+        let cli = Cli::try_parse_from(["celestia-rs", "start"].iter().chain(args)).unwrap();
+        let Cmd::Start(a) = cli.command else {
+            panic!("not start")
+        };
+        (a.fibre, a.fibre_listen_address)
+    }
+
+    #[test]
+    fn fibre_flags_override_the_file() {
+        // The environment variables are unset in tests (clap reads them
+        // when the flags are absent).
+        assert_eq!(fibre_flags(&[]), (None, None));
+        assert_eq!(fibre_flags(&["--fibre"]), (Some(true), None));
+        assert_eq!(fibre_flags(&["--fibre=false"]), (Some(false), None));
+        assert_eq!(
+            fibre_flags(&["--fibre-listen-address", "127.0.0.1:7981"]),
+            (None, Some("127.0.0.1:7981".into()))
+        );
+        // `--fibre` takes no separate value: the next word stays a flag.
+        assert_eq!(
+            fibre_flags(&["--fibre", "--fibre-listen-address", ":1"]),
+            (Some(true), Some(":1".into()))
+        );
+        assert!(Cli::try_parse_from(["celestia-rs", "start", "--fibre=maybe"]).is_err());
+    }
+
+    #[test]
+    fn valaddr_set_host_parses() {
+        let cli = Cli::try_parse_from([
+            "celestia-rs",
+            "tx",
+            "valaddr",
+            "set-host",
+            "203.0.113.7:7980",
+            "--from",
+            "validator",
+        ])
+        .unwrap();
+        let Cmd::Tx(t) = cli.command else {
+            panic!("not tx")
+        };
+        assert!(
+            matches!(t.cmd, TxCmd::Valaddr(ValaddrTx::SetHost { ref host }) if host == "203.0.113.7:7980")
+        );
+        assert_eq!(t.flags.from, "validator");
+    }
+
     #[test]
     fn migrate_flags() {
         let args = "celestia-rs migrate --go-node-stopped --statesync-rpc https://a:443,https://b";
@@ -1996,6 +2162,23 @@ mod cli_tests {
         assert_eq!(o.statesync_rpc, ["https://a:443", "https://b"]);
     }
 
+    #[test]
+    fn follow_snapshot_flags() {
+        let parse = |args: &str| {
+            let cli = Cli::try_parse_from(args.split(' ')).unwrap();
+            let Cmd::Follow(a) = cli.command else {
+                panic!("not follow");
+            };
+            follow_app_options(&a).snapshots
+        };
+        let off = parse("celestia-rs follow --rpc http://a");
+        assert_eq!((off.interval, off.keep_recent), (0, 2));
+        let on = parse(
+            "celestia-rs follow --rpc http://a --snapshot-interval 10000 --snapshot-keep-recent 0",
+        );
+        assert_eq!((on.interval, on.keep_recent), (10_000, 0));
+    }
+
     fn skip_heights(args: &[&str]) -> Vec<i64> {
         let cli = Cli::try_parse_from(args).expect("parse CLI");
         match cli.command {
@@ -2004,6 +2187,36 @@ mod cli_tests {
             Cmd::Follow(args) => args.unsafe_skip_upgrades,
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    /// celestia-app's `--v2-upgrade-height` reaches the app (start and
+    /// abci); without it the chain's default applies (None).
+    #[test]
+    fn v2_upgrade_height_reaches_the_app_options() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let start = |args: &[&str]| {
+            let Cmd::Start(a) = Cli::try_parse_from(args).expect("parse CLI").command else {
+                panic!("not start");
+            };
+            app_options(home.path(), Some(&a)).expect("app options")
+        };
+        let opts = start(&["celestia-rs", "start", "--v2-upgrade-height", "1200"]);
+        assert_eq!(opts.node.v2_upgrade_height, Some(1200));
+        let opts = start(&["celestia-rs", "start"]);
+        assert_eq!(opts.node.v2_upgrade_height, None);
+        let Cmd::Abci(a) = Cli::try_parse_from([
+            "celestia-rs",
+            "abci",
+            "--in-memory",
+            "--v2-upgrade-height",
+            "77",
+        ])
+        .expect("parse CLI")
+        .command
+        else {
+            panic!("not abci");
+        };
+        assert_eq!(a.v2_upgrade_height, Some(77));
     }
 
     #[test]

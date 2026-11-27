@@ -805,7 +805,8 @@ pub fn verify_header(
 }
 
 /// `checkMisbehaviourHeader`.
-fn check_misbehaviour_header(
+/// (Public for the ibc-go v6 `CheckMisbehaviourAndUpdateState` of the legacy driver.)
+pub fn check_misbehaviour_header(
     cs: &ClientState,
     cons: &ConsensusState,
     h: &Header,
@@ -1200,7 +1201,9 @@ pub fn verify_upgrade_and_update_state(
     set_consensus_metadata(ctx, client_id, &latest(&up_cs))
 }
 
-fn ics23_proof(
+/// A `MerkleProof` of an upgrade (gogoproto `Unmarshal`), with the error
+/// `VerifyUpgradeAndUpdateState` reports.
+pub fn ics23_proof(
     bz: &[u8],
     what: &str,
 ) -> Result<celestia_proto::ibc::core::commitment::v1::MerkleProof> {

@@ -5,6 +5,11 @@
 //
 //	v1-oracle -synthetic -kv -out <v1-v3 dir> -handoff <home>
 //	v4-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> [-heights 5]
+//	v4-oracle -handoff <home> -genesis ... -out <dir> -heights 10 -next-handoff
+//
+// With -next-handoff (the v1-v3 chain and -heights 10), the blocks after
+// 20 signal and schedule plan "v5", and the program rewrites handoff.json
+// in the home after the last v4 block, for conformance/v5-oracle.
 //
 // This is the hand-off that the celestia-app v4 multiplexer performs in
 // production: celestia-app v3.13.0 (the embedded binary of app versions 1
@@ -127,6 +132,8 @@ type TxResult struct {
 	Log       string  `json:"log"`
 	Info      string  `json:"info"`
 	Events    []Event `json:"events"`
+	// Signers is ExecTxResult.Signers, recorded with -probes only.
+	Signers []string `json:"signers,omitempty"`
 }
 
 // Event is an ABCI event with its attributes in order.
@@ -179,7 +186,15 @@ func run() error {
 	genesisPath := flag.String("genesis", "", "the genesis.json of the synthetic chain")
 	heights := flag.Int64("heights", 5, "number of blocks to execute after the hand-off height")
 	out := flag.String("out", "", "output directory")
+	signBytes := flag.String("signbytes", "", "write the sign-bytes vectors (signbytes.go) to this file and exit")
+	probes := flag.Bool("probes", false, "after the usual five blocks, run the probe blocks of probes.go (use -heights 8) and record tx signers")
+	consensusMode := flag.Bool("consensus", false, "build blocks as a validator would (consensus.go): txs, square size and data root from PrepareProposal, commits signed by the validators' consensus keys")
+	tmclient := flag.Bool("tmclient", false, "after the usual five blocks, run the 07-tendermint client blocks of tmclient.go (use -heights 10)")
+	nextHandoff := flag.Bool("next-handoff", false, "after the last block, require plan \"v5\" at the next height and rewrite handoff.json in the -handoff home for conformance/v5-oracle")
 	flag.Parse()
+	if *signBytes != "" {
+		return writeSignBytes(*signBytes, "v4.1.0")
+	}
 	if *home == "" || *genesisPath == "" || *out == "" || *heights < 1 {
 		flag.Usage()
 		return errors.New("missing arguments")
@@ -250,6 +265,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	s.probes = *probes
+	s.consensus = *consensusMode
+	s.tmclient = *tmclient
 	kvUpgrade, err := upgradeOnly(*home, ho, s.blockTime(ho.Height+1), prev)
 	if err != nil {
 		return err
@@ -259,6 +277,11 @@ func run() error {
 		txs, err := s.txs(a, height)
 		if err != nil {
 			return fmt.Errorf("height %d: %w", height, err)
+		}
+		if s.consensus {
+			if txs, err = s.prepareProposal(a, height, txs); err != nil {
+				return fmt.Errorf("height %d: %w", height, err)
+			}
 		}
 		block, id, err := s.block(height, txs)
 		if err != nil {
@@ -316,6 +339,9 @@ func run() error {
 				Info:      r.Info,
 				Events:    events(r.Events),
 			})
+			if s.probes {
+				txResults[len(txResults)-1].Signers = txSigners(r)
+			}
 		}
 		dumped.TxResults = txs3
 		fixture.Heights = append(fixture.Heights, dumped)
@@ -353,6 +379,27 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "height %d: %s (%d txs, %d validator updates, app version %d)\n", height, got, len(res.TxResults), len(updates), s.appVersion)
 	}
 
+	if *nextHandoff {
+		last := ho.Height + *heights
+		plan, err := a.UpgradeKeeper.ReadUpgradeInfoFromDisk()
+		if err != nil {
+			return err
+		}
+		if plan.Name != "v5" || s.appVersion != 5 {
+			return fmt.Errorf("after height %d: upgrade-info.json plan %q, app version %d; want plan v5 and app version 5", last, plan.Name, s.appVersion)
+		}
+		if err := s.writeHandoff(filepath.Join(*home, "handoff.json")); err != nil {
+			return err
+		}
+	}
+	if s.consensus {
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			return err
+		}
+		if err := s.writeLastCommit(*out); err != nil {
+			return err
+		}
+	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return err
 	}
