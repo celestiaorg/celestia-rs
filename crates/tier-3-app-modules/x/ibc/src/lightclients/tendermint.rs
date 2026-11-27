@@ -805,7 +805,8 @@ pub fn verify_header(
 }
 
 /// `checkMisbehaviourHeader`.
-fn check_misbehaviour_header(
+/// (Public for the ibc-go v6 `CheckMisbehaviourAndUpdateState` of the legacy driver.)
+pub fn check_misbehaviour_header(
     cs: &ClientState,
     cons: &ConsensusState,
     h: &Header,
