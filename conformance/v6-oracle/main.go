@@ -1,6 +1,7 @@
 // Command v6-oracle continues the synthetic chain of conformance/v5-oracle
 // across the v5 to v6 upgrade with the Go celestia-app v6.4.10 state
-// machine (the v6 release that the v8 and v9 multiplexers embed), and
+// machine (the v6 release that the v10.6.0 and v11.0.0 multiplexers embed;
+// the v8 and v9 multiplexers embed v6.4.4), and
 // dumps every committed store root and KV change per height.
 //
 //	v1-oracle -synthetic -kv -out <v1-v3 dir> -handoff <home>

@@ -1,0 +1,178 @@
+{
+  "celestia_core": "v0.42.8",
+  "chain_id": "median-test",
+  "height": 10,
+  "block_id": {
+    "hash": "0707070707070707070707070707070707070707070707070707070707070707",
+    "parts": {
+      "total": 1,
+      "hash": "0808080808080808080808080808080808080808080808080808080808080808"
+    }
+  },
+  "validators": [
+    {
+      "address": "2C4E4D1DE6FBFC05D950FC7E6461BE3007DD16E4",
+      "pub_key": {
+        "type": "tendermint/PubKeyEd25519",
+        "value": "6uHIeTtVl8Sz9JDnasMRcsQ5aQ+O4UFCu4UaYfmknw4="
+      },
+      "voting_power": "40",
+      "proposer_priority": "-60"
+    },
+    {
+      "address": "9D4A423B1F9080DF2B3E726B4225CF8FB45C813C",
+      "pub_key": {
+        "type": "tendermint/PubKeyEd25519",
+        "value": "Yn8X2JPlaXpLoiCLyAsCkuf1jYEg6zU8G1VCnbnGsZY="
+      },
+      "voting_power": "30",
+      "proposer_priority": "30"
+    },
+    {
+      "address": "C8FF10BE8A074902D476CFEF8F89F6469E6DB93B",
+      "pub_key": {
+        "type": "tendermint/PubKeyEd25519",
+        "value": "IgW3AhbA9MpGMBrIQCkinbb9aMNLiqxPDQlmwbOXXys="
+      },
+      "voting_power": "20",
+      "proposer_priority": "20"
+    },
+    {
+      "address": "664E05BE485B14DF3DBA8117DCEF6679F69BB8EF",
+      "pub_key": {
+        "type": "tendermint/PubKeyEd25519",
+        "value": "N/InrYPWKMzkpgbLNJxtlEq1dKj5gDWwz6qnfn2jYb8="
+      },
+      "voting_power": "10",
+      "proposer_priority": "10"
+    }
+  ],
+  "cases": [
+    {
+      "name": "all slots name their validators",
+      "commit": {
+        "height": "10",
+        "round": 0,
+        "block_id": {
+          "hash": "0707070707070707070707070707070707070707070707070707070707070707",
+          "parts": {
+            "total": 1,
+            "hash": "0808080808080808080808080808080808080808080808080808080808080808"
+          }
+        },
+        "signatures": [
+          {
+            "block_id_flag": 2,
+            "validator_address": "2C4E4D1DE6FBFC05D950FC7E6461BE3007DD16E4",
+            "timestamp": "2024-01-02T03:04:07Z",
+            "signature": "Sj72JtzPsFGQ6DhmRR/HsMqCefDTPH7OBbEnYA23BNRLt7DSZ3N6IDmaAAasIWNJpD+ViRGlROAmnv0950tdBg=="
+          },
+          {
+            "block_id_flag": 2,
+            "validator_address": "9D4A423B1F9080DF2B3E726B4225CF8FB45C813C",
+            "timestamp": "2024-01-02T03:04:08Z",
+            "signature": "awqF5B3hZfE/JjvITC5zYJJXIQr8nDF8i7+9/5MwL6Ce9kb0bSJOZiVG/L0cmN1FDTR1q0O4E3lT5Zvk/B8XBA=="
+          },
+          {
+            "block_id_flag": 2,
+            "validator_address": "C8FF10BE8A074902D476CFEF8F89F6469E6DB93B",
+            "timestamp": "2024-01-02T03:04:09Z",
+            "signature": "6bD15fAb/nPIO/ODPtqfpHTuD3vYsROa5rDfXAhx+VvO/sd+tYoQzGAKidK83V/G4bjMQh4oIEw6FoiMb3q6Dg=="
+          },
+          {
+            "block_id_flag": 2,
+            "validator_address": "664E05BE485B14DF3DBA8117DCEF6679F69BB8EF",
+            "timestamp": "2024-01-02T03:04:06Z",
+            "signature": "zWcjOBlwCjoanJY7cMAPkQiL0T4/p+8zuj7BFomhxx4MrDsjWNnFaK/9ZRmympccYnviarEfMS+33iWWfqpcCA=="
+          }
+        ]
+      },
+      "verify_commit_error": "",
+      "median_time": "2024-01-02T03:04:07Z"
+    },
+    {
+      "name": "slot 3 names an address outside the set",
+      "commit": {
+        "height": "10",
+        "round": 0,
+        "block_id": {
+          "hash": "0707070707070707070707070707070707070707070707070707070707070707",
+          "parts": {
+            "total": 1,
+            "hash": "0808080808080808080808080808080808080808080808080808080808080808"
+          }
+        },
+        "signatures": [
+          {
+            "block_id_flag": 2,
+            "validator_address": "2C4E4D1DE6FBFC05D950FC7E6461BE3007DD16E4",
+            "timestamp": "2024-01-02T03:04:07Z",
+            "signature": "Sj72JtzPsFGQ6DhmRR/HsMqCefDTPH7OBbEnYA23BNRLt7DSZ3N6IDmaAAasIWNJpD+ViRGlROAmnv0950tdBg=="
+          },
+          {
+            "block_id_flag": 2,
+            "validator_address": "9D4A423B1F9080DF2B3E726B4225CF8FB45C813C",
+            "timestamp": "2024-01-02T03:04:08Z",
+            "signature": "awqF5B3hZfE/JjvITC5zYJJXIQr8nDF8i7+9/5MwL6Ce9kb0bSJOZiVG/L0cmN1FDTR1q0O4E3lT5Zvk/B8XBA=="
+          },
+          {
+            "block_id_flag": 2,
+            "validator_address": "C8FF10BE8A074902D476CFEF8F89F6469E6DB93B",
+            "timestamp": "2024-01-02T03:04:09Z",
+            "signature": "6bD15fAb/nPIO/ODPtqfpHTuD3vYsROa5rDfXAhx+VvO/sd+tYoQzGAKidK83V/G4bjMQh4oIEw6FoiMb3q6Dg=="
+          },
+          {
+            "block_id_flag": 2,
+            "validator_address": "ABABABABABABABABABABABABABABABABABABABAB",
+            "timestamp": "2024-01-02T03:04:06Z",
+            "signature": "zWcjOBlwCjoanJY7cMAPkQiL0T4/p+8zuj7BFomhxx4MrDsjWNnFaK/9ZRmympccYnviarEfMS+33iWWfqpcCA=="
+          }
+        ]
+      },
+      "verify_commit_error": "validator address mismatch at index 3: expected 664E05BE485B14DF3DBA8117DCEF6679F69BB8EF, got ABABABABABABABABABABABABABABABABABABABAB",
+      "median_time_error": "commit validator not found in validator set: ABABABABABABABABABABABABABABABABABABABAB"
+    },
+    {
+      "name": "slot 3 names validator 0",
+      "commit": {
+        "height": "10",
+        "round": 0,
+        "block_id": {
+          "hash": "0707070707070707070707070707070707070707070707070707070707070707",
+          "parts": {
+            "total": 1,
+            "hash": "0808080808080808080808080808080808080808080808080808080808080808"
+          }
+        },
+        "signatures": [
+          {
+            "block_id_flag": 2,
+            "validator_address": "2C4E4D1DE6FBFC05D950FC7E6461BE3007DD16E4",
+            "timestamp": "2024-01-02T03:04:07Z",
+            "signature": "Sj72JtzPsFGQ6DhmRR/HsMqCefDTPH7OBbEnYA23BNRLt7DSZ3N6IDmaAAasIWNJpD+ViRGlROAmnv0950tdBg=="
+          },
+          {
+            "block_id_flag": 2,
+            "validator_address": "9D4A423B1F9080DF2B3E726B4225CF8FB45C813C",
+            "timestamp": "2024-01-02T03:04:08Z",
+            "signature": "awqF5B3hZfE/JjvITC5zYJJXIQr8nDF8i7+9/5MwL6Ce9kb0bSJOZiVG/L0cmN1FDTR1q0O4E3lT5Zvk/B8XBA=="
+          },
+          {
+            "block_id_flag": 2,
+            "validator_address": "C8FF10BE8A074902D476CFEF8F89F6469E6DB93B",
+            "timestamp": "2024-01-02T03:04:09Z",
+            "signature": "6bD15fAb/nPIO/ODPtqfpHTuD3vYsROa5rDfXAhx+VvO/sd+tYoQzGAKidK83V/G4bjMQh4oIEw6FoiMb3q6Dg=="
+          },
+          {
+            "block_id_flag": 2,
+            "validator_address": "2C4E4D1DE6FBFC05D950FC7E6461BE3007DD16E4",
+            "timestamp": "2024-01-02T03:04:06Z",
+            "signature": "zWcjOBlwCjoanJY7cMAPkQiL0T4/p+8zuj7BFomhxx4MrDsjWNnFaK/9ZRmympccYnviarEfMS+33iWWfqpcCA=="
+          }
+        ]
+      },
+      "verify_commit_error": "validator address mismatch at index 3: expected 664E05BE485B14DF3DBA8117DCEF6679F69BB8EF, got 2C4E4D1DE6FBFC05D950FC7E6461BE3007DD16E4",
+      "median_time": "2024-01-02T03:04:07Z"
+    }
+  ]
+}
