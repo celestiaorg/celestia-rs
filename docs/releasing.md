@@ -3,19 +3,21 @@
 A release is a version of the `celestia-rs` binary crate
 (`crates/tier-5-node/celestia-rs/Cargo.toml`), a `v<version>` tag on the
 commit that carries it, and a GitHub release with the archives that
-`scripts/install.sh` installs. `celestia-rs version` prints the crate
+`scripts/install.sh` installs. `celestia-rs version` prints the release
 version, so all three always agree. No one pushes tags or edits versions by
 hand.
 
 The other workspace crates are `publish = false` and stay at 0.0.1; only
 the binary is versioned.
 
-There are two kinds of release:
+Versions are plain semver, `v<major>.<minor>.<patch>`, with no release
+candidates:
 
-- **Automatic releases**, once a day, of the newest `main` commit that
-  passed `ci`: `v<crate version>-main.<n>`. No one cuts them.
-- **Human releases** (`v0.1.0`, `v0.1.0-rc.10`), cut with the
+- **Patch releases** (`v0.1.0`, `v0.1.1`, ...), once a day, of the newest
+  `main` commit that passed `ci`. No one cuts them.
+- **Minor and major releases** (`v0.2.0`, `v1.0.0`), cut with the
   **prepare release** workflow below, for milestones and release notes.
+  Daily patch releases then continue on the new line (`v0.2.1`, ...).
 
 Nodes do not track "the newest release". They follow a **release
 channel**, one per network, which moves forward on its own as releases
@@ -25,7 +27,7 @@ soak on the network before it.
 
 ```mermaid
 flowchart LR
-  main["main<br/>(newest commit that passed ci)"] -->|daily, 14:00 UTC| rel["release v…-main.n<br/>(pre-release)"]
+  main["main<br/>(newest commit that passed ci)"] -->|daily, 14:00 UTC| rel["next patch<br/>v0.1.N"]
   rel -->|0 h| corto
   corto -->|24 h in corto| mocha
   mocha -->|24 h in mocha| mainnet
@@ -34,17 +36,20 @@ flowchart LR
 
 **Automatic releases.** Every day at 14:00 UTC, `release.yml` takes the
 newest `main` commit whose `ci` push run passed and, if no release has it
-yet, tags it `v<crate version>-main.<n>` (or
-`<crate version>.main.<n>` when the crate version is already a
-pre-release, e.g. `v0.1.0-rc.9.main.812`), where `n` is the commit's
-position on `main`. It builds, smoke-tests and publishes the archives as a
-GitHub pre-release. One release a day, not one per merge, keeps release
+yet, tags it with the next patch version on the crate version's
+major.minor line: one more than the highest `v<major>.<minor>.<patch>` tag,
+or the crate's own patch if there is none (crate `0.1.0-rc.9`, no `v0.1.x`
+tag yet: `v0.1.0`). It builds, smoke-tests and publishes the archives. The
+release's title is its tag. No release is marked GitHub's "Latest" when
+published: **release channels** marks the `mainnet` channel's release
+Latest, so `github.com/<repo>/releases/latest` and `install.sh` without
+`--channel` give the release Mainnet runs. One release a day, not one per merge, keeps release
 builds (three targets, one on macOS) from competing with PR CI for runners;
 nodes update daily and channels soak for 24 hours, so more frequent
 releases would not reach them sooner. The build sets `CELESTIA_RS_RELEASE_VERSION`, so
-`celestia-rs version`, `--version` and `version --long` report the full
-release version; `build.rs` rejects
-a value that does not extend the crate version. A commit that changes the
+`celestia-rs version`, `--version` and `version --long` report the release
+version (the crate version stays at the line's `.0`); `build.rs` rejects a
+value that is not `<major>.<minor>.<patch>` on the crate version's line. A commit that changes the
 crate version is left to the human release path.
 
 **Channels.** `.github/release-channels.json` is the policy. Each channel
@@ -123,14 +128,14 @@ below. Normal updates continue without a multi-day deployment hold. A release
 label alone does not establish stability or Go conformance; retained evidence
 must keep its actual version, coverage and any gaps.
 
-## Qualifying a release candidate
+## Qualifying a release
 
 General mainnet recommendation covers the node roles in
 [ADR 0008](adr/0008-mainnet-recommendation.md). A release tag or successful
 build does not close the acceptance criteria in `MILESTONES.md`.
 
-Use `cargo xtask bump-version <version>-rc.<n>` to prepare the candidate,
-commit its source, and retain evidence against that exact commit. Run an
+Pick the daily release to qualify (for example `v0.1.4`) and retain
+evidence against its tagged commit. Run an
 individual check with the evidence wrapper, for example:
 
 ```sh
@@ -160,34 +165,27 @@ record describes one check only. It cannot replace missing F1 evidence or
 the required elapsed nights. Publishing or changing a live validator is a
 separate operator action.
 
-## Choosing the first official version
+## Choosing a minor or major version
 
-For an initial **v0.1.0**, describe the supported networks, app versions,
-node roles and known limitations in the release notes. The README currently
-describes an experimental node. Keep that scope explicit if publishing
-while mainnet qualification is open. The installer selects an official
-release by default, so include the operator-facing changes since the first
-RC, even if the last RC introduced only a small change.
-
-Reserve **v1.0.0** for a defined compatibility commitment. Record which CLI,
+The first daily release is **v0.1.0**. Cut a new minor version (`v0.2.0`)
+for a milestone worth its own release notes, such as a new supported
+network or node role. Reserve **v1.0.0** for a defined compatibility commitment. Record which CLI,
 RPC and on-disk interfaces operators can rely on and how upgrades work. For
 a general mainnet recommendation, use the repository's C1, F1 and Q1 exit
 criteria and link their candidate-specific evidence. [Milestones](../MILESTONES.md)
 and [recommendation scope](adr/0008-mainnet-recommendation.md).
 
-Before promotion, compare the candidate tag with the proposed release
-source. If consensus code changed, qualify a new candidate containing the
-change. Record the candidate and promotion commits and review the final
-diff. Run the **release** workflow manually on the proposed source to
-rehearse all three archive builds without publishing. Check the embedded
-version, commit and build profile, the archive checksums and the installer.
-The **prepare release** workflow creates the PR whose merge publishes.
+Before a minor or major release, run the **release** workflow manually on
+the proposed source to rehearse all three archive builds without
+publishing. Check the embedded version, commit and build profile, the
+archive checksums and the installer. The **prepare release** workflow
+creates the PR whose merge publishes.
 
 ## Cutting a release
 
-1. **Actions → prepare release → Run workflow**, with the version, e.g.
-   `0.1.0-rc.2` or `0.1.0`. A version with a `-` suffix is published as a
-   pre-release.
+1. **Actions → prepare release → Run workflow**, with the new version,
+   `<major>.<minor>.0` (e.g. `0.2.0`). Patch versions and pre-release
+   suffixes are refused: patches are released daily.
 
    This opens a PR, `release: v<version>`, made by
    `cargo xtask bump-version <version>`: the crate's version in `Cargo.toml`
@@ -203,10 +201,10 @@ The **prepare release** workflow creates the PR whose merge publishes.
 3. That's the release. On the merge, `release.yml` sees the version change,
    tags the merge commit `v<version>`, builds the macOS and Linux archives,
    fails if a binary doesn't report `<version>`, and publishes the release
-   with the CHANGELOG section as its notes. Then `install.yml` installs it
-   with the README's command on macOS and Linux.
+   with the CHANGELOG section as its notes. Release channels then promote
+   it like any daily release.
 
-The same steps work from a checkout: `cargo xtask bump-version 0.1.0-rc.2`,
+The same steps work from a checkout: `cargo xtask bump-version 0.2.0`,
 then open a PR with the result.
 
 ## Guards

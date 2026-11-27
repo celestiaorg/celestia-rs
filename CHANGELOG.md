@@ -9,7 +9,8 @@
   the sign state, the node's RPC state and metrics, and log tails. It never
   includes private keys. See the operator guide's "Reporting a problem".
 - `main` is released automatically once a day, from its newest commit that
-  passed `ci` (`v<version>-main.<n>`, a pre-release), and release channels
+  passed `ci`, as the next plain semver patch (`v0.1.0`, `v0.1.1`, ...; no
+  more release candidates), and release channels
   (`corto`, `mocha`, `mainnet`) move forward on their own as releases soak
   on the network before them. `install.sh --channel <name>` installs a
   channel's release, a new Linux systemd timer follows a channel daily, and

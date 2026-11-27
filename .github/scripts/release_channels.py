@@ -21,11 +21,10 @@ Rules for one `promote` pass, per channel in policy order:
   after it).
 - The channel takes the newest candidate, by its commit's position on
   main, and only if it is newer than its current tag: promotion never
-  downgrades. Automatic releases builds run in parallel and can publish out
-  of order, so publication time only says when a release is available. A
-  release's position is its `position` field (the workflow adds it from
-  `git rev-list --count <tag>`), else the `main.<n>` in its tag; a release
-  with neither is never taken.
+  downgrades. Publication time only says when a release is available (a
+  re-run build can publish late). A release's position is its `position`
+  field (the workflow adds it from `git rev-list --count <tag>`), else a
+  `main.<n>` suffix in its tag; a release with neither is never taken.
 
 main is linear, so a release that entered the source N hours ago has been
 running there, inside every later release, for N hours. That keeps a busy

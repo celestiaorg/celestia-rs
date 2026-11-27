@@ -157,3 +157,18 @@ jobs:
           message="channels: $(paste -sd ';' ../changes.txt)"
           # Signed by GitHub, like the release PR's commit.
           python3 ../.github/scripts/commit-signed-changes.py "$BRANCH" "${message:0:250}"
+      - name: Mark the mainnet release Latest
+        # github.com/<repo>/releases/latest and `install.sh` without
+        # --channel then give the release mainnet runs (release.yml marks
+        # no release Latest itself).
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [ -f state/channels/mainnet ] || exit 0
+          tag=$(cat state/channels/mainnet)
+          latest=$(gh release view --json tagName --jq .tagName 2>/dev/null || true)
+          if [ "$latest" != "$tag" ]; then
+            gh release edit "$tag" --latest >/dev/null || echo "::warning::could not mark $tag as the Latest release"
+            echo "marked $tag Latest (was ${latest:-none})"
+          fi
