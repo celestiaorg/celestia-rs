@@ -8,6 +8,11 @@ symlink to this file.
 - Open completed pull requests as ready for review and enable auto-merge,
   so required CI controls merging. Do not bypass checks or push directly
   to `main`.
+- If GitHub refuses to arm auto-merge because every required check has
+  already passed (the pull request is "clean"), squash-merge it directly.
+  This is the same result auto-merge gives. Do not merge directly in any
+  other case: not with a required check pending or failing, and not to
+  get past a review thread or a hold someone placed on the pull request.
 - Title pull requests as conventional commits,
   `<type>[(scope)][!]: <description>` (the `pr-title` check enforces it).
   Add `!` when operators must act on the change (removed or renamed flag,
