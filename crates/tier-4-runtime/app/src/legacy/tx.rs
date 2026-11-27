@@ -100,6 +100,22 @@ pub fn gatekeeper_accepts(v: u64, type_url: &str) -> Option<bool> {
     }
 }
 
+/// celestia's `MsgVersioningGateKeeper` as the msg service router's
+/// circuit breaker (`IsAllowed`): every routed message, also one a
+/// `MsgExec`, an interchain account or a gov proposal carries.
+pub(super) fn circuit_breaker(ctx: &Context<'_>, type_url: &str) -> Result<(), SdkError> {
+    let v = header_app_version(ctx);
+    match gatekeeper_accepts(v, type_url) {
+        None => Err(errs::not_supported(format!(
+            "app version {v} is not supported"
+        ))),
+        Some(false) => Err(x_ibc::errors::unregistered(format!(
+            "circuit breaker disables execution of this message: {type_url}"
+        ))),
+        Some(true) => Ok(()),
+    }
+}
+
 fn header_app_version(ctx: &Context<'_>) -> u64 {
     ctx.consensus_params.version.as_ref().map_or(0, |v| v.app)
 }

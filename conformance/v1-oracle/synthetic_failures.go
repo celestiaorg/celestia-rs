@@ -20,7 +20,9 @@ package main
 //     delegation above the balance, a vote on an unknown proposal, and
 //     MsgExec of zero-amount undelegation, redelegation and cancelled
 //     unbonding, and parameter changes whose values every kind of
-//     Subspace.Update decodes or rejects, in every subspace);
+//     Subspace.Update decodes or rejects, in every subspace; MsgExec of a
+//     nested MsgExec, a vesting account, an ibc message and a two-signer
+//     message; gov v1 proposals of non-legacy messages);
 //   - round 2: a transitive redelegation, MsgExec of an expired grant, a
 //     fee allowance spent past its limit and an expired one.
 //
@@ -39,13 +41,18 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	vestingtypes "github.com/cosmos/cosmos-sdk/x/auth/vesting/types"
 	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	"github.com/cosmos/cosmos-sdk/x/feegrant"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
+	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	govv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 	paramproposal "github.com/cosmos/cosmos-sdk/x/params/types/proposal"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+	icacontrollertypes "github.com/cosmos/ibc-go/v6/modules/apps/27-interchain-accounts/controller/types"
+	clienttypes "github.com/cosmos/ibc-go/v6/modules/core/02-client/types"
 )
 
 // failUsers are the failures chain's accounts, one per case.
@@ -60,6 +67,8 @@ var failUsers = append([]string{
 	"f-rollback", "f-noauth", "f-nofeegrant", "f-dist", "f-del-unknown",
 	"f-blocked", "f-oog-del", "f-del-poor", "f-vote-unknown",
 	"f-zero-undel", "f-zero-redel", "f-zero-cancel",
+	"f-exec-nested", "f-exec-multi", "f-exec-vesting", "f-exec-ibc",
+	"f-prop-gov-send", "f-prop-signer", "f-prop-unroutable",
 }, append(failPhaseUsers(), failParamUsers()...)...)
 
 // failParams are parameter changes whose submission runs Subspace.Update
@@ -297,6 +306,35 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 				return b.direct(n, nil, m)
 			})
 		}
+		// authz DispatchActions of messages beyond the grantable ones: a
+		// nested MsgExec, a vesting account, an ibc message (each its own
+		// grantee), and a message with two signers.
+		self("f-exec-nested", func() sdk.Msg {
+			inner := authz.NewMsgExec(b.addr("f-exec-nested"), []sdk.Msg{send("f-exec-nested", "alice", 1)})
+			return &inner
+		}())
+		self("f-exec-vesting", vestingtypes.NewMsgCreateVestingAccount(b.addr("f-exec-vesting"),
+			authtypes.NewModuleAddress(fmt.Sprintf("failures-vest-%d", b.height)), coins(10), blockTime(b.height).Unix(), blockTime(b.height).Unix()+600, false))
+		self("f-exec-ibc", &clienttypes.MsgUpdateClient{ClientId: "07-tendermint-0", Signer: b.addr("f-exec-ibc").String()})
+		self("f-exec-multi", banktypes.NewMsgMultiSend(
+			[]banktypes.Input{banktypes.NewInput(b.addr("f-exec-multi"), coins(1)), banktypes.NewInput(b.addr("alice"), coins(1))},
+			[]banktypes.Output{banktypes.NewOutput(b.addr("bob"), coins(2))}))
+		// gov v1 proposals of messages other than MsgExecLegacyContent:
+		// SubmitProposal checks their signer (the gov account) and route,
+		// but runs only legacy content.
+		govAcct := authtypes.NewModuleAddress(govtypes.ModuleName)
+		propose := func(n string, msgs ...sdk.Msg) {
+			add(func() error {
+				m, err := govv1.NewMsgSubmitProposal(msgs, sdk.NewCoins(), b.addr(n).String(), "")
+				if err != nil {
+					return err
+				}
+				return b.direct(n, nil, m)
+			})
+		}
+		propose("f-prop-gov-send", banktypes.NewMsgSend(govAcct, b.addr("alice"), coins(1)))
+		propose("f-prop-signer", banktypes.NewMsgSend(b.addr("alice"), b.addr("bob"), coins(1)))
+		propose("f-prop-unroutable", icacontrollertypes.NewMsgRegisterInterchainAccount("connection-0", govAcct.String(), ""))
 		undel := make([]sdk.Msg, 8)
 		for i := range undel {
 			undel[i] = stakingtypes.NewMsgUndelegate(b.addr("f-unbond"), val0, coin(tia/10))

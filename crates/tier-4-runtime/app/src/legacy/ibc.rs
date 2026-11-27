@@ -90,6 +90,31 @@ fn non_empty_proof(p: &[u8], log: &str) -> Result<()> {
 /// ibc-go v6 `ValidateBasic` of the messages whose v6 checks differ from
 /// ibc-go v8's (`None` for the others).
 fn validate_basic_v6(msg: &Any) -> Option<Result<()>> {
+    // v6 `MsgUpdateClient.ValidateBasic` also unpacks the client message
+    // and runs its `ValidateBasic` (v8's checks the signer and client ID
+    // only).
+    if msg.type_url == clpb::MsgUpdateClient::type_url() {
+        return Some(decode(msg).and_then(|m: clpb::MsgUpdateClient| {
+            check_signer_v6(&m.signer)?;
+            let Some(cm) = m.client_message.as_ref() else {
+                return Err(errs::unpack_any("protobuf Any message cannot be nil"));
+            };
+            match tmc::unpack_client_message(cm) {
+                Some(Ok(tmc::ClientMessage::Header(h))) => tmc::validate_header_basic(&h)?,
+                Some(Ok(tmc::ClientMessage::Misbehaviour(mb))) => {
+                    tmc::validate_misbehaviour_basic(&mb)?;
+                }
+                Some(Err(e)) => return Err(e),
+                None => {
+                    return Err(super::not_ported(errs::not_supported(format!(
+                        "the ibc-go v6 ValidateBasic of client message {}",
+                        cm.type_url
+                    ))));
+                }
+            }
+            host::client_identifier_validator(&m.client_id)
+        }));
+    }
     if msg.type_url == copb::MsgConnectionOpenInit::type_url() {
         return Some(decode(msg).and_then(|m: copb::MsgConnectionOpenInit| {
             host::client_identifier_validator(&m.client_id)

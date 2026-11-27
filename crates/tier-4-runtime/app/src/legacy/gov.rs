@@ -702,37 +702,55 @@ fn exec_legacy_content(
 }
 
 /// `Keeper.SubmitProposal` (v0.46) of `MsgExecLegacyContent` messages.
-fn keeper_submit(
-    ctx: &mut Context<'_>,
-    msgs: &[v1::MsgExecLegacyContent],
-    metadata: &str,
-) -> Result<v1::Proposal> {
+fn keeper_submit(ctx: &mut Context<'_>, msgs: &[Any], metadata: &str) -> Result<v1::Proposal> {
     assert_metadata_length(metadata)?;
     let mut msgs_str = String::new();
     let mut anys = Vec::with_capacity(msgs.len());
-    for m in msgs {
+    for a in msgs {
         msgs_str.push(',');
-        msgs_str.push_str(&v1::MsgExecLegacyContent::type_url());
-        // `msg.ValidateBasic()`.
-        let authority = sdk::address::acc_from_bech32_go(&m.authority)
-            .map_err(|e| gerr::invalid_proposal_msg().wrap(sdk::error::internal(e).log))?;
-        // `GetSigners` then the governance account.
-        let gov = gov_account(ctx)?;
-        if authority != gov {
-            return Err(gerr::invalid_signer().wrap(x_auth::bech32(&authority)?));
-        }
-        // The handler on a cache context (writes and events discarded,
-        // gas kept).
-        let cp = ctx.branch();
-        let r = exec_legacy_content(ctx, m);
-        ctx.discard(cp);
-        if let Err(e) = r {
-            if e.is_panic() {
-                return Err(e);
+        msgs_str.push_str(&a.type_url);
+        let a = &super::msgs::gogo_view(a)?;
+        if a.type_url == v1::MsgExecLegacyContent::type_url() {
+            let m: v1::MsgExecLegacyContent = decode(a)?;
+            // `msg.ValidateBasic()`.
+            let authority = sdk::address::acc_from_bech32_go(&m.authority)
+                .map_err(|e| gerr::invalid_proposal_msg().wrap(sdk::error::internal(e).log))?;
+            // `GetSigners` then the governance account.
+            let gov = gov_account(ctx)?;
+            if authority != gov {
+                return Err(gerr::invalid_signer().wrap(x_auth::bech32(&authority)?));
             }
-            return Err(gerr::no_proposal_handler_exists().wrap(e.log));
+            // The handler on a cache context (writes and events
+            // discarded, gas kept).
+            let cp = ctx.branch();
+            let r = exec_legacy_content(ctx, &m);
+            ctx.discard(cp);
+            if let Err(e) = r {
+                if e.is_panic() {
+                    return Err(e);
+                }
+                return Err(gerr::no_proposal_handler_exists().wrap(e.log));
+            }
+        } else {
+            // `ValidateBasic`, one signer that is the governance account,
+            // a route; the message itself runs only once the proposal
+            // passes.
+            super::msgs::validate_basic(a).map_err(|e| gerr::invalid_proposal_msg().wrap(e.log))?;
+            let signers = super::signers::signers(a)?.unwrap_or_default();
+            let [signer] = <[Vec<u8>; 1]>::try_from(signers).map_err(|_| gerr::invalid_signer())?;
+            if signer != gov_account(ctx)? {
+                let text = if signer.is_empty() {
+                    String::new()
+                } else {
+                    x_auth::bech32(&signer)?
+                };
+                return Err(gerr::invalid_signer().wrap(text));
+            }
+            if !routable(&a.type_url) {
+                return Err(gerr::unroutable_proposal_msg().wrap(&a.type_url));
+            }
         }
-        anys.push(txdecode::gogo_repack(&Any::pack(m)));
+        anys.push(txdecode::gogo_repack(a));
     }
     let id = proposal_id(ctx)?;
     let submit = ctx.header.time;
@@ -898,7 +916,7 @@ fn message_event(ctx: &mut Context<'_>, sender: &str) {
 /// v1 `msgServer.SubmitProposal`.
 fn submit_proposal(
     ctx: &mut Context<'_>,
-    msgs: &[v1::MsgExecLegacyContent],
+    msgs: &[Any],
     initial_deposit: &[PbCoin],
     proposer: &str,
     metadata: &str,
@@ -954,21 +972,11 @@ fn non_split(option: i32) -> Vec<v1::WeightedVoteOption> {
     }]
 }
 
-/// The v1 messages of a v1 `MsgSubmitProposal` (only
-/// `MsgExecLegacyContent`, which `ValidateBasic` ensured).
-fn exec_msgs(m: &v1::MsgSubmitProposal) -> Result<Vec<v1::MsgExecLegacyContent>> {
-    m.messages
-        .iter()
-        .map(|a| {
-            if a.type_url != v1::MsgExecLegacyContent::type_url() {
-                return Err(not_ported(format!(
-                    "gov v1 proposal message {}",
-                    a.type_url
-                )));
-            }
-            super::msgs::gogo_view(a).and_then(|a| decode(&a))
-        })
-        .collect()
+/// Whether celestia-app v3.13.0's msg service router has a handler for
+/// `type_url`: every message of the v1 registry except the interchain
+/// accounts controller's (no controller module).
+fn routable(type_url: &str) -> bool {
+    !type_url.starts_with("/ibc.applications.interchain_accounts.controller.")
 }
 
 /// Executes a gov message; `None` for any other message.
@@ -1021,14 +1029,25 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
                 content: Some(content),
                 authority: gov,
             };
-            submit_proposal(ctx, &[exec], &m.initial_deposit, &m.proposer, "")
-                .map(|id| Any::pack(&v1beta1::MsgSubmitProposalResponse { proposal_id: id }))
+            submit_proposal(
+                ctx,
+                &[Any::pack(&exec)],
+                &m.initial_deposit,
+                &m.proposer,
+                "",
+            )
+            .map(|id| Any::pack(&v1beta1::MsgSubmitProposalResponse { proposal_id: id }))
         })
     } else if u == v1::MsgSubmitProposal::type_url() {
         decode::<v1::MsgSubmitProposal>(msg).and_then(|m| {
-            let msgs = exec_msgs(&m)?;
-            submit_proposal(ctx, &msgs, &m.initial_deposit, &m.proposer, &m.metadata)
-                .map(|id| Any::pack(&v1::MsgSubmitProposalResponse { proposal_id: id }))
+            submit_proposal(
+                ctx,
+                &m.messages,
+                &m.initial_deposit,
+                &m.proposer,
+                &m.metadata,
+            )
+            .map(|id| Any::pack(&v1::MsgSubmitProposalResponse { proposal_id: id }))
         })
     } else if u == v1::MsgExecLegacyContent::type_url() {
         // Only the gov account can sign it (only a proposal runs it).
@@ -1153,17 +1172,22 @@ pub fn end_block(ctx: &mut Context<'_>) -> Result<()> {
             let mut events = Vec::new();
             let mut failed = false;
             for a in &p.messages {
-                if a.type_url != v1::MsgExecLegacyContent::type_url() {
-                    ctx.events = outer;
-                    ctx.discard(cp);
-                    return Err(not_ported(format!("gov proposal message {}", a.type_url)));
-                }
-                let m: v1::MsgExecLegacyContent = decode(a)?;
-                match exec_legacy_content(ctx, &m) {
+                // The router's handler of the message.
+                let r = if a.type_url == v1::MsgExecLegacyContent::type_url() {
+                    let m: v1::MsgExecLegacyContent = decode(a)?;
+                    exec_legacy_content(ctx, &m)
+                } else {
+                    let inner = std::mem::take(&mut ctx.events);
+                    let r = super::authz::router_handle(ctx, a);
+                    let ev = std::mem::replace(&mut ctx.events, inner).take();
+                    r.map(|_| ev)
+                };
+                match r {
                     Ok(ev) => events.extend(ev),
                     Err(e) if e.is_panic() => {
                         ctx.events = outer;
                         ctx.discard(cp);
+                        // Go's EndBlocker does not recover: the node halts.
                         return Err(not_ported("panic in a gov proposal handler"));
                     }
                     Err(_) => {

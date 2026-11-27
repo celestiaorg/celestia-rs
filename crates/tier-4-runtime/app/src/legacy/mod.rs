@@ -48,6 +48,7 @@ pub mod params;
 pub mod pfm;
 pub mod qgb;
 pub mod signal;
+pub mod signers;
 pub mod tx;
 pub mod upgrade;
 pub mod vesting;
