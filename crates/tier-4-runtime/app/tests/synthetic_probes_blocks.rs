@@ -292,6 +292,40 @@ fn blocks_match_the_oracle(fixture: &str, version: u64) {
         // commits to; staking `HistoricalInfo` stores it.
         let rs_app_hash = app.info().last_block_app_hash;
         let mut req = common::finalize_request(&blocks[&height], &vals[&(height - 1)]);
+        // The oracle recorded the Misbehavior it passed to FinalizeBlock.
+        let recorded: Vec<_> = results[&height]["misbehavior"]
+            .as_array()
+            .map(|m| {
+                m.iter()
+                    .map(|m| {
+                        (
+                            m["type"].as_str().unwrap().to_owned(),
+                            hex::encode_upper(
+                                hex::decode(m["validator_address"].as_str().unwrap()).unwrap(),
+                            ),
+                            m["validator_power"].as_i64().unwrap(),
+                            m["height"].as_i64().unwrap(),
+                            m["total_voting_power"].as_i64().unwrap(),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let sent: Vec<_> = req
+            .misbehavior
+            .iter()
+            .map(|m| {
+                let v = m.validator.as_ref().unwrap();
+                (
+                    m.r#type().as_str_name().to_owned(),
+                    hex::encode_upper(&v.address),
+                    v.power,
+                    m.height,
+                    m.total_voting_power,
+                )
+            })
+            .collect();
+        assert_eq!(sent, recorded, "misbehavior at {height}");
         // celestia-core passes each BlobTx's inner transaction to
         // FinalizeBlock, as the oracle did.
         for tx in &mut req.txs {
@@ -403,6 +437,40 @@ fn v9_probes_match_the_oracle() {
 #[test]
 fn v4_ibc_packets_fail_without_the_capability_module() {
     blocks_match_the_oracle(&format!("{FIXTURES}/v3-ibc-v4"), 4);
+}
+
+/// A block that carries `DuplicateVoteEvidence` (D's `v{N}-evidence`
+/// fixtures; mainnet has double-sign evidence at 8,218,923 in the app
+/// version 5 era and 9,217,879 in the v6 era). x/evidence
+/// `handleEquivocationEvidence` slashes, jails and tombstones the validator;
+/// later blocks delegate to it, undelegate and redelegate from it.
+fn evidence_matches_the_oracle(version: u64) {
+    blocks_match_the_oracle(&format!("{FIXTURES}/v{version}-evidence"), version);
+}
+
+#[test]
+fn v4_evidence_matches_the_oracle() {
+    evidence_matches_the_oracle(4);
+}
+
+#[test]
+fn v5_evidence_matches_the_oracle() {
+    evidence_matches_the_oracle(5);
+}
+
+#[test]
+fn v6_evidence_matches_the_oracle() {
+    evidence_matches_the_oracle(6);
+}
+
+#[test]
+fn v8_evidence_matches_the_oracle() {
+    evidence_matches_the_oracle(8);
+}
+
+#[test]
+fn v9_evidence_matches_the_oracle() {
+    evidence_matches_the_oracle(9);
 }
 
 /// 07-tendermint client updates per release (D's fixtures

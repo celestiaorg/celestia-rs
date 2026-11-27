@@ -165,14 +165,32 @@ impl Reactor {
             syncer.stop();
         }
         let sw = self.switch.lock().map(|g| g.clone()).unwrap_or_default();
-        let hook = move || {
-            tracing::debug!("Requesting snapshots from known peers");
-            if let Some(sw) = sw.upgrade() {
-                drop(sw.broadcast(SNAPSHOT_CHANNEL, Msg::SnapshotsRequest.encode()));
+        let hook = {
+            let sw = sw.clone();
+            move || {
+                tracing::debug!("Requesting snapshots from known peers");
+                if let Some(sw) = sw.upgrade() {
+                    drop(sw.broadcast(SNAPSHOT_CHANNEL, Msg::SnapshotsRequest.encode()));
+                }
             }
         };
         hook();
-        let res = syncer.sync_any(discovery_time, &hook);
+        // Go's retry hook only asks the connected peers again. On a network
+        // where most peers that serve snapshots are at their inbound limit,
+        // discovery then depends on the switch's redial schedule, which
+        // decays to one try in many minutes. So each round that ends with
+        // no snapshot also redials the persistent peers that are not
+        // connected; a peer that connects is asked in `add_peer`.
+        let retry_hook = move || {
+            hook();
+            if let Some(sw) = sw.upgrade() {
+                let redialed = sw.redial_persistent_peers();
+                if redialed > 0 {
+                    tracing::debug!(redialed, "Redialing persistent peers for snapshots");
+                }
+            }
+        };
+        let res = syncer.sync_any(discovery_time, &retry_hook);
         if let Ok(mut g) = self.syncer.write() {
             *g = None;
         }

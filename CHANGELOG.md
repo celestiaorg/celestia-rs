@@ -33,6 +33,13 @@
   coding up to 256 shards now uses in-house code that gives the same
   bytes, and the command line no longer colors its help and error text.
 
+### Fixed
+
+- State sync looks for a snapshot more steadily. While it knows no
+  snapshot, each 15 s discovery round also redials the persistent peers
+  that are not connected. Before, after about three minutes a full peer
+  was tried once in many minutes, and a slot that opened was missed.
+
 ## v0.1.0-rc.9 (2026-11-23)
 
 ### Changed
