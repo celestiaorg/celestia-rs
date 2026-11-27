@@ -233,13 +233,18 @@ impl PruningOptions {
     }
 }
 
+/// Default IAVL node cache size (decoded nodes, shared by all stores):
+/// at mainnet height ~560k, 4,000,000 nodes ran 6% faster than 781,250
+/// (celestia-app's default) and as fast as 8,000,000.
+pub const DEFAULT_NODE_CACHE_SIZE: usize = 4_000_000;
+
 /// Options of a storage-backed multi-store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreOptions {
     /// Pruning policy.
     pub pruning: PruningOptions,
-    /// Decoded IAVL nodes cached across all stores (roughly 200–300 B of
-    /// memory each).
+    /// Decoded IAVL nodes cached across all stores (at least ~370 B of
+    /// memory each, measured at mainnet height ~560k).
     pub node_cache_size: usize,
     /// Run the storage part of pruning (orphan scans and deletes) on a
     /// worker thread instead of inside [`Store::commit`] (see
@@ -252,7 +257,7 @@ impl Default for StoreOptions {
     fn default() -> Self {
         Self {
             pruning: PruningOptions::validator(),
-            node_cache_size: 1_000_000,
+            node_cache_size: DEFAULT_NODE_CACHE_SIZE,
             background_pruning: false,
         }
     }
