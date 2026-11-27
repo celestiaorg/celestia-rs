@@ -6,8 +6,8 @@ pub const PARALLEL_MIN: usize = 16;
 
 /// The index of the first item of `items` (in order) for which `ok` is
 /// false. With [`PARALLEL_MIN`] or more items and more than one CPU, the
-/// items are split into contiguous chunks checked on the shared worker
-/// pool (rayon's global pool, one thread per CPU, started once), and
+/// items are split into contiguous chunks checked on [`pool`] (started
+/// once, never shared with other work), and
 /// the lowest failing index is returned: the same answer as a sequential
 /// scan, for a pure `ok`. Workers share the lowest failure found so far
 /// and stop before an item past it, so an early failure still ends the
@@ -16,18 +16,19 @@ pub const PARALLEL_MIN: usize = 16;
 pub fn first_failure<T: Sync>(items: &[T], ok: impl Fn(&T) -> bool + Sync) -> Option<usize> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     let threads = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
-    if items.len() < PARALLEL_MIN || threads < 2 {
-        return items.iter().position(|item| !ok(item));
-    }
+    let pool = match pool() {
+        Some(pool) if items.len() >= PARALLEL_MIN && threads >= 2 => pool,
+        _ => return items.iter().position(|item| !ok(item)),
+    };
     let chunks = threads.min(items.len() / (PARALLEL_MIN / 2)).max(1);
     let size = items.len().div_ceil(chunks);
     let first = AtomicUsize::new(usize::MAX);
     let (ok, first) = (&ok, &first);
-    // `rayon::scope_fifo` returns when every chunk is done and re-raises a
+    // `scope_fifo` returns when every chunk is done and re-raises a
     // chunk's panic. FIFO order starts the lowest chunk first (rayon's
     // default runs the last one spawned first), so an early failure is
     // found as soon as with one thread per chunk.
-    rayon::scope_fifo(|scope| {
+    pool.scope_fifo(|scope| {
         for (c, part) in items.chunks(size).enumerate() {
             scope.spawn_fifo(move |_| {
                 for (i, item) in part.iter().enumerate() {
@@ -46,6 +47,21 @@ pub fn first_failure<T: Sync>(items: &[T], ok: impl Fn(&T) -> bool + Sync) -> Op
     });
     let found = first.load(Ordering::Relaxed);
     (found != usize::MAX).then_some(found)
+}
+
+/// The worker pool for signature checks: one thread per CPU, named
+/// `sig-check-N`, started on first use. It is separate from rayon's global
+/// pool, which other code in the node uses (the Fibre server's erasure
+/// coding), so a commit check never queues behind that work. `None` if the
+/// threads cannot be started; checks then run on the calling thread.
+fn pool() -> Option<&'static rayon::ThreadPool> {
+    static POOL: std::sync::LazyLock<Option<rayon::ThreadPool>> = std::sync::LazyLock::new(|| {
+        rayon::ThreadPoolBuilder::new()
+            .thread_name(|i| format!("sig-check-{i}"))
+            .build()
+            .ok()
+    });
+    POOL.as_ref()
 }
 
 #[cfg(test)]
@@ -94,9 +110,10 @@ mod tests {
         );
     }
 
-    /// Checks run on a fixed set of worker threads: calls do not start
+    /// Checks run on the fixed `sig-check-N` threads: calls do not start
     /// threads of their own (verifying every block's commit did, at a
-    /// cost of one thread start per CPU per commit).
+    /// cost of one thread start per CPU per commit), and no other work
+    /// shares them.
     #[test]
     fn calls_reuse_the_same_worker_threads() {
         use std::collections::HashSet;
@@ -110,14 +127,16 @@ mod tests {
         for _ in 0..50 {
             assert_eq!(
                 first_failure(&items, |_| {
-                    seen.lock().unwrap().insert(std::thread::current().id());
+                    let me = std::thread::current();
+                    assert!(me.name().is_some_and(|n| n.starts_with("sig-check-")));
+                    seen.lock().unwrap().insert(me.id());
                     true
                 }),
                 None
             );
         }
         let seen = seen.into_inner().unwrap().len();
-        assert!(seen <= threads + 1, "{seen} threads for {threads} CPUs");
+        assert!(seen <= threads, "{seen} threads for {threads} CPUs");
     }
 
     #[test]
