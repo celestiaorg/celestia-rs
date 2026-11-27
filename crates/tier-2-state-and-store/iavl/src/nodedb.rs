@@ -30,6 +30,21 @@ const ORPHAN: u8 = b'o';
 
 static NEXT_DB_ID: AtomicU64 = AtomicU64::new(1);
 
+/// EXPERIMENT: node loads by the loaded node's height (0..=47), and
+/// child-reference lookups (index 48).
+pub static LOAD_HEIGHTS: [AtomicU64; 49] = [const { AtomicU64::new(0) }; 49];
+
+/// EXPERIMENT: see [`LOAD_HEIGHTS`].
+#[must_use]
+pub fn load_heights() -> [u64; 49] {
+    std::array::from_fn(|i| LOAD_HEIGHTS[i].load(Ordering::Relaxed))
+}
+
+fn count_load(node: &Node) {
+    let h = usize::try_from(node.height()).unwrap_or(0).min(47);
+    LOAD_HEIGHTS[h].fetch_add(1, Ordering::Relaxed);
+}
+
 /// Lookups of every node cache in the process, counted while
 /// [`COUNT_LOOKUPS`] is set.
 static LOOKUPS: AtomicU64 = AtomicU64::new(0);
@@ -262,13 +277,17 @@ impl NodeDb {
         let cache_key = (self.id, r.nk);
         let decode = |bytes: &[u8]| decode_node(bytes, r, |nk| self.child_ref(nk));
         let node = Arc::new(match self.cache.get(&cache_key) {
-            Some(CachedNode::Decoded(node)) => return Ok(node),
+            Some(CachedNode::Decoded(node)) => {
+                count_load(&node);
+                return Ok(node);
+            }
             Some(CachedNode::Encoded(node)) => {
                 self.cache.ref_decodes.fetch_add(1, Ordering::Relaxed);
                 decode(&node.bytes)?
             }
             None => decode(&self.node_bytes(r.nk)?)?,
         });
+        count_load(&node);
         self.cache
             .put(cache_key, CachedNode::Decoded(Arc::clone(&node)));
         Ok(node)
@@ -291,6 +310,7 @@ impl NodeDb {
     }
 
     fn child_ref(&self, nk: NodeKey) -> Result<StoredRef> {
+        LOAD_HEIGHTS[48].fetch_add(1, Ordering::Relaxed);
         let key = (self.id, nk);
         match self.cache.get(&key) {
             Some(CachedNode::Decoded(node)) => Ok(StoredRef {

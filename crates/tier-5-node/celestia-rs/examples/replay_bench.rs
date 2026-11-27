@@ -517,6 +517,7 @@ fn print_config(a: &Args) {
     );
 }
 
+#[allow(clippy::too_many_lines, clippy::cast_precision_loss)] // EXPERIMENT branch
 fn main() -> anyhow::Result<()> {
     let a = args()?;
     ensure!(
@@ -614,6 +615,28 @@ fn main() -> anyhow::Result<()> {
     summary(&times, txs, started.elapsed(), &digest);
     print_slowest(&mut slow);
     print_phases(times.len());
+    // EXPERIMENT: node loads per block by height (cumulative from the top).
+    let h = multistore::load_heights();
+    #[allow(clippy::cast_precision_loss)]
+    let n = times.len().max(1) as f64;
+    let loads: u64 = h[..48].iter().sum();
+    println!(
+        "loads by height: total {:.0}/block, child refs {:.0}/block",
+        loads as f64 / n,
+        h[48] as f64 / n
+    );
+    let mut above = 0u64;
+    for height in (0..48).rev() {
+        above += h[height];
+        if h[height] > 0 {
+            #[allow(clippy::cast_precision_loss)]
+            let share = 100.0 * above as f64 / loads.max(1) as f64;
+            println!(
+                "  height {height}: {:.0}/block, at or above {share:.1}%",
+                h[height] as f64 / n
+            );
+        }
+    }
     println!(
         "per_block: {}",
         probes.sample().report(&first_sample, times.len())
