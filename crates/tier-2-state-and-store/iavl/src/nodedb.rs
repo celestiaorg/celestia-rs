@@ -30,6 +30,16 @@ const ORPHAN: u8 = b'o';
 
 static NEXT_DB_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Lookups of every node cache in the process.
+static LOOKUPS: AtomicU64 = AtomicU64::new(0);
+
+/// Node-cache lookups of every cache in the process so far (profiling:
+/// take differences).
+#[must_use]
+pub fn node_lookups() -> u64 {
+    LOOKUPS.load(Ordering::Relaxed)
+}
+
 // Resolving a compact parent's child references reads the child records.
 // Keep those bytes in the same bounded cache until a traversal needs them.
 #[derive(Clone)]
@@ -126,6 +136,7 @@ impl NodeCache {
     }
 
     fn get(&self, key: &(u64, NodeKey)) -> Option<CachedNode> {
+        LOOKUPS.fetch_add(1, Ordering::Relaxed);
         let found = self.clock.lock().ok()?.get(key);
         if found.is_some() {
             self.hits.fetch_add(1, Ordering::Relaxed);

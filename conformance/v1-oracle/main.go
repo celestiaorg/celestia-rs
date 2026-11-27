@@ -309,6 +309,7 @@ func run() error {
 	timing := flag.Bool("timing", false, "print the mean time per block of BeginBlock, DeliverTx, EndBlock and Commit every 100 blocks (stderr)")
 	synthetic := flag.Bool("synthetic", false, "build the synthetic app version 1 to 3 chain (synthetic.go) instead of reading -genesis and -blocks; writes its genesis.json and blocks.jsonl.gz to -out")
 	chain := flag.String("chain", "v1-v3", "with -synthetic: the synthetic chain, v1-v3 (synthetic.go) or v3-rich (rich.go)")
+	consensusMode := flag.Bool("consensus", false, "with -synthetic: build blocks as a validator would (txs, square size and data root from PrepareProposal; commits signed by the validators' consensus keys, at the next block's time)")
 	snapshotAt := flag.String("snapshot-at", "", "comma-separated heights: after the run, write a cosmos-sdk v0.46 state-sync snapshot (format 2) of each with the SDK's snapshot manager, as celestia-appd does, to -snapshot-dir")
 	snapshotDir := flag.String("snapshot-dir", "", "with -snapshot-at: the snapshot store directory (default <out>/snapshots); the chunks of height h are <dir>/<h>/2/<i>")
 	handoff := flag.String("handoff", "", "with -synthetic: keep the app home (goleveldb data/application.db and data/upgrade-info.json) in this new directory and write handoff.json there, for conformance/v4-oracle to continue the chain")
@@ -341,6 +342,7 @@ func run() error {
 		if err != nil {
 			return err
 		}
+		syn.consensus = *consensusMode
 		cfg.heights = spec.heights
 		cfg.upgradeHeightV2 = spec.upgradeHeightV2
 		cfg.src = syn

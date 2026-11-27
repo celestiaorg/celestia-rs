@@ -313,6 +313,11 @@ struct StartArgs {
     /// State database cache in MiB.
     #[arg(long, default_value_t = 512)]
     db_cache_mib: usize,
+    /// celestia-app `--v2-upgrade-height`: the v1 to v2 upgrade height of
+    /// a chain without a built-in one (celestia, mocha and arabica have
+    /// theirs). Give it again after a restart, as with Go.
+    #[arg(long = "v2-upgrade-height")]
+    v2_upgrade_height: Option<i64>,
     /// Prometheus listen address (enables metrics; default: config.toml
     /// `[instrumentation]`).
     #[arg(long = "prometheus-listen-addr")]
@@ -460,6 +465,9 @@ struct AbciArgs {
     /// Go `halt-height`.
     #[arg(long, default_value_t = 0)]
     halt_height: u64,
+    /// celestia-app `--v2-upgrade-height` (see `start`).
+    #[arg(long = "v2-upgrade-height")]
+    v2_upgrade_height: Option<i64>,
     /// Go `--unsafe-skip-upgrades`: comma-separated upgrade heights to skip.
     #[arg(
         long = "unsafe-skip-upgrades",
@@ -1271,6 +1279,7 @@ fn app_options(home: &Path, args: Option<&StartArgs>) -> anyhow::Result<app::App
         unsafe_skip_upgrades: args
             .map(|a| a.unsafe_skip_upgrades.clone())
             .unwrap_or_default(),
+        v2_upgrade_height: args.and_then(|a| a.v2_upgrade_height),
         home: Some(home.to_path_buf()),
     };
     Ok(opts)
@@ -1622,6 +1631,7 @@ async fn abci(home: &Path, home_given: bool, a: AbciArgs) -> anyhow::Result<()> 
         halt_time: 0,
         unsafe_skip_upgrades: a.unsafe_skip_upgrades.clone(),
         home: (!a.in_memory && home_given).then(|| home.to_path_buf()),
+        v2_upgrade_height: a.v2_upgrade_height,
     };
     let mut app = if !home_given || a.in_memory {
         let mut app = app::App::new();
@@ -2177,6 +2187,36 @@ mod cli_tests {
             Cmd::Follow(args) => args.unsafe_skip_upgrades,
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    /// celestia-app's `--v2-upgrade-height` reaches the app (start and
+    /// abci); without it the chain's default applies (None).
+    #[test]
+    fn v2_upgrade_height_reaches_the_app_options() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let start = |args: &[&str]| {
+            let Cmd::Start(a) = Cli::try_parse_from(args).expect("parse CLI").command else {
+                panic!("not start");
+            };
+            app_options(home.path(), Some(&a)).expect("app options")
+        };
+        let opts = start(&["celestia-rs", "start", "--v2-upgrade-height", "1200"]);
+        assert_eq!(opts.node.v2_upgrade_height, Some(1200));
+        let opts = start(&["celestia-rs", "start"]);
+        assert_eq!(opts.node.v2_upgrade_height, None);
+        let Cmd::Abci(a) = Cli::try_parse_from([
+            "celestia-rs",
+            "abci",
+            "--in-memory",
+            "--v2-upgrade-height",
+            "77",
+        ])
+        .expect("parse CLI")
+        .command
+        else {
+            panic!("not abci");
+        };
+        assert_eq!(a.v2_upgrade_height, Some(77));
     }
 
     #[test]

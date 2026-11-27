@@ -1,6 +1,7 @@
 // Command v6-oracle continues the synthetic chain of conformance/v5-oracle
-// across the v5 to v6 upgrade with the Go celestia-app v6.4.4 state
-// machine (the v6 release that the v8 and v9 multiplexers embed), and
+// across the v5 to v6 upgrade with the Go celestia-app v6.4.10 state
+// machine (the v6 release that the v10.6.0 and v11.0.0 multiplexers embed;
+// the v8 and v9 multiplexers embed v6.4.4), and
 // dumps every committed store root and KV change per height.
 //
 //	v1-oracle -synthetic -kv -out <v1-v3 dir> -handoff <home>
@@ -165,11 +166,12 @@ func run() error {
 	out := flag.String("out", "", "output directory")
 	signBytes := flag.String("signbytes", "", "write the sign-bytes vectors (signbytes.go) to this file and exit")
 	probes := flag.Bool("probes", false, "after the usual five blocks, run the probe blocks of probes.go (use -heights 8) and record tx signers")
+	consensusMode := flag.Bool("consensus", false, "build blocks as a validator would (consensus.go): txs, square size and data root from PrepareProposal, commits signed by the validators' consensus keys")
 	tmclient := flag.Bool("tmclient", false, "after the usual five blocks, run the 07-tendermint client blocks of tmclient.go (use -heights 10)")
 	nextHandoff := flag.Bool("next-handoff", false, "after the last block, require plan \"v8\" at the next height and rewrite handoff.json in the -handoff home for conformance/v8-oracle")
 	flag.Parse()
 	if *signBytes != "" {
-		return writeSignBytes(*signBytes, "v6.4.4")
+		return writeSignBytes(*signBytes, "v6.4.10")
 	}
 	if *home == "" || *genesisPath == "" || *out == "" || *heights < 1 {
 		flag.Usage()
@@ -216,7 +218,7 @@ func run() error {
 	fixture := Fixture{
 		ChainID:       ho.ChainID,
 		Generator:     "conformance/v6-oracle",
-		CelestiaApp:   "v6.4.4",
+		CelestiaApp:   "v6.4.10",
 		GenesisSHA256: hex.EncodeToString(genesisSum[:]),
 		HandoffHeight: ho.Height,
 	}
@@ -242,6 +244,7 @@ func run() error {
 		return err
 	}
 	s.probes = *probes
+	s.consensus = *consensusMode
 	s.tmclient = *tmclient
 	kvUpgrade, err := upgradeOnly(*home, ho, s.blockTime(ho.Height+1), prev)
 	if err != nil {
@@ -252,6 +255,11 @@ func run() error {
 		txs, err := s.txs(a, height)
 		if err != nil {
 			return fmt.Errorf("height %d: %w", height, err)
+		}
+		if s.consensus {
+			if txs, err = s.prepareProposal(a, height, txs); err != nil {
+				return fmt.Errorf("height %d: %w", height, err)
+			}
 		}
 		block, id, err := s.block(height, txs)
 		if err != nil {
@@ -359,6 +367,14 @@ func run() error {
 			return fmt.Errorf("after height %d: upgrade-info.json plan %q, app version %d; want plan v8 and app version 8", last, plan.Name, s.appVersion)
 		}
 		if err := s.writeHandoff(filepath.Join(*home, "handoff.json")); err != nil {
+			return err
+		}
+	}
+	if s.consensus {
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			return err
+		}
+		if err := s.writeLastCommit(*out); err != nil {
 			return err
 		}
 	}

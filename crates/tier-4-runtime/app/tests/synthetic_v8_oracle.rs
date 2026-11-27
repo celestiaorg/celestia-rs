@@ -166,7 +166,7 @@ fn v8_fixture_files_match_their_record() {
     check_record(
         V6_TO_V8,
         "conformance/v6-oracle",
-        "v6.4.4",
+        "v6.4.10",
         V6_HANDOFF,
         HANDOFF,
     );

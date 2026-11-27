@@ -352,7 +352,10 @@ impl MultiStore {
 
     fn committed_get(&self, store: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
         match self.kind(store)? {
-            Kind::Iavl => Ok(self.root.get_store(store)?.get(key)?),
+            Kind::Iavl => {
+                crate::profile::count_read();
+                Ok(self.root.get_store(store)?.get(key)?)
+            }
             Kind::Transient | Kind::Memory => {
                 Ok(self.volatile.get(store).and_then(|m| m.get(key)).cloned())
             }
