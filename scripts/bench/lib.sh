@@ -14,8 +14,8 @@ BENCH_GENESIS_URL=https://raw.githubusercontent.com/celestiaorg/networks/master/
 BENCH_GENESIS_SHA256=9727aac9bbfb021ce7fc695a92f901986421283a891b89e0af97bc9fad187793
 BENCH_REF_RPCS=(https://rpc.celestia.pops.one https://celestia-rpc.polkachu.com)
 # Seeds and peers built into celestia-rs (crates/tier-5-node/celestia-rs/src/networks.rs).
-BENCH_SEEDS=8542cd7e6bf9d260fef543bc49e59be5a3fa9074@seed.publicnode.com:26656,ade4d8bc8cbe014af6ebdf3cb7b1e9ad36f412c0@seeds.polkachu.com:11656
-BENCH_PEERS=076c9cc9de3039819a98522aeea39e8c72b49682@peer.celestia.mainnet.dteam.tech:28656,8dcecfd3fb44990af00408bbd70ab141c33d4513@67.213.115.125:36656
+BENCH_SEEDS=acca7837e4eb5f9dc7f5a94ed1d82edda6931ff8@seed.celestia.pops.one:26656,12ad7c73c7e1f2460941326937a039139aa78884@celestia-mainnet-seed.itrocket.net:40656,975237ec35350f0643bce6618654cd1c76bf1dc0@consensus-full-seed-1.celestia-bootstrap.net:26656
+BENCH_PEERS=d9bfa29e0cf9c4ce0cc9c26d98e5d97228f93b0b@65.109.88.38:12056,fc25a389790d9f1e8dc39496313e1e0fe2b138f7@135.181.138.95:2890,d513f98bb4f8859f94bde2efc6bf18d29f732c48@188.40.102.137:15656,ce99d7da2530f75d05880d13d9eda384d5a1afe4@peer.celestia.node75.org:23356
 BENCH_BRIDGE_HEIGHTS=600
 BENCH_BRIDGE_STRIDE=20
 
