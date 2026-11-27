@@ -58,7 +58,7 @@ fn main() {
     println!("cargo:rustc-env=CELESTIA_RS_BUILD_PROFILE={profile}");
 
     // The version `celestia-rs version` reports: the crate's, or for an
-    // automatic per-merge release (.github/workflows/release.yml) the
+    // automatic daily release (.github/workflows/release.yml) the
     // release's, which must extend it (`<crate version>-main.<n>`).
     println!("cargo:rerun-if-env-changed=CELESTIA_RS_RELEASE_VERSION");
     let crate_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();

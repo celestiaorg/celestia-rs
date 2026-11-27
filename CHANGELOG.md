@@ -4,8 +4,8 @@
 
 ### Added
 
-- Every PR merged to `main` is released automatically once `ci` passes on
-  it (`v<version>-main.<n>`, a pre-release), and release channels
+- `main` is released automatically once a day, from its newest commit that
+  passed `ci` (`v<version>-main.<n>`, a pre-release), and release channels
   (`corto`, `mocha`, `mainnet`) move forward on their own as releases soak
   on the network before them. `install.sh --channel <name>` installs a
   channel's release, a new Linux systemd timer follows a channel daily, and

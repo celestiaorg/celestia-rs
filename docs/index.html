@@ -359,8 +359,8 @@
         <details id="automatic-updates">
           <summary>How do I configure automatic updates?</summary>
           <p><strong>macOS with launchd.</strong> The packaged updater builds
-            the latest published release, including release candidates, after
-            its CI passes. It deploys to a Mocha canary first, checks progress
+            the release each node’s channel (<code>mocha</code>,
+            <code>mainnet</code>) recommends, after its CI passes. It deploys to a Mocha canary first, checks progress
             and app hashes, then updates Mainnet. A failed health check triggers
             rollback. This setup expects both managed nodes.</p>
           <ol>

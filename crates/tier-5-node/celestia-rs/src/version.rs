@@ -38,7 +38,7 @@ pub fn register_build_info() {
 mod tests {
     use super::SOFTWARE_VERSION;
 
-    /// Per-merge release builds set `CELESTIA_RS_RELEASE_VERSION`
+    /// Automatic (daily) release builds set `CELESTIA_RS_RELEASE_VERSION`
     /// (`<crate version>-main.<n>`, docs/releasing.md); others report the
     /// crate version.
     #[test]

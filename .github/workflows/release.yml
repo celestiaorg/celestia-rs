@@ -12,7 +12,8 @@ name: release
 #   build runs here rather than on the tag push.
 # - Push of a v* tag by hand: build and publish it, if the tag matches the
 #   crate version.
-# - ci passing on a push to main (every merged PR): an automatic release,
+# - Daily at 14:00 UTC: an automatic release of the newest main commit
+#   whose ci push run passed, if it is not released yet:
 #   v<crate version>-main.<n> (or <crate version>.main.<n> when the crate
 #   version is already a pre-release), where n is the commit's position on
 #   main. It is published as a pre-release, so `install.sh` without
@@ -26,14 +27,12 @@ on:
     # Not applied to tag pushes.
     paths: [crates/tier-5-node/celestia-rs/Cargo.toml]
     tags: ["v*"]
-  workflow_run:
-    workflows: [ci]
-    types: [completed]
-    branches: [main]
+  schedule:
+    - cron: "0 14 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: release-${{ github.event.workflow_run.head_sha || github.ref }}
+  group: release-${{ github.event_name == 'schedule' && 'daily' || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -49,6 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     outputs:
       version: ${{ steps.plan.outputs.version }}
       release_version: ${{ steps.plan.outputs.release_version }}
@@ -59,15 +59,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          # workflow_run runs on the default branch's head: release the
-          # commit ci passed on, and count its position on main.
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-          fetch-depth: ${{ github.event_name == 'workflow_run' && '0' || '1' }}
+          # The daily release counts its commit's position on main.
+          fetch-depth: ${{ github.event_name == 'schedule' && '0' || '1' }}
       - id: plan
         env:
           BEFORE: ${{ github.event.before }}
-          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           crate_version() { sed -n 's/^version = "\(.*\)"$/\1/p' | head -n 1; }
@@ -97,12 +94,23 @@ jobs:
             release=true
           }
           case "$GITHUB_EVENT_NAME/$GITHUB_REF_TYPE" in
-            workflow_run/*)
+            schedule/*)
+              # The newest main commit whose ci push run passed.
+              green=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci --branch main --event push \
+                --status success --limit 1 --json headSha --jq '.[0].headSha // empty')
+              if [ -z "$green" ] || ! git merge-base --is-ancestor "$green" HEAD; then
+                echo "::error::no main commit with a passing ci push run"
+                exit 1
+              fi
+              git checkout -q --detach "$green"
+              sha=$green
+              version=$(crate_version <"$MANIFEST")
               previous=$(git show "HEAD^:$MANIFEST" 2>/dev/null | crate_version || true)
-              if [ "$RUN_CONCLUSION" != success ] || [ "$RUN_EVENT" != push ]; then
-                echo "::notice::ci $RUN_EVENT run concluded $RUN_CONCLUSION: nothing to release"
+              released=$(git tag --points-at "$sha" 'v*' | head -n 1)
+              if [ -n "$released" ] && [ "$GITHUB_RUN_ATTEMPT" = 1 ]; then
+                echo "::notice::${sha:0:7} is already released as $released: nothing to release"
               elif [ "$previous" != "$version" ]; then
-                echo "::notice::this commit sets the version to $version; the push trigger releases it"
+                echo "::notice::${sha:0:7} sets the version to $version; the push trigger releases it"
               else
                 n=$(git rev-list --count HEAD)
                 case $version in

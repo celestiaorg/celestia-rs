@@ -12,8 +12,8 @@ the binary is versioned.
 
 There are two kinds of release:
 
-- **Automatic releases**, one for every PR merged to `main` once `ci`
-  passes on it: `v<crate version>-main.<n>`. No one cuts them.
+- **Automatic releases**, once a day, of the newest `main` commit that
+  passed `ci`: `v<crate version>-main.<n>`. No one cuts them.
 - **Human releases** (`v0.1.0`, `v0.1.0-rc.10`), cut with the
   **prepare release** workflow below, for milestones and release notes.
 
@@ -25,19 +25,23 @@ soak on the network before it.
 
 ```mermaid
 flowchart LR
-  pr[PR merged] --> ci[ci passes on main] --> rel["release v…-main.n<br/>(pre-release)"]
+  main["main<br/>(newest commit that passed ci)"] -->|daily, 14:00 UTC| rel["release v…-main.n<br/>(pre-release)"]
   rel -->|0 h| corto
   corto -->|24 h in corto| mocha
   mocha -->|24 h in mocha| mainnet
   corto & mocha & mainnet -.->|daily| nodes[auto-updaters<br/>install.sh --channel]
 ```
 
-**Automatic releases.** When `ci` passes on a push to `main`,
-`release.yml` tags that commit `v<crate version>-main.<n>` (or
+**Automatic releases.** Every day at 14:00 UTC, `release.yml` takes the
+newest `main` commit whose `ci` push run passed and, if no release has it
+yet, tags it `v<crate version>-main.<n>` (or
 `<crate version>.main.<n>` when the crate version is already a
 pre-release, e.g. `v0.1.0-rc.9.main.812`), where `n` is the commit's
 position on `main`. It builds, smoke-tests and publishes the archives as a
-GitHub pre-release. The build sets `CELESTIA_RS_RELEASE_VERSION`, so
+GitHub pre-release. One release a day, not one per merge, keeps release
+builds (three targets, one on macOS) from competing with PR CI for runners;
+nodes update daily and channels soak for 24 hours, so more frequent
+releases would not reach them sooner. The build sets `CELESTIA_RS_RELEASE_VERSION`, so
 `celestia-rs version` reports the full release version; `build.rs` rejects
 a value that does not extend the crate version. A commit that changes the
 crate version is left to the human release path.
