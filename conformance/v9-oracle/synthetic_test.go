@@ -38,11 +38,18 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		{"v9", nil},
 		// The probe blocks of probes.go after the usual five.
 		{"v9-probes", []string{"-heights", "19", "-probes"}},
+		// The chain with blocks built as a validator would (consensus.go).
+		{dir: filepath.Join("consensus", "v9"), args: []string{"-heights", "5", "-consensus"}},
 		// The 07-tendermint client blocks of tmclient.go after the usual five.
 		{"v9-tm", []string{"-heights", "10", "-tmclient"}},
 	} {
-		home := filepath.Join(tmp, "home-"+c.dir)
-		if err := untar(filepath.Join(homes, "home-56.tar.gz"), home); err != nil {
+		// The consensus chain starts from its own home.
+		start := "home-56"
+		if strings.HasPrefix(c.dir, "consensus") {
+			start = "consensus-56"
+		}
+		home := filepath.Join(tmp, "home-"+strings.ReplaceAll(c.dir, string(filepath.Separator), "-"))
+		if err := untar(filepath.Join(homes, start+".tar.gz"), home); err != nil {
 			t.Fatal(err)
 		}
 		out := filepath.Join(tmp, c.dir)
@@ -56,7 +63,11 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		if bz, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("synthetic run %s: %v\n%s", c.dir, err, bz)
 		}
-		for _, name := range fixtureFiles {
+		files := fixtureFiles
+		if strings.Contains(strings.Join(c.args, " "), "-consensus") {
+			files = append(append([]string{}, fixtureFiles...), "last-commit.json")
+		}
+		for _, name := range files {
 			requireSame(t, filepath.Join(fixtures, c.dir, name), filepath.Join(out, name))
 		}
 	}

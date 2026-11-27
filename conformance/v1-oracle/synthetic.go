@@ -152,6 +152,8 @@ type synth struct {
 	appHash         []byte
 	lastResultsHash []byte
 	appVersion      uint64
+	// consensus builds blocks as a validator would (consensus.go).
+	consensus bool
 }
 
 // keyMnemonic is the BIP-39 mnemonic of a synthetic account.
@@ -469,11 +471,19 @@ func (s *synth) block(a *app.App, height int64, vals map[int64]*tmtypes.Validato
 	for i, tx := range txs {
 		data.Txs[i] = tx
 	}
+	if s.consensus {
+		if data, err = s.prepareProposal(a, height, txs); err != nil {
+			return rpcBlock{}, err
+		}
+	}
+	if s.consensus && s.lastResultsHash == nil {
+		s.lastResultsHash = genesisResultsHash()
+	}
 	block := tmtypes.MakeBlock(height, data, s.lastCommit, []tmtypes.Evidence{})
 	block.Header.Populate(
 		tmversion.Consensus{Block: tmversionpkg.BlockProtocol, App: s.appVersion},
 		s.genDoc.ChainID,
-		syntheticGenesisTime.Add(time.Duration(height)*(15*time.Second+123*time.Millisecond)),
+		s.time(height),
 		s.lastBlockID,
 		cur.Hash(),
 		next.Hash(),
@@ -517,6 +527,11 @@ func (s *synth) block(a *app.App, height int64, vals map[int64]*tmtypes.Validato
 			ValidatorAddress: v.Address,
 			Timestamp:        block.Time.Add(time.Second),
 			Signature:        bytes.Repeat([]byte{byte(i + 1)}, 64),
+		}
+		if s.consensus {
+			if sigs[i], err = s.precommit(height, int32(i), v.Address, id); err != nil {
+				return rpcBlock{}, err
+			}
 		}
 	}
 	s.lastCommit = tmtypes.NewCommit(height, 0, id, sigs)

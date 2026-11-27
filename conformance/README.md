@@ -376,6 +376,47 @@ module's `go test` requires its file byte for byte.
 `cargo test -p x-ante --test release_sign_bytes` requires Rust to produce the
 same bytes, or an error where Go errs, at each app version.
 
+#### Consensus chain: blocks a node can block sync
+
+`-consensus` (in `v1-oracle -synthetic` and in `v4-oracle` to `v9-oracle`,
+`consensus.go`) builds the blocks of the same chain as a validator would, so
+that a node can block sync them:
+
+- each block's txs, square size and data root come from the app's
+  PrepareProposal, and `data_hash` is that data root. PrepareProposal drops the
+  chain's deliberately failing txs, three in all;
+- each commit is signed by the validators' consensus keys, at the next block's
+  time, so each header time is the weighted median of its last commit;
+- block 1 is at the genesis time, with the genesis state's
+  `last_results_hash`;
+- the last stage writes the commit of its last block to `last-commit.json`.
+
+The default mode keeps unsigned commits and tx-hash data roots, which a node
+rejects. Its fixtures are unchanged.
+[`fixtures/synthetic/consensus`](fixtures/synthetic/consensus) holds the six
+stages (`v1-v3` to `v9`), and `homes/consensus-{25,36,46,56}.tar.gz` hold the
+homes between them. The `go test` of each module rebuilds its stage byte for
+byte. To regenerate, run the stages as for the default chain, with
+`-consensus`:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -consensus -kv -out "$OUT/v1-v3" -handoff "$OUT/home"
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -heights 10 -next-handoff -consensus \
+  -genesis "$OUT/v1-v3/genesis.json" -out "$OUT/v4-to-v5"
+# then v5-oracle -heights 11, v6-oracle and v8-oracle -heights 10 (each
+# -next-handoff -consensus), v9-oracle -heights 5 -consensus; archive the
+# home after each -next-handoff stage as for the default chain.
+```
+
+`cargo test -p celestia-rs --test blocksync_synthetic_genesis` serves these
+blocks from an in-process block sync peer to a fresh node, which syncs from the
+synthetic genesis to block 60 through every upgrade. The node restarts after
+the block before each upgrade and after the upgrade block. It checks every
+commit, header and data root (ProcessProposal at app version 9), and must
+store Go's block IDs and app hashes.
+
 #### App homes between the upgrade oracles
 
 [`fixtures/synthetic/homes`](fixtures/synthetic/homes) holds the app home
