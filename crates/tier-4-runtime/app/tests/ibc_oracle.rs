@@ -40,8 +40,12 @@
 //! acknowledgement (block 132) and its send runs (block 135). Then utia
 //! goes to B through authz `MsgExec` with a GenericAuthorization (block
 //! 138) and an ibc-go TransferAuthorization (block 143), and a plain
-//! transfer (block 148) times out on B and is refunded (block 150). The
-//! fixture keeps its `ibc-v2` name.
+//! transfer (block 148) times out on B and is refunded (block 150).
+//! Two transfers hold invalid UTF-8, which cosmos-sdk v0.46 does not
+//! check: the memo of one (block 160, acknowledged in block 164; the
+//! packet JSON has U+FFFD for each invalid byte) and the receiver of the
+//! other (block 165; B's error acknowledgement refunds it in block 169).
+//! The fixture keeps its `ibc-v2` name.
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::print_stdout)]
 
@@ -54,7 +58,7 @@ fn fix() -> Fixture {
 }
 
 /// The last block that celestia-rs executes as Go does: every block.
-const MATCHED_THROUGH: i64 = 205;
+const MATCHED_THROUGH: i64 = 215;
 
 /// The fixture files are the ones the oracle wrote.
 #[test]
@@ -78,7 +82,7 @@ fn ibc_fixture_files_match_their_record() {
         r["kv"]["kv-diffs.jsonl"],
         sha(&f.gunzip("kv-diffs.jsonl.gz"))
     );
-    assert_eq!(f.last_height(), 205);
+    assert_eq!(f.last_height(), 215);
 }
 
 #[test]

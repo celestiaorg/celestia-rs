@@ -153,7 +153,12 @@ pub fn signer_bytes(type_url: &str, signers: Vec<Signer>) -> Result<Vec<Vec<u8>>
 /// `gostr`) after `dynamicpb`'s check on the bytes as received.
 pub fn tx_msg_signers(tx: &Tx, i: usize) -> Result<Vec<Vec<u8>>, SdkError> {
     let raw = &tx.body.messages[i];
-    celestia_proto::signers::unpack_check(&raw.type_url, &raw.value).map_err(internal)?;
+    // cosmos-sdk v0.46 (app versions 1 to 3) calls the gogoproto
+    // `GetSigners` of the message the tx decoder unpacked: no protobuf-go
+    // (UTF-8, varint) checks.
+    if !sdk::version::is_sdk_v046(0) {
+        celestia_proto::signers::unpack_check(&raw.type_url, &raw.value).map_err(internal)?;
+    }
     match tx.normalized_msgs.get(i) {
         Some(n) if n.type_url == raw.type_url => msg_signers(n),
         _ => msg_signers(raw),
