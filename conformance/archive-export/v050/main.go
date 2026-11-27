@@ -46,6 +46,7 @@ func main() {
 	out := flag.String("out", "", "snapshot directory")
 	list := flag.Bool("list", false, "only print the stores of the height's commit info")
 	flag.StringVar(&backend, "backend", "pebbledb", "database backend of application.db: pebbledb or goleveldb")
+	flag.IntVar(&maxOpenFiles, "max-open-files", 500000, "pebbledb: table cache size (needs a matching ulimit -n)")
 	flag.Parse()
 	if *dir == "" || *height <= 0 || (*out == "" && !*list) {
 		flag.Usage()
@@ -57,10 +58,25 @@ func main() {
 	}
 }
 
-var backend string
+var (
+	backend      string
+	maxOpenFiles int
+)
+
+// mapOptions is the dbm.Options cosmos-db reads backend settings from.
+type mapOptions map[string]interface{}
+
+func (m mapOptions) Get(k string) interface{} { return m[k] }
+
+// dbOptions raises pebble's table cache (open files): with the default
+// 1,000 almost every IAVL node read of the ~1.5M-file archive reopens an SST.
+// cosmos-db v1.1.1 exposes no block cache setting.
+func dbOptions(maxOpenFiles int) dbm.Options {
+	return mapOptions{"maxopenfiles": maxOpenFiles}
+}
 
 func run(dir string, height int64, out string, list bool) error {
-	db, err := dbm.NewDB("application", dbm.BackendType(backend), dir)
+	db, err := dbm.NewDBwithOptions("application", dbm.BackendType(backend), dir, dbOptions(maxOpenFiles))
 	if err != nil {
 		return err
 	}

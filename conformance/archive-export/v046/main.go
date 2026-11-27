@@ -19,6 +19,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cockroachdb/pebble"
+	cdb "github.com/cometbft/cometbft-db"
 	"github.com/cosmos/cosmos-sdk/snapshots"
 	snapshottypes "github.com/cosmos/cosmos-sdk/snapshots/types"
 	"github.com/cosmos/cosmos-sdk/store/rootmulti"
@@ -49,6 +51,8 @@ func main() {
 	list := flag.Bool("list", false, "only print the stores of the height's commit info")
 	flag.StringVar(&backend, "backend", "pebbledb", "database backend of application.db: pebbledb or goleveldb")
 	flag.BoolVar(&recoverDB, "recover", false, "goleveldb: rebuild the manifest first (crash-consistent copies)")
+	flag.IntVar(&cacheMiB, "cache-mib", 8192, "pebbledb: block cache size in MiB")
+	flag.IntVar(&maxOpenFiles, "max-open-files", 500000, "pebbledb: table cache size (needs a matching ulimit -n)")
 	flag.Parse()
 	if *dir == "" || *height <= 0 || (*out == "" && !*list) {
 		flag.Usage()
@@ -61,14 +65,32 @@ func main() {
 }
 
 var (
-	backend   string
-	recoverDB bool
+	backend      string
+	recoverDB    bool
+	cacheMiB     int
+	maxOpenFiles int
 )
+
+// pebbleOptions sizes pebble's table cache (open files) and block cache for
+// the archive database: with the defaults (1,000 files, 8 MiB) almost every
+// IAVL node read reopens an SST and rereads its index and filter blocks.
+// The export only reads, so automatic compactions stay off.
+func pebbleOptions(cacheMiB, maxOpenFiles int) *pebble.Options {
+	return &pebble.Options{
+		MaxOpenFiles:                maxOpenFiles,
+		Cache:                       pebble.NewCache(int64(cacheMiB) << 20),
+		DisableAutomaticCompactions: true,
+	}
+}
 
 func openDB(dir string) (tmdb.DB, error) {
 	switch backend {
 	case "pebbledb":
-		return appdb.NewPebbleDB("application", dir)
+		p, err := cdb.NewPebbleDBWithOpts("application", dir, pebbleOptions(cacheMiB, maxOpenFiles))
+		if err != nil {
+			return nil, err
+		}
+		return &appdb.PebbleDBWrapper{DB: p}, nil
 	case "goleveldb":
 		if recoverDB {
 			// Rebuild the manifest of a crash-consistent copy (e.g. a disk

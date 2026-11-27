@@ -12,6 +12,9 @@ REF=(https://celestia-archive-rpc.polkachu.com https://rpc.celestia.pops.one)
 # boundaries and every 500,000 heights between them.
 if [ -z "${HEIGHTS:-}" ]; then
   HEIGHTS="120000:v046 250000:v046 500000:v046 2371494:v046 2993219:v046 6680339:v046"
+  # Blocks with double-sign evidence (8,218,923 and 9,217,879), replayed
+  # from shortly before.
+  HEIGHTS+=" 8218900:v050 9217850:v050"
   for h in $(seq 750000 250000 6500000); do HEIGHTS+=" $h:v046"; done
   HEIGHTS+=" 2371489:v046 6680339:v050 6748821:v050 8662012:v050 10960599:v050 11771698:v050 15105000:v050"
   for h in $(seq 7000000 500000 15000000); do HEIGHTS+=" $h:v050"; done
