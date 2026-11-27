@@ -64,6 +64,20 @@ read_inputs() {
     if ! bench_valid height "$bridge_start" || ((bridge_start <= trust_height)); then echo "invalid DA window start" >&2; return 1; fi
     window_min='' # bridge duration is defined in blocks
   fi
+  if [[ $campaign == block-range ]]; then
+    range_start=$(meta range-start); range_blocks=$(meta range-blocks)
+    if ! { bench_valid height "$range_start" && bench_valid blocks "$range_blocks"; } || ((range_start <= trust_height)); then
+      echo "invalid block range" >&2; return 1
+    fi
+    range_end_h=$((range_start + range_blocks))
+    # Both implementations stop before executing this block: Go checkHalt and
+    # celestia-rs --halt-height. The last committed height is range_end_h.
+    halt_height=$((range_end_h + 1))
+    window_min='' # defined in blocks
+  fi
+  disk_layout=$(meta disk)
+  disk_layout=${disk_layout:-pd}
+  bench_valid disk "$disk_layout" || { echo "invalid data disk layout" >&2; return 1; }
   outcome=running reason='' height='' t0='' tip_t='' tip_h=''
 }
 
@@ -74,7 +88,13 @@ setup() {
   run env DEBIAN_FRONTEND=noninteractive apt-get install -yq build-essential clang libclang-dev cmake \
     pkg-config git jq python3 curl wget ca-certificates
   local dev=/dev/disk/by-id/google-data
-  run mkfs.ext4 -q -m 0 "$dev"
+  if [[ $disk_layout == pd ]]; then
+    run mkfs.ext4 -q -m 0 "$dev"
+    disk_desc=pd
+  else
+    nvme_device || return 1
+    dev=$nvme_dev
+  fi
   run mkdir -p "$DATA" && run mount -o noatime "$dev" "$DATA"
   run useradd --system --home-dir "$DATA/userhome" bench
   mkdir -p "$HOMEDIR" "$DATA/userhome"
@@ -85,6 +105,42 @@ setup() {
   # celestia-app refuses to start without BBR. Both sides get it.
   run modprobe tcp_bbr
   run sysctl -w net.core.default_qdisc=fq net.ipv4.tcp_congestion_control=bbr
+  host_info
+}
+
+# nvme_device: format the local NVMe SSDs as the data filesystem, striped
+# (RAID 0) when there are several. Sets nvme_dev and disk_desc.
+nvme_device() {
+  local -a devs=()
+  local d
+  for d in "${BENCH_NVME_DIR:-/dev/disk/by-id}"/google-local-nvme-ssd-*; do [[ -e $d ]] && devs+=("$d"); done
+  if ((${#devs[@]} == 0)); then reason=no_local_ssd; return 1; fi
+  if ((${#devs[@]} == 1)); then
+    nvme_dev=${devs[0]} disk_desc=nvme:1
+  else
+    run env DEBIAN_FRONTEND=noninteractive apt-get install -yq mdadm
+    run mdadm --create /dev/md0 --level=0 --raid-devices="${#devs[@]}" --run "${devs[@]}"
+    nvme_dev=/dev/md0 disk_desc=nvme-raid0:${#devs[@]}
+  fi
+  # Initialise inode tables now: lazy init would write in the background during the run.
+  run mkfs.ext4 -q -m 0 -E lazy_itable_init=0,lazy_journal_init=0 "$nvme_dev"
+}
+
+# host_info: machine, CPU features and data disk layout for the summary.
+host_info() {
+  local flags model
+  flags=$(grep -m1 '^flags' /proc/cpuinfo 2>/dev/null || true)
+  model=$(grep -m1 '^model name' /proc/cpuinfo 2>/dev/null | sed 's/^[^:]*: *//' || true)
+  jq -n --arg cpu_model "$model" --arg vcpus "$(nproc 2>/dev/null || true)" \
+    --arg mem_KiB "$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || true)" \
+    --arg machine_type "$(curl -fsS -m 5 -H Metadata-Flavor:Google "$MD/machine-type" 2>/dev/null | sed 's,.*/,,' || true)" \
+    --arg disk_layout "$disk_desc" \
+    --arg data_fs_B "$(df -B1 --output=size "$DATA" 2>/dev/null | tail -1 | tr -d ' ' || true)" \
+    --argjson gfni "$([[ $flags == *" gfni"* ]] && echo true || echo false)" \
+    --argjson sha_ni "$([[ $flags == *" sha_ni"* ]] && echo true || echo false)" \
+    --argjson avx512f "$([[ $flags == *" avx512f"* ]] && echo true || echo false)" \
+    --argjson vaes "$([[ $flags == *" vaes"* ]] && echo true || echo false)" \
+    '$ARGS.named' >"$STATE/host.json"
 }
 
 fetch_commit() { # fetch_commit URL COMMIT DIR
@@ -155,6 +211,7 @@ configure() {
   bench_toml_set "$a" state-sync snapshot-interval 0
   bench_toml_set "$a" grpc enable true # celestia-node reads blocks over gRPC
   bench_toml_set "$a" grpc address '"127.0.0.1:9090"'
+  [[ $campaign != block-range ]] || bench_toml_set "$a" "" halt-height "$halt_height"
   rpcs="${BENCH_REF_RPCS[0]}:443,${BENCH_REF_RPCS[1]}:443"
   if [[ $campaign == genesis-prefix ]]; then
     bench_toml_set "$c" statesync enable false
@@ -169,6 +226,7 @@ configure() {
     node_cmd=(/usr/local/bin/celestia-rs start --home "$HOMEDIR")
     [[ $campaign == genesis-prefix ]] || node_cmd+=(--statesync-rpc-servers "$rpcs"
       --statesync-trust-height "$trust_height" --statesync-trust-hash "$trust_hash")
+    [[ $campaign != block-range ]] || node_cmd+=(--halt-height "$halt_height")
   else
     node_cmd=(/usr/local/bin/celestia-appd start --home "$HOMEDIR")
   fi
@@ -180,7 +238,7 @@ start_unit() { # start_unit NAME CMD...: a dedicated service in benchnode.slice
   units+=("$unit")
   run systemd-run --unit="$unit" --slice=benchnode.slice --uid=bench --gid=bench \
     -p LimitNOFILE=65536 -p MemoryAccounting=yes -p CPUAccounting=yes -p WorkingDirectory="$DATA" \
-    --setenv=HOME="$DATA/userhome" "$@"
+    ${unit_props[@]+"${unit_props[@]}"} --setenv=HOME="$DATA/userhome" "$@"
 }
 
 # --- measurement -------------------------------------------------------------
@@ -393,6 +451,129 @@ da_window() {
   poll
 }
 
+# Both consensus nodes reach verified tip as in state-sync, then wait for a
+# common scheduled height H, measure the window H..H+N and halt before
+# executing H+N+1. Disk is measured after a graceful stop at that height.
+run_block_range() {
+  phase=sync; t0=$(mono)
+  unit_props=(-p RemainAfterExit=yes) # a clean halt leaves the unit active (exited), not gone
+  start_unit node "${node_cmd[@]}" || { reason=start_failed; return 1; }
+  if [[ -n $DRY ]]; then range_json; return 0; fi
+  poll_s=5; measure 5 3600 at_tip || return 1
+  phase=at-tip; verify_block_id || { reason=tip_block_id_mismatch_or_unavailable; return 1; }
+  range_run
+}
+
+range_run() {
+  range_end_h=$((range_start + range_blocks)) halt_height=$((range_start + range_blocks + 1))
+  # A node not at tip before H is a recorded failure, not an extrapolation.
+  if [[ ! $height =~ ^[0-9]+$ ]] || ((height >= range_start)); then reason=missed_range_start; return 1; fi
+  phase=pre-range; range_loop range_entered || return 1
+  phase=range; range_begin; range_loop range_finished || return 1
+  range_exit_t=$(mono) range_exit_h=$height
+  local last u
+  last=$(awk '$2 ~ /^[0-9]+$/ {l = $0} END {print l}' "$STATE/polls.tsv")
+  retained_latest=$(awk '{print $2}' <<<"$last") retained_earliest=$(awk '{print $9}' <<<"$last")
+  range_slice_peak=$(cat "$SLICE/memory.peak" 2>/dev/null || true)
+  range_halt
+  phase=stopped
+  for u in "${units[@]}"; do run systemctl stop "$u" || true; done
+  sync || true
+  du -sB1 "$HOMEDIR" "$HOMEDIR"/data/* 2>/dev/null >"$STATE/range-du.txt" || true
+  home_bytes=$(awk 'NR == 1 {print $1}' "$STATE/range-du.txt")
+  fs_used=$(df -B1 --output=used "$DATA" 2>/dev/null | tail -1 | tr -d ' ' || true)
+  range_json
+}
+range_entered() { [[ $height =~ ^[0-9]+$ ]] && ((height >= range_start)); }
+range_finished() { [[ $height =~ ^[0-9]+$ ]] && ((height >= range_end_h)); }
+range_interval() { # 1 s within three blocks of either boundary, so entry and exit land on H and H+N
+  if [[ $height =~ ^[0-9]+$ ]] && { ((height >= range_start - 3 && height <= range_start)) || ((height >= range_end_h - 3)); }; then
+    echo 1
+  else echo 5; fi
+}
+# range_loop UNTIL_FN: like measure, with the boundary poll interval and a
+# memory/CPU/disk sample on every poll inside the window.
+range_loop() {
+  local best=0 since=$SECONDS
+  while :; do
+    poll
+    status "$phase"
+    [[ $phase != range ]] || range_sample || true
+    if [[ $height =~ ^[0-9]+$ ]] && ((height > best)); then best=$height since=$SECONDS; fi
+    "$1" && return 0
+    alive || { reason=service_exited; return 1; }
+    (($(now) < deadline)) || { reason=deadline; return 1; }
+    ((SECONDS - since < 600)) || { reason=stalled; return 1; }
+    sleep "$(range_interval)"
+  done
+}
+range_begin() {
+  range_t0=$(mono) range_entry_h=$height
+  echo '# uptime_s local_h mem_current_B rss_KiB cpu_usec anon_B file_B disk_used_B' >"$STATE/range-memory.tsv"
+  range_sample || true
+}
+range_sample() {
+  local current rss cpu anon file disk
+  current=$(cat "$SLICE/memory.current" 2>/dev/null) || current=-
+  rss=$(rss_kib) || rss=-
+  cpu=$(awk '/^usage_usec/ {print $2}' "$SLICE/cpu.stat" 2>/dev/null) || cpu=-
+  read -r anon file < <(awk '$1=="anon"{a=$2} $1=="file"{f=$2} END{print a+0,f+0}' "$SLICE/memory.stat" 2>/dev/null) || anon=- file=-
+  disk=$(df -B1 --output=used "$DATA" 2>/dev/null | tail -1 | tr -d ' ') || disk=-
+  echo "$(mono) ${height:--} ${current:--} ${rss:--} ${cpu:--} ${anon:--} ${file:--} ${disk:--}" >>"$STATE/range-memory.tsv"
+}
+node_app_height() { rpc "$LOCAL/abci_info" | jq -er '.result.response.last_block_height | tonumber' 2>/dev/null; }
+node_halted() { # celestia-rs exits cleanly at its halt height; Go stays up after "CONSENSUS FAILURE"
+  local u=${units[0]}
+  [[ $(systemctl show -p SubState --value "$u" 2>/dev/null) != running ]] && return 0
+  journalctl -u "$u" --no-pager -n 3000 2>/dev/null | grep -q 'halt per configuration'
+}
+# node_halt_log_height: the height in the node's "halt per configuration
+# height N" log line. The node halts before it executes N.
+node_halt_log_height() {
+  journalctl -u "${units[0]}" --no-pager -n 3000 2>/dev/null |
+    sed -n 's/.*halt per configuration height \([0-9][0-9]*\).*/\1/p' | tail -1
+}
+# range_halt: wait up to three minutes for the configured halt, recording the
+# last committed app height. Without a halt the node is stopped anyway and
+# its actual final height is reported.
+range_halt() {
+  phase=halt; final_app_h='' halted=false
+  local h until_s=$((SECONDS + 180))
+  while ((SECONDS < until_s)); do
+    poll
+    if h=$(node_app_height) && [[ $h =~ ^[0-9]+$ ]]; then final_app_h=$h; fi
+    if node_halted; then halted=true; break; fi
+    if [[ $final_app_h =~ ^[0-9]+$ ]] && ((final_app_h > halt_height)); then break; fi
+    sleep 1
+  done
+  # A node that exited at its halt height before its RPC was read left no
+  # app height; its last committed height is one below the logged halt.
+  if [[ $halted == true && ! $final_app_h =~ ^[0-9]+$ ]] && h=$(node_halt_log_height) && [[ $h =~ ^[0-9]+$ ]]; then
+    final_app_h=$((h - 1))
+  fi
+  final_status_h=$(awk '$2 ~ /^[0-9]+$/ {h = $2} END {print h}' "$STATE/polls.tsv")
+  echo "$final_app_h $final_status_h $halted" >"$STATE/range-halt.txt"
+}
+range_json() { # range.json: the scheduled window, its statistics and the end state
+  local stats='{}'
+  [[ ! -s $STATE/range-memory.tsv ]] || stats=$(bench_range_stats "$STATE/range-memory.tsv") || stats='{}'
+  jq -n --argjson stats "$stats" --argjson scheduled_start "$range_start" --argjson blocks "$range_blocks" \
+    --argjson halt_height "$halt_height" --arg entry_h "${range_entry_h:-}" --arg exit_h "${range_exit_h:-}" \
+    --arg elapsed_s "$(awk -v a="${range_exit_t:-}" -v b="${range_t0:-}" 'BEGIN { if (a != "" && b != "") printf "%.1f", a - b }')" \
+    --arg final_app "${final_app_h:-}" --arg final_status "${final_status_h:-}" \
+    --arg earliest "${retained_earliest:-}" --arg latest "${retained_latest:-}" --arg home "${home_bytes:-}" \
+    --arg fs_used "${fs_used:-}" --arg slice_peak "${range_slice_peak:-}" --arg halted "${halted:-}" \
+    --arg du "$(cat "$STATE/range-du.txt" 2>/dev/null)" '
+    def num: if test("^[0-9]+(\\.[0-9]+)?$") then tonumber else null end;
+    $stats + {scheduled_start: $scheduled_start, blocks: $blocks, scheduled_end: ($scheduled_start + $blocks), halt_height: $halt_height,
+      entry_h: ($entry_h | num), exit_h: ($exit_h | num), elapsed_s: ($elapsed_s | num),
+      final_app_height: ($final_app | num), final_status_height: ($final_status | num),
+      halted: (if $halted == "" then null else $halted == "true" end),
+      retained_earliest: ($earliest | num), retained_latest: ($latest | num),
+      home_bytes: ($home | num), fs_used_after_stop_B: ($fs_used | num), slice_peak_at_exit_B: ($slice_peak | num), du: $du}' \
+    >"$STATE/range.json"
+}
+
 verify_block_id() { # chain ID and block ID at the local height against the reference
   local h ours theirs chain
   h=$(rpc "$LOCAL/status" | jq -r .result.sync_info.latest_block_height)
@@ -462,7 +643,9 @@ finish() {
     --arg kernel "$(uname -r)" --arg cpus "$(nproc)" --arg mem "$(awk '/MemTotal/ {print $2}' /proc/meminfo)" \
     --slurpfile verify <(cat "$STATE"/verify-*.json 2>/dev/null) \
     --arg poll_columns "$POLL_COLUMNS" --arg poll_interval_s "$poll_s" --arg timings "$(timings)" \
-    --arg mem_peak_polled "$(bench_max "$STATE/polls.tsv" 10 2>/dev/null)" '$ARGS.named + {verify: $verify, bridge: $bridge[0]}' \
+    --slurpfile range <(cat "$STATE/range.json" 2>/dev/null) --slurpfile host <(cat "$STATE/host.json" 2>/dev/null) \
+    --arg mem_peak_polled "$(bench_max "$STATE/polls.tsv" 10 2>/dev/null)" \
+    '$ARGS.named + {verify: $verify, bridge: $bridge[0], range: $range[0], host: $host[0]}' \
     >"$STATE/summary.json"
   # Guest attributes kept only about 500 KB for each VM in the 2026-11-25
   # runs: chunks after the second were dropped. Two chunks is the budget.
@@ -481,7 +664,7 @@ finish() {
   } || {
     tail -c 1000000 "$STATE/polls.tsv" >"$STATE/polls.tail.tsv"
     local evidence=(polls.tail.tsv summary.json)
-    for f in da-reads.tsv da-memory.tsv da-boundaries.tsv bridge-config.toml; do [[ ! -f $STATE/$f ]] || evidence+=("$f"); done
+    for f in da-reads.tsv da-memory.tsv da-boundaries.tsv bridge-config.toml range-memory.tsv range.json range-du.txt; do [[ ! -f $STATE/$f ]] || evidence+=("$f"); done
     tar -C "$STATE" -cf "$STATE/raw.tar" "${evidence[@]}"
     n=$(bench_chunk "$STATE/raw.tar" "$STATE/raw" 196608 "$RAW_MAX_CHUNKS")
   }
