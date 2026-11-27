@@ -23,9 +23,13 @@ fn decode<M: Message + Default>(msg: &Any) -> Result<M> {
     M::decode(msg.value.as_slice()).map_err(|e| errs::tx_decode(e.to_string()))
 }
 
-/// `MsgTimeout.ValidateBasic` (v6); `None` for any other message.
+/// `MsgTimeout` and `MsgTimeoutOnClose` `ValidateBasic` (v6); `None` for
+/// any other message.
 #[must_use]
 pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
+    if msg.type_url == chpb::MsgTimeoutOnClose::type_url() {
+        return Some(decode(msg).and_then(|m| validate_basic_on_close(&m)));
+    }
     (msg.type_url == chpb::MsgTimeout::type_url()).then(|| {
         let m: chpb::MsgTimeout = decode(msg)?;
         if m.proof_unreceived.is_empty() {
@@ -46,8 +50,36 @@ pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
     })
 }
 
-/// Executes `MsgTimeout`; `None` for any other message.
+/// `MsgTimeoutOnClose.ValidateBasic` (v6).
+fn validate_basic_on_close(m: &chpb::MsgTimeoutOnClose) -> Result<()> {
+    if m.next_sequence_recv == 0 {
+        return Err(errs::invalid_sequence("next sequence receive cannot be 0"));
+    }
+    if m.proof_unreceived.is_empty() {
+        return Err(x_ibc::errors::commitment::invalid_proof(
+            "cannot submit an empty proof",
+        ));
+    }
+    if m.proof_close.is_empty() {
+        return Err(x_ibc::errors::commitment::invalid_proof(
+            "cannot submit an empty proof of closed counterparty channel end",
+        ));
+    }
+    if height::is_zero(&m.proof_height.unwrap_or_default()) {
+        return Err(errs::invalid_height("proof height must be non-zero"));
+    }
+    sdk::address::acc_from_bech32_go(&m.signer).map_err(|e| {
+        errs::invalid_address(format!("string could not be parsed as address: {e}"))
+    })?;
+    validate_packet(&m.packet.clone().unwrap_or_default())
+}
+
+/// Executes `MsgTimeout` and `MsgTimeoutOnClose`; `None` for any other
+/// message.
 pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
+    if msg.type_url == chpb::MsgTimeoutOnClose::type_url() {
+        return Some(decode(msg).and_then(|m| timeout_on_close(ctx, &m)));
+    }
     (msg.type_url == chpb::MsgTimeout::type_url())
         .then(|| decode(msg).and_then(|m| timeout(ctx, &m)))
 }
@@ -304,6 +336,132 @@ fn timeout(ctx: &mut Context<'_>, m: &chpb::MsgTimeout) -> Result<Any> {
     on_timeout_packet(ctx, &p).map_err(|e| e.wrap("timeout packet callback failed"))?;
     timeout_executed(ctx, &cap, &p)?;
     Ok(Any::pack(&chpb::MsgTimeoutResponse {
+        result: chpb::ResponseResultType::Success as i32,
+    }))
+}
+
+/// 04-channel `TimeoutOnClose` (v6). A packet commitment exists only on
+/// a transfer channel, which v6 transfer opens unordered only, so the
+/// ordered branch cannot run.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn timeout_on_close_packet(
+    ctx: &mut Context<'_>,
+    cap: &celestia_proto::capability::v1::Capability,
+    m: &chpb::MsgTimeoutOnClose,
+    p: &Packet,
+) -> core::result::Result<(), Failure> {
+    let (port, chan) = (&p.source_port, &p.source_channel);
+    let ch = channel::get_channel(ctx, port, chan)?.ok_or_else(|| channel_not_found(port, chan))?;
+    let cap_name = host::channel_capability_path(port, chan);
+    if !x_ibc::port::SCOPED_KEEPER.authenticate_capability(ctx, cap, &cap_name)? {
+        return Err(cherr::invalid_channel_capability(format!(
+            "channel capability failed authentication with capability name {cap_name}"
+        ))
+        .into());
+    }
+    let cp = ch.counterparty.clone().unwrap_or_default();
+    if p.destination_port != cp.port_id {
+        return Err(cherr::invalid_packet(format!(
+            "packet destination port doesn't match the counterparty's port ({} \u{2260} {})",
+            p.destination_port, cp.port_id
+        ))
+        .into());
+    }
+    if p.destination_channel != cp.channel_id {
+        return Err(cherr::invalid_packet(format!(
+            "packet destination channel doesn't match the counterparty's channel ({} \u{2260} {})",
+            p.destination_channel, cp.channel_id
+        ))
+        .into());
+    }
+    let hop = ch.connection_hops.first().cloned().unwrap_or_default();
+    let conn = x_ibc::connection::get_connection(ctx, &hop)?
+        .ok_or_else(|| x_ibc::errors::connection::connection_not_found(&hop))?;
+    let commitment = channel::get_packet_commitment(ctx, port, chan, p.sequence)?;
+    if commitment.is_empty() {
+        emit_timeout_packet(ctx, p, &ch);
+        return Err(Failure::NoOp);
+    }
+    let packet_commitment = channel::commit_packet(p);
+    if commitment != packet_commitment {
+        return Err(cherr::invalid_packet(format!(
+            "packet commitment bytes are not equal: got ({}), expected ({})",
+            go_byte_slice(&commitment),
+            go_byte_slice(&packet_commitment)
+        ))
+        .into());
+    }
+    let expected = Channel {
+        state: State::Closed as i32,
+        ordering: ch.ordering,
+        counterparty: Some(chpb::Counterparty {
+            port_id: port.clone(),
+            channel_id: chan.clone(),
+        }),
+        connection_hops: vec![conn.counterparty.clone().unwrap_or_default().connection_id],
+        version: ch.version.clone(),
+        ..Channel::default()
+    };
+    let proof_height = m.proof_height.unwrap_or_default();
+    super::ibc_channel::verify_channel_state(
+        ctx,
+        &conn,
+        &proof_height,
+        &m.proof_close,
+        &cp.port_id,
+        &cp.channel_id,
+        &expected,
+    )?;
+    if ch.ordering != chpb::Order::Unordered as i32 {
+        return Err(super::not_ported(errs::not_supported(
+            "the ibc-go v6 timeout of an ordered channel is not ported",
+        ))
+        .into());
+    }
+    super::ibc::verify_absence_with_delay(
+        ctx,
+        &conn,
+        &proof_height,
+        &m.proof_unreceived,
+        &host::packet_receipt_key(&p.destination_port, &p.destination_channel, p.sequence),
+        "failed packet receipt absence verification for client",
+    )?;
+    Ok(())
+}
+
+/// core `msgServer.TimeoutOnClose` (v6).
+fn timeout_on_close(ctx: &mut Context<'_>, m: &chpb::MsgTimeoutOnClose) -> Result<Any> {
+    let p = m.packet.clone().unwrap_or_default();
+    let (module, cap) = channel::lookup_module_by_channel(ctx, &p.source_port, &p.source_channel)
+        .map_err(|e| e.wrap("could not retrieve module from port-id"))?;
+    if module != x_transfer::MODULE_NAME {
+        return Err(super::not_ported(errs::not_supported(format!(
+            "the ibc-go v6 packet callbacks of module {module} are not ported"
+        ))));
+    }
+    let outer_events = std::mem::take(&mut ctx.events);
+    let cp = ctx.branch();
+    let r = timeout_on_close_packet(ctx, &cap, m, &p);
+    let mut cache_events = std::mem::replace(&mut ctx.events, outer_events);
+    match r {
+        Ok(()) => {
+            ctx.write(cp);
+            ctx.events.emit_all(cache_events.take());
+        }
+        Err(Failure::NoOp) => {
+            ctx.multistore().discard_branch();
+            return Ok(Any::pack(&chpb::MsgTimeoutOnCloseResponse {
+                result: chpb::ResponseResultType::Noop as i32,
+            }));
+        }
+        Err(Failure::Err(e)) => {
+            ctx.multistore().discard_branch();
+            return Err(e.wrap("timeout on close packet verification failed"));
+        }
+    }
+    on_timeout_packet(ctx, &p).map_err(|e| e.wrap("timeout packet callback failed"))?;
+    timeout_executed(ctx, &cap, &p)?;
+    Ok(Any::pack(&chpb::MsgTimeoutOnCloseResponse {
         result: chpb::ResponseResultType::Success as i32,
     }))
 }

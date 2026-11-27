@@ -678,6 +678,7 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 	runTransferAuthzAndTimeout(t, coord, chainA, chainB, pathAB, timeout)
 	runClientProposals(t, coord, chainA, chainB)
 	runClientUpgrade(t, coord, chainA, chainB)
+	runTimeoutOnClose(t, coord, chainA, chainB)
 	// A last empty block commits the last transaction's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc
@@ -1201,4 +1202,38 @@ func runClientUpgrade(t *testing.T, coord *ibctesting.Coordinator, chainA, chain
 	_, err = chainA.SendMsgs(msg(zeroed))
 	must(t, err)
 	sendFailing(t, chainA, msg(zeroed))
+}
+
+// runTimeoutOnClose refunds a transfer with MsgTimeoutOnClose. B's
+// transfer module cannot close a channel, so the test sets B's channel
+// end CLOSED in B's store, as a counterparty chain that allows closing
+// would. A first sends the proofs swapped (the closed-channel proof
+// fails), then the timeout, then the timeout again (NOOP).
+func runTimeoutOnClose(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB *ibctesting.TestChain) {
+	path := transferPath(chainA, chainB)
+	coord.Setup(path)
+	res, err := chainA.SendMsgs(transfertypes.NewMsgTransfer(ibctesting.TransferPort, path.EndpointA.ChannelID,
+		sdk.NewInt64Coin(appconsts.BondDenom, 7_000), chainA.SenderAccount.GetAddress().String(),
+		chainB.SenderAccount.GetAddress().String(), clienttypes.NewHeight(1, 10_000), 0, ""))
+	must(t, err)
+	packet, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	keeper := chainB.App.(*ibcsimapp.SimApp).IBCKeeper.ChannelKeeper
+	ch, ok := keeper.GetChannel(chainB.GetContext(), path.EndpointB.ChannelConfig.PortID, path.EndpointB.ChannelID)
+	if !ok {
+		t.Fatal("no channel on B")
+	}
+	ch.State = channeltypes.CLOSED
+	keeper.SetChannel(chainB.GetContext(), path.EndpointB.ChannelConfig.PortID, path.EndpointB.ChannelID, ch)
+	coord.CommitBlock(chainB)
+	must(t, path.EndpointA.UpdateClient())
+	proofClose, proofHeight := chainB.QueryProof(host.ChannelKey(packet.GetDestPort(), packet.GetDestChannel()))
+	proofUnreceived, _ := chainB.QueryProof(host.PacketReceiptKey(packet.GetDestPort(), packet.GetDestChannel(), packet.GetSequence()))
+	signer := chainA.SenderAccount.GetAddress().String()
+	sendFailing(t, chainA, channeltypes.NewMsgTimeoutOnClose(packet, 1, proofClose, proofUnreceived, proofHeight, signer))
+	msg := channeltypes.NewMsgTimeoutOnClose(packet, 1, proofUnreceived, proofClose, proofHeight, signer)
+	_, err = chainA.SendMsgs(msg)
+	must(t, err)
+	_, err = chainA.SendMsgs(msg)
+	must(t, err)
 }

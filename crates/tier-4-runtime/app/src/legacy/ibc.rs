@@ -380,6 +380,36 @@ fn update_client(ctx: &mut Context<'_>, m: &clpb::MsgUpdateClient) -> Result<Any
     Ok(Any::pack(&clpb::MsgUpdateClientResponse {}))
 }
 
+/// v6 prints a proof's key path with `MerklePath.String()` (each key
+/// `url.PathEscape`d after a `/`); v8 prints `{[k1 k2]}`.
+fn v6_key_text(
+    mut e: sdk::SdkError,
+    path: &celestia_proto::ibc::core::commitment::v1::MerklePath,
+) -> sdk::SdkError {
+    let v8 = format!("{{[{}]}}", path.key_path.join(" "));
+    let v6: String = path.key_path.iter().fold(String::new(), |mut acc, k| {
+        acc.push('/');
+        acc.push_str(&go_path_escape(k));
+        acc
+    });
+    e.log = e.log.replace(&v8, &v6);
+    e
+}
+
+/// Go `url.PathEscape`.
+fn go_path_escape(s: &str) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b"-_.~$&+,;=:@".contains(&b) {
+            out.push(char::from(b));
+        } else {
+            let _ = write!(out, "%{b:02X}");
+        }
+    }
+    out
+}
+
 /// `MsgUpgradeClient` (02-client keeper `UpgradeClient` and 07-tendermint
 /// v6 `VerifyUpgradeAndUpdateState`).
 fn upgrade_client(ctx: &mut Context<'_>, m: &clpb::MsgUpgradeClient) -> Result<Any> {
@@ -865,6 +895,7 @@ fn verify_path(
             }
             None => commitment::verify_non_membership(&merkle_proof, &cs.proof_specs, &root, &path),
         }
+        .map_err(|e| v6_key_text(e, &path))
     })();
     r.map_err(|e| e.wrap(format!("{wrap} ({client_id})")))
 }
@@ -1206,4 +1237,27 @@ fn conn_open_confirm(ctx: &mut Context<'_>, m: &copb::MsgConnectionOpenConfirm) 
     })();
     r.map_err(|e| e.wrap("connection handshake open confirm failed"))?;
     Ok(Any::pack(&copb::MsgConnectionOpenConfirmResponse {}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn key_path_text_is_v6_merkle_path_string() {
+        let path = celestia_proto::ibc::core::commitment::v1::MerklePath {
+            key_path: vec![
+                "ibc".into(),
+                "channelEnds/ports/transfer/channels/channel-3".into(),
+            ],
+        };
+        let e = errs::invalid_request(
+            "The key used: {[ibc channelEnds/ports/transfer/channels/channel-3]}",
+        );
+        assert_eq!(
+            v6_key_text(e, &path).log,
+            "The key used: /ibc/channelEnds%2Fports%2Ftransfer%2Fchannels%2Fchannel-3: invalid request"
+        );
+        assert_eq!(go_path_escape("a b?c@d~"), "a%20b%3Fc@d~");
+    }
 }
