@@ -11,6 +11,10 @@ set -u
 SEG=$1 STOP=$2 DATA=${SEG_DATA:-/data} HOST=$(hostname)
 HOME_DIR=$DATA/home-$SEG T=$DATA/heights-$SEG.tsv
 WATCH_SECS=${WATCH_SECS:-300} STALL_SECS=${STALL_SECS:-600} last_h='' last_change=$(date +%s) stalled=0
+# A detected stall (or resume) stays pending until its marker object is
+# published: a failed put is retried on every poll. heights.tsv gets the
+# "stalled" reason once, on the poll that detects the stall.
+stall_pub=0 tail_pub=0 resume_pend=0
 while true; do
   L=$(ls -t $HOME_DIR/logs/*.log 2>/dev/null | head -1)
   h=''; [ -n "$L" ] && h=$(grep -oE 'followed height=[0-9]+' "$L" | tail -1 | cut -d= -f2)
@@ -20,12 +24,20 @@ while true; do
   now=$(date +%s)
   if [ "${h:-}" != "$last_h" ]; then
     last_h=${h:-} last_change=$now
-    [ $stalled = 1 ] && { stalled=0; vmx-gcs put /dev/null segments/$SEG/resumed-$HOST >/dev/null 2>&1; }
+    # Report the resume only if the stall itself was published.
+    [ $stalled = 1 ] && { stalled=0; resume_pend=$stall_pub; }
   elif [ -n "${h:-}" ] && [ "$a" = active ] && [ $stalled = 0 ] && ((now - last_change >= STALL_SECS)); then
-    stalled=1 reason="stalled: no progress past ${h:--} for $(( (now - last_change) / 60 )) min"
-    [ -n "$L" ] && { tail -n 300 "$L" > $DATA/stall-tail.log; vmx-gcs put $DATA/stall-tail.log rs-replay/$SEG/stall-tail-$HOST.log >/dev/null 2>&1; }
+    stalled=1 stall_pub=0 tail_pub=0 resume_pend=0
+    reason="stalled: no progress past ${h:--} for $(( (now - last_change) / 60 )) min"
+    tail_pub=1; [ -n "$L" ] && { tail -n 300 "$L" > $DATA/stall-tail.log; tail_pub=0; }
     echo "stalled $(date -u +%FT%TZ) $HOST height=${h:--}" > $DATA/seg-stalled
-    vmx-gcs put $DATA/seg-stalled segments/$SEG/stalled >/dev/null 2>&1
+  fi
+  if [ $stalled = 1 ]; then
+    [ $tail_pub = 1 ] || { vmx-gcs put $DATA/stall-tail.log rs-replay/$SEG/stall-tail-$HOST.log >/dev/null 2>&1 && tail_pub=1; }
+    [ $stall_pub = 1 ] || { vmx-gcs put $DATA/seg-stalled segments/$SEG/stalled >/dev/null 2>&1 && stall_pub=1; }
+  fi
+  if [ $resume_pend = 1 ]; then
+    vmx-gcs put /dev/null segments/$SEG/resumed-$HOST >/dev/null 2>&1 && { resume_pend=0 stall_pub=0; }
   fi
   printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "${h:--}" "$a" "$HOST" "$reason" >> $T
   vmx-gcs put $T rs-replay/$SEG/heights-$HOST.tsv >/dev/null 2>&1

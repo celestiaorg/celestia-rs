@@ -295,6 +295,34 @@ check  "watch stall writes the marker"       grep -q 'stalled .* height=150100' 
 check  "watch stall uploads the log tail"    test -e "$W/bucket/rs-replay_120000_stall-tail-$(hostname).log"
 refute "watch stall is not a failure"        test -e "$W/bucket/segments_120000_failed"
 
+# --- segment watcher: a failed marker upload is retried on the next poll (stalled and resumed) ---
+W=$t/watch-retry
+mkdir -p "$W/bin" "$W/data/home-120000/logs" "$W/bucket" "$W/fails"
+printf '#!/bin/bash\necho active\n' >"$W/bin/systemctl"
+cat >"$W/bin/vmx-gcs" <<EOF
+#!/bin/bash
+# The first put of each marker object fails.
+[ "\$1" = put ] || exit 0
+k=\$(echo "\$3" | tr / _)
+case \$k in segments_120000_stalled|segments_120000_resumed-*|rs-replay_120000_stall-tail-*)
+  [ -e "$W/fails/\$k" ] || { touch "$W/fails/\$k"; exit 1; } ;;
+esac
+cp "\$2" "$W/bucket/\$k"
+EOF
+chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs"
+echo 'INFO celestia_rs::follow: followed height=150100 tip=1' >"$W/data/home-120000/logs/follow.log"
+PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=2 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1 &
+wpid=$!
+wait_until 30 test -e "$W/bucket/segments_120000_stalled" || true
+check  "watch retries a failed stalled put"  grep -q 'stalled .* height=150100' "$W/bucket/segments_120000_stalled"
+check  "watch retries a failed tail put"     test -e "$W/bucket/rs-replay_120000_stall-tail-$(hostname).log"
+echo 'INFO celestia_rs::follow: followed height=150200 tip=1' >>"$W/data/home-120000/logs/follow.log"
+wait_until 30 test -e "$W/bucket/segments_120000_resumed-$(hostname)" || true
+kill "$wpid" 2>/dev/null || true
+wait "$wpid" 2>/dev/null || true
+check  "watch retries a failed resumed put"  test -e "$W/bucket/segments_120000_resumed-$(hostname)"
+check  "watch logs one stalled reason"       test "$(grep -c 'stalled: no progress' "$W/data/heights-120000.tsv")" = 1
+
 echo
 if ((fails)); then echo "$fails test(s) failed"; exit 1; fi
 echo "all tests passed"
