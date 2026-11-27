@@ -1,5 +1,5 @@
 // Command v6-oracle continues the synthetic chain of conformance/v5-oracle
-// across the v5 to v6 upgrade with the Go celestia-app v6.4.4 state
+// across the v5 to v6 upgrade with the Go celestia-app v6.4.10 state
 // machine (the v6 release that the v8 and v9 multiplexers embed), and
 // dumps every committed store root and KV change per height.
 //
@@ -170,7 +170,7 @@ func run() error {
 	nextHandoff := flag.Bool("next-handoff", false, "after the last block, require plan \"v8\" at the next height and rewrite handoff.json in the -handoff home for conformance/v8-oracle")
 	flag.Parse()
 	if *signBytes != "" {
-		return writeSignBytes(*signBytes, "v6.4.4")
+		return writeSignBytes(*signBytes, "v6.4.10")
 	}
 	if *home == "" || *genesisPath == "" || *out == "" || *heights < 1 {
 		flag.Usage()
@@ -217,7 +217,7 @@ func run() error {
 	fixture := Fixture{
 		ChainID:       ho.ChainID,
 		Generator:     "conformance/v6-oracle",
-		CelestiaApp:   "v6.4.4",
+		CelestiaApp:   "v6.4.10",
 		GenesisSHA256: hex.EncodeToString(genesisSum[:]),
 		HandoffHeight: ho.Height,
 	}

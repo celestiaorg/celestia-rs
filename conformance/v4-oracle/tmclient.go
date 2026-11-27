@@ -55,6 +55,11 @@ package main
 //	          one nil vote
 //	   val1:  update R to h0-17 from h0-16 (adjacent): three signatures and
 //	          one absent
+//	   val2:  update R to h0-18 from h0-17 (adjacent): commit slot 1 names
+//	          validator 0's address and holds validator 1's valid signature
+//	          (the canonical vote has no address): accepted without the
+//	          commit-slot address check, "validator address mismatch at
+//	          index 1" with it (celestia-core v0.39.23 and later)
 
 import (
 	"crypto/sha256"
@@ -105,8 +110,9 @@ func newTMSet(keys []ed25519.PrivKey) tmSet {
 }
 
 // sigMode says how validator i of the set signs: "ok", "bad" (a
-// corrupted signature), "absent", "nil" (a vote for no block), or "as0"
-// (validator 0's address and signature in slot i).
+// corrupted signature), "absent", "nil" (a vote for no block), "as0"
+// (validator 0's address and signature in slot i), or "addr0" (validator
+// 0's address with validator i's own signature in slot i).
 type sigMode func(i int) string
 
 func allSign(int) string { return "ok" }
@@ -167,8 +173,12 @@ func tmHeader(chainID string, height int64, t time.Time, set, next tmSet, appHas
 		if m == "bad" {
 			sig[0] ^= 0xff
 		}
+		address := signer.Address
+		if m == "addr0" {
+			address = set.vals.Validators[0].Address
+		}
 		sigs = append(sigs, cmttypes.CommitSig{
-			BlockIDFlag: flag, ValidatorAddress: signer.Address,
+			BlockIDFlag: flag, ValidatorAddress: address,
 			Timestamp: t.UTC(), Signature: sig,
 		})
 	}
@@ -415,6 +425,12 @@ func (s *synth) tmSteps(
 			misbehaviour,
 			update("val0", idR, upd{chainID: rev0, height: 16, at: t6r.Add(time.Second), set: v, next: v, mode: lastIs("nil"), trusted: 15, trustedSet: v}),
 			update("val1", idR, upd{chainID: rev0, height: 17, at: t6r.Add(2 * time.Second), set: v, next: v, mode: lastIs("absent"), trusted: 16, trustedSet: v}),
+			update("val2", idR, upd{chainID: rev0, height: 18, at: t6r.Add(3 * time.Second), set: v, next: v, mode: func(i int) string {
+				if i == 1 {
+					return "addr0"
+				}
+				return "ok"
+			}, trusted: 17, trustedSet: v}),
 		}, nil
 	}
 	return nil, nil
