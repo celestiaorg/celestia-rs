@@ -65,16 +65,18 @@ fn main() {
     let crate_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
     let version = match std::env::var("CELESTIA_RS_RELEASE_VERSION") {
         Ok(v) if !v.is_empty() => {
-            let parse = |s: &str| -> Option<(u64, u64, u64)> {
-                let mut it = s.split('.').map(|p| p.parse::<u64>().ok());
-                let parsed = (it.next()??, it.next()??, it.next()??);
-                it.next().is_none().then_some(parsed)
+            let parse = |text: &str| -> Option<(u64, u64, u64)> {
+                let mut parts = text.split('.').map(|part| part.parse::<u64>().ok());
+                let parsed = (parts.next()??, parts.next()??, parts.next()??);
+                parts.next().is_none().then_some(parsed)
             };
             let core = crate_version.split('-').next().unwrap_or_default();
-            let valid = matches!(
-                (parse(&v), parse(core)),
-                (Some((a, b, c)), Some((x, y, z))) if (a, b) == (x, y) && c >= z
-            );
+            let valid = match (parse(&v), parse(core)) {
+                (Some((major, minor, patch)), Some(crate_line)) => {
+                    (major, minor) == (crate_line.0, crate_line.1) && patch >= crate_line.2
+                }
+                _ => false,
+            };
             assert!(
                 valid,
                 "CELESTIA_RS_RELEASE_VERSION={v} must be <major>.<minor>.<patch> on the crate version's line ({crate_version})"

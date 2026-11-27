@@ -118,8 +118,13 @@ jobs:
                 # crate's own patch (crate 0.1.0-rc.9, no v0.1.x yet: 0.1.0).
                 core=${version%%-*}
                 line=${core%.*}
+                # A re-run (attempt > 1) of a run that already tagged this
+                # commit resumes that release instead of taking a new patch.
+                retag=$(git tag --points-at "$sha" "v$line.*" | grep -E "^v${line//./\\.}\.[0-9]+\$" | head -n 1 || true)
                 last=$(git tag -l "v$line.*" | sed -n "s/^v${line//./\\.}\.\([0-9][0-9]*\)\$/\1/p" | sort -n | tail -n 1)
-                if [ -n "$last" ]; then
+                if [ -n "$retag" ]; then
+                  release_version=${retag#v}
+                elif [ -n "$last" ]; then
                   release_version="$line.$((last + 1))"
                 else
                   release_version=$core
