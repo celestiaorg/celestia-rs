@@ -46,7 +46,21 @@ use ctypes::{BLOCK_PART_SIZE_BYTES, Block, BlockId};
 use nodestore::{BlockExecutor, Handshaker, State};
 use prost::Message as _;
 
-/// The node binary's allocator (`celestia-rs` default feature `jemalloc`).
+/// mimalloc (default feature `mimalloc`; its `malloc` also serves
+/// RocksDB's C++ allocations). With feature `jemalloc` too (e.g.
+/// `--features memstats` or `--all-features`), jemalloc is used instead:
+/// nothing then refers to mimalloc, so it is not linked at all.
+#[cfg(all(feature = "mimalloc", not(feature = "jemalloc")))]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+// With both features, mimalloc is a dependency nothing uses.
+#[cfg(all(feature = "mimalloc", feature = "jemalloc"))]
+use mimalloc as _;
+
+/// jemalloc (feature `jemalloc`, which wins over `mimalloc`; with
+/// `memstats` also its statistics and heap profiler, see
+/// `celestia_rs::memstats`).
 #[cfg(feature = "jemalloc")]
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
