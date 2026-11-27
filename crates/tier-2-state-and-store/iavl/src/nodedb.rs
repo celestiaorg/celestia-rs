@@ -34,14 +34,22 @@ const ORPHAN: u8 = b'o';
 
 static NEXT_DB_ID: AtomicU64 = AtomicU64::new(1);
 
-/// Lookups of every node cache in the process.
+/// Lookups of every node cache in the process, counted while
+/// [`COUNT_LOOKUPS`] is set.
 static LOOKUPS: AtomicU64 = AtomicU64::new(0);
+static COUNT_LOOKUPS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Node-cache lookups of every cache in the process so far (profiling:
-/// take differences).
+/// Node-cache lookups of every cache in the process since counting was
+/// turned on ([`set_count_node_lookups`]; profiling: take differences).
 #[must_use]
 pub fn node_lookups() -> u64 {
     LOOKUPS.load(Ordering::Relaxed)
+}
+
+/// Turns the process-wide lookup count on or off (off by default: no
+/// shared-counter write on the lookup path).
+pub fn set_count_node_lookups(on: bool) {
+    COUNT_LOOKUPS.store(on, Ordering::Relaxed);
 }
 
 // Resolving a compact parent's child reference reads the child record. Keep
@@ -140,7 +148,9 @@ impl NodeCache {
     }
 
     fn get(&self, key: &(u64, NodeKey)) -> Option<CachedNode> {
-        LOOKUPS.fetch_add(1, Ordering::Relaxed);
+        if COUNT_LOOKUPS.load(Ordering::Relaxed) {
+            LOOKUPS.fetch_add(1, Ordering::Relaxed);
+        }
         let found = self.clock.lock().ok()?.get(key);
         if found.is_some() {
             self.hits.fetch_add(1, Ordering::Relaxed);
