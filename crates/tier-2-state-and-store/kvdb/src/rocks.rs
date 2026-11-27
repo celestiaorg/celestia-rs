@@ -126,6 +126,22 @@ impl RocksBackend {
         opts.set_max_total_wal_size(2 * options.write_buffer_size as u64);
         opts.set_max_background_jobs(4);
         opts.set_bytes_per_sync(1 << 20);
+        // EXPERIMENT: flush shape of the application database only.
+        if path.ends_with("application.rocksdb") {
+            let int = |k: &str| env(k).and_then(|v| v.parse::<i32>().ok());
+            if let Some(n) = int("CELESTIA_ROCKS_APP_MAX_BUFFERS") {
+                opts.set_max_write_buffer_number(n);
+                opts.set_max_total_wal_size(
+                    u64::try_from(n).unwrap_or(2) * options.write_buffer_size as u64,
+                );
+            }
+            if let Some(n) = int("CELESTIA_ROCKS_APP_MIN_MERGE") {
+                opts.set_min_write_buffer_number_to_merge(n);
+            }
+        }
+        if let Some(kib) = env("CELESTIA_ROCKS_WAL_BPS_KIB").and_then(|v| v.parse::<u64>().ok()) {
+            opts.set_wal_bytes_per_sync(kib << 10);
+        }
         opts.set_max_open_files(options.max_open_files);
         // LZ4 above the bottommost level (cheap; keys, account and balance
         // protos, node keys and sizes compress even though hashes do not),

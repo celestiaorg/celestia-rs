@@ -170,6 +170,13 @@ impl Mempool for NopMempool {
     }
 }
 
+/// EXPERIMENT (exp/rocks-knobs): durations of the last applied block's
+/// steps after FinalizeBlock: save tx info, save the FinalizeBlock
+/// response, commit (app commit and mempool update), evidence update and
+/// state save, block pruning.
+pub static LAST_REST: std::sync::Mutex<[std::time::Duration; 5]> =
+    std::sync::Mutex::new([std::time::Duration::ZERO; 5]);
+
 /// `BlockExecutor`.
 pub struct BlockExecutor {
     /// State store.
@@ -704,6 +711,7 @@ impl BlockExecutor {
     /// `ApplyVerifiedBlock`: FinalizeBlock, save the response, update the
     /// state (validator updates take effect two heights later, param
     /// updates one height later), Commit, save the state, prune.
+    /// EXPERIMENT: see [`LAST_REST`].
     pub fn apply_verified_block(
         &mut self,
         state: &State,
@@ -727,9 +735,13 @@ impl BlockExecutor {
             )));
         }
         // Saved before the state for crash recovery, as in Go.
+        let t = std::time::Instant::now();
         self.block_store.save_tx_info(block, &resp.tx_results)?;
+        let tx_info = t.elapsed();
+        let t = std::time::Instant::now();
         self.state_store
             .save_finalize_block_response(block.header.height, &resp)?;
+        let response = t.elapsed();
         validate_validator_updates(&resp.validator_updates, &state.consensus_params.validator)
             .map_err(|e| Error::new(format!("error in validator updates: {e}")))?;
         let validator_updates = validator_updates_from_abci(&resp.validator_updates)?;
@@ -741,14 +753,22 @@ impl BlockExecutor {
             &validator_updates,
         )
         .map_err(|e| Error::new(format!("commit failed for application: {e}")))?;
+        let t = std::time::Instant::now();
         let retain_height = self.commit(&new_state, block, &resp)?;
+        let commit = t.elapsed();
+        let t = std::time::Instant::now();
         self.evpool.update(&new_state, &block.evidence.evidence);
         new_state.app_hash.clone_from(&resp.app_hash);
         self.state_store.save(&new_state)?;
+        let saved = t.elapsed();
+        let t = std::time::Instant::now();
         if retain_height > 0
             && let Err(e) = self.prune_blocks(retain_height, &new_state)
         {
             tracing::error!(retain_height, error = %e, "failed to prune blocks");
+        }
+        if let Ok(mut last) = LAST_REST.lock() {
+            *last = [tx_info, response, commit, saved, t.elapsed()];
         }
         // Events are fired after everything else.
         if let Some(sink) = &self.event_sink {

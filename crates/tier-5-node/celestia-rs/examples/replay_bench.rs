@@ -464,6 +464,8 @@ struct Slow {
     total: Duration,
     /// Part set, validation and (with `--save-blocks`) block saving.
     checked: Duration,
+    /// EXPERIMENT: tx info, response, commit, state save, prune.
+    steps: [Duration; 5],
     finalize: Duration,
     commit: Duration,
     txs: usize,
@@ -487,6 +489,11 @@ fn print_slowest(slow: &mut [Slow]) {
             ms(s.commit),
             ms(rest),
             s.txs,
+        );
+        let [tx_info, response, commit, state, prune] = s.steps.map(ms);
+        println!(
+            "  after finalize: tx info {tx_info:.1}, response {response:.1}, \
+             commit {commit:.1}, state {state:.1}, prune {prune:.1} ms"
         );
     }
 }
@@ -637,6 +644,10 @@ fn main() -> anyhow::Result<()> {
             height: h,
             total: *times.last().context("block time")?,
             checked,
+            steps: nodestore::execution::LAST_REST
+                .lock()
+                .map(|l| *l)
+                .unwrap_or_default(),
             finalize: after.finalize.saturating_sub(before.finalize),
             commit: after.commit.saturating_sub(before.commit),
             txs: block.data.txs.len(),
