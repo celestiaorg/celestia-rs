@@ -613,7 +613,7 @@ fn client_update_proposal(
     }
     let st = status(ctx, substitute_id, &substitute)?;
     if st != x_ibc::client::Status::Active {
-        return Err(cerr::client_not_active(format!(
+        return Err(super::ibc::client_not_active(format!(
             "substitute client is not Active, status is {}",
             st.as_str()
         )));

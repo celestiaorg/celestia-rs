@@ -53,7 +53,10 @@ import (
 	transfertypes "github.com/cosmos/ibc-go/v6/modules/apps/transfer/types"
 	clienttypes "github.com/cosmos/ibc-go/v6/modules/core/02-client/types"
 	channeltypes "github.com/cosmos/ibc-go/v6/modules/core/04-channel/types"
+	commitmenttypes "github.com/cosmos/ibc-go/v6/modules/core/23-commitment/types"
 	host "github.com/cosmos/ibc-go/v6/modules/core/24-host"
+	"github.com/cosmos/ibc-go/v6/modules/core/exported"
+	ibctmtypes "github.com/cosmos/ibc-go/v6/modules/light-clients/07-tendermint/types"
 	ibctesting "github.com/cosmos/ibc-go/v6/testing"
 	"github.com/cosmos/ibc-go/v6/testing/mock"
 	ibcsimapp "github.com/cosmos/ibc-go/v6/testing/simapp"
@@ -674,6 +677,7 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 
 	runTransferAuthzAndTimeout(t, coord, chainA, chainB, pathAB, timeout)
 	runClientProposals(t, coord, chainA, chainB)
+	runClientUpgrade(t, coord, chainA, chainB)
 	// A last empty block commits the last transaction's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc
@@ -1147,4 +1151,54 @@ func runClientProposals(t *testing.T, coord *ibctesting.Coordinator, chainA, cha
 	up, err := clienttypes.NewUpgradeProposal("upgrade", "d", upgradetypes.Plan{Name: "u", Height: 1_000_000}, cs)
 	must(t, err)
 	sendFailing(t, chainA, submit(up, 0))
+}
+
+// runClientUpgrade upgrades a client of B on A with MsgUpgradeClient. B
+// commits an upgraded client and consensus state in its upgrade store
+// (as its x/upgrade does before an upgrade height); A's client sets both
+// deprecated allow flags, which v6 carries into the new client state.
+// Failures first: an upgraded client whose custom fields are not zero
+// (v6 proves the client as sent, so the proof fails), an upgraded height
+// that is not above the client's; then the upgrade, and a second one on
+// the upgraded client (its consensus state has a zero timestamp, so the
+// client is Expired).
+func runClientUpgrade(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB *ibctesting.TestChain) {
+	path := ibctesting.NewPath(chainA, chainB)
+	lagTolerant(path.EndpointA)
+	cfg := path.EndpointA.ClientConfig.(*ibctesting.TendermintConfig)
+	cfg.AllowUpdateAfterExpiry, cfg.AllowUpdateAfterMisbehaviour = true, true
+	must(t, path.EndpointA.CreateClient())
+	cs := chainA.GetClientState(path.EndpointA.ClientID).(*ibctmtypes.ClientState)
+	// B's chain ID has no revision; the upgraded one has revision 1.
+	newChainID := cs.ChainId + "-1"
+	upgraded := ibctmtypes.NewClientState(newChainID, ibctmtypes.DefaultTrustLevel, cfg.TrustingPeriod,
+		cfg.UnbondingPeriod+cfg.TrustingPeriod, cfg.MaxClockDrift, clienttypes.NewHeight(1, 1),
+		commitmenttypes.GetSDKSpecs(), ibctesting.UpgradePath, false, false)
+	zeroed := upgraded.ZeroCustomFields()
+	cons := &ibctmtypes.ConsensusState{NextValidatorsHash: []byte("nextValsHash")}
+	lastHeight := chainB.GetContext().BlockHeight() + 1
+	keeper := chainB.App.(*ibcsimapp.SimApp).UpgradeKeeper
+	clientBz, err := clienttypes.MarshalClientState(chainB.App.AppCodec(), zeroed)
+	must(t, err)
+	consBz, err := clienttypes.MarshalConsensusState(chainB.App.AppCodec(), cons)
+	must(t, err)
+	must(t, keeper.SetUpgradedClient(chainB.GetContext(), lastHeight, clientBz))
+	must(t, keeper.SetUpgradedConsensusState(chainB.GetContext(), lastHeight, consBz))
+	coord.CommitBlock(chainB)
+	must(t, path.EndpointA.UpdateClient())
+	trusted := chainA.GetClientState(path.EndpointA.ClientID).GetLatestHeight().GetRevisionHeight()
+	proofClient, _ := chainB.QueryUpgradeProof(upgradetypes.UpgradedClientKey(lastHeight), trusted)
+	proofCons, _ := chainB.QueryUpgradeProof(upgradetypes.UpgradedConsStateKey(lastHeight), trusted)
+	msg := func(c exported.ClientState) *clienttypes.MsgUpgradeClient {
+		m, err := clienttypes.NewMsgUpgradeClient(path.EndpointA.ClientID, c, cons, proofClient, proofCons, chainA.SenderAccount.GetAddress().String())
+		must(t, err)
+		return m
+	}
+	sendFailing(t, chainA, msg(upgraded))
+	low := *zeroed.(*ibctmtypes.ClientState)
+	low.LatestHeight = clienttypes.NewHeight(0, 1)
+	sendFailing(t, chainA, msg(&low))
+	_, err = chainA.SendMsgs(msg(zeroed))
+	must(t, err)
+	sendFailing(t, chainA, msg(zeroed))
 }
