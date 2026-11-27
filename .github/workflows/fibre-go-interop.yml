@@ -11,6 +11,8 @@ on:
       - 'crates/tier-4-runtime/fibre-server/**'
       - 'crates/tier-5-node/celestia-rs/src/fibre.rs'
       - 'crates/tier-5-node/celestia-rs/src/config.rs'
+      - 'crates/tier-5-node/celestia-rs/src/node.rs'
+      - 'crates/tier-5-node/celestia-rs/src/main.rs'
       - 'crates/tier-4-runtime/privval/**'
       - 'conformance/fibre-interop/**'
       - 'conformance/devnet/lib-mixed.sh'

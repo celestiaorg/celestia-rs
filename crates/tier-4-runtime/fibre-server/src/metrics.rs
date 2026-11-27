@@ -593,12 +593,6 @@ impl ServerMetrics {
         );
         gauge(
             &mut out,
-            "fibre_server_upload_memory_reserved_bytes",
-            "Bytes reserved by in-flight uploads under max_inflight_upload_bytes",
-            self.upload_memory_reserved.load(Ordering::Relaxed),
-        );
-        gauge(
-            &mut out,
             "fibre_server_upload_shard_budget_bytes",
             "Current per-node storage budget of the limiter (0: unlimited)",
             self.current_occupancy().budget_bytes(),
@@ -760,5 +754,20 @@ mod tests {
         assert!(m.last_upload_success().is_some());
         let plain = m.render("");
         assert!(plain.contains("fibre_server_ready{} 0"));
+    }
+
+    /// Prometheus refuses a scrape that declares one metric family twice.
+    #[test]
+    fn render_declares_each_metric_family_once() {
+        let m = ServerMetrics::new(Arc::new(Occupancy::new(1000)));
+        m.start_rpc(Rpc::Upload).finish(Code::Ok);
+        m.reject(RejectReason::BudgetExceeded);
+        m.set_health_check("app", true);
+        let s = m.render("chain_id=\"c\"");
+        let mut seen = std::collections::BTreeSet::new();
+        for line in s.lines().filter(|l| l.starts_with("# TYPE ")) {
+            assert!(seen.insert(line), "declared twice: {line}");
+        }
+        assert!(!seen.is_empty());
     }
 }
