@@ -16,8 +16,10 @@ if [ -z "${HEIGHTS:-}" ]; then
   # Blocks with double-sign evidence (8,218,923 and 9,217,879), replayed
   # from shortly before.
   HEIGHTS+=" 8218900:v050 9217850:v050"
-  for h in $(seq 750000 250000 6500000); do HEIGHTS+=" $h:v046"; done
-  HEIGHTS+=" 2371489:v046 6680339:v050 6748821:v050 8662012:v050 10960599:v050 11771698:v050 15105000:v050"
+  # The v0.46 series ascending, four at a time, with the 2,371,489 boundary in
+  # its place; the evidence heights above go into the first v050 batch.
+  for h in $(printf '%s\n' $(seq 750000 250000 6500000) 2371489 | sort -n); do HEIGHTS+=" $h:v046"; done
+  HEIGHTS+=" 6680339:v050 6748821:v050 8662012:v050 10960599:v050 11771698:v050 15105000:v050"
   for h in $(seq 7000000 500000 15000000); do HEIGHTS+=" $h:v050"; done
 fi
 app_version() { # first mainnet height of app versions 2..9 (v7 never ran)
@@ -93,7 +95,8 @@ finish() {
 # Heights still to export, in priority order. Each run of the exporter takes
 # the first pending height and up to PARALLEL-1 more pending heights of the
 # same exporter version (scanning ahead), and exports them concurrently from
-# one open database; each is then verified and uploaded on its own.
+# one open database; each is verified and uploaded as soon as its own export
+# completes.
 PARALLEL=${PARALLEL:-4}
 pending=()
 for hv in $HEIGHTS; do
@@ -111,14 +114,28 @@ while ((${#pending[@]})); do
   echo "=== $(date -u +%T) export $hs with $v0 (${#batch[@]} at once)"
   s=$(date +%s)
   $T/archive-export-$v0 -db $HOME_DATA -height "$hs" -parallel ${#batch[@]} \
-    -out "$OUT/%d-$v0/snapshots" -log "$OUT/%d-$v0/export.log" > $OUT/batch-$v0.log 2>&1
-  echo "batch exited $? after $(( $(date +%s) - s ))s"
+    -out "$OUT/%d-$v0/snapshots" -log "$OUT/%d-$v0/export.log" > $OUT/batch-$v0.log 2>&1 &
+  ep=$!
+  # Verify and upload each height as soon as its own export completes, while
+  # the others keep running: a small height does not wait for a big one.
+  finished=" "
+  finish_ready() {
+    local hv h
+    for hv in "${batch[@]}"; do
+      h=${hv%%:*}
+      [[ $finished == *" $h "* ]] && continue
+      grep -q '^Snapshot created' $OUT/$h-$v0/export.log 2>/dev/null || continue
+      finished+="$h "
+      echo "$h exported after $(( $(date +%s) - s ))s: $(tail -1 $OUT/$h-$v0/export.log)"
+      finish $h $v0
+    done
+  }
+  while kill -0 $ep 2>/dev/null; do finish_ready; sleep "${POLL_SECS:-60}"; done
+  wait $ep; echo "batch exited $? after $(( $(date +%s) - s ))s"
+  finish_ready
   for hv in "${batch[@]}"; do
-    h=${hv%%:*} d=$OUT/${hv%%:*}-$v0
-    if ! grep -q '^Snapshot created' $d/export.log 2>/dev/null; then
-      echo "export $h $v0 failed:"; tail -5 $d/export.log $OUT/batch-$v0.log 2>/dev/null; continue
-    fi
-    echo "$h exported: $(tail -1 $d/export.log)"
-    finish $h $v0
+    h=${hv%%:*}
+    [[ $finished == *" $h "* ]] && continue
+    echo "export $h $v0 failed:"; tail -5 $OUT/$h-$v0/export.log $OUT/batch-$v0.log 2>/dev/null
   done
 done

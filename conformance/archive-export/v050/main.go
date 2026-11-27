@@ -58,6 +58,7 @@ func main() {
 	list := flag.Bool("list", false, "only print the stores of the height's commit info")
 	flag.StringVar(&backend, "backend", "pebbledb", "database backend of application.db: pebbledb or goleveldb")
 	flag.IntVar(&maxOpenFiles, "max-open-files", 500000, "pebbledb: table cache size (needs a matching ulimit -n)")
+	flag.IntVar(&iavlCacheNodes, "iavl-cache", iavlCacheNodes, "IAVL node cache per store and height (export reads each node once)")
 	flag.Parse()
 	if *dir == "" || *heights == "" || (*out == "" && !*list) {
 		flag.Usage()
@@ -65,7 +66,7 @@ func main() {
 	}
 	outTmpl := *out
 	if *list {
-		outTmpl = "-"
+		outTmpl = "-%d"
 	}
 	jobs, err := parseJobs(*heights, outTmpl)
 	if err == nil && *logTmpl != "" && len(jobs) > 1 && !strings.Contains(*logTmpl, "%d") {
@@ -202,6 +203,10 @@ func exportAll(db dbm.DB, jobs []job, parallel int, logFor func(job) io.Writer) 
 var (
 	backend      string
 	maxOpenFiles int
+	// iavlCacheNodes replaces the SDK default of 500,000 nodes per store:
+	// export reads each node once, and several heights at the default ran a
+	// 31 GiB machine out of memory.
+	iavlCacheNodes = 10000
 )
 
 // mapOptions is the dbm.Options cosmos-db reads backend settings from.
@@ -233,6 +238,11 @@ func commitStores(db dbm.DB, height int64, w io.Writer) ([]string, error) {
 	}
 	sort.Strings(names)
 	fmt.Fprintf(w, "height %d: %d stores %v, commit hash %X\n", height, len(names), names, ci.Hash())
+	infos := append([]storetypes.StoreInfo(nil), ci.StoreInfos...)
+	sort.Slice(infos, func(i, j int) bool { return infos[i].Name < infos[j].Name })
+	for _, si := range infos {
+		fmt.Fprintf(w, "store %s root %X version %d\n", si.Name, si.CommitId.Hash, si.CommitId.Version)
+	}
 	return names, nil
 }
 
@@ -245,6 +255,7 @@ func exportHeight(db dbm.DB, height int64, out string, w io.Writer) error {
 	}
 	rs := rootmulti.NewStore(db, log.NewLogger(w), metrics.NewNoOpMetrics())
 	rs.SetIAVLDisableFastNode(true)
+	rs.SetIAVLCacheSize(iavlCacheNodes)
 	for _, n := range names {
 		// v0.46 also commits the capability module's memory store; it has
 		// no persisted tree and is not part of a snapshot.
