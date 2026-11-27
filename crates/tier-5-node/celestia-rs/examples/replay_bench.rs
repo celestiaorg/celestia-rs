@@ -436,6 +436,7 @@ fn summary(times: &[Duration], txs: usize, total: Duration, digest: &[u8]) {
     println!("responses_digest: {}", hex::encode(digest));
 }
 
+#[allow(clippy::too_many_lines)] // EXPERIMENT branch
 fn main() -> anyhow::Result<()> {
     let a = args()?;
     // Holds the copied home until the run ends.
@@ -538,6 +539,14 @@ fn main() -> anyhow::Result<()> {
     // it): WAL syncs, stalls, flush and compaction volume per level.
     for line in multistore::kvdb::rocksdb_report() {
         println!("{line}");
+    }
+    // EXPERIMENT: CELESTIA_COMPACT_AFTER=1 forces a full manual compaction
+    // after the run and prints the sizes (space that compaction can still
+    // reclaim vs lasting growth).
+    if std::env::var("CELESTIA_COMPACT_AFTER").is_ok_and(|v| v == "1") {
+        for line in multistore::kvdb::rocksdb_compact_all() {
+            println!("{line}");
+        }
     }
     println!(
         "per_block: {}",

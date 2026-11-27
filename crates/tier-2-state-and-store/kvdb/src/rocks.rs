@@ -219,6 +219,40 @@ pub fn report_all() -> Vec<String> {
     out
 }
 
+/// EXPERIMENT: flushes and fully compacts every open database, the bottom
+/// level included (`BottommostLevelCompaction::Force`), and returns one
+/// line per database: SST bytes and estimated live bytes before and after,
+/// and the seconds it took.
+#[must_use]
+pub fn compact_all() -> Vec<String> {
+    let dbs: Vec<Arc<DB>> = OPEN
+        .lock()
+        .map(|o| o.iter().filter_map(std::sync::Weak::upgrade).collect())
+        .unwrap_or_default();
+    let size = |db: &DB, p: &str| db.property_int_value(p).ok().flatten().unwrap_or(0);
+    let mut out = Vec::new();
+    for db in &dbs {
+        let (sst0, live0) = (
+            size(db, "rocksdb.total-sst-files-size"),
+            size(db, "rocksdb.estimate-live-data-size"),
+        );
+        let t = std::time::Instant::now();
+        let _ = db.flush();
+        let mut opts = rocksdb::CompactOptions::default();
+        opts.set_exclusive_manual_compaction(true);
+        opts.set_bottommost_level_compaction(rocksdb::BottommostLevelCompaction::Force);
+        db.compact_range_opt::<&[u8], &[u8]>(None, None, &opts);
+        out.push(format!(
+            "compact {}: sst {sst0} -> {} B, live {live0} -> {} B, {:.1} s",
+            db.path().display(),
+            size(db, "rocksdb.total-sst-files-size"),
+            size(db, "rocksdb.estimate-live-data-size"),
+            t.elapsed().as_secs_f64()
+        ));
+    }
+    out
+}
+
 /// Before the process exits: writes out the memtables of every database
 /// still open and stops its background work (flushes, compactions),
 /// waiting for running jobs. Returns how many were open. Callers must stop
