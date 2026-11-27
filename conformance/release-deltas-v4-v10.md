@@ -53,8 +53,8 @@ The authors read every Rust site they cite. The tables were made against `main` 
 | x/consensus `block.MaxBytes` cap | 4, 5 | celestia-core v0.38.17 caps it at 100 MB | `x/consensus/src/lib.rs:33` always uses 128 MiB | A consensus-param update between 100 MB and 128 MiB is accepted in Rust and rejected in Go. | B |
 | `ExecTxResult.Signers` | 4 | sdk v1.29.4 never sets it | `app/src/lib.rs` always sets it | `block_results`, `/tx` and the tx index only. Not the app hash or LastResultsHash. | B |
 | IBC 07-tendermint header checks | 4–6 | Commit-sig address check only from celestia-core v0.39.23 (v6.4.10); >2049 block parts cap only from v0.39.30 (v8); voting-power overflow panics in v0.38.17 | Newest rule at every version | Only crafted headers reach this; it would have split mixed Go binaries too. Low risk. | B |
-| zkism public values with trailing bytes | 8 | Accepted | v9 exact-length rule (`x/zkism/src/msgs.rs:350`) | Low risk. | B |
-| zkism ISM type in the hyperlane router | 4–6 | Not registered before v7 | Registered at every version | Unconfirmed. Only crafted ISM IDs reach it. | B |
+| zkism public values with trailing bytes | 8 | Accepted | Fixed 2026-11-27: v8 rule at app version <= 8 (`zkism_exact_public_values`), vectors `fixtures/zkism/state-membership-v{8,9}.json` | Closed. | D |
+| zkism ISM type in the hyperlane router | 4–6 | Not registered before v7 | Fixed 2026-11-27: registered only where `has_zkism()` (latent: with the zkism store mounted, a pre-v7 ZK-typed route cost an extra store read in Rust) | Closed. | D |
 | corto-1 v10 upgrade-height override | 9 (corto-1) | `x/signal/keeper.go:371-390` reads 1,480,080 as 1,280,695 | Missing | corto-1 only. | B |
 | Capability keeper v1.0.1 pointer bug | 9, 10.4 | Pointer replaced in discarded branches | Matches v1.0.2 (v10.6.0) | A Go node would have split on its own mempool. Low risk. | — |
 
@@ -412,8 +412,8 @@ reaches the app through the IBC 07-tendermint light client.
 | B2 | App min commission 10 % -> 20 %; v8 handler raises rate to >= 20 % and max rate to >= 60 % | `app-v8.0.8/pkg/appconsts/app_consts.go:67`; `app-v8.0.8/app/upgrades.go:86-93,127-175` | v6 -> v8 | v8 handler not ported | v6-to-v8 `kv-upgrade` | OK (fixture; handler MISSING, known) |
 | B3 | `BlockedAddresses` fixed: every module account except gov is blocked (v4-v6 double-hashed, blocked nothing) | `app-v6.4.4/app/app.go:648-657` -> `app-v8.0.8/app/app.go:677-688` | v6 -> v8 | `bank/src/lib.rs:381-397`, `version.rs:616` `double_hashes_blocked_addresses` (4..=6) | v8 tx-results (3 x `sdk/4 not allowed to receive funds`) | OK (see G0) |
 | B4 | x/forwarding module, msg service and module account `forwarding` (nil perms, blocked) | `app-v8.0.8/app/app.go:148,424-428,464`; `app-v8.0.8/x/forwarding` (identical to v9.0.8 apart from import paths) | v6 -> v8 | `version.rs:623` `has_forwarding`; `crates/tier-3-app-modules/x/auth/src/lib.rs:63-75`; `crates/tier-3-app-modules/txdecode/src/registry.rs:63-82`; `crates/tier-4-runtime/app/src/router.rs:35-39`; `x/forwarding/src/msgs.rs:256` (v9 vs v10) | none (no MsgForward) | OK |
-| B5 | x/zkism module, store `zkism`, ISM registered in the hyperlane ISM router | `app-v8.0.8/app/app.go:417-422,463`, `app/modules.go:120,185,216` | v6 -> v8 | `version.rs:630` `has_zkism`, `V8_STORES` (`version.rs:275-301`); `txdecode/src/registry.rs:78-82`; ISM router `crates/tier-4-runtime/app/src/hyperlane.rs:66-71` registers ZK unconditionally | v6-to-v8 `store-roots.json` | OK (ISM router at v4-v6: G11 UNSURE) |
-| B6 | zkism `StateMembershipValues.Unmarshal` (MsgSubmitMessages): v8 accepts trailing bytes after the message ids (`remaining < count*32`, `bytes.Reader.Read`); v9 requires an exact length (`io.ReadFull`) | `app-v8.0.8/x/zkism/types/public_values.go:127-160` vs `app-v9.0.8/x/zkism/types/public_values.go:127-162`; used at `app-v8.0.8/x/zkism/keeper/msg_server.go:119-121` | v8 -> v9 (v8 is in scope) | **matches v9 only**: `crates/tier-3-app-modules/x/zkism/src/msgs.rs:333-358` | none | GAP (G10) |
+| B5 | x/zkism module, store `zkism`, ISM registered in the hyperlane ISM router | `app-v8.0.8/app/app.go:417-422,463`, `app/modules.go:120,185,216` | v6 -> v8 | `version.rs:630` `has_zkism`, `V8_STORES` (`version.rs:275-301`); `txdecode/src/registry.rs:78-82`; ISM router `crates/tier-4-runtime/app/src/hyperlane.rs:66-71` registers ZK only where `has_zkism()` | v6-to-v8 `store-roots.json` | OK (G11 fixed) |
+| B6 | zkism `StateMembershipValues.Unmarshal` (MsgSubmitMessages): v8 accepts trailing bytes after the message ids (`remaining < count*32`, `bytes.Reader.Read`); v9 requires an exact length (`io.ReadFull`) | `app-v8.0.8/x/zkism/types/public_values.go:127-160` vs `app-v9.0.8/x/zkism/types/public_values.go:127-162`; used at `app-v8.0.8/x/zkism/keeper/msg_server.go:119-121` | v8 -> v9 (v8 is in scope) | **matches v9 only**: `crates/tier-3-app-modules/x/zkism/src/msgs.rs:333-358` | `fixtures/zkism/state-membership-v{8,9}.json` | OK (fixed, G10) |
 | B7 | zkism `ValidateGroth16Vkey`, keeper, genesis: v8 = v9 (only comments); `ValidateBasic` error text quotes `MaxStateMembershipValuesBytes` in v8 | `app-v8.0.8/x/zkism/types/keys.go:85-106`, `types/msgs.go:59-61` | v8 = v9 | `zkism/src/msgs.rs:112-140,143-152` (`before_v10`) | none | OK (text is log only) |
 | B8 | DeliverTx insufficient-fee message quotes utia amounts (`got: Xutia, required: Yutia (min gas price: Z utia/gas)`) | `app-v6.4.4/app/ante/fee.go:74` -> `app-v8.0.8/app/ante/fee.go:87-91,98-105` | v6 -> v8 | `fee.rs:83-110`, `version.rs:654` (4..=6) | none | OK (log only; code unchanged) |
 | B9 | Store loader adds `zkism` at the v8 upgrade height unless already persisted (v7 path) | `app-v8.0.8/app/upgrades.go:107-124` | v6 -> v8 | `crates/tier-4-runtime/app/src/lib.rs:518-532` `unmount_stores_absent_from_release`, `mount_upgrade_stores`; v8 handler not ported | v6-to-v8 `store-roots.json` | OK (fixture) |
@@ -537,16 +537,25 @@ accepts data longer than 72 + 32*count (`app-v8.0.8/x/zkism/types/public_values.
 v9.0.8 requires exact length. Rust `unmarshal_state_membership` (`x/zkism/src/msgs.rs:350-356`)
 implements only the v9 rule. Consequence at v8: `MsgSubmitMessages` whose proof commits to padded
 public values succeeds in Go and fails in Rust ("buffer length mismatch"). Low practical risk (the
-SP1 program defines the output). Fix: at app version <= 8, require only `buf.len() >= count*32`
-and read the ids from the front.
+SP1 program defines the output). Fixed (2026-11-27): `unmarshal_state_membership_for(data, exact)`
+with `exact = release.zkism_exact_public_values()` (app version >= 9). v8 also reads the fixed fields
+with `bytes.Reader.Read` (a short read zero-pads); that changes only which error is reported. Go
+vectors: `conformance/v{8,9}-oracle/zkism_values_test.go` write
+`fixtures/zkism/state-membership-v{8,9}.json`, which `x/zkism` tests replay.
 
 **G11 (UNSURE). ZK ISM type registered in the hyperlane ISM router at v4-v6.** Go v4-v6 have no
 zkism keeper, so the hyperlane ISM router has no ZK module type; Rust `deps()`
 (`crates/tier-4-runtime/app/src/hyperlane.rs:66-71`) always registers it. A ZK-typed ISM id cannot
 be created before v7 (MsgCreateInterchainSecurityModule is gated off), so only crafted ids
 referenced from mailbox/warp messages are affected, where the error text and code may differ
-(router "module not found" in Go vs a zkism lookup miss in Rust). Fix if confirmed: register
-`ZKISM` only when `release.has_zkism()`.
+(router "module not found" in Go vs a zkism lookup miss in Rust). Confirmed (2026-11-27): every
+Go `IsmExists` caller folds the router error into its own message, so logs agree. But Rust's zkism
+`exists` charges a store read (1,000 gas) where Go's router miss charges none, wherever the zkism
+store is mounted, and failed txs' gas_used is in the results hash. The app unmounts stores absent
+from the release's commit info when it opens (`unmount_stores_absent_from_release`), so replay of
+v4-v6 did not hit this; it depended on that mount state. Fixed: `app::hyperlane::deps` registers `ZKISM` only when
+`release.has_zkism()`; test `zk_ism_type_is_routed_only_from_v7` requires a type-42 route at v4-v6
+to cost and fail exactly as an unregistered type.
 
 Out of scope but found on the way: G5's v9 value (559_940), and A7/A8 assume the v4-rc4 square
 builder and the v9 BlobTx unmarshaller reproduce go-square v3 / v0.34 results for the transactions
@@ -772,6 +781,15 @@ wrong version.
   failure where Rust succeeds. The failure depends on node-local mempool
   activity, so if it ever fired on mainnet, Go nodes would have split. No such
   halt is known. The practical risk is very low, but nothing gates it.
+- Checked (2026-11-27): only a branch of *older* state that creates the same
+  index after the block's own creation can overwrite the map with a pointer
+  that has no forward key. That is CheckTx or simulate on the check state
+  while a block executes, so it is node-local. In FinalizeBlock a discarded
+  branch is always followed by branches that read the same state, and the
+  re-created capability authenticates under v1.0.1 as under v1.0.2. Pinned by
+  `conformance/v9-oracle/capability_test.go` (both cases against v1.0.1) and
+  `x/capability` `capability_recreated_after_a_discarded_branch_authenticates`.
+  No deterministic replay difference is possible.
 - Fix site: none recommended unless a replay mismatch points at IBC
   channel-open txs in 11,771,699 to the v10.6.0 swap. If one does, model
   v1.0.1 `capMap` overwrite in `x/capability` for `executing <= 10 &&

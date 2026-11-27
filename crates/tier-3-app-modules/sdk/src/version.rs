@@ -539,6 +539,14 @@ impl Release {
         self.sdk_before_v0_52_12()
     }
 
+    /// x/zkism `StateMembershipValues.Unmarshal` requires full reads and an
+    /// exact length (celestia-app v9.0.8 and later); v8.0.8 (and v7, whose
+    /// x/zkism v8 contains) ignores trailing bytes after the message ids.
+    #[must_use]
+    pub const fn zkism_exact_public_values(&self) -> bool {
+        self.app_version >= 9
+    }
+
     /// The release predates celestia-app v10: a v10 change that is not one
     /// of the dependency changes above (x/forwarding, x/zkism, the ante fee
     /// denom check, signal and upgrade switching). x/forwarding is

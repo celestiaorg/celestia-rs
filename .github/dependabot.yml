@@ -158,6 +158,8 @@ updates:
       - /conformance/v6-oracle
       - /conformance/v8-oracle
       - /conformance/v9-oracle
+      - /conformance/v10-oracle
+      - /conformance/v11-oracle
       - /conformance/v11-frozen
       - /conformance/websocket-lifecycle
     schedule:

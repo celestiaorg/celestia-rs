@@ -14,6 +14,10 @@
   check the provider host. See the operator guide's "Fibre server" section.
 - Validators can use compatible Horcrux or tmkms remote signers through
   `priv_validator_laddr`, including Celestia compact-block signing.
+- `celestia-rs start --v2-upgrade-height` (and `abci`) sets the v1 to v2
+  upgrade height of a chain other than celestia, mocha or arabica, as
+  celestia-app's flag does. Without it such a chain never leaves app
+  version 1. Give it again after a restart.
 - `celestia-rs migrate` prepares a stopped Go `celestia-appd` home for
   celestia-rs. It backs up the config, moves the Go databases to `data.go/`,
   keeps `priv_validator_state.json` and can fill in `[statesync]`.

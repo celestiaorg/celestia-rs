@@ -140,6 +140,11 @@ pub struct NodeOptions {
     /// Node home: `x/upgrade` writes `data/upgrade-info.json` there when an
     /// upgrade without a handler is due (cosmovisor's trigger).
     pub home: Option<PathBuf>,
+    /// celestia-app `--v2-upgrade-height`: the v1 to v2 upgrade height of a
+    /// cosmos-sdk v0.46 chain, in place of the chain's default (only
+    /// celestia, mocha and arabica have one). Like the Go flag, it must be
+    /// given again after a restart.
+    pub v2_upgrade_height: Option<i64>,
 }
 
 /// Go's `checkHalt` error prefix.
@@ -365,6 +370,9 @@ impl App {
         self.upgrade
             .skip_heights
             .clone_from(&node.unsafe_skip_upgrades);
+        if let Some(h) = node.v2_upgrade_height {
+            self.set_v2_upgrade_height(h);
+        }
         self.node = node;
     }
 
@@ -1966,6 +1974,20 @@ mod finalize_gas_tests {
 #[cfg(test)]
 mod abci_dispatch_tests {
     use super::*;
+
+    /// `NodeOptions::v2_upgrade_height` sets the v1 to v2 upgrade height;
+    /// leaving it unset keeps the one already set.
+    #[test]
+    fn node_options_set_the_v2_upgrade_height() {
+        let mut app = App::new();
+        app.set_node_options(NodeOptions {
+            v2_upgrade_height: Some(1200),
+            ..NodeOptions::default()
+        });
+        assert_eq!(app.v2_upgrade_height, Some(1200));
+        app.set_node_options(NodeOptions::default());
+        assert_eq!(app.v2_upgrade_height, Some(1200));
+    }
 
     /// Guards against the dispatch arms being dropped in a merge: every
     /// request celestia-core sends during normal block production must be

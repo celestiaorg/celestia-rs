@@ -8,7 +8,9 @@
 //	v5-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> -heights 11 -next-handoff
 //	v6-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> -heights 10 -next-handoff
 //	v8-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> -heights 10 -next-handoff
-//	v9-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> [-heights 5]
+//	v9-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> -heights 10 -next-handoff
+//	v10-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> -heights 10 -next-handoff
+//	v11-oracle -handoff <home> -genesis <v1-v3 dir>/genesis.json -out <dir> [-heights 5]
 //
 // celestia-app v8 commits block 56, whose EndBlocker sets app version 9,
 // schedules plan "v9" at 57 and writes data/upgrade-info.json; then
@@ -172,6 +174,7 @@ func run() error {
 	probes := flag.Bool("probes", false, "after the usual five blocks, run the probe blocks of probes.go (use -heights 8) and record tx signers")
 	consensusMode := flag.Bool("consensus", false, "build blocks as a validator would (consensus.go): txs, square size and data root from PrepareProposal, commits signed by the validators' consensus keys")
 	tmclient := flag.Bool("tmclient", false, "after the usual five blocks, run the 07-tendermint client blocks of tmclient.go (use -heights 10)")
+	nextHandoff := flag.Bool("next-handoff", false, "after the last block, require plan \"v10\" at the next height and rewrite handoff.json in the -handoff home for conformance/v10-oracle")
 	flag.Parse()
 	if *signBytes != "" {
 		return writeSignBytes(*signBytes, "v9.0.8")
@@ -366,6 +369,19 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "height %d: %s (%d txs, %d validator updates, app version %d)\n", height, got, len(res.TxResults), len(updates), s.appVersion)
 	}
 
+	if *nextHandoff {
+		last := ho.Height + *heights
+		plan, err := a.UpgradeKeeper.ReadUpgradeInfoFromDisk()
+		if err != nil {
+			return err
+		}
+		if plan.Name != "v10" || s.appVersion != 10 {
+			return fmt.Errorf("after height %d: upgrade-info.json plan %q, app version %d; want plan v10 and app version 10", last, plan.Name, s.appVersion)
+		}
+		if err := s.writeHandoff(filepath.Join(*home, "handoff.json")); err != nil {
+			return err
+		}
+	}
 	if s.consensus {
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			return err
