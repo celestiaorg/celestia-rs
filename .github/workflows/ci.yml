@@ -23,6 +23,7 @@ jobs:
       contents: read
     outputs:
       docs_only: ${{ steps.classify.outputs.docs_only }}
+      oracles: ${{ steps.classify.outputs.oracles }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -45,6 +46,11 @@ jobs:
           git diff --no-renames --name-only -z "$BASE_SHA...$HEAD_SHA" -- > "$paths" || exit 0
           [[ -s "$paths" ]] || exit 0
           git diff --no-renames --name-only -z "$BASE_SHA" HEAD -- >> "$paths" || exit 0
+          # The Go release oracles are skipped only when the diff is known
+          # and touches neither conformance/ nor the workflows that run them.
+          tr '\0' '\n' < "$paths" |
+            grep -qE '^(conformance/|\.github/workflows/(ci|go-oracles)\.yml$)' ||
+            echo 'oracles=false' >> "$GITHUB_OUTPUT"
           while IFS= read -r -d '' path; do
             case "$path" in
               README.md|docs/.nojekyll|docs/MODULES.md|docs/hardware.md|docs/operator-guide.md|\
@@ -322,14 +328,6 @@ jobs:
           - mainnet-rpc/module-closure/proofcheck
           - txdecode
           - strict-txdecode
-          - v1-oracle
-          - v4-oracle
-          - v5-oracle
-          - v6-oracle
-          - v8-oracle
-          - v9-oracle
-          - v10-oracle
-          - v11-oracle
           - v11-frozen
           - websocket-lifecycle
     env:
@@ -366,13 +364,18 @@ jobs:
           needs.changes.outputs.docs_only != 'true' && (
           matrix.module == 'fixturegen' || matrix.module == 'antereplay' ||
           matrix.module == 'fuzzoracle/v10' || matrix.module == 'pfm-fork' ||
-          matrix.module == 'websocket-lifecycle' || matrix.module == 'v1-oracle' ||
-          matrix.module == 'v4-oracle' || matrix.module == 'v5-oracle' ||
-          matrix.module == 'v6-oracle' || matrix.module == 'v8-oracle' ||
-          matrix.module == 'v9-oracle' || matrix.module == 'v10-oracle' ||
-          matrix.module == 'v11-oracle')
+          matrix.module == 'websocket-lifecycle')
         working-directory: conformance/${{ matrix.module }}
-        # A cold runner compiles a whole celestia-app release per oracle
-        # module (v4-oracle also builds v1-oracle); go test's default
-        # 10-minute limit is too tight for that.
         run: go test -timeout 30m ./...
+
+  # The release oracles (one celestia-app release each) are slow to build
+  # and only prove that the committed fixtures can be regenerated from Go.
+  # The Rust replays of those fixtures run in `test` on every pull request.
+  # So the oracles run here only when a pull request touches conformance/
+  # or these workflows, and every night on main (nightly.yml).
+  go-oracles:
+    needs: changes
+    if: >-
+      ${{ !cancelled() && github.event_name == 'pull_request' &&
+      needs.changes.outputs.oracles != 'false' }}
+    uses: ./.github/workflows/go-oracles.yml
