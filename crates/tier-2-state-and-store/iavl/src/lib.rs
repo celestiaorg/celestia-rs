@@ -30,7 +30,7 @@ pub use error::{Error, Result};
 pub use export::{ExportNode, Exporter, Importer};
 pub use kvdb;
 pub use node::NodeKey;
-pub use nodedb::{CacheStats, NodeCache, NodeDb};
+pub use nodedb::{CacheStats, NodeCache, NodeDb, node_lookups};
 
 use kvdb::WriteBatch;
 use mutate::{Mutator, load};

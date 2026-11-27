@@ -411,6 +411,22 @@ fn summary(times: &[Duration], txs: usize, total: Duration, digest: &[u8]) {
     println!("responses_digest: {}", hex::encode(digest));
 }
 
+/// Per-phase profile of FinalizeBlock over `blocks` blocks
+/// (`CELESTIA_PHASE_PROFILE=1`).
+#[allow(clippy::cast_precision_loss)]
+fn print_phases(blocks: usize) {
+    let n = blocks.max(1) as f64;
+    for (name, t) in sdk::profile::take() {
+        println!(
+            "phase {name}: {:.2} ms/block, {:.1} per block, reads {:.0}/block, node lookups {:.0}/block",
+            t.time.as_secs_f64() * 1e3 / n,
+            t.count as f64 / n,
+            t.reads as f64 / n,
+            t.lookups as f64 / n,
+        );
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let a = args()?;
     ensure!(
@@ -505,6 +521,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
     summary(&times, txs, started.elapsed(), &digest);
+    print_phases(times.len());
     println!(
         "per_block: {}",
         probes.sample().report(&first_sample, times.len())
