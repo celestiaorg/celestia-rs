@@ -44,9 +44,17 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		{"v6-tm", "", []string{"-heights", "10", "-tmclient"}},
 		// On to the v8 hand-off: the home must become the committed home-46.
 		{"v6-to-v8", "home-46", []string{"-heights", "10", "-next-handoff"}},
+		// The chain with blocks built as a validator would (consensus.go),
+		// on to the next hand-off.
+		{dir: filepath.Join("consensus", "v6-to-v8"), next: "consensus-46", args: []string{"-heights", "10", "-next-handoff", "-consensus"}},
 	} {
-		home := filepath.Join(tmp, "home-"+c.dir)
-		if err := untar(filepath.Join(homes, "home-36.tar.gz"), home); err != nil {
+		// The consensus chain starts from its own home.
+		start := "home-36"
+		if strings.HasPrefix(c.dir, "consensus") {
+			start = "consensus-36"
+		}
+		home := filepath.Join(tmp, "home-"+strings.ReplaceAll(c.dir, string(filepath.Separator), "-"))
+		if err := untar(filepath.Join(homes, start+".tar.gz"), home); err != nil {
 			t.Fatal(err)
 		}
 		out := filepath.Join(tmp, c.dir)
@@ -60,7 +68,11 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		if bz, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("synthetic run %s: %v\n%s", c.dir, err, bz)
 		}
-		for _, name := range fixtureFiles {
+		files := fixtureFiles
+		if strings.Contains(strings.Join(c.args, " "), "-consensus") {
+			files = append(append([]string{}, fixtureFiles...), "last-commit.json")
+		}
+		for _, name := range files {
 			requireSame(t, filepath.Join(fixtures, c.dir, name), filepath.Join(out, name))
 		}
 		if c.next != "" {

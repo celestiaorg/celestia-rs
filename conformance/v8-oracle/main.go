@@ -166,6 +166,7 @@ func run() error {
 	out := flag.String("out", "", "output directory")
 	signBytes := flag.String("signbytes", "", "write the sign-bytes vectors (signbytes.go) to this file and exit")
 	probes := flag.Bool("probes", false, "after the usual five blocks, run the probe blocks of probes.go (use -heights 8) and record tx signers")
+	consensusMode := flag.Bool("consensus", false, "build blocks as a validator would (consensus.go): txs, square size and data root from PrepareProposal, commits signed by the validators' consensus keys")
 	tmclient := flag.Bool("tmclient", false, "after the usual five blocks, run the 07-tendermint client blocks of tmclient.go (use -heights 10)")
 	nextHandoff := flag.Bool("next-handoff", false, "after the last block, require plan \"v9\" at the next height and rewrite handoff.json in the -handoff home for conformance/v9-oracle")
 	flag.Parse()
@@ -243,6 +244,7 @@ func run() error {
 		return err
 	}
 	s.probes = *probes
+	s.consensus = *consensusMode
 	s.tmclient = *tmclient
 	kvUpgrade, err := upgradeOnly(*home, ho, s.blockTime(ho.Height+1), prev)
 	if err != nil {
@@ -253,6 +255,11 @@ func run() error {
 		txs, err := s.txs(a, height)
 		if err != nil {
 			return fmt.Errorf("height %d: %w", height, err)
+		}
+		if s.consensus {
+			if txs, err = s.prepareProposal(a, height, txs); err != nil {
+				return fmt.Errorf("height %d: %w", height, err)
+			}
 		}
 		block, id, err := s.block(height, txs)
 		if err != nil {
@@ -360,6 +367,14 @@ func run() error {
 			return fmt.Errorf("after height %d: upgrade-info.json plan %q, app version %d; want plan v9 and app version 9", last, plan.Name, s.appVersion)
 		}
 		if err := s.writeHandoff(filepath.Join(*home, "handoff.json")); err != nil {
+			return err
+		}
+	}
+	if s.consensus {
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			return err
+		}
+		if err := s.writeLastCommit(*out); err != nil {
 			return err
 		}
 	}

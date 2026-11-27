@@ -14,7 +14,7 @@ import (
 // writes.
 func TestSignBytesFixtureIsReproducible(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "v6.json")
-	if err := writeSignBytes(out, "v6.4.4"); err != nil {
+	if err := writeSignBytes(out, "v6.4.10"); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(out)

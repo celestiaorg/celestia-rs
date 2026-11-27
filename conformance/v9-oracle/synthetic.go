@@ -119,6 +119,10 @@ type synth struct {
 	params          cmttypes.ConsensusParams
 	// probes replaces the blocks after the usual five with probes.go's.
 	probes bool
+	// consensus builds blocks as a validator would (consensus.go); prepared
+	// is the PrepareProposal block data of the next block.
+	consensus bool
+	prepared  *cmttypes.Data
 	// tmclient runs the 07-tendermint client blocks of tmclient.go after
 	// the usual five; tmBase is the client sequence of their first client.
 	tmclient bool
@@ -323,6 +327,10 @@ func (s *synth) absent(height int64, i, n int) bool {
 
 // blockTime is the time of block `height`, as v1-oracle sets it.
 func (s *synth) blockTime(height int64) time.Time {
+	if s.consensus {
+		// Block 1 is at the genesis time (v1-oracle -consensus).
+		height--
+	}
 	return s.genesisTime.Add(time.Duration(height) * (15*time.Second + 123*time.Millisecond))
 }
 
@@ -335,6 +343,9 @@ func (s *synth) block(height int64, txs [][]byte) (*cmttypes.Block, cmttypes.Blo
 	data := cmttypes.Data{Txs: make(cmttypes.Txs, len(txs)), SquareSize: 1}
 	for i, tx := range txs {
 		data.Txs[i] = tx
+	}
+	if s.prepared != nil {
+		data, s.prepared = *s.prepared, nil
 	}
 	block := cmttypes.MakeBlock(height, data, s.lastCommit, []cmttypes.Evidence{})
 	block.Header.Populate(
@@ -382,6 +393,11 @@ func (s *synth) block(height int64, txs [][]byte) (*cmttypes.Block, cmttypes.Blo
 			ValidatorAddress: v.Address,
 			Timestamp:        block.Time.Add(time.Second),
 			Signature:        bytes.Repeat([]byte{byte(i + 1)}, 64),
+		}
+		if s.consensus {
+			if sigs[i], err = s.precommit(height, int32(i), v.Address, id); err != nil {
+				return nil, cmttypes.BlockID{}, err
+			}
 		}
 	}
 	s.pendingCommit = &cmttypes.Commit{Height: height, Round: 0, BlockID: id, Signatures: sigs}
