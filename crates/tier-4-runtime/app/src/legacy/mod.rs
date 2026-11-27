@@ -711,7 +711,9 @@ impl<M: Modules> Driver<M> {
         ctx.misbehavior.clone_from(&req.misbehavior);
         let mut block_gas = tx::block_gas_meter(&ctx);
 
+        let span = sdk::profile::span("begin_block");
         self.modules.begin_block(&mut ctx, &tm_header)?;
+        drop(span);
         self.phase_not_ported(req.height, "BeginBlock")?;
         let mut events = ctx.events.take();
         let mut tx_results = Vec::with_capacity(req.txs.len());
@@ -721,7 +723,9 @@ impl<M: Modules> Driver<M> {
             // (`execBlockOnProxyApp`); the blobs stay in the block.
             let delivered = txdecode::unmarshal_blob_tx_v034(tx);
             let delivered = delivered.as_deref().unwrap_or(tx);
+            let span = sdk::profile::span("tx");
             let outcome = self.modules.deliver_tx(&mut ctx, &mut block_gas, delivered);
+            drop(span);
             if let Some(what) = take_not_ported() {
                 return Err(sdk::error::sdk::not_supported(format!(
                     "app version {}: block {} not executed: tx {i} [{}] reached a behavior that is not ported: {what}",
@@ -734,9 +738,11 @@ impl<M: Modules> Driver<M> {
             events.extend(result.events.iter().cloned());
             tx_results.push(result);
         }
+        let span = sdk::profile::span("end_block");
         let validator_updates = self.modules.end_block(&mut ctx)?;
         let block_version = self.app_version;
         let upgraded = upgrade::end_blocker(&mut ctx, block_version, self.upgrade_height_v2())?;
+        drop(span);
         self.phase_not_ported(req.height, "EndBlock")?;
         let app_version = upgraded.unwrap_or(block_version);
         events.extend(ctx.events.take());
@@ -746,8 +752,10 @@ impl<M: Modules> Driver<M> {
         if let Some(to) = upgraded {
             self.commit_migrations(ms, &header, &cp, req.height, to)?;
         }
+        let span = sdk::profile::span("flush_and_hash");
         ms.flush()?;
         let app_hash = ms.working_hash()?.to_vec();
+        drop(span);
         self.finalized = Some(header);
         Ok(ResponseFinalizeBlock {
             events,

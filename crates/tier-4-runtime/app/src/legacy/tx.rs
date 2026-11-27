@@ -314,7 +314,9 @@ fn run(ctx: &mut Context<'_>, block_gas: &mut GasMeter, tx_bytes: &[u8]) -> Ran 
     }
     let events_before = std::mem::take(&mut ctx.events);
     let deps = ante_deps();
+    let span = sdk::profile::span("tx.ante");
     let ante = x_ante::ante_handle_v046(ctx, &tx, false, &deps);
+    drop(span);
     let ante_events = std::mem::replace(&mut ctx.events, events_before).take();
     let gas_wanted = match ante {
         Ok(o) => o.gas_wanted,
@@ -339,7 +341,10 @@ fn run(ctx: &mut Context<'_>, block_gas: &mut GasMeter, tx_bytes: &[u8]) -> Ran 
         result: Err(errs::logic("")),
         block_gas_consumed: false,
     };
-    match run_msgs(ctx, &tx, gas_wanted, block_gas) {
+    let span = sdk::profile::span("tx.msgs");
+    let msgs = run_msgs(ctx, &tx, gas_wanted, block_gas);
+    drop(span);
+    match msgs {
         Ok((msg_responses, log, events)) => {
             ran.block_gas_consumed = true;
             ran.events.extend(events);

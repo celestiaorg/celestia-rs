@@ -417,7 +417,10 @@ impl MultiStore {
     fn committed_get(&self, store: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
         match self.kind(store)? {
             Kind::Iavl if self.reads.on => self.cached_get(store, key),
-            Kind::Iavl => Ok(self.root.get_store(store)?.get(key)?),
+            Kind::Iavl => {
+                crate::profile::count_read(true);
+                Ok(self.root.get_store(store)?.get(key)?)
+            }
             Kind::Transient | Kind::Memory => {
                 Ok(self.volatile.get(store).and_then(|m| m.get(key)).cloned())
             }
@@ -435,6 +438,7 @@ impl MultiStore {
             .cloned();
         if let Some(value) = hit {
             self.reads.hits.fetch_add(1, Relaxed);
+            crate::profile::count_read(false);
             if self.reads.verify {
                 let tree = self.root.get_store(store)?.get(key)?;
                 assert!(
@@ -445,6 +449,7 @@ impl MultiStore {
             return Ok(value);
         }
         self.reads.misses.fetch_add(1, Relaxed);
+        crate::profile::count_read(true);
         let value = self.root.get_store(store)?.get(key)?;
         let mut map = self.reads.lock();
         if map

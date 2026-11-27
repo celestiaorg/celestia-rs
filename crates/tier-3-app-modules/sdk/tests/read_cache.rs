@@ -37,6 +37,7 @@ fn stores(cached: bool) -> Result<MultiStore, StoreError> {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // one random-operation loop
 fn cached_multistore_reads_what_the_uncached_one_reads() -> Result<(), StoreError> {
     for seed in 1..=30u64 {
         let mut r = Rng(seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1);
