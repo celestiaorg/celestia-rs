@@ -170,6 +170,7 @@ func run() error {
 	out := flag.String("out", "", "output directory")
 	signBytes := flag.String("signbytes", "", "write the sign-bytes vectors (signbytes.go) to this file and exit")
 	probes := flag.Bool("probes", false, "after the usual five blocks, run the probe blocks of probes.go (use -heights 8) and record tx signers")
+	consensusMode := flag.Bool("consensus", false, "build blocks as a validator would (consensus.go): txs, square size and data root from PrepareProposal, commits signed by the validators' consensus keys")
 	flag.Parse()
 	if *signBytes != "" {
 		return writeSignBytes(*signBytes, "v9.0.8")
@@ -246,6 +247,7 @@ func run() error {
 		return err
 	}
 	s.probes = *probes
+	s.consensus = *consensusMode
 	kvUpgrade, err := upgradeOnly(*home, ho, s.blockTime(ho.Height+1), prev)
 	if err != nil {
 		return err
@@ -255,6 +257,11 @@ func run() error {
 		txs, err := s.txs(a, height)
 		if err != nil {
 			return fmt.Errorf("height %d: %w", height, err)
+		}
+		if s.consensus {
+			if txs, err = s.prepareProposal(a, height, txs); err != nil {
+				return fmt.Errorf("height %d: %w", height, err)
+			}
 		}
 		block, id, err := s.block(height, txs)
 		if err != nil {
@@ -357,6 +364,14 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "height %d: %s (%d txs, %d validator updates, app version %d)\n", height, got, len(res.TxResults), len(updates), s.appVersion)
 	}
 
+	if s.consensus {
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			return err
+		}
+		if err := s.writeLastCommit(*out); err != nil {
+			return err
+		}
+	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return err
 	}

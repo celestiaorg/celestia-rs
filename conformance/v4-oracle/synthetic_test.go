@@ -45,6 +45,10 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		{"v3-history", "v3-history", "v3-history", "v3-history-v4", nil},
 		// A transfer channel opened at app version 3, used at version 4.
 		{"v3-ibc", "v3-ibc", "v3-ibc", "v3-ibc-v4", nil},
+		// The chain with blocks built as a validator would (consensus.go),
+		// on to the v5 hand-off. It leaves the committed consensus-25.
+		{"consensus-to-v5", "v1-v3", filepath.Join("consensus", "v1-v3"), filepath.Join("consensus", "v4-to-v5"),
+			[]string{"-heights", "10", "-next-handoff", "-consensus"}},
 	} {
 		t.Run(c.name, func(t *testing.T) { requireReproducible(t, v1, c.chain, c.v1Dir, c.v4Dir, c.args) })
 	}
@@ -53,7 +57,12 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 func requireReproducible(t *testing.T, v1, chain, v1Dir, v4Dir string, args []string) {
 	tmp := t.TempDir()
 	v1Out, home := filepath.Join(tmp, "v1"), filepath.Join(tmp, "home")
-	if bz, err := exec.Command(v1, "-synthetic", "-chain", chain, "-kv", "-out", v1Out, "-handoff", home).CombinedOutput(); err != nil {
+	consensus := strings.Contains(strings.Join(args, " "), "-consensus")
+	v1Args := []string{"-synthetic", "-chain", chain, "-kv", "-out", v1Out, "-handoff", home}
+	if consensus {
+		v1Args = append(v1Args, "-consensus")
+	}
+	if bz, err := exec.Command(v1, v1Args...).CombinedOutput(); err != nil {
 		t.Fatalf("v1-oracle: %v\n%s", err, bz)
 	}
 	v1Fixture := filepath.Join("..", "fixtures", "synthetic", v1Dir)
@@ -76,11 +85,15 @@ func requireReproducible(t *testing.T, v1, chain, v1Dir, v4Dir string, args []st
 	if bz, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("synthetic run: %v\n%s", err, bz)
 	}
-	for _, name := range fixtureFiles {
+	files, archive := fixtureFiles, "home-25.tar.gz"
+	if consensus {
+		files, archive = append(append([]string{}, fixtureFiles...), "last-commit.json"), "consensus-25.tar.gz"
+	}
+	for _, name := range files {
 		requireSame(t, filepath.Join("..", "fixtures", "synthetic", v4Dir, name), filepath.Join(out, name))
 	}
 	if strings.Contains(strings.Join(args, " "), "-next-handoff") {
-		requireHome(t, filepath.Join("..", "fixtures", "synthetic", "homes", "home-25.tar.gz"), home)
+		requireHome(t, filepath.Join("..", "fixtures", "synthetic", "homes", archive), home)
 	}
 }
 
