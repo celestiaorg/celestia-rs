@@ -264,6 +264,13 @@ collector adds the rest (+3.8%), which needs prune tombstones. That run
 had the collector off for every database; this change keeps it for the
 other databases, so the numbers are an upper bound.
 
+Tail latency: the first time a node runs with these settings, the first
+128 MiB flush (about 730 blocks after start at height 559k) starts a full
+L0 → L5 → L6 compaction cascade (about 600 MB in, 8 s). One synced write
+then waits about 1 s, once. Afterwards, an L5 → L6 compaction every few
+thousand blocks can delay a synced write by about 0.5 s. Commits over
+100 ms are rarer than before (about 6 instead of 16 per 5,000 blocks).
+
 Disk use without the collector has the same transient peaks (about
 1.4 GiB) and no growth trend; a full compaction gives the same size within
 a few hundred bytes. The cost is up to 224 MiB more memtable memory (about
