@@ -284,7 +284,9 @@ cat >"$W/bin/vmx-gcs" <<EOF
 [ "\$1" = put ] && cp "\$2" "$W/bucket/\$(echo "\$3" | tr / _)"
 exit 0
 EOF
-chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs"
+# ps reports the node's RSS (KiB) for the celestia-rs process.
+printf '#!/bin/bash\n[ "$*" = "-o rss= -C celestia-rs" ] && echo " 4194304"\n' >"$W/bin/ps"
+chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs" "$W/bin/ps"
 echo 'INFO celestia_rs::follow: followed height=150100 tip=1' >"$W/data/home-120000/logs/follow.log"
 PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=2 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1 &
 wpid=$!
@@ -294,6 +296,7 @@ wait "$wpid" 2>/dev/null || true
 check  "watch stall writes the marker"       grep -q 'stalled .* height=150100' "$W/bucket/segments_120000_stalled"
 check  "watch stall uploads the log tail"    test -e "$W/bucket/rs-replay_120000_stall-tail-$(hostname).log"
 refute "watch stall is not a failure"        test -e "$W/bucket/segments_120000_failed"
+check  "watch logs the node RSS per row"     grep -qP '\t150100\tactive\t.*\t4194304$' "$W/data/heights-120000.tsv"
 
 # --- segment watcher: a failed marker upload is retried on the next poll (stalled and resumed) ---
 W=$t/watch-retry
@@ -354,6 +357,10 @@ kill "$wpid" 2>/dev/null || true
 wait "$wpid" 2>/dev/null || true
 check  "watch publishes a stall after the height moved"  grep -q '^segments_120000_stalled stalled .* height=150100' "$W/puts.log"
 check  "watch publishes the resume after that stall"     test "$(grep -n -m1 'height=150100' "$W/puts.log" | cut -d: -f1)" -lt "$(grep -n -m1 '^segments_120000_resumed-' "$W/puts.log" | cut -d: -f1 || echo 0)"
+
+# --- segment VM: 15 segments x prefetch 8 (4 per provider) stay under ~64 requests per provider ---
+check  "seg-vm prefetch fits 15 segments"    grep -qx 'PREFETCH=${PREFETCH:-8}' "$here/segments/seg-vm.sh"
+check  "seg-vm reads a per-segment RPC list" grep -q 'segments/$SEG/rpc' "$here/segments/seg-vm.sh"
 
 echo
 if ((fails)); then echo "$fails test(s) failed"; exit 1; fi
