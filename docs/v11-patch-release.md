@@ -124,7 +124,7 @@ continuously and after a reopen before the upgrade block. A one-off run in
 
 - No v12 release tag is pinned. The reference is a development commit, so
   each network's v12 release needs its own check.
-- The chain covers the upgrade block and two more. There are no v12
+- The chain covers the upgrade block and one more. There are no v12
   probe transactions like the v4 to v9 fixtures have, and no synthetic
   segment after v11.
 - There is no Mocha data.
