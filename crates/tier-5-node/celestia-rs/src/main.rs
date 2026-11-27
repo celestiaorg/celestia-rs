@@ -30,14 +30,22 @@ use clap::{Args, Parser, Subcommand};
 /// mimalloc (default feature `mimalloc`; its `malloc` also serves
 /// RocksDB's C++ allocations). With feature `jemalloc` too (e.g.
 /// `--features memstats` or `--all-features`), jemalloc is used instead:
-/// nothing then refers to mimalloc, so it is not linked at all.
+/// nothing then refers to mimalloc, so it is not linked at all (do not add
+/// a `use mimalloc as _`: it would link both, and both define `malloc`).
 #[cfg(all(feature = "mimalloc", not(feature = "jemalloc")))]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+/// The global allocator this build uses (`version --long`).
+const ALLOCATOR: &str = if cfg!(feature = "jemalloc") {
+    "jemalloc"
+} else if cfg!(feature = "mimalloc") {
+    "mimalloc"
+} else {
+    "system"
+};
+
 // With both features, mimalloc is a dependency nothing uses.
-#[cfg(all(feature = "mimalloc", feature = "jemalloc"))]
-use mimalloc as _;
 
 /// jemalloc (feature `jemalloc`, which wins over `mimalloc`; with
 /// `memstats` also its statistics and heap profiler, see
@@ -1155,11 +1163,12 @@ async fn dispatch(cli: Cli, home: PathBuf) -> anyhow::Result<()> {
         Cmd::Version { long } => {
             if long {
                 util::out(format!(
-                    "name: celestia-rs\nversion: {}\ncommit: {}\nbuild_profile: {}\ntoolchain: {}\napp_version: {}\ncompatibility_target: celestia-app v{}, celestia-core v{}",
+                    "name: celestia-rs\nversion: {}\ncommit: {}\nbuild_profile: {}\ntoolchain: {}\nallocator: {}\napp_version: {}\ncompatibility_target: celestia-app v{}, celestia-core v{}",
                     env!("CARGO_PKG_VERSION"),
                     env!("CELESTIA_RS_GIT_COMMIT"),
                     env!("CELESTIA_RS_BUILD_PROFILE"),
                     env!("CELESTIA_RS_TOOLCHAIN"),
+                    ALLOCATOR,
                     app::upgrades::APP_VERSION,
                     app::COMPATIBILITY_VERSION,
                     celestia_rs::version::CORE_COMPATIBILITY_VERSION
