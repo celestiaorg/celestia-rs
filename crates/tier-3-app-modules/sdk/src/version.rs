@@ -747,6 +747,23 @@ impl Release {
         !matches!(self.cosmos_sdk, CosmosSdk::V0_50Celestia1_29)
     }
 
+    /// The light client verifies a commit with `verifyCommitBatch` when it
+    /// can (celestia-core v0.38 on: celestia-app v4.1.0 on). celestia-app
+    /// v3.13.0's celestia-core v1 checks one signature at a time.
+    #[must_use]
+    pub const fn light_commit_batch_verification(&self) -> bool {
+        !matches!(self.sdk_line, SdkLine::V046)
+    }
+
+    /// The light client's lookup of commit signatures by index checks each
+    /// validator address (celestia-core v0.39.30 on: celestia-app v8.0.8
+    /// on). Earlier releases verify the signature against the indexed
+    /// validator's key.
+    #[must_use]
+    pub const fn light_commit_address_check(&self) -> bool {
+        !matches!(self.app_version, 1..=6)
+    }
+
     /// go-square v4.0.0-rc4: the square layout counts signer bytes and
     /// classifies fibre transactions (app version 9 only).
     #[must_use]
@@ -993,6 +1010,8 @@ mod tests {
             assert_eq!(r.gov_max_age_num_blocks(), max_age, "v{v}");
             assert!(!r.amino_remote_router_placeholder(), "v{v}");
             assert!(r.amino_vesting_start_time(), "v{v}");
+            assert_eq!(r.light_commit_batch_verification(), v != 1, "v{v}");
+            assert_eq!(r.light_commit_address_check(), v != 1, "v{v}");
         }
     }
 
@@ -1048,6 +1067,8 @@ mod tests {
                 assert_eq!(r.gov_max_age_num_blocks(), max_age, "v{v}");
                 assert_eq!(r.amino_remote_router_placeholder(), v <= 6, "v{v}");
                 assert_eq!(r.amino_vesting_start_time(), v != 4, "v{v}");
+                assert_eq!(r.light_commit_batch_verification(), v != 1, "v{v}");
+                assert_eq!(r.light_commit_address_check(), v >= 7, "v{v}");
             }
         }
         let deps = |v| {

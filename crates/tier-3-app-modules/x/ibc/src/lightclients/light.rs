@@ -126,6 +126,8 @@ pub struct Validator {
     pub pub_key: PubKey,
     /// Voting power.
     pub voting_power: i64,
+    /// Proposer priority (only printed, in `Validator.String()`).
+    pub proposer_priority: i64,
 }
 
 impl Validator {
@@ -136,7 +138,22 @@ impl Validator {
             address: v.address.clone(),
             pub_key: PubKey::from_proto(v.pub_key.as_ref())?,
             voting_power: v.voting_power,
+            proposer_priority: v.proposer_priority,
         })
+    }
+
+    /// `Validator.String()`: `Validator{ADDR PUBKEY VP:n A:p}`.
+    fn go_string(&self) -> String {
+        let pub_key = match &self.pub_key {
+            PubKey::Ed25519(b) => format!("PubKeyEd25519{{{}}}", hex::encode_upper(b)),
+            PubKey::Secp256k1(b) => format!("PubKeySecp256k1{{{}}}", hex::encode_upper(b)),
+        };
+        format!(
+            "Validator{{{} {pub_key} VP:{} A:{}}}",
+            hex::encode_upper(&self.address),
+            self.voting_power,
+            self.proposer_priority
+        )
     }
 
     /// `Validator.ValidateBasic`.
@@ -525,14 +542,63 @@ pub fn vote_sign_bytes(chain_id: &str, c: &tm::Commit, idx: usize) -> Vec<u8> {
     cv.encode_length_delimited_to_vec()
 }
 
-/// `verifyCommitSingle` / `verifyCommitBatch` (identical outcomes): checks
-/// signatures until more than `needed` power is tallied.
-///
-/// The cheap checks (validator lookup, double votes) and the tally run in
-/// order first and collect the signatures the sequential loop would check
-/// before it stops; those are then verified in parallel. The first bad
-/// signature among them is reported before a later structural error, as
-/// in the sequential loop, and signatures past the stop are never checked.
+/// `tmbytes.Fingerprint`: the first 6 bytes, zero padded.
+fn fingerprint(b: &[u8]) -> [u8; 6] {
+    let mut f = [0u8; 6];
+    let n = b.len().min(6);
+    f[..n].copy_from_slice(&b[..n]);
+    f
+}
+
+/// `CommitSig.String()`: `CommitSig{SIG6 by ADDR6 on FLAG @ TIME}`, the
+/// time in `CanonicalTime` form (RFC 3339, milliseconds, UTC).
+fn commit_sig_string(cs: &tm::CommitSig) -> String {
+    let t = cs.timestamp.unwrap_or(pbjson_types::Timestamp {
+        seconds: GO_ZERO_TIME_SECONDS,
+        nanos: 0,
+    });
+    let (y, mo, d, h, mi, sec, ns) = sdk::time::to_civil(&t);
+    let year = if y < 0 {
+        format!("-{:04}", y.unsigned_abs())
+    } else {
+        format!("{y:04}")
+    };
+    format!(
+        "CommitSig{{{} by {} on {} @ {year}-{mo:02}-{d:02}T{h:02}:{mi:02}:{sec:02}.{:03}Z}}",
+        hex::encode_upper(fingerprint(&cs.signature)),
+        hex::encode_upper(fingerprint(&cs.validator_address)),
+        flag(cs),
+        ns / 1_000_000
+    )
+}
+
+/// Which celestia-core commit verification the executing release runs.
+#[derive(Clone, Copy)]
+struct CommitRules {
+    /// `verifyCommitBatch` for an ed25519 proposer and at least
+    /// `batchVerifyThreshold` (2) signatures (celestia-core v0.38 on:
+    /// celestia-app v4.1.0 on). celestia-app v3.13.0's celestia-core v1
+    /// verifies one signature at a time.
+    batch: bool,
+    /// The lookup by index checks the validator address (celestia-core
+    /// v0.39.30 on: celestia-app v8.0.8 on).
+    address_check: bool,
+}
+
+impl CommitRules {
+    fn of(vals: &ValidatorSet, commit: &tm::Commit) -> Self {
+        let release = sdk::version::release(0);
+        Self {
+            batch: release.light_commit_batch_verification()
+                && commit.signatures.len() >= 2
+                && matches!(vals.proposer.pub_key, PubKey::Ed25519(_)),
+            address_check: release.light_commit_address_check(),
+        }
+    }
+}
+
+/// `verifyCommitSingle` / `verifyCommitBatch`: checks signatures until
+/// more than `needed` power is tallied.
 fn verify_commit_sigs(
     chain_id: &str,
     vals: &ValidatorSet,
@@ -540,8 +606,111 @@ fn verify_commit_sigs(
     needed: i64,
     by_index: bool,
 ) -> LResult<()> {
+    let rules = CommitRules::of(vals, commit);
+    if rules.batch {
+        verify_commit_batch(chain_id, vals, commit, needed, by_index, rules)
+    } else {
+        verify_commit_single(chain_id, vals, commit, needed, by_index, rules)
+    }
+}
+
+/// The validator signing `commit.signatures[idx]`: by index (with the
+/// release's address check) or by address (skipping unknown ones and
+/// failing on a second signature of a validator).
+fn commit_validator<'a>(
+    vals: &'a ValidatorSet,
+    commit: &tm::Commit,
+    idx: usize,
+    by_index: bool,
+    rules: CommitRules,
+    seen: &mut std::collections::BTreeMap<usize, usize>,
+) -> LResult<Option<&'a Validator>> {
+    let sig = &commit.signatures[idx];
+    if by_index {
+        let v = &vals.validators[idx];
+        if rules.address_check && v.address != sig.validator_address {
+            return Err(format!(
+                "validator address mismatch at index {idx}: expected {}, got {}",
+                hex::encode_upper(&v.address),
+                hex::encode_upper(&sig.validator_address)
+            ));
+        }
+        return Ok(Some(v));
+    }
+    let Some((vi, v)) = vals.get_by_address(&sig.validator_address) else {
+        return Ok(None);
+    };
+    if let Some(first) = seen.insert(vi, idx) {
+        return Err(format!(
+            "double vote from {} ({first} and {idx})",
+            v.go_string()
+        ));
+    }
+    Ok(Some(v))
+}
+
+/// `verifyCommitBatch`: structural errors end the loop at once, the tally
+/// is checked before any signature, and the first bad signature in the
+/// batch is reported as `%X` of its `CommitSig.String()`.
+fn verify_commit_batch(
+    chain_id: &str,
+    vals: &ValidatorSet,
+    commit: &tm::Commit,
+    needed: i64,
+    by_index: bool,
+    rules: CommitRules,
+) -> LResult<()> {
     let mut tallied: i64 = 0;
-    let mut seen = std::collections::BTreeSet::new();
+    let mut seen = std::collections::BTreeMap::new();
+    let mut batch: Vec<(usize, &Validator, Vec<u8>)> = Vec::new();
+    for (idx, sig) in commit.signatures.iter().enumerate() {
+        // Light verification ignores everything but votes for the block.
+        if flag(sig) != 2 {
+            continue;
+        }
+        let Some(val) = commit_validator(vals, commit, idx, by_index, rules, &mut seen)? else {
+            continue;
+        };
+        batch.push((idx, val, vote_sign_bytes(chain_id, commit, idx)));
+        tallied = tallied.saturating_add(val.voting_power);
+        if tallied > needed {
+            break;
+        }
+    }
+    if tallied <= needed {
+        return Err(format!(
+            "invalid commit -- insufficient voting power: got {tallied}, needed more than {needed}"
+        ));
+    }
+    if let Some(bad) = crypto::parallel::first_failure(&batch, |(idx, val, msg)| {
+        val.pub_key.verify(msg, &commit.signatures[*idx].signature)
+    }) {
+        let idx = batch[bad].0;
+        return Err(format!(
+            "wrong signature (#{idx}): {}",
+            hex::encode_upper(commit_sig_string(&commit.signatures[idx]))
+        ));
+    }
+    Ok(())
+}
+
+/// `verifyCommitSingle`: checks signatures in order.
+///
+/// The cheap checks (validator lookup, double votes) and the tally run in
+/// order first and collect the signatures the sequential loop would check
+/// before it stops; those are then verified in parallel. The first bad
+/// signature among them is reported before a later structural error, as
+/// in the sequential loop, and signatures past the stop are never checked.
+fn verify_commit_single(
+    chain_id: &str,
+    vals: &ValidatorSet,
+    commit: &tm::Commit,
+    needed: i64,
+    by_index: bool,
+    rules: CommitRules,
+) -> LResult<()> {
+    let mut tallied: i64 = 0;
+    let mut seen = std::collections::BTreeMap::new();
     let mut to_check: Vec<(usize, &Validator, Vec<u8>)> = Vec::new();
     // What the sequential loop returns if every collected signature is good.
     let mut outcome: Option<LResult<()>> = None;
@@ -550,26 +719,13 @@ fn verify_commit_sigs(
         if flag(sig) != 2 {
             continue;
         }
-        let val = if by_index {
-            let v = &vals.validators[idx];
-            if v.address != sig.validator_address {
-                outcome = Some(Err(format!(
-                    "validator address mismatch at index {idx}: expected {}, got {}",
-                    hex::encode_upper(&v.address),
-                    hex::encode_upper(&sig.validator_address)
-                )));
+        let val = match commit_validator(vals, commit, idx, by_index, rules, &mut seen) {
+            Ok(Some(v)) => v,
+            Ok(None) => continue,
+            Err(e) => {
+                outcome = Some(Err(e));
                 break;
             }
-            v
-        } else {
-            let Some((vi, v)) = vals.get_by_address(&sig.validator_address) else {
-                continue;
-            };
-            if !seen.insert(vi) {
-                outcome = Some(Err(format!("double vote from validator at index {idx}")));
-                break;
-            }
-            v
         };
         to_check.push((idx, val, vote_sign_bytes(chain_id, commit, idx)));
         tallied = tallied.saturating_add(val.voting_power);
@@ -847,6 +1003,7 @@ mod tests {
                     address: crypto::ed25519::address(&pk).to_vec(),
                     pub_key: PubKey::Ed25519(pk),
                     voting_power: 10,
+                    proposer_priority: 0,
                 }
             })
             .collect();
@@ -886,12 +1043,16 @@ mod tests {
         (set, commit)
     }
 
-    /// Signatures are checked in order until more than `needed` power is
+    /// celestia-core v1's `verifyCommitSingle` (celestia-app v3.13.0):
+    /// signatures are checked in order until more than `needed` power is
     /// tallied: one after that point is never checked; the first bad one
     /// before it is reported; a structural error after a bad signature
     /// loses to it, and one before it wins.
     #[test]
-    fn commit_signatures_are_checked_in_order_until_enough_power() {
+    fn single_verification_checks_signatures_in_order() {
+        let prev = sdk::version::app_version();
+        // App version 1 runs as itself (the cosmos-sdk v0.46 driver).
+        sdk::version::set_app_version(1);
         let needed = 40 * 10 * 2 / 3;
         let (vals, c) = signed(40, &[]);
         assert!(verify_commit_sigs("c", &vals, &c, needed, true).is_ok());
@@ -900,7 +1061,8 @@ mod tests {
         assert!(verify_commit_sigs("c", &vals, &c, needed, true).is_ok());
         let (vals, c) = signed(40, &[20, 5]);
         let err = verify_commit_sigs("c", &vals, &c, needed, true).unwrap_err();
-        assert!(err.starts_with("wrong signature (#5)"), "{err}");
+        let sig = hex::encode_upper(&c.signatures[5].signature);
+        assert_eq!(err, format!("wrong signature (#5): {sig}"));
         // by address: a double vote at 12 after a bad signature at 4
         let (vals, mut c) = signed(40, &[4]);
         c.signatures[12].validator_address = c.signatures[2].validator_address.clone();
@@ -910,11 +1072,64 @@ mod tests {
         let (vals, mut c) = signed(40, &[20]);
         c.signatures[12].validator_address = c.signatures[2].validator_address.clone();
         let err = verify_commit_sigs("c", &vals, &c, needed, false).unwrap_err();
-        assert_eq!(err, "double vote from validator at index 12");
+        let double = vals.validators[2].go_string();
+        assert_eq!(err, format!("double vote from {double} (2 and 12)"));
         // not enough power: every counted signature is good
         let (vals, c) = signed(40, &[]);
         let err = verify_commit_sigs("c", &vals, &c, 400, true).unwrap_err();
         assert!(err.contains("insufficient voting power: got 400"), "{err}");
+        sdk::version::set_app_version(prev);
+    }
+
+    /// celestia-core v0.38 on (celestia-app v4.1.0 on, v10 included)
+    /// `verifyCommitBatch`: a structural error ends the loop before any
+    /// signature is checked, the tally is checked next, and a bad signature
+    /// is reported as `%X` of its `CommitSig.String()`.
+    #[test]
+    fn batch_verification_reports_structure_then_power_then_signatures() {
+        let prev = sdk::version::app_version();
+        sdk::version::set_app_version(10);
+        let needed = 40 * 10 * 2 / 3;
+        let (vals, c) = signed(40, &[]);
+        assert!(verify_commit_sigs("c", &vals, &c, needed, true).is_ok());
+        // 27 signatures pass 266; the 36th is never checked.
+        let (vals, c) = signed(40, &[35]);
+        assert!(verify_commit_sigs("c", &vals, &c, needed, true).is_ok());
+        let (vals, c) = signed(40, &[20, 5]);
+        let err = verify_commit_sigs("c", &vals, &c, needed, true).unwrap_err();
+        let sig = &c.signatures[5];
+        let want = format!(
+            "CommitSig{{{} by {} on 2 @ 0001-01-01T00:00:00.000Z}}",
+            hex::encode_upper(&sig.signature[..6]),
+            hex::encode_upper(&sig.validator_address[..6])
+        );
+        assert_eq!(
+            err,
+            format!("wrong signature (#5): {}", hex::encode_upper(want))
+        );
+        // by address: a double vote at 12 wins over a bad signature at 4
+        let (vals, mut c) = signed(40, &[4]);
+        c.signatures[12].validator_address = c.signatures[2].validator_address.clone();
+        let err = verify_commit_sigs("c", &vals, &c, needed, false).unwrap_err();
+        let double = vals.validators[2].go_string();
+        assert_eq!(err, format!("double vote from {double} (2 and 12)"));
+        // not enough power wins over a bad signature
+        let (vals, c) = signed(40, &[0]);
+        let err = verify_commit_sigs("c", &vals, &c, 400, true).unwrap_err();
+        assert!(err.contains("insufficient voting power: got 400"), "{err}");
+        // by index: v8 on check the address; v4 to v6 verify the indexed
+        // validator's key
+        let (vals, mut c) = signed(40, &[]);
+        c.signatures.swap(0, 1);
+        let err = verify_commit_sigs("c", &vals, &c, needed, true).unwrap_err();
+        assert!(
+            err.starts_with("validator address mismatch at index 0"),
+            "{err}"
+        );
+        sdk::version::set_app_version(6);
+        let err = verify_commit_sigs("c", &vals, &c, needed, true).unwrap_err();
+        assert!(err.starts_with("wrong signature (#0): "), "{err}");
+        sdk::version::set_app_version(prev);
     }
 
     /// Go's `BlockIDFlag(csp.BlockIdFlag)` keeps the low byte of the
