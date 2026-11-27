@@ -32,6 +32,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	evidencetypes "github.com/cosmos/cosmos-sdk/x/evidence/types"
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
@@ -71,6 +72,7 @@ var failUsers = append([]string{
 	// message failures
 	"f-rollback", "f-noauth", "f-nofeegrant", "f-dist", "f-del-unknown",
 	"f-blocked", "f-oog-del", "f-del-poor", "f-vote-unknown", "f-ev-epoch", "f-ev-zero",
+	"f-nopk",
 	"f-zero-undel", "f-zero-redel", "f-zero-cancel",
 	"f-exec-nested", "f-exec-multi", "f-exec-vesting", "f-exec-ibc",
 	"f-prop-gov-send", "f-prop-signer", "f-prop-unroutable",
@@ -147,6 +149,8 @@ var failuresSpec = &chainSpec{
 	rawTxs:          func(s *synth, a *app.App, height int64) ([][]byte, error) { return s.failureTxs(a, height) },
 	noHandoff:       true,
 	evidence:        failureEvidence,
+	// f-nopk-new is created by a send, so it has no public key on chain.
+	newAccounts: []string{"f-nopk-new"},
 }
 
 // syntheticValidatorAddress is the consensus address of synthetic
@@ -248,6 +252,10 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 	}
 	switch r {
 	case 0:
+		// f-nopk's first tx stores its public key on chain; alice's send
+		// creates f-nopk-new without one.
+		tx("f-nopk", send("f-nopk", "alice", 1))
+		tx("alice", send("alice", "f-nopk-new", tia))
 		tx("f-redel", stakingtypes.NewMsgDelegate(b.addr("f-redel"), val0, coin(10*tia)))
 		tx("f-unbond", stakingtypes.NewMsgDelegate(b.addr("f-unbond"), val0, coin(10*tia)))
 		tx(ph("f-redel-self"), stakingtypes.NewMsgDelegate(b.addr(ph("f-redel-self")), val0, coin(tia)))
@@ -280,6 +288,15 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 			return b.direct("f-fee-granter", nil, limit, expiring)
 		})
 	case 1:
+		// A signer info without public_key: cosmos-sdk v0.46 takes the
+		// key from the account (mainnet block 713,480); an account with
+		// no key on chain fails ("pubkey on account is not set").
+		add(func() error {
+			return b.withoutPubKey("f-nopk", signing.SignMode_SIGN_MODE_DIRECT, send("f-nopk", "alice", 1))
+		})
+		add(func() error {
+			return b.withoutPubKey("f-nopk-new", signing.SignMode_SIGN_MODE_DIRECT, send("f-nopk-new", "alice", 1))
+		})
 		tx("f-redel", stakingtypes.NewMsgBeginRedelegate(b.addr("f-redel"), val0, val1, coin(5*tia)))
 		with(ph("f-fee-limit"), func(f clienttx.Factory) clienttx.Factory { return f.WithFeeGranter(b.addr("f-fee-granter")) },
 			send(ph("f-fee-limit"), "alice", 1))
@@ -403,6 +420,9 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 		}
 		tx("f-unbond", undel...)
 	case 2:
+		add(func() error {
+			return b.withoutPubKey("f-nopk", signing.SignMode_SIGN_MODE_LEGACY_AMINO_JSON, send("f-nopk", "alice", 1))
+		})
 		tx("f-redel", stakingtypes.NewMsgBeginRedelegate(b.addr("f-redel"), val1, val2, coin(tia)))
 		add(func() error {
 			exec := authz.NewMsgExec(b.addr(ph("f-grantee")), []sdk.Msg{send("f-granter", ph("f-grantee"), 1)})
@@ -418,5 +438,47 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// withoutPubKey adds a transaction of msgs from signer whose signer info
+// has no public_key, signed in mode: DIRECT signs the auth info without
+// it; LEGACY_AMINO_JSON sign bytes do not hold the key.
+func (b *aminoBuilder) withoutPubKey(signer string, mode signing.SignMode, msgs ...sdk.Msg) error {
+	bz, err := b.sign(signer, func(f clienttx.Factory) clienttx.Factory { return f.WithSignMode(mode) }, msgs...)
+	if err != nil {
+		return err
+	}
+	var raw txtypes.TxRaw
+	if err := raw.Unmarshal(bz); err != nil {
+		return err
+	}
+	var authInfo txtypes.AuthInfo
+	if err := authInfo.Unmarshal(raw.AuthInfoBytes); err != nil {
+		return err
+	}
+	authInfo.SignerInfos[0].PublicKey = nil
+	if raw.AuthInfoBytes, err = authInfo.Marshal(); err != nil {
+		return err
+	}
+	if mode == signing.SignMode_SIGN_MODE_DIRECT {
+		num, _, err := b.account(b.addr(signer))
+		if err != nil {
+			return err
+		}
+		doc := txtypes.SignDoc{BodyBytes: raw.BodyBytes, AuthInfoBytes: raw.AuthInfoBytes, ChainId: appconsts.TestChainID, AccountNumber: num}
+		docBz, err := doc.Marshal()
+		if err != nil {
+			return err
+		}
+		if raw.Signatures[0], _, err = b.s.kr.Sign(signer, docBz); err != nil {
+			return err
+		}
+	}
+	out, err := raw.Marshal()
+	if err != nil {
+		return err
+	}
+	b.out = append(b.out, out)
 	return nil
 }

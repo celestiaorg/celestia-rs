@@ -899,6 +899,12 @@ fail at the same point of the ante handler or message handler as Go:
   100,000 gas, as mainnet had), a delegation above the balance, a
   vote on an unknown proposal, and `MsgSubmitEvidence` with an
   equivocation time at the Unix epoch and at Go's zero time;
+- signer infos without `public_key` (mainnet block 713,480): from an
+  account whose key is on chain, in DIRECT (block 3) and
+  LEGACY_AMINO_JSON (block 4) mode, both succeed as cosmos-sdk v0.46
+  takes the key from the account; from an account created by a send,
+  with no key on chain, it fails with `unrecognized public key type:
+  <nil>` (sdk 8);
 - BeginBlock evidence at app version 3: val2 double-signs (block 14:
   slashed, jailed and tombstoned), then again (block 15: ignored, already
   tombstoned) with evidence for an address that is not a validator
