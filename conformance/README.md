@@ -351,6 +351,58 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/home" \
   -genesis "$OUT/v1-v3/genesis.json" -out ../fixtures/synthetic/v4
 ```
 
+#### App homes between the upgrade oracles
+
+[`fixtures/synthetic/homes`](fixtures/synthetic/homes) holds the app home
+(`data/application.db`, `data/upgrade-info.json`, `handoff.json`) that each
+`-next-handoff` run leaves: `home-25` (after `v4-oracle`), `home-36`
+(`v5-oracle`), `home-46` (`v6-oracle`) and `home-56` (`v8-oracle`). The `go test`
+of `v5-oracle` to `v9-oracle` starts from the previous stage's home, so each
+module builds and runs only its own oracle. The `go test` that makes a home
+(`v4-oracle` to `v8-oracle`, in the `-next-handoff` case) requires the home it
+leaves to hold the committed `handoff.json`, which records the app hash of
+every store, and `data/upgrade-info.json`. After you regenerate a stage, make
+its archive from the home that the commands below leave, before the next stage
+modifies it:
+
+```sh
+tar -C "$OUT/home" --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - . \
+  | gzip -n -9 > conformance/fixtures/synthetic/homes/home-25.tar.gz
+```
+
+#### Probe blocks per release
+
+`-heights 19 -probes` (in `v4-oracle` to `v9-oracle`, `probes.go`,
+`warpprobes.go`, `pfmprobes.go` and `icaprobes.go`) runs each release's usual
+five blocks and then fourteen probe blocks of transactions whose outcome differs between releases. Blocks +5 to
++7 hold an ICA host `MsgModuleQuerySafe`, a warp `MsgCreateSyntheticToken`,
+a `MsgWithdrawDelegatorReward` without a delegation, and gov proposals of an
+ICA host `MsgUpdateParams` and of consensus `MsgUpdateParams` with evidence
+`MaxAgeNumBlocks` 242,640, 404,400 and 559,940. Blocks +8 to +13 set up a
+hyperlane route (noop ISM and hook, mailbox) and then send warp transactions
+signed in `SIGN_MODE_LEGACY_AMINO_JSON`: a collateral token, a remote router
+enrollment and two remote transfers. Where Go cannot build the amino sign
+bytes (a `RemoteRouter` before hyperlane-cosmos v1.1.0), the transaction is
+signed over the bytes `unsignable: <error>`. From v6, where the chain has the solo
+machine's transfer channel, blocks +14 and +15 receive solo machine packets
+whose memo asks packet-forward-middleware to forward them: back over
+`channel-0`, and to `channel-9`, which does not exist. Blocks +16 to +18 open an
+interchain-account channel with the solo machine as controller, fund the
+account and execute a `MsgSend` through it. With `-probes` the tx results
+also record `signers` (absent on v4, whose celestia-core has no such field).
+The fixtures are `fixtures/synthetic/v{4,5,6,8,9}-probes`; v4 starts from
+the v3 hand-off, the others from the previous stage's home. `cargo test -p
+app --test synthetic_probes_oracle` pins Go's code and log for each probe
+and release.
+For example, for v6:
+
+```sh
+cd conformance/v6-oracle
+tar -C "$OUT/home" -xzf ../fixtures/synthetic/homes/home-36.tar.gz
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -heights 19 -probes \
+  -genesis ../fixtures/synthetic/v1-v3/genesis.json -out ../fixtures/synthetic/v6-probes
+```
+
 #### Synthetic chain across the v4 to v5 upgrade
 
 `v4-oracle -heights 10 -next-handoff` runs the same chain on to block
@@ -503,6 +555,30 @@ GOFLAGS=-mod=mod go run . -handoff "$OUT/rich-home" \
   -genesis "$OUT/rich/genesis.json" -out ../fixtures/synthetic/v3-rich-v4
 ```
 
+#### IBC synthetic chain across the v3 to v4 upgrade
+
+`v1-oracle -synthetic -chain v3-ibc` (`ibcchain.go`) starts from a genesis
+at app version 3. It opens an IBC client, a connection and a transfer
+channel to a solo machine (06-solomachine, whose proofs are signatures by a
+fixed key), sends 1,000 utia over the channel and receives a solo-machine
+transfer. Its EndBlocker of block 14 schedules plan `v4` at 15.
+
+`v4-oracle` continues it (`ibc.go`) at celestia-app v4.1.0:
+
+- Block 15: a transfer over the v3 channel fails with `channel` code 9,
+  "module does not own channel capability: channel capability not found".
+- Blocks 16 and 17: a receive and the acknowledgement of the v3 transfer
+  fail with `capability` code 7.
+
+v4.1.0 has no capability module in its module manager, so it never
+initializes the in-memory capability index. This is what every IBC packet
+message did on mainnet from 6,680,340 to 6,748,821.
+
+[`fixtures/synthetic/v3-ibc`](fixtures/synthetic/v3-ibc) holds the v3 side
+and [`fixtures/synthetic/v3-ibc-v4`](fixtures/synthetic/v3-ibc-v4) the v4
+side; both `go test`s rebuild them.
+`cargo test -p app --test synthetic_v4_ibc_oracle` pins the outcomes.
+
 #### Governance chain for app versions 1 to 3
 
 `v1-oracle -synthetic -chain gov-v1-v3` (`synthetic_gov.go`) runs the synthetic
@@ -567,6 +643,47 @@ Blocks 14 and 32 check the jail and the queues against the plan.
 holds heights 0 to 32 (regenerate it as the governance chain, with
 `-chain staking-v1-v3`). `cargo test -p app --test staking_oracle` compares each
 block.
+
+#### Amino JSON chains for app versions 1 to 3
+
+`v1-oracle -synthetic -chain amino-v1-v3` (`synthetic_amino.go`) signs
+every transaction in `SIGN_MODE_LEGACY_AMINO_JSON` with the cosmos-sdk
+v0.46 client (`client/tx.Sign`), so that celestia-rs must build Go's amino
+JSON sign bytes for each message it executes. In v0.46 each message's sign
+bytes come from its own module's codec, and a nested value whose type that
+codec does not register is written bare (without `{"type","value"}`);
+[`amino-sign-bytes-v046.md`](amino-sign-bytes-v046.md) lists the codec of
+every message and which nested values are bare. The same matrix runs at
+app version 1 (blocks 2 to 4), 2 (blocks 6 to 8, after
+`--v2-upgrade-height 6`) and 3 (blocks 14 to 16, after the signals of
+blocks 9 and 10):
+
+- authz grants of every authorization type (generic for each inner
+  message, send, stake, ibc transfer) and `MsgExec` of each inner message
+  mainnet used, fee allowances (basic, periodic, allowed-msg) and
+  fee-granted transactions, gov proposals of every content type through
+  v1beta1 and v1 (`MsgExecLegacyContent`), votes and deposits;
+- staking (a new validator with an ed25519 key `Any`), distribution, bank,
+  the three vesting messages, crisis (an unknown invariant route), evidence
+  (celestia-app sets no evidence router: the handler panics), slashing,
+  signal, blobstream, `MsgPayForBlobs`, ibc transfer and relayer messages
+  (client creation and an update with a signed header, packets,
+  handshakes), which have no amino sign bytes: Go's ante handler panics;
+- 2-of-3 multisig accounts with amino, direct and mixed sub-signatures;
+- transactions signed over the wrapped form of a value the module codec
+  writes bare, and a corrupted signature, which Go rejects.
+
+[`fixtures/synthetic/amino-v1-v3`](fixtures/synthetic/amino-v1-v3) holds
+heights 0 to 17 (regenerate it as the governance chain, with
+`-chain amino-v1-v3`). `cargo test -p app --test amino_oracle` compares
+every block, and checks that the app version 4 and later sign bytes of
+its transactions do not change.
+
+The oracle writes a transaction's log without what depends on Go's
+runtime or the machine (the log is not consensus data): the goroutine
+stack and celestia's "caused by transaction" dump of a recovered panic
+(the log keeps `recovered: <value>: panic`), and the stack frames a `%+v`
+of an error with a recorded stack prints.
 
 #### State-sync snapshots of the v0.46 chains
 

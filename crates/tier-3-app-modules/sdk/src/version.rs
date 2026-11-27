@@ -125,8 +125,8 @@ pub struct Release {
     pub go_square: GoSquare,
     /// The app version whose state machine celestia-rs runs for this one.
     /// Equal to `app_version` once that version is ported: app version 1
-    /// runs as itself on the cosmos-sdk v0.46 driver; app versions 2 to 8
-    /// run as 9 until their historical execution exists.
+    /// runs as itself on the cosmos-sdk v0.46 driver; app versions 2, 3 and
+    /// 7 run as 9 until their historical execution exists.
     pub runs_as: u64,
 }
 
@@ -358,10 +358,10 @@ const fn entry(
         hyperlane,
         go_square,
         // App version 1 executes as itself (the cosmos-sdk v0.46 driver)
-        // and app versions 4 to 6 as celestia-app v4.1.0, v5.0.12 and
-        // v6.4.x; historical execution of app versions 2, 3, 7 and 8 is not
-        // ported yet.
-        runs_as: if matches!(app_version, 2 | 3 | 7 | 8) {
+        // and app versions 4 to 6 and 8 as celestia-app v4.1.0, v5.0.12,
+        // v6.4.x and v8.0.8; historical execution of app versions 2 and 3
+        // is not ported yet, and app version 7 never ran on mainnet.
+        runs_as: if matches!(app_version, 2 | 3 | 7) {
             9
         } else {
             app_version
@@ -713,6 +713,24 @@ impl Release {
         }
     }
 
+    /// x/tx's amino JSON encoder resolves `hyperlane.warp.v1.RemoteRouter`
+    /// as a placeholder with no fields (celestia-app v4.1.0 to v6.4.x,
+    /// hyperlane-cosmos v1.0.1), so signing a `MsgEnrollRemoteRouter` that
+    /// sets it fails. From v8.0.8 (v1.1.0) it resolves.
+    #[must_use]
+    pub const fn amino_remote_router_placeholder(&self) -> bool {
+        matches!(self.hyperlane, Some(HyperlaneCosmos::V1_0_1))
+    }
+
+    /// x/tx's amino JSON encoder sees `MsgCreateVestingAccount.start_time`
+    /// (field 6, celestia's cosmos-sdk fork). celestia-app v4.1.0 links the
+    /// upstream `cosmossdk.io/api` v0.7.6 descriptors, which lack it, so
+    /// signing a message that sets it fails; v5.0.12 on link celestia's.
+    #[must_use]
+    pub const fn amino_vesting_start_time(&self) -> bool {
+        !matches!(self.cosmos_sdk, CosmosSdk::V0_50Celestia1_29)
+    }
+
     /// go-square v4.0.0-rc4: the square layout counts signer bytes and
     /// classifies fibre transactions (app version 9 only).
     #[must_use]
@@ -906,19 +924,22 @@ mod tests {
 
     /// The executing release answers every feature predicate as the
     /// former `is_v9(v)` split (`1..=9`) did: refactoring the call sites
-    /// onto the predicates changes no behavior while app versions 2 to 8
-    /// run as 9.
+    /// onto the predicates changes no behavior while app versions 2, 3 and
+    /// 7 run as 9.
     #[test]
     fn executing_release_predicates_keep_the_v9_split() {
-        // App versions 4 to 6 run as themselves (their own answers:
+        // App versions 4 to 6 and 8 run as themselves (their own answers:
         // `historical_releases_record_their_own_features`).
-        for own in [4, 5, 6] {
+        for own in [4, 5, 6, 8] {
             assert_eq!(
                 Release::executing(own),
                 Release::for_app_version(own).expect("known app version")
             );
         }
-        for v in (0..=14).chain([u64::MAX]).filter(|v| !matches!(v, 4..=6)) {
+        for v in (0..=14)
+            .chain([u64::MAX])
+            .filter(|v| !matches!(v, 4..=6 | 8))
+        {
             let old_v9 = matches!(v, 1..=9);
             let r = Release::executing(v);
             assert_eq!(r.upstream_hyperlane(), old_v9, "v{v}");
@@ -952,6 +973,8 @@ mod tests {
             assert!(!r.has_token_filter(), "v{v}");
             assert!(!r.legacy_insufficient_fee_message(), "v{v}");
             assert_eq!(r.default_unbonding_time_secs(), None, "v{v}");
+            assert!(!r.amino_remote_router_placeholder(), "v{v}");
+            assert!(r.amino_vesting_start_time(), "v{v}");
         }
     }
 
@@ -1003,6 +1026,8 @@ mod tests {
                 assert_eq!(r.legacy_insufficient_fee_message(), v <= 6, "v{v}");
                 let unbonding = v4_v5.then_some(21 * 24 * 3600);
                 assert_eq!(r.default_unbonding_time_secs(), unbonding, "v{v}");
+                assert_eq!(r.amino_remote_router_placeholder(), v <= 6, "v{v}");
+                assert_eq!(r.amino_vesting_start_time(), v != 4, "v{v}");
             }
         }
         let deps = |v| {
@@ -1073,13 +1098,17 @@ mod tests {
     }
 
     /// App version 1 executes as itself (the v0.46 driver) and app versions
-    /// 4 to 6 as celestia-app v4.1.0, v5.0.12 and v6.4.x; app versions 2,
-    /// 3, 7 and 8 keep running as v9.
+    /// 4 to 6 and 8 as celestia-app v4.1.0, v5.0.12, v6.4.x and v8.0.8; app
+    /// versions 2, 3 and 7 keep running as v9.
     #[test]
-    fn historical_versions_run_as_v9_except_v1_and_v4_to_v6() {
+    fn historical_versions_run_as_v9_except_v1_v4_to_v6_and_v8() {
         for v in 1..=12 {
             let r = Release::for_app_version(v).expect("known app version");
-            let runs_as = if matches!(v, 1 | 4..=6) { v } else { v.max(9) };
+            let runs_as = if matches!(v, 1 | 4..=6 | 8) {
+                v
+            } else {
+                v.max(9)
+            };
             assert_eq!(r.runs_as, runs_as, "v{v}");
         }
         assert_eq!(Release::executing(1).app_version, 1);

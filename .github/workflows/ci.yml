@@ -303,6 +303,7 @@ jobs:
           - devnet-oracle
           - evidencevectors
           - fibre-client
+          - fibre-server
           - fixturegen
           - fuzzoracle/v9
           - fuzzoracle/v10
@@ -367,4 +368,7 @@ jobs:
           matrix.module == 'v6-oracle' || matrix.module == 'v8-oracle' ||
           matrix.module == 'v9-oracle')
         working-directory: conformance/${{ matrix.module }}
-        run: go test ./...
+        # A cold runner compiles a whole celestia-app release per oracle
+        # module (v4-oracle also builds v1-oracle); go test's default
+        # 10-minute limit is too tight for that.
+        run: go test -timeout 30m ./...

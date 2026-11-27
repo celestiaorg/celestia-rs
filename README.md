@@ -63,6 +63,10 @@ See the [milestones](MILESTONES.md) for qualification progress and the
 - **Go-compatible operator surface:** CLI (`init`, `keys`, `genesis`, `tx`,
   `query`, …), Go keyrings, RPC, gRPC and REST responses checked against Go,
   pruning, Prometheus metrics, double-sign protection.
+- **Embedded Fibre server (opt-in):** a validator serves Fibre blob shards
+  from `celestia-rs start` itself (`[fibre] enable = true`), with TLS
+  identity, gRPC health and Prometheus metrics; see the
+  [operator guide](docs/operator-guide.md#fibre-server).
 - **Built for a Mac Mini M4** (16 GB / 512 GB, [`docs/hardware.md`](docs/hardware.md)):
   release archives for macOS and Linux, launchd and systemd units.
 

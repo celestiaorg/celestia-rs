@@ -243,4 +243,6 @@ var chainSpecs = map[string]*chainSpec{
 	"gov-v1-v3":     govSpec,
 	"staking-v1-v3": stakingSpec,
 	"v3-history":    historySpec,
+	"v3-ibc":        ibcSpec,
+	"amino-v1-v3":   aminoSpec,
 }

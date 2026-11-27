@@ -11,7 +11,7 @@ import (
 // TestSyntheticFixtureIsReproducible rebuilds each synthetic chain and
 // requires the committed fixture byte for byte.
 func TestSyntheticFixtureIsReproducible(t *testing.T) {
-	for chain, dir := range map[string]string{"v1-v3": "v1-v3", "v3-rich": "v3-rich", "gov-v1-v3": "gov-v1-v3", "staking-v1-v3": "staking-v1-v3"} {
+	for chain, dir := range map[string]string{"v1-v3": "v1-v3", "v3-rich": "v3-rich", "gov-v1-v3": "gov-v1-v3", "staking-v1-v3": "staking-v1-v3", "amino-v1-v3": "amino-v1-v3", "v3-ibc": "v3-ibc"} {
 		t.Run(chain, func(t *testing.T) { requireReproducible(t, chain, dir) })
 	}
 }

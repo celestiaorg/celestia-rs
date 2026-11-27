@@ -1,73 +1,107 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
+	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-// fixtureFiles are the outputs that conformance/fixtures/synthetic/v9 holds.
+// fixtureFiles are the outputs that each fixture directory holds.
 var fixtureFiles = []string{
 	"blocks.jsonl.gz", "store-roots.json", "tx-results.jsonl.gz",
 	"kv-handoff.jsonl.gz", "kv-upgrade.jsonl.gz", "kv-diffs.jsonl.gz",
 }
 
-// TestSyntheticFixtureIsReproducible runs the v1-v3 synthetic chain through
-// v1-oracle and v4-, v5-, v6- and v8-oracle -next-handoff, continues it
-// across the v9 upgrade and requires the committed fixtures byte for byte.
+// homes holds the committed app homes of the synthetic chain at each
+// hand-off height (the -handoff home after the previous oracle's
+// -next-handoff run), so that this test builds and runs only this oracle.
+var homes = filepath.Join("..", "fixtures", "synthetic", "homes")
+
+// TestSyntheticFixtureIsReproducible continues the synthetic chain from the
+// committed home-56 home across the v9 upgrade and requires the committed
+// fixtures byte for byte.
 func TestSyntheticFixtureIsReproducible(t *testing.T) {
 	tmp := t.TempDir()
-	bin := map[string]string{}
-	for _, oracle := range []string{"v1-oracle", "v4-oracle", "v5-oracle", "v6-oracle", "v8-oracle"} {
-		bin[oracle] = filepath.Join(tmp, oracle)
-		build := exec.Command("go", "build", "-o", bin[oracle], ".")
-		build.Dir = filepath.Join("..", oracle)
-		if bz, err := build.CombinedOutput(); err != nil {
-			t.Fatalf("build %s: %v\n%s", oracle, err, bz)
+	fixtures := filepath.Join("..", "fixtures", "synthetic")
+	genesis := filepath.Join(fixtures, "v1-v3", "genesis.json")
+	for _, c := range []struct {
+		dir  string
+		args []string
+	}{
+		{"v9", nil},
+		// The probe blocks of probes.go after the usual five.
+		{"v9-probes", []string{"-heights", "19", "-probes"}},
+	} {
+		home := filepath.Join(tmp, "home-"+c.dir)
+		if err := untar(filepath.Join(homes, "home-56.tar.gz"), home); err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(tmp, c.dir)
+		cmd := exec.Command(os.Args[0], "-test.run=TestRunSynthetic", "-test.v")
+		cmd.Env = append(os.Environ(),
+			"V9_ORACLE_HANDOFF="+home,
+			"V9_ORACLE_GENESIS="+genesis,
+			"V9_ORACLE_OUT="+out,
+			"V9_ORACLE_ARGS="+strings.Join(c.args, " "),
+		)
+		if bz, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("synthetic run %s: %v\n%s", c.dir, err, bz)
+		}
+		for _, name := range fixtureFiles {
+			requireSame(t, filepath.Join(fixtures, c.dir, name), filepath.Join(out, name))
 		}
 	}
-	fixtures := filepath.Join("..", "fixtures", "synthetic")
-	v1Out, v4Out, home := filepath.Join(tmp, "v1"), filepath.Join(tmp, "v4"), filepath.Join(tmp, "home")
-	if bz, err := exec.Command(bin["v1-oracle"], "-synthetic", "-chain", "v1-v3", "-kv", "-out", v1Out, "-handoff", home).CombinedOutput(); err != nil {
-		t.Fatalf("v1-oracle: %v\n%s", err, bz)
-	}
-	genesis := filepath.Join(v1Out, "genesis.json")
-	requireSame(t, filepath.Join(fixtures, "v1-v3", "genesis.json"), genesis)
-	if bz, err := exec.Command(bin["v4-oracle"], "-handoff", home, "-genesis", genesis, "-out", v4Out, "-heights", "10", "-next-handoff").CombinedOutput(); err != nil {
-		t.Fatalf("v4-oracle: %v\n%s", err, bz)
-	}
-	requireSame(t, filepath.Join(fixtures, "v4-to-v5", "store-roots.json"), filepath.Join(v4Out, "store-roots.json"))
+}
 
-	v5Out := filepath.Join(tmp, "v5")
-	if bz, err := exec.Command(bin["v5-oracle"], "-handoff", home, "-genesis", genesis, "-out", v5Out, "-heights", "11", "-next-handoff").CombinedOutput(); err != nil {
-		t.Fatalf("v5-oracle: %v\n%s", err, bz)
+// untar extracts a .tar.gz of regular files and directories into dir.
+func untar(archive, dir string) error {
+	f, err := os.Open(archive)
+	if err != nil {
+		return err
 	}
-	requireSame(t, filepath.Join(fixtures, "v5-to-v6", "store-roots.json"), filepath.Join(v5Out, "store-roots.json"))
-	v6Out := filepath.Join(tmp, "v6")
-	if bz, err := exec.Command(bin["v6-oracle"], "-handoff", home, "-genesis", genesis, "-out", v6Out, "-heights", "10", "-next-handoff").CombinedOutput(); err != nil {
-		t.Fatalf("v6-oracle: %v\n%s", err, bz)
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return err
 	}
-	requireSame(t, filepath.Join(fixtures, "v6-to-v8", "store-roots.json"), filepath.Join(v6Out, "store-roots.json"))
-	v8Out := filepath.Join(tmp, "v8")
-	if bz, err := exec.Command(bin["v8-oracle"], "-handoff", home, "-genesis", genesis, "-out", v8Out, "-heights", "10", "-next-handoff").CombinedOutput(); err != nil {
-		t.Fatalf("v8-oracle: %v\n%s", err, bz)
-	}
-	requireSame(t, filepath.Join(fixtures, "v8-to-v9", "store-roots.json"), filepath.Join(v8Out, "store-roots.json"))
-
-	out := filepath.Join(tmp, "v9")
-	cmd := exec.Command(os.Args[0], "-test.run=TestRunSynthetic", "-test.v")
-	cmd.Env = append(os.Environ(),
-		"V9_ORACLE_HANDOFF="+home,
-		"V9_ORACLE_GENESIS="+genesis,
-		"V9_ORACLE_OUT="+out,
-	)
-	if bz, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("synthetic run: %v\n%s", err, bz)
-	}
-	for _, name := range fixtureFiles {
-		requireSame(t, filepath.Join(fixtures, "v9", name), filepath.Join(out, name))
+	tr := tar.NewReader(gz)
+	for {
+		h, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(dir, filepath.Clean("/"+h.Name))
+		switch h.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(path, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				return err
+			}
+			out, err := os.Create(path)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(out, tr); err != nil {
+				out.Close()
+				return err
+			}
+			if err := out.Close(); err != nil {
+				return err
+			}
+		}
 	}
 }
 
@@ -98,6 +132,7 @@ func TestRunSynthetic(t *testing.T) {
 		"-genesis", os.Getenv("V9_ORACLE_GENESIS"),
 		"-out", out,
 	}
+	os.Args = append(os.Args, strings.Fields(os.Getenv("V9_ORACLE_ARGS"))...)
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}

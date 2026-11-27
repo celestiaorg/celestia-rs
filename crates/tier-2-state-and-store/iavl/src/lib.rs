@@ -5,7 +5,7 @@
 //!
 //! A [`Tree`] is either purely in memory ([`Tree::new`]) or backed by a
 //! [`NodeDb`] ([`Tree::open`]): nodes persisted under their IAVL v1 node key
-//! `(version, nonce)`, loaded lazily through a bounded LRU [`NodeCache`].
+//! `(version, nonce)`, loaded lazily through a bounded CLOCK [`NodeCache`].
 //! Between commits only the dirty (modified) nodes of the working tree live
 //! in memory. Both modes share the hashing code, so root hashes are
 //! identical (and match Go IAVL v1).
@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+mod clock;
 pub mod error;
 mod export;
 mod mutate;
@@ -1848,6 +1849,38 @@ mod tests {
             tree.get_immutable(3),
             Err(Error::VersionNotFound { version: 3 })
         ));
+    }
+
+    #[test]
+    fn cold_reads_are_counted_as_disk_reads() {
+        let ndb = NodeDb::in_memory(100);
+        let mut tree = Tree::open(Arc::clone(&ndb)).unwrap();
+        for i in 0u32..200 {
+            tree.set(i.to_be_bytes().to_vec(), vec![7; 10]).unwrap();
+        }
+        tree.save_version().unwrap();
+        let cache = super::NodeCache::new(1_000);
+        let reopened = Tree::open(NodeDb::new(
+            Arc::clone(ndb.backend()),
+            Vec::new(),
+            Arc::clone(&cache),
+        ))
+        .unwrap();
+        let before = cache.stats();
+        assert_eq!(
+            reopened.get(&77u32.to_be_bytes()).unwrap(),
+            Some(vec![7; 10])
+        );
+        let cold = cache.stats();
+        assert!(cold.disk_reads > before.disk_reads, "{cold:?}");
+        assert!(cold.disk_bytes > before.disk_bytes, "{cold:?}");
+        assert!(cold.ref_reads <= cold.disk_reads, "{cold:?}");
+        reopened.get(&77u32.to_be_bytes()).unwrap();
+        assert_eq!(
+            cache.stats().disk_reads,
+            cold.disk_reads,
+            "a warm read stays in memory"
+        );
     }
 
     #[test]
