@@ -31,6 +31,7 @@ package main
 
 import (
 	"fmt"
+	evidencetypes "github.com/cosmos/cosmos-sdk/x/evidence/types"
 	"strings"
 	"time"
 
@@ -65,7 +66,7 @@ var failUsers = append([]string{
 	"f-memo", "f-timeout",
 	// message failures
 	"f-rollback", "f-noauth", "f-nofeegrant", "f-dist", "f-del-unknown",
-	"f-blocked", "f-oog-del", "f-del-poor", "f-vote-unknown",
+	"f-blocked", "f-oog-del", "f-del-poor", "f-vote-unknown", "f-ev-epoch", "f-ev-zero",
 	"f-zero-undel", "f-zero-redel", "f-zero-cancel",
 	"f-exec-nested", "f-exec-multi", "f-exec-vesting", "f-exec-ibc",
 	"f-prop-gov-send", "f-prop-signer", "f-prop-unroutable",
@@ -282,6 +283,21 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 			stakingtypes.NewMsgUndelegate(b.addr(ph("f-oog-undel")), val0, coin(tia/2)))
 		tx("f-del-poor", stakingtypes.NewMsgDelegate(b.addr("f-del-poor"), val0, coin(1_000_000*tia)))
 		tx("f-vote-unknown", govv1beta1.NewMsgVote(b.addr("f-vote-unknown"), 999, govv1beta1.OptionYes))
+		// Equivocation.ValidateBasic refuses a time at or before the Unix
+		// epoch, printing it with time.Time.String (a plain Go error: code 1).
+		for _, c := range []struct {
+			name string
+			at   time.Time
+		}{{"f-ev-epoch", time.Unix(0, 0).UTC()}, {"f-ev-zero", time.Time{}}} {
+			name := c.name
+			m, err := evidencetypes.NewMsgSubmitEvidence(b.addr(name), &evidencetypes.Equivocation{
+				Height: 1, Time: c.at, Power: 1, ConsensusAddress: sdk.ConsAddress(b.addr(name)).String(),
+			})
+			if err != nil {
+				return err
+			}
+			tx(name, m)
+		}
 		// MsgExec runs a staking message of a zero amount although its
 		// ValidateBasic fails: v0.46 baseapp's msg service router skips
 		// that error for a zero GetAmount. The grantee is the signer, so

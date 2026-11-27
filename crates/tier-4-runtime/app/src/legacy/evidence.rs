@@ -26,10 +26,13 @@ fn evidence(m: &MsgSubmitEvidence) -> Result<Option<Equivocation>> {
                 .map(Some)
                 .map_err(|e| errs::tx_decode(e.to_string()))
         }
-        Some(a) => Err(super::not_ported(errs::unknown_request(format!(
-            "the cosmos-sdk v0.46 evidence {}",
+        // The v1 interface registry holds only `Equivocation` for
+        // `exported.Evidence`, so the tx decoder already refused any other
+        // type with this error (txdecode `unpack_any`).
+        Some(a) => Err(errs::tx_decode(format!(
+            "no concrete type registered for type URL {} against interface *exported.Evidence",
             a.type_url
-        )))),
+        ))),
     }
 }
 
@@ -41,28 +44,7 @@ fn validate(m: &MsgSubmitEvidence) -> Result<Equivocation> {
         // `ErrInvalidEvidence` (evidence code 2 in v0.46).
         return Err(sdk::SdkError::new("evidence", 2, "invalid evidence").wrap("missing evidence"));
     };
-    if e.time.as_ref().is_none_or(|t| t.seconds <= 0) {
-        return Err(super::not_ported(errs::unknown_request(
-            "the cosmos-sdk v0.46 equivocation time check",
-        )));
-    }
-    if e.height < 1 {
-        return Err(sdk::error::internal(format!(
-            "invalid equivocation height: {}",
-            e.height
-        )));
-    }
-    if e.power < 1 {
-        return Err(sdk::error::internal(format!(
-            "invalid equivocation validator power: {}",
-            e.power
-        )));
-    }
-    if e.consensus_address.is_empty() {
-        return Err(sdk::error::internal(
-            "invalid equivocation validator consensus address: ",
-        ));
-    }
+    x_evidence::validate_basic(&e).map_err(sdk::error::internal)?;
     Ok(e)
 }
 

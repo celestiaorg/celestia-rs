@@ -770,8 +770,9 @@ fail at the same point of the ante handler or message handler as Go:
   that is not a validator, a redelegation to the same validator, a
   transitive redelegation, a send to a blocked module account, an eighth
   unbonding entry, out of gas in `MsgDelegate` and `MsgUndelegate` (at
-  100,000 gas, as mainnet had), a delegation above the balance, and a
-  vote on an unknown proposal.
+  100,000 gas, as mainnet had), a delegation above the balance, a
+  vote on an unknown proposal, and `MsgSubmitEvidence` with an
+  equivocation time at the Unix epoch and at Go's zero time.
 
 Blob transactions that fail `ValidateBasic` are not in it: ProcessProposal
 rejects a block that holds one. [`fixtures/synthetic/failures-v1-v3`](fixtures/synthetic/failures-v1-v3)
