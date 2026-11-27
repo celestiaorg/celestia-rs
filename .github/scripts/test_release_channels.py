@@ -99,6 +99,25 @@ class PromoteTests(unittest.TestCase):
         self.promote(t(20))
         self.assertEqual(self.current("mainnet"), "v0.1.0-main.2")
 
+    def test_a_late_published_older_commit_does_not_move_a_channel_back(self):
+        self.releases.append(release("v0.1.0-main.4", t(2, 1)))
+        self.promote(t(2, 1))
+        self.assertEqual(self.current("quarto"), "v0.1.0-main.4")
+        # main.3's build was slower: published after main.4.
+        self.releases.append(release("v0.1.0-main.3", t(2, 2)))
+        self.assertEqual(self.promote(t(2, 3)), [])
+        self.assertEqual(self.current("quarto"), "v0.1.0-main.4")
+
+    def test_human_releases_order_by_their_position_field(self):
+        self.releases.append(dict(release("v0.1.0", t(2, 2)), position=3))
+        self.releases.append(release("v0.1.0-main.4", t(2, 1)))
+        self.promote(t(2, 3))
+        self.assertEqual(self.current("quarto"), "v0.1.0-main.4")
+        # A release with no main position cannot be ordered: never taken.
+        self.releases = [release("v9.0.0", t(1))]
+        self.state = rc.empty_state(POLICY)
+        self.assertEqual(self.promote(t(2)), [])
+
     def test_frozen_channel_does_not_move(self):
         rc.freeze(self.state, "quarto")
         self.assertEqual(self.promote(t(3)), [])

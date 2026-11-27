@@ -19,8 +19,13 @@ Rules for one `promote` pass, per channel in policy order:
   least `soak_hours` old, not yanked, and not newer than what the source
   channel runs now (so a rollback of the source holds back the channels
   after it).
-- The channel takes the newest candidate, by release publication time, and
-  only if it is newer than its current tag: promotion never downgrades.
+- The channel takes the newest candidate, by its commit's position on
+  main, and only if it is newer than its current tag: promotion never
+  downgrades. Automatic releases builds run in parallel and can publish out
+  of order, so publication time only says when a release is available. A
+  release's position is its `position` field (the workflow adds it from
+  `git rev-list --count <tag>`), else the `main.<n>` in its tag; a release
+  with neither is never taken.
 
 main is linear, so a release that entered the source N hours ago has been
 running there, inside every later release, for N hours. That keeps a busy
@@ -33,8 +38,8 @@ Usage (each command writes the state back to --dir):
   release_channels.py --dir D --policy P yank|unyank TAG
   release_channels.py --dir D --policy P pin CHANNEL TAG   # also freezes
 
-R is the JSON array GitHub's list-releases API returns. Changes print one
-per line.
+R is the JSON array GitHub's list-releases API returns, optionally with a
+`position` per release. Changes print one per line.
 """
 
 import argparse
@@ -45,6 +50,8 @@ import re
 import sys
 
 TAG = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$")
+# An automatic release's tag ends in its commit's position on main.
+MAIN_POSITION = re.compile(r"[.-]main\.([0-9]+)$")
 RELEASES = "releases"
 HISTORY_LIMIT = 1000
 
@@ -92,14 +99,24 @@ def set_tag(state, name, tag, now, by):
     del channel["history"][:-HISTORY_LIMIT]
 
 
+def position(r):
+    if isinstance(r.get("position"), int):
+        return r["position"]
+    m = MAIN_POSITION.search(r.get("tag_name") or "")
+    return int(m.group(1)) if m else None
+
+
 def published(releases, now):
-    """Tag -> publication time, for published releases up to `now`."""
+    """Tag -> (main position, publication time), for published releases up
+    to `now` whose position is known."""
     out = {}
     for r in releases:
-        tag, at = r.get("tag_name"), r.get("published_at")
-        if r.get("draft") or not at or not TAG.match(tag or "") or parse_time(at) > now:
+        tag, at, pos = r.get("tag_name"), r.get("published_at"), position(r)
+        if r.get("draft") or not at or not TAG.match(tag or "") or pos is None:
             continue
-        out[tag] = parse_time(at)
+        if parse_time(at) > now:
+            continue
+        out[tag] = (pos, parse_time(at))
     return out
 
 
@@ -109,7 +126,7 @@ def promote(state, policy, releases, now):
     order = published(releases, now_t)
 
     def key(tag):
-        return (order[tag], tag)
+        return (order[tag][0], tag)
 
     for c in policy["channels"]:
         state["channels"].setdefault(c["name"], {"tag": None, "history": []})
@@ -120,7 +137,7 @@ def promote(state, policy, releases, now):
             continue
         cutoff = now_t - timedelta(hours=c["soak_hours"])
         if source == RELEASES:
-            entries = [(tag, at) for tag, at in order.items()]
+            entries = [(tag, at) for tag, (_, at) in order.items()]
             ceiling = None
         else:
             src = state["channels"][source]

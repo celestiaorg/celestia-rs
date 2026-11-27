@@ -325,7 +325,12 @@ log "deploy $TAG (${SHA:0:7}) to: ${stale[*]}"
 
 git -C "$SRC" checkout --quiet --detach "$SHA"
 log "building"
-(cd "$SRC" && nice -n 10 cargo build --quiet --release --locked -j "$BUILD_JOBS" -p celestia-rs --features da-light) ||
+# An automatic release (v<crate version>-main.<n>) reports its full
+# version only when the build is told it (build.rs); a human release's tag
+# is the crate version.
+release_version=""
+[[ $TAG =~ [.-]main\.[0-9]+$ ]] && release_version=${TAG#v}
+(cd "$SRC" && CELESTIA_RS_RELEASE_VERSION=$release_version nice -n 10 cargo build --quiet --release --locked -j "$BUILD_JOBS" -p celestia-rs --features da-light) ||
   die "build of ${SHA:0:7} failed"
 NEW=$SRC/target/release/celestia-rs
 [[ $(binary_commit "$NEW") == "$SHA" ]] || die "built binary does not report ${SHA:0:7}"

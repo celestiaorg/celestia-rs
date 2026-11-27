@@ -54,6 +54,8 @@ has a source and a soak time:
 Every hour, **release channels** (`release-channels.yml`) moves each
 channel to the newest release that has been in its source for at least the
 soak time, is not yanked, and is not newer than what the source runs now.
+"Newest" means latest on `main` (the commit's position), not latest
+published: automatic builds run in parallel and can publish out of order.
 It never moves a channel backwards. `main` is linear, so a release that
 entered `mocha` 72 hours ago has run there, inside every later release, for
 72 hours; frequent merges do not starve `mainnet`. The state is on the

@@ -52,9 +52,10 @@ elif tool == 'git':
     # Tag v0.1.0-rc.6 is commit b..., any other tag commit a...
     if 'fetch' in args: (r/'fetched').write_text(args[-1])
     elif 'rev-parse' in args:
-        print('b'*40 if (r/'fetched').read_text().endswith('v0.1.0-rc.6') else 'a'*40)
+        print('b'*40 if 'v0.1.0-rc.6' in (r/'fetched').read_text() else 'a'*40)
     elif 'checkout' not in args: sys.exit('unexpected git operation')
 elif tool == 'cargo':
+    (r/'cargo-env').write_text(os.environ.get('CELESTIA_RS_RELEASE_VERSION', '<unset>'))
     shutil.copyfile(r/'built', r/'src/target/release/celestia-rs')
     (r/'src/target/release/celestia-rs').chmod(0o755)
 elif tool == 'check-apphash':
@@ -133,6 +134,21 @@ class ReleaseUpdateTests(unittest.TestCase):
         self.assertIn(NEW, (self.root/"bin/celestia-rs").read_text())
         self.assertIn(OLD, (self.root/"bin/celestia-rs-mainnet").read_text())
         self.assertIn("up to date: v0.1.0-rc.5", result.stdout)
+
+    def test_automatic_release_is_built_with_its_release_version(self):
+        for name in ("mocha", "mainnet"):
+            self.channel(name, "v0.1.0-rc.6.main.42")
+        binary(self.root/"built", NEW, "0.1.0-rc.6.main.42")
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertEqual((self.root/"cargo-env").read_text(), "0.1.0-rc.6.main.42")
+        self.assertIn(NEW, (self.root/"bin/celestia-rs-mainnet").read_text())
+
+    def test_human_release_is_built_without_a_release_version(self):
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        # build.rs treats an empty value as unset.
+        self.assertIn((self.root/"cargo-env").read_text(), ("", "<unset>"))
 
     def test_channel_override_variable(self):
         self.channel("stable", "v0.1.0-rc.5")

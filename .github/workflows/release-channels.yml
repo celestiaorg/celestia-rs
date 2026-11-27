@@ -77,6 +77,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           ref: main
+          fetch-depth: 0
           persist-credentials: false
       - name: Check out the channel state
         env:
@@ -102,7 +103,16 @@ jobs:
           run() { python3 .github/scripts/release_channels.py --dir state --policy .github/release-channels.json "$@"; }
           case $ACTION in
             promote)
-              gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[]' | jq -s . >releases.json
+              gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[]' | jq -s . >raw.json
+              # Order releases by their commit's position on main, not by
+              # publication time (parallel builds publish out of order).
+              git fetch --quiet --tags origin
+              jq -r '.[].tag_name' raw.json | while read -r tag; do
+                if p=$(git rev-list --count "refs/tags/$tag" 2>/dev/null); then echo "$tag $p"; fi
+              done >positions.txt
+              jq --rawfile pos positions.txt '
+                ($pos | split("\n") | map(select(length > 0) | split(" ") | {(.[0]): (.[1] | tonumber)}) | add // {}) as $p
+                | map(. + {position: $p[.tag_name]})' raw.json >releases.json
               run promote --releases releases.json >changes.txt
               ;;
             freeze | unfreeze) run "$ACTION" "$CHANNEL" >changes.txt ;;
