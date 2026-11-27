@@ -38,7 +38,7 @@ behind these defaults:
 | Setting | Flag | Default | Budget impact |
 |---|---|---|---|
 | Backend | `--db-backend` | `rocksdb` (`redb` available) | RocksDB disk ≈ 1.1–1.4× live data (peaks 1.85× during compaction); redb 2.7–5× |
-| Backend block cache | `--db-cache-mib` | 512 | Bounded: data, index and filter blocks all live in it; plus ≤ 128 MiB memtables |
+| Backend block cache | `--db-cache-mib` | 512 | Bounded: data, index and filter blocks all live in it; plus ≤ 256 MiB memtables (2 × 128 MiB, application database) |
 | IAVL node cache | `--node-cache-size` | 1,000,000 nodes | ~200–300 B per node → ≤ ~300 MiB |
 | Pruning | `--pruning-keep-recent` / `--pruning-keep-every` / `--pruning-interval` | 100 / 0 / 1 | Retained history dominates live data; pruning every commit keeps commit p99 < 0.5 s at 600 tx/block |
 

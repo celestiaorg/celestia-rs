@@ -29,6 +29,9 @@ pub struct RocksOptions {
     /// Upper bound on open SST files (`-1` = unlimited). Keep it below the
     /// process file-descriptor limit (macOS shells default to 256).
     pub max_open_files: i32,
+    /// Compact an SST file early when half of a window of its entries are
+    /// tombstones (for data deleted long after it was written).
+    pub compact_on_deletion: bool,
 }
 
 impl Default for RocksOptions {
@@ -38,6 +41,7 @@ impl Default for RocksOptions {
             write_buffer_size: 64 << 20,
             sync_writes: true,
             max_open_files: 512,
+            compact_on_deletion: true,
         }
     }
 }
@@ -99,10 +103,16 @@ impl RocksBackend {
         // compresses every level (Snappy).
         opts.set_compression_type(DBCompressionType::Lz4);
         opts.set_bottommost_compression_type(DBCompressionType::Zstd);
-        // IAVL pruning deletes old nodes in bulk: SST files whose entries are
-        // mostly tombstones are compacted soon instead of when their level
-        // happens to be picked, so the space comes back.
-        opts.add_compact_on_deletion_collector_factory(DELETION_WINDOW, DELETION_WINDOW / 2, 0.5);
+        // Data deleted long after it was written (old blocks): SST files
+        // whose entries are mostly tombstones are compacted soon instead of
+        // when their level happens to be picked, so the space comes back.
+        if options.compact_on_deletion {
+            opts.add_compact_on_deletion_collector_factory(
+                DELETION_WINDOW,
+                DELETION_WINDOW / 2,
+                0.5,
+            );
+        }
         opts.set_keep_log_file_num(4);
         opts.set_max_log_file_size(16 << 20);
         let db = Arc::new(DB::open(&opts, &path).map_err(Error::new)?);
