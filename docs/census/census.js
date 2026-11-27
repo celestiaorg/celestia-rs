@@ -179,8 +179,9 @@ function render() {
     $("status").textContent = `No crawl data for ${net} yet.`;
     $("tiles").replaceChildren();
     $("charts").replaceChildren();
-    table("versions", ["celestia-core version", "Implementation", "App version", "Nodes"], [], [2, 3]);
-    table("rust-nodes", ["Node ID", "Moniker", "Version", "App version", "Source"], []);
+    table("versions", ["celestia-core version", "Implementation", "App version", "celestia-app release", "Nodes"], [], [2, 4]);
+    table("rust-nodes", ["Node ID", "Moniker", "Version", "App version", "celestia-app release", "Source"], []);
+    $("release-coverage").textContent = "";
     return;
   }
   const s = latest.summary;
@@ -213,30 +214,49 @@ function render() {
       integer: true,
     }),
   );
-  // One row per celestia-core version, implementation and app version.
+  // One row per celestia-core version, implementation, app version and
+  // celestia-app release. The release comes from the node's own RPC
+  // `/abci_info`, so it is unknown for nodes without an open RPC.
   const groups = new Map();
   for (const n of known) {
-    const key = `${n.version}\u0000${n.implementation}\u0000${n.app_version}`;
-    const g = groups.get(key) ?? { version: n.version, implementation: n.implementation, app: n.app_version, count: 0 };
+    const release = n.app_release ?? "–";
+    const key = `${n.version}\u0000${n.implementation}\u0000${n.app_version}\u0000${release}`;
+    const g = groups.get(key) ?? { version: n.version, implementation: n.implementation, app: n.app_version, release, count: 0 };
     g.count += 1;
     groups.set(key, g);
   }
   const implName = { rust: "celestia-rs", go: "Go" };
   table(
     "versions",
-    ["celestia-core version", "Implementation", "App version", "Nodes"],
+    ["celestia-core version", "Implementation", "App version", "celestia-app release", "Nodes"],
     [...groups.values()]
       .sort((a, b) => b.count - a.count)
-      .map((g) => [el("code", {}, g.version || "(empty)"), implName[g.implementation], g.app ? String(g.app) : "–", String(g.count)]),
-    [2, 3],
+      .map((g) => [
+        el("code", {}, g.version || "(empty)"),
+        implName[g.implementation],
+        g.app ? String(g.app) : "–",
+        g.release,
+        String(g.count),
+      ]),
+    [2, 4],
   );
   table(
     "rust-nodes",
-    ["Node ID", "Moniker", "Version", "App version", "Source"],
+    ["Node ID", "Moniker", "Version", "App version", "celestia-app release", "Source"],
     known
       .filter((n) => n.implementation === "rust")
-      .map((n) => [el("code", {}, n.id.slice(0, 12) + "…"), n.moniker, n.version, n.app_version ? String(n.app_version) : "–", n.source]),
+      .map((n) => [
+        el("code", {}, n.id.slice(0, 12) + "…"),
+        n.moniker,
+        n.version,
+        n.app_version ? String(n.app_version) : "–",
+        n.app_release ?? "–",
+        n.source,
+      ]),
   );
+  const answered = known.filter((n) => n.app_release).length;
+  $("release-coverage").textContent =
+    `In the latest ${net} crawl, ${answered} of ${known.length} observed nodes answered.`;
 }
 
 async function main() {

@@ -6,7 +6,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context as _, anyhow};
 use clap::{Parser, Subcommand};
-use node_census::crawl::{CrawlConfig, crawl};
+use node_census::crawl::{CrawlConfig, CrawlResult, crawl};
 use node_census::report::{Snapshot, record_to_dir};
 use node_census::{networks, rpc};
 use p2p::NetAddress;
@@ -40,6 +40,12 @@ enum Command {
         /// Seconds to wait for a PEX answer after the handshake.
         #[arg(long, default_value_t = 10)]
         pex_timeout: u64,
+        /// Concurrent `/abci_info` requests to observed nodes' own RPC.
+        #[arg(long, default_value_t = 32)]
+        abci_concurrency: usize,
+        /// Seconds to wait for one node's `/abci_info`.
+        #[arg(long, default_value_t = 3)]
+        abci_timeout: u64,
         /// Output file.
         #[arg(long)]
         out: PathBuf,
@@ -71,6 +77,8 @@ async fn main() -> anyhow::Result<()> {
             concurrency,
             max_nodes,
             pex_timeout,
+            abci_concurrency,
+            abci_timeout,
             out,
         } => {
             let net = networks::by_name(&network)
@@ -109,7 +117,7 @@ async fn main() -> anyhow::Result<()> {
             );
             let crawled_at = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
             let started = Instant::now();
-            let result = crawl(CrawlConfig {
+            let mut result = crawl(CrawlConfig {
                 chain_id: net.chain_id.into(),
                 seeds: addrs,
                 rpc_peers,
@@ -121,6 +129,7 @@ async fn main() -> anyhow::Result<()> {
                 max_nodes,
             })
             .await;
+            add_app_releases(&mut result, abci_concurrency, abci_timeout).await;
             let snapshot = Snapshot::new(
                 net.name,
                 net.chain_id,
@@ -150,6 +159,17 @@ async fn main() -> anyhow::Result<()> {
         } => record(&data_dir, &snapshots)?,
     }
     Ok(())
+}
+
+/// The handshake has no celestia-app release: ask each node's own RPC
+/// `/abci_info` where it is open. A node that does not answer stays unknown.
+async fn add_app_releases(result: &mut CrawlResult, concurrency: usize, timeout_secs: u64) {
+    let timeout = Duration::from_secs(timeout_secs);
+    let answered = rpc::probe_app_releases(&mut result.reached, concurrency, move |url| {
+        rpc::fetch_abci_info(&url, timeout)
+    })
+    .await;
+    tracing::info!(answered, observed = result.reached.len(), "abci_info");
 }
 
 fn record(data_dir: &std::path::Path, snapshots: &[PathBuf]) -> anyhow::Result<()> {

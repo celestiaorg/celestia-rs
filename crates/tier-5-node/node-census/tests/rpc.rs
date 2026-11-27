@@ -1,8 +1,12 @@
-//! Peers learned from a public RPC node's `/net_info`.
+//! Peers learned from a public RPC node's `/net_info`, and the celestia-app
+//! release from a node's `/abci_info`.
+#![allow(clippy::unwrap_used)]
 
 use node_census::classify::Implementation;
-use node_census::crawl::Source;
-use node_census::rpc::parse_net_info;
+use std::net::IpAddr;
+
+use node_census::crawl::{Observed, Source};
+use node_census::rpc::{parse_abci_info, parse_net_info, probe_app_releases, rpc_url};
 use serde_json::json;
 
 const A: &str = "d513f98bb4f8859f94bde2efc6bf18d29f732c48";
@@ -67,4 +71,137 @@ fn malformed_bodies_yield_nothing() {
         )
         .is_empty()
     );
+}
+
+// Recorded `/abci_info` bodies: a Mainnet node (2026-11-27), and the same
+// shape with a `v`-prefixed release.
+const ABCI_INFO_MAINNET: &str = r#"{"jsonrpc":"2.0","id":-1,"result":{"response":{"data":"celestia-app","version":"10.6.0","app_version":"10","last_block_height":"16293137","last_block_app_hash":"fMHwOkOtRgP07RH71MiA/6Ar4Vmigo5VIgOq21I5GiY=","timeout_info":{"timeout_propose":"3000000000","timeout_propose_delta":"500000000","timeout_prevote":"2000000000","timeout_prevote_delta":"500000000","timeout_precommit":"3000000000","timeout_precommit_delta":"500000000","timeout_commit":"500000000","delayed_precommit_timeout":"2100000000"}}}}"#;
+const ABCI_INFO_V_PREFIX: &str = r#"{"jsonrpc":"2.0","id":-1,"result":{"response":{"data":"celestia-app","version":"v11.0.0","app_version":"10","last_block_height":"1","last_block_app_hash":""}}}"#;
+
+#[test]
+fn abci_info_yields_the_celestia_app_release() {
+    let v: serde_json::Value = serde_json::from_str(ABCI_INFO_MAINNET).unwrap();
+    assert_eq!(parse_abci_info(&v).as_deref(), Some("10.6.0"));
+    // A leading `v` is dropped so releases group together.
+    let v: serde_json::Value = serde_json::from_str(ABCI_INFO_V_PREFIX).unwrap();
+    assert_eq!(parse_abci_info(&v).as_deref(), Some("11.0.0"));
+}
+
+#[test]
+fn abci_info_without_a_usable_version_yields_nothing() {
+    for body in [
+        json!({}),
+        json!({"result": {"response": {}}}),
+        json!({"result": {"response": {"version": ""}}}),
+        json!({"result": {"response": {"version": 6}}}),
+        json!({"result": {"response": {"version": "<script>alert(1)</script>"}}}),
+        json!({"result": {"response": {"version": "1".repeat(65)}}}),
+        json!({"error": {"code": -32603, "message": "internal"}}),
+    ] {
+        assert_eq!(parse_abci_info(&body), None, "{body}");
+    }
+}
+
+#[test]
+fn rpc_url_uses_the_node_ip_for_unroutable_hosts() {
+    let ip: IpAddr = "65.21.1.2".parse().unwrap();
+    assert_eq!(
+        rpc_url("tcp://0.0.0.0:26657", ip).as_deref(),
+        Some("http://65.21.1.2:26657")
+    );
+    assert_eq!(
+        rpc_url("tcp://127.0.0.1:36657", ip).as_deref(),
+        Some("http://65.21.1.2:36657")
+    );
+    assert_eq!(
+        rpc_url("tcp://10.0.0.5:26657", ip).as_deref(),
+        Some("http://65.21.1.2:26657")
+    );
+    // A routable advertised IP is kept.
+    assert_eq!(
+        rpc_url("tcp://188.40.102.137:26657", ip).as_deref(),
+        Some("http://188.40.102.137:26657")
+    );
+    // Missing address or port: the default port on the node's IP.
+    assert_eq!(rpc_url("", ip).as_deref(), Some("http://65.21.1.2:26657"));
+    assert_eq!(
+        rpc_url("tcp://0.0.0.0", ip).as_deref(),
+        Some("http://65.21.1.2:26657")
+    );
+    let v6: IpAddr = "2a01:4f9::1".parse().unwrap();
+    assert_eq!(
+        rpc_url("tcp://0.0.0.0:26657", v6).as_deref(),
+        Some("http://[2a01:4f9::1]:26657")
+    );
+}
+
+#[test]
+fn rpc_url_rejects_unix_sockets_and_unroutable_node_ips() {
+    let ip: IpAddr = "65.21.1.2".parse().unwrap();
+    assert_eq!(rpc_url("unix:///var/run/rpc.sock", ip), None);
+    assert_eq!(
+        rpc_url("tcp://0.0.0.0:26657", "127.0.0.1".parse().unwrap()),
+        None
+    );
+}
+
+#[test]
+fn net_info_peers_carry_an_rpc_url() {
+    let mut p = peer(A, "0.38.17", "tcp://0.0.0.0:26656", "65.21.1.2", "celestia");
+    p["node_info"]["other"] = json!({"tx_index": "on", "rpc_address": "tcp://0.0.0.0:26657"});
+    let peers = parse_net_info(&json!({"result": {"peers": [p]}}), "celestia");
+    assert_eq!(
+        peers[0].observed.rpc_url.as_deref(),
+        Some("http://65.21.1.2:26657")
+    );
+    assert_eq!(peers[0].observed.app_release, None);
+}
+
+fn observed(id: &str, rpc_url: Option<&str>) -> Observed {
+    Observed {
+        id: id.into(),
+        version: "0.38.17".into(),
+        implementation: Implementation::Go,
+        moniker: id.into(),
+        app_version: 6,
+        source: Source::P2p,
+        app_release: None,
+        rpc_url: rpc_url.map(Into::into),
+    }
+}
+
+#[tokio::test]
+async fn probing_records_releases_and_ignores_failures() {
+    let mut nodes = vec![
+        observed(A, Some("http://1.1.1.1:26657")),
+        observed(B, Some("http://2.2.2.2:26657")),
+        observed(C, None),
+    ];
+    let answered = probe_app_releases(&mut nodes, 2, |url: String| {
+        if url == "http://1.1.1.1:26657" {
+            Ok(serde_json::from_str(ABCI_INFO_MAINNET)?)
+        } else {
+            anyhow::bail!("connection refused")
+        }
+    })
+    .await;
+    assert_eq!(answered, 1);
+    assert_eq!(nodes[0].app_release.as_deref(), Some("10.6.0"));
+    assert_eq!(nodes[1].app_release, None);
+    assert_eq!(nodes[2].app_release, None);
+}
+
+#[test]
+fn rpc_url_is_not_published_and_old_snapshots_still_parse() {
+    let mut n = observed(A, Some("http://1.1.1.1:26657"));
+    let v = serde_json::to_value(&n).unwrap();
+    assert!(v.get("rpc_url").is_none());
+    assert!(v.get("app_release").is_none());
+    n.app_release = Some("6.4.0".into());
+    let v = serde_json::to_value(&n).unwrap();
+    assert_eq!(v["app_release"], "6.4.0");
+    let old = json!({"id": A, "version": "0.38.17", "implementation": "go",
+        "moniker": "m", "app_version": 6, "source": "p2p"});
+    let parsed: Observed = serde_json::from_value(old).unwrap();
+    assert_eq!(parsed.app_release, None);
 }

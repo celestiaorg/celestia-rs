@@ -348,6 +348,15 @@ class CensusPage(unittest.TestCase):
         self.assertIn("App version", self.js)
         self.assertIn("celestia-app", self.text)
 
+    def test_celestia_app_release_column_and_coverage(self):
+        # Both tables show the release from /abci_info, "–" when unknown.
+        self.assertEqual(self.js.count('"celestia-app release"'), 4)
+        self.assertIn("app_release", self.js)
+        self.assertIn('n.app_release ?? "–"', self.js)
+        # The method section states how many nodes answered.
+        self.assertIn('id="release-coverage"', (DOCS / "census" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("/abci_info", self.text)
+
 
 if __name__ == "__main__":
     unittest.main()

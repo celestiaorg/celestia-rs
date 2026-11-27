@@ -47,9 +47,10 @@
           and its app version. celestia-rs nodes report
           <code>0.38.17-celestia-rs.&lt;version&gt;</code>; Go nodes report the
           celestia-core version that their celestia-app release embeds, such as
-          <code>0.38.17</code>. The handshake does not carry the celestia-app
-          release itself, so the app column shows the app (protocol) version
-          the node runs, such as <code>10</code>.
+          <code>0.38.17</code>. The app version is the protocol version the
+          node runs, such as <code>10</code>. The handshake does not carry the
+          celestia-app release (such as <code>10.6.0</code>), so the crawler
+          reads it from the node's RPC where that RPC is open.
         </p>
         <div class="filters" role="tablist" aria-label="Network">
           <button role="tab" data-network="mainnet" aria-selected="true">Mainnet</button>
@@ -82,6 +83,15 @@
             NAT that the crawler cannot dial. “Observed” counts both sources;
             “direct” counts only nodes that completed a handshake with the
             crawler.
+          </li>
+          <li>
+            The handshake carries the celestia-core version and the app
+            (protocol) version, not the celestia-app release. For the release,
+            the crawler asks each observed node's own RPC for
+            <code>/abci_info</code> at the RPC address the node advertises
+            (default port 26657). Only nodes with an RPC open to the internet
+            answer; the others show “–”.
+            <span id="release-coverage"></span>
           </li>
           <li>
             Nodes that neither accept inbound connections nor peer with a
