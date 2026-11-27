@@ -219,6 +219,7 @@ fn open_store(cfg: &Config, db: Arc<dyn KvBackend>) -> anyhow::Result<Store> {
         StoreOptions {
             pruning: cfg.pruning,
             node_cache_size: cfg.cache_nodes,
+            ..StoreOptions::default()
         },
     );
     for name in STORES {

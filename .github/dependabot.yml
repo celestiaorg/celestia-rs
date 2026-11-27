@@ -132,6 +132,7 @@ updates:
       - /conformance/devnet-oracle
       - /conformance/evidencevectors
       - /conformance/fibre-client
+      - /conformance/fibre-interop
       - /conformance/fibre-server
       - /conformance/fixturegen
       - /conformance/fuzzoracle/v9

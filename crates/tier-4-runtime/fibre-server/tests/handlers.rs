@@ -337,6 +337,40 @@ async fn start_errors() {
 
 /// The signer fails: Internal, and the store keeps the shard (store
 /// before sign).
+/// A server built with the metrics of the one it replaces (the node's
+/// supervised restarts) keeps the counters and reports its own occupancy.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn restarted_server_keeps_the_counters() {
+    let t = start().await;
+    t.server.upload_shard(t.fixture.request()).await.unwrap();
+    let metrics = t.server.metrics();
+    assert_eq!(metrics.upload_count(Code::Ok), 1);
+    t.server.stop(Duration::from_secs(1)).await.unwrap();
+
+    let next = Server::with_metrics(
+        test_config(t.dir.path()),
+        t.chain.clone(),
+        t.signer.clone(),
+        Arc::clone(&metrics),
+    )
+    .unwrap();
+    next.start().await.unwrap();
+    assert!(Arc::ptr_eq(&next.metrics(), &metrics));
+    assert_eq!(next.metrics().upload_count(Code::Ok), 1);
+    let before = next.occupancy().usage();
+    next.occupancy().set_budget(0);
+    assert!(next.occupancy().reserve(777));
+    assert!(
+        metrics.render("").contains(&format!(
+            "fibre_server_upload_shard_occupancy_bytes{{}} {}",
+            before + 777
+        )),
+        "{}",
+        metrics.render("")
+    );
+    next.stop(Duration::from_secs(1)).await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sign_failure_is_internal_after_store() {
     struct Broken(Arc<FakeSigner>);
