@@ -2326,7 +2326,10 @@ fn v1_gatekeeper_nesting_cap_aborts_the_block() {
     let (out, record) = run_v1_tx(&raw_tx(vec![nested_exec(70)]));
     assert!(out.result.is_err());
     let what = record.expect("not recorded");
-    assert!(what.contains("max depth exceeded"), "{what}");
+    assert!(
+        what.contains("MsgExec nesting deeper than 64 is not supported; Go v3.13.0 has no limit"),
+        "{what}"
+    );
     // Within the cap the gatekeeper accepts and the ante handler runs.
     let (out, record) = run_v1_tx(&raw_tx(vec![nested_exec(60)]));
     assert!(out.result.is_err());

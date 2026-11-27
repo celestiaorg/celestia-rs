@@ -1049,12 +1049,7 @@ cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
 `cargo test -p app --test ibc_tm_oracle` pins Go's code, codespace and log for
 each tx, and the pruning and freezing store changes. The block replay
 (`ibc_tm_blocks_match_the_oracle`) matches every KV change, app hash and
-tx result through block 38, except two logs of the shared light client
-(code, codespace and gas match), which it allows:
-
-- the `double vote from Validator{…} (0 and 1)` text at block 23;
-- block 30: celestia-core v1 does not check the address of a signature found
-  by index, so it reports `wrong signature (#1): <signature bytes>`.
+tx result, logs included, through block 38.
 
 #### History synthetic chain for the historical info migration
 
