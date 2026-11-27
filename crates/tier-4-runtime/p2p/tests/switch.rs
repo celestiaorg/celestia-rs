@@ -442,3 +442,101 @@ async fn a_stuck_reactor_delays_peer_removal_by_at_most_the_drain_limit() {
     b.stop();
     c.stop();
 }
+
+const BULK: u8 = 0x73;
+
+/// Counts the bytes of every message on [`BULK`].
+#[derive(Default)]
+struct Bulk {
+    bytes: std::sync::atomic::AtomicUsize,
+}
+
+impl Reactor for Bulk {
+    fn name(&self) -> String {
+        "BULK".into()
+    }
+    fn channels(&self) -> Vec<ChannelDescriptor> {
+        vec![ChannelDescriptor {
+            send_queue_capacity: 1000,
+            recv_buffer_capacity: 50 * 4096,
+            recv_message_capacity: 4 << 20,
+            ..ChannelDescriptor::new(BULK, 30)
+        }]
+    }
+    fn receive(&self, env: Envelope) -> Result<(), String> {
+        self.bytes
+            .fetch_add(env.message.len(), std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+/// A switch with the node's connection settings: rates of 200 MiB/s,
+/// 1024-byte packet payloads, a 10 ms flush throttle.
+fn bulk_node(seed: u8) -> (Switch, Arc<Bulk>) {
+    let key = NodeKey::from_seed(&[seed; 32]);
+    let info = NodeInfo {
+        protocol_version: ProtocolVersion {
+            p2p: 8,
+            block: 11,
+            app: 0,
+        },
+        network: "test-chain".into(),
+        version: "0.38.17".into(),
+        moniker: format!("node{seed}"),
+        ..NodeInfo::default()
+    };
+    let cfg = SwitchConfig {
+        listen_address: Some("tcp://127.0.0.1:0".into()),
+        allow_duplicate_ip: true,
+        mconn: MConnConfig {
+            send_rate: 200 * 1_048_576,
+            recv_rate: 200 * 1_048_576,
+            flush_throttle: Duration::from_millis(10),
+            ..MConnConfig::default()
+        },
+        ..SwitchConfig::default()
+    };
+    let sw = Switch::new(cfg, key, info).unwrap();
+    let bulk = Arc::new(Bulk::default());
+    sw.add_reactor(bulk.clone()).unwrap();
+    (sw, bulk)
+}
+
+/// With the node's configured rates, a connection carries block-sized
+/// messages far faster than the old 512,000 B/s default, in both
+/// directions (the dialer's outbound and the listener's inbound side).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_connection_carries_block_sized_messages_at_the_configured_rate() {
+    let (a, bulk_a) = bulk_node(31);
+    a.start().await.unwrap();
+    let (b, bulk_b) = bulk_node(32);
+    b.start().await.unwrap();
+    b.dial_peer_with_address(&a.net_address().unwrap())
+        .await
+        .unwrap();
+    wait_for(|| a.peers().len() == 1).await;
+    let to_a = b.get_peer(&a.node_id()).unwrap();
+    let to_b = a.get_peer(&b.node_id()).unwrap();
+
+    const MSG: usize = 80 * 1024;
+    const COUNT: usize = 100;
+    for (peer, bulk, side) in [(&to_a, &bulk_a, "outbound"), (&to_b, &bulk_b, "inbound")] {
+        let start = std::time::Instant::now();
+        for _ in 0..COUNT {
+            assert!(peer.send(BULK, vec![7u8; MSG]).await);
+        }
+        let want = MSG * COUNT;
+        while bulk.bytes.load(std::sync::atomic::Ordering::SeqCst) < want {
+            assert!(start.elapsed() < Duration::from_secs(60), "{side}: stalled");
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        #[allow(clippy::cast_precision_loss)]
+        let rate = want as f64 / start.elapsed().as_secs_f64();
+        println!("{side}: {:.0} KB/s", rate / 1024.0);
+        // Debug builds reach about 3 MB/s here and release builds over
+        // 100 MB/s; a connection held to 512,000 B/s stays below the bound.
+        assert!(rate > 2.0 * 512_000.0, "{side}: {rate:.0} B/s");
+    }
+    a.stop();
+    b.stop();
+}
