@@ -37,15 +37,23 @@ launch() { # launch SEG SRC START STOP NAME
     z=us-central1-a
     VMX_ZONE=$z $V create "$name" --purpose rs-segment-replay --machine-type c3-standard-8 --boot-gb 50 --data-gb 200 --hours 48 --gcs || { log "$name: create failed"; return 1; }
   fi
+  # Provision; on any failure delete the VM so it cannot hold a running slot
+  # with no replay. The launched marker is written only once both jobs run
+  # (the attempt already counted toward MAX_LAUNCHES or MAX_RESTARTS).
+  export VMX_ZONE=$z
+  if ! { $V exec "$name" -- 'git clone -q --depth 1 https://github.com/celestiaorg/celestia-rs /opt/celestia-rs && git -C /opt/celestia-rs log -1 --format="%H %s"' &&
+    $V build "$name" | tail -n 3 && [ "${PIPESTATUS[0]}" = 0 ] &&
+    $V push "$name" "$here/seg-vm.sh" /data/seg-vm.sh >/dev/null && $V push "$name" "$here/seg-watch.sh" /data/seg-watch.sh >/dev/null &&
+    $V job "$name" start seg --interval 300 --status-cmd 'L=$(ls -t /data/home-*/logs/*.log 2>/dev/null | head -1); [ -n "$L" ] && grep -E "restored|followed height|ERROR|diverg" $L | tail -n 2 | cut -c1-250' -- bash /data/seg-vm.sh "$seg" "$src" "$start" "$stop" &&
+    $V job "$name" start segwatch --interval 600 --status-cmd "tail -n 2 /data/heights-$seg.tsv" -- bash /data/seg-watch.sh "$seg" "$stop"; }; then
+    log "$name: provisioning failed; deleting the VM"
+    $V delete "$name" >/dev/null 2>&1 || true
+    unset VMX_ZONE
+    return 1
+  fi
+  unset VMX_ZONE
   gs_put segments/$seg/zone "$z"
   gs_put segments/$seg/launched "$(date -u +%FT%TZ) $name $src $start->$stop"
-  export VMX_ZONE=$z
-  $V exec "$name" -- 'git clone -q --depth 1 https://github.com/celestiaorg/celestia-rs /opt/celestia-rs && git -C /opt/celestia-rs log -1 --format="%H %s"' || return 1
-  $V build "$name" | tail -n 3 || return 1
-  $V push "$name" "$here/seg-vm.sh" /data/seg-vm.sh >/dev/null && $V push "$name" "$here/seg-watch.sh" /data/seg-watch.sh >/dev/null || return 1
-  $V job "$name" start seg --interval 300 --status-cmd 'L=$(ls -t /data/home-*/logs/*.log 2>/dev/null | head -1); [ -n "$L" ] && grep -E "restored|followed height|ERROR|diverg" $L | tail -n 2 | cut -c1-250' -- bash /data/seg-vm.sh "$seg" "$src" "$start" "$stop" || return 1
-  $V job "$name" start segwatch --interval 600 --status-cmd "tail -n 2 /data/heights-$seg.tsv" -- bash /data/seg-watch.sh "$seg" "$stop" || return 1
-  unset VMX_ZONE
   log "launched $name: segment $seg from $src at $start to $stop in $z"
 }
 
@@ -83,6 +91,8 @@ tick() {
   done
 }
 
+# Tests source this file for its functions only.
+[ "${CONTROLLER_SOURCE_ONLY:-}" = 1 ] && return 0
 command -v jq >/dev/null || { apt-get -o DPkg::Lock::Timeout=600 update -q >/dev/null; apt-get -o DPkg::Lock::Timeout=600 install -yq jq >/dev/null; }
 while true; do
   tick

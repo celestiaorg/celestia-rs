@@ -228,6 +228,53 @@ check  "gcs whole output"    grep -q 'gs://test-bucket/vmexec/fake/runs/.*\.out'
 check  "gcs output object"   bash -c "tail -n1 '$F'/gcs/vmexec/fake/runs/*.out | grep -qx 300000"
 check  "gcs invalid object"  bash -c "! '$here/agent.sh' gcs get '../x' /dev/null"
 
+# --- segment controller: a launch whose provisioning fails --------------------------------------
+# A fake vmexec keeps VMs as files and a fake gcloud keeps bucket objects as
+# files. A failed build must leave no VM and no launched marker and must
+# count toward the launch cap; the next attempt may succeed.
+C=$t/ctl
+mkdir -p "$C/bucket/segments" "$C/vms" "$C/gone"
+cat >"$C/vmexec" <<EOF
+#!/bin/bash
+case \$1 in
+  create) touch "$C/vms/\$2" ;;
+  delete) mv "$C/vms/\$2" "$C/gone/\$2" 2>/dev/null ;;
+  build) [ -e "$C/fail-build" ] && exit 1; echo built ;;
+esac
+exit 0
+EOF
+chmod +x "$C/vmexec"
+cat >"$C/ctl.sh" <<'EOF'
+# ctl.sh CODE: run CODE with controller.sh sourced against the fakes in $C.
+gcloud() {
+  local o
+  case "$1 $2" in
+    "storage cat") cat "$C/bucket/${3#gs://*/}" ;;
+    "storage cp") o=$C/bucket/${4#gs://*/}; mkdir -p "$(dirname "$o")"; cat >"$o" ;;
+    "storage ls") ls "$C/bucket/${3#gs://*/}" ;;
+    "compute instances") for v in "$C"/vms/*; do [ -e "$v" ] && echo "$(basename "$v") us-central1-a RUNNING"; done ;;
+  esac
+}
+# shellcheck disable=SC1090
+. "$CONTROLLER"
+V=$C/vmexec ZONES=us-central1-a MAX_LAUNCHES=3
+eval "$1"
+EOF
+export C
+ctl() { CONTROLLER=$here/segments/controller.sh CONTROLLER_SOURCE_ONLY=1 bash "$C/ctl.sh" "$1"; }
+touch "$C/fail-build"
+refute "ctl failed launch returns failure"   ctl 'launch 120000 go-snapshots/120000 120000 250000 rs-seg-120000'
+refute "ctl failed launch leaves no VM"      test -e "$C/vms/rs-seg-120000"
+refute "ctl failed launch writes no marker"  test -e "$C/bucket/segments/120000/launched"
+eq     "ctl failed launch counts to the cap" 1 "$(cat "$C/bucket/segments/launch-count" 2>/dev/null)"
+mv "$C/fail-build" "$C/gone/fail-build"
+check  "ctl retried launch succeeds"         ctl 'launch 120000 go-snapshots/120000 120000 250000 rs-seg-120000'
+check  "ctl retried launch keeps its VM"     test -e "$C/vms/rs-seg-120000"
+check  "ctl retried launch writes launched"  grep -q 'rs-seg-120000 go-snapshots/120000 120000->250000' "$C/bucket/segments/120000/launched"
+printf '3\n' >"$C/bucket/segments/launch-count"
+refute "ctl launch cap stops launches"       ctl 'launch 250000 go-snapshots/250000 250000 500000 rs-seg-250000'
+refute "ctl launch cap creates no VM"        test -e "$C/vms/rs-seg-250000"
+
 echo
 if ((fails)); then echo "$fails test(s) failed"; exit 1; fi
 echo "all tests passed"
