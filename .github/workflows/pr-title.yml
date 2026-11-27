@@ -1,0 +1,29 @@
+name: pr-title
+
+# PRs are squash-merged, so a PR's title becomes its commit's subject, and
+# the daily release reads those subjects to pick its version and group its
+# notes (.github/scripts/release_version.py). Titles must be conventional
+# commits: `<type>[(scope)][!]: <description>`; mark a breaking change with
+# `!` (docs/releasing.md).
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: The title is a conventional commit
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: python3 .github/scripts/release_version.py check-title "$TITLE"
+      - name: Tests
+        run: python3 .github/scripts/test_release_version.py

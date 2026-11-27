@@ -79,7 +79,7 @@ var failUsers = append([]string{
 	"f-nopk",
 	"f-sigs-0", "f-sigs-1", "f-sigs-2", "f-sigs-3", "f-sigs-4", "f-sigs-5", "f-sigs-6", "f-sigs-7",
 	"f-aux-payer", "f-aux", "f-pk-mismatch", "f-ms-0", "f-ms-1", "f-ms-2",
-	"f-bigdec", "f-ev-nil", "f-ev-empty",
+	"f-bigdec", "f-ev-nil", "f-ev-empty", "f-exec-empty",
 	"f-zero-undel", "f-zero-redel", "f-zero-cancel",
 	"f-exec-nested", "f-exec-multi", "f-exec-vesting", "f-exec-ibc",
 	"f-prop-gov-send", "f-prop-signer", "f-prop-unroutable",
@@ -339,6 +339,17 @@ func (b *aminoBuilder) failureRound(p, r int) error {
 		add(func() error {
 			msg := protoField(nil, 1, []byte(b.addr("f-ev-empty").String()))
 			return b.rawMsgTx("f-ev-empty", "/cosmos.evidence.v1beta1.MsgSubmitEvidence", protoField(msg, 2, nil))
+		})
+		// MsgExec of a MsgDelegate with empty delegator and validator
+		// addresses (mainnet block 1,111,065): v0.46 checks no inner
+		// ValidateBasic, GetSigners gives an empty granter, and the grant
+		// key holds no length byte for it (address.MustLengthPrefix), so
+		// the failed grant read costs three gas less than with one.
+		add(func() error {
+			coin := protoField(protoField(nil, 1, []byte("utia")), 2, []byte("0"))
+			inner := protoField(protoField(nil, 1, []byte("/cosmos.staking.v1beta1.MsgDelegate")), 2, protoField(nil, 3, coin))
+			msg := protoField(protoField(nil, 1, []byte(b.addr("f-exec-empty").String())), 2, inner)
+			return b.rawMsgTx("f-exec-empty", "/cosmos.authz.v1beta1.MsgExec", msg)
 		})
 		tx("f-redel", stakingtypes.NewMsgBeginRedelegate(b.addr("f-redel"), val0, val1, coin(5*tia)))
 		with(ph("f-fee-limit"), func(f clienttx.Factory) clienttx.Factory { return f.WithFeeGranter(b.addr("f-fee-granter")) },

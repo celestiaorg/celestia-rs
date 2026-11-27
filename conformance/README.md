@@ -927,6 +927,12 @@ fail at the same point of the ante handler or message handler as Go:
 - `MsgSubmitEvidence` without evidence (block 3): `ValidateBasic`
   dereferences the nil `Any` (a recovered panic); with an `Any` whose type
   URL is empty, the transaction fails to decode (sdk 2);
+- `MsgExec` of a `MsgDelegate` with empty delegator and validator
+  addresses (block 3; the shape of a mainnet transaction at height
+  1,111,065): `MsgExec.ValidateBasic` does not check the inner message,
+  the empty delegator is the granter, and the grant key holds no length
+  byte for an empty address (`address.MustLengthPrefix`), so the failed
+  grant read (authz 2) costs three gas less than with one;
 - BeginBlock evidence at app version 3: val2 double-signs (block 14:
   slashed, jailed and tombstoned), then again (block 15: ignored, already
   tombstoned) with evidence for an address that is not a validator

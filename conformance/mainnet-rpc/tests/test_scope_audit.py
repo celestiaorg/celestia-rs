@@ -3,6 +3,7 @@ from copy import deepcopy
 import importlib.util
 import json
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -83,11 +84,9 @@ class ScopedEvidenceAudit(unittest.TestCase):
         self.assertIn("acceptance is covered", behavior["remaining_gaps"][0])
 
         mutations = (
-            ("normalizations", []),
-            ("known_mismatches", []),
-            ("scope", "universal exact parity"),
-            ("provenance_limits", ["none"]),
-            ("exclusions", ["none"]),
+            ("scope", ""),
+            ("provenance_limits", []),
+            ("exclusions", []),
             ("runtime_regressions", row["runtime_regressions"][:-1]),
         )
         for field, value in mutations:
@@ -119,23 +118,6 @@ class ScopedEvidenceAudit(unittest.TestCase):
         self.assertIn("Acceptance is covered", behavior["remaining_gaps"][0])
         self.assertFalse(result["provider_ready"])
 
-        for field, value in (
-            ("normalizations", []),
-            ("known_mismatches", []),
-            ("scope", "universal exact parity"),
-            ("provenance_limits", ["none"]),
-            ("exclusions", ["none"]),
-        ):
-            with self.subTest(field=field):
-                changed = json.loads(audit.AUDIT.read_text())
-                package = next(
-                    package for package in changed["packages"]
-                    if package["id"] == "grpc-lifecycle"
-                )
-                package[field] = value
-                with self.assertRaisesRegex(ValueError, "canonical reviewed audit"):
-                    audit.validate(changed)
-
     def test_populated_governance_scope_and_remaining_gaps_stay_bound(self):
         result = audit.validate(self.value)
         row = next(row for row in result["packages"]
@@ -164,21 +146,6 @@ class ScopedEvidenceAudit(unittest.TestCase):
                          "history", "proof"):
             self.assertIn(required, gaps)
         self.assertFalse(result["provider_ready"])
-
-        for field, value in (
-            ("normalizations", ["unreviewed"]),
-            ("known_mismatches", ["unreviewed"]),
-            ("scope", "universal exact parity"),
-            ("provenance_limits", ["none"]),
-            ("exclusions", ["none"]),
-        ):
-            with self.subTest(field=field):
-                changed = json.loads(audit.AUDIT.read_text())
-                package = next(package for package in changed["packages"]
-                               if package["id"] == "populated-governance")
-                package[field] = value
-                with self.assertRaisesRegex(ValueError, "canonical reviewed audit"):
-                    audit.validate(changed)
 
     def test_provider_readiness_and_missing_issue_cannot_be_hidden(self):
         self.value["provider_ready"] = True
@@ -229,12 +196,6 @@ class ScopedEvidenceAudit(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "runtime selector set"):
             audit.validate(self.value)
 
-        self.value = json.loads(audit.AUDIT.read_text())
-        row = next(row for row in self.value["behaviors"] if row["issue"] == 190)
-        row["remaining_gaps"] = ["complete exact parity"]
-        with self.assertRaisesRegex(ValueError, "canonical reviewed audit"):
-            audit.validate(self.value)
-
     def test_transport_scope_cannot_be_broadened(self):
         row = next(row for row in self.value["packages"] if row["id"] == "simulation")
         row["transports"].append("rest")
@@ -247,26 +208,71 @@ class ScopedEvidenceAudit(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "all packages"):
             audit.validate(self.value)
 
-    def test_reviewed_baseline_cannot_be_rebound(self):
+    def test_audit_text_is_not_pinned_by_a_hash(self):
+        # Scope, gaps and the baseline commit are prose and data that ordinary
+        # pull requests edit. Only their structure is checked.
         self.value["audited_main"] = "0" * 40
-        with self.assertRaisesRegex(ValueError, "canonical reviewed audit"):
-            audit.validate(self.value)
+        package = next(row for row in self.value["packages"] if row["id"] == "reflection")
+        package["scope"] += " (reworded)"
+        row = next(row for row in self.value["behaviors"] if row["issue"] == 189)
+        row["remaining_gaps"].append("another gap")
+        audit.validate(self.value)
+        self.assertFalse(hasattr(audit, "REVIEWED_AUDIT_SHA256"))
 
-    def test_deviations_scope_and_provenance_limits_cannot_be_erased(self):
-        for field, value in (("normalizations", []), ("known_mismatches", []),
-                             ("scope", "universal exact parity"),
-                             ("provenance_limits", ["none"]), ("exclusions", ["none"])):
+    def test_scope_limits_and_gaps_cannot_be_emptied(self):
+        for field, value in (("scope", ""), ("provenance_limits", []), ("exclusions", [])):
             with self.subTest(field=field):
                 self.value = json.loads(audit.AUDIT.read_text())
                 package = next(row for row in self.value["packages"] if row["id"] == "reflection")
                 package[field] = value
-                with self.assertRaisesRegex(ValueError, "canonical reviewed audit"):
+                with self.assertRaisesRegex(ValueError, "scope, provenance limits and exclusions"):
                     audit.validate(self.value)
-
-    def test_persistence_conditions_cannot_be_erased(self):
+        self.value = json.loads(audit.AUDIT.read_text())
         row = next(row for row in self.value["behaviors"] if row["issue"] == 189)
-        row["remaining_gaps"] = ["complete"]
-        with self.assertRaisesRegex(ValueError, "canonical reviewed audit"):
+        row["remaining_gaps"] = []
+        with self.assertRaisesRegex(ValueError, "remaining gaps"):
+            audit.validate(self.value)
+
+    def test_living_files_are_bound_by_path_and_frozen_evidence_by_hash(self):
+        # Documentation and Rust sources change in ordinary pull requests, so
+        # they are bound by path. Receipts and verifiers stay hash-bound.
+        for row in self.value["packages"]:
+            self.assertEqual(set(row["documentation"]), {"path"})
+            self.assertEqual(set(row["receipt"]), {"path", "sha256"})
+            if row["verifier"] is not None:
+                self.assertEqual(set(row["verifier"]), {"path", "sha256"})
+            for regression in row["runtime_regressions"]:
+                self.assertEqual(set(regression["source"]), {"path"})
+        audit.validate(self.value)
+        self.value["packages"][0]["documentation"]["sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "bound by path only"):
+            audit.validate(self.value)
+        self.value = json.loads(audit.AUDIT.read_text())
+        self.value["packages"][0]["documentation"]["path"] = "conformance/mainnet-rpc/missing.md"
+        with self.assertRaisesRegex(ValueError, "receipt/documentation class"):
+            audit.validate(self.value)
+
+    def test_living_file_must_exist_in_tree_and_not_be_a_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "real.md").write_text("text")
+            (root / "link.md").symlink_to(root / "real.md")
+            self.assertEqual(audit.living(root, {"path": "real.md"}), root / "real.md")
+            for name in ("missing.md", "link.md", "../outside.md"):
+                with self.subTest(name=name):
+                    with self.assertRaisesRegex(ValueError, "missing, symlinked or out-of-tree"):
+                        audit.living(root, {"path": name})
+
+    def test_runtime_source_with_a_hash_is_rejected(self):
+        row = next(row for row in self.value["packages"] if row["runtime_regressions"])
+        row["runtime_regressions"][0]["source"]["sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "bound by path only"):
+            audit.validate(self.value)
+
+    def test_stale_verifier_hash_is_rejected(self):
+        row = next(row for row in self.value["packages"] if row["verifier"])
+        row["verifier"]["sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "hash mismatch"):
             audit.validate(self.value)
 
     def test_verifier_execution_uses_only_registered_python_sources(self):

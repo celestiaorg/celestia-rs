@@ -325,11 +325,12 @@ log "deploy $TAG (${SHA:0:7}) to: ${stale[*]}"
 
 git -C "$SRC" checkout --quiet --detach "$SHA"
 log "building"
-# An automatic release (v<crate version>-main.<n>) reports its full
-# version only when the build is told it (build.rs); a human release's tag
-# is the crate version.
+# A daily release (v0.1.7 on a 0.1.0 crate) reports its version only when
+# the build is told it (build.rs); a human release's tag is the crate
+# version.
+crate_version=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$SRC/crates/tier-5-node/celestia-rs/Cargo.toml" | head -n 1)
 release_version=""
-[[ $TAG =~ [.-]main\.[0-9]+$ ]] && release_version=${TAG#v}
+[[ ${TAG#v} != "$crate_version" ]] && release_version=${TAG#v}
 (cd "$SRC" && CELESTIA_RS_RELEASE_VERSION=$release_version nice -n 10 cargo build --quiet --release --locked -j "$BUILD_JOBS" -p celestia-rs --features da-light) ||
   die "build of ${SHA:0:7} failed"
 NEW=$SRC/target/release/celestia-rs
