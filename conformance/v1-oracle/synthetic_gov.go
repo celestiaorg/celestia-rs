@@ -102,6 +102,7 @@ var govStatuses = map[uint64]govv1.ProposalStatus{
 	5: govv1.StatusPassed, 6: govv1.StatusRejected, 7: govv1.StatusRejected,
 	8: govv1.StatusPassed, 9: govv1.StatusPassed, 10: govv1.StatusPassed,
 	11: 0, 12: govv1.StatusRejected, 13: govv1.StatusRejected,
+	14: govv1.StatusPassed, 15: govv1.StatusFailed,
 }
 
 // checkGov compares the committed proposals with govStatuses.
@@ -171,6 +172,15 @@ func (s *synth) govTxs(a *app.App, height int64) ([][]byte, error) {
 			return err
 		}
 		m, err := govv1.NewMsgSubmitProposal([]sdk.Msg{govv1.NewMsgExecLegacyContent(any, govAuthority)}, utia(deposit), addr(from).String(), "")
+		if err != nil {
+			return err
+		}
+		return tx(m)
+	}
+	govAccount := authtypes.NewModuleAddress(govtypes.ModuleName)
+	// submitV1Msgs submits plain messages (not legacy content).
+	submitV1Msgs := func(from string, deposit int64, msgs ...sdk.Msg) error {
+		m, err := govv1.NewMsgSubmitProposal(msgs, utia(deposit), addr(from).String(), "")
 		if err != nil {
 			return err
 		}
@@ -331,6 +341,8 @@ func (s *synth) govTxs(a *app.App, height int64) ([][]byte, error) {
 		steps = append(steps,
 			// 11: expires in block 24.
 			func() error { return submitV1("bob", spend("v3 spend that expires", 1_000), 1_000_000) },
+			// Funds val3's deposit for proposal 15.
+			func() error { return tx(banktypes.NewMsgSend(addr("alice"), addr("val3"), utia(2*govMinDeposit))) },
 			func() error { return tx(voteV1("val0", 10, govv1.OptionYes)) },
 			func() error {
 				return tx(weightedV1("val1", 10,
@@ -344,16 +356,31 @@ func (s *synth) govTxs(a *app.App, height int64) ([][]byte, error) {
 			// 12: vetoed; 13: rejected.
 			func() error { return submitV1("carol", spend("v3 spend that is vetoed", 1_000), govMinDeposit) },
 			func() error { return submitV1beta1("alice", spend("v3 spend that is rejected", 1_000), govMinDeposit) },
+			// 14: a v1 proposal of a plain message from the gov account,
+			// run by the router once it passes (a withdraw address: a send
+			// would take from the deposits the escrow still holds); 15: a
+			// send the gov account cannot pay, failing on execution (the
+			// proposal fails).
+			func() error {
+				return submitV1Msgs("bob", govMinDeposit, distrtypes.NewMsgSetWithdrawAddress(govAccount, addr("carol")))
+			},
+			func() error {
+				return submitV1Msgs("val3", govMinDeposit, banktypes.NewMsgSend(govAccount, addr("carol"), utia(100*govMinDeposit)))
+			},
 		)
 	case 23:
 		steps = append(steps,
 			func() error {
-				return tx(voteV1("val0", 12, govv1.OptionNoWithVeto), voteV1("val0", 13, govv1.OptionNo))
+				return tx(voteV1("val0", 12, govv1.OptionNoWithVeto), voteV1("val0", 13, govv1.OptionNo),
+					voteV1("val0", 14, govv1.OptionYes), voteV1("val0", 15, govv1.OptionYes))
 			},
 			func() error {
-				return tx(voteV1beta1("val1", 12, govv1beta1.OptionNoWithVeto), voteV1beta1("val1", 13, govv1beta1.OptionNo))
+				return tx(voteV1beta1("val1", 12, govv1beta1.OptionNoWithVeto), voteV1beta1("val1", 13, govv1beta1.OptionNo),
+					voteV1("val1", 14, govv1.OptionYes), voteV1("val1", 15, govv1.OptionYes))
 			},
-			func() error { return tx(voteV1("val2", 13, govv1.OptionYes)) },
+			func() error {
+				return tx(voteV1("val2", 13, govv1.OptionYes), voteV1("val2", 14, govv1.OptionYes), voteV1("val2", 15, govv1.OptionYes))
+			},
 		)
 	case govHeights:
 		steps = append(steps, func() error { return tx(banktypes.NewMsgSend(addr("bob"), addr("alice"), utia(1_000))) })

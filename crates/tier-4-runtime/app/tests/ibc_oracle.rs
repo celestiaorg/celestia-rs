@@ -54,7 +54,7 @@ fn fix() -> Fixture {
 }
 
 /// The last block that celestia-rs executes as Go does: every block.
-const MATCHED_THROUGH: i64 = 151;
+const MATCHED_THROUGH: i64 = 168;
 
 /// The fixture files are the ones the oracle wrote.
 #[test]
@@ -78,7 +78,7 @@ fn ibc_fixture_files_match_their_record() {
         r["kv"]["kv-diffs.jsonl"],
         sha(&f.gunzip("kv-diffs.jsonl.gz"))
     );
-    assert_eq!(f.last_height(), 151);
+    assert_eq!(f.last_height(), 168);
 }
 
 #[test]

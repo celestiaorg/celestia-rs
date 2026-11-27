@@ -526,10 +526,28 @@ fn check_bond_denom(ctx: &mut Context<'_>, denom: &str) -> Result<()> {
 /// staking `msgServer.Delegate` (v0.46) on a `MsgDelegate` with a zero
 /// amount whose `ValidateBasic` failed: celestia's router runs the
 /// handler anyway when the message is dispatched by `MsgExec`.
-pub(super) fn delegate_zero_amount(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
-    let m: staking::MsgDelegate = decode(&gogo_view(msg)?)?;
-    let (coin, _) = x_staking::msgs::parse_coin(m.amount.as_ref());
-    Ok(Any::pack(&delegate_amount(ctx, &m, coin)?))
+pub(super) fn zero_amount(ctx: &mut Context<'_>, msg: &Any) -> Result<Any> {
+    let msg = &gogo_view(msg)?;
+    let coin =
+        |a: Option<&celestia_proto::cosmos::base::v1beta1::Coin>| x_staking::msgs::parse_coin(a).0;
+    if msg.type_url == staking::MsgUndelegate::type_url() {
+        let m: staking::MsgUndelegate = decode(msg)?;
+        let amount = coin(m.amount.as_ref());
+        return Ok(Any::pack(&undelegate_amount(ctx, &m, amount)?));
+    }
+    if msg.type_url == staking::MsgBeginRedelegate::type_url() {
+        let m: staking::MsgBeginRedelegate = decode(msg)?;
+        let amount = coin(m.amount.as_ref());
+        return Ok(Any::pack(&begin_redelegate_amount(ctx, &m, amount)?));
+    }
+    if msg.type_url == staking::MsgCancelUnbondingDelegation::type_url() {
+        let m: staking::MsgCancelUnbondingDelegation = decode(msg)?;
+        let amount = coin(m.amount.as_ref());
+        return Ok(Any::pack(&cancel_unbonding_amount(ctx, &m, amount)?));
+    }
+    let m: staking::MsgDelegate = decode(msg)?;
+    let amount = coin(m.amount.as_ref());
+    Ok(Any::pack(&delegate_amount(ctx, &m, amount)?))
 }
 
 /// staking `msgServer.Delegate` (v0.46).
@@ -709,9 +727,18 @@ fn undelegate(
     ctx: &mut Context<'_>,
     msg: &staking::MsgUndelegate,
 ) -> Result<staking::MsgUndelegateResponse> {
+    let amount = valid_shares_amount(msg.amount.as_ref())?;
+    undelegate_amount(ctx, msg, amount)
+}
+
+/// The body of staking `msgServer.Undelegate` (v0.46) for `amount`.
+fn undelegate_amount(
+    ctx: &mut Context<'_>,
+    msg: &staking::MsgUndelegate,
+    amount: sdk::coins::Coin,
+) -> Result<staking::MsgUndelegateResponse> {
     let val = server_val(&msg.validator_address)?;
     let del = server_acc(&msg.delegator_address)?;
-    let amount = valid_shares_amount(msg.amount.as_ref())?;
     let shares = x_staking::delegation::validate_unbond_amount(ctx, &del, &val, &amount.amount)?;
     check_bond_denom(ctx, &amount.denom)?;
     let (completion, _) = x_staking::delegation::undelegate(ctx, &del, &val, &shares)?;
@@ -755,11 +782,21 @@ fn cancel_unbonding_delegation(
     ctx: &mut Context<'_>,
     msg: &staking::MsgCancelUnbondingDelegation,
 ) -> Result<staking::MsgCancelUnbondingDelegationResponse> {
+    // `ValidateBasic` already accepted the amount.
+    let amount = validate_cancel_unbonding(msg)?;
+    cancel_unbonding_amount(ctx, msg, amount)
+}
+
+/// The body of staking `msgServer.CancelUnbondingDelegation` (v0.46) for
+/// `amount`.
+fn cancel_unbonding_amount(
+    ctx: &mut Context<'_>,
+    msg: &staking::MsgCancelUnbondingDelegation,
+    amount: sdk::coins::Coin,
+) -> Result<staking::MsgCancelUnbondingDelegationResponse> {
     use x_staking::store;
     let val = server_val(&msg.validator_address)?;
     let del = server_acc(&msg.delegator_address)?;
-    // `ValidateBasic` already accepted the amount.
-    let amount = validate_cancel_unbonding(msg)?;
     check_bond_denom(ctx, &amount.denom)?;
     let v = store::get_validator(ctx, &val)?.ok_or_else(x_staking::errors::no_validator_found)?;
     if v.invalid_ex_rate() {
@@ -872,9 +909,18 @@ fn begin_redelegate(
     ctx: &mut Context<'_>,
     msg: &staking::MsgBeginRedelegate,
 ) -> Result<staking::MsgBeginRedelegateResponse> {
+    let amount = valid_shares_amount(msg.amount.as_ref())?;
+    begin_redelegate_amount(ctx, msg, amount)
+}
+
+/// The body of staking `msgServer.BeginRedelegate` (v0.46) for `amount`.
+fn begin_redelegate_amount(
+    ctx: &mut Context<'_>,
+    msg: &staking::MsgBeginRedelegate,
+    amount: sdk::coins::Coin,
+) -> Result<staking::MsgBeginRedelegateResponse> {
     let src = server_val(&msg.validator_src_address)?;
     let del = server_acc(&msg.delegator_address)?;
-    let amount = valid_shares_amount(msg.amount.as_ref())?;
     let shares = x_staking::delegation::validate_unbond_amount(ctx, &del, &src, &amount.amount)?;
     check_bond_denom(ctx, &amount.denom)?;
     let dst = server_val(&msg.validator_dst_address)?;

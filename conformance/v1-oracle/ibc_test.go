@@ -47,6 +47,7 @@ import (
 	govv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 	paramproposal "github.com/cosmos/cosmos-sdk/x/params/types/proposal"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 	icacontrollertypes "github.com/cosmos/ibc-go/v6/modules/apps/27-interchain-accounts/controller/types"
 	icatypes "github.com/cosmos/ibc-go/v6/modules/apps/27-interchain-accounts/types"
 	transfertypes "github.com/cosmos/ibc-go/v6/modules/apps/transfer/types"
@@ -55,6 +56,7 @@ import (
 	host "github.com/cosmos/ibc-go/v6/modules/core/24-host"
 	ibctesting "github.com/cosmos/ibc-go/v6/testing"
 	"github.com/cosmos/ibc-go/v6/testing/mock"
+	ibcsimapp "github.com/cosmos/ibc-go/v6/testing/simapp"
 	proto "github.com/gogo/protobuf/proto"
 	abci "github.com/tendermint/tendermint/abci/types"
 	tmjson "github.com/tendermint/tendermint/libs/json"
@@ -671,6 +673,7 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 	sendICA(banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 3))))
 
 	runTransferAuthzAndTimeout(t, coord, chainA, chainB, pathAB, timeout)
+	runClientProposals(t, coord, chainA, chainB)
 	// A last empty block commits the last transaction's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc
@@ -1006,6 +1009,7 @@ func runTransferAuthzAndTimeout(t *testing.T, coord *ibctesting.Coordinator, cha
 	must(t, err)
 	_, err = chainA.SendMsgs(generic, limited)
 	must(t, err)
+	var lastSent channeltypes.Packet
 	for _, g := range []struct {
 		sender int
 		amount int64
@@ -1020,6 +1024,7 @@ func runTransferAuthzAndTimeout(t *testing.T, coord *ibctesting.Coordinator, cha
 		must(t, err)
 		must(t, pathAB.EndpointB.UpdateClient())
 		must(t, pathAB.RelayPacket(packet))
+		lastSent = packet
 	}
 
 	// A transfer that times out on B: one minute, never relayed.
@@ -1035,6 +1040,111 @@ func runTransferAuthzAndTimeout(t *testing.T, coord *ibctesting.Coordinator, cha
 	if !found {
 		t.Fatal("no next sequence receive on B")
 	}
-	_, err = chainA.SendMsgs(channeltypes.NewMsgTimeout(lost, next, proof, proofHeight, granter.String()))
+	timeoutMsg := channeltypes.NewMsgTimeout(lost, next, proof, proofHeight, granter.String())
+	_, err = chainA.SendMsgs(timeoutMsg)
 	must(t, err)
+
+	// Redundant relays, as racing relayers send them: ibc-go v6 turns each
+	// into a NOOP result. The packet commitment of the timeout and of the
+	// acknowledged packet is gone, so both return before any proof check;
+	// a second receive verifies the proof, then finds the receipt.
+	_, err = chainA.SendMsgs(timeoutMsg)
+	must(t, err)
+	ackProof, ackHeight := chainB.QueryProof(host.PacketAcknowledgementKey(lastSent.GetDestPort(), lastSent.GetDestChannel(), lastSent.GetSequence()))
+	_, err = chainA.SendMsgs(channeltypes.NewMsgAcknowledgement(lastSent,
+		channeltypes.NewResultAcknowledgement([]byte{1}).Acknowledgement(), ackProof, ackHeight, granter.String()))
+	must(t, err)
+	inboundSend := transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointB.ChannelID,
+		sdk.NewInt64Coin(sdk.DefaultBondDenom, 1_000), chainB.SenderAccount.GetAddress().String(),
+		chainA.SenderAccount.GetAddress().String(), clienttypes.NewHeight(1, 10_000), 0, "")
+	res, err = chainB.SendMsgs(inboundSend)
+	must(t, err)
+	inbound, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAB.EndpointA.UpdateClient())
+	recvProof, recvHeight := chainB.QueryProof(host.PacketCommitmentKey(inbound.GetSourcePort(), inbound.GetSourceChannel(), inbound.GetSequence()))
+	recv := channeltypes.NewMsgRecvPacket(inbound, recvProof, recvHeight, granter.String())
+	for i := 0; i < 2; i++ {
+		_, err = chainA.SendMsgs(recv)
+		must(t, err)
+	}
+
+	// Failures mainnet has: a transfer of more than the balance (sdk 5),
+	// a transfer whose timeout height B has passed (channel 14), and an
+	// open-ack of an open channel (channel 5).
+	sendFailing(t, chainA, transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		sdk.NewInt64Coin(appconsts.BondDenom, 1_000_000_000_000_000), chainA.SenderAccount.GetAddress().String(),
+		chainB.SenderAccount.GetAddress().String(), clienttypes.NewHeight(1, 10_000), 0, ""))
+	sendFailing(t, chainA, transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		sdk.NewInt64Coin(appconsts.BondDenom, 1_000), chainA.SenderAccount.GetAddress().String(),
+		chainB.SenderAccount.GetAddress().String(), clienttypes.NewHeight(0, 1), 0, ""))
+	sendFailing(t, chainA, channeltypes.NewMsgChannelOpenAck(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		pathAB.EndpointB.ChannelID, transfertypes.Version, []byte{1}, clienttypes.NewHeight(0, 1),
+		chainA.SenderAccount.GetAddress().String()))
+	// A user may not close a transfer channel: the callback refuses
+	// before the channel keeper runs.
+	sendFailing(t, chainA, channeltypes.NewMsgChannelCloseInit(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		chainA.SenderAccount.GetAddress().String()))
+}
+
+// sendFailing delivers a transaction whose messages fail after the ante
+// handler, then moves the chain on as SendMsgs does after a success.
+func sendFailing(t *testing.T, chain *ibctesting.TestChain, msgs ...sdk.Msg) {
+	chain.Coordinator.UpdateTimeForChain(chain)
+	_, _, err := ibcsimapp.SignAndDeliver(t, chain.TxConfig, chain.App.GetBaseApp(), chain.GetContext().BlockHeader(),
+		msgs, chain.ChainID, []uint64{chain.SenderAccount.GetAccountNumber()},
+		[]uint64{chain.SenderAccount.GetSequence()}, true, false, chain.SenderPrivKey)
+	if err == nil {
+		t.Fatal("transaction passed")
+	}
+	chain.NextBlock()
+	must(t, chain.SenderAccount.SetSequence(chain.SenderAccount.GetSequence()+1))
+	chain.Coordinator.IncrementTime()
+}
+
+// runClientProposals submits ibc client proposals. Submission runs the
+// proposal handler in a cached context (cosmos-sdk v0.46), so these
+// transactions carry the handler's result and gas: a ClientUpdateProposal
+// that recovers an expired client with an Active substitute (it then
+// passes and runs in the EndBlocker), one whose subject is Active, and an
+// UpgradeProposal (celestia-app refuses it).
+func runClientProposals(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB *ibctesting.TestChain) {
+	expiring := ibctesting.NewPath(chainA, chainB)
+	lagTolerant(expiring.EndpointA)
+	expiring.EndpointA.ClientConfig.(*ibctesting.TendermintConfig).TrustingPeriod = 10 * time.Minute
+	must(t, expiring.EndpointA.CreateClient())
+	coord.IncrementTimeBy(20 * time.Minute)
+	coord.CommitBlock(chainB)
+	substitute := ibctesting.NewPath(chainA, chainB)
+	lagTolerant(substitute.EndpointA)
+	must(t, substitute.EndpointA.CreateClient())
+	submit := func(content govv1beta1.Content, deposit int64) *govv1beta1.MsgSubmitProposal {
+		m, err := govv1beta1.NewMsgSubmitProposal(content, sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, deposit)), chainA.SenderAccount.GetAddress())
+		must(t, err)
+		return m
+	}
+	// The recovery passes: the v3 validator's operator votes yes.
+	_, err := chainA.SendMsgs(submit(clienttypes.NewClientUpdateProposal("recover", "d",
+		expiring.EndpointA.ClientID, substitute.EndpointA.ClientID), govMinDeposit))
+	must(t, err)
+	proposalID, err := chainA.App.(*recApp).GovKeeper.GetProposalID(chainA.GetContext())
+	must(t, err)
+	proposalID--
+	sender, senderKey := chainA.SenderAccount, chainA.SenderPrivKey
+	chainA.SenderAccount, chainA.SenderPrivKey = chainA.SenderAccounts[1].SenderAccount, chainA.SenderAccounts[1].SenderPrivKey
+	_, err = chainA.SendMsgs(govv1beta1.NewMsgVote(chainA.SenderAccount.GetAddress(), proposalID, govv1beta1.OptionYes))
+	must(t, err)
+	chainA.SenderAccount, chainA.SenderPrivKey = sender, senderKey
+	coord.IncrementTimeBy(govPeriod + time.Second)
+	coord.CommitBlock(chainA)
+	coord.CommitBlock(chainA)
+	if p, _ := chainA.App.(*recApp).GovKeeper.GetProposal(chainA.GetContext(), proposalID); p.Status != govv1.StatusPassed {
+		t.Fatalf("client update proposal is %s", p.Status)
+	}
+	sendFailing(t, chainA, submit(clienttypes.NewClientUpdateProposal("active", "d",
+		substitute.EndpointA.ClientID, expiring.EndpointA.ClientID), 0))
+	cs := chainA.GetClientState(substitute.EndpointA.ClientID)
+	up, err := clienttypes.NewUpgradeProposal("upgrade", "d", upgradetypes.Plan{Name: "u", Height: 1_000_000}, cs)
+	must(t, err)
+	sendFailing(t, chainA, submit(up, 0))
 }

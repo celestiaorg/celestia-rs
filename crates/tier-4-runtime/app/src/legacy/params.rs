@@ -265,8 +265,13 @@ table!(
             "min signed per window cannot be negative",
             "min signed per window too large"
         )),
-        param("DowntimeJailDuration", Kind::Duration, |v| {
-            validate::positive_duration(v, "downtime jail duration must be positive")
+        // `%s` of the `time.Duration` (staking's unbonding time uses `%d`).
+        param("DowntimeJailDuration", Kind::Duration, |v| match v {
+            Value::Duration(n) if *n <= 0 => Err(format!(
+                "downtime jail duration must be positive: {}",
+                sdk::time::go_duration_string(i128::from(*n))
+            )),
+            v => validate::positive_duration(v, "downtime jail duration must be positive"),
         }),
         param(
             "SlashFractionDoubleSign",

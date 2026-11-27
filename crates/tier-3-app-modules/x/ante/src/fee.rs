@@ -316,7 +316,7 @@ fn deduct_fee_with(
             validate_tx_fee(ctx, &coins, gas, deps)?
         };
     }
-    check_deduct_fee(ctx, tx, &coins, deps)?;
+    check_deduct_fee(ctx, tx, &coins, deps, v046)?;
     Ok(priority)
 }
 
@@ -325,7 +325,17 @@ fn check_deduct_fee(
     tx: &Tx,
     fee: &[FeeCoin],
     deps: &impl AnteDeps,
+    v046: bool,
 ) -> R<()> {
+    // v0.46 `FeeTx` returns `sdk.AccAddress`, which `%s` prints in
+    // bech32; v0.50 returns `[]byte`, printed raw.
+    let addr = |a: &[u8]| {
+        if v046 {
+            txview::bytes_to_bech32(a)
+        } else {
+            gostr::from_go_bytes(a).into_owned()
+        }
+    };
     let fee_payer = txview::fee_payer(tx)?;
     let fee_granter = txview::fee_granter(tx)?;
     let mut deduct_from = fee_payer.clone();
@@ -336,13 +346,17 @@ fn check_deduct_fee(
                 if is_out_of_gas(&e) {
                     return Err(e.into());
                 }
-                // `%s` of the `[]byte` addresses `FeeTx` returns: the raw
-                // bytes.
+                // v0.46 has "does not not allow".
+                let verb = if v046 {
+                    "does not not allow"
+                } else {
+                    "does not allow"
+                };
                 return Err(e
                     .wrap(format!(
-                        "{} does not allow to pay fees for {}",
-                        gostr::from_go_bytes(&granter),
-                        gostr::from_go_bytes(&fee_payer)
+                        "{} {verb} to pay fees for {}",
+                        addr(&granter),
+                        addr(&fee_payer)
                     ))
                     .into());
             }
@@ -350,11 +364,9 @@ fn check_deduct_fee(
         deduct_from = granter;
     }
     if x_auth::get_account(ctx, &deduct_from)?.is_none() {
-        // `deductFeesFrom` is a `[]byte` variable: `%s` prints the raw
-        // bytes.
         return Err(errs::unknown_address(format!(
             "fee payer address: {} does not exist",
-            gostr::from_go_bytes(&deduct_from)
+            addr(&deduct_from)
         ))
         .into());
     }
