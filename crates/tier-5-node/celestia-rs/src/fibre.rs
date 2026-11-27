@@ -851,7 +851,10 @@ async fn supervise(inputs: Inputs) {
         }
         let started_at = std::time::Instant::now();
         kept = Some(server.metrics());
-        *metrics.lock().unwrap_or_else(PoisonError::into_inner) = kept.clone();
+        metrics
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone_from(&kept);
         tracing::info!(
             listen = %server.listen_address(),
             store = %cfg.store.path.display(),
