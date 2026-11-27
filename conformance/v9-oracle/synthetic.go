@@ -264,7 +264,15 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 		return nil
 	}
 
-	steps := s.v9Steps(height-s.handoffHeight-1, send, pfb)
+	txWith := func(msg sdk.Msg, opts ...user.TxOption) error {
+		bz, _, err := sg.CreateTx([]sdk.Msg{msg}, opts...)
+		if err != nil {
+			return err
+		}
+		out = append(out, bz)
+		return nil
+	}
+	steps := s.v9Steps(height-s.handoffHeight-1, addr, txWith, send, pfb)
 	if s.probes && height-s.handoffHeight-1 >= 5 {
 		probeTx := func(msg sdk.Msg, opts ...user.TxOption) error {
 			bz, _, err := sg.CreateTx([]sdk.Msg{msg}, opts...)

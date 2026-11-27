@@ -27,21 +27,26 @@ var homes = filepath.Join("..", "fixtures", "synthetic", "homes")
 // TestSyntheticFixtureIsReproducible continues the synthetic chain from the
 // committed home-56 home across the v9 upgrade and requires the committed
 // fixtures byte for byte.
+// The v9-to-v10 case runs on to the v10 hand-off and requires the home it leaves
+// to be the committed home-66.
 func TestSyntheticFixtureIsReproducible(t *testing.T) {
 	tmp := t.TempDir()
 	fixtures := filepath.Join("..", "fixtures", "synthetic")
 	genesis := filepath.Join(fixtures, "v1-v3", "genesis.json")
 	for _, c := range []struct {
-		dir  string
-		args []string
+		dir, next string
+		args      []string
 	}{
-		{"v9", nil},
+		{"v9", "", nil},
 		// The probe blocks of probes.go after the usual five.
-		{"v9-probes", []string{"-heights", "19", "-probes"}},
-		// The chain with blocks built as a validator would (consensus.go).
-		{dir: filepath.Join("consensus", "v9"), args: []string{"-heights", "5", "-consensus"}},
+		{"v9-probes", "", []string{"-heights", "19", "-probes"}},
 		// The 07-tendermint client blocks of tmclient.go after the usual five.
-		{"v9-tm", []string{"-heights", "10", "-tmclient"}},
+		{"v9-tm", "", []string{"-heights", "10", "-tmclient"}},
+		// On to the v10 hand-off: the home must become the committed home-66.
+		{"v9-to-v10", "home-66", []string{"-heights", "10", "-next-handoff"}},
+		// The chain with blocks built as a validator would (consensus.go),
+		// on to the next hand-off.
+		{dir: filepath.Join("consensus", "v9-to-v10"), next: "consensus-66", args: []string{"-heights", "10", "-next-handoff", "-consensus"}},
 	} {
 		// The consensus chain starts from its own home.
 		start := "home-56"
@@ -69,6 +74,33 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		}
 		for _, name := range files {
 			requireSame(t, filepath.Join(fixtures, c.dir, name), filepath.Join(out, name))
+		}
+		if c.next != "" {
+			requireHome(t, filepath.Join(homes, c.next+".tar.gz"), home)
+		}
+	}
+}
+
+// requireHome requires the home that a -next-handoff run left to hold the
+// committed home's handoff.json and data/upgrade-info.json: handoff.json
+// records the app hash, which commits to every store.
+func requireHome(t *testing.T, archive, home string) {
+	t.Helper()
+	want := t.TempDir()
+	if err := untar(archive, want); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"handoff.json", filepath.Join("data", "upgrade-info.json")} {
+		w, err := os.ReadFile(filepath.Join(want, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, err := os.ReadFile(filepath.Join(home, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(g, w) {
+			t.Errorf("%s in %s differs from the home this run left; regenerate it (conformance/README.md)", name, archive)
 		}
 	}
 }

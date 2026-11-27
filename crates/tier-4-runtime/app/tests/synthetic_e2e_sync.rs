@@ -1,25 +1,26 @@
 //! One celestia-rs node syncs the synthetic chain from its genesis through
-//! every upgrade (app versions 1, 2, 3, 4, 5, 6, 8 and 9) to its last
+//! every upgrade (app versions 1, 2, 3, 4, 5, 6, 8, 9, 10 and 11) to its last
 //! block, with no seeded state, as the Go oracles ran it: blocks 1 to 15
 //! of `conformance/fixtures/synthetic/v1-v3` (cosmos-sdk v0.46, upgrades
 //! at 6 and 11), then `v4-to-v5` (16 to 25, upgrade to v4 at 16),
-//! `v5-to-v6` (26 to 36), `v6-to-v8` (37 to 46), `v8-to-v9` (47 to 56)
-//! and `v9` (57 to 61), which continue one chain through the oracles'
-//! shared app home.
+//! `v5-to-v6` (26 to 36), `v6-to-v8` (37 to 46), `v8-to-v9` (47 to 56),
+//! `v9-to-v10` (57 to 66), `v10-to-v11` (67 to 76) and `v11` (77 to 81),
+//! which continue one chain through the oracles' shared app home.
 //!
 //! After every block the node must give Go's app hash, transaction
 //! results and block response (events, validator updates, consensus
 //! params, timeouts); from block 16 also Go's state in every store.
 //!
 //! - [`one_node_syncs_from_genesis_to_the_last_block`]: one persistent
-//!   home, genesis to 61.
+//!   home, genesis to 81, restarted only where the runtime halts for the
+//!   v11 upgrade ([`V11_UPGRADE`]).
 //! - [`restarts_around_every_upgrade`]: the node closes and reopens its
 //!   home after the block before, the block at and the block after each
 //!   upgrade height.
 //! - [`state_sync_in_every_era`]: a node that took a snapshot after every
 //!   block; for one height of each app version, a fresh home restores that
 //!   snapshot (format 2 while the state is cosmos-sdk v0.46, format 3
-//!   after) and syncs on to 61.
+//!   after) and syncs on to 81.
 
 #![allow(
     clippy::expect_used,
@@ -45,16 +46,23 @@ const BASE: &str = concat!(
 );
 /// The v0.46 fixture and the later fixtures with their blocks.
 const LEGACY: (&str, i64, i64) = ("v1-v3", 1, 15);
-const SEGMENTS: [(&str, i64, i64); 5] = [
+const SEGMENTS: [(&str, i64, i64); 7] = [
     ("v4-to-v5", 16, 25),
     ("v5-to-v6", 26, 36),
     ("v6-to-v8", 37, 46),
     ("v8-to-v9", 47, 56),
-    ("v9", 57, 61),
+    ("v9-to-v10", 57, 66),
+    ("v10-to-v11", 67, 76),
+    ("v11", 77, 81),
 ];
-const LAST: i64 = 61;
+const LAST: i64 = 81;
 /// The first block of each app version after 1.
-const UPGRADES: [i64; 7] = [6, 11, 16, 26, 37, 47, 57];
+const UPGRADES: [i64; 9] = [6, 11, 16, 26, 37, 47, 57, 67, 77];
+/// The first v11 block. The runtime executes v10 until a restart finds
+/// `data/upgrade-info.json` naming plan `v11` at the next height (as the
+/// Go multiplexer swaps in the v11 binary): a node executing v10 halts at
+/// this block with `UPGRADE "v11" NEEDED`, and resumes once reopened.
+const V11_UPGRADE: i64 = 77;
 
 fn json(path: &str) -> serde_json::Value {
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
@@ -244,11 +252,21 @@ impl Chain {
     }
 
     /// Executes and commits block `height` on `app` and requires Go's
-    /// results, block response, state (from 16) and app hash.
-    fn step(&self, app: &mut App, height: i64, label: &str) {
-        let res = app
-            .finalize_block(self.request(height))
-            .unwrap_or_else(|e| panic!("{label} height {height}: {}", e.log));
+    /// results, block response, state (from 16) and app hash. A node that
+    /// halts for the v11 upgrade is reopened with `reopen` (the operator's
+    /// restart) and runs the block again. Returns the node.
+    #[must_use]
+    fn step(&self, mut app: App, height: i64, label: &str, reopen: &dyn Fn() -> App) -> App {
+        let res = match app.finalize_block(self.request(height)) {
+            Ok(res) => res,
+            Err(e) if height == V11_UPGRADE && app::is_upgrade_needed(&e.log) => {
+                drop(app);
+                app = reopen();
+                app.finalize_block(self.request(height))
+                    .unwrap_or_else(|e| panic!("{label} height {height} after restart: {}", e.log))
+            }
+            Err(e) => panic!("{label} height {height}: {}", e.log),
+        };
         app.commit().unwrap();
         let b = &self.blocks[&height];
         let mut failures = check_tx_results(&res, &b.result);
@@ -274,6 +292,7 @@ impl Chain {
             "{label} height {height}:\n{}",
             failures.join("\n")
         );
+        app
     }
 }
 
@@ -337,7 +356,10 @@ fn check_response_v050(res: &ResponseFinalizeBlock, result: &serde_json::Value) 
     failures
 }
 
-fn open(home: &Path, chain: &Chain, options: app::AppOptions) -> App {
+/// Opens the node at `home`. The node home is where `x/upgrade` writes
+/// `data/upgrade-info.json` and where the reopened node reads it.
+fn open(home: &Path, chain: &Chain, mut options: app::AppOptions) -> App {
+    options.node.home = Some(home.to_path_buf());
     let mut a = App::open_with(home, options).unwrap();
     a.set_v2_upgrade_height(chain.upgrade_height_v2);
     a
@@ -355,10 +377,17 @@ fn genesis_node(options: app::AppOptions) -> (tempfile::TempDir, App, Chain) {
 
 #[test]
 fn one_node_syncs_from_genesis_to_the_last_block() {
-    let (_home, mut a, chain) = genesis_node(app::AppOptions::default());
+    let (home, mut a, chain) = genesis_node(app::AppOptions::default());
+    let restarts = std::cell::Cell::new(0);
+    let reopen = || {
+        restarts.set(restarts.get() + 1);
+        open(home.path(), &chain, app::AppOptions::default())
+    };
     for h in 1..=LAST {
-        chain.step(&mut a, h, "sync");
+        a = chain.step(a, h, "sync", &reopen);
     }
+    // The node executed v10 until it halted at the v11 upgrade block.
+    assert_eq!(restarts.get(), 1, "restarts for the v11 upgrade");
     assert_eq!(a.info().last_block_height, LAST);
 }
 
@@ -366,8 +395,9 @@ fn one_node_syncs_from_genesis_to_the_last_block() {
 fn restarts_around_every_upgrade() {
     let (home, mut a, chain) = genesis_node(app::AppOptions::default());
     let restart_after: Vec<i64> = UPGRADES.iter().flat_map(|u| [u - 1, *u, u + 1]).collect();
+    let reopen = || open(home.path(), &chain, app::AppOptions::default());
     for h in 1..=LAST {
-        chain.step(&mut a, h, "restarts");
+        a = chain.step(a, h, "restarts", &reopen);
         if restart_after.contains(&h) {
             drop(a);
             a = open(home.path(), &chain, app::AppOptions::default());
@@ -383,7 +413,7 @@ fn restarts_around_every_upgrade() {
 }
 
 /// The snapshot heights: one per app version, inside each era.
-const RESTORE_AT: [i64; 8] = [3, 8, 13, 20, 30, 40, 50, 59];
+const RESTORE_AT: [i64; 10] = [3, 8, 13, 20, 30, 40, 50, 59, 70, 79];
 
 #[test]
 fn state_sync_in_every_era() {
@@ -394,9 +424,10 @@ fn state_sync_in_every_era() {
         },
         ..app::AppOptions::default()
     };
-    let (home, mut a, chain) = genesis_node(options);
+    let (home, mut a, chain) = genesis_node(options.clone());
+    let reopen = || open(home.path(), &chain, options.clone());
     for h in 1..=LAST {
-        chain.step(&mut a, h, "snapshotting node");
+        a = chain.step(a, h, "snapshotting node", &reopen);
         a.wait_for_snapshot();
     }
     let listed = a.list_snapshots().snapshots;
@@ -415,15 +446,12 @@ fn state_sync_in_every_era() {
         };
         assert_eq!(s.format, want_format, "snapshot {h} format");
         let fresh = tempfile::tempdir().unwrap();
-        let mut b = open(
-            fresh.path(),
-            &chain,
-            app::AppOptions {
-                chain_id: Some("test".to_owned()),
-                genesis_app_version: Some(1),
-                ..app::AppOptions::default()
-            },
-        );
+        let restored = app::AppOptions {
+            chain_id: Some("test".to_owned()),
+            genesis_app_version: Some(1),
+            ..app::AppOptions::default()
+        };
+        let mut b = open(fresh.path(), &chain, restored.clone());
         let want_hash = hex::decode(&chain.blocks[&h].app_hash).unwrap();
         let offer = b.offer_snapshot(abci::RequestOfferSnapshot {
             snapshot: Some(s.clone()),
@@ -456,7 +484,9 @@ fn state_sync_in_every_era() {
         assert_eq!(b.info().last_block_height, h, "restored {h}");
         assert_eq!(b.info().last_block_app_hash, want_hash, "restored {h}");
         for next in h + 1..=LAST {
-            chain.step(&mut b, next, &format!("restored at {h}"));
+            b = chain.step(b, next, &format!("restored at {h}"), &|| {
+                open(fresh.path(), &chain, restored.clone())
+            });
         }
         println!("restored at {h} (format {}) and synced to {LAST}", s.format);
     }
