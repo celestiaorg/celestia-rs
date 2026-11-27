@@ -355,6 +355,10 @@ wait "$wpid" 2>/dev/null || true
 check  "watch publishes a stall after the height moved"  grep -q '^segments_120000_stalled stalled .* height=150100' "$W/puts.log"
 check  "watch publishes the resume after that stall"     test "$(grep -n -m1 'height=150100' "$W/puts.log" | cut -d: -f1)" -lt "$(grep -n -m1 '^segments_120000_resumed-' "$W/puts.log" | cut -d: -f1 || echo 0)"
 
+# --- segment VM: 15 segments x prefetch 8 (4 per provider) stay under ~64 requests per provider ---
+check  "seg-vm prefetch fits 15 segments"    grep -qx 'PREFETCH=${PREFETCH:-8}' "$here/segments/seg-vm.sh"
+check  "seg-vm reads a per-segment RPC list" grep -q 'segments/$SEG/rpc' "$here/segments/seg-vm.sh"
+
 echo
 if ((fails)); then echo "$fails test(s) failed"; exit 1; fi
 echo "all tests passed"
