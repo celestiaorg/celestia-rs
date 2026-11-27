@@ -63,6 +63,7 @@ func main() {
 	flag.BoolVar(&recoverDB, "recover", false, "goleveldb: rebuild the manifest first (crash-consistent copies)")
 	flag.IntVar(&cacheMiB, "cache-mib", 8192, "pebbledb: block cache size in MiB")
 	flag.IntVar(&maxOpenFiles, "max-open-files", 500000, "pebbledb: table cache size (needs a matching ulimit -n)")
+	flag.IntVar(&iavlCacheNodes, "iavl-cache", iavlCacheNodes, "IAVL node cache per store and height (export reads each node once)")
 	flag.Parse()
 	if *dir == "" || *heights == "" || (*out == "" && !*list) {
 		flag.Usage()
@@ -209,6 +210,10 @@ var (
 	recoverDB    bool
 	cacheMiB     int
 	maxOpenFiles int
+	// iavlCacheNodes replaces the SDK default of 500,000 nodes per store:
+	// export reads each node once, and several heights at the default ran a
+	// 31 GiB machine out of memory.
+	iavlCacheNodes = 10000
 )
 
 // pebbleOptions sizes pebble's table cache (open files) and block cache for
@@ -285,6 +290,7 @@ func exportHeight(db tmdb.DB, height int64, out string, w io.Writer) error {
 	}
 	rs := rootmulti.NewStore(db, log.NewTMLogger(log.NewSyncWriter(w)))
 	rs.SetIAVLDisableFastNode(true)
+	rs.SetIAVLCacheSize(iavlCacheNodes)
 	rs.SetLazyLoading(true)
 	for _, n := range names {
 		// v0.46 also commits the capability module's memory store; it has

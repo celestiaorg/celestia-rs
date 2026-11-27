@@ -148,3 +148,35 @@ func TestCommitStoresPrintsStoreRoots(t *testing.T) {
 		}
 	}
 }
+
+// Export reads each node once, so the per-store IAVL node cache only costs
+// memory (four heights at the default 500,000 nodes per store ran archive-1
+// out of 31 GiB). The default must stay small, and a one-node cache must give
+// the same bytes.
+func TestSmallIAVLCacheExportsSameBytes(t *testing.T) {
+	if iavlCacheNodes > 100000 {
+		t.Fatalf("default iavl cache %d nodes per store; want at most 100000", iavlCacheNodes)
+	}
+	db := fixtureDB(t, 4)
+	tmp := t.TempDir()
+	def := filepath.Join(tmp, "default")
+	if err := exportHeight(db, 4, def, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	old := iavlCacheNodes
+	iavlCacheNodes = 1
+	defer func() { iavlCacheNodes = old }()
+	one := filepath.Join(tmp, "one")
+	if err := exportHeight(db, 4, one, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	a, b := chunks(t, def), chunks(t, one)
+	if len(a) == 0 || len(a) != len(b) {
+		t.Fatalf("%d chunk files with the default cache, %d with one node", len(a), len(b))
+	}
+	for p, x := range a {
+		if !bytes.Equal(b[p], x) {
+			t.Fatalf("chunk %s differs with a one-node cache", p)
+		}
+	}
+}
