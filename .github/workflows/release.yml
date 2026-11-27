@@ -13,12 +13,13 @@ name: release
 # - Push of a v* tag by hand: build and publish it, if the tag matches the
 #   crate version.
 # - Daily at 14:00 UTC: an automatic release of the newest main commit
-#   whose ci push run passed, if it is not released yet:
-#   v<crate version>-main.<n> (or <crate version>.main.<n> when the crate
-#   version is already a pre-release), where n is the commit's position on
-#   main. It is published as a pre-release, so `install.sh` without
-#   --channel or --prerelease keeps installing the newest human release.
-#   release-channels.yml then promotes it network by network.
+#   whose ci push run passed, if it is not released yet, as the next patch
+#   version on the crate version's major.minor line: v0.1.0, v0.1.1, ...
+#   (after a human v0.2.0: v0.2.1, ...). release-channels.yml then promotes
+#   it network by network.
+# - No release is marked "Latest" here: release-channels.yml marks the
+#   mainnet channel's release Latest, so github.com/<repo>/releases/latest
+#   and `install.sh` without --channel get the release mainnet runs.
 # - workflow_dispatch: build the archives as workflow artifacts only.
 
 on:
@@ -112,11 +113,17 @@ jobs:
               elif [ "$previous" != "$version" ]; then
                 echo "::notice::${sha:0:7} sets the version to $version; the push trigger releases it"
               else
-                n=$(git rev-list --count HEAD)
-                case $version in
-                  *-*) release_version="$version.main.$n" ;;
-                  *) release_version="$version-main.$n" ;;
-                esac
+                # The next patch on the crate's major.minor line: one more
+                # than the highest v<major>.<minor>.<patch> tag, else the
+                # crate's own patch (crate 0.1.0-rc.9, no v0.1.x yet: 0.1.0).
+                core=${version%%-*}
+                line=${core%.*}
+                last=$(git tag -l "v$line.*" | sed -n "s/^v${line//./\\.}\.\([0-9][0-9]*\)\$/\1/p" | sort -n | tail -n 1)
+                if [ -n "$last" ]; then
+                  release_version="$line.$((last + 1))"
+                else
+                  release_version=$core
+                fi
                 version=$release_version
                 tag="v$version"
                 label="$tag"
@@ -275,8 +282,8 @@ jobs:
           prerelease=""
           [[ "$TAG" == *-* ]] && prerelease="--prerelease"
           if [[ "$AUTOMATIC" == true ]]; then
-            # An automatic release has no CHANGELOG section of its own.
-            printf 'Automatic release of main at %s. Release channels (docs/releasing.md) decide which network runs it.\n\n' "$SHA" >notes.md
+            # A daily release has no CHANGELOG section of its own.
+            printf 'Daily release of main at %s. Release channels (docs/releasing.md) decide which network runs it.\n\n' "$SHA" >notes.md
           else
             # The release's CHANGELOG section (bump-version cut it), then
             # GitHub's generated notes.
@@ -286,7 +293,7 @@ jobs:
           # after. So create a draft, attach the archives, then publish. A
           # re-run finds the draft a failed run left behind and finishes it.
           if ! draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
-            gh release create "$TAG" --draft --verify-tag --title "celestia-rs $TAG" --notes-file notes.md --generate-notes $prerelease
+            gh release create "$TAG" --draft --verify-tag --title "$TAG" --notes-file notes.md --generate-notes --latest=false $prerelease
             draft=true
           fi
           if [ "$draft" != true ]; then
@@ -294,4 +301,4 @@ jobs:
             exit 1
           fi
           gh release upload "$TAG" --clobber dist/*.tar.gz dist/*.tar.gz.sha256 dist/SHA256SUMS
-          gh release edit "$TAG" --draft=false
+          gh release edit "$TAG" --draft=false --latest=false

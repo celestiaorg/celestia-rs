@@ -38,9 +38,9 @@ pub fn register_build_info() {
 mod tests {
     use super::SOFTWARE_VERSION;
 
-    /// Automatic (daily) release builds set `CELESTIA_RS_RELEASE_VERSION`
-    /// (`<crate version>-main.<n>`, docs/releasing.md); others report the
-    /// crate version.
+    /// Daily release builds set `CELESTIA_RS_RELEASE_VERSION` to
+    /// `<major>.<minor>.<patch>` on the crate's major.minor line
+    /// (docs/releasing.md); others report the crate version.
     #[test]
     fn software_version_is_the_release_version_when_set() {
         let crate_version = env!("CARGO_PKG_VERSION");
@@ -48,6 +48,7 @@ mod tests {
             .filter(|v| !v.is_empty())
             .unwrap_or(crate_version);
         assert_eq!(SOFTWARE_VERSION, expected);
-        assert!(SOFTWARE_VERSION.starts_with(crate_version));
+        let line = |v: &str| v.split('.').take(2).collect::<Vec<_>>().join(".");
+        assert_eq!(line(SOFTWARE_VERSION), line(crate_version));
     }
 }
