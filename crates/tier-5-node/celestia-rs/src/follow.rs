@@ -760,7 +760,38 @@ fn write_diagnostics(
             "stores": stores,
         }),
     );
+    write_divergence_snapshot(app, &dir, height);
     dir
+}
+
+/// `CELESTIA_RS_FOLLOW_DIVERGENCE_SNAPSHOT=<format>` (2 for app versions 1
+/// to 3, 3 from app version 4): writes a state-sync snapshot of the
+/// diverging height into `<bundle>/snapshot/<height>/<format>/`, in Go's
+/// layout, so `celestia-rs compare-snapshots --format <format> --height
+/// <height>` against a Go export of the same height names the first
+/// differing store item. Written synchronously: the follower stops right
+/// after the bundle, and a background snapshot would be abandoned.
+fn write_divergence_snapshot(app: &Arc<Mutex<app::App>>, dir: &Path, height: i64) {
+    let Ok(format) = std::env::var("CELESTIA_RS_FOLLOW_DIVERGENCE_SNAPSHOT") else {
+        return;
+    };
+    let result = (|| -> anyhow::Result<()> {
+        let format: u32 = format.trim().parse().context("snapshot format")?;
+        let height = u64::try_from(height).context("height")?;
+        let manager =
+            snapshots::Manager::new(dir.join("snapshot"), snapshots::SnapshotOptions::default())?;
+        let a = app
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        manager.create_with_format(a.multistore().root(), height, format)?;
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {
+            tracing::info!(height, dir = %dir.join("snapshot").display(), "divergence snapshot written")
+        }
+        Err(e) => tracing::error!(height, error = %e, "divergence snapshot failed"),
+    }
 }
 
 // ---- the loop -----------------------------------------------------------------
