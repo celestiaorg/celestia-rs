@@ -26,10 +26,13 @@ fn evidence(m: &MsgSubmitEvidence) -> Result<Option<Equivocation>> {
                 .map(Some)
                 .map_err(|e| errs::tx_decode(e.to_string()))
         }
-        Some(a) => Err(super::not_ported(errs::unknown_request(format!(
-            "the cosmos-sdk v0.46 evidence {}",
+        // The v1 interface registry holds only `Equivocation` for
+        // `exported.Evidence`, so the tx decoder already refused any other
+        // type with this error (txdecode `unpack_any`).
+        Some(a) => Err(errs::tx_decode(format!(
+            "no concrete type registered for type URL {} against interface *exported.Evidence",
             a.type_url
-        )))),
+        ))),
     }
 }
 
@@ -41,28 +44,7 @@ fn validate(m: &MsgSubmitEvidence) -> Result<Equivocation> {
         // `ErrInvalidEvidence` (evidence code 2 in v0.46).
         return Err(sdk::SdkError::new("evidence", 2, "invalid evidence").wrap("missing evidence"));
     };
-    if e.time.as_ref().is_none_or(|t| t.seconds <= 0) {
-        return Err(super::not_ported(errs::unknown_request(
-            "the cosmos-sdk v0.46 equivocation time check",
-        )));
-    }
-    if e.height < 1 {
-        return Err(sdk::error::internal(format!(
-            "invalid equivocation height: {}",
-            e.height
-        )));
-    }
-    if e.power < 1 {
-        return Err(sdk::error::internal(format!(
-            "invalid equivocation validator power: {}",
-            e.power
-        )));
-    }
-    if e.consensus_address.is_empty() {
-        return Err(sdk::error::internal(
-            "invalid equivocation validator consensus address: ",
-        ));
-    }
+    x_evidence::validate_basic(&e).map_err(sdk::error::internal)?;
     Ok(e)
 }
 
@@ -90,4 +72,88 @@ pub fn validate_basic(msg: &Any) -> Option<Result<()>> {
 /// Executes `MsgSubmitEvidence`; `None` for any other message.
 pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
     (msg.type_url == MsgSubmitEvidence::type_url()).then(|| submit_evidence(ctx, &decode(msg)?))
+}
+
+/// cosmos-sdk v0.46 evidence `BeginBlocker`: each duplicate-vote or
+/// light-client-attack misbehavior goes to `HandleEquivocationEvidence`.
+pub(super) fn begin_block(ctx: &mut Context<'_>) -> Result<()> {
+    for m in ctx.misbehavior.clone() {
+        // MisbehaviorType: 1 duplicate vote, 2 light client attack.
+        if m.r#type == 1 || m.r#type == 2 {
+            let (e, cons) = x_evidence::from_abci(&m);
+            handle_equivocation(ctx, &e, &cons)?;
+        }
+    }
+    Ok(())
+}
+
+/// v0.46 `Keeper.HandleEquivocationEvidence`, in its order: evidence for
+/// an address without a public key, too old, for a missing or unbonded
+/// validator, or for a tombstoned one is ignored (v0.50 at app version 9
+/// fails BeginBlock on a missing validator); otherwise the validator is
+/// slashed, jailed, jailed for ever and tombstoned.
+fn handle_equivocation(ctx: &mut Context<'_>, e: &Equivocation, cons: &[u8]) -> Result<()> {
+    if ctx
+        .get(x_slashing::STORE_KEY, &x_slashing::addr_pubkey_key(cons))?
+        .is_none()
+    {
+        return Ok(());
+    }
+    let infraction_time = e.time.unwrap_or_default();
+    let age = sdk::time::sub(&ctx.header.time, &infraction_time);
+    let age_blocks = ctx.header.height - e.height;
+    if let Some(ev) = &ctx.consensus_params.evidence {
+        let max_age = ev.max_age_duration.as_ref().map_or(0, |d| {
+            i64::try_from(sdk::time::duration_nanos(d)).unwrap_or(i64::MAX)
+        });
+        if age > max_age && age_blocks > ev.max_age_num_blocks {
+            return Ok(());
+        }
+    }
+    let Some(validator) = x_staking::store::get_validator_by_cons_addr(ctx, cons)? else {
+        return Ok(());
+    };
+    if validator.status == x_staking::types::BondStatus::Unbonded {
+        return Ok(());
+    }
+    // `HasValidatorSigningInfo` (a full read), then `IsTombstoned` reads
+    // it again.
+    if x_slashing::get_signing_info(ctx, cons)?.is_none() {
+        return Err(sdk::error::go_panic(format!(
+            "expected signing info for validator {} but not found",
+            e.consensus_address
+        )));
+    }
+    let Some(info) = x_slashing::get_signing_info(ctx, cons)? else {
+        return Err(sdk::error::go_panic(format!(
+            "expected signing info for validator {} but not found",
+            e.consensus_address
+        )));
+    };
+    if info.tombstoned {
+        return Ok(());
+    }
+    let distribution_height = e.height - x_evidence::VALIDATOR_UPDATE_DELAY;
+    let fraction = x_slashing::get_params(ctx)?.slash_fraction_double_sign;
+    x_slashing::slash_with_reason(
+        ctx,
+        cons,
+        &fraction,
+        e.power,
+        distribution_height,
+        x_slashing::REASON_DOUBLE_SIGN,
+    )?;
+    if !validator.jailed {
+        x_slashing::jail(ctx, cons)?;
+    }
+    x_slashing::jail_until(
+        ctx,
+        cons,
+        &pbjson_types::Timestamp {
+            seconds: x_evidence::DOUBLE_SIGN_JAIL_END_UNIX,
+            nanos: 0,
+        },
+    )?;
+    x_slashing::tombstone(ctx, cons)?;
+    x_evidence::set_evidence(ctx, e)
 }
