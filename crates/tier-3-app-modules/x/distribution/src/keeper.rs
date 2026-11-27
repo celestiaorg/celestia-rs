@@ -363,6 +363,11 @@ pub fn withdraw_delegation_rewards_for(
 ) -> Result<Coins> {
     let v = staking_validator(ctx, val)?;
     let Some(d) = x_staking::store::get_delegation(ctx, del, val)? else {
+        // cosmos-sdk v1.29.4 and v1.31.0 (celestia-app v4.1.0, v5.0.12)
+        // return `stakingKeeper.Delegation`'s error.
+        if !ctx.release().withdraws_outstanding_without_delegation() {
+            return Err(x_staking::errors::no_delegation());
+        }
         let Some(rewards) = store::get_user_outstanding(ctx, del, val)? else {
             return Err(errors::empty_delegation_dist_info());
         };

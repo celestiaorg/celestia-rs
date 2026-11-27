@@ -293,7 +293,7 @@ fn new_channel_capability(ctx: &mut Context<'_>, port: &str, chan: &str) -> Resu
 
 /// v6 `VerifyChannelState` of `conn`'s client: the channel end stored
 /// on the counterparty at `port`/`chan`.
-fn verify_channel_state(
+pub(super) fn verify_channel_state(
     ctx: &mut Context<'_>,
     conn: &ConnectionEnd,
     proof_height: &Height,

@@ -128,6 +128,10 @@ type synth struct {
 	// is the PrepareProposal block data of the next block.
 	consensus bool
 	prepared  *cmttypes.Data
+	// tmclient runs the 07-tendermint client blocks of tmclient.go after
+	// the usual five; tmBase is the client sequence of their first client.
+	tmclient bool
+	tmBase   uint64
 	// ids are the IBC identifiers that the blocks created, by event type
 	// (to_v6.go).
 	ids map[string]string
@@ -330,6 +334,21 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 			return nil, err
 		}
 		steps = probe
+	}
+	if s.tmclient && height-s.handoffHeight-1 >= 5 {
+		tmTx := func(msg sdk.Msg, opts ...user.TxOption) error {
+			bz, _, err := sg.CreateTx([]sdk.Msg{msg}, opts...)
+			if err != nil {
+				return err
+			}
+			out = append(out, bz)
+			return nil
+		}
+		tm, err := s.tmSteps(a, height-s.handoffHeight-1, height, addr, tmTx)
+		if err != nil {
+			return nil, err
+		}
+		steps = tm
 	}
 	for _, step := range steps {
 		if err := step(); err != nil {

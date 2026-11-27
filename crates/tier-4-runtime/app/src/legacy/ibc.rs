@@ -20,6 +20,12 @@ use x_ibc::{client, commitment, connection, height, host};
 
 const TENDERMINT: &str = "07-tendermint";
 
+/// ibc-go v6 `ErrClientNotActive` (v8 renamed it "client state is not
+/// active").
+pub(super) fn client_not_active(log: String) -> sdk::SdkError {
+    sdk::SdkError::new("client", 29, "client is not active").wrap(log)
+}
+
 fn decode<M: Message + Default>(msg: &Any) -> Result<M> {
     M::decode(msg.value.as_slice()).map_err(|e| errs::tx_decode(e.to_string()))
 }
@@ -202,6 +208,9 @@ pub fn route(ctx: &mut Context<'_>, msg: &Any) -> Option<Result<Any>> {
     if msg.type_url == clpb::MsgUpdateClient::type_url() {
         return Some(decode(msg).and_then(|m| update_client(ctx, &m)));
     }
+    if msg.type_url == clpb::MsgUpgradeClient::type_url() {
+        return Some(decode(msg).and_then(|m| upgrade_client(ctx, &m)));
+    }
     if msg.type_url == copb::MsgConnectionOpenTry::type_url() {
         return Some(decode(msg).and_then(|m| conn_open_try(ctx, &m)));
     }
@@ -336,7 +345,7 @@ fn update_client(ctx: &mut Context<'_>, m: &clpb::MsgUpdateClient) -> Result<Any
     };
     let status = tmc::status(ctx, client_id, &cs)?;
     if status != client::Status::Active {
-        return Err(clerr::client_not_active(format!(
+        return Err(client_not_active(format!(
             "cannot update client ({client_id}) with status {}",
             status.as_str()
         )));
@@ -369,6 +378,180 @@ fn update_client(ctx: &mut Context<'_>, m: &clpb::MsgUpdateClient) -> Result<Any
         client_message_event(ctx);
     }
     Ok(Any::pack(&clpb::MsgUpdateClientResponse {}))
+}
+
+/// v6 prints a proof's key path with `MerklePath.String()` (each key
+/// `url.PathEscape`d after a `/`); v8 prints `{[k1 k2]}`.
+fn v6_key_text(
+    mut e: sdk::SdkError,
+    path: &celestia_proto::ibc::core::commitment::v1::MerklePath,
+) -> sdk::SdkError {
+    let v8 = format!("{{[{}]}}", path.key_path.join(" "));
+    let v6: String = path.key_path.iter().fold(String::new(), |mut acc, k| {
+        acc.push('/');
+        acc.push_str(&go_path_escape(k));
+        acc
+    });
+    e.log = e.log.replace(&v8, &v6);
+    e
+}
+
+/// Go `url.PathEscape`.
+fn go_path_escape(s: &str) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b"-_.~$&+=:@".contains(&b) {
+            out.push(char::from(b));
+        } else {
+            let _ = write!(out, "%{b:02X}");
+        }
+    }
+    out
+}
+
+/// `MsgUpgradeClient` (02-client keeper `UpgradeClient` and 07-tendermint
+/// v6 `VerifyUpgradeAndUpdateState`).
+fn upgrade_client(ctx: &mut Context<'_>, m: &clpb::MsgUpgradeClient) -> Result<Any> {
+    let client_id = &m.client_id;
+    let upgraded_any = m.client_state.clone().unwrap_or_default();
+    let upgraded = client::ClientState::from_any(&upgraded_any)?;
+    let cs = match client::client_state(ctx, client_id)? {
+        Some(client::ClientState::Tendermint(cs)) => *cs,
+        Some(_) => {
+            return Err(super::not_ported(errs::not_supported(
+                "the ibc-go v6 upgrade of this client type is not ported",
+            )));
+        }
+        None => {
+            return Err(clerr::client_not_found(format!(
+                "cannot update client with ID {client_id}"
+            )));
+        }
+    };
+    let status = tmc::status(ctx, client_id, &cs)?;
+    if status != client::Status::Active {
+        return Err(client_not_active(format!(
+            "cannot upgrade client ({client_id}) with status {}",
+            status.as_str()
+        )));
+    }
+    let (new_cs, new_cons) = verify_upgrade_v6(ctx, client_id, &cs, &upgraded, m)
+        .map_err(|e| e.wrap(format!("cannot upgrade client with ID {client_id}")))?;
+    let nl = new_cs.latest_height.unwrap_or_default();
+    tmc::set_client_state(ctx, client_id, &new_cs)?;
+    tmc::set_consensus_state(ctx, client_id, &new_cons, &nl)?;
+    ctx.events.emit(event(
+        "upgrade_client",
+        [
+            ("client_id", client_id.clone()),
+            ("client_type", TENDERMINT.to_owned()),
+            ("consensus_height", height::to_string(&nl)),
+        ],
+    ));
+    client_message_event(ctx);
+    Ok(Any::pack(&clpb::MsgUpgradeClientResponse {}))
+}
+
+/// 07-tendermint v6 `VerifyUpgradeAndUpdateState`. Unlike v8 it proves
+/// the upgraded client as sent (not with its custom fields zeroed),
+/// carries the deprecated allow flags, and prints paths with `Pretty`.
+fn verify_upgrade_v6(
+    ctx: &mut Context<'_>,
+    client_id: &str,
+    cs: &tmpb::ClientState,
+    upgraded: &client::ClientState,
+    m: &clpb::MsgUpgradeClient,
+) -> Result<(tmpb::ClientState, tmpb::ConsensusState)> {
+    if cs.upgrade_path.is_empty() {
+        return Err(clerr::invalid_upgrade_client(
+            "cannot upgrade client, no upgrade path set",
+        ));
+    }
+    let last = cs.latest_height.unwrap_or_default();
+    let up_latest = upgraded.latest_height();
+    if !height::gt(&up_latest, &last) {
+        return Err(errs::invalid_height(format!(
+            "upgraded client height {} must be at greater than current client height {}",
+            height::to_string(&up_latest),
+            height::to_string(&last)
+        )));
+    }
+    let client::ClientState::Tendermint(up_cs) = upgraded else {
+        return Err(super::not_ported(errs::not_supported(
+            "an ibc-go v6 upgrade to a client that is not 07-tendermint",
+        )));
+    };
+    // `ValidateBasic` requires a consensus state of the client's type.
+    let up_cons = m
+        .consensus_state
+        .as_ref()
+        .and_then(Any::unpack::<tmpb::ConsensusState>)
+        .ok_or_else(|| super::not_ported(errs::not_supported("a v6 upgraded consensus state")))?
+        .map_err(|e| errs::unpack_any(e.to_string()))?;
+    let mp_client = tmc::ics23_proof(&m.proof_upgrade_client, "client")?;
+    let mp_cons = tmc::ics23_proof(&m.proof_upgrade_consensus_state, "consensus state")?;
+    let cons = tmc::get_consensus_state(ctx, client_id, &last)?.ok_or_else(|| {
+        clerr::consensus_state_not_found(format!(
+            "consensus state does not exist for height {}",
+            height::to_string(&last)
+        ))
+        .wrap("could not retrieve consensus state for lastHeight")
+    })?;
+    let root = cons.root.clone().unwrap_or_default().hash;
+    let path = |key: &str| {
+        let mut p = cs.upgrade_path[..cs.upgrade_path.len() - 1].to_vec();
+        let last_key = &cs.upgrade_path[cs.upgrade_path.len() - 1];
+        p.push(format!("{last_key}/{}/{key}", last.revision_height));
+        celestia_proto::ibc::core::commitment::v1::MerklePath { key_path: p }
+    };
+    let pretty = |p: &celestia_proto::ibc::core::commitment::v1::MerklePath| {
+        format!("/{}", p.key_path.join("/"))
+    };
+    let bz = tmc::client_state_any(up_cs).encode_to_vec();
+    let client_path = path("upgradedClient");
+    commitment::verify_membership(&mp_client, &cs.proof_specs, &root, &client_path, &bz).map_err(
+        |e| {
+            e.wrap(format!(
+                "client state proof failed. Path: {}",
+                pretty(&client_path)
+            ))
+        },
+    )?;
+    let bz = tmc::consensus_state_any(&up_cons).encode_to_vec();
+    let cons_path = path("upgradedConsState");
+    commitment::verify_membership(&mp_cons, &cs.proof_specs, &root, &cons_path, &bz).map_err(
+        |e| {
+            e.wrap(format!(
+                "consensus state proof failed. Path: {}",
+                pretty(&cons_path)
+            ))
+        },
+    )?;
+    #[allow(deprecated)]
+    let new_cs = tmpb::ClientState {
+        chain_id: up_cs.chain_id.clone(),
+        trust_level: cs.trust_level,
+        trusting_period: cs.trusting_period,
+        unbonding_period: up_cs.unbonding_period,
+        max_clock_drift: cs.max_clock_drift,
+        frozen_height: Some(Height::default()),
+        latest_height: up_cs.latest_height,
+        proof_specs: up_cs.proof_specs.clone(),
+        upgrade_path: up_cs.upgrade_path.clone(),
+        allow_update_after_expiry: cs.allow_update_after_expiry,
+        allow_update_after_misbehaviour: cs.allow_update_after_misbehaviour,
+    };
+    tmc::validate(&new_cs).map_err(|e| e.wrap("updated client state failed basic validation"))?;
+    let new_cons = tmpb::ConsensusState {
+        timestamp: up_cons.timestamp,
+        root: Some(celestia_proto::ibc::core::commitment::v1::MerkleRoot {
+            hash: tmc::SENTINEL_ROOT.as_bytes().to_vec(),
+        }),
+        next_validators_hash: up_cons.next_validators_hash.clone(),
+    };
+    tmc::set_consensus_metadata(ctx, client_id, &up_cs.latest_height.unwrap_or_default())?;
+    Ok((new_cs, new_cons))
 }
 
 /// 07-tendermint v6 `CheckHeaderAndUpdateState`: the new client state and
@@ -675,7 +858,7 @@ fn verify_path(
     };
     let status = tmc::status(ctx, client_id, &cs)?;
     if status != client::Status::Active {
-        return Err(clerr::client_not_active(format!(
+        return Err(client_not_active(format!(
             "client ({client_id}) status is {}",
             status.as_str()
         )));
@@ -712,6 +895,7 @@ fn verify_path(
             }
             None => commitment::verify_non_membership(&merkle_proof, &cs.proof_specs, &root, &path),
         }
+        .map_err(|e| v6_key_text(e, &path))
     })();
     r.map_err(|e| e.wrap(format!("{wrap} ({client_id})")))
 }
@@ -1053,4 +1237,30 @@ fn conn_open_confirm(ctx: &mut Context<'_>, m: &copb::MsgConnectionOpenConfirm) 
     })();
     r.map_err(|e| e.wrap("connection handshake open confirm failed"))?;
     Ok(Any::pack(&copb::MsgConnectionOpenConfirmResponse {}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn key_path_text_is_v6_merkle_path_string() {
+        let path = celestia_proto::ibc::core::commitment::v1::MerklePath {
+            key_path: vec![
+                "ibc".into(),
+                "channelEnds/ports/transfer/channels/channel-3".into(),
+            ],
+        };
+        let e = errs::invalid_request(
+            "The key used: {[ibc channelEnds/ports/transfer/channels/channel-3]}",
+        );
+        assert_eq!(
+            v6_key_text(e, &path).log,
+            "The key used: /ibc/channelEnds%2Fports%2Ftransfer%2Fchannels%2Fchannel-3: invalid request"
+        );
+        assert_eq!(
+            go_path_escape("a b?c@d~,;$&+=:/"),
+            "a%20b%3Fc@d~%2C%3B$&+=:%2F"
+        );
+    }
 }

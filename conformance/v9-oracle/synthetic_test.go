@@ -40,6 +40,8 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		{"v9-probes", []string{"-heights", "19", "-probes"}},
 		// The chain with blocks built as a validator would (consensus.go).
 		{dir: filepath.Join("consensus", "v9"), args: []string{"-heights", "5", "-consensus"}},
+		// The 07-tendermint client blocks of tmclient.go after the usual five.
+		{"v9-tm", []string{"-heights", "10", "-tmclient"}},
 	} {
 		// The consensus chain starts from its own home.
 		start := "home-56"

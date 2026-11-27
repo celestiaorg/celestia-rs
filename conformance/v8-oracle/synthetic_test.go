@@ -40,6 +40,8 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		{"v8", "", nil},
 		// The probe blocks of probes.go after the usual five.
 		{"v8-probes", "", []string{"-heights", "19", "-probes"}},
+		// The 07-tendermint client blocks of tmclient.go after the usual five.
+		{"v8-tm", "", []string{"-heights", "10", "-tmclient"}},
 		// On to the v9 hand-off: the home must become the committed home-56.
 		{"v8-to-v9", "home-56", []string{"-heights", "10", "-next-handoff"}},
 		// The chain with blocks built as a validator would (consensus.go),

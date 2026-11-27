@@ -436,6 +436,52 @@ tar -C "$OUT/home" --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -c
   | gzip -n -9 > conformance/fixtures/synthetic/homes/home-25.tar.gz
 ```
 
+#### 07-tendermint client blocks per release
+
+`-heights 10 -tmclient` (in `v4-oracle` to `v9-oracle`, `tmclient.go`) runs
+each release's usual five blocks, then five blocks of `MsgCreateClient`,
+`MsgUpdateClient` and `MsgSubmitMisbehaviour` for a synthetic tendermint
+counterparty. The oracle signs the counterparty's headers with fixed ed25519
+keys, so each header can break exactly one rule:
+
+- adjacent and non-adjacent updates, with 1/2 and 1/4 of the trusted power;
+- an expired client, a header beyond the clock drift, a wrong chain ID;
+- pruning of an expired consensus state;
+- freezing by a conflicting header and by `MsgSubmitMisbehaviour`;
+- a revision 0 counterparty, with nil votes and absent signatures;
+- the order in which the commit checks report errors, on the adjacent path
+  (signatures found by index, with the set-size check) and on the trusting
+  path (signatures found by address): a missing slot with a bad first
+  signature, a bad first signature with enough good ones, too little power,
+  a validator in two slots, a wrong validators hash.
+
+The fixtures are `fixtures/synthetic/v{4,5,6,8,9}-tm`. `cargo test -p app
+--test synthetic_tm_client_oracle` pins Go's code, codespace and log for each
+case and release, and the client store changes. celestia-core 0.39.30 (v8.0.8)
+and later report `validator address mismatch at index 1` for a signature
+found by index under another validator's address; earlier releases report
+`wrong signature (#1)`.
+
+The cases follow what mainnet relayers send. The `update_client_census`
+example decodes each `MsgUpdateClient` in a block stream; on the blocks of
+five 10,000-block windows per era (found with the RPC's `tx_search`), it
+found:
+
+| App version | Updates sampled | Adjacent | With absent signatures | With nil votes | Validator set changed | Revision 0 counterparty |
+| --- | --- | --- | --- | --- | --- | --- |
+| v1 | 61 | 5 | 61 | 0 | 0 | 0 |
+| v2 | 0 (none indexed) | | | | | |
+| v3 | 80 | 0 | 72 | 0 | 0 | 12 |
+| v4 | 100 | 0 | 87 | 0 | 12 | 23 |
+| v5 | 102 | 0 | 100 | 0 | 2 | 2 |
+| v6 | 100 | 0 | 90 | 0 | 9 | 0 |
+| v8 | 103 | 0 | 93 | 2 | 1 | 0 |
+| v9 | 101 | 3 | 88 | 6 | 1 | 0 |
+| v10 | 100 | 0 | 90 | 3 | 2 | 0 |
+
+Most updates are non-adjacent, with absent signatures; nil votes appear from
+v8, and some counterparties use revision 0.
+
 #### Probe blocks per release
 
 `-heights 19 -probes` (in `v4-oracle` to `v9-oracle`, `probes.go`,
@@ -853,7 +899,17 @@ ibc-go simapp chains as counterparties:
   receives twice. ibc-go v6 gives each a `NOOP` result (code 0). Then
   three failures that mainnet has: a transfer of more than the balance, a
   transfer whose timeout height B has passed, and an open-ack of an open
-  channel. The fixture keeps its `ibc-v2` name.
+  channel. Then `MsgChannelCloseInit` on a transfer channel (refused);
+  ibc client proposals (an expired client recovered by a passed
+  `ClientUpdateProposal`, one whose subject is Active, and an ibc
+  `UpgradeProposal`, which celestia-app refuses); `MsgUpgradeClient` of a
+  client of B whose upgrade B committed (two failures, the upgrade, then a
+  failure on the upgraded client, which is Expired); `MsgTimeoutOnClose`
+  of a transfer whose channel end on B is CLOSED (set in B's store, as a
+  counterparty that allows closing would; a failure, the refund, then a
+  `NOOP`); and a passed parameter change that sets PFM's `FeePercentage`
+  to 10%, then a forward from B through A to C that pays the fee to the
+  community pool. The fixture keeps its `ibc-v2` name.
 
 The test records A's genesis, each BeginBlock header and the
 transactions of each block. It replays them in a fresh app through the
@@ -862,8 +918,7 @@ run's. Each block gets one BeginBlock at one time (ibctesting re-runs
 BeginBlock when its clock moves, which no consensus engine does), so
 the clients that A hosts allow an hour of clock drift. The blocks carry
 no last commit. [`fixtures/synthetic/ibc-v2`](fixtures/synthetic/ibc-v2)
-holds heights 0 to 151; the test requires it byte for byte. To
-holds heights 0 to 124; the test requires it byte for byte. To
+holds heights 0 to 205; the test requires it byte for byte. To
 regenerate it:
 
 ```sh
@@ -876,6 +931,42 @@ cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
 
 `cargo test -p app --test ibc_oracle` compares each block as for the
 synthetic chain.
+
+#### 07-tendermint client updates at app versions 1 to 3
+
+`TestIBCTMFixture` (`conformance/v1-oracle/ibc_tm_test.go`) runs chain A of
+the IBC harness alone. After the v1 to v2 upgrade, chain A creates clients of
+a synthetic counterparty whose headers it signs with fixed ed25519 keys, so
+each header breaks exactly one rule. These are the cases of the `-tmclient`
+blocks of `v4-oracle` to `v9-oracle`, plus the ibc-go v6 forms: a misbehaviour
+in `MsgUpdateClient` (a decode error), a conflicting header that freezes the
+client, and `MsgSubmitMisbehaviour` repeated on the frozen client. Each tx
+has its own block (heights 4 to 38). A failed tx uses the sender's sequence
+only when it got past the ante handler, so the test reads the sequence back
+from state.
+[`fixtures/synthetic/ibc-v2-tm`](fixtures/synthetic/ibc-v2-tm) holds the
+blocks. To regenerate it:
+
+```sh
+cd conformance/v1-oracle
+V1_ORACLE_IBC_TM_OUT="$OUT" GOFLAGS=-mod=mod go test -run TestIBCTMFixture .
+cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
+  "$OUT"/tx-results.jsonl.gz "$OUT"/kv-diffs.jsonl.gz \
+  "$OUT"/kv-height-0.jsonl.gz ../fixtures/synthetic/ibc-v2-tm/
+```
+
+`cargo test -p app --test ibc_tm_oracle` pins Go's code, codespace and log for
+each tx, and the pruning and freezing store changes. celestia-rs matches every
+KV change and app hash through block 35. The block replay
+(`ibc_tm_blocks_match_the_oracle`) stays ignored until these are fixed:
+
+- logs at blocks 12 and 35: ibc-go v6 says `client is not active`, not
+  `client state is not active`;
+- codespace `tendermint-client` at blocks 19 and 26;
+- the `double vote from Validator{…} (0 and 1)` text at block 23;
+- block 30: celestia-core v1 does not check the address of a signature found
+  by index, so it reports `wrong signature (#1): <signature bytes>`;
+- block 36: `MsgSubmitMisbehaviour` is not ported for app versions 1 to 3.
 
 #### History synthetic chain for the historical info migration
 
