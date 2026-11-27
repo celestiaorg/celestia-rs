@@ -255,3 +255,45 @@ async fn stop_sync_interrupts_discovery() {
         .unwrap();
     assert_eq!(got.err(), Some(statesync::SyncError::Stopped));
 }
+
+/// While no snapshot is known, each discovery round redials the persistent
+/// peers that are not connected. The switch's own redial schedule decays
+/// (20 tries, then exponential backoff), so on a network where the peers
+/// that serve snapshots are mostly at their inbound limit, a node that
+/// only follows that schedule can wait many minutes for the next try.
+/// Here the persistent peer was dropped without a reconnect loop, so only
+/// the discovery round can bring it back.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn discovery_round_redials_persistent_peers() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (server, _server_r) = node(4, vec![], Arc::new(Server), tmp.path());
+    server.start().await.unwrap();
+    let addr = format!("{}", server.net_address().unwrap());
+    let (client, client_r) = node(5, vec![addr], Arc::new(Client::default()), tmp.path());
+    client.start().await.unwrap();
+    for _ in 0..200 {
+        if !client.peers().is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let peer = client.get_peer(&server.node_id()).expect("connected");
+    // A graceful stop does not start the switch's reconnect loop.
+    client.stop_peer_gracefully(&peer, "STATESYNC");
+    assert!(client.peers().is_empty());
+
+    let r = Arc::clone(&client_r);
+    let task =
+        tokio::task::spawn_blocking(move || r.sync(Arc::new(Trusted), Duration::from_secs(5)));
+    let got = tokio::time::timeout(Duration::from_secs(30), task).await;
+    if got.is_err() {
+        client_r.stop_sync();
+    }
+    let (state, _commit) = got
+        .expect("no discovery round redialed the persistent peer")
+        .unwrap()
+        .unwrap();
+    assert_eq!(state.last_block_height, 7);
+    client.stop();
+    server.stop();
+}
