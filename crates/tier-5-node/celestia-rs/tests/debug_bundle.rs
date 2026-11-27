@@ -106,7 +106,11 @@ fn bundle_holds_diagnostics_and_never_private_keys() {
         .collect();
     for e in &entries {
         if e.name != "manifest.json" {
-            assert!(listed.contains(&e.name.as_str()), "{} not in manifest", e.name);
+            assert!(
+                listed.contains(&e.name.as_str()),
+                "{} not in manifest",
+                e.name
+            );
         }
     }
     // RPC was turned off: say so instead of failing.
@@ -169,6 +173,21 @@ keyring-backend = "test"
         assert!(!out.contains(secret), "{secret} left in {out}");
     }
     assert!(out.contains("<redacted>"));
+}
+
+#[test]
+fn bundled_config_files_are_redacted() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    init_home(home);
+    let app = home.join("config/app.toml");
+    let mut s = std::fs::read_to_string(&app).unwrap();
+    s.push_str("\n[extra]\nauth-token = \"s3cr3t\"\n");
+    std::fs::write(&app, s).unwrap();
+    let entries = debug_bundle::collect(&options(home));
+    let text = String::from_utf8_lossy(&entry(&entries, "config/app.toml").data).into_owned();
+    assert!(!text.contains("s3cr3t"));
+    assert!(text.contains("auth-token = \"<redacted>\""));
 }
 
 #[test]

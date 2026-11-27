@@ -179,7 +179,10 @@ pub fn collect(opts: &Options) -> Vec<Entry> {
             Ok(redact_toml(&s).into_bytes())
         });
     }
-    let state = home_path("priv_validator_state_file", "data/priv_validator_state.json");
+    let state = home_path(
+        "priv_validator_state_file",
+        "data/priv_validator_state.json",
+    );
     c.try_add("data/priv_validator_state.json", || read(&state));
     let upgrade = home.join("data").join("upgrade-info.json");
     if upgrade.exists() {
@@ -255,9 +258,10 @@ fn default_output() -> PathBuf {
 
 /// The archive's top-level directory: its file name without `.tar.gz`.
 fn bundle_root(path: &Path) -> String {
-    let name = path
-        .file_name()
-        .map_or_else(|| "celestia-rs-debug".into(), |n| n.to_string_lossy().into_owned());
+    let name = path.file_name().map_or_else(
+        || "celestia-rs-debug".into(),
+        |n| n.to_string_lossy().into_owned(),
+    );
     let root = [".tar.gz", ".tgz", ".gz", ".tar"]
         .iter()
         .find_map(|ext| name.strip_suffix(ext))
@@ -492,7 +496,7 @@ fn redact_url_credentials(s: &str) -> String {
         let (head, tail) = rest.split_at(i + 3);
         out.push_str(head);
         let end = tail
-            .find(|c: char| matches!(c, '/' | '"' | '\'' | ',' | ' ' | '\t'))
+            .find(['/', '"', '\'', ',', ' ', '\t'])
             .unwrap_or(tail.len());
         let authority = &tail[..end];
         if let Some(at) = authority.rfind('@') {
@@ -509,8 +513,7 @@ fn redact_url_credentials(s: &str) -> String {
 
 /// The last `max` bytes of `path`.
 fn tail(path: &Path, max: u64) -> anyhow::Result<Vec<u8>> {
-    let mut f =
-        std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let mut f = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
     let len = f.metadata()?.len();
     if len > max {
         f.seek(SeekFrom::Start(len - max))?;
@@ -523,7 +526,15 @@ fn tail(path: &Path, max: u64) -> anyhow::Result<Vec<u8>> {
 /// The tail of a systemd unit's journal.
 fn journal(unit: &str, max: u64) -> anyhow::Result<Vec<u8>> {
     let out = std::process::Command::new("journalctl")
-        .args(["--no-pager", "-o", "short-iso-precise", "-n", "200000", "-u", unit])
+        .args([
+            "--no-pager",
+            "-o",
+            "short-iso-precise",
+            "-n",
+            "200000",
+            "-u",
+            unit,
+        ])
         .output()
         .context("run journalctl")?;
     if !out.status.success() {
@@ -696,7 +707,10 @@ mod tests {
         assert!(name.starts_with("celestia-rs-debug-2"), "{name}");
         assert!(!name.contains(':'), "{name}");
         // celestia-rs-debug-YYYYMMDDTHHMMSSZ.tar.gz
-        assert_eq!(name.len(), "celestia-rs-debug-".len() + 16 + ".tar.gz".len());
+        assert_eq!(
+            name.len(),
+            "celestia-rs-debug-".len() + 16 + ".tar.gz".len()
+        );
     }
 
     #[test]
