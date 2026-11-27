@@ -8,7 +8,7 @@ all-features = true
 [advisories]
 yanked = "deny"
 ignore = [
-    { id = "RUSTSEC-2026-0543", allow = ["pbjson-types@=0.7.0"], expiry = "2026-12-17", reason = "chrono is unmaintained; pbjson-types uses it for protobuf timestamps (upstream #162)" },
+    { id = "RUSTSEC-2026-0543", allow = ["pbjson-types@0.7.0"], expiry = "2026-12-17", reason = "chrono is unmaintained; pbjson-types uses it for protobuf timestamps (upstream #162)" },
     # Unmaintained, no safe upgrade: paste (proc-macro, build time only) via
     # ark-ff (x/zkism) and tendermint-proto.
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained; build-time proc macro via ark-ff / tendermint-proto" },
