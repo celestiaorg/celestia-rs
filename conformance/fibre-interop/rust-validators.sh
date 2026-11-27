@@ -14,7 +14,10 @@
 #  4. $CLIENTS separate Go clients (one connection per validator each, more
 #     than the servers' 16-connection cap) run fibre.Put at once; then one
 #     client runs $CLIENTS Puts of 2 MiB at once (more streams per
-#     connection than the servers' 13-stream cap).
+#     connection than the servers' 13-stream cap), with the Go client's
+#     default 15 s RPC timeout; then one client runs $BIG_PUTS Puts of
+#     127 MiB at once (several maximum-size uploads in flight per server,
+#     under the default max_inflight_upload_bytes).
 #  5. One validator is stopped: fibre.Put still collects 2/3 of the
 #     signatures and commits, and every earlier blob still reconstructs.
 #  6. A raw UploadShard loop fills validator 0's storage budget (set low in
@@ -22,13 +25,14 @@
 #     RetryInfo detail as the Go client's retry logic does.
 #  7. All nodes agree on block and app hashes at every height.
 #
-# usage: [SIZES=1K,300K,8M,64M] [CLIENTS=20] [DEVNET_PORT_OFFSET=n]
+# usage: [SIZES=1K,300K,8M,64M] [CLIENTS=20] [BIG_PUTS=3] [DEVNET_PORT_OFFSET=n]
 #        conformance/fibre-interop/rust-validators.sh [path/to/celestia-rs]
 # Exit 0 iff every check passes.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 SIZES=${SIZES:-1K,300K,8M,64M}
 CLIENTS=${CLIENTS:-20}
+BIG_PUTS=${BIG_PUTS:-3}
 OFF=${DEVNET_PORT_OFFSET:-21000}
 W=$(mktemp -d)
 GOBIN=${GOBIN:-$W/bin}
@@ -68,7 +72,7 @@ for f in sys.argv[1].split(","):
     m = {"K": 1 << 10, "M": 1 << 20}.get(f[-1], 1)
     n = int(f.rstrip("KM")) * m
     tot += max(n, 1 << 18)
-print(int((tot + int(sys.argv[2]) * ((1 << 18) + (2 << 20)) + 4 * (1 << 18)) * 1.15) + 96 * (1 << 20))' "$SIZES" "$CLIENTS")
+print(int((tot + int(sys.argv[2]) * ((1 << 18) + (2 << 20)) + 4 * (1 << 18) + int(sys.argv[3]) * (127 << 20)) * 1.15) + 96 * (1 << 20))' "$SIZES" "$CLIENTS" "$BIG_PUTS")
 set_genesis_budget "$D" "$BUDGET"
 echo "== four celestia-rs validators, full-stake storage budget $((BUDGET >> 20)) MiB"
 for i in 0 1 2 3; do enable_rust_fibre "$D" $i; start_node "$D" $i; done
@@ -89,8 +93,12 @@ if [ ${#FAIL[@]} -eq 0 ]; then
   echo "== Go client: unknown blob"
   interop notfound "${G[@]}" || FAIL+=("notfound")
   echo "== $CLIENTS Go clients at once"
-  interop concurrent "${G[@]}" -clients "$CLIENTS" -seed 1000 || FAIL+=("concurrent clients")
-  interop concurrent "${G[@]}" -clients "$CLIENTS" -shared -size 2M -seed 2000 || FAIL+=("concurrent Puts on one client")
+  interop concurrent "${G[@]}" -clients "$CLIENTS" -seed 1000 -rpc-timeout 15s || FAIL+=("concurrent clients")
+  interop concurrent "${G[@]}" -clients "$CLIENTS" -shared -size 2M -seed 2000 -rpc-timeout 15s || FAIL+=("concurrent Puts on one client")
+  if [ "$BIG_PUTS" -gt 0 ]; then
+    interop concurrent "${G[@]}" -clients "$BIG_PUTS" -shared -size 127M -seed 3000 -rpc-timeout 120s || FAIL+=("concurrent 127 MiB Puts")
+    for i in 0 1 2 3; do echo "node $i peak RSS $(peak_rss "$(cat "$D/n$i/pid")") MiB"; done
+  fi
 
   echo "== validator 3 stopped"
   chain_agree "$(($(latest 3) - 1))" 0 1 2 3 || FAIL+=("chain agreement before the stop")

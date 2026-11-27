@@ -99,7 +99,7 @@ jobs:
       - name: Go and celestia-rs validators
         env:
           DEVNET_BIN: ${{ github.workspace }}/target/devnet-bin-v11
-          SIZES: 1K,300K,8M,64M
+          SIZES: 1K,300K,8M,64M,127M
           TMPDIR: ${{ runner.temp }}/devnet
         run: |
           mkdir -p "$TMPDIR"

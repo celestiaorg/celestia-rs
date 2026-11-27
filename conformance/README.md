@@ -1003,7 +1003,7 @@ SIZES=1K,300K,8M,64M,127M CLIENTS=20 conformance/fibre-interop/rust-validators.s
 DEVNET_BIN=target/devnet-bin-v11 APP_VERSION=v11.0.0 CORE_VERSION=v0.42.8 \
   APPD_ONLY=1 FIBRE=1 GOTOOLCHAIN=go1.26.10 conformance/devnet/build-bins.sh
 cargo build -p celestia-rs --features da-fibre
-SIZES=1K,300K,8M,64M conformance/fibre-interop/mixed-validators.sh target/debug/celestia-rs
+SIZES=1K,300K,8M,64M,127M conformance/fibre-interop/mixed-validators.sh target/debug/celestia-rs
 ```
 
 The scripts need Go (the module pins `go 1.26.10`; `GOTOOLCHAIN=auto`
@@ -1021,7 +1021,10 @@ What they check:
   the mixed network each payment carries Go and Rust signatures.
 - Download of an unknown blob: `fibre.ErrNotFound`.
 - Rust-only network: 20 clients at once (each with its own connection per
-  validator, beyond the 16-connection cap); a stopped validator (`fibre.Put`
+  validator, beyond the 16-connection cap) and 20 Puts on one client
+  (beyond the 13-stream cap), both with the client's default 15 s RPC
+  timeout; `BIG_PUTS` (3) concurrent 127 MiB Puts on one client, which
+  must fit the default `max_inflight_upload_bytes`; a stopped validator (`fibre.Put`
   still reaches the 2/3 quorum and earlier blobs reconstruct); a raw
   `UploadShard` loop fills one validator's storage budget (lowered in
   genesis) until `ResourceExhausted`, whose `RetryInfo` grpc-go must decode
