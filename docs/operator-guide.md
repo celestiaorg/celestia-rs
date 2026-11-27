@@ -292,7 +292,7 @@ serving interval. [DA rollout tracker](https://github.com/celestiaorg/celestia-r
 
 | network | chain ID | genesis SHA-256 | seeds / peers |
 |---|---|---|---|
-| `mainnet` | `celestia` | `9727aac9…7793` | 2 seeds + 2 peers (checked live 2026-10-18; see §12) |
+| `mainnet` | `celestia` | `9727aac9…7793` | 3 seeds + 4 peers (checked live 2026-11-27; see §12) |
 | `mocha` | `mocha-5` | `82db3ac5…5d33` | 2 seeds + 1 peer (`scripts/mocha.sh`) |
 | `arabica` | `arabica-11` | not pinned upstream (chain ID checked) | none built in: pass `--p2p.seeds` |
 | `local` | `celestia-rs-local` | generated | — |
@@ -1803,7 +1803,11 @@ The procedure is section 11 with:
   and `peers.txt`) and the cosmos chain-registry. On 2026-11-27, a fresh
   home with state sync on got a snapshot offer in 25 s with it. The three
   seeds alone gave no lasting peer that day, so keep live persistent peers
-  configured. To refresh them:
+  configured. Public seeds are often full: a node at its inbound limit
+  closes the connection right after the handshake, before it sends any
+  addresses (a packet capture of `seed.celestia.pops.one` that day showed
+  this; it is an RPC full node with full inbound slots). Persistent peers
+  or a populated address book are the reliable route. To refresh them:
   `curl -sL https://raw.githubusercontent.com/celestiaorg/networks/master/celestia/peers.txt | paste -sd, -`.
 - Route B with Polkachu's mainnet snapshot
   (`snapshots.polkachu.com/snapshots/celestia/`, ~640 MB snapshot inside).
