@@ -42,6 +42,8 @@ func TestSyntheticFixtureIsReproducible(t *testing.T) {
 		{"v5-probes", "", []string{"-heights", "19", "-probes"}},
 		// The 07-tendermint client blocks of tmclient.go after the usual five.
 		{"v5-tm", "", []string{"-heights", "10", "-tmclient"}},
+		// The equivocation blocks of evidence.go after the usual five.
+		{"v5-evidence", "", []string{"-heights", "10", "-evidence"}},
 		// On to the v6 hand-off: the home must become the committed home-36.
 		{"v5-to-v6", "home-36", []string{"-heights", "11", "-next-handoff"}},
 		// The chain with blocks built as a validator would (consensus.go),
