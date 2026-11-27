@@ -1,0 +1,39 @@
+{
+  "entries": [
+    {
+      "network": "mainnet",
+      "crawled_at": 1795815642,
+      "summary": {
+        "reachable": 226,
+        "direct": 54,
+        "rust": 2,
+        "go": 222,
+        "unknown": 2,
+        "unreachable": 4778,
+        "versions": {
+          "0.0.1": 2,
+          "0.38.0": 1,
+          "0.38.17": 221,
+          "0.38.17-celestia-rs.0.1.0-rc.9": 2
+        }
+      }
+    },
+    {
+      "network": "mocha",
+      "crawled_at": 1795815741,
+      "summary": {
+        "reachable": 115,
+        "direct": 43,
+        "rust": 1,
+        "go": 113,
+        "unknown": 1,
+        "unreachable": 3816,
+        "versions": {
+          "0.0.1": 1,
+          "0.38.17": 113,
+          "0.38.17-celestia-rs.0.1.0-rc.9": 1
+        }
+      }
+    }
+  ]
+}

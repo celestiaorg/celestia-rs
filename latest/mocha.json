@@ -1,0 +1,941 @@
+{
+  "network": "mocha",
+  "chain_id": "mocha-5",
+  "crawled_at": 1795815741,
+  "duration_secs": 73,
+  "summary": {
+    "reachable": 115,
+    "direct": 43,
+    "rust": 1,
+    "go": 113,
+    "unknown": 1,
+    "unreachable": 3816,
+    "versions": {
+      "0.0.1": 1,
+      "0.38.17": 113,
+      "0.38.17-celestia-rs.0.1.0-rc.9": 1
+    }
+  },
+  "nodes": [
+    {
+      "id": "025a65ef439d71ba79af1a1220efb33d47974751",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "DURE Nodes",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "037dec108882cf0b291d3f4677246c8b0b68a356",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "node101",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "04aac11c6a36a4768f76fd132b66efa8f800501a",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "node",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "074df5b33cd6e62937eea894092e6cdebef2bc79",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "winter-validator",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "07cefc913e516735fc603e87c4c497460aad882f",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "bro-t-rpc-01-archive",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "091ae4c3cf24ccbe00e77919b24bff50fc7169eb",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "fibrescope-hel-1",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "0b6bb5c485d071cc1b9f826edf89e4726849f139",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "da-proxy-rpc-1-mocha",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "0b91e5ce659d9b245bf925ef0db99bab90b2f260",
+      "version": "0.0.1",
+      "implementation": "unknown",
+      "moniker": "mocha-5-seed",
+      "app_version": 0,
+      "source": "p2p"
+    },
+    {
+      "id": "0c18e68883ef548269c7d3ca258f1f31eb206776",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "chainsafe-mocha-5-fullnode-03",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "0df16b033524cd5389ec5b01b13969118654f810",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Cumulo RPC",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "1bbca8f6a7405e829563852ae250a01a443b52be",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "validator",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "1be6ef888455151f091e9e9894b656b9720a708e",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Upnode",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "1c8be1402c2e501775156ea4ed9c9ebb0ab13b27",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "tendermint",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "1e3eb787a4e4a314ee2c06270cf595de4f66ff91",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "kgnodes",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "2481dbc3cc64ed023decc598dcb6be9206511fae",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia-relayer_testnet-CroutonDigital",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "24df519da0303b31f594e880be83424361652fd4",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "hello-celestia-test",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "27844600b6936270e7ba747e714a0799a2248398",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Anon",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "296215dd0454853c46dcc81856d686d17cb9cabd",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia-validator_testnet-CroutonDigital",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "2c7a72834a534eed49aa6436587c9a189492fa1a",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia-cb-01",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "2d60a06a96bdfa43bc6b9cd980f89cbbc9aeb6c3",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "da-proxy-rpc-pruned-1-mocha-5",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "3329e50c8e59bf9f13deee9019b18bf2ad77141f",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "NODERS.SERVICES-TESTNET-celestia",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "390ad0b09dba0fd8d3dc050ee77a3524c7cb4758",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "DSRV",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "3940d95f6ceabd790b9a97954aeec4243c40b708",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Stakeflow",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "3995867fdaadfae50497951fb41055475281c6d9",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "huginn-mfnode",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "3b343f030d2c340db7bbf2f39d786ee4552186be",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia-mocha-5-consensus",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "3bb8583bc3f2bb85bab403c1dd034ccd29e9c33c",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "mocha5-clean-test",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "3bf87e0e34041a0852335feb84df550a1bbf8fc2",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "kynraze-handshake-probe",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "3c8ceed02c50b2c6b77333f1265e3fc2c13d269b",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "hello-celestia-testrelay",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "3fcdd389eff3c3c16fb778922830412d48ef0f5e",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "mocha5-test",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "400f8d1cd44ebe54d5e852d0abfb27710cae441f",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Kraken",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "41115ce4008ef08e63ea7e2538b01124919620ee",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "backup",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "42a56aadd35b9d0b0027594b035da6022fbfbcc9",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "mammoth2",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "43e9da043318a4ea0141259c17fcb06ecff816af",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "rpc-1.testnet.celestia.nodes.guru",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "46be3bddeed5840dc1362dae2b0bf046a6b0ec88",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "cosmic-validator",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "4951ba9b23e0ddc87664b48d10c48d523bc022ba",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "wwww",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "49610092a93289255324b6959fd80d69964085fb",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Unity Nodes",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "4faaa926a8575c45c54f1f5968bd75b81533f016",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "P-OPS Team",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "529379c091043375e9437d1562ff98ba8224802b",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "01node",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "53849d640006381d7bdca4d0de9506596c8d59af",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "hello-celestia-test",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "540246ca1359b183fa49e41bf4b1dac1fdd47a66",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "mocha-htz",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "5442ca8005dd78101a3ad26db1fcaf3270cca886",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "node",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "573bf71e1fd6ddfbc64b0875527a7401597b559d",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "localhost",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "5763e9d1a95663928e3baec700cd7ab927ced3bf",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia-cb-01",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "596f30e9a443ef5e9d4f8a2f651f72ecdbf401b2",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "hello-world",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "5ac34d4591024c2e7bfdb75ef6d653f45fa692b9",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "qn-tsw-ewr-13908",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "5b1250b426e5ea12a129f7b8f480d67ef2c40455",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "wizz",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "5de6dcfb9ab6c4d8882596b2ad42cef2b67afc76",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "vlr-t-node-01",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "67b77ddeea9587aece70026ba169dce08aa4b7ce",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "solva-testnet",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "72900633d70982d42b379e67e322b0da0b473237",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "binary-builders",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "782da208b5f925703a633a5576825c01d91d2dd7",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "PathrockNetwork",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "7d01511554a7997d5d51ab5822a681429a2ba4a0",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Kyve_celestia_bridge_2",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "83498a5968388bfee2b1e55d56e07eb69c96ea8b",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Hgn-mainnet",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "89487bc081cad4b073b33cecb5db72b3654e1681",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "da-proxy-rpc-pruned-2-mocha-5",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "89d75e950c620d41964698311b40b2f988a22a64",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "validator",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "8a3f79a26ac786061c473de399f52083124db91e",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "bitszn_1",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "8b39812121d03a311d098163182438cbbe4d28d3",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia_testnet_rpc",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "8b75109fdd9b6ca489b6956bd68f790b17db4aa6",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Stakely",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "8c1c18a961df0b5b4572fe7865cacc9905e04db1",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "tia-node",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "8fbeb2926579f67a5ec3f37c38fb4da1de42ded9",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "CLK",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "9b4bc53ba3b8bd494746310b6e97666f66e325fb",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Stakeup_rpc",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "9bfbae02061b2df66bd411c9a953b898e9167425",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "BlockPro",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "9c41b4efdb8a2cf49d46f443c6d337ba51f3257c",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "ecad-mochanet-1",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "9febd9813685fe27833aedb42dd4ae683954140e",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "tia-node",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "a067d3f26afdd0a214df5f8d055c5495fe61810d",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "qubelabs-snap",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "a108f6231ff4dcbda876c781151fe81d72189762",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "231451615e0c3f34cb",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "a5573cbdee73370fae11a7223f8814cf1128a43d",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "node-name",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "a5e986735f487ee72ea209b6d2e1d562c4cf46db",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "quantumcore3",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "a6513e5665b8db52f041caea7287671985155ada",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "relayer-testnet",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "a9bf63542f6b312d825089474a59f10513799ba9",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "hipparcos",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "aa5a8b75e9549870f6fc7ae118d221257e417413",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Chiter in Cosmos",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "ab86412e6c362738b203e6a21be92206e2fa275d",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Qubelabs",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "ada3f7ee8e8e9c5ccaede94299f9ea8573058c59",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "StakeUs-Mocha-Services",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "aed0fa09ebc877c54bfbdb3be139fcc324685f30",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia-cb-01",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "b0b3033de99802205ad917742d7f823adc18060f",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia-relayer_testnet-CroutonDigital",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "b24c904f3c5a4f7d9d499d2f155c35446e6e6bb8",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia-cb-01",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "b3a728c618174cf227004489a14521721ef5841a",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "da-proxy-rpc-2-mocha",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "b402fe40f3474e9e208840702e1b7aa37f2edc4b",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "seed",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "b44257612a1546750e8d7a12e4df6e3771f3542a",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "comet",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "b5527dcc80e5d362ca227bf120e28a5daef05619",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "hello-celestia-testrelay",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "b665ecb92f414c42712f6668834ae59016a7319f",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "hextrust",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "c22b498950c27fe9e40a81bda80536dce3689337",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "CosmicValidator",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "c281ee671e281f9701eb28e145b0d68dd14ee8c6",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "mocha-5-validator-pruned-1",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "c32b25ea4b20b28551e13f37a21d6371b43a2b16",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "VALIDEXIS",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "c672d42d40d6d7caeacdafad7adeb1bfe0ef7895",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "stk-619",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "c84cf375c6d6a8d8f765fb191a88774f8b5ed69e",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "vmi3661568",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "ced803cadc846d5e7269dd7222c06c3e9cf35714",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "kynraze-rpc",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "d0a7c079da963d97f5cdf498e2fdf29d194ec8c8",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "medium-rare",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "d11249a0b592da5f54be925cdd8a6b050111127d",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "LinkPool",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "d44128f76e42144dfda3c544835212d6e517b3d3",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "decentra-testnet-validator",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "d5519e378247dfb61dfe90652d1fe3e2b3005a5b",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "kjnodes-testnet-rpc",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "da15db68175201d0bdf808da2b3495908c2eef57",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Orion",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "da76c46da0cbf554ec2919769d852ca7e883fa7a",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "bh",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "daf2cecee2bd7f1b3bf94839f993f807c6b15fbf",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "rpc",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "dbd78d7c61f1789814685d5ed37fb39ff054177d",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "POSTHUMAN-Mocha5-RPC",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "ddf2761a46f91955c129f8f28f41d7084490e805",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "LiveRaveN",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "df2aea1cc24721dc9900409bac32ef4488c4a6c3",
+      "version": "0.38.17-celestia-rs.0.1.0-rc.9",
+      "implementation": "rust",
+      "moniker": "celestia-rs validator",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "e4bc0594fe32121cbeab476c1b6586ccd73bbdd3",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "node-name",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "ea6d3b2b921615aebcf3a7c9470ca799942ef1d6",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia-cb-01",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "eb9a9298a4d94a5a1d2c1a18c0abfd29a979d692",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "node",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "ec6aa504ecafcdbc07872ac0f085d99fcc9eb537",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Easy2Stake",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "ec8c5191cdf62413bd08dbb61b39a7d20d76df6d",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "posthuman-soulinmysol",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "ed8359cd707c622b0a9250824e311ee1fdb65ba0",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "mocha-5-consensus-pruned-1",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "ee9f90974f85c59d3861fc7f7edb10894f6ac3c8",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "P-OPS Team RPC",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "ef1853155735bbdc15be6d04d61ea8e0b0f3429d",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Kyve_ovh-1",
+      "app_version": 9,
+      "source": "rpc"
+    },
+    {
+      "id": "f1c907cec503100f9a0692de30ac04349606bc67",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "BlackNodes",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "f3d70ac8112c74f1ac98578dd1cc8861b5055730",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Anon-services",
+      "app_version": 11,
+      "source": "p2p"
+    },
+    {
+      "id": "f45ec51640e5f12b8d5dbe0dc40a495d7bd12b65",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Apollo",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "f4db13a3af43571edcbc8c2a8b702138d770cba3",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Cumulo",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "f6d51d6353469adf60e86bf48f40fdac51ae6a13",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia-snapshot-CroutonDigital",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "f7370f480359e28163f68f10905f54de83d1313b",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "NakoTurk",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "f759924b9ea6590e618b522c822a43adb6c16a3f",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "cdao_sentry",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "f8942f49b95eb013cf5aa20ff8582d87de6ddc95",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "node",
+      "app_version": 10,
+      "source": "rpc"
+    },
+    {
+      "id": "faf2bbec29ff33aac510381d6e8e97eb57e9ba77",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "ObsidianStake",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
+      "id": "fafeea5cb6d9ed484a137b582d323f85b3fcd979",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "Stakin by The Tie",
+      "app_version": 10,
+      "source": "p2p"
+    },
+    {
+      "id": "ff17c5aa39d39aad5dd3cffda77a687ca2e9ec03",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia-cb-01",
+      "app_version": 11,
+      "source": "rpc"
+    }
+  ]
+}
