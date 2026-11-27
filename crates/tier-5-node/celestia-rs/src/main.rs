@@ -33,6 +33,11 @@ use clap::{Args, Parser, Subcommand};
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
+/// mimalloc (experiment feature `mimalloc`, without `jemalloc`).
+#[cfg(all(feature = "mimalloc", not(feature = "jemalloc")))]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[derive(Parser, Debug)]
 #[command(name = "celestia-rs", version, about = "Rust Celestia consensus node")]
 struct Cli {

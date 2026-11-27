@@ -30,6 +30,10 @@ jemalloc = ["dep:tikv-jemallocator"]
 # Memory diagnostics (docs/benchmarks/memory.md): jemalloc statistics on
 # the Prometheus endpoint (`memstats_heap_*`) and jemalloc's heap profiler
 # (`MALLOC_CONF=prof:true,...`). Not part of the default build.
+# Experiment only (exp/allocator): mimalloc as the global allocator,
+# overriding malloc so RocksDB uses it too. Build with
+# `--no-default-features --features rocksdb,mimalloc`.
+mimalloc = ["dep:mimalloc"]
 memstats = ["jemalloc", "dep:tikv-jemalloc-ctl", "tikv-jemallocator/profiling", "tikv-jemallocator/stats"]
 
 [dependencies]
@@ -115,6 +119,7 @@ tokio-util = { version = "0.7", features = ["compat"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tikv-jemallocator = { version = "0.7", optional = true, features = ["unprefixed_malloc_on_supported_platforms"] }
 tikv-jemalloc-ctl = { version = "0.7", optional = true, features = ["stats"] }
+mimalloc = { version = "0.1", optional = true, default-features = false, features = ["override"] }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1.1", features = ["termios"] }

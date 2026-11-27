@@ -51,6 +51,11 @@ use prost::Message as _;
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
+/// mimalloc (experiment feature `mimalloc`, without `jemalloc`).
+#[cfg(all(feature = "mimalloc", not(feature = "jemalloc")))]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 // Independent command-line switches.
 #[allow(clippy::struct_excessive_bools)]
 struct Args {
@@ -544,6 +549,18 @@ fn print_config(a: &Args) {
          discard_abci_responses {}",
         a.iavl_cache, a.db_cache_mib, a.discard_abci_responses,
     );
+    let allocator = if cfg!(feature = "jemalloc") {
+        "jemalloc"
+    } else if cfg!(feature = "mimalloc") {
+        "mimalloc"
+    } else {
+        "system"
+    };
+    let env: Vec<String> = std::env::vars()
+        .filter(|(k, _)| k == "MALLOC_CONF" || k.starts_with("MIMALLOC_"))
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect();
+    println!("allocator: {allocator} [{}]", env.join(" "));
 }
 
 fn main() -> anyhow::Result<()> {
