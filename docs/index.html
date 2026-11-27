@@ -175,8 +175,8 @@
           Have Bash, curl and jq available, with the default node ports free.
         </p>
         <h3 id="hardware">Hardware and operating system</h3>
-        <p>The project's reference validator is a 10-core Mac Mini M4 with
-          16 GB RAM and a 512 GB SSD. Release binaries run on Apple silicon
+        <p>The target machine for a pruned validator has 8 CPU cores,
+          16 GB RAM and a 500 GB NVMe SSD. Release binaries run on Apple silicon
           macOS and on x86-64 or ARM64 Linux with glibc 2.35 or newer.
           Minimum CPU, RAM and disk requirements have yet to be established.</p>
         <p>For a pruned validator, the design budgets are 8 GB resident
@@ -345,8 +345,8 @@
         <h2>Operator FAQ</h2>
         <details id="hardware-faq">
           <summary>What hardware requirements do I need?</summary>
-          <p>The reference pruned validator uses a 10-core Mac Mini M4,
-            16 GB RAM and a 512 GB SSD. Its design budgets are 8 GB resident
+          <p>The target machine for a pruned validator has 8 CPU cores,
+            16 GB RAM and a 500 GB NVMe SSD. Its design budgets are 8 GB resident
             memory at steady state and 12 GB at peak. Linux releases support
             x86-64 and ARM64. The project has not established a minimum
             machine size or a fixed disk size for an archive. Choose a

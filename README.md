@@ -67,7 +67,7 @@ See the [milestones](MILESTONES.md) for qualification progress and the
   from `celestia-rs start` itself (`[fibre] enable = true`), with TLS
   identity, gRPC health and Prometheus metrics; see the
   [operator guide](docs/operator-guide.md#fibre-server).
-- **Built for a Mac Mini M4** (16 GB / 512 GB, [`docs/hardware.md`](docs/hardware.md)):
+- **Built for modest hardware** (target: 8 cores, 16 GB, 500 GB NVMe; [`docs/hardware.md`](docs/hardware.md)):
   release archives for macOS and Linux, launchd and systemd units.
 
 ## Architecture
