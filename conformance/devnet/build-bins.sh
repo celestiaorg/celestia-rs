@@ -4,9 +4,11 @@
 # v10.5.0) and cometbft (celestia-core v0.42.3), like devnet.sh does.
 # Module downloads are retried (transient proxy.golang.org failures).
 # APP_VERSION=v9.0.8 builds that release instead (module .../v9);
-# APPD_ONLY=1 skips cometbft.
+# APPD_ONLY=1 skips cometbft. FIBRE=1 also builds the standalone Go Fibre
+# server (`fibre`, package ./fibre/cmd of the same celestia-app release;
+# v10 and later).
 #
-# usage: [DEVNET_BIN=dir] [APP_VERSION=vX.Y.Z] [APPD_ONLY=1] conformance/devnet/build-bins.sh
+# usage: [DEVNET_BIN=dir] [APP_VERSION=vX.Y.Z] [APPD_ONLY=1] [FIBRE=1] conformance/devnet/build-bins.sh
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BIN=${DEVNET_BIN:-$ROOT/target/devnet-bin}
@@ -127,5 +129,6 @@ PY
   printf '%s\n' "$1" >"$BIN/$3.module"
 }
 build_go "github.com/celestiaorg/celestia-app/$APP_MAJOR@$APP_VERSION" ./cmd/celestia-appd celestia-appd
+[ -z "${FIBRE:-}" ] || build_go "github.com/celestiaorg/celestia-app/$APP_MAJOR@$APP_VERSION" ./fibre/cmd fibre
 [ -n "${APPD_ONLY:-}" ] || build_go "github.com/celestiaorg/celestia-core@$CORE_VERSION" ./cmd/cometbft cometbft
 ls -l "$BIN"
