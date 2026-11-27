@@ -49,14 +49,19 @@ pub fn first_failure<T: Sync>(items: &[T], ok: impl Fn(&T) -> bool + Sync) -> Op
     (found != usize::MAX).then_some(found)
 }
 
-/// The worker pool for signature checks: one thread per CPU, named
+/// The worker pool for signature checks: one thread per CPU (whatever
+/// `RAYON_NUM_THREADS` says), named
 /// `sig-check-N`, started on first use. It is separate from rayon's global
 /// pool, which other code in the node uses (the Fibre server's erasure
 /// coding), so a commit check never queues behind that work. `None` if the
 /// threads cannot be started; checks then run on the calling thread.
 fn pool() -> Option<&'static rayon::ThreadPool> {
     static POOL: std::sync::LazyLock<Option<rayon::ThreadPool>> = std::sync::LazyLock::new(|| {
+        // Sized from the CPU count, as `first_failure` splits the work;
+        // left to rayon, `RAYON_NUM_THREADS` would set it.
+        let threads = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
         rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
             .thread_name(|i| format!("sig-check-{i}"))
             .build()
             .ok()
