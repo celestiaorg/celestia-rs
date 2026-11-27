@@ -383,6 +383,18 @@ pub fn open_stores(home: &Path) -> anyhow::Result<(BlockStore, StateStore)> {
     open_stores_with(home, open_db)
 }
 
+/// [`open_stores`] with explicit database options (benchmarks: for
+/// example `sync_writes: false` to measure what fsyncs cost).
+pub fn open_stores_with_options(
+    home: &Path,
+    options: &DbOptions,
+) -> anyhow::Result<(BlockStore, StateStore)> {
+    open_stores_with(home, |data, name| {
+        kvdb::open_backend(data, name, options)
+            .map_err(|e| anyhow!("open {name} in {}: {e}", data.display()))
+    })
+}
+
 fn open_stores_with(
     home: &Path,
     mut open: impl FnMut(&Path, &str) -> anyhow::Result<Arc<dyn KvBackend>>,

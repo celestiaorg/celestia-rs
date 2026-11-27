@@ -14,7 +14,8 @@
 //!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR] \
 //!   [--iavl-cache 781250] [--db-cache-mib 512] [--pruning-interval 1] \
 //!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl] \
-//!   [--home DIR [--in-place true]] [--blocks-home DIR] [--save-blocks false]
+//!   [--home DIR [--in-place true]] [--blocks-home DIR] [--save-blocks false] \
+//!   [--sync-writes true]
 //! ```
 //!
 //! `--base` holds a home after InitChain (created on first use), so later
@@ -48,6 +49,8 @@ use prost::Message as _;
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
+// Independent command-line switches.
+#[allow(clippy::struct_excessive_bools)]
 struct Args {
     blocks: i64,
     base: PathBuf,
@@ -57,6 +60,7 @@ struct Args {
     pruning_interval: u64,
     discard_abci_responses: bool,
     blocks_jsonl: Vec<PathBuf>,
+    sync_writes: bool,
     home: Option<PathBuf>,
     in_place: bool,
     blocks_home: Option<PathBuf>,
@@ -78,6 +82,8 @@ fn args() -> anyhow::Result<Args> {
         // config.toml `storage.discard_abci_responses` (template: true).
         discard_abci_responses: true,
         blocks_jsonl: Vec::new(),
+        // `celestia-rs start` fsyncs every write (Go parity).
+        sync_writes: true,
         home: None,
         in_place: false,
         blocks_home: None,
@@ -94,6 +100,7 @@ fn args() -> anyhow::Result<Args> {
             "--db-cache-mib" => a.db_cache_mib = v.parse()?,
             "--pruning-interval" => a.pruning_interval = v.parse()?,
             "--discard-abci-responses" => a.discard_abci_responses = v.parse()?,
+            "--sync-writes" => a.sync_writes = v.parse()?,
             "--blocks-jsonl" => a.blocks_jsonl.extend(v.split(',').map(PathBuf::from)),
             "--home" => a.home = Some(v.into()),
             "--in-place" => a.in_place = v.parse()?,
@@ -166,9 +173,14 @@ fn cached_block(cache: &Path, height: i64) -> anyhow::Result<Block> {
     )?)?)
 }
 
-/// Time spent in the app's `FinalizeBlock` and `Commit`.
+/// Time spent per phase of a block: the block ID (part set and hash),
+/// `ValidateBlock`, and `ApplyVerifiedBlock`, of which the app's
+/// `FinalizeBlock` and `Commit`.
 #[derive(Debug, Default, Clone, Copy)]
 struct AbciTime {
+    block_id: Duration,
+    validate: Duration,
+    apply: Duration,
     finalize: Duration,
     commit: Duration,
 }
@@ -237,6 +249,13 @@ struct Probes {
 }
 
 impl Probes {
+    fn add(&self, f: impl FnOnce(&mut AbciTime)) {
+        f(&mut self
+            .abci
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner));
+    }
+
     fn sample(&self) -> Sample {
         Sample {
             abci: *self
@@ -261,13 +280,21 @@ impl Sample {
         let n = n.max(1) as f64;
         let d = |i: usize| self.nodes[i].saturating_sub(earlier.nodes[i]) as f64;
         let ms = |a: Duration, b: Duration| a.saturating_sub(b).as_secs_f64() * 1e3 / n;
+        let (now, then) = (&self.abci, &earlier.abci);
+        let finalize = ms(now.finalize, then.finalize);
+        let commit = ms(now.commit, then.commit);
+        let apply = ms(now.apply, then.apply);
         let lookups = d(0) + d(1);
         format!(
-            "finalize {:.1} ms, commit {:.1} ms; node cache hit {:.1}% of {:.0}/block, \
-             disk reads {:.0}/block (for child refs {:.0}, later traversed {:.0}), \
-             {:.0} KiB/block",
-            ms(self.abci.finalize, earlier.abci.finalize),
-            ms(self.abci.commit, earlier.abci.commit),
+            "block id {:.1} ms, validate {:.1} ms, apply {:.1} ms (finalize {:.1}, commit {:.1}, \
+             rest {:.1}); node cache hit {:.1}% of {:.0}/block, disk reads {:.0}/block, \
+             child-ref reads {:.0}/block, encoded decodes {:.0}/block, {:.0} KiB/block",
+            ms(now.block_id, then.block_id),
+            ms(now.validate, then.validate),
+            apply,
+            finalize,
+            commit,
+            apply - finalize - commit,
             if lookups > 0.0 {
                 100.0 * d(0) / lookups
             } else {
@@ -295,8 +322,16 @@ fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State, Probes)>
     opts.store.node_cache_size = a.iavl_cache;
     opts.db.cache_size = a.db_cache_mib << 20;
     opts.store.pruning.interval = a.pruning_interval;
+    opts.db.sync_writes = a.sync_writes;
     let app = app::App::open_with(home, opts).map_err(|e| anyhow!("open app: {}", e.log))?;
-    let (bs, mut ss) = node::open_stores(home)?;
+    let (bs, mut ss) = node::open_stores_with_options(
+        home,
+        &multistore::kvdb::DbOptions {
+            cache_size: 64 << 20,
+            sync_writes: a.sync_writes,
+            ..multistore::kvdb::DbOptions::default()
+        },
+    )?;
     ss.discard_abci_responses = a.discard_abci_responses;
     let state = ss.load_from_db_or_genesis(&genesis)?;
     let evpool = sync::open_evidence_pool(home, &ss, &bs, &state)?;
@@ -445,8 +480,14 @@ fn main() -> anyhow::Result<()> {
             part_set_header: parts.header(),
         };
         ensure!(id == next.header.last_block_id, "block id at {h}");
+        let t_validate = Instant::now();
         exec.validate_block(&state, &mut block, consensus::ticker::system_now())
             .map_err(|e| anyhow!("validate {h}: {e}"))?;
+        let validated = t_validate.elapsed();
+        probes.add(|p| {
+            p.block_id += t_validate - t;
+            p.validate += validated;
+        });
         if a.save_blocks {
             let commit = next
                 .last_commit
@@ -456,9 +497,12 @@ fn main() -> anyhow::Result<()> {
                 .save_block(&mut block, &parts, commit)
                 .map_err(|e| anyhow!("save block {h}: {e}"))?;
         }
+        let t_apply = Instant::now();
         state = exec
             .apply_verified_block(&state, id, &mut block)
             .map_err(|e| anyhow!("execute {h}: {e}"))?;
+        let applied = t_apply.elapsed();
+        probes.add(|p| p.apply += applied);
         times.push(t.elapsed());
         let resp = exec
             .state_store
