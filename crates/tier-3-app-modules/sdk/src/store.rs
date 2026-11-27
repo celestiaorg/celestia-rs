@@ -35,7 +35,12 @@ pub type Entries = Vec<(Vec<u8>, Vec<u8>)>;
 /// Layered multistore.
 #[derive(Debug)]
 pub struct MultiStore {
+    /// The committed stores. Change them only through [`Self::tree_mut`],
+    /// which clears [`Self::reads`].
     root: multistore::Store,
+    /// Values read from the IAVL stores since the committed tree last
+    /// changed (block-scoped: every flush clears it).
+    reads: ReadCache,
     kinds: BTreeMap<String, Kind>,
     /// Backing data for transient and memory stores.
     volatile: BTreeMap<String, BTreeMap<Vec<u8>, Vec<u8>>>,
@@ -155,6 +160,62 @@ impl Iterator for LazyRange {
     }
 }
 
+/// Cache of committed IAVL reads, as Go's `cachekv` caches the values it
+/// reads from its parent. It sits below gas metering (gas is charged by
+/// the context from the key and value), holds committed values only
+/// (cache layers are consulted first), caches absent keys too, and is
+/// cleared by every change to the committed tree, so it lives at most one
+/// block. `CELESTIA_READ_CACHE=0` turns it off; `CELESTIA_READ_CACHE_VERIFY=1`
+/// re-reads the tree on every hit and panics on a difference.
+#[derive(Debug)]
+struct ReadCache {
+    on: bool,
+    verify: bool,
+    map: std::sync::Mutex<ReadMap>,
+    hits: std::sync::atomic::AtomicU64,
+    misses: std::sync::atomic::AtomicU64,
+}
+
+type ReadMap =
+    std::collections::HashMap<String, std::collections::HashMap<Vec<u8>, Option<Vec<u8>>>>;
+
+/// Entries kept between two changes of the committed tree (a block reads a
+/// few thousand distinct keys; genesis and migrations may read far more).
+const READ_CACHE_MAX: usize = 1 << 20;
+
+impl ReadCache {
+    fn new(on: bool, verify: bool) -> Self {
+        Self {
+            on,
+            verify,
+            map: std::sync::Mutex::default(),
+            hits: std::sync::atomic::AtomicU64::new(0),
+            misses: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    fn from_env() -> Self {
+        let var = |k: &str| std::env::var(k).ok();
+        Self::new(
+            var("CELESTIA_READ_CACHE").is_none_or(|v| v != "0"),
+            var("CELESTIA_READ_CACHE_VERIFY").is_some_and(|v| v == "1"),
+        )
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, ReadMap> {
+        self.map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn clear(&mut self) {
+        self.map
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear();
+    }
+}
+
 impl Default for MultiStore {
     fn default() -> Self {
         Self::new()
@@ -167,6 +228,7 @@ impl MultiStore {
     pub fn new() -> Self {
         Self {
             root: multistore::Store::new(),
+            reads: ReadCache::from_env(),
             kinds: BTreeMap::new(),
             volatile: BTreeMap::new(),
             stacks: [vec![BTreeMap::new()], vec![BTreeMap::new()]],
@@ -192,7 +254,7 @@ impl MultiStore {
     /// Positions every IAVL store at the latest committed version
     /// (`LoadLatestVersion`) and returns its commit ID.
     pub fn load_latest_version(&mut self) -> Result<CommitId, StoreError> {
-        Ok(self.root.load_latest_version()?)
+        Ok(self.tree_mut().load_latest_version()?)
     }
 
     /// A read-only branch of committed `version` for queries (Go
@@ -205,6 +267,7 @@ impl MultiStore {
     pub fn view_at(&self, version: i64) -> Result<Self, StoreError> {
         Ok(Self {
             root: self.root.view_at(version)?,
+            reads: ReadCache::new(self.reads.on, self.reads.verify),
             kinds: self.kinds.clone(),
             volatile: self.volatile.clone(),
             stacks: [vec![BTreeMap::new()], vec![BTreeMap::new()]],
@@ -223,7 +286,7 @@ impl MultiStore {
     /// Mounts a store.
     pub fn mount(&mut self, name: &str, kind: Kind) -> Result<(), StoreError> {
         if kind == Kind::Iavl {
-            self.root.mount_store(name, StoreKind::Iavl)?;
+            self.tree_mut().mount_store(name, StoreKind::Iavl)?;
         } else {
             self.volatile.insert(name.to_owned(), BTreeMap::new());
         }
@@ -236,13 +299,13 @@ impl MultiStore {
     /// `mem_capability`, celestia-app v1 to v3). It holds no data; the
     /// module's memory data lives in a [`Kind::Memory`] store.
     pub fn mount_commit_memory(&mut self, name: &str) -> Result<(), StoreError> {
-        Ok(self.root.mount_store(name, StoreKind::Memory)?)
+        Ok(self.tree_mut().mount_store(name, StoreKind::Memory)?)
     }
 
     /// Mounts a new IAVL store whose first commit is `initial_version` (a
     /// store upgrade's `Added` store).
     pub fn mount_iavl_at(&mut self, name: &str, initial_version: i64) -> Result<(), StoreError> {
-        self.root
+        self.tree_mut()
             .mount_store_at(name, StoreKind::Iavl, initial_version)?;
         self.kinds.insert(name.to_owned(), Kind::Iavl);
         Ok(())
@@ -255,7 +318,8 @@ impl MultiStore {
         name: &str,
         initial_version: i64,
     ) -> Result<(), StoreError> {
-        self.root.mount_iavl_store_at_v019(name, initial_version)?;
+        self.tree_mut()
+            .mount_iavl_store_at_v019(name, initial_version)?;
         self.kinds.insert(name.to_owned(), Kind::Iavl);
         Ok(())
     }
@@ -267,7 +331,7 @@ impl MultiStore {
         if self.kind(name)? != Kind::Iavl {
             return Err(StoreError::UnknownStore(name.to_owned()));
         }
-        self.root.remove_store(name)?;
+        self.tree_mut().remove_store(name)?;
         self.kinds.remove(name);
         for stack in &mut self.stacks {
             for layer in stack {
@@ -279,7 +343,7 @@ impl MultiStore {
 
     /// Unmounts an IAVL store that holds no committed version.
     pub fn unmount_iavl(&mut self, name: &str) -> Result<(), StoreError> {
-        self.root.unmount_store(name)?;
+        self.tree_mut().unmount_store(name)?;
         self.kinds.remove(name);
         Ok(())
     }
@@ -352,11 +416,48 @@ impl MultiStore {
 
     fn committed_get(&self, store: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
         match self.kind(store)? {
+            Kind::Iavl if self.reads.on => self.cached_get(store, key),
             Kind::Iavl => Ok(self.root.get_store(store)?.get(key)?),
             Kind::Transient | Kind::Memory => {
                 Ok(self.volatile.get(store).and_then(|m| m.get(key)).cloned())
             }
         }
+    }
+
+    /// [`Self::committed_get`] of an IAVL store through the read cache.
+    fn cached_get(&self, store: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
+        use std::sync::atomic::Ordering::Relaxed;
+        let hit = self
+            .reads
+            .lock()
+            .get(store)
+            .and_then(|m| m.get(key))
+            .cloned();
+        if let Some(value) = hit {
+            self.reads.hits.fetch_add(1, Relaxed);
+            if self.reads.verify {
+                let tree = self.root.get_store(store)?.get(key)?;
+                assert!(
+                    tree == value,
+                    "read cache: stale entry for {store}/{key:02x?}: cached {value:02x?}, tree {tree:02x?}"
+                );
+            }
+            return Ok(value);
+        }
+        self.reads.misses.fetch_add(1, Relaxed);
+        let value = self.root.get_store(store)?.get(key)?;
+        let mut map = self.reads.lock();
+        if map
+            .values()
+            .map(std::collections::HashMap::len)
+            .sum::<usize>()
+            < READ_CACHE_MAX
+        {
+            map.entry(store.to_owned())
+                .or_default()
+                .insert(key.to_vec(), value.clone());
+        }
+        Ok(value)
     }
 
     /// Reads `key`, walking cache layers top-down.
@@ -489,7 +590,7 @@ impl MultiStore {
         for (store, writes) in block {
             match self.kind(&store)? {
                 Kind::Iavl => {
-                    let s = self.root.get_store_mut(&store)?;
+                    let s = self.tree_mut().get_store_mut(&store)?;
                     for (k, v) in writes {
                         match v {
                             Some(v) => {
@@ -534,7 +635,7 @@ impl MultiStore {
 
     /// Commits the IAVL stores (after [`Self::flush`]).
     pub fn commit(&mut self) -> Result<CommitId, StoreError> {
-        Ok(self.root.commit()?)
+        Ok(self.tree_mut().commit()?)
     }
 
     /// Last committed version.
@@ -552,7 +653,31 @@ impl MultiStore {
     /// Committed root store, mutably (snapshot restore, pruning, metadata).
     /// Callers must not leave uncommitted IAVL writes behind.
     pub fn root_mut(&mut self) -> &mut multistore::Store {
+        self.tree_mut()
+    }
+
+    /// The committed stores, mutably. Every change to them goes through
+    /// here: the committed-read cache is cleared first.
+    fn tree_mut(&mut self) -> &mut multistore::Store {
+        self.reads.clear();
         &mut self.root
+    }
+
+    /// Turns the committed-read cache on or off and its verify mode
+    /// (tests and benchmarks; the default comes from the environment).
+    pub fn set_read_cache(&mut self, on: bool, verify: bool) {
+        self.reads = ReadCache::new(on, verify);
+    }
+
+    /// Committed reads served from the cache, and reads of the tree while
+    /// the cache was on.
+    #[must_use]
+    pub fn read_cache_stats(&self) -> (u64, u64) {
+        use std::sync::atomic::Ordering::Relaxed;
+        (
+            self.reads.hits.load(Relaxed),
+            self.reads.misses.load(Relaxed),
+        )
     }
 }
 
