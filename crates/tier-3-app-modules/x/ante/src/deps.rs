@@ -211,7 +211,11 @@ pub fn default_param_filter(ctx: &Context<'_>, msg: &Any) -> Option<sdk::Result<
                 // celestia-app v4.1.0 and v5.0.12 check no evidence params.
                 return Ok(());
             }
-            let (seconds, blocks) = governance_age_limits(ctx);
+            let (seconds, default_blocks) = governance_age_limits(ctx);
+            let blocks = ctx
+                .release()
+                .gov_max_age_num_blocks()
+                .unwrap_or(default_blocks);
             let ev_ok = evidence.max_age_num_blocks == blocks
                 && duration_nanos(evidence.max_age_duration.as_ref())
                     == i128::from(seconds) * 1_000_000_000
@@ -448,5 +452,64 @@ impl AnteDeps for StoreDeps {
             ));
         }
         Err(self.not_ported("IBC update client check"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use celestia_proto::celestia_core_proto::tendermint::types::{
+        BlockParams, ConsensusParams, EvidenceParams, ValidatorParams, VersionParams,
+    };
+    use celestia_proto::cosmos::consensus::v1::MsgUpdateParams;
+
+    fn consensus_update(max_age_num_blocks: i64) -> Any {
+        let msg = MsgUpdateParams {
+            authority: String::new(),
+            block: Some(BlockParams::default()),
+            evidence: Some(EvidenceParams {
+                max_age_num_blocks,
+                max_age_duration: Some(pbjson_types::Duration {
+                    seconds: UNBONDING_TIME_SECS,
+                    nanos: 0,
+                }),
+                max_bytes: 1_048_576,
+            }),
+            validator: Some(ValidatorParams {
+                pub_key_types: vec!["ed25519".into()],
+            }),
+            abci: None,
+        };
+        Any {
+            type_url: MsgUpdateParams::type_url(),
+            value: msg.encode_to_vec(),
+        }
+    }
+
+    /// celestia-app `consensusParamFilter` requires `EvidenceParams()`,
+    /// whose `MaxAgeNumBlocks` is `appconsts.MaxAgeNumBlocks`: 242,640 in
+    /// v6.4.4 and v8.0.8, 559,940 in v9.0.8, 404,400 in v10.5.0, v10.6.0
+    /// and v11.0.0-mocha (the filter code is the same in all of them).
+    #[test]
+    fn consensus_filter_requires_the_release_max_age_num_blocks() {
+        for (app, want) in [
+            (6, 242_640),
+            (8, 242_640),
+            (9, 559_940),
+            (10, 404_400),
+            (11, 404_400),
+        ] {
+            let mut ms = sdk::MultiStore::new();
+            let mut ctx = Context::new(&mut ms, sdk::Header::default(), sdk::ExecMode::Finalize);
+            ctx.consensus_params = ConsensusParams {
+                version: Some(VersionParams { app }),
+                ..Default::default()
+            };
+            for blocks in [242_640, 404_400, 559_940] {
+                let got = default_param_filter(&ctx, &consensus_update(blocks))
+                    .expect("filtered message");
+                assert_eq!(got.is_ok(), blocks == want, "v{app} {blocks}");
+            }
+        }
     }
 }
