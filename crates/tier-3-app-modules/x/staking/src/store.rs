@@ -205,7 +205,7 @@ pub fn delete_last_validator_power(ctx: &mut Context<'_>, op: &[u8]) -> Result<(
 /// `GetValidator` (`None` for `ErrNoValidatorFound`).
 pub fn get_validator(ctx: &mut Context<'_>, op: &[u8]) -> Result<Option<Validator>> {
     ctx.get(STORE_KEY, &keys::validator(op))?
-        .map(|b| Validator::decode(&b))
+        .map(|b| crate::memo::validator(&b))
         .transpose()
 }
 
@@ -286,7 +286,7 @@ pub fn set_new_validator_by_power_index(ctx: &mut Context<'_>, v: &Validator) ->
 pub fn get_all_validators(ctx: &mut Context<'_>) -> Result<Vec<Validator>> {
     collect_prefix(ctx, &[keys::VALIDATORS])?
         .iter()
-        .map(|(_, v)| Validator::decode(v))
+        .map(|(_, v)| crate::memo::validator(v))
         .collect()
 }
 

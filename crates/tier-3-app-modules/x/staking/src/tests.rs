@@ -392,3 +392,44 @@ fn edit_validator_checks_min_self_before_nil_rate() {
     let e = crate::handle_edit_validator_wire(&mut ctx, &msg, &raw).unwrap_err();
     assert!(e.is_panic());
 }
+
+#[test]
+fn reads_of_an_unchanged_validator_decode_its_record_once() {
+    use crate::memo::{Count, decodes};
+    let mut m = ms();
+    let mut ctx = Context::new(&mut m, header(1, 1_000_000), ExecMode::Finalize);
+    setup(&mut ctx);
+    // Index 77 is used by no other test here, so the memo has not seen
+    // these record bytes or this address yet.
+    fund(&mut ctx, &acc(77), 10_000_000);
+    create(&mut ctx, 77, 5_000_000);
+    let op = acc(77);
+    let first = store::validator(&mut ctx, &op).unwrap();
+
+    let (v0, o0) = (decodes(Count::Validator), decodes(Count::Operator));
+    for _ in 0..3 {
+        let v = store::validator(&mut ctx, &op).unwrap();
+        assert_eq!(v, first);
+        assert_eq!(v.operator().unwrap(), op);
+    }
+    assert_eq!(
+        decodes(Count::Validator),
+        v0,
+        "unchanged record decoded again"
+    );
+    assert_eq!(decodes(Count::Operator), o0, "same address decoded again");
+
+    // New bytes are decoded once, and reads see the new record.
+    let mut changed = first.clone();
+    changed.tokens = Int::from_u64(6_000_000);
+    store::set_validator(&mut ctx, &changed).unwrap();
+    let v1 = decodes(Count::Validator);
+    for _ in 0..3 {
+        assert_eq!(store::validator(&mut ctx, &op).unwrap(), changed);
+    }
+    assert_eq!(decodes(Count::Validator), v1 + 1);
+
+    // The old bytes, written back, still decode to the old record.
+    store::set_validator(&mut ctx, &first).unwrap();
+    assert_eq!(store::validator(&mut ctx, &op).unwrap(), first);
+}

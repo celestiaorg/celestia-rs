@@ -16,6 +16,7 @@ pub mod errors;
 pub mod genesis;
 pub mod hooks;
 pub mod keys;
+mod memo;
 pub mod migrations;
 pub mod msgs;
 pub mod slash;

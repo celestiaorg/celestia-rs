@@ -53,7 +53,7 @@ pub fn val_to_string(addr: &[u8]) -> Result<String> {
 
 /// Bech32 validator operator address to bytes.
 pub fn val_from_string(s: &str) -> Result<Vec<u8>> {
-    decode(VALOPER_PREFIX, s)
+    crate::memo::operator(s, |s| decode(VALOPER_PREFIX, s))
 }
 
 /// Account address to bech32.
