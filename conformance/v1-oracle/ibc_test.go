@@ -3,7 +3,7 @@ package main
 // The IBC fixture (`go test -run TestIBCFixture`): celestia-app v3.13.0
 // as chain A of an ibc-go v6 ibctesting coordinator, with two ibc-go
 // simapp chains (B and C) as counterparties, so that celestia-rs can
-// check the app version 2 IBC paths that mainnet uses: the interchain
+// check the app version 2 and 3 IBC paths that mainnet uses: the interchain
 // accounts host and packet-forward-middleware forwarding.
 //
 // Chain A starts at app version 1 and crosses the v1 to v2 upgrade
@@ -31,6 +31,7 @@ import (
 	"github.com/celestiaorg/celestia-app/v3/app"
 	"github.com/celestiaorg/celestia-app/v3/app/encoding"
 	"github.com/celestiaorg/celestia-app/v3/pkg/appconsts"
+	signaltypes "github.com/celestiaorg/celestia-app/v3/x/signal/types"
 	"github.com/cosmos/cosmos-sdk/client"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
@@ -39,8 +40,12 @@ import (
 	"github.com/cosmos/cosmos-sdk/store/rootmulti"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
+	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
+	govv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
+	paramproposal "github.com/cosmos/cosmos-sdk/x/params/types/proposal"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	icacontrollertypes "github.com/cosmos/ibc-go/v6/modules/apps/27-interchain-accounts/controller/types"
 	icatypes "github.com/cosmos/ibc-go/v6/modules/apps/27-interchain-accounts/types"
@@ -58,6 +63,14 @@ import (
 	tmtypes "github.com/tendermint/tendermint/types"
 	tmversionpkg "github.com/tendermint/tendermint/version"
 )
+
+// ibcSnapshotHeights are the heights of the IBC chain's state-sync
+// snapshots (fixtures/synthetic/ibc-v2-snapshots): a PFM forward in flight
+// (39), the interchain account channel just opened (72), app version 3
+// with the new validator (100), the reopened account channel (120).
+var ibcSnapshotHeights = []uint64{39, 72, 100, 120}
+
+const ibcSnapshotFixtureDir = "../fixtures/synthetic/ibc-v2-snapshots"
 
 const (
 	ibcChainA             = "test"
@@ -246,6 +259,8 @@ func newCelestiaChain(t *testing.T, coord *ibctesting.Coordinator, rec *ibcRecor
 	ecfg := encoding.MakeConfig(app.ModuleEncodingRegisters...)
 
 	genesisState := app.NewDefaultGenesisState(ecfg.Codec)
+	// 40 second gov periods, so that a proposal passes within the run.
+	genesisState = govGenesis(ecfg.Codec)(genesisState)
 	genesisState[authtypes.ModuleName] = a.AppCodec().MustMarshalJSON(authtypes.NewGenesisState(authtypes.DefaultParams(), accs))
 	bondAmt := sdk.TokensFromConsensusPower(1, sdk.DefaultPowerReduction)
 	var validators []stakingtypes.Validator
@@ -448,6 +463,7 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 	must(t, err)
 	must(t, pathAB.EndpointB.UpdateClient())
 	must(t, pathAB.EndpointB.AcknowledgePacket(inbound, inboundAck))
+	runPFMFailures(t, coord, chainA, chainB, chainC, pathAB, pathAC, voucher, timeout)
 
 	// Interchain accounts: B controls an account on A.
 	icaPath := ibctesting.NewPath(chainB, chainA)
@@ -507,9 +523,311 @@ func runIBCChain(t *testing.T) (*ibcRecorder, *tmtypes.GenesisDoc) {
 	icaPacket, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
 	must(t, err)
 	must(t, icaPath.RelayPacket(icaPacket))
-	// A last empty block commits the relayed acknowledgement's block.
+
+	// The other message types mainnet's interchain accounts sent, in one
+	// transaction: a withdraw address, an undelegation, a redelegation
+	// and an IBC transfer to B (relayed, and acknowledged on A).
+	val2 := sdk.ValAddress(chainA.Vals.Validators[1].Address)
+	data, err = icatypes.SerializeCosmosTx(chainA.App.AppCodec(), []proto.Message{
+		distrtypes.NewMsgSetWithdrawAddress(icaAcc, chainA.SenderAccount.GetAddress()),
+		stakingtypes.NewMsgUndelegate(icaAcc, val, sdk.NewInt64Coin(appconsts.BondDenom, 500_000)),
+		stakingtypes.NewMsgBeginRedelegate(icaAcc, val, val2, sdk.NewInt64Coin(appconsts.BondDenom, 500_000)),
+		transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+			sdk.NewInt64Coin(appconsts.BondDenom, 3_000), icaAddr,
+			chainB.SenderAccount.GetAddress().String(), timeout, 0, ""),
+	})
+	must(t, err)
+	res, err = chainB.SendMsgs(icacontrollertypes.NewMsgSendTx(owner, icaPath.EndpointA.ConnectionID, uint64(time.Hour), icatypes.InterchainAccountPacketData{
+		Type: icatypes.EXECUTE_TX,
+		Data: data,
+	}))
+	must(t, err)
+	icaPacket, err = ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, icaPath.EndpointB.UpdateClient())
+	res, err = icaPath.EndpointB.RecvPacketWithResult(icaPacket)
+	must(t, err)
+	icaTransfer, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	icaAck, err := ibctesting.ParseAckFromEvents(res.GetEvents())
+	must(t, err)
+	if string(icaAck) == "" || bytes.Contains(icaAck, []byte(`"error"`)) {
+		t.Fatalf("interchain account transaction failed: %s", icaAck)
+	}
+	must(t, icaPath.EndpointA.UpdateClient())
+	must(t, icaPath.EndpointA.AcknowledgePacket(icaPacket, icaAck))
+	must(t, pathAB.RelayPacket(icaTransfer))
+
+	// Then two transactions that fail on A, each with an error
+	// acknowledgement: a message signed by another account (rejected
+	// before execution), then a send of more than the account holds
+	// (after a delegation that is rolled back with it).
+	sendICA := func(msgs ...proto.Message) {
+		data, err := icatypes.SerializeCosmosTx(chainA.App.AppCodec(), msgs)
+		must(t, err)
+		res, err := chainB.SendMsgs(icacontrollertypes.NewMsgSendTx(owner, icaPath.EndpointA.ConnectionID, uint64(time.Hour), icatypes.InterchainAccountPacketData{
+			Type: icatypes.EXECUTE_TX,
+			Data: data,
+		}))
+		must(t, err)
+		p, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+		must(t, err)
+		must(t, icaPath.RelayPacket(p))
+	}
+	sendICA(banktypes.NewMsgSend(chainA.SenderAccount.GetAddress(), icaAcc, sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 1))))
+	sendICA(
+		stakingtypes.NewMsgDelegate(icaAcc, val, sdk.NewInt64Coin(appconsts.BondDenom, 1_000_000)),
+		banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 1_000_000_000))),
+	)
+
+	runV3(t, coord, chainA, chainB, chainC, pathAB, pathAC, voucher, timeout, sendICA, icaAcc)
+
+	// An interchain account packet times out on B: the ordered channel
+	// closes on B (MsgTimeout) and on A (MsgChannelCloseConfirm). B
+	// registers again, and A reopens the same account on a new channel.
+	data, err = icatypes.SerializeCosmosTx(chainA.App.AppCodec(), []proto.Message{
+		banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 1))),
+	})
+	must(t, err)
+	res, err = chainB.SendMsgs(icacontrollertypes.NewMsgSendTx(owner, icaPath.EndpointA.ConnectionID, uint64(time.Minute), icatypes.InterchainAccountPacketData{
+		Type: icatypes.EXECUTE_TX,
+		Data: data,
+	}))
+	must(t, err)
+	lost, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	coord.IncrementTimeBy(2 * time.Minute)
+	coord.CommitBlock(chainA)
+	must(t, icaPath.EndpointA.UpdateClient())
+	nextRecvKey := host.NextSequenceRecvKey(lost.GetDestPort(), lost.GetDestChannel())
+	proof, proofHeight := chainA.QueryProof(nextRecvKey)
+	nextRecv, found := chainA.App.GetIBCKeeper().ChannelKeeper.GetNextSequenceRecv(chainA.GetContext(), lost.GetDestPort(), lost.GetDestChannel())
+	if !found {
+		t.Fatal("no next sequence receive on A")
+	}
+	_, err = chainB.SendMsgs(channeltypes.NewMsgTimeout(lost, nextRecv, proof, proofHeight, chainB.SenderAccount.GetAddress().String()))
+	must(t, err)
+	if ch := icaPath.EndpointA.GetChannel(); ch.State != channeltypes.CLOSED {
+		t.Fatalf("controller channel is %s after the timeout", ch.State)
+	}
+	must(t, icaPath.EndpointB.UpdateClient())
+	proof, proofHeight = chainB.QueryProof(host.ChannelKey(icaPath.EndpointA.ChannelConfig.PortID, icaPath.EndpointA.ChannelID))
+	_, err = chainA.SendMsgs(channeltypes.NewMsgChannelCloseConfirm(icatypes.HostPortID, icaPath.EndpointB.ChannelID, proof, proofHeight, chainA.SenderAccount.GetAddress().String()))
+	must(t, err)
+	res, err = chainB.SendMsgs(icacontrollertypes.NewMsgRegisterInterchainAccount(icaPath.EndpointA.ConnectionID, owner, version))
+	must(t, err)
+	icaPath.EndpointA.ChannelID, err = ibctesting.ParseChannelIDFromEvents(res.GetEvents())
+	must(t, err)
+	// The new channel starts from the version without an address, and A's
+	// end gets a new channel ID.
+	icaPath.EndpointA.ChannelConfig.Version = version
+	icaPath.EndpointB.ChannelConfig.Version = version
+	closedHostChannel := icaPath.EndpointB.ChannelID
+	icaPath.EndpointB.ChannelID = ""
+	must(t, icaPath.EndpointB.ChanOpenTry())
+	must(t, icaPath.EndpointA.ChanOpenAck())
+	must(t, icaPath.EndpointB.ChanOpenConfirm())
+	if icaPath.EndpointB.ChannelID == closedHostChannel {
+		t.Fatal("the host reused the closed channel")
+	}
+	if addr, _ := chainA.App.(*recApp).ICAHostKeeper.GetInterchainAccountAddress(chainA.GetContext(), icaPath.EndpointB.ConnectionID, controllerPort); addr != icaAddr {
+		t.Fatalf("reopened account %s, want %s", addr, icaAddr)
+	}
+	sendICA(banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 2))))
+	// A multi-send from the account (its signers are every input).
+	sendICA(banktypes.NewMsgMultiSend(
+		[]banktypes.Input{banktypes.NewInput(icaAcc, sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 30)))},
+		[]banktypes.Output{
+			banktypes.NewOutput(chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 10))),
+			banktypes.NewOutput(chainA.SenderAccounts[2].SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 20))),
+		}))
+
+	// Governance narrows the host's allow list to MsgSend (as mainnet's
+	// proposal 3 replaced the v2 migration's "*"): the v3 validator's
+	// operator votes yes, the proposal passes, and then the account's
+	// delegation is refused (an error acknowledgement) and a send runs.
+	allowList := paramproposal.NewParameterChangeProposal("ica allow list", "narrow the host allow list",
+		[]paramproposal.ParamChange{paramproposal.NewParamChange("icahost", "AllowMessages", `["/cosmos.bank.v1beta1.MsgSend"]`)})
+	submit, err := govv1beta1.NewMsgSubmitProposal(allowList, sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, govMinDeposit)), chainA.SenderAccount.GetAddress())
+	must(t, err)
+	_, err = chainA.SendMsgs(submit)
+	must(t, err)
+	proposalID, err := chainA.App.(*recApp).GovKeeper.GetProposalID(chainA.GetContext())
+	must(t, err)
+	proposalID--
+	sender, senderKey := chainA.SenderAccount, chainA.SenderPrivKey
+	chainA.SenderAccount, chainA.SenderPrivKey = chainA.SenderAccounts[1].SenderAccount, chainA.SenderAccounts[1].SenderPrivKey
+	_, err = chainA.SendMsgs(govv1beta1.NewMsgVote(chainA.SenderAccount.GetAddress(), proposalID, govv1beta1.OptionYes))
+	must(t, err)
+	chainA.SenderAccount, chainA.SenderPrivKey = sender, senderKey
+	// The open block keeps its time; the next one ends the voting period.
+	coord.IncrementTimeBy(govPeriod + time.Second)
+	coord.CommitBlock(chainA)
+	coord.CommitBlock(chainA)
+	if p, _ := chainA.App.(*recApp).GovKeeper.GetProposal(chainA.GetContext(), proposalID); p.Status != govv1.StatusPassed {
+		t.Fatalf("allow list proposal is %s", p.Status)
+	}
+	sendICA(stakingtypes.NewMsgDelegate(icaAcc, val, sdk.NewInt64Coin(appconsts.BondDenom, 1_000)))
+	sendICA(banktypes.NewMsgSend(icaAcc, chainA.SenderAccount.GetAddress(), sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, 3))))
+
+	runTransferAuthzAndTimeout(t, coord, chainA, chainB, pathAB, timeout)
+	// A last empty block commits the last transaction's block.
 	coord.CommitBlock(chainA)
 	return rec, genDoc
+}
+
+// runV3 upgrades chain A to app version 3 through x/signal and repeats
+// the IBC traffic there. The genesis validators have no account keys,
+// so a sender account creates a validator with 100 times their power
+// (over the 5/6 quorum alone) and signals version 3; with chain ID
+// "test" the upgrade height is 3 blocks after MsgTryUpgrade. At app
+// version 3: a transfer to B, a PFM forward from B to C, and an
+// interchain account delegation.
+func runV3(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB, chainC *ibctesting.TestChain,
+	pathAB, pathAC *ibctesting.Path, voucher string, timeout clienttypes.Height,
+	sendICA func(msgs ...proto.Message), icaAcc sdk.AccAddress,
+) {
+	sender, senderKey := chainA.SenderAccount, chainA.SenderPrivKey
+	chainA.SenderAccount, chainA.SenderPrivKey = chainA.SenderAccounts[1].SenderAccount, chainA.SenderAccounts[1].SenderPrivKey
+	operatorAcc := chainA.SenderAccount.GetAddress()
+	operator := sdk.ValAddress(operatorAcc)
+	pv := mock.PV{PrivKey: cosmosed25519.GenPrivKeyFromSecret([]byte(ibcChainA + " validator v3"))}
+	tmPK, err := pv.GetPubKey()
+	must(t, err)
+	chainA.Signers[tmPK.Address().String()] = pv
+	createVal, err := stakingtypes.NewMsgCreateValidator(operator, pv.PrivKey.PubKey(),
+		sdk.NewCoin(appconsts.BondDenom, sdk.TokensFromConsensusPower(100, sdk.DefaultPowerReduction)),
+		stakingtypes.NewDescription("v3", "", "", "", ""),
+		stakingtypes.NewCommissionRates(sdk.NewDecWithPrec(1, 1), sdk.NewDecWithPrec(2, 1), sdk.NewDecWithPrec(1, 2)),
+		sdk.OneInt())
+	must(t, err)
+	_, err = chainA.SendMsgs(createVal)
+	must(t, err)
+	_, err = chainA.SendMsgs(signaltypes.NewMsgSignalVersion(operator, 3))
+	must(t, err)
+	_, err = chainA.SendMsgs(signaltypes.NewMsgTryUpgrade(operatorAcc))
+	must(t, err)
+	chainA.SenderAccount, chainA.SenderPrivKey = sender, senderKey
+	for i := 0; chainA.CurrentHeader.Version.App != 3; i++ {
+		if i == 5 {
+			t.Fatalf("chain A still at app version %d", chainA.CurrentHeader.Version.App)
+		}
+		nextBlockWithVersion(chainA)
+	}
+
+	// A to B at app version 3.
+	res, err := chainA.SendMsgs(transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID,
+		sdk.NewInt64Coin(appconsts.BondDenom, 200_000), chainA.SenderAccount.GetAddress().String(),
+		chainB.SenderAccount.GetAddress().String(), timeout, 0, ""))
+	must(t, err)
+	packet, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAB.EndpointB.UpdateClient())
+	must(t, pathAB.RelayPacket(packet))
+
+	// B back to A, forwarded to C and acknowledged.
+	res, err = chainB.SendMsgs(transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointB.ChannelID,
+		sdk.NewInt64Coin(voucher, 20_000), chainB.SenderAccount.GetAddress().String(),
+		chainA.SenderAccount.GetAddress().String(), timeout, 0,
+		fmt.Sprintf(`{"forward":{"receiver":"%s","port":"transfer","channel":"%s"}}`, chainC.SenderAccount.GetAddress(), pathAC.EndpointA.ChannelID)))
+	must(t, err)
+	inbound, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAB.EndpointA.UpdateClient())
+	res, err = pathAB.EndpointA.RecvPacketWithResult(inbound)
+	must(t, err)
+	forwarded, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAC.EndpointB.UpdateClient())
+	res, err = pathAC.EndpointB.RecvPacketWithResult(forwarded)
+	must(t, err)
+	ack, err := ibctesting.ParseAckFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAC.EndpointA.UpdateClient())
+	ackProof, ackProofHeight := chainC.QueryProof(host.PacketAcknowledgementKey(forwarded.GetDestPort(), forwarded.GetDestChannel(), forwarded.GetSequence()))
+	res, err = chainA.SendMsgs(channeltypes.NewMsgAcknowledgement(forwarded, ack, ackProof, ackProofHeight, chainA.SenderAccount.GetAddress().String()))
+	must(t, err)
+	inboundAck, err := ibctesting.ParseAckFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAB.EndpointB.UpdateClient())
+	must(t, pathAB.EndpointB.AcknowledgePacket(inbound, inboundAck))
+
+	// The interchain account delegates to the new validator.
+	sendICA(stakingtypes.NewMsgDelegate(icaAcc, operator, sdk.NewInt64Coin(appconsts.BondDenom, 1_000_000)))
+}
+
+// runPFMFailures forwards two more packets from B through A to C that
+// fail: one C rejects (an error acknowledgement, so A moves the escrowed
+// utia back to the A-B escrow), and one that times out on C twice (A
+// sends it again once, then gives up and acknowledges the inbound packet
+// with an error).
+func runPFMFailures(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB, chainC *ibctesting.TestChain,
+	pathAB, pathAC *ibctesting.Path, voucher string, timeout clienttypes.Height,
+) {
+	// sendBack sends voucher from B to A with memo; A receives it and
+	// forwards it to C.
+	sendBack := func(amount int64, memo string) (inbound, forwarded channeltypes.Packet) {
+		res, err := chainB.SendMsgs(transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointB.ChannelID,
+			sdk.NewInt64Coin(voucher, amount), chainB.SenderAccount.GetAddress().String(),
+			chainA.SenderAccount.GetAddress().String(), timeout, 0, memo))
+		must(t, err)
+		inbound, err = ibctesting.ParsePacketFromEvents(res.GetEvents())
+		must(t, err)
+		must(t, pathAB.EndpointA.UpdateClient())
+		res, err = pathAB.EndpointA.RecvPacketWithResult(inbound)
+		must(t, err)
+		forwarded, err = ibctesting.ParsePacketFromEvents(res.GetEvents())
+		must(t, err)
+		return inbound, forwarded
+	}
+	// ackInbound relays A's acknowledgement of inbound (in res) to B.
+	ackInbound := func(inbound channeltypes.Packet, res *sdk.Result) {
+		ack, err := ibctesting.ParseAckFromEvents(res.GetEvents())
+		must(t, err)
+		if string(ack) == `{"result":"AQ=="}` {
+			t.Fatalf("inbound packet %d acknowledged with success", inbound.Sequence)
+		}
+		must(t, pathAB.EndpointB.UpdateClient())
+		must(t, pathAB.EndpointB.AcknowledgePacket(inbound, ack))
+	}
+
+	// C rejects the forward (its receiver is not an address).
+	inbound, forwarded := sendBack(100_000, fmt.Sprintf(`{"forward":{"receiver":"not-an-address","port":"transfer","channel":"%s"}}`, pathAC.EndpointA.ChannelID))
+	must(t, pathAC.EndpointB.UpdateClient())
+	res, err := pathAC.EndpointB.RecvPacketWithResult(forwarded)
+	must(t, err)
+	ack, err := ibctesting.ParseAckFromEvents(res.GetEvents())
+	must(t, err)
+	must(t, pathAC.EndpointA.UpdateClient())
+	ackProof, ackProofHeight := chainC.QueryProof(host.PacketAcknowledgementKey(forwarded.GetDestPort(), forwarded.GetDestChannel(), forwarded.GetSequence()))
+	res, err = chainA.SendMsgs(channeltypes.NewMsgAcknowledgement(forwarded, ack, ackProof, ackProofHeight, chainA.SenderAccount.GetAddress().String()))
+	must(t, err)
+	ackInbound(inbound, res)
+
+	// The forward times out on C; with one retry A sends it again, then
+	// gives up.
+	inbound, forwarded = sendBack(50_000, fmt.Sprintf(`{"forward":{"receiver":"%s","port":"transfer","channel":"%s","timeout":"1m","retries":1}}`,
+		chainC.SenderAccount.GetAddress(), pathAC.EndpointA.ChannelID))
+	timeOut := func(p channeltypes.Packet) *sdk.Result {
+		coord.IncrementTimeBy(2 * time.Minute)
+		coord.CommitBlock(chainC)
+		must(t, pathAC.EndpointA.UpdateClient())
+		proof, proofHeight := chainC.QueryProof(host.PacketReceiptKey(p.GetDestPort(), p.GetDestChannel(), p.GetSequence()))
+		next, found := chainC.App.GetIBCKeeper().ChannelKeeper.GetNextSequenceRecv(chainC.GetContext(), p.GetDestPort(), p.GetDestChannel())
+		if !found {
+			t.Fatal("no next sequence receive on C")
+		}
+		res, err := chainA.SendMsgs(channeltypes.NewMsgTimeout(p, next, proof, proofHeight, chainA.SenderAccount.GetAddress().String()))
+		must(t, err)
+		return res
+	}
+	res = timeOut(forwarded)
+	retried, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	if retried.Sequence == forwarded.Sequence {
+		t.Fatal("the timed-out forward was not sent again")
+	}
+	ackInbound(inbound, timeOut(retried))
 }
 
 // recorded replays chain A's record as a blockSource.
@@ -638,11 +956,14 @@ func TestIBCFixture(t *testing.T) {
 		withKV:          true,
 		upgradeHeightV2: ibcUpgradeHeightV2,
 		src:             &recorded{rec: rec},
+		snapshotAt:      ibcSnapshotHeights,
+		snapshotDir:     filepath.Join(out, "snapshots"),
 	}))
 	must(t, os.Remove(filepath.Join(out, "kv-height-0-modules.jsonl.gz")))
 	if write {
 		return
 	}
+	requireSnapshots(t, filepath.Join(out, "snapshots"), ibcSnapshotFixtureDir, ibcSnapshotHeights)
 	for _, name := range ibcFixtureFiles {
 		want, err := os.ReadFile(filepath.Join(ibcFixtureDir, name))
 		must(t, err)
@@ -652,4 +973,68 @@ func TestIBCFixture(t *testing.T) {
 			t.Errorf("%s differs from the committed fixture; regenerate it (conformance/README.md)", name)
 		}
 	}
+}
+
+// runTransferAuthzAndTimeout sends utia from A to B through authz MsgExec
+// (a GenericAuthorization, then an ibc-go TransferAuthorization whose
+// spend limit the transfer uses up), and a plain transfer that times out
+// on B, so that A refunds it on MsgTimeout.
+func runTransferAuthzAndTimeout(t *testing.T, coord *ibctesting.Coordinator, chainA, chainB *ibctesting.TestChain,
+	pathAB *ibctesting.Path, timeout clienttypes.Height,
+) {
+	granter := chainA.SenderAccount.GetAddress()
+	utia := func(n int64) sdk.Coin { return sdk.NewInt64Coin(appconsts.BondDenom, n) }
+	transfer := func(amount int64, timeoutTimestamp uint64, h clienttypes.Height) *transfertypes.MsgTransfer {
+		return transfertypes.NewMsgTransfer(ibctesting.TransferPort, pathAB.EndpointA.ChannelID, utia(amount),
+			granter.String(), chainB.SenderAccount.GetAddress().String(), h, timeoutTimestamp, "")
+	}
+	// asSender runs f with chain A's sender account i.
+	asSender := func(i int, f func()) {
+		sender, key := chainA.SenderAccount, chainA.SenderPrivKey
+		chainA.SenderAccount, chainA.SenderPrivKey = chainA.SenderAccounts[i].SenderAccount, chainA.SenderAccounts[i].SenderPrivKey
+		f()
+		chainA.SenderAccount, chainA.SenderPrivKey = sender, key
+	}
+	generic, err := authz.NewMsgGrant(granter, chainA.SenderAccounts[2].SenderAccount.GetAddress(),
+		authz.NewGenericAuthorization(sdk.MsgTypeURL(&transfertypes.MsgTransfer{})), nil)
+	must(t, err)
+	limited, err := authz.NewMsgGrant(granter, chainA.SenderAccounts[3].SenderAccount.GetAddress(),
+		transfertypes.NewTransferAuthorization(transfertypes.Allocation{
+			SourcePort: ibctesting.TransferPort, SourceChannel: pathAB.EndpointA.ChannelID,
+			SpendLimit: sdk.NewCoins(utia(7_000)),
+		}), nil)
+	must(t, err)
+	_, err = chainA.SendMsgs(generic, limited)
+	must(t, err)
+	for _, g := range []struct {
+		sender int
+		amount int64
+	}{{2, 4_000}, {3, 7_000}} {
+		var res *sdk.Result
+		asSender(g.sender, func() {
+			exec := authz.NewMsgExec(chainA.SenderAccount.GetAddress(), []sdk.Msg{transfer(g.amount, 0, timeout)})
+			res, err = chainA.SendMsgs(&exec)
+			must(t, err)
+		})
+		packet, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+		must(t, err)
+		must(t, pathAB.EndpointB.UpdateClient())
+		must(t, pathAB.RelayPacket(packet))
+	}
+
+	// A transfer that times out on B: one minute, never relayed.
+	res, err := chainA.SendMsgs(transfer(9_000, uint64(chainA.CurrentHeader.Time.Add(time.Minute).UnixNano()), clienttypes.ZeroHeight()))
+	must(t, err)
+	lost, err := ibctesting.ParsePacketFromEvents(res.GetEvents())
+	must(t, err)
+	coord.IncrementTimeBy(2 * time.Minute)
+	coord.CommitBlock(chainB)
+	must(t, pathAB.EndpointA.UpdateClient())
+	proof, proofHeight := chainB.QueryProof(host.PacketReceiptKey(lost.GetDestPort(), lost.GetDestChannel(), lost.GetSequence()))
+	next, found := chainB.App.GetIBCKeeper().ChannelKeeper.GetNextSequenceRecv(chainB.GetContext(), lost.GetDestPort(), lost.GetDestChannel())
+	if !found {
+		t.Fatal("no next sequence receive on B")
+	}
+	_, err = chainA.SendMsgs(channeltypes.NewMsgTimeout(lost, next, proof, proofHeight, granter.String()))
+	must(t, err)
 }

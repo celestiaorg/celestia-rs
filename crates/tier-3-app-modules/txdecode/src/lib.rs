@@ -42,7 +42,7 @@ mod jsonpb;
 mod protowire;
 mod registry;
 pub use go_types::go_type_name;
-pub use registry::added_in_v10;
+pub use registry::{absent_from_release, added_in_v10};
 mod unknownproto;
 mod unpack;
 mod v1;

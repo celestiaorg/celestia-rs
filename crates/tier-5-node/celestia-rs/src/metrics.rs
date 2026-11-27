@@ -9,6 +9,8 @@ use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 
 type Probe = Box<dyn Fn() -> f64 + Send + Sync>;
+/// Renders extra series given the common labels (`chain_id="…"`).
+type Section = Box<dyn Fn(&str) -> String + Send + Sync>;
 
 /// `stdprometheus.DefBuckets`.
 const DEF_BUCKETS: [f64; 11] = [
@@ -37,6 +39,7 @@ pub struct Metrics {
     chain_id: String,
     state: Mutex<State>,
     probes: Mutex<Vec<(String, String, Probe)>>,
+    sections: Mutex<Vec<Section>>,
 }
 
 impl std::fmt::Debug for Metrics {
@@ -83,6 +86,7 @@ impl Metrics {
             chain_id: chain_id.to_owned(),
             state: Mutex::new(State::default()),
             probes: Mutex::new(Vec::new()),
+            sections: Mutex::new(Vec::new()),
         })
     }
 
@@ -142,6 +146,16 @@ impl Metrics {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push((name.to_owned(), labels.to_owned(), Box::new(f)));
+    }
+
+    /// Appends series rendered by another registry at scrape time (the
+    /// Fibre server's `fibre_server_*`, which keep Go's names without the
+    /// namespace). `f` gets the common labels (`chain_id="…"`).
+    pub fn append_section(&self, f: impl Fn(&str) -> String + Send + Sync + 'static) {
+        self.sections
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(Box::new(f));
     }
 
     /// Records a committed block (`recordMetrics` in celestia-core).
@@ -239,6 +253,15 @@ impl Metrics {
             let _ = writeln!(out, "{ns}_{name}_sum{} {}", labels(""), h.sum);
             let _ = writeln!(out, "{ns}_{name}_count{} {}", labels(""), h.count);
         }
+        drop(st);
+        for f in self
+            .sections
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+        {
+            out.push_str(&f(&chain));
+        }
         out
     }
 }
@@ -300,5 +323,15 @@ mod tests {
             "cometbft_consensus_block_interval_seconds_bucket{chain_id=\"c\",le=\"10\"} 1"
         ));
         assert!(s.contains("cometbft_consensus_block_interval_seconds_sum{chain_id=\"c\"} 6"));
+    }
+
+    #[test]
+    fn appended_sections_get_the_common_labels() {
+        let m = Metrics::new("", "c");
+        m.append_section(|labels| format!("fibre_server_ready{{{labels}}} 1\n"));
+        assert!(
+            m.render()
+                .ends_with("fibre_server_ready{chain_id=\"c\"} 1\n")
+        );
     }
 }

@@ -316,6 +316,405 @@ changes, store roots, app hash, transaction results, events, validator
 updates, consensus params and timeouts. `MATCHED_THROUGH` in the test is
 the last block that matches today.
 
+#### Synthetic chain across the v3 to v4 upgrade
+
+`v4-oracle` continues the synthetic chain across the v3 to v4 upgrade
+(cosmos-sdk v0.46 to v0.50), as the celestia-app v4 multiplexer does on
+mainnet at height 6,680,340. `v1-oracle -synthetic -handoff <home>`
+keeps the app home of celestia-app v3.13.0 on disk: the goleveldb
+database `data/application.db` after block 15, `data/upgrade-info.json`
+(plan `v4` at height 16) and `handoff.json` (what the next header
+commits to). `v4-oracle` opens that home with celestia-app v4.1.0. Its
+store loader adds the v4 stores at height 16, and the x/upgrade
+PreBlocker of block 16 runs the `v4` upgrade handler. It then executes
+blocks 16 to 20 with FinalizeBlock and Commit.
+
+[`fixtures/synthetic/v4`](fixtures/synthetic/v4) holds the blocks it
+built, the store roots and IAVL versions of heights 15 to 20, the
+FinalizeBlock responses, every key at height 15 (`kv-handoff.jsonl.gz`),
+the KV changes of each block, and the KV changes of the store loader and
+the x/upgrade PreBlocker of block 16 alone (`kv-upgrade.jsonl.gz`, run on
+a copy of the home), which is the target of the module migrations. `go test` in `v4-oracle` builds
+`v1-oracle`, makes the hand-off and requires the fixture byte for byte.
+`cargo test -p app --test synthetic_v4_oracle` checks the fixture and
+the facts of the upgrade block that the Rust hand-off must reproduce.
+`cargo test -p app --test upgrade_v4_oracle` runs each Rust migration of
+the `v4` handler, and the whole handler, on the height-15 state and
+requires Go's result in every store.
+To regenerate it:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -kv -out "$OUT/v1-v3" -handoff "$OUT/home"
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" \
+  -genesis "$OUT/v1-v3/genesis.json" -out ../fixtures/synthetic/v4
+```
+
+#### App homes between the upgrade oracles
+
+[`fixtures/synthetic/homes`](fixtures/synthetic/homes) holds the app home
+(`data/application.db`, `data/upgrade-info.json`, `handoff.json`) that each
+`-next-handoff` run leaves: `home-25` (after `v4-oracle`), `home-36`
+(`v5-oracle`), `home-46` (`v6-oracle`) and `home-56` (`v8-oracle`). The `go test`
+of `v5-oracle` to `v9-oracle` starts from the previous stage's home, so each
+module builds and runs only its own oracle. The `go test` that makes a home
+(`v4-oracle` to `v8-oracle`, in the `-next-handoff` case) requires the home it
+leaves to hold the committed `handoff.json`, which records the app hash of
+every store, and `data/upgrade-info.json`. After you regenerate a stage, make
+its archive from the home that the commands below leave, before the next stage
+modifies it:
+
+```sh
+tar -C "$OUT/home" --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - . \
+  | gzip -n -9 > conformance/fixtures/synthetic/homes/home-25.tar.gz
+```
+
+#### Probe blocks per release
+
+`-heights 19 -probes` (in `v4-oracle` to `v9-oracle`, `probes.go`,
+`warpprobes.go`, `pfmprobes.go` and `icaprobes.go`) runs each release's usual
+five blocks and then fourteen probe blocks of transactions whose outcome differs between releases. Blocks +5 to
++7 hold an ICA host `MsgModuleQuerySafe`, a warp `MsgCreateSyntheticToken`,
+a `MsgWithdrawDelegatorReward` without a delegation, and gov proposals of an
+ICA host `MsgUpdateParams` and of consensus `MsgUpdateParams` with evidence
+`MaxAgeNumBlocks` 242,640, 404,400 and 559,940. Blocks +8 to +13 set up a
+hyperlane route (noop ISM and hook, mailbox) and then send warp transactions
+signed in `SIGN_MODE_LEGACY_AMINO_JSON`: a collateral token, a remote router
+enrollment and two remote transfers. Where Go cannot build the amino sign
+bytes (a `RemoteRouter` before hyperlane-cosmos v1.1.0), the transaction is
+signed over the bytes `unsignable: <error>`. From v6, where the chain has the solo
+machine's transfer channel, blocks +14 and +15 receive solo machine packets
+whose memo asks packet-forward-middleware to forward them: back over
+`channel-0`, and to `channel-9`, which does not exist. Blocks +16 to +18 open an
+interchain-account channel with the solo machine as controller, fund the
+account and execute a `MsgSend` through it. With `-probes` the tx results
+also record `signers` (absent on v4, whose celestia-core has no such field).
+The fixtures are `fixtures/synthetic/v{4,5,6,8,9}-probes`; v4 starts from
+the v3 hand-off, the others from the previous stage's home. `cargo test -p
+app --test synthetic_probes_oracle` pins Go's code and log for each probe
+and release.
+For example, for v6:
+
+```sh
+cd conformance/v6-oracle
+tar -C "$OUT/home" -xzf ../fixtures/synthetic/homes/home-36.tar.gz
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -heights 19 -probes \
+  -genesis ../fixtures/synthetic/v1-v3/genesis.json -out ../fixtures/synthetic/v6-probes
+```
+
+#### Synthetic chain across the v4 to v5 upgrade
+
+`v4-oracle -heights 10 -next-handoff` runs the same chain on to block
+25: all four validators signal version 5 (block 18 and 21), a
+`MsgTryUpgrade` in block 22 reaches quorum, and the EndBlocker of block
+25 (22 plus chain `test`'s delay of 3) sets app version 5, schedules
+plan `v5` at 26 and writes `data/upgrade-info.json`. The program then
+rewrites `handoff.json` in the home.
+[`fixtures/synthetic/v4-to-v5`](fixtures/synthetic/v4-to-v5) holds its
+outputs: blocks 16 to 20 are those of `fixtures/synthetic/v4`.
+`v5-oracle` opens the home with celestia-app v5.0.12, as the
+multiplexer does: the x/upgrade PreBlocker of block 26 runs the `v5`
+handler (a no-op that returns the module versions it is given; no store
+is added or deleted), and the program executes blocks 26 to 30.
+[`fixtures/synthetic/v5`](fixtures/synthetic/v5) holds the same kinds of
+files as `fixtures/synthetic/v4`, from height 25. `go test` in
+`v4-oracle` rebuilds `v4-to-v5`; `go test` in `v5-oracle` runs the
+whole chain and rebuilds `v5`.
+`cargo test -p app --test synthetic_v5_oracle` checks the fixture's
+facts. To regenerate:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -kv -out "$OUT/v1-v3" -handoff "$OUT/home"
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v4-to-v5 -heights 10 -next-handoff
+cd ../v5-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v5
+```
+
+`v5-oracle` modifies the home in place: run the v5 to v6 commands below
+on a fresh home made by the first two commands.
+
+#### Synthetic chain across the v5 to v6 upgrade
+
+`v5-oracle -heights 11 -next-handoff` runs the chain on to block 36
+(`to_v6.go`): alice and carol become validators below v6's 10% minimum
+commission (6% with max 20%, 7% with max 8%); a solo machine
+(06-solomachine, whose proofs are signatures by a fixed key) opens an IBC
+client, connection and transfer channel, and its `uatom` transfer gets an
+error acknowledgement from x/tokenfilter; the validators signal version
+6, a `MsgTryUpgrade` in block 33 reaches quorum, and the EndBlocker of
+block 36 sets app version 6 and schedules plan `v6` at 37.
+[`fixtures/synthetic/v5-to-v6`](fixtures/synthetic/v5-to-v6) holds its
+outputs (blocks 26 to 30 are those of `fixtures/synthetic/v5`).
+`v6-oracle` opens the home with celestia-app v6.4.4 (the v6 release that
+the v8 and v9 multiplexers embed; v6.4.10 changes only CheckTx,
+ProcessProposal and the tx cache). The PreBlocker of block 37 runs the
+`v6` handler; blocks 37 to 41 receive a second `uatom` transfer (now a
+voucher), send the voucher, return part of it to the solo machine and
+take its acknowledgement. [`fixtures/synthetic/v6`](fixtures/synthetic/v6)
+holds the outputs from height 36. `go test` in `v5-oracle` rebuilds
+`v5-to-v6`; `go test` in `v6-oracle` runs the whole chain and rebuilds
+`v6`. `cargo test -p app --test synthetic_v6_oracle` checks the fixtures'
+facts. To regenerate, after the v4 to v5 commands above (on a fresh home):
+
+```sh
+cd conformance/v5-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v5-to-v6 -heights 11 -next-handoff
+cd ../v6-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v6
+```
+
+#### Synthetic chain across the v6 to v8 upgrade
+
+Mainnet skipped v7: its v6 chain signalled version 8. `v6-oracle -heights
+10 -next-handoff` runs the chain on to block 46 (`to_v8.go`): accounts
+send to the fee collector, distribution, gov and bonded pool module
+accounts (v6's `BlockedAddresses` hashes module addresses twice, so it
+blocks none), bob becomes a validator at 25% commission with a 30% max,
+the validators signal version 8, a `MsgTryUpgrade` in block 43 reaches
+quorum, and the EndBlocker of block 46 sets app version 8 and schedules
+plan `v8` at 47. [`fixtures/synthetic/v6-to-v8`](fixtures/synthetic/v6-to-v8)
+holds its outputs (blocks 37 to 41 are those of `fixtures/synthetic/v6`).
+`v8-oracle` opens the home with celestia-app v8.0.8: its store loader adds
+`zkism` at 47 and the PreBlocker runs the `v8` handler (20% minimum
+commission, 60% minimum max rate). In blocks 47 to 51 the sends to module
+accounts fail except the ones to gov. [`fixtures/synthetic/v8`](fixtures/synthetic/v8)
+holds the outputs from height 46. `go test` in `v6-oracle` rebuilds
+`v6-to-v8`; `go test` in `v8-oracle` runs the whole chain and rebuilds
+`v8`. `cargo test -p app --test synthetic_v8_oracle` checks the fixtures'
+facts. To regenerate, after the v5 to v6 commands (on a fresh home, as
+`v6-oracle` modifies it in place):
+
+```sh
+cd conformance/v6-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v6-to-v8 -heights 10 -next-handoff
+cd ../v8-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v8
+```
+
+#### Synthetic chain across the v8 to v9 upgrade
+
+`v8-oracle -heights 10 -next-handoff` runs the chain on to block 56: the
+validators signal version 9, a `MsgTryUpgrade` in block 53 reaches
+quorum, and the EndBlocker of block 56 sets app version 9 and schedules
+plan `v9` at 57. [`fixtures/synthetic/v8-to-v9`](fixtures/synthetic/v8-to-v9)
+holds its outputs (blocks 47 to 51 are those of `fixtures/synthetic/v8`).
+`v9-oracle` opens the home with celestia-app v9.0.8, built without the
+`fibre` build tag as the release binaries are (so no store is added). The
+PreBlocker of block 57 runs the `v9` handler (BlockMaxBytes 32 MiB,
+evidence MaxAgeNumBlocks 559,940, blob GovMaxSquareSize 256, IBC
+MaxExpectedTimePerBlock 13 s), and the program executes blocks 57 to 61.
+Its `tx-results.jsonl.gz` also records each block's whole `timeout_info`,
+which has more fields in celestia-core v0.40.
+[`fixtures/synthetic/v9`](fixtures/synthetic/v9) holds the outputs from
+height 56. `go test` in `v8-oracle` rebuilds `v8-to-v9`; `go test` in
+`v9-oracle` runs the whole chain from genesis and rebuilds `v9`.
+`cargo test -p app --test synthetic_v9_oracle` checks the fixtures'
+facts. To regenerate, after the v6 to v8 commands (on a fresh home):
+
+```sh
+cd conformance/v8-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v8-to-v9 -heights 10 -next-handoff
+cd ../v9-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/home" -genesis "$OUT/v1-v3/genesis.json" \
+  -out ../fixtures/synthetic/v9
+```
+
+#### Rich synthetic chain for the v3 to v4 migrations
+
+`v1-oracle -synthetic -chain v3-rich` builds a second chain (genesis at
+app version 3) with the state that the v4 migrations act on: 12
+validators with missed blocks, 1,080 delegations, two unbonding entries
+of one pair at one height, a redelegation, a vesting account, a gov
+proposal that ends before the upgrade and one still voting, authz and
+fee grants, and an IBC client, connection and `transfer` channel. Its
+EndBlocker of block 13 schedules plan `v4` at 14. With more than 10
+validators and 1,000 delegations, slashing's and staking's migrations
+stop early and record continuation keys, which the BeginBlockers of the
+upgrade block finish. [`fixtures/synthetic/v3-rich`](fixtures/synthetic/v3-rich)
+holds the v3 side and [`fixtures/synthetic/v3-rich-v4`](fixtures/synthetic/v3-rich-v4)
+the v4 side; both `go test`s rebuild them. `upgrade_v4_oracle` runs each
+migration on both chains. To regenerate:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -chain v3-rich -kv -out "$OUT/rich" -handoff "$OUT/rich-home"
+cp "$OUT"/rich/{genesis.json,blocks.jsonl.gz,store-roots.json,tx-results.jsonl.gz,kv-diffs.jsonl.gz,kv-height-0.jsonl.gz} \
+  ../fixtures/synthetic/v3-rich/
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/rich-home" \
+  -genesis "$OUT/rich/genesis.json" -out ../fixtures/synthetic/v3-rich-v4
+```
+
+#### IBC synthetic chain across the v3 to v4 upgrade
+
+`v1-oracle -synthetic -chain v3-ibc` (`ibcchain.go`) starts from a genesis
+at app version 3. It opens an IBC client, a connection and a transfer
+channel to a solo machine (06-solomachine, whose proofs are signatures by a
+fixed key), sends 1,000 utia over the channel and receives a solo-machine
+transfer. Its EndBlocker of block 14 schedules plan `v4` at 15.
+
+`v4-oracle` continues it (`ibc.go`) at celestia-app v4.1.0:
+
+- Block 15: a transfer over the v3 channel fails with `channel` code 9,
+  "module does not own channel capability: channel capability not found".
+- Blocks 16 and 17: a receive and the acknowledgement of the v3 transfer
+  fail with `capability` code 7.
+
+v4.1.0 has no capability module in its module manager, so it never
+initializes the in-memory capability index. This is what every IBC packet
+message did on mainnet from 6,680,340 to 6,748,821.
+
+[`fixtures/synthetic/v3-ibc`](fixtures/synthetic/v3-ibc) holds the v3 side
+and [`fixtures/synthetic/v3-ibc-v4`](fixtures/synthetic/v3-ibc-v4) the v4
+side; both `go test`s rebuild them.
+`cargo test -p app --test synthetic_v4_ibc_oracle` pins the outcomes.
+
+#### Governance chain for app versions 1 to 3
+
+`v1-oracle -synthetic -chain gov-v1-v3` (`synthetic_gov.go`) runs the synthetic
+chain's genesis with 40 second gov deposit and voting periods (about 3
+blocks), `--v2-upgrade-height 14` and a signalled upgrade to app version
+3 at block 18. At app version 1 (blocks 2 to 13) and again at app
+version 3 (blocks 19 to 26):
+
+- community pool spends that pass (a delegator's authz `MsgExec` vote
+  overrides its validator's), expire in the deposit period (deposit
+  refunded: the fork's EndBlocker refunds dropped proposals), are vetoed
+  (burned) or rejected (refunded);
+- parameter changes through celestia-app's param filter: slashing
+  `SignedBlocksWindow`, baseapp `BlockParams` (the consensus params of
+  blocks 7 and 23 change), blob `GovMaxSquareSize`, icahost
+  `AllowMessages`, and two in one proposal. Blocked parameters (staking
+  `UnbondingTime`, bank `SendEnabled`) fail at submission: gov runs the
+  filter's handler then;
+- v1beta1 and v1 messages, `MsgExecLegacyContent`, a second
+  `MsgDeposit` that starts the voting period, and weighted votes with
+  `NoWithVeto`.
+
+Block 26 checks every proposal's final status against the plan.
+[`fixtures/synthetic/gov-v1-v3`](fixtures/synthetic/gov-v1-v3) holds
+heights 0 to 26; `TestSyntheticFixtureIsReproducible` requires it byte for
+byte. To regenerate it:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -chain gov-v1-v3 -kv -out "$OUT"
+cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
+  "$OUT"/tx-results.jsonl.gz "$OUT"/kv-diffs.jsonl.gz \
+  "$OUT"/kv-height-0.jsonl.gz ../fixtures/synthetic/gov-v1-v3/
+```
+
+`cargo test -p app --test gov_oracle` compares each block as for the
+synthetic chain.
+
+#### Staking chain for app versions 1 to 3
+
+`v1-oracle -synthetic -chain staking-v1-v3` (`synthetic_staking.go`) runs the
+synthetic chain's genesis with a 60 second unbonding time and a 10 block
+signing window (half of it signed, a 60 second downtime jail),
+`--v2-upgrade-height 20` and a signalled upgrade to app version 3 at
+block 24, so that the staking queues mature within the run:
+
+- app version 1 (blocks 2 to 19): a fee allowance, a transaction whose
+  fee the granter pays, and its revocation; authz StakeAuthorization
+  and SendAuthorization through one `MsgExec`, then `MsgRevoke`; an
+  undelegation and a redelegation that mature in the EndBlocker, and a
+  cancelled unbonding; a validator edit, commission and reward
+  withdrawals to a withdraw address; a continuous vesting account that
+  delegates locked coins and a delayed one; a multi-send; val3 misses
+  every commit until it is jailed for downtime (block 11), then
+  unjails (block 16);
+- app version 3 (blocks 25 to 32): a periodic fee allowance, an authz
+  undelegation, a cancelled unbonding, a redelegation and a vesting
+  account's undelegation, maturing in blocks 30 and 31.
+
+Blocks 14 and 32 check the jail and the queues against the plan.
+[`fixtures/synthetic/staking-v1-v3`](fixtures/synthetic/staking-v1-v3)
+holds heights 0 to 32 (regenerate it as the governance chain, with
+`-chain staking-v1-v3`). `cargo test -p app --test staking_oracle` compares each
+block.
+
+#### Amino JSON chains for app versions 1 to 3
+
+`v1-oracle -synthetic -chain amino-v1-v3` (`synthetic_amino.go`) signs
+every transaction in `SIGN_MODE_LEGACY_AMINO_JSON` with the cosmos-sdk
+v0.46 client (`client/tx.Sign`), so that celestia-rs must build Go's amino
+JSON sign bytes for each message it executes. In v0.46 each message's sign
+bytes come from its own module's codec, and a nested value whose type that
+codec does not register is written bare (without `{"type","value"}`);
+[`amino-sign-bytes-v046.md`](amino-sign-bytes-v046.md) lists the codec of
+every message and which nested values are bare. The same matrix runs at
+app version 1 (blocks 2 to 4), 2 (blocks 6 to 8, after
+`--v2-upgrade-height 6`) and 3 (blocks 14 to 16, after the signals of
+blocks 9 and 10):
+
+- authz grants of every authorization type (generic for each inner
+  message, send, stake, ibc transfer) and `MsgExec` of each inner message
+  mainnet used, fee allowances (basic, periodic, allowed-msg) and
+  fee-granted transactions, gov proposals of every content type through
+  v1beta1 and v1 (`MsgExecLegacyContent`), votes and deposits;
+- staking (a new validator with an ed25519 key `Any`), distribution, bank,
+  the three vesting messages, crisis (an unknown invariant route), evidence
+  (celestia-app sets no evidence router: the handler panics), slashing,
+  signal, blobstream, `MsgPayForBlobs`, ibc transfer and relayer messages
+  (client creation and an update with a signed header, packets,
+  handshakes), which have no amino sign bytes: Go's ante handler panics;
+- 2-of-3 multisig accounts with amino, direct and mixed sub-signatures;
+- transactions signed over the wrapped form of a value the module codec
+  writes bare, and a corrupted signature, which Go rejects.
+
+[`fixtures/synthetic/amino-v1-v3`](fixtures/synthetic/amino-v1-v3) holds
+heights 0 to 17 (regenerate it as the governance chain, with
+`-chain amino-v1-v3`). `cargo test -p app --test amino_oracle` compares
+every block, and checks that the app version 4 and later sign bytes of
+its transactions do not change.
+
+The oracle writes a transaction's log without what depends on Go's
+runtime or the machine (the log is not consensus data): the goroutine
+stack and celestia's "caused by transaction" dump of a recovered panic
+(the log keeps `recovered: <value>: panic`), and the stack frames a `%+v`
+of an error with a recorded stack prints.
+
+#### State-sync snapshots of the v0.46 chains
+
+`v1-oracle -snapshot-at h1,h2,...` writes a cosmos-sdk v0.46 state-sync
+snapshot of each height right after it commits, with that height's store
+set, through the SDK's own snapshot manager (format 2: the multistore's
+IAVL export as delimited `SnapshotItem`s, zlib level 7, 10 MB chunks), as
+`celestia-appd` and `snapshots export` write them. Chunk `i` of height `h`
+is `<dir>/<h>/2/<i>` (`-snapshot-dir`, default `<out>/snapshots`); the
+store's `metadata.db` index is not part of the fixtures. The flag does not
+change any other output.
+
+[`fixtures/synthetic/v1-v3-snapshots`](fixtures/synthetic/v1-v3-snapshots)
+(heights 3, 5, 7, 12),
+[`staking-v1-v3-snapshots`](fixtures/synthetic/staking-v1-v3-snapshots)
+(9, 13, 27) and [`ibc-v2-snapshots`](fixtures/synthetic/ibc-v2-snapshots)
+(39, 72, 100, 120, written by `TestIBCFixture`) hold them;
+`TestSnapshotFixturesAreReproducible` and `TestIBCFixture` require them
+byte for byte. `cargo test -p app --test snapshot_v046_oracle` restores
+each into a fresh app through `OfferSnapshot` and `ApplySnapshotChunk`,
+requires the oracle's app hash at the snapshot height, and executes every
+later block of the chain with the oracle's app hash and transaction
+results. To regenerate the synthetic ones:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -chain v1-v3 -out "$OUT/a" -snapshot-at 3,5,7,12
+GOFLAGS=-mod=mod go run . -synthetic -chain staking-v1-v3 -out "$OUT/b" -snapshot-at 9,13,27
+# copy "$OUT"/a/snapshots/<h>/2/* to ../fixtures/synthetic/v1-v3-snapshots/<h>/2/, and so on
+```
+
 #### IBC chain for app version 2
 
 Mainnet's v2 and v3 eras carry interchain account host packets (27,031
@@ -327,11 +726,35 @@ ibc-go simapp chains as counterparties:
 - Chain ID `test`, genesis at app version 1, `--v2-upgrade-height 3`,
   the inter-block cache on (as celestia nodes run). Keys come from fixed
   seeds and memos are empty, so the run is reproducible.
-- A opens transfer channels to B and C, sends utia to B, receives it back
-  with a `forward` memo that PFM forwards to C, and acknowledges the
-  forward (which writes the acknowledgement of B's packet).
+- A opens transfer channels to B and C, sends utia to B, and receives it
+  back three times with a `forward` memo that PFM forwards to C: C
+  accepts the first forward (A writes the acknowledgement of B's
+  packet), rejects the second (A moves the utia back to the A-B escrow
+  and writes an error acknowledgement), and the third times out twice
+  (with one retry, A sends it again once, then gives up).
 - B registers an interchain account on A, funds it, and executes
-  delegate, send and withdraw-rewards through it.
+  delegate, send and withdraw-rewards through it, then (in one
+  transaction) a withdraw address, an undelegation, a redelegation and
+  an IBC transfer to B. Then two of its
+  transactions fail on A with error acknowledgements: a message signed
+  by another account, and a send of more than the account holds (after
+  a delegation that is rolled back with it).
+- A sender creates a validator with 100 times the genesis validators'
+  power and signals version 3 (chain ID `test` has a 3 block upgrade
+  delay), so A reaches app version 3 at block 95. Then a transfer to B,
+  a PFM forward from B to C and an interchain account delegation run at
+  app version 3. Then an interchain account packet times out on B: the
+  ordered channel closes on B and on A (`MsgChannelCloseConfirm`), B
+  registers again, and A reopens the same account on a new channel and
+  executes a send and a multi-send over it. Last, a governance proposal
+  narrows the host's `AllowMessages` to `MsgSend` (the chain's genesis
+  has 40 second gov periods), after which the account's delegation gets
+  an error acknowledgement and its send runs. Then utia goes to B
+  through authz `MsgExec` (a GenericAuthorization, and an ibc-go
+  TransferAuthorization whose spend limit it uses up), and a plain
+  transfer times out on B and is refunded on A. The fixture keeps its
+  `ibc-v2` name.
+  executes a send over it. The fixture keeps its `ibc-v2` name.
 
 The test records A's genesis, each BeginBlock header and the
 transactions of each block. It replays them in a fresh app through the
@@ -340,7 +763,8 @@ run's. Each block gets one BeginBlock at one time (ibctesting re-runs
 BeginBlock when its clock moves, which no consensus engine does), so
 the clients that A hosts allow an hour of clock drift. The blocks carry
 no last commit. [`fixtures/synthetic/ibc-v2`](fixtures/synthetic/ibc-v2)
-holds heights 0 to 61; the test requires it byte for byte. To
+holds heights 0 to 151; the test requires it byte for byte. To
+holds heights 0 to 124; the test requires it byte for byte. To
 regenerate it:
 
 ```sh
@@ -353,6 +777,28 @@ cp "$OUT"/genesis.json "$OUT"/blocks.jsonl.gz "$OUT"/store-roots.json \
 
 `cargo test -p app --test ibc_oracle` compares each block as for the
 synthetic chain.
+
+#### History synthetic chain for the historical info migration
+
+`v1-oracle -synthetic -chain v3-history` runs the v1-v3 chain's
+validators and accounts from a genesis at app version 3 for 1,005
+blocks, then schedules plan `v4` at 1,006. Its 1,005 historical infos
+are more than staking's v5 migration moves at once (1,000), so the
+migration records the cursor 0x82 and the BeginBlocker of the upgrade
+block finishes it. Only the v4 side
+([`fixtures/synthetic/v3-history-v4`](fixtures/synthetic/v3-history-v4))
+and the genesis ([`fixtures/synthetic/v3-history`](fixtures/synthetic/v3-history))
+are committed: the v3 side's store roots of 1,005 heights would add
+2 MB. `go test` in `v4-oracle` rebuilds it. To regenerate:
+
+```sh
+cd conformance/v1-oracle
+GOFLAGS=-mod=mod go run . -synthetic -chain v3-history -out "$OUT/hist" -handoff "$OUT/hist-home"
+cp "$OUT"/hist/genesis.json ../fixtures/synthetic/v3-history/
+cd ../v4-oracle
+GOFLAGS=-mod=mod go run . -handoff "$OUT/hist-home" \
+  -genesis "$OUT/hist/genesis.json" -out ../fixtures/synthetic/v3-history-v4
+```
 
 #### Where checkpoints come from
 
@@ -376,6 +822,34 @@ height before it, H−1:
    each with the pinned anchor and the commit hash with the signed header.
 4. Add the snapshot root, H−1 and the block hash at H−1 under key `N` in
    `checkpoints`.
+
+##### Checkpoints from the QubeLabs archive application database
+
+The QubeLabs tar is a node `data/` directory, not only snapshots. Its
+`application.db` (pebble, 1.56 million files, 3.68 TB) is an archive from
+genesis: the multistore commit info `s/<height>` exists from height 1, the
+legacy IAVL roots (`r` keys) cover the v1 to v3 eras and the IAVL v1 nodes
+(`s` keys) start at 6,680,340. Its latest version is about 15,116,644, the
+end of app version 9. Every planned checkpoint height is in it.
+
+[`archive-export/v046`](archive-export/v046) and
+[`archive-export/v050`](archive-export/v050) export a Go state-sync snapshot
+from that database at any height: they mount the stores named in the commit
+info of that height, load that version and write the snapshot with the SDK
+snapshot manager (format 2 with the celestia-app v3.13.0 SDK fork, format 3
+with `cosmossdk.io/store` v1.1.2 and IAVL v1.2.6). The download scripts are
+in [`archive-export/tools`](archive-export/tools); `lsm.py` reads a
+`pebble manifest dump` and lists the IAVL key kinds and versions per store,
+which is how the archive was recognised. The download needs the tar's byte
+offsets: `tarindex.py` walks the tar headers with HTTP range
+requests (about one hour), and `archive-fetch.py` fetches only the
+`application.db` members in parallel (about 100 MB/s from QubeLabs, so
+about ten hours). The scripts and the index are in
+`gs://fibreda-celestia-rs-genesis/tools/` and
+`gs://fibreda-celestia-rs-genesis/archive/qubelabs-celestia_2026-11-03/`;
+exported checkpoints go to
+`gs://fibreda-celestia-rs-genesis/go-snapshots/<height>/<format>/` (chunks, `metadata.json`)
+after `verify-replay-checkpoint.py` checked them.
 
 ##### Go checkpoint campaign
 
@@ -555,6 +1029,64 @@ Regeneration uses the pinned heights and commitments in
 ```sh
 python3 conformance/mainnet-rpc/fetch-replay-blocks.py
 ```
+
+## Fibre server interoperability
+
+[`fibre-interop/`](fibre-interop) checks the embedded Fibre server of
+`celestia-rs start` against the Go implementation of celestia-app
+`v11.0.0`: its Fibre client (package `fibre`: `NewClient`, `Put`,
+`Client.Upload`, `Client.Download`) and, on a mixed network, Go validators
+that run the standalone Go `fibre` server. `main.go` is the Go client
+program (`fibre-interop <command>`); the two scripts start local devnets
+and drive it. [`fibre-go-interop.yml`](../.github/workflows/fibre-go-interop.yml)
+runs both on pull requests that touch the Fibre server, its node wiring or
+the harness, and every day.
+
+```sh
+# Four celestia-rs validators (genesis from the celestia-rs CLI, app
+# version 10). Blob sizes and the number of concurrent clients are inputs.
+SIZES=1K,300K,8M,64M,127M CLIENTS=20 conformance/fibre-interop/rust-validators.sh [target/debug/celestia-rs]
+
+# Two Go validators (celestia-appd v11.0.0 + Go fibre v11.0.0, signing over
+# the node's privval gRPC) and two celestia-rs validators (genesis from
+# celestia-appd v11.0.0, app version 11). Needs the Go binaries and a
+# celestia-rs built with the da-fibre feature (node 2's DA bridge uploads
+# with the Rust client).
+DEVNET_BIN=target/devnet-bin-v11 APP_VERSION=v11.0.0 CORE_VERSION=v0.42.8 \
+  APPD_ONLY=1 FIBRE=1 GOTOOLCHAIN=go1.26.10 conformance/devnet/build-bins.sh
+cargo build -p celestia-rs --features da-fibre
+SIZES=1K,300K,8M,64M,127M conformance/fibre-interop/mixed-validators.sh target/debug/celestia-rs
+```
+
+The scripts need Go (the module pins `go 1.26.10`; `GOTOOLCHAIN=auto`
+downloads it), Python 3 and curl, and use loopback ports from
+`DEVNET_PORT_OFFSET` (21000 and 23000 by default). Logs stay in the
+printed temporary directory when a check fails.
+
+What they check:
+
+- Hosts registered with `tx valaddr set-host`; the Go gRPC health client
+  sees readiness and liveness SERVING over TLS 1.3 on every server.
+- Uploads of every size, a `MsgPayForFibre` with the servers' signatures
+  committed with code 0, downloads byte-identical. Except for the first
+  blob (`fibre.Put`), uploads wait for every validator's signature, so on
+  the mixed network each payment carries Go and Rust signatures.
+- Download of an unknown blob: `fibre.ErrNotFound`.
+- Rust-only network: 20 clients at once (each with its own connection per
+  validator, beyond the 16-connection cap) and 20 Puts on one client
+  (beyond the 13-stream cap), both with the client's default 15 s RPC
+  timeout; `BIG_PUTS` (3) concurrent 127 MiB Puts on one client, which
+  must fit the default `max_inflight_upload_bytes`; a stopped validator (`fibre.Put`
+  still reaches the 2/3 quorum and earlier blobs reconstruct); a raw
+  `UploadShard` loop fills one validator's storage budget (lowered in
+  genesis) until `ResourceExhausted`, whose `RetryInfo` grpc-go must decode
+  as the client's retry logic does.
+- Mixed network: uploads through the celestia-rs DA bridge (lumina's
+  `celestia-fibre` client) to Go and Rust servers, read back with the Go
+  client; `check_chain` and RPC block and app hashes on all nodes; then
+  one Go and one Rust validator stop, and every blob must reconstruct from
+  the remaining Go and Rust shards (each holds 3072 of the 4096 rows
+  needed).
 
 ## When to regenerate
 

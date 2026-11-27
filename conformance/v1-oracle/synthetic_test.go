@@ -8,16 +8,22 @@ import (
 	"testing"
 )
 
-// TestSyntheticFixtureIsReproducible rebuilds the synthetic chain and
+// TestSyntheticFixtureIsReproducible rebuilds each synthetic chain and
 // requires the committed fixture byte for byte.
 func TestSyntheticFixtureIsReproducible(t *testing.T) {
+	for chain, dir := range map[string]string{"v1-v3": "v1-v3", "v3-rich": "v3-rich", "gov-v1-v3": "gov-v1-v3", "staking-v1-v3": "staking-v1-v3", "amino-v1-v3": "amino-v1-v3", "v3-ibc": "v3-ibc"} {
+		t.Run(chain, func(t *testing.T) { requireReproducible(t, chain, dir) })
+	}
+}
+
+func requireReproducible(t *testing.T, chain, dir string) {
 	out := t.TempDir()
 	cmd := exec.Command(os.Args[0], "-test.run=TestRunSynthetic", "-test.v")
-	cmd.Env = append(os.Environ(), "V1_ORACLE_SYNTHETIC_OUT="+out)
+	cmd.Env = append(os.Environ(), "V1_ORACLE_SYNTHETIC_OUT="+out, "V1_ORACLE_SYNTHETIC_CHAIN="+chain)
 	if bz, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("synthetic run: %v\n%s", err, bz)
 	}
-	fixture := filepath.Join("..", "fixtures", "synthetic", "v1-v3")
+	fixture := filepath.Join("..", "fixtures", "synthetic", dir)
 	for _, name := range []string{
 		"genesis.json", "blocks.jsonl.gz", "store-roots.json",
 		"tx-results.jsonl.gz", "kv-diffs.jsonl.gz", "kv-height-0.jsonl.gz",
@@ -43,7 +49,10 @@ func TestRunSynthetic(t *testing.T) {
 	if out == "" {
 		t.Skip("run by TestSyntheticFixtureIsReproducible")
 	}
-	os.Args = []string{"v1-oracle", "-synthetic", "-kv", "-out", out}
+	os.Args = []string{"v1-oracle", "-synthetic", "-chain", os.Getenv("V1_ORACLE_SYNTHETIC_CHAIN"), "-kv", "-out", out}
+	if h := os.Getenv("V1_ORACLE_SYNTHETIC_SNAPSHOTS"); h != "" {
+		os.Args = append(os.Args, "-snapshot-at", h)
+	}
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}

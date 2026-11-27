@@ -68,6 +68,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -307,6 +308,10 @@ func run() error {
 	dbBackend := flag.String("db", "memdb", "application database: memdb, or goleveldb in a temporary directory (the celestia-appd default; for timing)")
 	timing := flag.Bool("timing", false, "print the mean time per block of BeginBlock, DeliverTx, EndBlock and Commit every 100 blocks (stderr)")
 	synthetic := flag.Bool("synthetic", false, "build the synthetic app version 1 to 3 chain (synthetic.go) instead of reading -genesis and -blocks; writes its genesis.json and blocks.jsonl.gz to -out")
+	chain := flag.String("chain", "v1-v3", "with -synthetic: the synthetic chain, v1-v3 (synthetic.go) or v3-rich (rich.go)")
+	snapshotAt := flag.String("snapshot-at", "", "comma-separated heights: after the run, write a cosmos-sdk v0.46 state-sync snapshot (format 2) of each with the SDK's snapshot manager, as celestia-appd does, to -snapshot-dir")
+	snapshotDir := flag.String("snapshot-dir", "", "with -snapshot-at: the snapshot store directory (default <out>/snapshots); the chunks of height h are <dir>/<h>/2/<i>")
+	handoff := flag.String("handoff", "", "with -synthetic: keep the app home (goleveldb data/application.db and data/upgrade-info.json) in this new directory and write handoff.json there, for conformance/v4-oracle to continue the chain")
 	flag.Parse()
 	switch *dbBackend {
 	case "memdb", "goleveldb":
@@ -328,13 +333,22 @@ func run() error {
 			flag.Usage()
 			return errors.New("-synthetic takes -out (and -kv) only")
 		}
-		syn, err := newSynth()
+		spec, ok := chainSpecs[*chain]
+		if !ok {
+			return fmt.Errorf("unknown -chain %q", *chain)
+		}
+		syn, err := newSynth(spec)
 		if err != nil {
 			return err
 		}
-		cfg.heights = syntheticHeights
-		cfg.upgradeHeightV2 = syntheticUpgradeHeightV2
+		cfg.heights = spec.heights
+		cfg.upgradeHeightV2 = spec.upgradeHeightV2
 		cfg.src = syn
+		cfg.chain = *chain
+		cfg.handoff = *handoff
+		if *handoff != "" && spec.noHandoff {
+			return fmt.Errorf("-handoff: chain %s does not schedule the v4 upgrade", *chain)
+		}
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			return err
 		}
@@ -342,6 +356,23 @@ func run() error {
 		if err := syn.genDoc.SaveAs(cfg.genesisPath); err != nil {
 			return err
 		}
+	}
+	if *snapshotAt != "" {
+		for _, f := range strings.Split(*snapshotAt, ",") {
+			h, err := strconv.ParseUint(strings.TrimSpace(f), 10, 64)
+			if err != nil || h == 0 {
+				return fmt.Errorf("-snapshot-at: bad height %q", f)
+			}
+			cfg.snapshotAt = append(cfg.snapshotAt, h)
+		}
+		cfg.snapshotDir = *snapshotDir
+		if cfg.snapshotDir == "" {
+			cfg.snapshotDir = filepath.Join(*out, "snapshots")
+		}
+	}
+	if *handoff != "" && cfg.src == nil {
+		flag.Usage()
+		return errors.New("-handoff needs -synthetic")
 	}
 	if cfg.genesisPath == "" || (cfg.blocksPath == "" && cfg.src == nil) || cfg.out == "" || cfg.heights < 1 || cfg.from < 1 || cfg.from > cfg.heights {
 		flag.Usage()
@@ -361,6 +392,14 @@ type runConfig struct {
 	// src builds the blocks (nil: read blocksPath and check each block
 	// against the next archived header).
 	src blockSource
+	// handoff, for a synthetic chain: keep the app home in this new
+	// directory and write handoff.json for conformance/v4-oracle; chain is
+	// the chain's -chain name.
+	handoff, chain string
+	// snapshotAt are the heights to snapshot after the run, into
+	// snapshotDir.
+	snapshotAt  []uint64
+	snapshotDir string
 }
 
 // blockSource builds a chain's blocks on the replaying app's state.
@@ -455,12 +494,24 @@ func execute(cfg runConfig) error {
 	}
 
 	// Heights 1..N.
-	home, err := os.MkdirTemp("", "v1-oracle-replay-")
+	home := cfg.handoff
+	if home == "" {
+		if home, err = os.MkdirTemp("", "v1-oracle-replay-"); err != nil {
+			return err
+		}
+		defer os.RemoveAll(home)
+	} else if err := os.Mkdir(home, 0o755); err != nil {
+		return fmt.Errorf("-handoff: %w", err)
+	}
+	replayApp, replayDB, err := newAppDB(home, *keepRecent, upgradeHeightV2, cfg.handoff != "" || appDB == "goleveldb")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(home)
-	replayApp := newApp(home, *keepRecent, upgradeHeightV2)
+	snaps, err := newSnapshotter(replayApp, cfg.snapshotDir, cfg.snapshotAt)
+	if err != nil {
+		return err
+	}
+	defer snaps.close()
 	res, err := initChain(replayApp, genDoc)
 	if err != nil {
 		return err
@@ -547,7 +598,7 @@ func execute(cfg runConfig) error {
 				GasWanted: r.GasWanted,
 				GasUsed:   r.GasUsed,
 				Data:      hex.EncodeToString(r.Data),
-				Log:       r.Log,
+				Log:       stableLog(r.Log),
 				Info:      r.Info,
 				Events:    events(r.Events),
 			})
@@ -561,6 +612,11 @@ func execute(cfg runConfig) error {
 		blockTimes.blocks++
 		if printTiming && height%100 == 0 {
 			blockTimes.print(height)
+		}
+		// A node snapshots a height right after committing it, with the
+		// store set of that height.
+		if err := snaps.at(height); err != nil {
+			return err
 		}
 
 		got := upper(commit.Data)
@@ -662,6 +718,18 @@ func execute(cfg runConfig) error {
 			}
 		}
 	}
+	if cfg.handoff != "" {
+		s, ok := syn.(*synth)
+		if !ok {
+			return errors.New("-handoff needs a synthetic chain")
+		}
+		if err := replayDB.Close(); err != nil {
+			return err
+		}
+		if err := s.writeHandoff(filepath.Join(cfg.handoff, "handoff.json"), cfg.chain, *heights, vals); err != nil {
+			return err
+		}
+	}
 	if syn != nil {
 		blocksJSONL := syn.blocksJSONL()
 		compressed, err := gzipBytes(blocksJSONL)
@@ -711,25 +779,32 @@ func (t *abciTimes) print(height int64) {
 		height, appDB, ms(total), ms(t.begin), ms(t.deliver), ms(t.end), ms(t.commit), t.txs)
 }
 
-func newDB(home string) dbm.DB {
-	if appDB == "goleveldb" {
-		db, err := dbm.NewGoLevelDB("application", home)
-		if err != nil {
-			panic(fmt.Sprintf("open goleveldb in %s: %v", home, err))
-		}
-		return db
+// newApp builds the app over a memory database.
+func newApp(home string, keepRecent uint64, upgradeHeightV2 int64) *app.App {
+	a, _, err := newAppDB(home, keepRecent, upgradeHeightV2, false)
+	if err != nil {
+		panic(err) // a memory database does not fail to open
 	}
-	return dbm.NewMemDB()
+	return a
 }
 
-func newApp(home string, keepRecent uint64, upgradeHeightV2 int64) *app.App {
+// newAppDB builds the app over a memory database or, with onDisk, over the
+// goleveldb database data/application.db of home, as celestia-appd opens it.
+func newAppDB(home string, keepRecent uint64, upgradeHeightV2 int64, onDisk bool) (*app.App, dbm.DB, error) {
+	var db dbm.DB = dbm.NewMemDB()
+	if onDisk {
+		var err error
+		if db, err = dbm.NewGoLevelDB("application", filepath.Join(home, "data")); err != nil {
+			return nil, nil, err
+		}
+	}
 	pruning := pruningtypes.NewPruningOptions(pruningtypes.PruningNothing)
 	if keepRecent > 0 {
 		pruning = pruningtypes.NewCustomPruningOptions(keepRecent, 10)
 	}
 	return app.New(
 		log.NewNopLogger(),
-		newDB(home),
+		db,
 		nil,
 		0,
 		encoding.MakeConfig(app.ModuleEncodingRegisters...),
@@ -739,7 +814,7 @@ func newApp(home string, keepRecent uint64, upgradeHeightV2 int64) *app.App {
 		baseapp.SetPruning(pruning),
 		// The multiplexer forces the inter-block cache on for v3 (#7770).
 		baseapp.SetInterBlockCache(store.NewCommitKVStoreCacheManager()),
-	)
+	), db, nil
 }
 
 // initChain sends Info and InitChain as the Tendermint v0.34 handshake does.
@@ -1160,3 +1235,33 @@ func sha256Hex(b []byte) string {
 }
 
 func upper(b []byte) string { return strings.ToUpper(hex.EncodeToString(b)) }
+
+// stableLog drops what in a log depends on Go's runtime or the machine
+// (the log is not part of consensus):
+//
+//   - from the log of a recovered panic (code 111222, "recovered: <value>
+//     ...: panic"), celestia's HandlePanicDecorator dump of each message
+//     ("\ncaused by transaction:\n%T{%s}") and baseapp's goroutine stack
+//     ("\nstack:\n..."), whose addresses change from run to run; the log
+//     keeps "recovered: <value>: panic";
+//   - the stack frames ("<func>\n\t<file>:<line>") that a `%+v` of an
+//     error with a recorded stack prints (gov's "failed to run legacy
+//     handler" of ibc client proposals), which name the build's paths.
+func stableLog(log string) string {
+	cut := -1
+	for _, marker := range []string{"\ncaused by transaction:\n", "\nstack:\n"} {
+		if i := strings.Index(log, marker); i >= 0 && (cut < 0 || i < cut) {
+			cut = i
+		}
+	}
+	if cut >= 0 {
+		suffix := ""
+		if strings.HasSuffix(log, ": panic") {
+			suffix = ": panic"
+		}
+		log = log[:cut] + suffix
+	}
+	return stackFrame.ReplaceAllString(log, "")
+}
+
+var stackFrame = regexp.MustCompile(`(?m)^[^\t\n][^\n]*\n\t[^\n]+\.go:\d+\n`)

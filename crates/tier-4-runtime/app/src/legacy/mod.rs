@@ -17,8 +17,9 @@
 //! ([`upgrade`]) and the migrations that `Commit` runs for it in Go
 //! ([`migrate`]) are part of the block here, before its app hash. App
 //! version 4 (scheduled by the last app version 3 block) runs on the
-//! cosmos-sdk v0.50 app; a v0.46 state at app version 4 stops with an
-//! error.
+//! cosmos-sdk v0.50 app, which takes over at the plan's block
+//! (`crate::handoff`); a v0.46 state at app version 4 without that plan
+//! stops with an error.
 //!
 //! Reference: cosmos-sdk `v1.31.2-sdk-v0.46.16` `baseapp/abci.go` and
 //! `baseapp/baseapp.go`, celestia-app v3.13.0 `app/app.go`.
@@ -29,6 +30,8 @@ pub mod authz;
 pub mod blob;
 pub mod blockers;
 pub mod consensus_params;
+pub mod crisis;
+pub mod evidence;
 pub mod feegrant;
 pub mod genesis;
 pub mod gov;
@@ -36,6 +39,7 @@ pub mod ibc;
 pub mod ibc_channel;
 pub mod ibc_timeout;
 pub mod ibc_transfer;
+pub mod ica_host;
 pub mod migrate;
 pub mod msgs;
 pub mod param_change;
@@ -423,12 +427,15 @@ pub(crate) fn timeouts(app_version: u64) -> TimeoutInfo {
 /// The v0.34 BeginBlock header the multiplexer builds from FinalizeBlock
 /// (`remote_v1.go`): the block's header fields with protocol version
 /// `{11, app_version}` and celestia-rs's chain ID.
+/// Also hands the header's data hash to the interchain accounts host
+/// ([`ica_host::set_data_hash`]), whose account addresses hash it.
 fn begin_block_header(
     chain_id: &str,
     app_version: u64,
     req: &abci::RequestFinalizeBlock,
     h: &TmHeader,
 ) -> TmHeader {
+    ica_host::set_data_hash(&h.data_hash);
     TmHeader {
         version: Some(Consensus {
             block: BLOCK_PROTOCOL,
@@ -613,6 +620,42 @@ impl<M: Modules> Driver<M> {
         }
     }
 
+    /// `BaseApp.Commit` at an app version change: the header's app
+    /// version is below the new one, so the store and module migrations
+    /// run before the commit. They run on the block's branch, before the
+    /// flush, so that a failure leaves no writes and no store changes.
+    fn commit_migrations(
+        &mut self,
+        ms: &mut MultiStore,
+        header: &Header,
+        cp: &celestia_proto::celestia_core_proto::tendermint::types::ConsensusParams,
+        height: i64,
+        to: u64,
+    ) -> Result<()> {
+        let block_version = self.app_version;
+        let added = migrate::add_stores(ms, block_version, to)?;
+        let migrated = (|| {
+            let _scope = sdk::version::SdkV046Scope::enter(to);
+            let mut ctx = Context::new(ms, header.clone(), ExecMode::Finalize);
+            ctx.consensus_params = cp.clone();
+            migrate::modules(&mut ctx, block_version, to)?;
+            drop(ctx);
+            self.phase_not_ported(height, "Commit migrations")
+        })();
+        if let Err(e) = migrated {
+            migrate::unmount_added(ms, &added);
+            return Err(e);
+        }
+        migrate::remove_stores(ms, block_version, to)?;
+        // `cms.LoadLatestVersionAndUpgrade` reloads the root store: its
+        // memory stores start empty, so the next BeginBlock rebuilds the
+        // capability memory store on the block context's meter (v0.46
+        // `noGasCtx`), as on every node at the upgrade.
+        ms.clear_memory_stores();
+        self.app_version = to;
+        Ok(())
+    }
+
     fn finalize_block_on(
         &mut self,
         ms: &mut MultiStore,
@@ -699,25 +742,7 @@ impl<M: Modules> Driver<M> {
         drop(ctx);
 
         if let Some(to) = upgraded {
-            // `BaseApp.Commit`: the header's app version is below the new
-            // one, so the store and module migrations run before the
-            // commit. They run on the block's branch, before the flush,
-            // so that a failure leaves no writes and no store changes.
-            let added = migrate::add_stores(ms, block_version, to)?;
-            let migrated = (|| {
-                let _scope = sdk::version::SdkV046Scope::enter(to);
-                let mut ctx = Context::new(ms, header.clone(), ExecMode::Finalize);
-                ctx.consensus_params = cp.clone();
-                migrate::modules(&mut ctx, block_version, to)?;
-                drop(ctx);
-                self.phase_not_ported(req.height, "Commit migrations")
-            })();
-            if let Err(e) = migrated {
-                migrate::unmount_added(ms, &added);
-                return Err(e);
-            }
-            migrate::remove_stores(ms, block_version, to)?;
-            self.app_version = to;
+            self.commit_migrations(ms, &header, &cp, req.height, to)?;
         }
         ms.flush()?;
         let app_hash = ms.working_hash()?.to_vec();
@@ -731,6 +756,38 @@ impl<M: Modules> Driver<M> {
             // `getTimeoutCommit(currentVersion)`: the block's version.
             timeout_info: Some(timeouts(block_version)),
         })
+    }
+
+    /// Rebuilds the capability memory store from the committed state, out
+    /// of any block, after the state was restored from a snapshot or
+    /// reopened. The memory store is empty then; Go rebuilds it in the
+    /// next block's BeginBlocker, whose reads (v0.46 `noGasCtx` keeps the
+    /// context's meter) a transaction rejected before
+    /// `SetUpContextDecorator` reports as its gas. The canonical chain's
+    /// results come from nodes that rebuilt it long before, so it is
+    /// rebuilt here, where it costs no block gas. Only the memory store is
+    /// written: the app hash does not change.
+    ///
+    /// The one height where every validator had just started is block 1,
+    /// and there Go and this driver agree without it: InitGenesis rebuilds
+    /// the memory store, so block 1's BeginBlocker only reads
+    /// `mem_initialized`. A fresh home (height 0) never calls this
+    /// (`init_chain_leaves_the_memory_store_initialized_for_block_1`).
+    pub fn init_memory_stores(&mut self, ms: &mut MultiStore) -> Result<()> {
+        if self.finalized.is_some() {
+            return Err(sdk::error::sdk::logic(
+                "memory stores rebuilt with a finalized block pending",
+            ));
+        }
+        let version = app_version(ms);
+        let _v046 = sdk::version::SdkV046Scope::enter(version);
+        ms.select(sdk::store::Stack::Finalize);
+        let mut ctx = Context::new(ms, Header::default(), ExecMode::Finalize);
+        let r = x_capability::init_mem_store(&mut ctx);
+        drop(ctx);
+        r?;
+        ms.flush()
+            .map_err(|e| sdk::error::sdk::logic(format!("store: {e}")))
     }
 
     /// `Commit`: commits the finalized block's writes as the next version.

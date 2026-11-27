@@ -34,6 +34,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/celestiaorg/celestia-app/v3/app"
@@ -43,6 +44,7 @@ import (
 	"github.com/celestiaorg/celestia-app/v3/test/util/genesis"
 	signaltypes "github.com/celestiaorg/celestia-app/v3/x/signal/types"
 	"github.com/celestiaorg/go-square/v2/share"
+	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -80,9 +82,65 @@ var (
 	syntheticNS     = share.MustNewV0Namespace(bytes.Repeat([]byte{0x42}, share.NamespaceVersionZeroIDSize))
 )
 
+// chainSpec is one synthetic chain: its genesis, its transactions per
+// block and the validators that miss each block.
+type chainSpec struct {
+	// heights is the last block: the block whose EndBlocker schedules the
+	// v4 upgrade.
+	heights int64
+	// upgradeHeightV2 is the --v2-upgrade-height (0: none).
+	upgradeHeightV2 int64
+	// appVersion is the genesis app version.
+	appVersion uint64
+	validators []string
+	stakes     []int64
+	users      []string
+	// userBalance is each user's genesis balance (utia).
+	userBalance int64
+	// editGenesis changes the exported app state (nil: none).
+	editGenesis func(appState map[string]json.RawMessage) error
+	// txs adds the transactions of a block to b.
+	txs func(b *txBuilder) error
+	// absent reports whether validator i of n misses the commit of block
+	// height.
+	absent func(height int64, i, n int) bool
+	// modifier, when set, edits the genesis state before Export
+	// (genesis.WithModifiers).
+	modifier func(codec.Codec) genesis.Modifier
+	// newAccounts are keys of accounts that a transaction creates: in the
+	// keyring from the start, signing once they exist.
+	newAccounts []string
+	// rawTxs, when set, builds a block's transactions in place of txs,
+	// with the committed app state at hand.
+	rawTxs func(s *synth, a *app.App, height int64) ([][]byte, error)
+	// noHandoff: the chain never schedules the v4 upgrade, so -handoff
+	// would leave conformance/v4-oracle no plan to continue with.
+	noHandoff bool
+}
+
+// accounts are the spec's key names: validators, then users.
+func (c *chainSpec) accounts() []string {
+	return append(append([]string{}, c.validators...), c.users...)
+}
+
+// v1v3Spec is the app version 1 to 3 chain (fixtures/synthetic/v1-v3).
+var v1v3Spec = &chainSpec{
+	heights:         syntheticHeights,
+	upgradeHeightV2: syntheticUpgradeHeightV2,
+	appVersion:      1,
+	validators:      syntheticValidators,
+	stakes:          syntheticStakes,
+	users:           syntheticUsers,
+	userBalance:     1_000_000_000_000,
+	txs:             v1v3Txs,
+	// The fourth validator misses every third height.
+	absent: func(height int64, i, n int) bool { return i == n-1 && height%3 == 0 },
+}
+
 // synth builds the synthetic chain's genesis and, block by block, its
 // transactions and headers.
 type synth struct {
+	spec   *chainSpec
 	ecfg   encoding.Config
 	kr     keyring.Keyring
 	genDoc *tmtypes.GenesisDoc
@@ -102,16 +160,19 @@ func keyMnemonic(name string) (string, error) {
 	return bip39.NewMnemonic(entropy[:])
 }
 
-func newSynth() (*synth, error) {
+func newSynth(spec *chainSpec) (*synth, error) {
 	ecfg := encoding.MakeConfig(app.ModuleEncodingRegisters...)
 	kr := keyring.NewInMemory(ecfg.Codec)
 	params := app.DefaultConsensusParams()
-	params.Version.AppVersion = 1
+	params.Version.AppVersion = spec.appVersion
 	g := genesis.NewDefaultGenesis().
 		WithChainID(appconsts.TestChainID).
 		WithGenesisTime(syntheticGenesisTime).
 		WithConsensusParams(params).
 		WithKeyring(kr)
+	if spec.modifier != nil {
+		g = g.WithModifiers(spec.modifier(ecfg.Codec))
+	}
 	addAccount := func(name string, balance int64) error {
 		mnemonic, err := keyMnemonic(name)
 		if err != nil {
@@ -127,22 +188,22 @@ func newSynth() (*synth, error) {
 		}
 		return g.AddAccount(genesis.Account{PubKey: pk, Balance: balance, Name: name})
 	}
-	for i, name := range syntheticValidators {
-		balance := syntheticStakes[i] + 1_000_000_000
+	for i, name := range spec.validators {
+		balance := spec.stakes[i] + 1_000_000_000
 		if err := addAccount(name, balance); err != nil {
 			return nil, err
 		}
 		if err := g.AddValidator(genesis.Validator{
 			KeyringAccount: genesis.KeyringAccount{Name: name, InitialTokens: balance},
-			Stake:          syntheticStakes[i],
+			Stake:          spec.stakes[i],
 			ConsensusKey:   ed25519.GenPrivKeyFromSecret([]byte("consensus " + name)),
 			NetworkKey:     ed25519.GenPrivKeyFromSecret([]byte("network " + name)),
 		}); err != nil {
 			return nil, err
 		}
 	}
-	for _, name := range syntheticUsers {
-		if err := addAccount(name, 1_000_000_000_000); err != nil {
+	for _, name := range spec.users {
+		if err := addAccount(name, spec.userBalance); err != nil {
 			return nil, err
 		}
 	}
@@ -150,10 +211,31 @@ func newSynth() (*synth, error) {
 	if err != nil {
 		return nil, err
 	}
+	if spec.editGenesis != nil {
+		var appState map[string]json.RawMessage
+		if err := json.Unmarshal(genDoc.AppState, &appState); err != nil {
+			return nil, err
+		}
+		if err := spec.editGenesis(appState); err != nil {
+			return nil, err
+		}
+		if genDoc.AppState, err = json.Marshal(appState); err != nil {
+			return nil, err
+		}
+	}
 	if err := genDoc.ValidateAndComplete(); err != nil {
 		return nil, err
 	}
-	return &synth{ecfg: ecfg, kr: kr, genDoc: genDoc, appVersion: 1}, nil
+	for _, name := range spec.newAccounts {
+		mnemonic, err := keyMnemonic(name)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := kr.NewAccount(name, mnemonic, "", sdk.FullFundraiserPath, hd.Secp256k1); err != nil {
+			return nil, err
+		}
+	}
+	return &synth{spec: spec, ecfg: ecfg, kr: kr, genDoc: genDoc, appVersion: spec.appVersion}, nil
 }
 
 // start records the InitChain app hash: the app hash of block 1.
@@ -183,7 +265,11 @@ func (s *synth) blocksJSONL() []byte { return s.blocks.Bytes() }
 func (s *synth) signer(a *app.App) (*user.Signer, error) {
 	ctx := a.NewContext(true, tmproto.Header{})
 	var accounts []*user.Account
-	for _, name := range append(append([]string{}, syntheticValidators...), syntheticUsers...) {
+	pending := map[string]bool{}
+	for _, name := range s.spec.newAccounts {
+		pending[name] = true
+	}
+	for _, name := range append(s.spec.accounts(), s.spec.newAccounts...) {
 		rec, err := s.kr.Key(name)
 		if err != nil {
 			return nil, err
@@ -193,12 +279,81 @@ func (s *synth) signer(a *app.App) (*user.Signer, error) {
 			return nil, err
 		}
 		acc := a.AccountKeeper.GetAccount(ctx, addr)
+		if acc == nil && pending[name] {
+			continue // not created yet
+		}
 		if acc == nil {
 			return nil, fmt.Errorf("no account %s", name)
 		}
 		accounts = append(accounts, user.NewAccount(name, acc.GetAccountNumber(), acc.GetSequence()))
 	}
 	return user.NewSigner(s.kr, s.ecfg.TxConfig, appconsts.TestChainID, s.appVersion, accounts...)
+}
+
+// txBuilder signs the transactions of one block at the committed account
+// numbers and sequences.
+type txBuilder struct {
+	height int64
+	sg     *user.Signer
+	out    [][]byte
+	// app is the app at the last committed height, for chains whose
+	// transactions depend on committed state (ibcchain.go).
+	app *app.App
+}
+
+var utiaFee = []user.TxOption{user.SetGasLimit(syntheticGasLimit), user.SetFee(syntheticFee)}
+
+func (b *txBuilder) addr(name string) sdk.AccAddress { return b.sg.Account(name).Address() }
+
+func (b *txBuilder) valAddr(name string) sdk.ValAddress { return sdk.ValAddress(b.addr(name)) }
+
+func utia(n int64) sdk.Coins { return sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, n)) }
+
+// tx signs msgs from the first signer with opts (default: utiaFee).
+func (b *txBuilder) tx(msgs []sdk.Msg, opts ...user.TxOption) error {
+	if opts == nil {
+		opts = utiaFee
+	}
+	bz, err := b.sg.CreateTx(msgs, opts...)
+	if err != nil {
+		return err
+	}
+	b.out = append(b.out, bz)
+	return nil
+}
+
+func (b *txBuilder) msg(msg sdk.Msg, opts ...user.TxOption) error {
+	return b.tx([]sdk.Msg{msg}, opts...)
+}
+
+func (b *txBuilder) send(from, to string, amount int64, opts ...user.TxOption) error {
+	return b.msg(banktypes.NewMsgSend(b.addr(from), b.addr(to), utia(amount)), opts...)
+}
+
+func (b *txBuilder) signal(val string, version uint64) error {
+	return b.msg(signaltypes.NewMsgSignalVersion(b.valAddr(val), version))
+}
+
+func (b *txBuilder) tryUpgrade(from string) error {
+	return b.msg(signaltypes.NewMsgTryUpgrade(b.addr(from)))
+}
+
+func (b *txBuilder) pfb(from string, shareVersion uint8, size int) error {
+	data := bytes.Repeat([]byte{byte(b.height)}, size)
+	var signer []byte
+	if shareVersion == share.ShareVersionOne {
+		signer = b.addr(from)
+	}
+	blob, err := share.NewBlob(syntheticNS, data, shareVersion, signer)
+	if err != nil {
+		return err
+	}
+	bz, _, err := b.sg.CreatePayForBlobs(from, []*share.Blob{blob}, user.SetGasLimit(syntheticGasLimit), user.SetFee(syntheticFee))
+	if err != nil {
+		return err
+	}
+	b.out = append(b.out, bz)
+	return nil
 }
 
 // txs are the transactions of block `height`: at most one per account, so
@@ -208,126 +363,95 @@ func (s *synth) txs(a *app.App, height int64) ([][]byte, error) {
 		// Nothing is committed yet: block 1 is empty.
 		return nil, nil
 	}
+	if s.spec.rawTxs != nil {
+		return s.spec.rawTxs(s, a, height)
+	}
 	sg, err := s.signer(a)
 	if err != nil {
 		return nil, err
 	}
-	addr := func(name string) sdk.AccAddress { return sg.Account(name).Address() }
-	valAddr := func(name string) sdk.ValAddress { return sdk.ValAddress(addr(name)) }
-	utia := func(n int64) sdk.Coins { return sdk.NewCoins(sdk.NewInt64Coin(appconsts.BondDenom, n)) }
-	fee := []user.TxOption{user.SetGasLimit(syntheticGasLimit), user.SetFee(syntheticFee)}
-	var out [][]byte
-	tx := func(msg sdk.Msg, opts ...user.TxOption) error {
-		if opts == nil {
-			opts = fee
-		}
-		bz, err := sg.CreateTx([]sdk.Msg{msg}, opts...)
-		if err != nil {
-			return err
-		}
-		out = append(out, bz)
-		return nil
+	b := &txBuilder{height: height, sg: sg, app: a}
+	if err := s.spec.txs(b); err != nil {
+		return nil, err
 	}
-	send := func(from, to string, amount int64, opts ...user.TxOption) error {
-		return tx(banktypes.NewMsgSend(addr(from), addr(to), utia(amount)), opts...)
-	}
+	return b.out, nil
+}
+
+// v1v3Txs are the transactions of the app version 1 to 3 chain.
+func v1v3Txs(b *txBuilder) error {
 	// A transaction that pays no fee: valid at app version 1 (DeliverTx
 	// checks no minimum), below the network minimum gas price from v2.
 	free := []user.TxOption{user.SetGasLimit(syntheticGasLimit)}
-	signal := func(val string, version uint64) error {
-		return tx(signaltypes.NewMsgSignalVersion(valAddr(val), version))
-	}
-	tryUpgrade := func(from string) error {
-		return tx(signaltypes.NewMsgTryUpgrade(addr(from)))
-	}
-	pfb := func(from string, shareVersion uint8, size int) error {
-		data := bytes.Repeat([]byte{byte(height)}, size)
-		var signer []byte
-		if shareVersion == share.ShareVersionOne {
-			signer = addr(from)
-		}
-		blob, err := share.NewBlob(syntheticNS, data, shareVersion, signer)
-		if err != nil {
-			return err
-		}
-		bz, _, err := sg.CreatePayForBlobs(from, []*share.Blob{blob}, user.SetGasLimit(syntheticGasLimit), user.SetFee(syntheticFee))
-		if err != nil {
-			return err
-		}
-		out = append(out, bz)
-		return nil
-	}
-
 	var steps []func() error
-	switch height {
+	switch b.height {
 	case 2:
-		steps = append(steps, func() error { return send("alice", "bob", 1_000) })
+		steps = append(steps, func() error { return b.send("alice", "bob", 1_000) })
 	case 3:
 		steps = append(steps,
-			func() error { return pfb("bob", share.ShareVersionZero, 600) },
-			func() error { return send("carol", "alice", 7, free...) },
+			func() error { return b.pfb("bob", share.ShareVersionZero, 600) },
+			func() error { return b.send("carol", "alice", 7, free...) },
 		)
 	case 4:
 		steps = append(steps,
 			// The v1 message gatekeeper rejects signal messages.
-			func() error { return signal("val0", 2) },
+			func() error { return b.signal("val0", 2) },
 			func() error {
-				return tx(stakingtypes.NewMsgDelegate(addr("alice"), valAddr("val3"), sdk.NewInt64Coin(appconsts.BondDenom, 5_000_000)))
+				return b.msg(stakingtypes.NewMsgDelegate(b.addr("alice"), b.valAddr("val3"), sdk.NewInt64Coin(appconsts.BondDenom, 5_000_000)))
 			},
 		)
 	case 5:
 		// The last app version 1 block: its EndBlocker sets version 2.
-		steps = append(steps, func() error { return send("alice", "carol", 11) })
+		steps = append(steps, func() error { return b.send("alice", "carol", 11) })
 	case 6:
 		steps = append(steps,
-			func() error { return send("carol", "alice", 7, free...) },
-			func() error { return pfb("bob", share.ShareVersionZero, 1_200) },
-			func() error { return signal("val0", 3) },
-			func() error { return signal("val1", 3) },
+			func() error { return b.send("carol", "alice", 7, free...) },
+			func() error { return b.pfb("bob", share.ShareVersionZero, 1_200) },
+			func() error { return b.signal("val0", 3) },
+			func() error { return b.signal("val1", 3) },
 		)
 	case 7:
 		steps = append(steps,
-			func() error { return signal("val2", 3) },
-			func() error { return signal("val3", 2) },
+			func() error { return b.signal("val2", 3) },
+			func() error { return b.signal("val3", 2) },
 			// Quorum: the upgrade height is 7 + 3.
-			func() error { return tryUpgrade("alice") },
+			func() error { return b.tryUpgrade("alice") },
 		)
 	case 8:
 		steps = append(steps,
 			// An upgrade is pending: both fail.
-			func() error { return signal("val3", 3) },
-			func() error { return tryUpgrade("bob") },
+			func() error { return b.signal("val3", 3) },
+			func() error { return b.tryUpgrade("bob") },
 		)
 	case 9:
-		steps = append(steps, func() error { return send("alice", "bob", 13) })
+		steps = append(steps, func() error { return b.send("alice", "bob", 13) })
 	case 10:
 		// The EndBlocker sets version 3.
-		steps = append(steps, func() error { return send("bob", "carol", 17) })
+		steps = append(steps, func() error { return b.send("bob", "carol", 17) })
 	case 11:
 		steps = append(steps,
-			func() error { return pfb("bob", share.ShareVersionOne, 900) },
-			func() error { return signal("val0", 4) },
-			func() error { return signal("val1", 4) },
-			func() error { return signal("val2", 4) },
-			func() error { return send("carol", "alice", 7, free...) },
+			func() error { return b.pfb("bob", share.ShareVersionOne, 900) },
+			func() error { return b.signal("val0", 4) },
+			func() error { return b.signal("val1", 4) },
+			func() error { return b.signal("val2", 4) },
+			func() error { return b.send("carol", "alice", 7, free...) },
 		)
 	case 12:
 		// Quorum: the upgrade height is 12 + 3.
-		steps = append(steps, func() error { return tryUpgrade("alice") })
+		steps = append(steps, func() error { return b.tryUpgrade("alice") })
 	case 13:
-		steps = append(steps, func() error { return pfb("carol", share.ShareVersionZero, 2_000) })
+		steps = append(steps, func() error { return b.pfb("carol", share.ShareVersionZero, 2_000) })
 	case 14:
-		steps = append(steps, func() error { return send("alice", "bob", 19) })
+		steps = append(steps, func() error { return b.send("alice", "bob", 19) })
 	case 15:
 		// The EndBlocker schedules the v4 upgrade and sets version 4.
-		steps = append(steps, func() error { return send("bob", "alice", 23) })
+		steps = append(steps, func() error { return b.send("bob", "alice", 23) })
 	}
 	for _, step := range steps {
 		if err := step(); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return out, nil
+	return nil
 }
 
 // block builds block `height` on the committed state and appends it to
@@ -381,11 +505,10 @@ func (s *synth) block(a *app.App, height int64, vals map[int64]*tmtypes.Validato
 		return rpcBlock{}, err
 	}
 
-	// The commit of this block: the fourth validator misses every third
-	// height.
+	// The commit of this block, with the spec's absent validators.
 	sigs := make([]tmtypes.CommitSig, len(cur.Validators))
 	for i, v := range cur.Validators {
-		if i == len(cur.Validators)-1 && height%3 == 0 {
+		if s.spec.absent(height, i, len(cur.Validators)) {
 			sigs[i] = tmtypes.NewCommitSigAbsent()
 			continue
 		}
@@ -399,4 +522,96 @@ func (s *synth) block(a *app.App, height int64, vals map[int64]*tmtypes.Validato
 	s.lastCommit = tmtypes.NewCommit(height, 0, id, sigs)
 	s.lastBlockID = id
 	return rb, nil
+}
+
+// handoff is handoff.json: what conformance/v4-oracle needs, beside the app
+// home, to build the blocks after the last v3 block as celestia-core
+// would. Bytes are upper-case hex.
+type handoff struct {
+	// Chain is the -chain of the synthetic chain; Accounts are its key
+	// names (validators, then users).
+	Chain           string   `json:"chain"`
+	Accounts        []string `json:"accounts"`
+	ChainID         string   `json:"chain_id"`
+	Height          int64    `json:"height"`
+	AppHash         string   `json:"app_hash"`
+	LastResultsHash string   `json:"last_results_hash"`
+	// AppVersion is the app version of the last EndBlock consensus params:
+	// the version of the next header.
+	AppVersion uint64 `json:"app_version"`
+	// BlockMaxBytes and BlockMaxGas are the block params that the header's
+	// consensus_hash commits to.
+	BlockMaxBytes int64           `json:"block_max_bytes"`
+	BlockMaxGas   int64           `json:"block_max_gas"`
+	LastBlockID   handoffBlockID  `json:"last_block_id"`
+	LastCommit    []handoffSig    `json:"last_commit"`
+	Validators    [2][]handoffVal `json:"validators"`
+}
+
+type handoffBlockID struct {
+	Hash      string `json:"hash"`
+	PartTotal uint32 `json:"part_total"`
+	PartHash  string `json:"part_hash"`
+}
+
+// handoffSig is a CommitSig of the last block. TimeNs is Unix nanoseconds.
+type handoffSig struct {
+	Flag             int32  `json:"flag"`
+	ValidatorAddress string `json:"validator_address"`
+	TimeNs           int64  `json:"time_ns"`
+	Signature        string `json:"signature"`
+}
+
+// handoffVal is an ed25519 validator in proposer-priority order.
+type handoffVal struct {
+	PubKey           string `json:"pub_key"`
+	Power            int64  `json:"power"`
+	ProposerPriority int64  `json:"proposer_priority"`
+}
+
+// writeHandoff records the state after block `height`; vals holds the
+// validator sets of heights height+1 and height+2.
+func (s *synth) writeHandoff(path, chain string, height int64, vals map[int64]*tmtypes.ValidatorSet) error {
+	h := handoff{
+		Chain:           chain,
+		Accounts:        s.spec.accounts(),
+		ChainID:         s.genDoc.ChainID,
+		Height:          height,
+		AppHash:         fmt.Sprintf("%X", s.appHash),
+		LastResultsHash: fmt.Sprintf("%X", s.lastResultsHash),
+		AppVersion:      s.appVersion,
+		BlockMaxBytes:   s.genDoc.ConsensusParams.Block.MaxBytes,
+		BlockMaxGas:     s.genDoc.ConsensusParams.Block.MaxGas,
+		LastBlockID: handoffBlockID{
+			Hash:      fmt.Sprintf("%X", s.lastBlockID.Hash),
+			PartTotal: s.lastBlockID.PartSetHeader.Total,
+			PartHash:  fmt.Sprintf("%X", s.lastBlockID.PartSetHeader.Hash),
+		},
+	}
+	for _, sig := range s.lastCommit.Signatures {
+		h.LastCommit = append(h.LastCommit, handoffSig{
+			Flag:             int32(sig.BlockIDFlag),
+			ValidatorAddress: fmt.Sprintf("%X", []byte(sig.ValidatorAddress)),
+			TimeNs:           sig.Timestamp.UnixNano(),
+			Signature:        fmt.Sprintf("%X", sig.Signature),
+		})
+	}
+	for i := range h.Validators {
+		set := vals[height+1+int64(i)]
+		if set == nil {
+			return fmt.Errorf("no validator set at %d", height+1+int64(i))
+		}
+		for _, v := range set.Validators {
+			h.Validators[i] = append(h.Validators[i], handoffVal{
+				PubKey:           fmt.Sprintf("%X", v.PubKey.Bytes()),
+				Power:            v.VotingPower,
+				ProposerPriority: v.ProposerPriority,
+			})
+		}
+	}
+	bz, err := json.MarshalIndent(h, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(bz, '\n'), 0o644)
 }

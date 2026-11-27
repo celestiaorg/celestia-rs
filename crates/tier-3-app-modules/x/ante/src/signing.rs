@@ -133,7 +133,10 @@ pub fn get_sign_bytes(mode: i32, sd: &SignerData, tx: &Tx) -> R<Result<Vec<u8>, 
         }
         .encode_to_vec())),
         SIGN_MODE_DIRECT_AUX => direct_aux_sign_bytes(sd, tx),
-        SIGN_MODE_LEGACY_AMINO_JSON => Ok(crate::aminojson::sign_bytes(sd, tx)),
+        SIGN_MODE_LEGACY_AMINO_JSON => match crate::aminojson::sign_bytes(sd, tx) {
+            Err(e) if crate::aminojson::is_v046_panic(&e) => panic(e),
+            r => Ok(r),
+        },
         m => Ok(Err(format!("unsupported sign mode {}", sign_mode_name(m)))),
     }
 }

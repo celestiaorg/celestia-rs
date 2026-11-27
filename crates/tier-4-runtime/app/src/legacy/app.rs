@@ -9,13 +9,17 @@
 //! be at app version 1; blocks execute at app versions 1 to 3, through
 //! the v1 to v2 upgrade (`App::set_v2_upgrade_height`, or the chain's
 //! default) and the signalled upgrades. A state whose app version became
-//! 4 (the scheduled v4 upgrade) stops with an error: app version 4 runs
-//! on the cosmos-sdk v0.50 app.
+//! 4 hands off to the cosmos-sdk v0.50 app at the block of the scheduled
+//! `v4` plan (`crate::handoff`); without that plan it stops with an error.
 //!
 //! celestia-rs replays committed v0.46 blocks only. CheckTx,
-//! PrepareProposal, ProcessProposal, queries and snapshot offers fail
-//! with a not-supported error rather than running v0.50 code on v0.46
-//! state, and no state-sync snapshot is taken of a v0.46 state.
+//! PrepareProposal, ProcessProposal and queries fail with a
+//! not-supported error rather than running v0.50 code on v0.46 state.
+//! Commit writes format 2 state-sync snapshots of a v0.46 state, as Go
+//! v0.46 does ([`App::legacy_commit`]). A fresh app restores
+//! a Go v0.46 snapshot (format 2) of app version 1 to 3 into that
+//! release's store set ([`App::legacy_offer_snapshot`]) and continues on
+//! the driver from the snapshot height.
 
 use celestia_proto::celestia_core_proto::abci::{
     self, ResponseCommit, ResponseFinalizeBlock, ResponseInitChain,
@@ -155,6 +159,149 @@ impl App {
         Ok(())
     }
 
+    /// `OfferSnapshot` of a snapshot at v0.46 app version
+    /// `req.app_version` (or while such a restore is active): only a
+    /// fresh app accepts it, and only in format 2. Accepting mounts the
+    /// release's stores in place of the v0.50 ones, as a v0.46 genesis
+    /// does; a later offer replaces an unfinished restore.
+    pub(crate) fn legacy_offer_snapshot(
+        &mut self,
+        req: abci::RequestOfferSnapshot,
+    ) -> abci::ResponseOfferSnapshot {
+        use abci::response_offer_snapshot::Result as R;
+        let result = |r: R| abci::ResponseOfferSnapshot { result: r as i32 };
+        if let Some(release) = self.snapshot_v046.take() {
+            if let Some(m) = &mut self.snapshots
+                && let Err(e) = m.abort_restore()
+            {
+                tracing::error!(error = %e, "failed to abort snapshot restore");
+            }
+            if let Err(e) = self.restore_v050_mounts(release) {
+                tracing::error!(error = %e.log, "failed to restore the v0.50 stores");
+                return result(R::Abort);
+            }
+        }
+        let Some(release) = super::is_v046(req.app_version)
+            .then(|| Release::for_app_version(req.app_version))
+            .flatten()
+        else {
+            tracing::error!(
+                app_version = req.app_version,
+                "rejecting snapshot: app version {} has no cosmos-sdk v0.46 release",
+                req.app_version
+            );
+            return result(R::Reject);
+        };
+        if self.last_height != 0 || self.legacy.is_some() {
+            tracing::error!("rejecting snapshot: the app already holds a state");
+            return result(R::Reject);
+        }
+        let (Some(manager), Some(s)) = (&mut self.snapshots, req.snapshot) else {
+            return result(R::Abort);
+        };
+        if s.format != snapshots::FORMAT_V046 {
+            // Only this snapshot: the format may still be valid for later
+            // heights offered in the same state sync.
+            tracing::error!(
+                format = s.format,
+                app_version = req.app_version,
+                "rejecting snapshot: a cosmos-sdk v0.46 state is restored from format 2"
+            );
+            return result(R::Reject);
+        }
+        let snapshot =
+            match snapshots::Snapshot::from_abci(s.height, s.format, s.chunks, s.hash, &s.metadata)
+            {
+                Ok(snapshot) => snapshot,
+                Err(e) => {
+                    tracing::error!(error = %e, "rejecting invalid snapshot");
+                    return result(R::Reject);
+                }
+            };
+        if let Err(e) = manager.begin_restore(snapshot) {
+            tracing::error!(error = %e, "failed to restore snapshot");
+            return result(R::Abort);
+        }
+        for name in stores::IAVL_STORES {
+            if self.ms.is_mounted(name)
+                && let Err(e) = self.ms.unmount_iavl(name)
+            {
+                tracing::error!(store = name, error = %e, "failed to select snapshot stores");
+                return result(R::Abort);
+            }
+        }
+        if let Err(e) = stores::mount_release(&mut self.ms, release) {
+            tracing::error!(error = %e, "failed to select snapshot stores");
+            return result(R::Abort);
+        }
+        self.snapshot_v046 = Some(release);
+        tracing::info!(
+            app_version = req.app_version,
+            "restoring a cosmos-sdk v0.46 snapshot"
+        );
+        result(R::Accept)
+    }
+
+    /// `ApplySnapshotChunk` of a v0.46 restore. After the last chunk the
+    /// app holds the release's committed state at the snapshot height and
+    /// continues on the v0.46 driver, as when it reopens such a state; the
+    /// capability memory store is rebuilt by the first block's BeginBlock.
+    pub(crate) fn legacy_apply_snapshot_chunk(
+        &mut self,
+        req: abci::RequestApplySnapshotChunk,
+    ) -> abci::ResponseApplySnapshotChunk {
+        use abci::response_apply_snapshot_chunk::Result as R;
+        let respond = |r: R| abci::ResponseApplySnapshotChunk {
+            result: r as i32,
+            ..Default::default()
+        };
+        let Some(release) = self.snapshot_v046 else {
+            return respond(R::Abort);
+        };
+        let Some(manager) = &mut self.snapshots else {
+            return respond(R::Abort);
+        };
+        match manager.restore_chunk(self.ms.root_mut(), &req.chunk) {
+            Ok(None) => respond(R::Accept),
+            Ok(Some(id)) => {
+                self.snapshot_v046 = None;
+                if let Err(e) = self.load_committed_state() {
+                    tracing::error!(error = %e.log, "failed to load restored state");
+                    return respond(R::Abort);
+                }
+                let mut driver = self.new_legacy_driver();
+                if let Err(e) = driver.init_memory_stores(&mut self.ms) {
+                    tracing::error!(error = %e.log, "failed to rebuild the memory stores");
+                    return respond(R::Abort);
+                }
+                self.legacy = Some(driver);
+                self.check_header = self.init_check_header();
+                tracing::info!(
+                    height = id.version,
+                    app_version = super::app_version(&self.ms),
+                    "restored cosmos-sdk v0.46 state-sync snapshot"
+                );
+                respond(R::Accept)
+            }
+            Err(snapshots::Error::ChunkHashMismatch(_)) => abci::ResponseApplySnapshotChunk {
+                result: R::Retry as i32,
+                refetch_chunks: vec![req.index],
+                reject_senders: vec![req.sender],
+            },
+            Err(e) => {
+                self.snapshot_v046 = None;
+                if let Err(cleanup) = manager.abort_restore() {
+                    tracing::error!(error = %cleanup, "failed to abort snapshot restore");
+                }
+                if let Err(cleanup) = self.restore_v050_mounts(release) {
+                    tracing::error!(error = %cleanup.log, "failed to restore the v0.50 stores");
+                }
+                tracing::error!(error = %e, "failed to restore snapshot");
+                respond(R::Abort)
+            }
+        }
+    }
+
     /// FinalizeBlock on a v0.46 state.
     pub(crate) fn legacy_finalize_block(
         &mut self,
@@ -190,8 +337,9 @@ impl App {
         Ok(res)
     }
 
-    /// Commit on a v0.46 state. No state-sync snapshot is taken: the
-    /// snapshot format of a v0.46 state is not supported.
+    /// Commit on a v0.46 state; at the snapshot interval it writes a
+    /// format 2 state-sync snapshot of the committed height in the
+    /// background, as Go v0.46 does.
     pub(crate) fn legacy_commit(&mut self) -> Result<ResponseCommit> {
         let header = self
             .finalize_header
@@ -209,13 +357,14 @@ impl App {
         self.last_commit_hash = id.hash.to_vec();
         self.last_height = id.version;
         self.check_header = header;
-        if let (Some(m), Ok(h)) = (&self.snapshots, u64::try_from(id.version))
+        // Go v0.46 `SnapshotIfApplicable`: format 2, the same item stream
+        // as format 3 (celestia-app v1 to v3 register no extensions).
+        if let (Some(m), Ok(h)) = (&mut self.snapshots, u64::try_from(id.version))
             && m.should_snapshot(h)
+            && let Err(e) =
+                m.snapshot_in_background_with_format(self.ms.root(), h, snapshots::FORMAT_V046)
         {
-            tracing::debug!(
-                height = h,
-                "no state-sync snapshot of a cosmos-sdk v0.46 state"
-            );
+            tracing::error!(height = h, error = %e, "failed to create state snapshot");
         }
         Ok(ResponseCommit {
             retain_height: self.block_retention_height(id.version),

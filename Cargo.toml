@@ -76,6 +76,7 @@ members = [
     "crates/tier-4-runtime/statesync",
     "crates/tier-4-runtime/rpc",
     "crates/tier-4-runtime/propagation",
+    "crates/tier-4-runtime/fibre-server",
     "crates/devnet-conformance",
     "crates/fuzz-diff",
     "crates/tier-5-node/celestia-rs",
@@ -146,6 +147,23 @@ debug = false
 opt-level = 3
 
 [profile.dev.package.reed-solomon-simd]
+opt-level = 3
+
+# Fibre shard verification (row Merkle proofs, RLC) hashes every uploaded
+# byte. Unoptimized, a celestia-rs validator accepted a 128 MiB upload about
+# 6x later than a Go `fibre` server on the same devnet
+# (conformance/fibre-interop/mixed-validators.sh: 13 s against 2.2 s);
+# with these crates at opt-level 3, 2.5 s against 1.6 s.
+[profile.dev.package.fibre-server]
+opt-level = 3
+
+[profile.dev.package.rsema1d]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3
+
+[profile.dev.package.hash]
 opt-level = 3
 
 # Release (also `cargo test --release`, the followers, benchmarks). Two

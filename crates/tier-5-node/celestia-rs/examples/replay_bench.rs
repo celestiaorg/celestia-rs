@@ -13,12 +13,24 @@
 //! cargo run --release -p celestia-rs --example replay_bench -- \
 //!   [--blocks 1000] [--base target/tmp/replay-base] [--cache DIR] \
 //!   [--iavl-cache 781250] [--db-cache-mib 512] [--pruning-interval 1] \
-//!   [--discard-abci-responses true]
+//!   [--discard-abci-responses true] [--blocks-jsonl a.jsonl.gz,b.jsonl] \
+//!   [--background-pruning true] \
+//!   [--home DIR [--in-place true]] [--blocks-home DIR] [--save-blocks false]
 //! ```
 //!
 //! `--base` holds a home after InitChain (created on first use), so later
 //! runs copy it and skip the genesis import. Profile with
 //! `perf record -g -- target/release/examples/replay_bench ...`.
+//!
+//! Large state: `--home` starts from an existing node home at any height
+//! `H` (for example a node stopped with `start --halt-height H+1`) and
+//! replays `--blocks` blocks from `H + 1`. The home is copied first (next
+//! to it), unless `--in-place true`, which advances it and makes the run
+//! unrepeatable. Blocks come from `--blocks-jsonl`, then from the block
+//! store of `--blocks-home` (a stopped node home past `H + blocks`), then
+//! from the `.pb` cache. `--save-blocks true` also stores each block with
+//! its seen commit (the next block's last commit) before executing it, as
+//! block sync does; this makes the home usable as a `--blocks-home`.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 use std::path::{Path, PathBuf};
@@ -27,6 +39,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, anyhow, bail, ensure};
 use celestia_rs::{node, sync};
+use ctypes::proto::abci;
 use ctypes::{BLOCK_PART_SIZE_BYTES, Block, BlockId};
 use nodestore::{BlockExecutor, Handshaker, State};
 use prost::Message as _;
@@ -36,6 +49,8 @@ use prost::Message as _;
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
+// Independent command-line switches.
+#[allow(clippy::struct_excessive_bools)]
 struct Args {
     blocks: i64,
     base: PathBuf,
@@ -44,6 +59,12 @@ struct Args {
     db_cache_mib: usize,
     pruning_interval: u64,
     discard_abci_responses: bool,
+    blocks_jsonl: Vec<PathBuf>,
+    background_pruning: bool,
+    home: Option<PathBuf>,
+    in_place: bool,
+    blocks_home: Option<PathBuf>,
+    save_blocks: bool,
 }
 
 fn args() -> anyhow::Result<Args> {
@@ -60,6 +81,13 @@ fn args() -> anyhow::Result<Args> {
         pruning_interval: 1,
         // config.toml `storage.discard_abci_responses` (template: true).
         discard_abci_responses: true,
+        blocks_jsonl: Vec::new(),
+        // `celestia-rs start` prunes in the background.
+        background_pruning: true,
+        home: None,
+        in_place: false,
+        blocks_home: None,
+        save_blocks: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(k) = it.next() {
@@ -72,10 +100,69 @@ fn args() -> anyhow::Result<Args> {
             "--db-cache-mib" => a.db_cache_mib = v.parse()?,
             "--pruning-interval" => a.pruning_interval = v.parse()?,
             "--discard-abci-responses" => a.discard_abci_responses = v.parse()?,
+            "--background-pruning" => a.background_pruning = v.parse()?,
+            "--blocks-jsonl" => a.blocks_jsonl.extend(v.split(',').map(PathBuf::from)),
+            "--home" => a.home = Some(v.into()),
+            "--in-place" => a.in_place = v.parse()?,
+            "--blocks-home" => a.blocks_home = Some(v.into()),
+            "--save-blocks" => a.save_blocks = v.parse()?,
             _ => bail!("unknown argument {k}"),
         }
     }
     Ok(a)
+}
+
+/// Blocks from `--blocks-jsonl` files (RPC `/block` results, one
+/// `{"height", "result"}` object per line, gzipped or not: the format of
+/// `conformance/fixtures/mainnet/blocks.jsonl.gz` and of the Go
+/// `v1-oracle -blocks` input), then the block store of `--blocks-home`,
+/// then the `.pb` cache.
+struct Blocks {
+    cache: PathBuf,
+    json: std::collections::HashMap<i64, Block>,
+    store: Option<nodestore::BlockStore>,
+}
+
+impl Blocks {
+    fn load(cache: PathBuf, files: &[PathBuf], home: Option<&Path>) -> anyhow::Result<Self> {
+        use std::io::{BufRead as _, BufReader, Read};
+        let mut json = std::collections::HashMap::new();
+        for file in files {
+            let raw =
+                std::fs::File::open(file).with_context(|| format!("open {}", file.display()))?;
+            let reader: Box<dyn Read> = if file.extension().is_some_and(|e| e == "gz") {
+                Box::new(flate2::read::GzDecoder::new(raw))
+            } else {
+                Box::new(raw)
+            };
+            for line in BufReader::new(reader).lines() {
+                let row: serde_json::Value = serde_json::from_str(&line?)?;
+                let height = row["height"].as_i64().context("row without height")?;
+                let block = light::http::block_from_json(&row["result"]["block"])
+                    .map_err(|e| anyhow!("block {height} in {}: {e}", file.display()))?;
+                json.insert(height, block);
+            }
+        }
+        let store = home
+            .map(|h| node::open_stores(h).map(|(bs, _)| bs))
+            .transpose()
+            .context("open --blocks-home")?;
+        Ok(Self { cache, json, store })
+    }
+
+    fn get(&self, height: i64) -> anyhow::Result<Block> {
+        if let Some(b) = self.json.get(&height) {
+            return Ok(b.clone());
+        }
+        if let Some(store) = &self.store
+            && let Some(b) = store
+                .load_block(height)
+                .map_err(|e| anyhow!("--blocks-home block {height}: {e}"))?
+        {
+            return Ok(b);
+        }
+        cached_block(&self.cache, height)
+    }
 }
 
 fn cached_block(cache: &Path, height: i64) -> anyhow::Result<Block> {
@@ -86,9 +173,125 @@ fn cached_block(cache: &Path, height: i64) -> anyhow::Result<Block> {
     )?)?)
 }
 
+/// Time spent in the app's `FinalizeBlock` and `Commit`.
+#[derive(Debug, Default, Clone, Copy)]
+struct AbciTime {
+    finalize: Duration,
+    commit: Duration,
+}
+
+/// [`node::AppAdapter`] timing `FinalizeBlock` and `Commit`.
+struct Timed {
+    inner: node::AppAdapter,
+    time: Arc<Mutex<AbciTime>>,
+}
+
+impl Timed {
+    fn add(&self, t: Instant, f: impl FnOnce(&mut AbciTime) -> &mut Duration) {
+        let mut time = self
+            .time
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *f(&mut time) += t.elapsed();
+    }
+}
+
+impl nodestore::AppConn for Timed {
+    fn info(&mut self) -> nodestore::Result<abci::ResponseInfo> {
+        self.inner.info()
+    }
+    fn init_chain(
+        &mut self,
+        req: abci::RequestInitChain,
+    ) -> nodestore::Result<abci::ResponseInitChain> {
+        self.inner.init_chain(req)
+    }
+    fn prepare_proposal(
+        &mut self,
+        req: abci::RequestPrepareProposal,
+    ) -> nodestore::Result<abci::ResponsePrepareProposal> {
+        self.inner.prepare_proposal(req)
+    }
+    fn process_proposal(
+        &mut self,
+        req: abci::RequestProcessProposal,
+    ) -> nodestore::Result<abci::ResponseProcessProposal> {
+        self.inner.process_proposal(req)
+    }
+    fn finalize_block(
+        &mut self,
+        req: abci::RequestFinalizeBlock,
+    ) -> nodestore::Result<abci::ResponseFinalizeBlock> {
+        let t = Instant::now();
+        let r = self.inner.finalize_block(req);
+        self.add(t, |a| &mut a.finalize);
+        r
+    }
+    fn commit(&mut self) -> nodestore::Result<abci::ResponseCommit> {
+        let t = Instant::now();
+        let r = self.inner.commit();
+        self.add(t, |a| &mut a.commit);
+        r
+    }
+}
+
+/// Counters read between blocks.
+struct Probes {
+    abci: Arc<Mutex<AbciTime>>,
+    /// IAVL node cache: hits, misses, disk reads, disk bytes, reads made
+    /// to resolve a child reference, and of those, records later decoded.
+    nodes: Box<dyn Fn() -> [u64; 6]>,
+}
+
+impl Probes {
+    fn sample(&self) -> Sample {
+        Sample {
+            abci: *self
+                .abci
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            nodes: (self.nodes)(),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct Sample {
+    abci: AbciTime,
+    nodes: [u64; 6],
+}
+
+impl Sample {
+    /// What happened between `earlier` and `self`, per block over `n`.
+    #[allow(clippy::cast_precision_loss)]
+    fn report(&self, earlier: &Self, n: usize) -> String {
+        let n = n.max(1) as f64;
+        let d = |i: usize| self.nodes[i].saturating_sub(earlier.nodes[i]) as f64;
+        let ms = |a: Duration, b: Duration| a.saturating_sub(b).as_secs_f64() * 1e3 / n;
+        let lookups = d(0) + d(1);
+        format!(
+            "finalize {:.1} ms, commit {:.1} ms; node cache hit {:.1}% of {:.0}/block, \
+             disk reads {:.0}/block (for child refs {:.0}, later traversed {:.0}), \
+             {:.0} KiB/block",
+            ms(self.abci.finalize, earlier.abci.finalize),
+            ms(self.abci.commit, earlier.abci.commit),
+            if lookups > 0.0 {
+                100.0 * d(0) / lookups
+            } else {
+                0.0
+            },
+            lookups / n,
+            d(2) / n,
+            d(4) / n,
+            d(5) / n,
+            d(3) / 1024.0 / n,
+        )
+    }
+}
+
 /// Opens the node at `home` as `celestia-rs start` does (app, stores,
 /// evidence pool, handshake: InitChain on a fresh home).
-fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State)> {
+fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State, Probes)> {
     let genesis = node::load_genesis(home)?;
     let mut opts = app::AppOptions {
         chain_id: Some(genesis.chain_id.clone()),
@@ -99,22 +302,41 @@ fn open(home: &Path, a: &Args) -> anyhow::Result<(BlockExecutor, State)> {
     opts.store.node_cache_size = a.iavl_cache;
     opts.db.cache_size = a.db_cache_mib << 20;
     opts.store.pruning.interval = a.pruning_interval;
+    opts.store.background_pruning = a.background_pruning;
     let app = app::App::open_with(home, opts).map_err(|e| anyhow!("open app: {}", e.log))?;
     let (bs, mut ss) = node::open_stores(home)?;
     ss.discard_abci_responses = a.discard_abci_responses;
     let state = ss.load_from_db_or_genesis(&genesis)?;
     let evpool = sync::open_evidence_pool(home, &ss, &bs, &state)?;
+    let cache = Arc::clone(app.multistore().root().node_cache());
+    let probes = Probes {
+        abci: Arc::default(),
+        nodes: Box::new(move || {
+            let s = cache.stats();
+            [
+                s.hits,
+                s.misses,
+                s.disk_reads,
+                s.disk_bytes,
+                s.ref_reads,
+                s.ref_decodes,
+            ]
+        }),
+    };
     let mut exec = BlockExecutor::new(
         ss.clone(),
         bs.clone(),
-        Box::new(node::AppAdapter(Arc::new(Mutex::new(app)))),
+        Box::new(Timed {
+            inner: node::AppAdapter(Arc::new(Mutex::new(app))),
+            time: Arc::clone(&probes.abci),
+        }),
         Arc::new(nodestore::NopMempool),
         evpool.executor_handle(),
     );
     let state = Handshaker::new(ss, state, bs, &genesis, consensus::ticker::system_now())
         .handshake(&mut exec)
         .map_err(|e| anyhow!("handshake: {e}"))?;
-    Ok((exec, state))
+    Ok((exec, state, probes))
 }
 
 fn copy_dir(from: &Path, to: &Path) -> anyhow::Result<()> {
@@ -142,8 +364,8 @@ fn percentile(sorted: &[Duration], p: f64) -> f64 {
     sorted.get(i).map_or(0.0, |d| d.as_secs_f64() * 1e3)
 }
 
-fn main() -> anyhow::Result<()> {
-    let a = args()?;
+/// A copy of the `--base` home after InitChain (created on first use).
+fn base_copy(a: &Args) -> anyhow::Result<tempfile::TempDir> {
     if !a.base.join("config/genesis.json").exists() {
         let genesis = a.cache.join("genesis.json");
         celestia_rs::networks::verify_genesis(
@@ -154,16 +376,62 @@ fn main() -> anyhow::Result<()> {
         std::fs::create_dir_all(a.base.join("data"))?;
         std::fs::copy(&genesis, a.base.join("config/genesis.json"))?;
         let t = Instant::now();
-        drop(open(&a.base, &a)?);
+        drop(open(&a.base, a)?);
         println!("init_chain_secs: {:.1}", t.elapsed().as_secs_f64());
     }
     let tmp = tempfile::tempdir_in(a.base.parent().unwrap_or(Path::new(".")))?;
-    let home = tmp.path().join("home");
-    copy_dir(&a.base, &home)?;
-    let (mut exec, mut state) = open(&home, &a)?;
-    ensure!(state.last_block_height == 0, "base home is past genesis");
+    copy_dir(&a.base, &tmp.path().join("home"))?;
+    Ok(tmp)
+}
 
-    let mut next = cached_block(&a.cache, 1)?;
+/// The run's totals; `app_hash_mismatches: 0` (a mismatch stops the run).
+fn summary(times: &[Duration], txs: usize, total: Duration, digest: &[u8]) {
+    let mut sorted = times.to_vec();
+    sorted.sort();
+    #[allow(clippy::cast_precision_loss)]
+    let n = times.len() as f64;
+    println!("blocks: {}", times.len());
+    println!("txs: {txs}");
+    println!(
+        "exec_ms_per_block: {:.1}",
+        times.iter().sum::<Duration>().as_secs_f64() * 1e3 / n
+    );
+    println!("p50_ms: {:.1}", percentile(&sorted, 0.5));
+    println!("p90_ms: {:.1}", percentile(&sorted, 0.9));
+    println!("max_ms: {:.1}", percentile(&sorted, 1.0));
+    println!("wall_secs: {:.1}", total.as_secs_f64());
+    println!("app_hash_mismatches: 0");
+    println!("responses_digest: {}", hex::encode(digest));
+}
+
+fn main() -> anyhow::Result<()> {
+    let a = args()?;
+    // Holds the copied home until the run ends.
+    let tmp;
+    let home = if let Some(src) = &a.home {
+        if a.in_place {
+            src.clone()
+        } else {
+            tmp = tempfile::tempdir_in(src.parent().unwrap_or(Path::new(".")))?;
+            let home = tmp.path().join("home");
+            let t = Instant::now();
+            copy_dir(src, &home)?;
+            println!("copy_home_secs: {:.1}", t.elapsed().as_secs_f64());
+            home
+        }
+    } else {
+        tmp = base_copy(&a)?;
+        tmp.path().join("home")
+    };
+    let (mut exec, mut state, probes) = open(&home, &a)?;
+    let first = state.last_block_height + 1;
+    if a.home.is_none() {
+        ensure!(first == 1, "base home is past genesis");
+    }
+    println!("first_height: {first}");
+
+    let blocks = Blocks::load(a.cache.clone(), &a.blocks_jsonl, a.blocks_home.as_deref())?;
+    let mut next = blocks.get(first)?;
     let mut times = Vec::new();
     let mut txs = 0usize;
     // Chained SHA-256 of every FinalizeBlock response (tx results with gas
@@ -172,9 +440,11 @@ fn main() -> anyhow::Result<()> {
     // each next header's last_results_hash in validate_block.
     let mut digest = [0u8; 32];
     let started = Instant::now();
-    for h in 1..=a.blocks {
+    let first_sample = probes.sample();
+    let mut window = first_sample;
+    for h in first..first + a.blocks {
         let mut block = next;
-        next = cached_block(&a.cache, h + 1)?;
+        next = blocks.get(h + 1)?;
         txs += block.data.txs.len();
         let t = Instant::now();
         let parts = block.make_part_set(BLOCK_PART_SIZE_BYTES)?;
@@ -185,6 +455,15 @@ fn main() -> anyhow::Result<()> {
         ensure!(id == next.header.last_block_id, "block id at {h}");
         exec.validate_block(&state, &mut block, consensus::ticker::system_now())
             .map_err(|e| anyhow!("validate {h}: {e}"))?;
+        if a.save_blocks {
+            let commit = next
+                .last_commit
+                .as_ref()
+                .context("next block without last commit")?;
+            exec.block_store
+                .save_block(&mut block, &parts, commit)
+                .map_err(|e| anyhow!("save block {h}: {e}"))?;
+        }
         state = exec
             .apply_verified_block(&state, id, &mut block)
             .map_err(|e| anyhow!("execute {h}: {e}"))?;
@@ -202,28 +481,21 @@ fn main() -> anyhow::Result<()> {
             hex::encode_upper(&state.app_hash),
             hex::encode_upper(&next.header.app_hash)
         );
-        if h % 100 == 0 {
+        if times.len() % 100 == 0 {
             let w = &times[times.len() - 100..];
             let ms = w.iter().sum::<Duration>().as_secs_f64() * 10.0;
-            eprintln!("height {h}: {ms:.1} ms/block over the last 100");
+            let now = probes.sample();
+            eprintln!(
+                "height {h}: {ms:.1} ms/block over the last 100 ({})",
+                now.report(&window, 100)
+            );
+            window = now;
         }
     }
-    let total = started.elapsed();
-    let mut sorted = times.clone();
-    sorted.sort();
-    #[allow(clippy::cast_precision_loss)]
-    let n = times.len() as f64;
-    println!("blocks: {}", times.len());
-    println!("txs: {txs}");
+    summary(&times, txs, started.elapsed(), &digest);
     println!(
-        "exec_ms_per_block: {:.1}",
-        times.iter().sum::<Duration>().as_secs_f64() * 1e3 / n
+        "per_block: {}",
+        probes.sample().report(&first_sample, times.len())
     );
-    println!("p50_ms: {:.1}", percentile(&sorted, 0.5));
-    println!("p90_ms: {:.1}", percentile(&sorted, 0.9));
-    println!("max_ms: {:.1}", percentile(&sorted, 1.0));
-    println!("wall_secs: {:.1}", total.as_secs_f64());
-    println!("app_hash_mismatches: 0");
-    println!("responses_digest: {}", hex::encode(digest));
     Ok(())
 }

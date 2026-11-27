@@ -13,6 +13,32 @@ type Res<T> = Result<T, String>;
 
 /// `SignModeHandler.GetSignBytes` for `SIGN_MODE_LEGACY_AMINO_JSON`.
 pub fn sign_bytes(sd: &SignerData, tx: &Tx) -> Res<Vec<u8>> {
+    let v046 = sdk::version::is_sdk_v046(0);
+    // cosmos-sdk v0.46 `signModeLegacyAminoJSONHandler.GetSignBytes`: the
+    // unknown non-critical fields and extension options checks, then
+    // `legacytx.StdSignBytes`, which panics on a message that is not a
+    // `LegacyMsg` ([`V046_NOT_LEGACY_MSG`]). x/tx's checks below are not
+    // v0.46's (they cannot resolve every v0.46 type).
+    if v046
+        && tx.body.messages.iter().any(|m| {
+            V046_NOT_LEGACY_MSG
+                .binary_search(&m.type_url.as_str())
+                .is_ok()
+        })
+    {
+        if tx.body_has_unknown_non_criticals {
+            return Err("unknown field found in TxBody".into());
+        }
+        if !tx.body.extension_options.is_empty()
+            || !tx.body.non_critical_extension_options.is_empty()
+        {
+            return Err(
+                "SIGN_MODE_LEGACY_AMINO_JSON does not support protobuf extension options: invalid request"
+                    .into(),
+            );
+        }
+        return Err(V046_NOT_LEGACY_PANIC.into());
+    }
     // decode.RejectUnknownFields(body, allowUnknownNonCriticals=false) over
     // x/tx's descriptors (the interface registry's file resolver).
     if tx.body_has_unknown_non_criticals {
@@ -90,7 +116,11 @@ pub fn sign_bytes(sd: &SignerData, tx: &Tx) -> Res<Vec<u8>> {
             if i > 0 {
                 w.push(',');
             }
-            enc.marshal_any(&m.type_url, &m.value, &mut w)?;
+            if v046 && let Some(json) = v046_proto_json(&m.type_url, &m.value) {
+                w.push_str(&json?);
+            } else {
+                enc.marshal_any(&m.type_url, &m.value, &mut w)?;
+            }
         }
         w.push(']');
     }
@@ -117,7 +147,239 @@ struct Exts {
 /// numbers, no map support).
 pub struct Encoder {
     ext: Exts,
+    /// Inside a cosmos-sdk v0.46 message whose `GetSignBytes` marshals
+    /// with a module amino codec: the concrete types it registers
+    /// ([`v046_codec`]).
+    codec: std::cell::Cell<Option<&'static [&'static str]>>,
 }
+
+/// The messages of celestia-app v1 to v3 without `GetSignBytes` (not a
+/// `legacytx.LegacyMsg`): ibc-go v6's core messages, gov v1
+/// `MsgExecLegacyContent` and blobstream's `MsgRegisterEVMAddress`.
+const V046_NOT_LEGACY_MSG: &[&str] = &[
+    "/celestia.qgb.v1.MsgRegisterEVMAddress",
+    "/cosmos.gov.v1.MsgExecLegacyContent",
+    "/ibc.core.channel.v1.MsgAcknowledgement",
+    "/ibc.core.channel.v1.MsgChannelCloseConfirm",
+    "/ibc.core.channel.v1.MsgChannelCloseInit",
+    "/ibc.core.channel.v1.MsgChannelOpenAck",
+    "/ibc.core.channel.v1.MsgChannelOpenConfirm",
+    "/ibc.core.channel.v1.MsgChannelOpenInit",
+    "/ibc.core.channel.v1.MsgChannelOpenTry",
+    "/ibc.core.channel.v1.MsgRecvPacket",
+    "/ibc.core.channel.v1.MsgTimeout",
+    "/ibc.core.channel.v1.MsgTimeoutOnClose",
+    "/ibc.core.client.v1.MsgCreateClient",
+    "/ibc.core.client.v1.MsgSubmitMisbehaviour",
+    "/ibc.core.client.v1.MsgUpdateClient",
+    "/ibc.core.client.v1.MsgUpgradeClient",
+    "/ibc.core.connection.v1.MsgConnectionOpenAck",
+    "/ibc.core.connection.v1.MsgConnectionOpenConfirm",
+    "/ibc.core.connection.v1.MsgConnectionOpenInit",
+    "/ibc.core.connection.v1.MsgConnectionOpenTry",
+];
+
+/// The error [`sign_bytes`] returns for the Go panic of
+/// [`V046_NOT_LEGACY_MSG`]; the caller raises it as a panic.
+pub const V046_NOT_LEGACY_PANIC: &str = "expected *legacytx.LegacyMsg when using amino JSON";
+
+/// The Go panic of go-amino for a tendermint `PublicKey` (a oneof: a Go
+/// interface no module amino codec registers) nested in a v0.46 message
+/// marshaled with a module codec, e.g. the validator set of a client
+/// update's header in `MsgExec`; the caller raises it as a panic.
+pub const V046_UNREGISTERED_PUBKEY_PANIC: &str = "Unregistered interface crypto.isPublicKey_Sum";
+
+/// Whether a [`sign_bytes`] error is a Go panic of cosmos-sdk v0.46.
+#[must_use]
+pub fn is_v046_panic(e: &str) -> bool {
+    e == V046_NOT_LEGACY_PANIC || e == V046_UNREGISTERED_PUBKEY_PANIC
+}
+
+/// `GetSignBytes` of the celestia-app v1 to v3 messages whose `ModuleCdc`
+/// is a `ProtoCodec` (blob, signal): `sdk.MustSortJSON` of gogo jsonpb
+/// (`OrigName`, `EmitDefaults`): proto field names, every field, `uint64`
+/// as a string, `uint32` as a number, bytes in standard base64; keys
+/// sorted. `None` for any other message.
+fn v046_proto_json(type_url: &str, value: &[u8]) -> Option<Res<String>> {
+    use celestia_proto::celestia::{blob::v1 as blob, signal::v1 as signal};
+    use prost::{Message as _, Name as _};
+    let b64 = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
+    let mut w = String::new();
+    let decode_err = |e: prost::DecodeError| e.to_string();
+    if type_url == blob::MsgPayForBlobs::type_url() {
+        let m = match blob::MsgPayForBlobs::decode(value) {
+            Ok(m) => m,
+            Err(e) => return Some(Err(decode_err(e))),
+        };
+        let nums = |v: &[u32]| v.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+        let strs = |v: &[Vec<u8>]| {
+            v.iter()
+                .map(|b| format!("\"{}\"", b64(b)))
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        w.push_str(&format!("{{\"blob_sizes\":[{}]", nums(&m.blob_sizes)));
+        w.push_str(&format!(",\"namespaces\":[{}]", strs(&m.namespaces)));
+        w.push_str(&format!(
+            ",\"share_commitments\":[{}]",
+            strs(&m.share_commitments)
+        ));
+        w.push_str(&format!(
+            ",\"share_versions\":[{}]",
+            nums(&m.share_versions)
+        ));
+        w.push_str(",\"signer\":");
+        json_string(&mut w, &m.signer);
+        w.push('}');
+    } else if type_url == signal::MsgSignalVersion::type_url() {
+        let m = match signal::MsgSignalVersion::decode(value) {
+            Ok(m) => m,
+            Err(e) => return Some(Err(decode_err(e))),
+        };
+        w.push_str("{\"validator_address\":");
+        json_string(&mut w, &m.validator_address);
+        w.push_str(&format!(",\"version\":\"{}\"}}", m.version));
+    } else if type_url == signal::MsgTryUpgrade::type_url() {
+        let m = match signal::MsgTryUpgrade::decode(value) {
+            Ok(m) => m,
+            Err(e) => return Some(Err(decode_err(e))),
+        };
+        w.push_str("{\"signer\":");
+        json_string(&mut w, &m.signer);
+        w.push('}');
+    } else {
+        return None;
+    }
+    Some(Ok(w))
+}
+
+/// Concrete types registered on cosmos-sdk v0.46 vesting's `ModuleCdc`:
+/// not `MsgCreatePeriodicVestingAccount`, which it writes bare.
+const V046_VESTING_AMINO: &[&str] = &[
+    "/cosmos.crypto.ed25519.PubKey",
+    "/cosmos.crypto.multisig.LegacyAminoPubKey",
+    "/cosmos.crypto.secp256k1.PubKey",
+    "/cosmos.vesting.v1beta1.BaseVestingAccount",
+    "/cosmos.vesting.v1beta1.ContinuousVestingAccount",
+    "/cosmos.vesting.v1beta1.DelayedVestingAccount",
+    "/cosmos.vesting.v1beta1.MsgCreatePermanentLockedAccount",
+    "/cosmos.vesting.v1beta1.MsgCreateVestingAccount",
+    "/cosmos.vesting.v1beta1.PeriodicVestingAccount",
+    "/cosmos.vesting.v1beta1.PermanentLockedAccount",
+];
+
+/// Concrete types registered on cosmos-sdk v0.46 gov v1beta1's
+/// `ModuleCdc` (its own types and crypto; no proposal content of another
+/// module).
+const V046_GOV_V1BETA1_AMINO: &[&str] = &[
+    "/cosmos.crypto.ed25519.PubKey",
+    "/cosmos.crypto.multisig.LegacyAminoPubKey",
+    "/cosmos.crypto.secp256k1.PubKey",
+    "/cosmos.gov.v1beta1.MsgDeposit",
+    "/cosmos.gov.v1beta1.MsgSubmitProposal",
+    "/cosmos.gov.v1beta1.MsgVote",
+    "/cosmos.gov.v1beta1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.TextProposal",
+];
+
+/// Concrete types registered on cosmos-sdk v0.46 gov v1's `ModuleCdc`
+/// (gov v1 and v1beta1 types, crypto).
+const V046_GOV_V1_AMINO: &[&str] = &[
+    "/cosmos.crypto.ed25519.PubKey",
+    "/cosmos.crypto.multisig.LegacyAminoPubKey",
+    "/cosmos.crypto.secp256k1.PubKey",
+    "/cosmos.gov.v1.MsgDeposit",
+    "/cosmos.gov.v1.MsgExecLegacyContent",
+    "/cosmos.gov.v1.MsgSubmitProposal",
+    "/cosmos.gov.v1.MsgVote",
+    "/cosmos.gov.v1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.MsgDeposit",
+    "/cosmos.gov.v1beta1.MsgSubmitProposal",
+    "/cosmos.gov.v1beta1.MsgVote",
+    "/cosmos.gov.v1beta1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.TextProposal",
+];
+
+/// The module amino codec a top-level cosmos-sdk v0.46 message's
+/// `GetSignBytes` marshals with, as the concrete types it registers, when
+/// that codec lacks some packable type: authz (`authzcodec.ModuleCdc`)
+/// and gov (each version's `ModuleCdc`). `None`: every packed type the
+/// message can hold is registered on its codec.
+fn v046_codec(type_url: &str) -> Option<&'static [&'static str]> {
+    if type_url.starts_with("/cosmos.authz.v1beta1.Msg") {
+        Some(V046_AUTHZ_AMINO)
+    } else if type_url.starts_with("/cosmos.gov.v1beta1.Msg") {
+        Some(V046_GOV_V1BETA1_AMINO)
+    } else if type_url.starts_with("/cosmos.gov.v1.Msg") {
+        Some(V046_GOV_V1_AMINO)
+    } else if type_url.starts_with("/cosmos.vesting.v1beta1.Msg") {
+        Some(V046_VESTING_AMINO)
+    } else {
+        None
+    }
+}
+
+/// The concrete types registered on cosmos-sdk v0.46's `authzcodec.Amino`
+/// (each module's `RegisterLegacyAminoCodec(authzcodec.Amino)`, crypto and
+/// evidence). go-amino writes any other concrete type packed in an authz
+/// message as its bare value, without `{"type","value"}`: e.g. ibc-go v6's
+/// `MsgTransfer` and `TransferAuthorization`, celestia's messages.
+const V046_AUTHZ_AMINO: &[&str] = &[
+    "/cosmos.auth.v1beta1.BaseAccount",
+    "/cosmos.auth.v1beta1.ModuleAccount",
+    "/cosmos.authz.v1beta1.GenericAuthorization",
+    "/cosmos.authz.v1beta1.MsgExec",
+    "/cosmos.authz.v1beta1.MsgGrant",
+    "/cosmos.authz.v1beta1.MsgRevoke",
+    "/cosmos.bank.v1beta1.MsgMultiSend",
+    "/cosmos.bank.v1beta1.MsgSend",
+    "/cosmos.bank.v1beta1.SendAuthorization",
+    "/cosmos.crisis.v1beta1.MsgVerifyInvariant",
+    "/cosmos.crypto.ed25519.PubKey",
+    "/cosmos.crypto.multisig.LegacyAminoPubKey",
+    "/cosmos.crypto.secp256k1.PubKey",
+    "/cosmos.distribution.v1beta1.CommunityPoolSpendProposal",
+    "/cosmos.distribution.v1beta1.MsgFundCommunityPool",
+    "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress",
+    "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward",
+    "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission",
+    "/cosmos.evidence.v1beta1.Equivocation",
+    "/cosmos.evidence.v1beta1.MsgSubmitEvidence",
+    "/cosmos.feegrant.v1beta1.AllowedMsgAllowance",
+    "/cosmos.feegrant.v1beta1.BasicAllowance",
+    "/cosmos.feegrant.v1beta1.MsgGrantAllowance",
+    "/cosmos.feegrant.v1beta1.MsgRevokeAllowance",
+    "/cosmos.feegrant.v1beta1.PeriodicAllowance",
+    "/cosmos.gov.v1.MsgDeposit",
+    "/cosmos.gov.v1.MsgExecLegacyContent",
+    "/cosmos.gov.v1.MsgSubmitProposal",
+    "/cosmos.gov.v1.MsgVote",
+    "/cosmos.gov.v1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.MsgDeposit",
+    "/cosmos.gov.v1beta1.MsgSubmitProposal",
+    "/cosmos.gov.v1beta1.MsgVote",
+    "/cosmos.gov.v1beta1.MsgVoteWeighted",
+    "/cosmos.gov.v1beta1.TextProposal",
+    "/cosmos.slashing.v1beta1.MsgUnjail",
+    "/cosmos.staking.v1beta1.MsgBeginRedelegate",
+    "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation",
+    "/cosmos.staking.v1beta1.MsgCreateValidator",
+    "/cosmos.staking.v1beta1.MsgDelegate",
+    "/cosmos.staking.v1beta1.MsgEditValidator",
+    "/cosmos.staking.v1beta1.MsgUndelegate",
+    "/cosmos.staking.v1beta1.StakeAuthorization",
+    "/cosmos.upgrade.v1beta1.CancelSoftwareUpgradeProposal",
+    "/cosmos.upgrade.v1beta1.MsgCancelUpgrade",
+    "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+    "/cosmos.upgrade.v1beta1.SoftwareUpgradeProposal",
+    "/cosmos.vesting.v1beta1.BaseVestingAccount",
+    "/cosmos.vesting.v1beta1.ContinuousVestingAccount",
+    "/cosmos.vesting.v1beta1.DelayedVestingAccount",
+    "/cosmos.vesting.v1beta1.MsgCreatePermanentLockedAccount",
+    "/cosmos.vesting.v1beta1.MsgCreateVestingAccount",
+    "/cosmos.vesting.v1beta1.PeriodicVestingAccount",
+    "/cosmos.vesting.v1beta1.PermanentLockedAccount",
+];
 
 fn ext(name: &str) -> Res<ExtensionDescriptor> {
     pool()
@@ -155,6 +417,22 @@ const PLACEHOLDER_FIELDS: &[(&str, &str)] = &[
         "counterparty_upgrade_fields",
     ),
 ];
+
+/// Fields the executing release's descriptors do not have
+/// ([`sdk::version::Release::amino_vesting_start_time`]).
+fn absent_from_release(message: &str, num: u64) -> bool {
+    message == "cosmos.vesting.v1beta1.MsgCreateVestingAccount"
+        && num == 6
+        && !sdk::version::release(0).amino_vesting_start_time()
+}
+
+/// Message fields the executing release resolves as placeholders
+/// ([`sdk::version::Release::amino_remote_router_placeholder`]).
+fn release_placeholder(message: &str, field: &str) -> bool {
+    message == "hyperlane.warp.v1.MsgEnrollRemoteRouter"
+        && field == "remote_router"
+        && sdk::version::release(0).amino_remote_router_placeholder()
+}
 
 fn wire_type_name(wt: u8) -> String {
     match wt {
@@ -229,7 +507,7 @@ fn reject_unknown_in(
             return Err("invalid length".into());
         };
         let (num, wt) = (tag >> 3, (tag & 7) as u8);
-        let field = if placeholder {
+        let field = if placeholder || absent_from_release(desc.full_name(), num) {
             None
         } else {
             u32::try_from(num).ok().and_then(|n| desc.get_field(n))
@@ -286,7 +564,8 @@ fn reject_unknown_in(
         }
         let ph = PLACEHOLDER_FIELDS
             .iter()
-            .any(|(m, f)| *m == desc.full_name() && *f == field.name());
+            .any(|(m, f)| *m == desc.full_name() && *f == field.name())
+            || release_placeholder(desc.full_name(), field.name());
         reject_unknown_in(inner, &sub, ph, limit - 1)?;
     }
     Ok(())
@@ -333,6 +612,7 @@ impl Encoder {
                 scalar: ext("cosmos_proto.scalar")?,
                 customtype: ext("gogoproto.customtype")?,
             },
+            codec: std::cell::Cell::new(None),
         })
     }
 
@@ -359,7 +639,29 @@ impl Encoder {
             value
         };
         let msg = DynamicMessage::decode(desc, value.as_slice()).map_err(|e| e.to_string())?;
-        self.begin_marshal(&msg, w, true)
+        // cosmos-sdk v0.46: a message's `GetSignBytes` marshals with its
+        // module's amino codec, which writes a packed concrete type it does
+        // not register as its bare value (go-amino).
+        if let Some(registered) = self.codec.get() {
+            if registered.binary_search(&type_url).is_err() {
+                return self.marshal_message(&msg, w);
+            }
+            return self.begin_marshal(&msg, w, true);
+        }
+        if !sdk::version::is_sdk_v046(0) {
+            return self.begin_marshal(&msg, w, true);
+        }
+        let codec = v046_codec(type_url);
+        self.codec.set(codec);
+        // A top-level message its own codec does not register is written
+        // bare (vesting `MsgCreatePeriodicVestingAccount`).
+        let r = if codec.is_some_and(|c| c.binary_search(&type_url).is_err()) {
+            self.marshal_message(&msg, w)
+        } else {
+            self.begin_marshal(&msg, w, true)
+        };
+        self.codec.set(None);
+        r
     }
 
     fn begin_marshal(&self, msg: &DynamicMessage, w: &mut String, is_any: bool) -> Res<()> {
@@ -447,6 +749,12 @@ impl Encoder {
 
     fn marshal_message(&self, msg: &DynamicMessage, w: &mut String) -> Res<()> {
         let desc = msg.descriptor();
+        if self.codec.get().is_some()
+            && desc.full_name() == "tendermint.crypto.PublicKey"
+            && desc.oneofs().any(|o| o.fields().any(|f| msg.has_field(&f)))
+        {
+            return Err(V046_UNREGISTERED_PUBKEY_PANIC.into());
+        }
         match desc.full_name() {
             "google.protobuf.Timestamp" => return marshal_timestamp(msg, w),
             "google.protobuf.Duration" => return marshal_duration(msg, w),
@@ -1026,6 +1334,62 @@ pub fn json_string(w: &mut String, s: &str) {
 mod tests {
     use super::*;
 
+    fn unknown_field_error(app_version: u64, name: &str, bz: &[u8]) -> Option<String> {
+        let prev = sdk::version::app_version();
+        sdk::version::set_app_version(app_version);
+        let desc = pool().get_message_by_name(name).expect("known message");
+        let r = reject_unknown_fields(bz, &desc, 100).err();
+        sdk::version::set_app_version(prev);
+        r
+    }
+
+    /// Go (D's per-release sign-bytes oracle): celestia-app v4.1.0 to
+    /// v6.4.x resolve `RemoteRouter` as a placeholder; v8.0.8 on sign.
+    #[test]
+    fn remote_router_is_a_placeholder_before_v8() {
+        use celestia_proto::hyperlane::warp::v1::{MsgEnrollRemoteRouter, RemoteRouter};
+        let bz = prost::Message::encode_to_vec(&MsgEnrollRemoteRouter {
+            owner: "o".into(),
+            token_id: "t".into(),
+            remote_router: Some(RemoteRouter {
+                receiver_domain: 2,
+                receiver_contract: "c".into(),
+                gas: "1".into(),
+            }),
+        });
+        let name = "hyperlane.warp.v1.MsgEnrollRemoteRouter";
+        let err = "hyperlane.warp.v1.RemoteRouter: {TagNum: 1, WireType:\"varint\"}: \
+                   unknown protobuf field";
+        for v in [4, 5, 6] {
+            assert_eq!(
+                unknown_field_error(v, name, &bz).as_deref(),
+                Some(err),
+                "v{v}"
+            );
+        }
+        for v in [8, 9, 10] {
+            assert_eq!(unknown_field_error(v, name, &bz), None, "v{v}");
+        }
+    }
+
+    /// Go: celestia-app v4.1.0's descriptors lack
+    /// `MsgCreateVestingAccount.start_time`; v5.0.12 on have it.
+    #[test]
+    fn vesting_start_time_is_unknown_at_v4() {
+        use celestia_proto::cosmos::vesting::v1beta1::MsgCreateVestingAccount;
+        let bz = prost::Message::encode_to_vec(&MsgCreateVestingAccount {
+            start_time: 5,
+            ..Default::default()
+        });
+        let name = "cosmos.vesting.v1beta1.MsgCreateVestingAccount";
+        let err = "cosmos.vesting.v1beta1.MsgCreateVestingAccount: \
+                   {TagNum: 6, WireType:\"varint\"}: unknown protobuf field";
+        assert_eq!(unknown_field_error(4, name, &bz).as_deref(), Some(err));
+        for v in [5, 6, 9, 10] {
+            assert_eq!(unknown_field_error(v, name, &bz), None, "v{v}");
+        }
+    }
+
     #[test]
     fn rfc3339() {
         assert_eq!(format_rfc3339(0, 0), "1970-01-01T00:00:00Z");
@@ -1034,6 +1398,19 @@ mod tests {
             "2023-11-14T22:13:20.5Z"
         );
         assert_eq!(format_rfc3339(-1, 0), "1969-12-31T23:59:59Z");
+    }
+
+    /// The v0.46 codec registries are searched by bisection.
+    #[test]
+    fn v046_amino_registries_are_sorted() {
+        for r in [
+            V046_AUTHZ_AMINO,
+            V046_GOV_V1BETA1_AMINO,
+            V046_GOV_V1_AMINO,
+            V046_NOT_LEGACY_MSG,
+        ] {
+            assert!(r.windows(2).all(|w| w[0] < w[1]));
+        }
     }
 
     #[test]
