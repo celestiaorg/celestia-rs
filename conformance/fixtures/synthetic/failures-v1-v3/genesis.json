@@ -485,12 +485,42 @@
         },
         {
           "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1m4cwd0kfk37jyq5y2ekt9xcrwyyh7yn050lkwn",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A5N7qXbrdloBnoFoyAuxxh6xmQEHqOeKo03FqCqDikNa"
+          },
+          "account_number": "45",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia1hwx963zqapxw4n99ll6edfzqppdqra7jgfsnpr",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "A5zb3xEtR7ti8j6gdb7gSuClUKl/PQb4vezzQG04Hz+i"
+          },
+          "account_number": "46",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
+          "address": "celestia194h3z4k43smwut929d3v273fpnde8dxv0w7l63",
+          "pub_key": {
+            "@type": "/cosmos.crypto.secp256k1.PubKey",
+            "key": "AwatQ3iy92f5iVc4+muWsn/bIEPOxBt5PHWi/jwiU8a4"
+          },
+          "account_number": "47",
+          "sequence": "0"
+        },
+        {
+          "@type": "/cosmos.auth.v1beta1.BaseAccount",
           "address": "celestia1qnqhzd77ff0vc748742a7snvqm34cenvw2knh9",
           "pub_key": {
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A/11BkK9oBuvKWpXrp0QcYGFxa9JXuXmyxdP+W/VRiL0"
           },
-          "account_number": "45",
+          "account_number": "48",
           "sequence": "0"
         },
         {
@@ -500,7 +530,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AmVOLfEOMQtMvVwms3ji8CHIk5c6UHsjlGXgby3cTNVq"
           },
-          "account_number": "46",
+          "account_number": "49",
           "sequence": "0"
         },
         {
@@ -510,7 +540,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A/QrBaGvjTV0pQuYpfHShOFkJH4KDz18sg2j6XfMjakY"
           },
-          "account_number": "47",
+          "account_number": "50",
           "sequence": "0"
         },
         {
@@ -520,7 +550,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AuOfK/wyqUZjZPuP+bAsJ3M2OK5G3ya502oH9iW59RgY"
           },
-          "account_number": "48",
+          "account_number": "51",
           "sequence": "0"
         },
         {
@@ -530,7 +560,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A3pcns+as32SV5G60kjroNeURE0GbyM3L6CkOx6K3geJ"
           },
-          "account_number": "49",
+          "account_number": "52",
           "sequence": "0"
         },
         {
@@ -540,7 +570,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AtQf45qGX5hXyC2qlhSJbv2HqOTZRuHwe4WOght0SeDd"
           },
-          "account_number": "50",
+          "account_number": "53",
           "sequence": "0"
         },
         {
@@ -550,7 +580,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Ao3+OvHZXiyKNpU2YzH3FjUQFo51AfYDitB1Wn5cxf0J"
           },
-          "account_number": "51",
+          "account_number": "54",
           "sequence": "0"
         },
         {
@@ -560,7 +590,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A2S//QaR2q1UuW8BtE3KS/qsNOq/1xvZLfnkoR0Sp1kC"
           },
-          "account_number": "52",
+          "account_number": "55",
           "sequence": "0"
         },
         {
@@ -570,7 +600,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A9D/4bAUYV3+/WqMbCWOLlLhTL8HUsYaQccu9Xn9EKrG"
           },
-          "account_number": "53",
+          "account_number": "56",
           "sequence": "0"
         },
         {
@@ -580,7 +610,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Al6VCQYiIhRk4w4nODUbBrTCKuFwuAkk+UrvSJln/Oop"
           },
-          "account_number": "54",
+          "account_number": "57",
           "sequence": "0"
         },
         {
@@ -590,7 +620,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AqucwL6UvQo+WQk1yZKLROjkagxoTOB6bCg+o8lyvQNa"
           },
-          "account_number": "55",
+          "account_number": "58",
           "sequence": "0"
         },
         {
@@ -600,7 +630,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A0LIODdr7qMT+IPQYXOwOOjuBxg0Q0LUVC8DTqsMdybX"
           },
-          "account_number": "56",
+          "account_number": "59",
           "sequence": "0"
         },
         {
@@ -610,7 +640,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AqA+s0g9lEeZpcXgnERYD9nuvn1FIKKNwrL7jdPanqbD"
           },
-          "account_number": "57",
+          "account_number": "60",
           "sequence": "0"
         },
         {
@@ -620,7 +650,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A0LdYOBMFexbUhVfBvh2PCCOwGz5NiMzs0VppvdOVk/v"
           },
-          "account_number": "58",
+          "account_number": "61",
           "sequence": "0"
         },
         {
@@ -630,7 +660,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Aw9lE1G9ii29onJeG4dnU9tGCguzmlGb0Rw5ecacAMKn"
           },
-          "account_number": "59",
+          "account_number": "62",
           "sequence": "0"
         },
         {
@@ -640,7 +670,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Ak04B10t61lFF7uElr/vjIPU0azvtiqKcBdKSJJD9559"
           },
-          "account_number": "60",
+          "account_number": "63",
           "sequence": "0"
         },
         {
@@ -650,7 +680,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A+55HJZF8R5jI6lOv0ZT6CO5gDmV7iScjXvl/goJlqz6"
           },
-          "account_number": "61",
+          "account_number": "64",
           "sequence": "0"
         },
         {
@@ -660,7 +690,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Asktx0E/88YpZ0nrogZvsUE0TE05uDaxZQ0q8huer3HL"
           },
-          "account_number": "62",
+          "account_number": "65",
           "sequence": "0"
         },
         {
@@ -670,7 +700,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A+KQ9cFooz6WT+ft08Bd05FJIs6K1Ln/w2QfimFLqUWT"
           },
-          "account_number": "63",
+          "account_number": "66",
           "sequence": "0"
         },
         {
@@ -680,7 +710,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Atj79gSB2eluhDb9LETipHEiy9ug44/vEPIRWWLJro4O"
           },
-          "account_number": "64",
+          "account_number": "67",
           "sequence": "0"
         },
         {
@@ -690,7 +720,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AiaD9vdqqg1/xvZShUgoFfijhmok3+ak6AM7PdK20Of8"
           },
-          "account_number": "65",
+          "account_number": "68",
           "sequence": "0"
         },
         {
@@ -700,7 +730,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AokC7zkWMce5XBAH2KtEK+MPd0Hprwq+q4+LKFjN2iJV"
           },
-          "account_number": "66",
+          "account_number": "69",
           "sequence": "0"
         },
         {
@@ -710,7 +740,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AgYr1szxkAR15iruBysNBdWuyudfEgRdL5A/nQs/bhVe"
           },
-          "account_number": "67",
+          "account_number": "70",
           "sequence": "0"
         },
         {
@@ -720,7 +750,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "ArWW1+ovI9+h8sL7r8sioGS2HCQICMaz5vCtZxRtyejM"
           },
-          "account_number": "68",
+          "account_number": "71",
           "sequence": "0"
         },
         {
@@ -730,7 +760,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Akpcv4lMK/dVKov3vJL7cRdX9aazWt/9yugmoKdojBt2"
           },
-          "account_number": "69",
+          "account_number": "72",
           "sequence": "0"
         },
         {
@@ -740,7 +770,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A5SVeiNALqpr9rPfYtz0jlkeIq5olgLbBf+fyjNEWUcU"
           },
-          "account_number": "70",
+          "account_number": "73",
           "sequence": "0"
         },
         {
@@ -750,7 +780,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Am87pM04CzEyilCU8MMoVFYLQqELo3TlYeFcm9LD/f69"
           },
-          "account_number": "71",
+          "account_number": "74",
           "sequence": "0"
         },
         {
@@ -760,7 +790,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Avz+ErJGtYZ124p5zed238ATAvZKBuiT7JNH1PzDRKAM"
           },
-          "account_number": "72",
+          "account_number": "75",
           "sequence": "0"
         },
         {
@@ -770,7 +800,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AiOSog7h4ugMJBnz+BZQs4aW1TDYVqDa4rjOk6kgHiOu"
           },
-          "account_number": "73",
+          "account_number": "76",
           "sequence": "0"
         },
         {
@@ -780,7 +810,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A3fhkHdsBCA4nCXSn3AsHA203Z6rYjjg0LFiI8/9fPnL"
           },
-          "account_number": "74",
+          "account_number": "77",
           "sequence": "0"
         },
         {
@@ -790,7 +820,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A1jRVERT7UFA2d7G51cHtVrvVoExyMz9QGc89KGID7pc"
           },
-          "account_number": "75",
+          "account_number": "78",
           "sequence": "0"
         },
         {
@@ -800,7 +830,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AwoxRgN2M79Gik48gtOH5cxraa0m8vLCaq5FZbmWLbpB"
           },
-          "account_number": "76",
+          "account_number": "79",
           "sequence": "0"
         },
         {
@@ -810,7 +840,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AnajSTPME1X3GmnIYVfGwe1kveRyIR6y2NLj3SYP+a7G"
           },
-          "account_number": "77",
+          "account_number": "80",
           "sequence": "0"
         },
         {
@@ -820,7 +850,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A6sImZT87VgZe84RzxMtCw+5q/nwVnQZxsTu97Ea26Gn"
           },
-          "account_number": "78",
+          "account_number": "81",
           "sequence": "0"
         },
         {
@@ -830,7 +860,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A2eurTfL2hjilj7JjPJWSBUls13adFSbgsD8T5pwKv0n"
           },
-          "account_number": "79",
+          "account_number": "82",
           "sequence": "0"
         },
         {
@@ -840,7 +870,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AzGbOiqpk3JPOtSF8cziCVBHOVRZajzRB5L3YwDo5cuf"
           },
-          "account_number": "80",
+          "account_number": "83",
           "sequence": "0"
         },
         {
@@ -850,7 +880,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AlyTywb/wez6NNXnho8/QySdOG30Wqr9OOKyNCbtESQZ"
           },
-          "account_number": "81",
+          "account_number": "84",
           "sequence": "0"
         },
         {
@@ -860,7 +890,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A/DMzEo4IGwvleCuFzb0Hlh0hipoUzzzWMO2V0Z7uBpE"
           },
-          "account_number": "82",
+          "account_number": "85",
           "sequence": "0"
         },
         {
@@ -870,7 +900,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AxAaxHRKHdg4x2QhWzXKJ2X4aac3ouZJim3oAS5YWKT8"
           },
-          "account_number": "83",
+          "account_number": "86",
           "sequence": "0"
         },
         {
@@ -880,7 +910,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A3zCWWjNK7ojEJeK3i3OQe3SurkTEdfu77eP56IjdeKB"
           },
-          "account_number": "84",
+          "account_number": "87",
           "sequence": "0"
         },
         {
@@ -890,7 +920,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AzgEcDqx7f5i/jgrR34iMMr+36mBphmATnj+ZulCG999"
           },
-          "account_number": "85",
+          "account_number": "88",
           "sequence": "0"
         },
         {
@@ -900,7 +930,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AzTLhWaPVFO42PtX7zxHwlNRd0evDBuDpO/RdscA9Dux"
           },
-          "account_number": "86",
+          "account_number": "89",
           "sequence": "0"
         },
         {
@@ -910,7 +940,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Awh/zukJ9YrzR8ThTtqxfiHC3C1z+l1ONDiLs54JDhYe"
           },
-          "account_number": "87",
+          "account_number": "90",
           "sequence": "0"
         },
         {
@@ -920,7 +950,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A9yW+NgDcYY/0QyQT74EMeXYI5o0lIFH8V+dePEd1efJ"
           },
-          "account_number": "88",
+          "account_number": "91",
           "sequence": "0"
         },
         {
@@ -930,7 +960,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A92uDcTdR1NQszuphzCjUlGIkk+B/2CM7/8+Xj4ghzz1"
           },
-          "account_number": "89",
+          "account_number": "92",
           "sequence": "0"
         },
         {
@@ -940,7 +970,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A8HkmZKt8kLXouL/rMV1LZmlfsZLEFMazFeRV6htW8Pi"
           },
-          "account_number": "90",
+          "account_number": "93",
           "sequence": "0"
         },
         {
@@ -950,7 +980,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AyiyzfeT5yWSG2nE+m1rKZKL9JJQq3Iz4EKrTaaRPELX"
           },
-          "account_number": "91",
+          "account_number": "94",
           "sequence": "0"
         },
         {
@@ -960,7 +990,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A/75sZKs4TGa8+5C3zkjroJY3QbSIJmi3QXJMn4W0oUF"
           },
-          "account_number": "92",
+          "account_number": "95",
           "sequence": "0"
         },
         {
@@ -970,7 +1000,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A5859WYUDLhCEzOMeQCUfbspuDokWvFf1m6rv3iX0z3P"
           },
-          "account_number": "93",
+          "account_number": "96",
           "sequence": "0"
         },
         {
@@ -980,7 +1010,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A8BuE7soGO+zmgymJaU7YJT9IjpkkFsWVEPRRueejx7u"
           },
-          "account_number": "94",
+          "account_number": "97",
           "sequence": "0"
         },
         {
@@ -990,7 +1020,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Aw8GCzkh8wnY+Lb2QGsNw2BwPtzO5+gda9k5fe4jaktD"
           },
-          "account_number": "95",
+          "account_number": "98",
           "sequence": "0"
         },
         {
@@ -1000,7 +1030,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AzDRVGMxCu+21+H9Wobe9fg+lOiFlTUbW7A/UA+m4l+a"
           },
-          "account_number": "96",
+          "account_number": "99",
           "sequence": "0"
         },
         {
@@ -1010,7 +1040,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Au4naiKI24DakaZsxMPOcsi0ZsgDEvdyhpKZt8yjD6vk"
           },
-          "account_number": "97",
+          "account_number": "100",
           "sequence": "0"
         },
         {
@@ -1020,7 +1050,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A2kwayQifbQwQEM7B/5HcVRc5fLHX22l1XVmjT8juoaa"
           },
-          "account_number": "98",
+          "account_number": "101",
           "sequence": "0"
         },
         {
@@ -1030,7 +1060,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A3I79FnPA7aht+ArvF55/i/wX7eoxsJR6qiCfDUw9uOd"
           },
-          "account_number": "99",
+          "account_number": "102",
           "sequence": "0"
         },
         {
@@ -1040,7 +1070,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Axbs4D6ooX7TP81Ak44al4G7KYXOojqq5XhOEanwF3Z1"
           },
-          "account_number": "100",
+          "account_number": "103",
           "sequence": "0"
         },
         {
@@ -1050,7 +1080,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AviSB1Cfu6n9KHAhzFHHKq5v9Ss7Oiqf9CvAf1vwDhHB"
           },
-          "account_number": "101",
+          "account_number": "104",
           "sequence": "0"
         },
         {
@@ -1060,7 +1090,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A6JsVvqhhldcGs6cx5tcES27NCroyh1BznDAYoO68oJU"
           },
-          "account_number": "102",
+          "account_number": "105",
           "sequence": "0"
         },
         {
@@ -1070,7 +1100,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AlM4FJI1c7CofCo8F6GUxjFH8LBF0XxKaq+N3y5aLpgk"
           },
-          "account_number": "103",
+          "account_number": "106",
           "sequence": "0"
         },
         {
@@ -1080,7 +1110,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A9nfZ3DkicOG3Sm3Fe8OFTDTWRFpWZjfWhzKc65cKIkJ"
           },
-          "account_number": "104",
+          "account_number": "107",
           "sequence": "0"
         },
         {
@@ -1090,7 +1120,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AldsjZExPI7O9CYKLqt4nofVO1dJGBUNRJ+5+t7VF7OZ"
           },
-          "account_number": "105",
+          "account_number": "108",
           "sequence": "0"
         },
         {
@@ -1100,7 +1130,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A7+kiPFHN1GxnPhG5L1MfdCkBzeXXMBOqTfbVPhNJze6"
           },
-          "account_number": "106",
+          "account_number": "109",
           "sequence": "0"
         },
         {
@@ -1110,7 +1140,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "A1n67AzCG0AaB4ygQ8fiH9VE053CVFLplXmTch83tPvo"
           },
-          "account_number": "107",
+          "account_number": "110",
           "sequence": "0"
         },
         {
@@ -1120,7 +1150,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Aqkp3qihYpK/D3HK+Iv2cb3/jIRF91kAN6iNHooBC5A+"
           },
-          "account_number": "108",
+          "account_number": "111",
           "sequence": "0"
         },
         {
@@ -1130,7 +1160,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "Al9pRpLhwE6axA/eW5HOMfieyNBSBr5hI8LPQ/bOsULr"
           },
-          "account_number": "109",
+          "account_number": "112",
           "sequence": "0"
         },
         {
@@ -1140,7 +1170,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "ArpBC0jQXQZ2o51k4614yNxhTLzelCzlUvfWJyaXiaEY"
           },
-          "account_number": "110",
+          "account_number": "113",
           "sequence": "0"
         },
         {
@@ -1150,7 +1180,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AutMDKdSnbr4DlwgHDBP/qxBxFxPSUlyh32/aYl5UBET"
           },
-          "account_number": "111",
+          "account_number": "114",
           "sequence": "0"
         },
         {
@@ -1160,7 +1190,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "ArMLKbTpTIDkEP309/C/VmUjsC7kis1VzcXUUp8RqLWp"
           },
-          "account_number": "112",
+          "account_number": "115",
           "sequence": "0"
         },
         {
@@ -1170,7 +1200,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AunKlR/6bPjMpK6PetlM/5IytpVBJ/DRAHn4BLiYarWy"
           },
-          "account_number": "113",
+          "account_number": "116",
           "sequence": "0"
         },
         {
@@ -1180,7 +1210,7 @@
             "@type": "/cosmos.crypto.secp256k1.PubKey",
             "key": "AgZH0k5RSfK8N8McXL/Ut6W28Llf1L83rMlj4ALtO1dC"
           },
-          "account_number": "114",
+          "account_number": "117",
           "sequence": "0"
         }
       ]
@@ -1385,6 +1415,15 @@
         },
         {
           "address": "celestia198f4k38y5hd2xhscj6ktvf6cvdj3jmqkvvyefw",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia194h3z4k43smwut929d3v273fpnde8dxv0w7l63",
           "coins": [
             {
               "denom": "utia",
@@ -1915,6 +1954,15 @@
           ]
         },
         {
+          "address": "celestia1hwx963zqapxw4n99ll6edfzqppdqra7jgfsnpr",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
           "address": "celestia1hkw98ucusf20hhwh7796d84szy6haq4lw8gmtx",
           "coins": [
             {
@@ -2051,6 +2099,15 @@
         },
         {
           "address": "celestia1m0fr79zpv93xwltrwz5yfs3e862my3f3xtxxaf",
+          "coins": [
+            {
+              "denom": "utia",
+              "amount": "100000000000"
+            }
+          ]
+        },
+        {
+          "address": "celestia1m4cwd0kfk37jyq5y2ekt9xcrwyyh7yn050lkwn",
           "coins": [
             {
               "denom": "utia",

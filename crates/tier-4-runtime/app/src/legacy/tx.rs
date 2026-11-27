@@ -305,7 +305,8 @@ fn run(ctx: &mut Context<'_>, block_gas: &mut GasMeter, tx_bytes: &[u8]) -> Ran 
     };
     // `validateBasicTxMsgs` (a Go panic in a `ValidateBasic` is recovered
     // by `runTx`).
-    if let Err(e) = sdk::error::recover(|| msgs::validate_basic_tx_msgs(tx.msgs())) {
+    if let Err(mut e) = sdk::error::recover(|| msgs::validate_basic_tx_msgs(tx.msgs())) {
+        recovered_log(&mut e);
         return Ran::early(0, e);
     }
     // `MsgVersioningGateKeeper` runs before `SetUpContextDecorator`:
@@ -401,14 +402,8 @@ fn run_msgs(
             "out of gas in location: {descriptor}; gasWanted: {gas_wanted}, gasUsed: {used}"
         )));
     }
-    // runTx's recovery middleware logs a handler's panic as
-    // "recovered: <value>\nstack:\n<goroutine stack>" wrapped in ErrPanic
-    // (the fixtures drop the stack, which depends on the run).
-    if let Err(e) = &mut result
-        && e.is_panic()
-        && !e.log.starts_with("recovered: ")
-    {
-        e.log = format!("recovered: {}: panic", e.log);
+    if let Err(e) = &mut result {
+        recovered_log(e);
     }
     ctx.events = outer_events;
     let mut block_gas_consumed = false;
@@ -497,4 +492,13 @@ pub fn message_logs(logs: &[(usize, Vec<Event>)]) -> String {
     }
     s.push(']');
     s
+}
+
+/// runTx's recovery middleware logs a panic as "recovered: <value>\nstack:\n
+/// <goroutine stack>" wrapped in ErrPanic (the fixtures drop the stack,
+/// which depends on the run).
+fn recovered_log(e: &mut sdk::SdkError) {
+    if e.is_panic() && !e.log.starts_with("recovered: ") {
+        e.log = format!("recovered: {}: panic", e.log);
+    }
 }

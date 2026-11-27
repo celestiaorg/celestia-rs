@@ -919,6 +919,14 @@ fail at the same point of the ante handler or message handler as Go:
 - a multisig mode info without a bit array (block 3): cosmos-sdk v0.46
   counts a nil bit array as size 0, so signature verification fails
   (sdk 4), where v0.50 panics;
+- a `MsgEditValidator` commission rate whose `sdk.Dec` integer has 316
+  bits (block 3): cosmos-sdk v0.46's `Dec.Unmarshal` allows at most 315
+  bits, so the transaction fails to decode (sdk 2), below
+  `cosmossdk.io/math`'s `LegacyDec` limit; a 313-bit rate (block 4)
+  decodes and fails `ValidateBasic` (sdk 18);
+- `MsgSubmitEvidence` without evidence (block 3): `ValidateBasic`
+  dereferences the nil `Any` (a recovered panic); with an `Any` whose type
+  URL is empty, the transaction fails to decode (sdk 2);
 - BeginBlock evidence at app version 3: val2 double-signs (block 14:
   slashed, jailed and tombstoned), then again (block 15: ignored, already
   tombstoned) with evidence for an address that is not a validator
