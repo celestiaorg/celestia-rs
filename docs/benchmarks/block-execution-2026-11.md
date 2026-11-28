@@ -85,9 +85,25 @@ Cumulative, from the baseline before #720 to #732: 19.57 → 26.53 blocks/s (+35
 - **Slowest block:** 558,491 at 5,154 ms, the known one-off RocksDB compaction stall at the first switch to the #720 settings. It is longer under `perf`.
 - **Next:** the v0.50-era window (from 8,218,900) and a v2 window are being rerun after a script fix. Their outputs go under `rs-replay/prof/`.
 
+## Profile in the v2 era (2026-11-28)
+
+[profiling-runbook.md](profiling-runbook.md) run on main `566e6607`: mimalloc, app version 2, legacy driver, IAVL cache 4,000,000, block cache 512 MiB, heights 2,371,495–2,386,494. Outputs are in the benchmark bucket under `rs-replay/prof/v2-2371494/`.
+
+- **Run:** 15,000 blocks in 421.3 s = **35.6 blocks/s**.
+- **Execution:** exec mean 26.9 ms (p50 23.5, p90 37.1); finalize 15.3 ms, commit 4.1 ms.
+- **Node cache:** 253 lookups/block (40.1% hit), 152 disk reads/block.
+- **Memory:** peak RSS 2.69 GB.
+- **Result check:** `responses_digest` `f5d94c05…29f4d`, the same in the `perf` run.
+- **Threads:** executor 31.6% of samples, `rocksdb:low` 23.9%.
+- **Executor largest self-time items:** sha256 2.07%, `Remembered::get` 1.73%, `_mi_page_malloc_zero` 1.31%, `Mutator::set` 0.93%, crc32c 0.87%, zstd 0.84%.
+- **Slow blocks:**
+  - 2,372,703 at 2,630 ms: the one-off RocksDB compaction stall.
+  - 2,378,205 at 387 ms: finalize 358 ms, 49,136 node lookups and 30,692 disk reads for a 292 KB block. A state-heavy block, not a large one; worth a look in a later profile.
+- **Reading:** the v2 era executes faster than 559k (35.6 vs 28.7 blocks/s) and has no new hot spot. Its profile looks like the 559k one.
+
 ## Open follow-ups
 
-- **v0.50-era profile:** this driver (from height 6.68M) has never been profiled. A 15,000-block window from the 8,218,900 checkpoint is running with [profiling-runbook.md](profiling-runbook.md); 559k is done (section above). Outputs go under `rs-replay/prof/` in the benchmark bucket. Live `follow` segments are limited by RPC fetching, not execution: exec-only rates are 11–27 blocks/s across 1.0M–4.0M heights.
+- **v0.50-era profile:** this driver (from height 6.68M) has never been profiled. A 15,000-block window from the 8,218,900 checkpoint is running with [profiling-runbook.md](profiling-runbook.md) (rerun with `--save-blocks true`, see the runbook); 559k and the v2 era are done (sections above). Outputs go under `rs-replay/prof/` in the benchmark bucket. Live `follow` segments are limited by RPC fetching, not execution: exec-only rates are 11–27 blocks/s across 1.0M–4.0M heights.
 - **mimalloc memory over long runs:** in the 100,000-block soak, RSS still grew in the second half: 69 MiB per 10,000 blocks with mimalloc vs 53 with jemalloc, while the node cache was still filling. The replay segments log RSS every 5 minutes and compare jemalloc and mimalloc builds over about 250,000 blocks. Revert criterion ([memory.md](memory.md)): if RSS grows without bound once the 4,000,000-node cache is full, go back to jemalloc with `background_thread:true` (+3.3%) as a compiled-in `malloc_conf`.
 - **Streaming block decode in `light/http.rs`:** `follow` parses each `/block` response into a `serde_json::Value` tree before decoding it. With 8–24 blocks in flight and blocks of several MB, the transient peak can reach about 0.75 GiB. Measure first: compare RSS with `--prefetch 8` and `--prefetch 24` on same-era segments. If the difference at shipped defaults is under about 0.5 GiB, do not change it.
 - **Persistent `iavl-prune` worker:** pruning starts one thread per prune (1,863 threads in about 1,900 blocks, 15.8% of samples). It runs off the executor, so it matters mainly on small machines. Not started.
