@@ -63,8 +63,14 @@ args=(follow --home "$HOME_DIR" --chain-id celestia --rpc "$RPC"
 [[ -n ${TRUST_HASH:-} ]] && args+=(--trust-hash "$TRUST_HASH")
 # A restarted run resumes from the home's state (the snapshot is used on
 # the first start only).
+command=("$BIN" "${args[@]}")
+# Bounded runs use the plain INFO stop record as proof. RUST_LOG takes
+# precedence over --log_level, and config.toml may select JSON output.
+if [[ $STOP =~ [1-9] ]]; then
+  command=(env RUST_LOG=info "${command[@]}" --log_format plain)
+fi
 set +e
-"$BIN" "${args[@]}" >"$log" 2>&1
+"${command[@]}" >"$log" 2>&1
 status=$?
 set -e
 grep -E 'light-client data at the snapshot height verified|snapshot restored' "$log" | tail -n 2 || true
@@ -73,6 +79,8 @@ if [[ $status -ne 0 ]]; then
   tail -n 20 "$log" >&2
   exit "$status"
 fi
+# The CLI accepted this decimal i64, including any leading zeroes.
+STOP=$((10#$STOP))
 if ((STOP == 0)); then
   echo "unbounded follower stopped; see $log for the last executed height"
 elif grep -qE "(^|[[:space:]])INFO celestia_rs::follow: stop height reached height=$STOP verified_header_height=$((STOP + 1))( |$)" "$log"; then
