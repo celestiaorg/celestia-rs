@@ -435,7 +435,16 @@ fn reject_senders() {
     let h = harness_answering(&["aa"], None, 1, 0);
     let rejected = Arc::new(Mutex::new(Vec::new()));
     let r2 = Arc::clone(&rejected);
+    let running = Arc::downgrade(&h.syncer);
     h.syncer.set_on_peer_rejected(Arc::new(move |p: &str| {
+        let late = statesync::chunks::Chunk {
+            height: 1,
+            format: 1,
+            index: 1,
+            chunk: vec![1],
+            sender: p.to_owned(),
+        };
+        assert!(!running.upgrade().unwrap().add_chunk(&late).unwrap());
         r2.lock().unwrap().push(p.to_owned());
     }));
     h.syncer.add_snapshot(&h.peers[0], snap(1, 1, 2));
