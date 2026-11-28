@@ -1,6 +1,6 @@
 #!/bin/bash
 # Segment watcher (on the segment VM): every 5 min append
-# "time height state reason" to rs-replay/SEG/heights.tsv, upload finished
+# "time height state host reason rss_kib" to rs-replay/SEG/heights-HOST.tsv, upload finished
 # Rust snapshots to rs-snapshots/from-go-SEG/<h>/<f>/ (metadata.json last),
 # and when the replay ends upload the log tail and diagnostics and write
 # segments/SEG/done (reached STOP) or segments/SEG/failed (with the reason).
@@ -39,7 +39,19 @@ while true; do
   if [ $resume_pend = 1 ] && [ $stall_pend = 0 ]; then
     vmx-gcs put /dev/null segments/$SEG/resumed-$HOST >/dev/null 2>&1 && resume_pend=0
   fi
-  printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "${h:--}" "$a" "$HOST" "$reason" >> $T
+  # Last column: the node's RSS in KiB (largest celestia-rs process), so
+  # segments on different builds can be compared over a whole segment.
+  rss=$(ps -o rss= -C celestia-rs 2>/dev/null | sort -n | tail -1 | tr -d ' ')
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "${h:--}" "$a" "$HOST" "$reason" "${rss:--}" >> $T
+  # Memory breakdown of the follow process (KiB): smaps_rollup Rss and
+  # Anonymous, status RssAnon/RssFile/VmHWM and the thread count.
+  pid=$(pgrep -f 'celestia-rs follow' | head -1)
+  if [ -n "$pid" ] && [ -r /proc/$pid/smaps_rollup ]; then
+    printf '%s\t%s\t%s%s\n' "$(date +%s)" "${h:--}" \
+      "$(awk '$1 ~ /^(Rss|Anonymous):$/ {k=$1; sub(/:$/, "", k); printf "%s=%s ", k, $2}' /proc/$pid/smaps_rollup)" \
+      "$(awk '$1 ~ /^(RssAnon|RssFile|VmHWM|Threads):$/ {k=$1; sub(/:$/, "", k); printf "%s=%s ", k, $2}' /proc/$pid/status)" >> $DATA/mem-$SEG.tsv
+    vmx-gcs put $DATA/mem-$SEG.tsv rs-replay/$SEG/mem-$HOST.tsv >/dev/null 2>&1
+  fi
   vmx-gcs put $T rs-replay/$SEG/heights-$HOST.tsv >/dev/null 2>&1
   for d in $HOME_DIR/data/snapshots/*/*/; do
     [ -d "$d" ] || continue

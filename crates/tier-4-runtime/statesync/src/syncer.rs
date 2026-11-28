@@ -215,9 +215,14 @@ impl Syncer {
 
     /// `AddChunk`.
     pub fn add_chunk(&self, chunk: &Chunk) -> Result<bool, String> {
-        let Some(q) = self.current_chunks() else {
-            return Err("no state sync in progress".into());
-        };
+        let active = self
+            .chunks
+            .lock()
+            .map_err(|_| "chunk queue lock poisoned")?;
+        let q = active.as_ref().ok_or("no state sync in progress")?;
+        if self.snapshots.is_peer_rejected(&chunk.sender) {
+            return Ok(false);
+        }
         q.add(chunk).map_err(|e| e.to_string())
     }
 
@@ -244,6 +249,12 @@ impl Syncer {
 
     /// `RejectPeer`.
     pub fn reject_peer(&self, peer_id: &str) {
+        // Wait for any earlier admission to finish before the caller clears
+        // this sender's queued chunks. Later arrivals see the rejection.
+        let _active = self
+            .chunks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.snapshots.reject_peer(peer_id);
     }
 
@@ -334,7 +345,7 @@ impl Syncer {
                 Err(SyncError::RejectSender) => {
                     tracing::info!(height = snap.height, "Snapshot senders rejected");
                     for peer in self.snapshots.get_peers(&snap) {
-                        self.snapshots.reject_peer(&peer.id());
+                        self.reject_peer(&peer.id());
                         tracing::info!(peer = %peer.id(), "Snapshot sender rejected");
                     }
                 }
@@ -514,7 +525,7 @@ impl Syncer {
                 if sender.is_empty() {
                     continue;
                 }
-                self.snapshots.reject_peer(sender);
+                self.reject_peer(sender);
                 let cb = self.on_peer_rejected.lock().ok().and_then(|g| g.clone());
                 if let Some(cb) = cb {
                     cb(sender);

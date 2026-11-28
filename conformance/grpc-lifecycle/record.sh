@@ -82,7 +82,7 @@ assert rs['cargo_version'].startswith('cargo 1.98.0 ')
 assert rs['build_command']==['cargo','build','--locked','--release','--package','celestia-rs','--bin','celestia-rs']
 assert rs['profile']=='release' and rs['locked'] is True
 assert rs['package']==rs['binary']=='celestia-rs'
-assert rs['default_features'] is True and rs['features']==['rocksdb','jemalloc']
+assert rs['default_features'] is True and rs['features']==['rocksdb','mimalloc']
 version=subprocess.check_output([str(rs_binary),'version','--long'],text=True).strip()
 assert rs['version_long']==version and f'commit: {head}' in version.splitlines()
 PY

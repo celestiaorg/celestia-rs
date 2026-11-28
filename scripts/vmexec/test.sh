@@ -240,6 +240,7 @@ case \$1 in
   create) touch "$C/vms/\$2" ;;
   delete) mv "$C/vms/\$2" "$C/gone/\$2" 2>/dev/null ;;
   build) [ -e "$C/fail-build" ] && exit 1; echo built ;;
+  job) echo "\$*" >>"$C/job-calls" ;;
 esac
 exit 0
 EOF
@@ -274,6 +275,21 @@ check  "ctl retried launch writes launched"  grep -q 'rs-seg-120000 go-snapshots
 printf '3\n' >"$C/bucket/segments/launch-count"
 refute "ctl launch cap stops launches"       ctl 'launch 250000 go-snapshots/250000 250000 500000 rs-seg-250000'
 refute "ctl launch cap creates no VM"        test -e "$C/vms/rs-seg-250000"
+# The v0.50 era continues the plan, and PRIORITY heights launch first: with one
+# free slot, the 8,218,900 evidence checkpoint (format 3) goes before 4,000,000.
+eq     "ctl plan continues into v0.50"        6748821 "$(ctl 'next_of 6680339')"
+eq     "ctl plan reaches the evidence block"  8500000 "$(ctl 'next_of 8218900')"
+rm -rf "$C/vms"/* "$C/bucket/segments"/*; printf '0\n' >"$C/bucket/segments/launch-count"
+mkdir -p "$C/bucket/go-snapshots/4000000/2" "$C/bucket/go-snapshots/8218900/3"
+touch "$C/bucket/go-snapshots/4000000/2/metadata.json" "$C/bucket/go-snapshots/8218900/3/metadata.json"
+ctl 'MAX_RUNNING=1; tick' >/dev/null 2>&1
+check  "ctl launches a priority height first" test -e "$C/vms/rs-seg-8218900"
+refute "ctl respects the slot limit"          test -e "$C/vms/rs-seg-4000000"
+check  "ctl launches from a format 3 export"  grep -q 'go-snapshots/8218900 8218900->8500000' "$C/bucket/segments/8218900/launched"
+# Extra (non-public) block sources reach the segment VM only from the controller's environment.
+rm -rf "$C/vms"/*; printf '0\n' >"$C/bucket/segments/launch-count"; : >"$C/job-calls"
+ctl 'SEG_EXTRA_RPC=http://rpc.invalid:26657; launch 9217850 go-snapshots/9217850 9217850 9500000 rs-seg-9217850' >/dev/null 2>&1
+check  "ctl passes SEG_EXTRA_RPC to the segment" grep -q 'env SEG_EXTRA_RPC=http://rpc.invalid:26657 bash /data/seg-vm.sh 9217850' "$C/job-calls"
 
 # --- segment watcher: a replay that is active but stuck writes a stalled marker ---------------
 W=$t/watch
@@ -284,16 +300,25 @@ cat >"$W/bin/vmx-gcs" <<EOF
 [ "\$1" = put ] && cp "\$2" "$W/bucket/\$(echo "\$3" | tr / _)"
 exit 0
 EOF
-chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs"
+# ps reports the node's RSS (KiB) for the celestia-rs process.
+printf '#!/bin/bash\n[ "$*" = "-o rss= -C celestia-rs" ] && echo " 4194304"\n' >"$W/bin/ps"
+# pgrep finds "the node": a sleep stands in, so /proc/<pid>/smaps_rollup is real.
+sleep 300 & fake_node=$!
+printf '#!/bin/bash\necho %s\n' "$fake_node" >"$W/bin/pgrep"
+chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs" "$W/bin/ps" "$W/bin/pgrep"
 echo 'INFO celestia_rs::follow: followed height=150100 tip=1' >"$W/data/home-120000/logs/follow.log"
 PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=2 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1 &
 wpid=$!
 wait_until 30 test -e "$W/bucket/segments_120000_stalled"
-kill "$wpid" 2>/dev/null || true
+kill "$wpid" "$fake_node" 2>/dev/null || true
 wait "$wpid" 2>/dev/null || true
+wait "$fake_node" 2>/dev/null || true
 check  "watch stall writes the marker"       grep -q 'stalled .* height=150100' "$W/bucket/segments_120000_stalled"
 check  "watch stall uploads the log tail"    test -e "$W/bucket/rs-replay_120000_stall-tail-$(hostname).log"
 refute "watch stall is not a failure"        test -e "$W/bucket/segments_120000_failed"
+check  "watch logs the node RSS per row"     grep -qP '\t150100\tactive\t.*\t4194304$' "$W/data/heights-120000.tsv"
+check  "watch logs smaps and status of the node" grep -qP '^[0-9]+\t150100\tRss=[0-9]+ Anonymous=[0-9]+ (?=.*VmHWM=[0-9]+ )(?=.*RssAnon=[0-9]+ )(?=.*RssFile=[0-9]+ )(?=.*Threads=[0-9]+ )' "$W/data/mem-120000.tsv"
+check  "watch uploads the memory samples"    test -e "$W/bucket/rs-replay_120000_mem-$(hostname).tsv"
 
 # --- segment watcher: a failed marker upload is retried on the next poll (stalled and resumed) ---
 W=$t/watch-retry
@@ -354,6 +379,11 @@ kill "$wpid" 2>/dev/null || true
 wait "$wpid" 2>/dev/null || true
 check  "watch publishes a stall after the height moved"  grep -q '^segments_120000_stalled stalled .* height=150100' "$W/puts.log"
 check  "watch publishes the resume after that stall"     test "$(grep -n -m1 'height=150100' "$W/puts.log" | cut -d: -f1)" -lt "$(grep -n -m1 '^segments_120000_resumed-' "$W/puts.log" | cut -d: -f1 || echo 0)"
+
+# --- segment VM: 15 segments x prefetch 8 (4 per provider) stay under ~64 requests per provider ---
+check  "seg-vm prefetch fits 15 segments"    grep -qx 'PREFETCH=${PREFETCH:-8}' "$here/segments/seg-vm.sh"
+check  "seg-vm reads a per-segment RPC list" grep -q 'segments/$SEG/rpc' "$here/segments/seg-vm.sh"
+check  "seg-vm defaults to public sources plus SEG_EXTRA_RPC" grep -qx 'RPC=https://rpc.celestia.pops.one,https://public-celestia-rpc.numia.xyz,https://celestia-mainnet-rpc.itrocket.net${SEG_EXTRA_RPC:+,$SEG_EXTRA_RPC}' "$here/segments/seg-vm.sh"
 
 echo
 if ((fails)); then echo "$fails test(s) failed"; exit 1; fi

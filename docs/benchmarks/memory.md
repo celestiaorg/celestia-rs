@@ -9,7 +9,8 @@ glibc build's RSS kept rising to 4.9x its live heap (1.66 GB for ~340 MB
 live), while jemalloc builds held RSS at ~1.3x the heap (430-440 MB).
 **Fix: celestia-rs now uses jemalloc as its global allocator by default**
 (feature `jemalloc`), with `--features memstats` for heap gauges and
-jemalloc's heap profiler.
+jemalloc's heap profiler. (Since 2026-11-27 the default is mimalloc; see
+"Allocator: mimalloc by default" below.)
 
 ## Setup
 
@@ -88,7 +89,7 @@ default (`crates/tier-5-node/celestia-rs/Cargo.toml`: `default = ["rocksdb",
 "jemalloc"]`; unprefixed on Linux so RocksDB's C++ allocations use it too;
 on macOS only Rust allocations go through it and RocksDB keeps the system
 zone allocator). `--no-default-features --features rocksdb` keeps the
-system allocator. The phase A benchmark (`docs/benchmarks/README.md`) runs
+system allocator. The [phase A benchmark](replay-and-node-benchmarks.md#method) runs
 the jemalloc build; a glibc-vs-jemalloc timing comparison on the full
 replay was cut short by the shared machine's disk limits and is part of the
 pending Mac run (`CELESTIA_RS_ALT`). macOS's allocator differs from glibc,
@@ -130,12 +131,79 @@ groups stayed far below the 1 GB total (largest 242 MB on V1); V2 ran with
 a 1 MiB head and a 16 MiB total and never exceeded the total by more than
 one head (15 files).
 
+## Allocator: mimalloc by default (2026-11-27)
+
+celestia-rs now uses mimalloc (v3.3.2, `override`, so RocksDB's C++
+allocations use it too) instead of jemalloc by default. The jemalloc
+build stays available (feature `jemalloc`, implied by `memstats`).
+
+Mainnet replay, heights 558,371-573,370 (15,000 blocks), IAVL node cache
+4,000,000, block cache 512 MiB, copied pruned home, NVMe. Every run gave
+the same `responses_digest` (`d4bff64d...30dd`).
+
+| run | allocator | blocks/s | exec mean / p90 ms | finalize ms | peak RSS | end RSS |
+|---|---|---|---|---|---|---|
+| A0 (x6) | jemalloc, default options | 26.42-26.70 | 36.1-36.5 / 49.8-50.4 | 23.1-23.4 | 3.13-3.19 GB | 3.12 GB |
+| A1 | jemalloc `background_thread:true` | 27.47 | 35.1 / 47.6 | 22.1 | 3.15 GB | |
+| A2 | jemalloc `background_thread:true,tcache_max:32768` | 27.52 | 35.0 / 47.8 | 22.1 | 3.16 GB | |
+| A3 (x3) | mimalloc, default options | 28.48-28.60 | 33.7-33.9 / 46.2-46.3 | 21.1 | 3.31-3.34 GB | 3.10-3.20 GB |
+
+- mimalloc (15,000 blocks): +7.1% blocks/s against the jemalloc mean
+  (26.6), peak RSS about +6%, end RSS about equal.
+- jemalloc's background purge thread alone gives +3.3%; a larger thread
+  cache adds nothing.
+- glibc malloc was not measured again: it fails on memory (4.9x the live
+  heap in the soak above).
+
+Long run: 100,000 blocks, heights 558,371-658,370, each allocator from a
+fresh copy of the same pruned home, same caches, RSS sampled every 5 s.
+Both runs gave the same `responses_digest` (`815070519c76...9e9170`).
+
+| | jemalloc | mimalloc |
+|---|---|---|
+| blocks/s | 27.59 | 29.20 (+5.8%) |
+| exec mean / p90 / max ms | 35.0 / 48.5 / 1,362 | 33.1 / 45.7 / 1,079 |
+| finalize ms | 21.9 | 20.1 |
+| peak RSS | 3.89 GiB | 4.02 GiB (+3.3%) |
+| end RSS | 3.81 GiB | 3.96 GiB (+3.9%) |
+| RSS growth, second half | +52.6 MiB per 10k blocks | +69.2 MiB per 10k blocks |
+
+Per 10,000-block window (blocks/s, RSS at the window end):
+
+| window ends at | jemalloc | mimalloc |
+|---|---|---|
+| 568,370 | 25.98 (2.77 GiB) | 27.25 (2.83 GiB) |
+| 578,370 | 26.68 (3.23 GiB) | 28.99 (3.36 GiB) |
+| 588,370 | 28.37 (3.41 GiB) | 29.33 (3.45 GiB) |
+| 598,370 | 28.99 (3.55 GiB) | 30.21 (3.62 GiB) |
+| 608,370 | 28.61 (3.58 GiB) | 30.51 (3.66 GiB) |
+| 618,370 | 29.33 (3.57 GiB) | 30.94 (3.71 GiB) |
+| 628,370 | 27.03 (3.83 GiB) | 28.49 (3.91 GiB) |
+| 638,370 | 25.91 (3.77 GiB) | 27.70 (3.87 GiB) |
+| 648,370 | 27.98 (3.77 GiB) | 29.76 (3.95 GiB) |
+| 658,370 | 27.81 (3.81 GiB) | 29.41 (3.96 GiB) |
+
+- mimalloc is faster in every window (+3.4% to +8.7%).
+- Peak and end RSS are within the +10% budget.
+- RSS still grows in the second half with both allocators (least-squares
+  fit of RSS against height from 608,370 on), mimalloc faster: 69 vs 53
+  MiB per 10k blocks. The 4,000,000-node IAVL cache is still filling in
+  this run, which explains growth for both. This run does not show
+  whether mimalloc's extra growth levels off; it is not shown to be a
+  leak and not shown not to be.
+- What settles it: RSS over a run long enough for the node cache to be
+  full (its length at its capacity) with both allocators, where RSS
+  should level off. The mainnet replay segments, which build `main`,
+  will compare RSS before and after this change; if RSS grows without
+  bound there, the default goes back to jemalloc (with its background
+  purge thread, +3.3%).
+
 ## Reproduce
 
 ```bash
-cargo build --release -p celestia-rs                      # default: jemalloc
+cargo build --release -p celestia-rs                      # default: mimalloc
 cp target/release/celestia-rs /tmp/celestia-rs
-cargo build --release -p celestia-rs --features memstats  # heap gauges + profiler
+cargo build --release -p celestia-rs --features memstats  # jemalloc + heap gauges + profiler
 cp target/release/celestia-rs /tmp/celestia-rs-memstats
 SOAK_PROFILE=memory SOAK_SECS=21600 SOAK_RETAIN_BLOCKS=150 SOAK_BIG_EVERY=600 \
   CELESTIA_RS=/tmp/celestia-rs SOAK_RS_N3=/tmp/celestia-rs-memstats SOAK_RS_N4=/tmp/celestia-rs-memstats \

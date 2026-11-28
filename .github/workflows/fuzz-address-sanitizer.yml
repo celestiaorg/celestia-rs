@@ -16,6 +16,11 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on the same PR. Other runs get a unique group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   square:
     name: Square construction (AddressSanitizer)
@@ -28,6 +33,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: fuzz
           key: square-address-sanitizer
       - run: cargo install cargo-fuzz --version 0.13.2 --locked

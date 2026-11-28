@@ -12,7 +12,7 @@
   padding: 0.3rem 1rem;
   cursor: pointer;
 }
-.filters button[aria-selected="true"] {
+.filters button[aria-pressed="true"] {
   color: var(--bg);
   background: var(--accent);
   border-color: var(--accent);
@@ -122,9 +122,52 @@ th.num {
 td code {
   font-size: 0.85rem;
 }
+#method summary {
+  color: var(--muted);
+  font-size: 1rem;
+}
+#method summary:hover {
+  color: var(--accent);
+}
+.method {
+  color: var(--muted);
+  font-size: 0.9rem;
+  max-width: 75ch;
+}
 .method li {
   margin-block: 0.4rem;
 }
 .census-charts path.series {
   fill: none;
+}
+.census-charts {
+  grid-template-columns: 1fr;
+}
+.census-charts figure {
+  padding: clamp(15px, 2.4vw, 26px);
+}
+.chart-legend {
+  display: flex;
+  gap: 1.2rem;
+  margin-bottom: 0.6rem;
+  font: 0.85rem ui-monospace, monospace;
+  color: var(--muted);
+}
+.chart-legend i {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  margin-right: 0.45em;
+  vertical-align: -1px;
+}
+.chart-legend i.rust {
+  background: #bc92ff;
+}
+.chart-legend i.go {
+  background: #70cfc2;
+}
+.census-charts .end-label {
+  font: 600 13px ui-monospace, monospace;
+  stroke: none;
 }

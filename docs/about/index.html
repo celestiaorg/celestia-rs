@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>celestia-rs · About</title>
+    <meta
+      name="description"
+      content="What celestia-rs is, who builds it, and the current status of the Rust Celestia consensus node and DA bridge."
+    />
+    <link rel="canonical" href="https://celestiaorg.github.io/celestia-rs/about/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="celestia-rs" />
+    <meta property="og:title" content="celestia-rs · About" />
+    <meta property="og:description" content="What celestia-rs is, who builds it, and the current status of the Rust Celestia consensus node and DA bridge." />
+    <meta property="og:url" content="https://celestiaorg.github.io/celestia-rs/about/" />
+    <meta property="og:image" content="https://celestiaorg.github.io/celestia-rs/site/square.webp" />
+    <link rel="stylesheet" href="../site/style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header>
+      <a class="brand" href="../"><span class="mark"></span>celestia-rs</a>
+      <nav aria-label="Main navigation">
+        <a href="../">Home</a
+        ><a href="../census/">census</a
+        ><a class="ext" href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md">Docs</a
+        ><a class="ext" href="https://github.com/celestiaorg/celestia-rs">GitHub</a>
+      </nav>
+    </header>
+    <main id="main">
+      <section>
+        <span class="eyebrow">CELESTIA-RS / ABOUT</span>
+        <h1>About celestia-rs</h1>
+        <p>
+          celestia-rs is an open-source Rust implementation of a Celestia
+          consensus node. One binary runs a consensus full node or validator,
+          an optional data availability (DA) bridge, and a standalone DA light
+          node. The consensus node is wire- and consensus-compatible with the
+          Go <a href="https://github.com/celestiaorg/celestia-app">celestia-app</a>
+          and <a href="https://github.com/celestiaorg/celestia-core">celestia-core</a>.
+          The DA roles interoperate with Go
+          <a href="https://github.com/celestiaorg/celestia-node">celestia-node</a>.
+        </p>
+        <h2>Who builds it</h2>
+        <p>
+          The project lives in the
+          <a href="https://github.com/celestiaorg">celestiaorg</a> GitHub
+          organization, next to the Go implementations it is compatible with.
+          All development happens in public on
+          <a href="https://github.com/celestiaorg/celestia-rs">GitHub</a>.
+          The code is dual-licensed under Apache-2.0 and MIT.
+        </p>
+        <h2>Status</h2>
+        <p>
+          celestia-rs is an early, experimental project under rapid
+          development. Expect breaking changes, and do not rely on it for
+          production yet. The project runs a validator on Mocha and Mainnet and
+          publishes its evidence, benchmarks and security notes in the
+          repository. The <a href="../census/">node census</a> shows how many
+          public consensus nodes run celestia-rs.
+        </p>
+        <h2>This website</h2>
+        <p>
+          This site is the operator guide for celestia-rs: what the node does,
+          how it compares with the Go node, and how to start on Mainnet. It is
+          a static site served by GitHub Pages from the <code>docs/</code>
+          folder of the repository. The full
+          <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md">operator guide</a>
+          covers configuration, upgrades and day-to-day operations.
+        </p>
+      </section>
+    </main>
+    <footer>
+      <span class="brand">celestia-rs</span>
+      <nav aria-label="Site">
+        <a href="../about/">About</a><a href="../contact/">Contact</a
+        ><a href="../privacy/">Privacy</a><a href="../llms.txt">llms.txt</a
+        ><a href="https://github.com/celestiaorg/celestia-rs/issues">Report an issue</a>
+      </nav>
+    </footer>
+  </body>
+</html>

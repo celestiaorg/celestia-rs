@@ -216,14 +216,15 @@ pub fn state_sync(
         "starting state sync"
     );
     stop_state_sync_on_shutdown(reactor, shutdown);
-    let (state, commit) = match reactor.sync(Arc::new(sp), opts.discovery_time) {
-        Ok(r) => r,
-        Err(statesync::SyncError::Stopped) => {
-            tracing::info!("state sync stopped");
-            return Ok(None);
-        }
-        Err(e) => return Err(anyhow!("State sync failed: {e}")),
-    };
+    let (state, commit) =
+        match reactor.sync_with_rpc(Arc::new(sp), opts.discovery_time, &opts.rpc_servers) {
+            Ok(r) => r,
+            Err(statesync::SyncError::Stopped) => {
+                tracing::info!("state sync stopped");
+                return Ok(None);
+            }
+            Err(e) => return Err(anyhow!("State sync failed: {e}")),
+        };
     statesync::NodeStores {
         state_store: ss.clone(),
         block_store: bs.clone(),

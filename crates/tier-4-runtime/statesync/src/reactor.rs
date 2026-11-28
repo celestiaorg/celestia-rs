@@ -133,6 +133,16 @@ impl Reactor {
         state_provider: Arc<dyn StateProvider>,
         discovery_time: Duration,
     ) -> Result<(State, Commit), SyncError> {
+        self.sync_with_rpc(state_provider, discovery_time, &[])
+    }
+
+    /// Also discover snapshots at the light client's configured RPC servers.
+    pub fn sync_with_rpc(
+        &self,
+        state_provider: Arc<dyn StateProvider>,
+        discovery_time: Duration,
+        servers: &[String],
+    ) -> Result<(State, Commit), SyncError> {
         let syncer = {
             let mut g = self
                 .syncer
@@ -165,9 +175,19 @@ impl Reactor {
             syncer.stop();
         }
         let sw = self.switch.lock().map(|g| g.clone()).unwrap_or_default();
+        let rpc_peers: Vec<_> = servers
+            .iter()
+            .enumerate()
+            .map(|(i, server)| {
+                crate::rpc_peer::RpcPeer::new(i, server, &syncer, self.cfg.max_snapshot_chunks)
+            })
+            .collect();
         let hook = {
             let sw = sw.clone();
             move || {
+                for peer in &rpc_peers {
+                    peer.discover();
+                }
                 tracing::debug!("Requesting snapshots from known peers");
                 if let Some(sw) = sw.upgrade() {
                     drop(sw.broadcast(SNAPSHOT_CHANNEL, Msg::SnapshotsRequest.encode()));

@@ -100,7 +100,7 @@
       },
       "verifier": {
         "path": "conformance/grpc-lifecycle/verify.py",
-        "sha256": "fe499dd2fbee757f8bd21eb122aee525ef5e6e3b01901f689a10b6f1566f5217"
+        "sha256": "fdc95b41ebb9e8f0e087fe11c04a474aa3c5ab82841209fa906a1612c8c47d7f"
       },
       "transports": [
         "core-grpc",

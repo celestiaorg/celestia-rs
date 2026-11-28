@@ -49,7 +49,7 @@ value={
  "binary":"celestia-rs",
  "locked":True,
  "default_features":True,
- "features":["rocksdb","jemalloc"],
+ "features":["rocksdb","mimalloc"],
  "version_long":version_long,
 }
 pathlib.Path(receipt).write_text(json.dumps(value,indent=2)+"\n")

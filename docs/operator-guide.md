@@ -92,9 +92,11 @@ fine too and builds faster. The first build compiles RocksDB from source
 
 Targets: `aarch64-apple-darwin` (Apple silicon; CI builds and
 smoke-tests it on `macos-14`), `x86_64-unknown-linux-gnu`,
-`aarch64-unknown-linux-gnu`. jemalloc is the allocator everywhere (on
-macOS for Rust allocations only; RocksDB's C++ uses the system allocator
-there).
+`aarch64-unknown-linux-gnu`. mimalloc is the allocator by default; on
+Linux it also serves RocksDB's C++ allocations. `celestia-rs version
+--long` prints the allocator of a binary. To build with jemalloc instead,
+add `--no-default-features --features rocksdb,jemalloc`
+(`docs/benchmarks/memory.md`).
 
 ## 2. Open-files limit
 
@@ -1311,8 +1313,12 @@ even when the state is the same.
   `min-retain-blocks = 0` only for a node meant to serve history.
 - **Speed.** Execution is most of the time. Bigger caches and less
   frequent pruning make catch-up about 30% faster without changing
-  state (mainnet blocks 1–1000: 236 → 165 ms per block on 4 vCPUs). Use
-  them while catching up, if the machine has 8 GB of memory to spare:
+  state (mainnet blocks 1–1000: 236 → 165 ms per block on 4 vCPUs). They
+  cost memory: the node cache below adds about 2.0 GB over the default
+  and `--db-cache-mib 4096` about 3.5 GiB (both fill within minutes), so
+  the node uses about 10-11 GiB, above the 8 GB steady-state budget of
+  [hardware.md](hardware.md). Use them only while catching up, on a
+  machine with 16 GB, and return to the defaults afterwards:
 
   ```toml
   # app.toml
@@ -1448,9 +1454,11 @@ celestia-rs query bank balances <celestia1…> --node $RPC        # (verified)
 A fresh node can block-sync Mocha from genesis, but that replays 1.7M+
 blocks. Two faster routes; try A first.
 
-**Route A — state sync from Mocha peers (P2P).** The node discovers Go
-nodes' state-sync snapshots over P2P, verifies them with the light client
-against the RPC servers, restores the app state and block-syncs the rest.
+**Route A — state sync from Mocha.** The node requests snapshot offers from
+P2P peers and the configured state-sync RPC servers in parallel. A server
+that exposes `/snapshots` and `/snapshot_chunk` can supply the restore even
+when its P2P slots are full. The node verifies the application hash against
+the light client, restores the app state and block-syncs the rest.
 
 Automatic state sync uses `trust_height` as the minimum snapshot height.
 If peers only advertise older snapshots, the node keeps requesting offers.

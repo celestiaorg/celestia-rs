@@ -1,16 +1,33 @@
-# Target hardware
+# Hardware requirements
 
-The target machine for a pruned celestia-rs mainnet validator has
-**8 CPU cores, 16 GB of memory and a 500 GB NVMe SSD**. These are targets
-that the budgets below are designed and tested against. Minimum requirements
-are not established yet. Release binaries run on Apple silicon macOS
-(`aarch64-apple-darwin`) and on `x86_64` and `aarch64` Linux.
+These are the hardware requirements for celestia-rs on Mainnet and Mocha.
+Release binaries run on Apple silicon macOS (`aarch64-apple-darwin`) and on
+`x86_64` and `aarch64` Linux with glibc 2.35 or newer. Use a local NVMe SSD.
 
-| Resource | Target |
-|---|---|
-| CPU | 8 cores |
-| Memory | 16 GB |
-| Disk | 500 GB NVMe SSD |
+| Profile | CPU | Memory | Disk |
+|---|---|---|---|
+| Pruned full node | 8 CPU cores | 16 GB | 500 GB NVMe SSD |
+| Validator (pruned) | 8 CPU cores | 16 GB | 500 GB NVMe SSD |
+| Archive node | 8 CPU cores | 16 GB | 4 TB NVMe SSD, expandable |
+
+Pruned uses `pruning = "default"` and `min-retain-blocks = 3000` in
+`app.toml`. Archive uses `pruning = "nothing"`, `min-retain-blocks = 0` and
+`tx_index.indexer = "kv"`, and keeps every block and app state from the
+height it starts at (its state-sync snapshot). Archive disk grows with the
+chain: 4 TB is a starting size, so plan to add storage. A Go archive of full
+Mainnet history measured about 10 TB in the
+[Celestia hardware guide](https://docs.celestia.org/operate/getting-started/hardware-requirements/).
+
+## Evidence
+
+The [2026-11-26 Mainnet runs](benchmarks/operator-sync-2026-11-26.md) on
+8-vCPU `n2-standard-8` VMs measured celestia-rs at a peak of 6.0 GB of cgroup
+memory during state sync and 4.1 GB over 600 blocks with its DA bridge on.
+The [1,000-block runs](benchmarks/operator-block-range-2026-11-26.md)
+measured a node home of 1.8 and 1.9 GiB after 1,000 blocks. The memory and
+disk budgets below are inside 16 GB and 500 GB with room for compaction and
+snapshots. No run has tested a machine with fewer than 8 vCPUs, so these
+requirements are not lowered below 8 cores and 16 GB.
 
 These targets do not cover Fibre storage. A validator that turns on the
 opt-in [Fibre server](operator-guide.md#fibre-server) must provision storage
@@ -38,7 +55,7 @@ behind these defaults:
 | Setting | Flag | Default | Budget impact |
 |---|---|---|---|
 | Backend | `--db-backend` | `rocksdb` (`redb` available) | RocksDB disk ≈ 1.1–1.4× live data (peaks 1.85× during compaction); redb 2.7–5× |
-| Backend block cache | `--db-cache-mib` | 512 | Bounded: data, index and filter blocks all live in it; plus ≤ 256 MiB memtables (2 × 128 MiB, application database) |
+| Backend block cache | `--db-cache-mib` | 512 | Bounded: data, index and filter blocks all live in it; plus ≤ 256 MiB memtables (2 × 128 MiB, application database). It fills within minutes of catching up, so RSS grows by about the size raised: `--db-cache-mib 4096` costs about 3.5 GiB more than the default (measured on mainnet `follow` nodes) |
 | IAVL node cache | app.toml `iavl-cache-size` (`--node-cache-size` for `abci`) | 4,000,000 nodes | about 510 B per cached node (measured at mainnet height ~560k: 3.58M nodes took 1.43 GB more RSS than 0.78M) → about 2.0 GB when full; 781,250 (celestia-app's default) is the low-memory setting, ~6% slower at height ~560k |
 | Pruning | `--pruning-keep-recent` / `--pruning-keep-every` / `--pruning-interval` | 100 / 0 / 1 | Retained history dominates live data; pruning every commit keeps commit p99 < 0.5 s at 600 tx/block |
 
@@ -49,18 +66,28 @@ Homes made by an older `init`, or migrated from Go, keep `iavl-cache-size =
 781250` in `app.toml` until the operator raises it; the node logs a hint
 at startup.
 
+The catch-up settings in the operator guide ("Block sync mainnet from
+genesis (P2P)", "Speed":
+`iavl-cache-size = 8000000` and `--db-cache-mib 4096`) add about 2.0 GB
+and 3.5 GiB to that, so a catching-up node uses about 10-11 GiB. That is
+inside a 16 GB machine but above the 8 GB steady-state budget: return to
+the defaults once the node has caught up.
+
 Measured with these settings at a heavy synthetic load (600 txs ≈ 2,200
 IAVL writes per block): commit p50 0.30 s / p99 0.48 s / max 0.64 s and
 peak RSS 1.25 GiB for the storage layer — well inside the 8 GB budget and the
 block time. Raise `--db-cache-mib` (e.g. 2048) on machines that serve
 queries; lower `--pruning-keep-recent` to shrink disk further.
 
-The binary uses jemalloc as its global allocator (default feature
-`jemalloc`; RocksDB's C++ allocations go through it too on Linux). On
-glibc malloc the node's RSS settled at 4-5x its live heap; with jemalloc
-RSS stays within ~1.5x of the heap (`docs/benchmarks/memory.md`).
-`--features memstats` adds heap gauges and jemalloc's heap profiler for
-leak hunting.
+The binary uses mimalloc as its global allocator (default feature
+`mimalloc`; RocksDB's C++ allocations go through it too).
+`celestia-rs version --long` prints it. Over 100,000 mainnet blocks
+(heights 558k-658k) it executes blocks about 6% faster than jemalloc,
+with about 3-4% more peak and end memory (`docs/benchmarks/memory.md`). On glibc malloc the node's RSS
+settled at 4-5x its live heap. jemalloc remains a build option
+(`--no-default-features --features rocksdb,jemalloc`), and
+`--no-default-features --features rocksdb,memstats` adds jemalloc heap
+gauges and its heap profiler for leak hunting.
 
 RocksDB keeps up to 512 SST files open: raise the macOS shell default
 (`ulimit -n 4096`) before starting the node.

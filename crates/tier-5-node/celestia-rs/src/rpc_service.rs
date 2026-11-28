@@ -764,6 +764,23 @@ impl NodeShared {
 struct AppQueries(Arc<Mutex<app::App>>);
 
 impl AppQuery for AppQueries {
+    fn list_snapshots(&self) -> Result<abci::ResponseListSnapshots, String> {
+        Ok(self
+            .0
+            .lock()
+            .map_err(|_| "app lock poisoned")?
+            .list_snapshots())
+    }
+    fn load_snapshot_chunk(
+        &self,
+        req: abci::RequestLoadSnapshotChunk,
+    ) -> Result<abci::ResponseLoadSnapshotChunk, String> {
+        Ok(self
+            .0
+            .lock()
+            .map_err(|_| "app lock poisoned")?
+            .load_snapshot_chunk(&req))
+    }
     fn info(&self) -> Result<abci::ResponseInfo, String> {
         Ok(self
             .0

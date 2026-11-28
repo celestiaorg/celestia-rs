@@ -7,9 +7,7 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 use std::time::Duration;
 
 use axum::body::Body;
@@ -501,29 +499,16 @@ struct Ctx {
     remote: SocketAddr,
 }
 
-/// Keeps a heavy-request slot until Hyper finishes consuming the response.
-struct GuardedBody {
-    inner: Body,
+// Hyper may retain a data frame after consuming the body. Keep the permit
+// on the frame's backing allocation until the transport releases it.
+struct GuardedBytes {
+    data: String,
     _guard: HeavyGuard,
 }
 
-impl http_body::Body for GuardedBody {
-    type Data = Bytes;
-    type Error = axum::Error;
-
-    fn poll_frame(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
-        http_body::Body::poll_frame(Pin::new(&mut self.inner), cx)
-    }
-
-    fn is_end_stream(&self) -> bool {
-        http_body::Body::is_end_stream(&self.inner)
-    }
-
-    fn size_hint(&self) -> http_body::SizeHint {
-        http_body::Body::size_hint(&self.inner)
+impl AsRef<[u8]> for GuardedBytes {
+    fn as_ref(&self) -> &[u8] {
+        self.data.as_bytes()
     }
 }
 
@@ -553,10 +538,10 @@ fn guarded_json_response(
         return json_response(status, body, cache);
     };
     let mut response = json_response(status, String::new(), cache);
-    *response.body_mut() = Body::new(GuardedBody {
-        inner: Body::from(body),
+    *response.body_mut() = Body::from(Bytes::from_owner(GuardedBytes {
+        data: body,
         _guard: guard,
-    });
+    }));
     response
 }
 
@@ -649,6 +634,7 @@ fn url_unescape(s: &str) -> Option<String> {
 
 async fn uri_handler(
     ctx: &Ctx,
+    bulk: bool,
     route: &'static Route,
     query: &str,
     form: Option<&str>,
@@ -685,6 +671,38 @@ async fn uri_handler(
         args.push(a);
     }
     let cache = route.cacheable_with(&args);
+    if bulk {
+        let Some(guard) = ctx.env.try_acquire(route) else {
+            return json_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                RpcResponse::internal(uri_id(), ERR_HEAVY_LIMIT).encode(),
+                false,
+            );
+        };
+        let env = Arc::clone(&ctx.env);
+        // Keep admission with the blocking read if the requester disconnects,
+        // then with the returned bytes until the transport releases them.
+        return match tokio::task::spawn_blocking(move || {
+            let value = env.call(route.name, &args)?;
+            Ok::<_, String>((RpcResponse::ok(uri_id(), &value).encode(), guard))
+        })
+        .await
+        {
+            Ok(Ok((body, permit))) => {
+                guarded_json_response(StatusCode::OK, body, false, Some(permit))
+            }
+            Ok(Err(e)) => json_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                RpcResponse::internal(uri_id(), &e).encode(),
+                false,
+            ),
+            Err(e) => json_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                RpcResponse::internal(uri_id(), &e.to_string()).encode(),
+                false,
+            ),
+        };
+    }
     match call_route(&ctx.env, route, args, &ctx.remote.to_string()).await {
         Ok(j) => json_response(
             StatusCode::OK,
@@ -711,7 +729,10 @@ async fn uri_handler(
 
 /// `writeListOfEndpoints`.
 fn list_endpoints(host: &str, unsafe_routes: bool) -> Response<Body> {
-    let mut routes: Vec<&Route> = crate::env::ROUTES.iter().collect();
+    let mut routes: Vec<&Route> = crate::env::ROUTES
+        .iter()
+        .chain(crate::env::SNAPSHOT_ROUTES)
+        .collect();
     if unsafe_routes {
         routes.extend(crate::env::UNSAFE_ROUTES.iter());
     }
@@ -1092,10 +1113,13 @@ async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
             });
         let host = host.unwrap_or_default().to_owned();
         jsonrpc_handler(ctx, &body, &host).await
-    } else if let Some(route) = path
-        .strip_prefix('/')
-        .and_then(|n| find_route(n, ctx.env.config.unsafe_routes))
-    {
+    } else if let Some((route, bulk)) = path.strip_prefix('/').and_then(|name| {
+        crate::env::SNAPSHOT_ROUTES
+            .iter()
+            .find(|r| r.name == name)
+            .map(|r| (r, true))
+            .or_else(|| find_route(name, ctx.env.config.unsafe_routes).map(|r| (r, false)))
+    }) {
         let query = parts.uri.query().unwrap_or_default().to_owned();
         let is_form = parts
             .headers
@@ -1104,7 +1128,7 @@ async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
             .is_some_and(|v| v.starts_with("application/x-www-form-urlencoded"));
         let form = (is_form && matches!(parts.method, Method::POST | Method::PUT | Method::PATCH))
             .then(|| String::from_utf8_lossy(&body).into_owned());
-        uri_handler(ctx, route, &query, form.as_deref()).await
+        uri_handler(ctx, bulk, route, &query, form.as_deref()).await
     } else {
         not_found()
     };
@@ -1788,6 +1812,26 @@ pub(crate) mod broadcast_tests {
     }
 
     #[tokio::test]
+    async fn snapshot_inventory_is_served_only_on_the_uri_transport() {
+        let env = environment(Ok(abci::ResponseCheckTx::default()), 1_000);
+        let ctx = Ctx {
+            env,
+            remote: "127.0.0.1:1234".parse().expect("remote"),
+        };
+        let post = jsonrpc_handler(
+            &ctx,
+            br#"[{"jsonrpc":"2.0","id":1,"method":"snapshots"}]"#,
+            "localhost",
+        )
+        .await;
+        let bytes = axum::body::to_bytes(post.into_body(), 1024)
+            .await
+            .expect("body");
+        assert!(String::from_utf8_lossy(&bytes).contains("-32601"));
+        assert!(find_route("snapshot_chunk", false).is_none());
+    }
+
+    #[tokio::test]
     async fn heavy_batch_holds_one_slot_until_response_body_is_consumed() {
         let mut env = environment(Ok(abci::ResponseCheckTx::default()), 1_000);
         Arc::get_mut(&mut env)
@@ -1810,7 +1854,10 @@ pub(crate) mod broadcast_tests {
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("response body");
-        let body = String::from_utf8(body.to_vec()).expect("UTF-8 response");
+        assert!(env.try_acquire(heavy).is_none());
+        let text = String::from_utf8(body.to_vec()).expect("UTF-8 response");
+        drop(body);
+        let body = text;
         assert!(body.contains("\"id\":1"));
         assert!(body.contains("\"id\":2"));
         assert!(!body.contains(ERR_HEAVY_LIMIT));

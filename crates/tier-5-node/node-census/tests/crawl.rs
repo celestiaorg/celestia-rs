@@ -100,7 +100,7 @@ fn config(seeds: Vec<NetAddress>) -> CrawlConfig {
 #[tokio::test]
 async fn discovers_peers_through_pex_and_classifies_them() {
     let rust = fake_node("0.38.17-celestia-rs.0.4.2").await;
-    let go = fake_node("0.38.17").await;
+    let go = fake_node("0.38.17-celestia-app.10.6.0").await;
     // A node ID nobody listens for: discovered but unreachable.
     let dead_port = TcpListener::bind("127.0.0.1:0")
         .await
@@ -127,12 +127,18 @@ async fn discovers_peers_through_pex_and_classifies_them() {
     assert_eq!(
         reached,
         [
-            ("0.38.17", Implementation::Go),
+            ("0.38.17-celestia-app.10.6.0", Implementation::Go),
             ("0.38.17-celestia-rs.0.4.2", Implementation::Rust),
         ]
     );
     assert_eq!(result.unreachable, 1);
     assert!(result.reached.iter().all(|n| n.app_version == 6));
+    let go = result
+        .reached
+        .iter()
+        .find(|n| n.implementation == Implementation::Go)
+        .unwrap();
+    assert_eq!(go.app_release.as_deref(), Some("10.6.0"));
 }
 
 #[tokio::test]
@@ -163,6 +169,8 @@ async fn counts_rpc_reported_peers_and_prefers_a_direct_handshake() {
         moniker: "nat".into(),
         app_version: 6,
         source: Source::Rpc,
+        app_release: None,
+        rpc_url: None,
     };
     let reported_go = Observed {
         id: go.addr.id.unwrap().to_string(),
@@ -171,6 +179,8 @@ async fn counts_rpc_reported_peers_and_prefers_a_direct_handshake() {
         moniker: "stale".into(),
         app_version: 0,
         source: Source::Rpc,
+        app_release: None,
+        rpc_url: None,
     };
     let result = crawl(CrawlConfig {
         rpc_peers: vec![
