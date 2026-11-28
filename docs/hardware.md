@@ -24,10 +24,19 @@ The [2026-11-26 Mainnet runs](benchmarks/operator-sync-2026-11-26.md) on
 8-vCPU `n2-standard-8` VMs measured celestia-rs at a peak of 6.0 GB of cgroup
 memory during state sync and 4.1 GB over 600 blocks with its DA bridge on.
 The [1,000-block runs](benchmarks/operator-block-range-2026-11-26.md)
-measured a node home of 1.8 and 1.9 GiB after 1,000 blocks. The memory and
-disk budgets below are inside 16 GB and 500 GB with room for compaction and
-snapshots. No run has tested a machine with fewer than 8 vCPUs, so these
-requirements are not lowered below 8 cores and 16 GB.
+measured a node home of 1.8 and 1.9 GiB after 1,000 blocks.
+
+Keep **16 GB** for a dedicated pruned full node or validator with default
+caches. The 8-vCPU benchmark hosts had 32 GB installed and snapshots disabled. Their sampled
+peaks leave headroom. A sustained run with snapshots on and a hard 16 GB
+limit would test that headroom directly.
+
+Choose **32 GB** for additional headroom if you keep the larger catch-up
+caches enabled (about 10–11 GiB for the node alone), serve heavy RPC traffic,
+or share the host with other services. To justify raising the baseline,
+measure a default-cache node on a 16 GB host through sync, snapshots and
+compaction under representative traffic. Track host memory pressure, swap
+activity and missed signing deadlines alongside process RSS.
 
 These targets do not cover Fibre storage. A validator that turns on the
 opt-in [Fibre server](operator-guide.md#fibre-server) must provision storage

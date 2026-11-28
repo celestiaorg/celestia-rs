@@ -60,8 +60,7 @@
         "path": "conformance/grpc-limits/README.md"
       },
       "verifier": {
-        "path": "conformance/grpc-limits/verify.py",
-        "sha256": "6bfbcfdb58b345b2f1c8002a981f7e5d2899c1484240f0efa13620b21815b780"
+        "path": "conformance/grpc-limits/verify.py"
       },
       "transports": [
         "core-grpc",
@@ -99,8 +98,7 @@
         "path": "conformance/grpc-lifecycle/README.md"
       },
       "verifier": {
-        "path": "conformance/grpc-lifecycle/verify.py",
-        "sha256": "fdc95b41ebb9e8f0e087fe11c04a474aa3c5ab82841209fa906a1612c8c47d7f"
+        "path": "conformance/grpc-lifecycle/verify.py"
       },
       "transports": [
         "core-grpc",
@@ -246,8 +244,7 @@
         "path": "conformance/mainnet-rpc/live-tx/README.md"
       },
       "verifier": {
-        "path": "conformance/mainnet-rpc/tests/test_live_tx.py",
-        "sha256": "90658c16d378ba8271e94ce6c184e2ae25c1a76892c29ac731ea77c7875e8a07"
+        "path": "conformance/mainnet-rpc/tests/test_live_tx.py"
       },
       "transports": [
         "comet-jsonrpc",
@@ -293,8 +290,7 @@
         "path": "conformance/mainnet-rpc/live-tx-closure/README.md"
       },
       "verifier": {
-        "path": "conformance/mainnet-rpc/tests/test_live_tx_closure.py",
-        "sha256": "6f70316b0f44572e313ed1fbcd156ef0fbaefdd22bdd6b496a80ee9ab60cfa63"
+        "path": "conformance/mainnet-rpc/tests/test_live_tx_closure.py"
       },
       "transports": [
         "comet-uri",
@@ -337,8 +333,7 @@
         "path": "conformance/mainnet-rpc/populated-staking/README.md"
       },
       "verifier": {
-        "path": "conformance/mainnet-rpc/tests/test_populated_staking.py",
-        "sha256": "c4e46ed8270a544db2ec7397813b90fc24232bf0e4ef26bc47a6f20ef37e44ec"
+        "path": "conformance/mainnet-rpc/tests/test_populated_staking.py"
       },
       "transports": [
         "comet-jsonrpc",
@@ -377,8 +372,7 @@
         "path": "conformance/mainnet-rpc/populated-governance/README.md"
       },
       "verifier": {
-        "path": "conformance/mainnet-rpc/populated-governance/verify.py",
-        "sha256": "988daf12dc7bea7100c6baa861362d46843c8da7aeab3691a57ad6d75bbeb95f"
+        "path": "conformance/mainnet-rpc/populated-governance/verify.py"
       },
       "transports": [
         "comet-jsonrpc",
@@ -419,8 +413,7 @@
         "path": "conformance/websocket-lifecycle/README.md"
       },
       "verifier": {
-        "path": "conformance/websocket-lifecycle/verify-closure.py",
-        "sha256": "6a1b757572edbbf46d2ba4d20bc6273f820796caec6594a06eb35c68c2a887b6"
+        "path": "conformance/websocket-lifecycle/verify-closure.py"
       },
       "transports": [
         "comet-websocket"
@@ -475,8 +468,7 @@
         "path": "conformance/mainnet-rpc/rest-boundaries/README.md"
       },
       "verifier": {
-        "path": "conformance/mainnet-rpc/rest-boundaries/verify.py",
-        "sha256": "4477496c44911e5b193d975fca247d1383187cf121969b4dc313fcc55a43df5e"
+        "path": "conformance/mainnet-rpc/rest-boundaries/verify.py"
       },
       "transports": [
         "rest"
@@ -511,8 +503,7 @@
         "path": "conformance/mainnet-rpc/rest-post-boundaries/README.md"
       },
       "verifier": {
-        "path": "conformance/mainnet-rpc/rest-post-boundaries/verify.py",
-        "sha256": "5afa0f466d6a463e1b69b9b854da09b72ee2b8193f2aea380e14de3751bfebf3"
+        "path": "conformance/mainnet-rpc/rest-post-boundaries/verify.py"
       },
       "transports": [
         "rest"
@@ -542,8 +533,7 @@
         "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-10-31-809bfca/README.md"
       },
       "verifier": {
-        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-10-31-809bfca/verify.py",
-        "sha256": "56ce0e8585c78a2c2bf289ef53d013c7be65f5b81af01849a6b31a14ff6ebdf1"
+        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-10-31-809bfca/verify.py"
       },
       "transports": [
         "comet-uri",
@@ -576,8 +566,7 @@
         "path": "conformance/mainnet-rpc/comet-http-boundaries/v10.5.0/README.md"
       },
       "verifier": {
-        "path": "conformance/mainnet-rpc/comet-http-boundaries/v10.5.0/verify.py",
-        "sha256": "4294d4b25fe7203f6d2cba7101bdd519bbe642aad11df3f570a43b655c9c72de"
+        "path": "conformance/mainnet-rpc/comet-http-boundaries/v10.5.0/verify.py"
       },
       "transports": [
         "comet-uri",
@@ -617,8 +606,7 @@
         "path": "conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/README.md"
       },
       "verifier": {
-        "path": "conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/verify.py",
-        "sha256": "ef5c18358a68b12df67b868efef56a15f2b36c8b56131582c07226a41e91e459"
+        "path": "conformance/mainnet-rpc/proxy-tls-framing/v10.5.0/verify.py"
       },
       "transports": [
         "comet-uri",
@@ -682,8 +670,7 @@
         "path": "conformance/mainnet-rpc/module-closure/README.md"
       },
       "verifier": {
-        "path": "conformance/mainnet-rpc/module-closure/verify.py",
-        "sha256": "947107afec33a33daac15a64b666be369a89ce862e8f3ddf7b49fbd979189b66"
+        "path": "conformance/mainnet-rpc/module-closure/verify.py"
       },
       "transports": [
         "comet-jsonrpc",
@@ -740,8 +727,7 @@
         "path": "conformance/mainnet-rpc/persistence/CLOSURE.md"
       },
       "verifier": {
-        "path": "conformance/mainnet-rpc/persistence/verify_closure.py",
-        "sha256": "a4caad1ef5e136e8c442e3db8c11a067c7d8cf45485bcac776932c289099502b"
+        "path": "conformance/mainnet-rpc/persistence/verify_closure.py"
       },
       "transports": [
         "comet-jsonrpc",
@@ -783,8 +769,7 @@
         "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/README.md"
       },
       "verifier": {
-        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/verify.py",
-        "sha256": "5590016bd715c4fde41914e6c744ab4b48a199c37fc08ac9993eb9bd4978d456"
+        "path": "conformance/mainnet-rpc/provider-soak/v10.5.0/2026-11-02-f51ce12/verify.py"
       },
       "transports": [
         "comet-uri",

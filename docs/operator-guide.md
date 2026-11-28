@@ -1037,7 +1037,9 @@ cp ~/.celestia-rs/mocha/config/priv_validator_key.json /Volumes/<usb>/mocha-priv
   `cometbft_consensus_missing_validators`,
   `cometbft_consensus_validator_missed_blocks`, `cometbft_p2p_peers`,
   `cometbft_mempool_size`, …, labelled `chain_id`), so Go dashboards and
-  alerts work unchanged.
+  alerts work unchanged. For a provisioned dashboard, see the
+  [Linux Compose setup](../packaging/linux/monitoring/README.md) or the
+  [macOS dashboard and alerts](../packaging/macos/monitoring/README.md).
 - **Reporting a problem:** `celestia-rs debug-bundle` writes
   `celestia-rs-debug-<UTC time>.tar.gz` in the working directory (or
   `--output <file>`) and prints its path. Attach it to a

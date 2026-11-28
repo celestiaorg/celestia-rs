@@ -85,13 +85,13 @@ TRANSPORTS = {"comet-uri", "comet-jsonrpc", "comet-websocket", "core-grpc", "cos
 
 
 def living(root, binding):
-    """A file that ordinary pull requests edit: documentation or Rust source.
+    """A file that ordinary pull requests edit: documentation, a verifier or Rust source.
 
     It is bound by path. A content hash here would fail the check on every
     unrelated edit of the file, so only frozen evidence carries one.
     """
     if set(binding) != {"path"}:
-        raise ValueError("documentation and runtime sources are bound by path only")
+        raise ValueError("documentation, verifiers and runtime sources are bound by path only")
     path = root / binding["path"]
     if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()) or not path.is_file():
         raise ValueError("missing, symlinked or out-of-tree scoped artifact")
@@ -99,7 +99,7 @@ def living(root, binding):
 
 
 def artifact(root, binding):
-    """Frozen evidence (a receipt) or the verifier that runs on it: path and SHA-256."""
+    """Frozen evidence (a receipt): path and SHA-256."""
     if set(binding) != {"path", "sha256"}:
         raise ValueError("scoped artifact must bind path and SHA-256")
     path = root / binding["path"]
@@ -135,7 +135,7 @@ def validate(audit, root=ROOT):
         if verifier is not None:
             if row["verifier"]["path"] != verifier:
                 raise ValueError("scoped verifier path changed")
-            artifact(root, row["verifier"])
+            living(root, row["verifier"])
         if not row["scope"] or not row["provenance_limits"] or not row["exclusions"]:
             raise ValueError("scoped package must state scope, provenance limits and exclusions")
         if not row["transports"] or len(row["transports"]) != len(set(row["transports"])) or set(row["transports"]) != TRANSPORT_CONTRACTS[row["id"]]:
@@ -165,7 +165,7 @@ def validate(audit, root=ROOT):
 
 
 def verify_scoped(audit, root=ROOT):
-    # Receipts and verifiers have been hash-checked. Commands are fixed Python file invocations;
+    # Receipts have been hash-checked; verifier paths are fixed in CONTRACTS. Commands are fixed Python file invocations;
     # no node, Cargo build, new oracle capture or network request runs here.
     validate(audit, root)
     for row in audit["packages"]:
