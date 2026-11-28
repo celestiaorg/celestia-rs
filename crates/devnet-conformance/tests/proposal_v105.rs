@@ -116,8 +116,8 @@ fn v10_5_proposal_drops_tx_whose_ante_panics() {
                         data_root_hash: resp.data_root_hash,
                         height: req.height,
                         time: req.time,
-                        proposer_address: req.proposer_address,
-                        next_validators_hash: req.next_validators_hash,
+                        proposer_address: req.proposer_address.clone(),
+                        next_validators_hash: req.next_validators_hash.clone(),
                         ..Default::default()
                     })
                     .unwrap()
@@ -125,6 +125,21 @@ fn v10_5_proposal_drops_tx_whose_ante_panics() {
                 assert_eq!(
                     status,
                     abci::response_process_proposal::ProposalStatus::Accept as i32,
+                    "{}",
+                    row["name"]
+                );
+                // A Go abort stands in only when celestia-rs itself dropped
+                // a tx for a panic: without the panic tx nothing is dropped,
+                // so Go aborting there is a real difference.
+                req.txs.remove(0);
+                let clean = app.prepare_proposal(&req).unwrap();
+                assert!(app.last_prepare_panic_drops().is_empty());
+                let go_abort = abci::ResponsePrepareProposal {
+                    txs: req.txs.clone(),
+                    ..Default::default()
+                };
+                assert!(
+                    !app.replaces_go_prepare_abort(&req, &go_abort, &clean),
                     "{}",
                     row["name"]
                 );

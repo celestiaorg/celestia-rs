@@ -590,16 +590,24 @@ impl App {
         &self.prepare_panic_drops
     }
 
-    /// Whether `ours` may stand in for `go` in a differential check: `go`
-    /// is the Go abort response to `req` (see [`is_go_prepare_abort`]) and
-    /// `ours` is a proposal that `ProcessProposal` accepts.
+    /// Whether `ours` may stand in for `go` in a differential check that
+    /// has only recorded Go responses: `go` is the Go abort response to
+    /// `req` (see [`is_go_prepare_abort`]), the last `prepare_proposal`
+    /// dropped a tx for a panic, and `ours` is a proposal without those txs
+    /// that `ProcessProposal` accepts. A check that can ask Go again should
+    /// instead require `ours` to equal Go's response to `req` without
+    /// [`Self::last_prepare_panic_drops`].
     pub fn replaces_go_prepare_abort(
         &mut self,
         req: &RequestPrepareProposal,
         go: &ResponsePrepareProposal,
         ours: &ResponsePrepareProposal,
     ) -> bool {
-        if !is_go_prepare_abort(req, go) {
+        let drops = &self.prepare_panic_drops;
+        if drops.is_empty()
+            || ours.txs.iter().any(|t| drops.contains(t))
+            || !is_go_prepare_abort(req, go)
+        {
             return false;
         }
         let status = self
