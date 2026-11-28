@@ -21,6 +21,7 @@ pub mod chunks;
 pub mod conn;
 pub mod messages;
 pub mod reactor;
+mod rpc_peer;
 pub mod snapshots;
 pub mod state;
 pub mod stateprovider;

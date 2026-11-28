@@ -297,3 +297,66 @@ async fn discovery_round_redials_persistent_peers() {
     client.stop();
     server.stop();
 }
+
+/// Restore and refetch a chunk through the configured RPC server with no P2P peers.
+#[test]
+fn restore_over_rpc_without_peers() {
+    use std::io::{BufRead as _, BufReader, Write as _};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        for _ in 0..CHUNKS + 2 {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut lines = BufReader::new(&socket).lines();
+            let request = lines.next().unwrap().unwrap();
+            for line in lines {
+                if line.unwrap().is_empty() {
+                    break;
+                }
+            }
+            let path = request.split_whitespace().nth(1).unwrap();
+            let reply = if path == "/snapshots" {
+                serde_json::to_value(Server.list_snapshots().unwrap()).unwrap()
+            } else {
+                let index = path
+                    .strip_prefix("/snapshot_chunk?height=7&format=1&index=")
+                    .unwrap()
+                    .parse::<u32>()
+                    .unwrap();
+                serde_json::to_value(abci::ResponseLoadSnapshotChunk { chunk: body(index) })
+                    .unwrap()
+            };
+            let data = serde_json::json!({"jsonrpc":"2.0","id":-1,"result":reply}).to_string();
+            write!(
+                socket,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{data}",
+                data.len()
+            )
+            .unwrap();
+        }
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let client = Arc::new(Client::default());
+    let r = Arc::new(Reactor::new(
+        Config {
+            temp_dir: tmp.path().into(),
+            ..Config::default()
+        },
+        client.clone(),
+    ));
+    let stop = Arc::clone(&r);
+    let (done, wait) = std::sync::mpsc::channel();
+    let watchdog = std::thread::spawn(move || {
+        if wait.recv_timeout(Duration::from_secs(20)).is_err() {
+            stop.stop_sync();
+        }
+    });
+    let (state, commit) = r
+        .sync_with_rpc(Arc::new(Trusted), Duration::from_secs(5), &[base])
+        .unwrap();
+    done.send(()).unwrap();
+    watchdog.join().unwrap();
+    server.join().unwrap();
+    assert_eq!((state.last_block_height, commit.height), (7, 7));
+    assert_eq!(*client.applied.lock().unwrap(), [0, 1, 2, 2, 3, 4, 5]);
+}

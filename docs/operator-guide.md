@@ -1454,9 +1454,11 @@ celestia-rs query bank balances <celestia1…> --node $RPC        # (verified)
 A fresh node can block-sync Mocha from genesis, but that replays 1.7M+
 blocks. Two faster routes; try A first.
 
-**Route A — state sync from Mocha peers (P2P).** The node discovers Go
-nodes' state-sync snapshots over P2P, verifies them with the light client
-against the RPC servers, restores the app state and block-syncs the rest.
+**Route A — state sync from Mocha.** The node requests snapshot offers from
+P2P peers and the configured state-sync RPC servers in parallel. A server
+that exposes `/snapshots` and `/snapshot_chunk` can supply the restore even
+when its P2P slots are full. The node verifies the application hash against
+the light client, restores the app state and block-syncs the rest.
 
 Automatic state sync uses `trust_height` as the minimum snapshot height.
 If peers only advertise older snapshots, the node keeps requesting offers.
