@@ -321,11 +321,18 @@ fn read_snapshot(root: &Path, want: Option<u64>) -> anyhow::Result<LocalSnapshot
     };
     // Go writes `<height>/<format>`: format 3 (cosmos-sdk v0.50, app
     // version 4 on) or format 2 (cosmos-sdk v0.46, app versions 1 to 3).
-    let format = [snapshots::CURRENT_FORMAT, snapshots::FORMAT_V046]
+    let height_dir = root.join(height.to_string());
+    let (format, dir) = [snapshots::CURRENT_FORMAT, snapshots::FORMAT_V046]
         .into_iter()
-        .find(|f| root.join(height.to_string()).join(f.to_string()).is_dir())
-        .unwrap_or(snapshots::CURRENT_FORMAT);
-    let dir = root.join(height.to_string()).join(format.to_string());
+        .map(|format| (format, height_dir.join(format.to_string())))
+        .find(|(_, dir)| {
+            // archive-export retains failed attempts beside usable formats.
+            // A later successful upload writes metadata.json last. Plain Go
+            // snapshot directories have no export markers.
+            dir.is_dir()
+                && (!dir.join("failed.json").is_file() || dir.join("metadata.json").is_file())
+        })
+        .with_context(|| format!("no usable snapshot format at {}", height_dir.display()))?;
     let mut chunks: Vec<u32> = std::fs::read_dir(&dir)
         .with_context(|| format!("read {}", dir.display()))?
         .filter_map(|e| e.ok()?.file_name().to_str()?.parse().ok())
@@ -1419,20 +1426,29 @@ mod tests {
     }
 
     /// A cosmos-sdk v0.46 snapshot (format 2, celestia-app v1 to v3) is
-    /// read from `<height>/2`; format 3 wins when both exist.
+    /// read from `<height>/2`; format 3 wins when both formats are usable.
     #[test]
-    fn local_snapshot_formats() {
-        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    fn local_snapshot_formats() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
         let v046 = dir.path().join("500").join("2");
-        std::fs::create_dir_all(&v046).unwrap_or_else(|e| panic!("{e}"));
-        std::fs::write(v046.join("0"), b"v046").unwrap_or_else(|e| panic!("{e}"));
-        let s = read_snapshot(dir.path(), None).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::create_dir_all(&v046)?;
+        std::fs::write(v046.join("0"), b"v046")?;
+        let s = read_snapshot(dir.path(), None)?;
         assert_eq!((s.snapshot.height, s.snapshot.format), (500, 2));
         let v050 = dir.path().join("500").join("3");
-        std::fs::create_dir_all(&v050).unwrap_or_else(|e| panic!("{e}"));
-        std::fs::write(v050.join("0"), b"v050").unwrap_or_else(|e| panic!("{e}"));
-        let s = read_snapshot(dir.path(), Some(500)).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::create_dir_all(&v050)?;
+        std::fs::write(v050.join("0"), b"v050")?;
+        let s = read_snapshot(dir.path(), Some(500))?;
         assert_eq!(s.snapshot.format, 3);
+        // At mainnet height 6,680,339 the v0.50 export failed verification.
+        // Its chunks remain on disk beside the usable v0.46 export.
+        std::fs::write(v050.join("failed.json"), b"{}")?;
+        assert_eq!(read_snapshot(dir.path(), Some(500))?.snapshot.format, 2);
+        std::fs::write(v046.join("failed.json"), b"{}")?;
+        assert!(read_snapshot(dir.path(), Some(500)).is_err());
+        std::fs::write(v050.join("metadata.json"), b"{}")?;
+        assert_eq!(read_snapshot(dir.path(), Some(500))?.snapshot.format, 3);
+        Ok(())
     }
 
     /// A block with duplicate-vote evidence survives the RPC JSON (our
