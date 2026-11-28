@@ -1337,10 +1337,11 @@ impl App {
                     Ok(()) => {
                         let release = Release::executing(req.app_version);
                         let v10_stores = release.has_fibre();
-                        let mut optional: Vec<&'static str> = Vec::new();
-                        if !v10_stores {
-                            optional.extend(stores::ADDED_IN_V10);
-                        }
+                        // The v10 stores are optional at every version: a
+                        // snapshot of the last v9 block (offered at app
+                        // version 10) predates the store loader, which
+                        // adds them at the next height.
+                        let mut optional: Vec<&'static str> = stores::ADDED_IN_V10.to_vec();
                         // Stores of the v8 store loader (`zkism`); app
                         // versions 4 to 6 have none.
                         let v8_stores = stores::ADDED_IN_V8
@@ -1419,6 +1420,9 @@ impl App {
             Ok(done) => {
                 if let Some(id) = done {
                     self.snapshot_optional_stores.clear();
+                    // Optional stores the snapshot did not carry were
+                    // unmounted from the root store.
+                    self.ms.forget_unmounted_iavl();
                     tracing::info!(height = id.version, "restored state-sync snapshot");
                     if let Err(e) = self.load_committed_state() {
                         tracing::error!(error = %e, "failed to load restored state");

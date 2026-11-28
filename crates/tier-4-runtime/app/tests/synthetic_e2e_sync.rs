@@ -498,6 +498,11 @@ fn restart_around_every_upgrade(options: &app::AppOptions) {
 /// format 2, offered at app version 4, and the first restored block hands
 /// off to the v0.50 app.
 const RESTORE_AT: [i64; 11] = [3, 8, 13, 15, 20, 30, 40, 50, 59, 70, 79];
+/// The last block of each app version from 4 (one below each later
+/// upgrade height, as the mainnet checkpoints 6,748,821, 8,662,012,
+/// 10,960,599 and 11,771,698 are): the block commits the next consensus
+/// app version on the old release's store set.
+const RESTORE_AT_UPGRADE: [i64; 6] = [25, 36, 46, 56, 66, 76];
 
 #[test]
 fn state_sync_in_every_era() {
@@ -515,7 +520,7 @@ fn state_sync_in_every_era() {
     }
     let listed = a.list_snapshots().snapshots;
     let dir = home.path().join("data/snapshots");
-    for h in RESTORE_AT {
+    for h in RESTORE_AT.into_iter().chain(RESTORE_AT_UPGRADE) {
         let height = u64::try_from(h).unwrap();
         let s = listed
             .iter()

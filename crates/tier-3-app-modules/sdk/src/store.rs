@@ -284,6 +284,15 @@ impl MultiStore {
         Ok(())
     }
 
+    /// Forgets each IAVL store that the root store no longer holds (a
+    /// snapshot restore unmounts optional stores the snapshot does not
+    /// carry), so a later store upgrade mounts it again.
+    pub fn forget_unmounted_iavl(&mut self) {
+        let root = &self.root;
+        self.kinds
+            .retain(|name, kind| *kind != Kind::Iavl || root.get_store(name).is_ok());
+    }
+
     /// Whether a store is mounted.
     #[must_use]
     pub fn is_mounted(&self, name: &str) -> bool {
