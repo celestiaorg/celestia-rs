@@ -560,6 +560,10 @@ impl App {
         ours: &ResponsePrepareProposal,
     ) -> bool {
         if !is_go_prepare_abort(req, go) {
+            eprintln!(
+                "DBG not-go-abort h={} req_txs={} go_txs={} go_square={} go_root_empty={} same_txs={}",
+                req.height, req.txs.len(), go.txs.len(), go.square_size, go.data_root_hash.is_empty(), go.txs == req.txs
+            );
             return false;
         }
         let status = self
@@ -574,6 +578,9 @@ impl App {
                 ..RequestProcessProposal::default()
             })
             .map(|r| r.status);
+        if status.as_ref().ok() != Some(&(ProposalStatus::Accept as i32)) {
+            eprintln!("DBG own-proposal-rejected h={} status={:?}", req.height, status.as_ref().map_err(|e| e.log.clone()));
+        }
         status.ok() == Some(ProposalStatus::Accept as i32)
     }
 
