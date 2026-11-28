@@ -17,3 +17,5 @@ See the [summary charts](https://celestiaorg.github.io/celestia-rs/#benchmarks) 
 
 - [Replay and full-node benchmarks](replay-and-node-benchmarks.md) covers the Mac Mini M4 comparisons, Linux reruns, application-state disk usage, and proposal pipeline tuning. It includes [reproduction commands](replay-and-node-benchmarks.md#reproduce-mac-mini-or-any-machine).
 - [Memory and allocator benchmarks](memory.md) covers long-running memory soaks, RSS charts, and the mimalloc comparison.
+- [Block execution speed, November 2026](block-execution-2026-11.md) records the execution-speed changes at mainnet height ~560k: what merged, what was measured and dropped, the method, and open follow-ups.
+- [Profiling runbook](profiling-runbook.md) gives the exact steps to profile one replay window from a restored checkpoint home.
