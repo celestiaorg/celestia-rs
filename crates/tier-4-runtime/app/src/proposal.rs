@@ -83,15 +83,41 @@ impl From<SdkError> for Abort {
     }
 }
 
+thread_local! {
+    /// Request txs that the current PrepareProposal dropped because their
+    /// decoding or ante handler panicked (Go aborts the whole handler for
+    /// these). Differential harnesses use them to ask Go for the same
+    /// proposal without these txs ([`App::last_prepare_panic_drops`]).
+    static PANIC_DROPS: std::cell::RefCell<Vec<Vec<u8>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Records request tx `raw` as dropped for a panic (once).
+fn note_panic_drop(raw: &[u8]) {
+    PANIC_DROPS.with(|d| {
+        let mut d = d.borrow_mut();
+        if !d.iter().any(|r| r == raw) {
+            d.push(raw.to_vec());
+        }
+    });
+}
+
+/// The recorded panic drops, leaving the record empty.
+fn take_panic_drops() -> Vec<Vec<u8>> {
+    PANIC_DROPS.with(|d| std::mem::take(&mut *d.borrow_mut()))
+}
+
 /// A tx decoding in `Fill`: `None` when the decoder returns an error,
 /// including a Go panic in the decoder (`UnpackInterfaces` through a nil
 /// pointer); the tx is skipped.
-fn fill_decode(r: sdk::Result<Tx>) -> Option<Tx> {
+/// `raw` is the request tx (recorded when the decoder panicked).
+fn fill_decode(r: sdk::Result<Tx>, raw: &[u8]) -> Option<Tx> {
     match r {
         Ok(tx) => Some(tx),
         Err(e) => {
             if e.is_panic() {
                 tracing::error!(error = %e.log, "dropping tx whose decoding panicked in PrepareProposal");
+                note_panic_drop(raw);
             }
             None
         }
@@ -429,6 +455,7 @@ fn ante_fill(
     ctx: &mut Context<'_>,
     tx: &Tx,
     deps: &x_ante::StoreDeps,
+    raw: &[u8],
 ) -> Result<(), x_ante::AnteError> {
     let cp = ctx.branch();
     let result = ante(ctx, tx, deps);
@@ -436,6 +463,7 @@ fn ante_fill(
         Err(e) if e.panicked => {
             ctx.discard(cp);
             tracing::error!(error = %e.error.log, "dropping tx whose ante handler panicked in PrepareProposal");
+            note_panic_drop(raw);
         }
         _ => ctx.write(cp),
     }
@@ -446,7 +474,7 @@ fn ante_fill(
 /// On error Go keeps the parent context, including its gas meter; on
 /// success it keeps the tx meter and writes only the cached store changes.
 /// A panic fails the tx like an error (Go aborts the whole handler).
-fn ante_fill_cached(ctx: &mut Context<'_>, tx: &Tx, deps: &x_ante::StoreDeps) -> bool {
+fn ante_fill_cached(ctx: &mut Context<'_>, tx: &Tx, deps: &x_ante::StoreDeps, raw: &[u8]) -> bool {
     let gas = ctx.gas.clone();
     let events = std::mem::take(&mut ctx.events);
     let cp = ctx.branch();
@@ -458,6 +486,7 @@ fn ante_fill_cached(ctx: &mut Context<'_>, tx: &Tx, deps: &x_ante::StoreDeps) ->
             && e.panicked
         {
             tracing::error!(error = %e.error.log, "dropping tx whose ante handler panicked in PrepareProposal");
+            note_panic_drop(raw);
         }
         ctx.discard(cp);
         ctx.gas = gas;
@@ -539,15 +568,26 @@ impl App {
         proposed.0 = None;
         let blob_tx_cache = std::mem::take(&mut self.blob_tx_cache);
         let version = self.execution_version();
+        take_panic_drops();
         let res = self.with_proposal_ctx(header, ExecMode::PrepareProposal, |ctx, deps| {
             prepare(ctx, deps, req, &mut proposed, &blob_tx_cache, version)
         });
+        self.prepare_panic_drops = take_panic_drops();
         self.proposed = proposed;
         self.blob_tx_cache = blob_tx_cache;
         Ok(res.unwrap_or_else(|_| ResponsePrepareProposal {
             txs: req.txs.clone(),
             ..ResponsePrepareProposal::default()
         }))
+    }
+
+    /// Request txs that the last [`Self::prepare_proposal`] dropped because
+    /// their decoding or ante handler panicked (each once). Go v9 /
+    /// v10 abort the whole handler for such a tx; a differential check asks
+    /// Go again without these txs and requires an equal response.
+    #[must_use]
+    pub fn last_prepare_panic_drops(&self) -> &[Vec<u8>] {
+        &self.prepare_panic_drops
     }
 
     /// Whether `ours` may stand in for `go` in a differential check: `go`
@@ -637,7 +677,7 @@ fn separate<'a>(txs: impl Iterator<Item = &'a [u8]>) -> Separated<'a> {
             Some(Ok(u)) => s.blob.push((raw, u)),
             Some(Err(_)) => {}
             None => {
-                let Some(tx) = fill_decode(txdecode::decode(raw)) else {
+                let Some(tx) = fill_decode(txdecode::decode(raw), raw) else {
                     continue;
                 };
                 if has_pfb(&tx) {
@@ -730,7 +770,7 @@ fn fill(
         if !builder.append_tx(raw) {
             continue;
         }
-        if !ante_fill_cached(ctx, tx, deps) {
+        if !ante_fill_cached(ctx, tx, deps, raw) {
             let _ = builder.revert_last_tx();
             continue;
         }
@@ -744,7 +784,7 @@ fn fill(
 
     let mut blob_msgs = 0usize;
     for (raw, u) in &sep.blob {
-        let Some(tx) = fill_decode(txdecode::decode(&u.tx)) else {
+        let Some(tx) = fill_decode(txdecode::decode(&u.tx), raw) else {
             continue;
         };
         ctx.tx_bytes.clone_from(&u.tx);
@@ -761,7 +801,7 @@ fn fill(
             Ok(true) => {}
             Ok(false) | Err(_) => continue,
         }
-        if !ante_fill_cached(ctx, &tx, deps) {
+        if !ante_fill_cached(ctx, &tx, deps, raw) {
             let _ = builder.revert_last_blob_tx();
             continue;
         }
@@ -799,7 +839,7 @@ fn fill_v9(
     let rejects_duplicates = ctx.release().rejects_duplicate_tx_raw_fields();
     let max_tx_size = ctx.release().max_tx_size();
     let mut normal: Vec<&[u8]> = Vec::new();
-    let mut blobs: Vec<UnwrappedBlobTx> = Vec::new();
+    let mut blobs: Vec<(&[u8], UnwrappedBlobTx)> = Vec::new();
     for raw in within_bytes {
         if raw.len() > max_tx_size {
             continue;
@@ -813,10 +853,10 @@ fn fill_v9(
             continue;
         }
         match b {
-            Some(Ok(u)) => blobs.push(u),
+            Some(Ok(u)) => blobs.push((raw, u)),
             Some(Err(_)) => {}
             None => {
-                if fill_decode(txdecode::decode_v9(raw)).is_some() {
+                if fill_decode(txdecode::decode_v9(raw), raw).is_some() {
                     normal.push(raw);
                 }
             }
@@ -827,7 +867,7 @@ fn fill_v9(
     let mut kept = Vec::new();
     let mut sdk_count = 0usize;
     for raw in &normal {
-        let Some(tx) = fill_decode(txdecode::decode_v9(raw)) else {
+        let Some(tx) = fill_decode(txdecode::decode_v9(raw), raw) else {
             continue;
         };
         ctx.tx_bytes = raw.to_vec();
@@ -842,7 +882,7 @@ fn fill_v9(
             let _ = builder.revert_last_tx();
             continue;
         }
-        if let Err(e) = ante_fill(ctx, &tx, deps) {
+        if let Err(e) = ante_fill(ctx, &tx, deps, raw) {
             zeroed |= e.zero_ctx;
             let _ = builder.revert_last_tx();
             continue;
@@ -852,8 +892,8 @@ fn fill_v9(
     }
 
     let mut blob_msgs = 0usize;
-    for u in &blobs {
-        let Some(tx) = fill_decode(txdecode::decode_v9(&u.tx)) else {
+    for (raw, u) in &blobs {
+        let Some(tx) = fill_decode(txdecode::decode_v9(&u.tx), raw) else {
             continue;
         };
         ctx.tx_bytes.clone_from(&u.tx);
@@ -871,7 +911,7 @@ fn fill_v9(
             let _ = builder.revert_last_blob_tx();
             continue;
         }
-        if let Err(e) = ante_fill(ctx, &tx, deps) {
+        if let Err(e) = ante_fill(ctx, &tx, deps, raw) {
             zeroed |= e.zero_ctx;
             let _ = builder.revert_last_blob_tx();
             continue;
@@ -984,7 +1024,7 @@ fn process_fibre_txs(
             discard(ctx);
             continue;
         }
-        if ante_fill(ctx, &tx, deps).is_err() || execute_tx_msgs(ctx, &tx).is_err() {
+        if ante_fill(ctx, &tx, deps, raw).is_err() || execute_tx_msgs(ctx, &tx).is_err() {
             let _ = builder.revert_last_pay_for_fibre_tx();
             discard(ctx);
             continue;
@@ -1258,9 +1298,12 @@ mod tests {
         .encode_to_vec();
         let tx = txdecode::decode(&raw).unwrap();
         let depth = ctx.multistore().depth();
-        assert!(!ante_fill_cached(&mut ctx, &tx, &deps));
-        assert!(ante_fill(&mut ctx, &tx, &deps).is_err_and(|e| e.panicked));
+        take_panic_drops();
+        assert!(!ante_fill_cached(&mut ctx, &tx, &deps, &raw));
+        assert!(ante_fill(&mut ctx, &tx, &deps, &raw).is_err_and(|e| e.panicked));
         assert_eq!(ctx.multistore().depth(), depth);
+        // The differential harness re-asks Go without the dropped tx.
+        assert_eq!(take_panic_drops(), vec![raw]);
     }
 
     /// A `MsgCreateClient` whose solo machine `ClientState` has no
@@ -1295,9 +1338,12 @@ mod tests {
         }
         .encode_to_vec();
         assert!(txdecode::decode(&raw).is_err_and(|e| e.is_panic()));
+        take_panic_drops();
         let s = separate(std::iter::once(raw.as_slice()));
         assert!(s.normal.is_empty() && s.pff.is_empty());
-        assert!(fill_decode(txdecode::decode(b"\x01")).is_none());
+        assert!(fill_decode(txdecode::decode(b"\x01"), b"\x01").is_none());
+        // Only the panicking decode is recorded, not the plain decode error.
+        assert_eq!(take_panic_drops(), vec![raw]);
     }
 
     type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
