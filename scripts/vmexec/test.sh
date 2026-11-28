@@ -286,17 +286,23 @@ exit 0
 EOF
 # ps reports the node's RSS (KiB) for the celestia-rs process.
 printf '#!/bin/bash\n[ "$*" = "-o rss= -C celestia-rs" ] && echo " 4194304"\n' >"$W/bin/ps"
-chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs" "$W/bin/ps"
+# pgrep finds "the node": a sleep stands in, so /proc/<pid>/smaps_rollup is real.
+sleep 300 & fake_node=$!
+printf '#!/bin/bash\necho %s\n' "$fake_node" >"$W/bin/pgrep"
+chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs" "$W/bin/ps" "$W/bin/pgrep"
 echo 'INFO celestia_rs::follow: followed height=150100 tip=1' >"$W/data/home-120000/logs/follow.log"
 PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=2 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1 &
 wpid=$!
 wait_until 30 test -e "$W/bucket/segments_120000_stalled"
-kill "$wpid" 2>/dev/null || true
+kill "$wpid" "$fake_node" 2>/dev/null || true
 wait "$wpid" 2>/dev/null || true
+wait "$fake_node" 2>/dev/null || true
 check  "watch stall writes the marker"       grep -q 'stalled .* height=150100' "$W/bucket/segments_120000_stalled"
 check  "watch stall uploads the log tail"    test -e "$W/bucket/rs-replay_120000_stall-tail-$(hostname).log"
 refute "watch stall is not a failure"        test -e "$W/bucket/segments_120000_failed"
 check  "watch logs the node RSS per row"     grep -qP '\t150100\tactive\t.*\t4194304$' "$W/data/heights-120000.tsv"
+check  "watch logs smaps and status of the node" grep -qP '^[0-9]+\t150100\tRss=[0-9]+ Anonymous=[0-9]+ (?=.*VmHWM=[0-9]+ )(?=.*RssAnon=[0-9]+ )(?=.*RssFile=[0-9]+ )(?=.*Threads=[0-9]+ )' "$W/data/mem-120000.tsv"
+check  "watch uploads the memory samples"    test -e "$W/bucket/rs-replay_120000_mem-$(hostname).tsv"
 
 # --- segment watcher: a failed marker upload is retried on the next poll (stalled and resumed) ---
 W=$t/watch-retry
