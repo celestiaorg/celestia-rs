@@ -96,6 +96,12 @@ fn v10_5_proposal_drops_tx_whose_ante_panics() {
                 let expected = hex::decode(row["response"].as_str().unwrap()).unwrap();
                 assert_eq!(resp.encode_to_vec(), expected, "{}", row["name"]);
                 assert!(!app::proposal::is_go_prepare_abort(&req, &resp));
+                assert_eq!(
+                    app.last_prepare_panic_drops(),
+                    std::slice::from_ref(&panic_tx),
+                    "{}",
+                    row["name"]
+                );
                 // What Go v10 returns for this request. The differential
                 // checks accept the celestia-rs proposal in its place, but
                 // only a proposal that ProcessProposal accepts.
