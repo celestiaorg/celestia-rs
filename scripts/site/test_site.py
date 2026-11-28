@@ -291,13 +291,8 @@ class HomePage(unittest.TestCase):
         ):
             self.assertNotIn(phrase.lower(), self.text.lower(), phrase)
 
-    def test_benchmarks_cite_the_latest_mainnet_runs(self):
-        for report in ("operator-sync-2026-11-26.md", "operator-block-range-2026-11-26.md"):
-            self.assertTrue((DOCS / "benchmarks" / report).is_file(), report)
-            self.assertTrue(
-                any(h and h.endswith("docs/benchmarks/" + report) for h in self.page.hrefs),
-                f"no link to {report}",
-            )
+    def test_benchmarks_show_the_go_version_without_report_links(self):
+        self.assertFalse(any("/docs/benchmarks" in h for h in self.page.hrefs if h))
         self.assertIn("celestia-app v11.0.0", self.text)
 
     def test_hardware_requirements_per_profile(self):
