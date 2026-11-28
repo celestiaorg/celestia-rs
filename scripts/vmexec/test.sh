@@ -430,6 +430,23 @@ printf 'INFO celestia_rs::follow: stop height reached height=250000 verified_hea
 PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=600 timeout 30 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1
 check  "watch writes done for a finished replay" test -e "$W/bucket/segments_120000_done"
 
+# The follow CLI can return zero when interrupted. Exercise the snapshot
+# wrapper with the same final-height and missing-header cases as the watcher.
+mkdir -p "$W/snap/120000/2"
+cat >"$W/bin/mock-follow" <<'EOF'
+#!/bin/bash
+cat "$MOCK_FOLLOW_LOG"
+EOF
+chmod +x "$W/bin/mock-follow"
+snapshot_follow() {
+  CELESTIA_RS_BIN="$W/bin/mock-follow" CELESTIA_RS_HOME="$W/wrapper-home" RPC=http://localhost \
+    MOCK_FOLLOW_LOG="$W/data/home-120000/logs/follow.log" bash "$here/../mainnet-snapshot-follow.sh" "$W/snap" 120000 "$1"
+}
+check  "snapshot wrapper accepts authenticated stop" snapshot_follow 250000
+echo "INFO celestia_rs::follow: follow finished first=120001 last=250000 blocks=130000" >"$W/data/home-120000/logs/follow.log"
+refute "snapshot wrapper rejects interrupted finite run" snapshot_follow 250000
+check  "unbounded snapshot wrapper stops cleanly" snapshot_follow 0
+
 check "join authenticated segment ranges" python3 -m unittest discover -s "$here/segments" -p test_coverage.py
 
 echo

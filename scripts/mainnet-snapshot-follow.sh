@@ -73,4 +73,11 @@ if [[ $status -ne 0 ]]; then
   tail -n 20 "$log" >&2
   exit "$status"
 fi
-echo "done: blocks $((HEIGHT + 1)) to ${STOP} matched the network"
+if ((STOP == 0)); then
+  echo "unbounded follower stopped; see $log for the last executed height"
+elif grep -qE "(^|[[:space:]])INFO celestia_rs::follow: stop height reached height=$STOP verified_header_height=$((STOP + 1))( |$)" "$log"; then
+  echo "verified the network header at $((STOP + 1)) for stop height $STOP"
+else
+  echo "follower stopped before it authenticated the output of block $STOP" >&2
+  exit 1
+fi
