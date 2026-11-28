@@ -73,7 +73,10 @@ while true; do
       vmx-gcs put $DATA/meta-rs-$sh.json rs-snapshots/from-go-$SEG/$sh/$f/metadata.json && touch $DATA/uploaded-$sh-$f
     fi
   done
-  if [ "$a" != active ] && [ "$a" != activating ]; then
+  # The replay has ended only if its job is down on two consecutive polls: a
+  # deliberate restart (stop, then start again) shows it down for one.
+  if [ "$a" = active ] || [ "$a" = activating ]; then down=0; else down=$((${down:-0} + 1)); fi
+  if [ "$down" -ge 2 ]; then
     [ -n "$L" ] && { tail -n 300 "$L" > $DATA/stop-tail.log; vmx-gcs put $DATA/stop-tail.log rs-replay/$SEG/stop-tail-$HOST.log; }
     if ls -d $HOME_DIR/follow-diagnostics/* >/dev/null 2>&1; then
       tar -czf $DATA/diag.tgz -C $HOME_DIR follow-diagnostics && vmx-gcs put $DATA/diag.tgz rs-replay/$SEG/diagnostics-$HOST.tgz
