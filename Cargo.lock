@@ -4861,6 +4861,7 @@ dependencies = [
  "clap",
  "p2p",
  "prost 0.13.5",
+ "semver",
  "serde",
  "serde_json",
  "tempfile",

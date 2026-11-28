@@ -16,10 +16,14 @@ pub enum Implementation {
 
 /// The suffix marker celestia-rs appends to the Comet compatibility version.
 pub const RUST_MARKER: &str = "-celestia-rs";
+const APP_MARKER: &str = "-celestia-app.";
 
 /// Classifies a `NodeInfo.version` string.
 #[must_use]
 pub fn classify(version: &str) -> Implementation {
+    let version = version
+        .split_once(APP_MARKER)
+        .map_or(version, |(core, _)| core);
     if version.contains(RUST_MARKER) {
         return Implementation::Rust;
     }
@@ -30,4 +34,15 @@ pub fn classify(version: &str) -> Implementation {
         [major, minor, _] if *major >= 1 || *minor >= 34 => Implementation::Go,
         _ => Implementation::Unknown,
     }
+}
+
+/// Reads the app software release advertised by a Go node in its handshake.
+#[must_use]
+pub fn advertised_app_release(version: &str) -> Option<String> {
+    let (core, release) = version.split_once(APP_MARKER)?;
+    if classify(core) != Implementation::Go || release.len() > 64 {
+        return None;
+    }
+    semver::Version::parse(release).ok()?;
+    Some(release.to_owned())
 }

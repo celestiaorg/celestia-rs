@@ -47,9 +47,8 @@
           the software version that every node reports in its handshake.
           celestia-rs nodes report <code>0.38.17-celestia-rs.&lt;version&gt;</code>,
           which gives their celestia-rs version, such as <code>v0.1.0</code>.
-          Go nodes report only the version of the consensus library they embed,
-          so the crawler reads their celestia-app version, such as
-          <code>v10.6.0</code>, from the node's RPC where that RPC is open.
+          The crawler reads the celestia-app release from the Go node's peer
+          metadata when available, or from the node's public RPC.
         </p>
         <div class="filters" role="tablist" aria-label="Network">
           <button role="tab" data-network="mainnet" aria-selected="true">Mainnet</button>
@@ -88,11 +87,11 @@
             crawler.
           </li>
           <li>
-            The handshake of a Go node does not carry its celestia-app
-            version. The crawler asks each observed node's own RPC for
+            When a Go node does not advertise its app release in the peer
+            handshake, the crawler asks the node's own RPC for
             <code>/abci_info</code> at the RPC address the node advertises
-            (default port 26657). Only nodes with an RPC open to the internet
-            answer; the others are counted as “Unknown (RPC not reachable)”.
+            (default port 26657). The release stays unknown if neither
+            source supplies it.
             <span id="release-coverage"></span>
           </li>
           <li>
