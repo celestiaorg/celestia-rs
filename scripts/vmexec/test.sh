@@ -240,6 +240,7 @@ case \$1 in
   create) touch "$C/vms/\$2" ;;
   delete) mv "$C/vms/\$2" "$C/gone/\$2" 2>/dev/null ;;
   build) [ -e "$C/fail-build" ] && exit 1; echo built ;;
+  job) echo "\$*" >>"$C/job-calls" ;;
 esac
 exit 0
 EOF
@@ -285,6 +286,10 @@ ctl 'MAX_RUNNING=1; tick' >/dev/null 2>&1
 check  "ctl launches a priority height first" test -e "$C/vms/rs-seg-8218900"
 refute "ctl respects the slot limit"          test -e "$C/vms/rs-seg-4000000"
 check  "ctl launches from a format 3 export"  grep -q 'go-snapshots/8218900 8218900->8500000' "$C/bucket/segments/8218900/launched"
+# Extra (non-public) block sources reach the segment VM only from the controller's environment.
+rm -rf "$C/vms"/*; printf '0\n' >"$C/bucket/segments/launch-count"; : >"$C/job-calls"
+ctl 'SEG_EXTRA_RPC=http://rpc.invalid:26657; launch 9217850 go-snapshots/9217850 9217850 9500000 rs-seg-9217850' >/dev/null 2>&1
+check  "ctl passes SEG_EXTRA_RPC to the segment" grep -q 'env SEG_EXTRA_RPC=http://rpc.invalid:26657 bash /data/seg-vm.sh 9217850' "$C/job-calls"
 
 # --- segment watcher: a replay that is active but stuck writes a stalled marker ---------------
 W=$t/watch
@@ -378,6 +383,7 @@ check  "watch publishes the resume after that stall"     test "$(grep -n -m1 'he
 # --- segment VM: 15 segments x prefetch 8 (4 per provider) stay under ~64 requests per provider ---
 check  "seg-vm prefetch fits 15 segments"    grep -qx 'PREFETCH=${PREFETCH:-8}' "$here/segments/seg-vm.sh"
 check  "seg-vm reads a per-segment RPC list" grep -q 'segments/$SEG/rpc' "$here/segments/seg-vm.sh"
+check  "seg-vm defaults to public sources plus SEG_EXTRA_RPC" grep -qx 'RPC=https://rpc.celestia.pops.one,https://public-celestia-rpc.numia.xyz,https://celestia-mainnet-rpc.itrocket.net${SEG_EXTRA_RPC:+,$SEG_EXTRA_RPC}' "$here/segments/seg-vm.sh"
 
 echo
 if ((fails)); then echo "$fails test(s) failed"; exit 1; fi

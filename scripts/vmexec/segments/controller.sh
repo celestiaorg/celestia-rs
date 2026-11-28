@@ -50,7 +50,7 @@ launch() { # launch SEG SRC START STOP NAME
   if ! { $V exec "$name" -- 'git clone -q --depth 1 https://github.com/celestiaorg/celestia-rs /opt/celestia-rs && git -C /opt/celestia-rs log -1 --format="%H %s"' &&
     $V build "$name" | tail -n 3 && [ "${PIPESTATUS[0]}" = 0 ] &&
     $V push "$name" "$here/seg-vm.sh" /data/seg-vm.sh >/dev/null && $V push "$name" "$here/seg-watch.sh" /data/seg-watch.sh >/dev/null &&
-    $V job "$name" start seg --interval 300 --status-cmd 'L=$(ls -t /data/home-*/logs/*.log 2>/dev/null | head -1); [ -n "$L" ] && grep -E "restored|followed height|ERROR|diverg" $L | tail -n 2 | cut -c1-250' -- bash /data/seg-vm.sh "$seg" "$src" "$start" "$stop" &&
+    $V job "$name" start seg --interval 300 --status-cmd 'L=$(ls -t /data/home-*/logs/*.log 2>/dev/null | head -1); [ -n "$L" ] && grep -E "restored|followed height|ERROR|diverg" $L | tail -n 2 | cut -c1-250' -- env SEG_EXTRA_RPC="${SEG_EXTRA_RPC:-}" bash /data/seg-vm.sh "$seg" "$src" "$start" "$stop" &&
     $V job "$name" start segwatch --interval 600 --status-cmd "tail -n 2 /data/heights-$seg.tsv" -- bash /data/seg-watch.sh "$seg" "$stop"; }; then
     log "$name: provisioning failed; deleting the VM"
     $V delete "$name" >/dev/null 2>&1 || true

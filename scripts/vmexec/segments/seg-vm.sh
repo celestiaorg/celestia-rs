@@ -10,13 +10,18 @@
 # (rs-snapshots/<START>/), compare-snapshots checks both item by item first.
 set -uo pipefail
 SEG=$1 SRC=$2 H=$3 STOP=$4
-# Block sources: pops and Numia serve every height and scale to ~40 blocks/s
-# at 32 requests in flight (rs-replay/rpctest/, 2026-11-27); Polkachu's
-# archive RPC answers 429 above ~4-8 in flight, so it is not used for fetching.
-# PREFETCH keeps all segments together under ~64 requests per provider:
-# 15 segments x 8 in flight, spread over two providers, is ~60 each.
-RPC=https://rpc.celestia.pops.one,https://public-celestia-rpc.numia.xyz
+# Block sources: pops, Numia and ITRocket serve every height from 1; pops and
+# Numia scale to ~40 blocks/s at 32 requests in flight (rs-replay/rpctest/,
+# 2026-11-27); Polkachu's archive RPC answers 429 above ~4-8 in flight, so it
+# is not used for fetching. SEG_EXTRA_RPC (comma-separated, set on the
+# controller, never in the repo) adds sources that are not public. follow
+# spreads heights over the list, so each server takes an equal share; with
+# PREFETCH 8 and 15 segments that is ~30 requests in flight per server.
+RPC=https://rpc.celestia.pops.one,https://public-celestia-rpc.numia.xyz,https://celestia-mainnet-rpc.itrocket.net${SEG_EXTRA_RPC:+,$SEG_EXTRA_RPC}
 PREFETCH=${PREFETCH:-8}
+# Memory: mainnet-snapshot-follow.sh runs follow with DB_CACHE_MIB=4096 (the
+# catch-up setting), so a segment's RSS of 8-9 GiB is mostly the 4 GiB
+# application block cache by configuration, not growth.
 # Optional per-segment block sources (segments/SEG/rpc, one comma-separated
 # line): follow spreads heights over the list, so repeating pops and Numia
 # gives a third server a small fixed share.
