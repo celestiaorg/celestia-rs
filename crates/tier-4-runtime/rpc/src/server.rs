@@ -638,6 +638,7 @@ fn url_unescape(s: &str) -> Option<String> {
 
 async fn uri_handler(
     ctx: &Ctx,
+    bulk: bool,
     route: &'static Route,
     query: &str,
     form: Option<&str>,
@@ -674,7 +675,7 @@ async fn uri_handler(
         args.push(a);
     }
     let cache = route.cacheable_with(&args);
-    if route.uri_only {
+    if bulk {
         let Some(guard) = ctx.env.try_acquire(route) else {
             return json_response(
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -732,7 +733,10 @@ async fn uri_handler(
 
 /// `writeListOfEndpoints`.
 fn list_endpoints(host: &str, unsafe_routes: bool) -> Response<Body> {
-    let mut routes: Vec<&Route> = crate::env::ROUTES.iter().collect();
+    let mut routes: Vec<&Route> = crate::env::ROUTES
+        .iter()
+        .chain(crate::env::SNAPSHOT_ROUTES)
+        .collect();
     if unsafe_routes {
         routes.extend(crate::env::UNSAFE_ROUTES.iter());
     }
@@ -779,7 +783,7 @@ async fn jsonrpc_handler(ctx: &Ctx, body: &[u8], host: &str) -> Response<Body> {
     for req in requests {
         let Some(id) = req.id.clone() else { continue };
         let route = find_route(&req.method, ctx.env.config.unsafe_routes);
-        let Some(route) = route.filter(|r| !r.ws && !r.uri_only) else {
+        let Some(route) = route.filter(|r| !r.ws) else {
             responses.push(RpcResponse::method_not_found(Some(id)));
             cache = false;
             continue;
@@ -1113,10 +1117,13 @@ async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
             });
         let host = host.unwrap_or_default().to_owned();
         jsonrpc_handler(ctx, &body, &host).await
-    } else if let Some(route) = path
-        .strip_prefix('/')
-        .and_then(|n| find_route(n, ctx.env.config.unsafe_routes))
-    {
+    } else if let Some((route, bulk)) = path.strip_prefix('/').and_then(|name| {
+        crate::env::SNAPSHOT_ROUTES
+            .iter()
+            .find(|r| r.name == name)
+            .map(|r| (r, true))
+            .or_else(|| find_route(name, ctx.env.config.unsafe_routes).map(|r| (r, false)))
+    }) {
         let query = parts.uri.query().unwrap_or_default().to_owned();
         let is_form = parts
             .headers
@@ -1125,7 +1132,7 @@ async fn handle_inner(ctx: &Ctx, req: Request<Body>) -> Response<Body> {
             .is_some_and(|v| v.starts_with("application/x-www-form-urlencoded"));
         let form = (is_form && matches!(parts.method, Method::POST | Method::PUT | Method::PATCH))
             .then(|| String::from_utf8_lossy(&body).into_owned());
-        uri_handler(ctx, route, &query, form.as_deref()).await
+        uri_handler(ctx, bulk, route, &query, form.as_deref()).await
     } else {
         not_found()
     };
@@ -1438,8 +1445,7 @@ async fn ws_request(
         }
     };
     let id = req.id.clone()?;
-    let Some(route) = find_route(&req.method, env.config.unsafe_routes).filter(|r| !r.uri_only)
-    else {
+    let Some(route) = find_route(&req.method, env.config.unsafe_routes) else {
         return Some(RpcResponse::method_not_found(Some(id)).encode());
     };
     let args = if req.params.is_empty() {
@@ -1826,7 +1832,7 @@ pub(crate) mod broadcast_tests {
             .await
             .expect("body");
         assert!(String::from_utf8_lossy(&bytes).contains("-32601"));
-        assert!(find_route("snapshot_chunk", false).expect("route").uri_only);
+        assert!(find_route("snapshot_chunk", false).is_none());
     }
 
     #[tokio::test]

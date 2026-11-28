@@ -118,7 +118,6 @@ const HEAVY: &[&str] = &[
 ];
 
 const HEAVY_ROUTE: Route = Route {
-    uri_only: false,
     name: "grpc",
     args: &[],
     ws: false,

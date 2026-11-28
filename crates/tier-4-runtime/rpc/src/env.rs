@@ -374,8 +374,6 @@ pub struct Route {
     pub name: &'static str,
     /// Argument names and types.
     pub args: &'static [(&'static str, ArgType)],
-    /// Individual URI requests only; bulk results cannot be batched or queued on a WebSocket.
-    pub uri_only: bool,
     /// WebSocket only.
     pub ws: bool,
     /// `Cacheable(noCacheDefArgs...)`.
@@ -391,16 +389,8 @@ const fn route(name: &'static str, args: &'static [(&'static str, ArgType)]) -> 
         name,
         args,
         ws: false,
-        uri_only: false,
         cacheable: None,
         heavy: false,
-    }
-}
-
-const fn bulk_uri(r: Route) -> Route {
-    Route {
-        uri_only: true,
-        ..heavy(r)
     }
 }
 
@@ -419,17 +409,21 @@ const fn ws(mut r: Route) -> Route {
     r
 }
 
+/// Bulk snapshot responses are available only as individual HTTP URI requests.
+pub(crate) const SNAPSHOT_ROUTES: &[Route] = &[
+    heavy(route("snapshots", &[])),
+    heavy(route(
+        "snapshot_chunk",
+        &[("height", T::Uint), ("format", T::Uint), ("index", T::Uint)],
+    )),
+];
+
 /// `GetRoutes` (celestia-core v0.42.3).
 pub const ROUTES: &[Route] = &[
     ws(route("subscribe", &[("query", T::Str)])),
     ws(route("unsubscribe", &[("query", T::Str)])),
     ws(route("unsubscribe_all", &[])),
     route("health", &[]),
-    bulk_uri(route("snapshots", &[])),
-    bulk_uri(route(
-        "snapshot_chunk",
-        &[("height", T::Uint), ("format", T::Uint), ("index", T::Uint)],
-    )),
     route("status", &[]),
     route("net_info", &[]),
     cached(
