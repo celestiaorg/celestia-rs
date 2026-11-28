@@ -351,6 +351,7 @@ impl MultiStore {
     }
 
     fn committed_get(&self, store: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
+        read_profile::note(store, key);
         match self.kind(store)? {
             Kind::Iavl => Ok(self.root.get_store(store)?.get(key)?),
             Kind::Transient | Kind::Memory => {
@@ -727,5 +728,41 @@ mod range_iter_tests {
         assert_eq!(rev.next().transpose()?, Some((vec![b'j'], vec![9])));
         assert_eq!(rev.next().transpose()?, None);
         Ok(())
+    }
+}
+
+
+/// Experiment: committed reads per block (CELESTIA_READ_PROFILE=1).
+pub mod read_profile {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    static READS: Mutex<Option<HashMap<(String, Vec<u8>), u64>>> = Mutex::new(None);
+
+    fn on() -> bool {
+        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *ON.get_or_init(|| std::env::var_os("CELESTIA_READ_PROFILE").is_some())
+    }
+
+    pub(crate) fn note(store: &str, key: &[u8]) {
+        if !on() {
+            return;
+        }
+        let mut g = READS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        *g.get_or_insert_with(HashMap::new)
+            .entry((store.to_owned(), key.to_vec()))
+            .or_default() += 1;
+    }
+
+    /// Total reads, distinct keys, and the top repeated keys; resets.
+    pub fn take() -> (u64, usize, Vec<((String, Vec<u8>), u64)>) {
+        let mut g = READS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let m = g.take().unwrap_or_default();
+        let total = m.values().sum();
+        let distinct = m.len();
+        let mut v: Vec<_> = m.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.truncate(15);
+        (total, distinct, v)
     }
 }

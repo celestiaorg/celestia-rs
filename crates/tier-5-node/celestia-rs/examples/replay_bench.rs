@@ -468,10 +468,38 @@ fn main() -> anyhow::Result<()> {
             .apply_verified_block(&state, id, &mut block)
             .map_err(|e| anyhow!("execute {h}: {e}"))?;
         times.push(t.elapsed());
+        if std::env::var_os("CELESTIA_READ_PROFILE").is_some() {
+            let (total, distinct, top) = sdk::store::read_profile::take();
+            if h % 500 == 0 || h == 2500 {
+                eprintln!("reads h={h}: total {total}, distinct {distinct}, txs {}", block.data.txs.len());
+                for ((st, k), n) in top {
+                    eprintln!("   {n:5} {st} {}", hex::encode(&k[..k.len().min(24)]));
+                }
+            }
+        }
         let resp = exec
             .state_store
             .load_last_finalize_block_response(h)
             .map_err(|e| anyhow!("response {h}: {e}"))?;
+        if h % 500 == 0 {
+            let state_len = state.bytes().map(|b| b.len()).unwrap_or(0);
+            let ev: usize = resp.events.iter().map(prost::Message::encoded_len).sum();
+            let txr: usize = resp.tx_results.iter().map(prost::Message::encoded_len).sum();
+            eprintln!(
+                "sizes h={h}: response {} B (block events {} in {} events, tx results {} for {} txs), state {} B (vals {} next {} last {})",
+                resp.encoded_len(), ev, resp.events.len(), txr, resp.tx_results.len(), state_len,
+                state.validators.validators.len(), state.next_validators.validators.len(), state.last_validators.validators.len()
+            );
+            let mut kinds: std::collections::BTreeMap<String, (usize, usize)> = std::collections::BTreeMap::new();
+            for e in &resp.events {
+                let k = kinds.entry(e.r#type.clone()).or_default();
+                k.0 += 1;
+                k.1 += prost::Message::encoded_len(e);
+            }
+            for (t, (n, b)) in kinds {
+                eprintln!("   {t}: {n} events, {b} B");
+            }
+        }
         let mut buf = digest.to_vec();
         buf.extend_from_slice(&resp.encode_to_vec());
         digest = hash::sha256(&buf);
