@@ -164,7 +164,7 @@ impl PeerHandle for RpcPeer {
                     chunk: resp.chunk,
                     sender: self.id(),
                 })
-                .is_ok()
+                .unwrap_or(false)
         })
     }
 }
