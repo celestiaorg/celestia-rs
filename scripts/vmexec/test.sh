@@ -274,6 +274,17 @@ check  "ctl retried launch writes launched"  grep -q 'rs-seg-120000 go-snapshots
 printf '3\n' >"$C/bucket/segments/launch-count"
 refute "ctl launch cap stops launches"       ctl 'launch 250000 go-snapshots/250000 250000 500000 rs-seg-250000'
 refute "ctl launch cap creates no VM"        test -e "$C/vms/rs-seg-250000"
+# The v0.50 era continues the plan, and PRIORITY heights launch first: with one
+# free slot, the 8,218,900 evidence checkpoint (format 3) goes before 4,000,000.
+eq     "ctl plan continues into v0.50"        6748821 "$(ctl 'next_of 6680339')"
+eq     "ctl plan reaches the evidence block"  8500000 "$(ctl 'next_of 8218900')"
+rm -rf "$C/vms"/* "$C/bucket/segments"/*; printf '0\n' >"$C/bucket/segments/launch-count"
+mkdir -p "$C/bucket/go-snapshots/4000000/2" "$C/bucket/go-snapshots/8218900/3"
+touch "$C/bucket/go-snapshots/4000000/2/metadata.json" "$C/bucket/go-snapshots/8218900/3/metadata.json"
+ctl 'MAX_RUNNING=1; tick' >/dev/null 2>&1
+check  "ctl launches a priority height first" test -e "$C/vms/rs-seg-8218900"
+refute "ctl respects the slot limit"          test -e "$C/vms/rs-seg-4000000"
+check  "ctl launches from a format 3 export"  grep -q 'go-snapshots/8218900 8218900->8500000' "$C/bucket/segments/8218900/launched"
 
 # --- segment watcher: a replay that is active but stuck writes a stalled marker ---------------
 W=$t/watch
