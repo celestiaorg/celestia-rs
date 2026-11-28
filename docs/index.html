@@ -125,34 +125,33 @@
         </div>
         <div class="charts">
           <figure>
-            <figcaption><strong>Time to a verified tip</strong><span>Rounded minutes · 8 vCPU</span></figcaption>
+            <figcaption><strong>Time to a verified tip</strong><span>8 vCPU</span></figcaption>
             <div class="bar"><span>Rust</span><i class="rs" style="--w: 20.5%"></i><b><time datetime="PT307S">5 min</time></b></div>
             <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b><time datetime="PT1493S">25 min</time></b></div>
           </figure>
           <figure>
-            <figcaption><strong>Snapshot restore</strong><span>Rounded minutes · 32 vCPU</span></figcaption>
+            <figcaption><strong>Snapshot restore</strong><span>32 vCPU</span></figcaption>
             <div class="bar"><span>Rust</span><i class="rs" style="--w: 11.3%"></i><b><time datetime="PT104S">2 min</time></b></div>
             <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b><time datetime="PT921S">15 min</time></b></div>
-            <p class="note">Across all six runs, Rust took under 2 minutes and Go took about 15.</p>
           </figure>
           <figure>
-            <figcaption><strong>Peak memory, consensus and DA bridge</strong><span>GB · 600 blocks · 8 vCPU</span></figcaption>
-            <div class="bar"><span>Rust</span><i class="rs" style="--w: 35.2%"></i><b>4.06</b></div>
-            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>11.54</b></div>
+            <figcaption><strong>Peak memory, consensus and DA bridge</strong><span>600 blocks · 8 vCPU</span></figcaption>
+            <div class="bar"><span>Rust</span><i class="rs" style="--w: 35.2%"></i><b>4.06 GB</b></div>
+            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>11.54 GB</b></div>
             <p class="note">Both served the same 32 share reads with identical results.</p>
           </figure>
           <figure>
-            <figcaption><strong>Peak memory, consensus only</strong><span>GiB · 1,000 blocks · 32 vCPU</span></figcaption>
-            <div class="bar"><span>Rust</span><i class="rs" style="--w: 35.1%"></i><b>3.46</b></div>
-            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>9.86</b></div>
+            <figcaption><strong>Peak memory, consensus only</strong><span>1,000 blocks · 32 vCPU</span></figcaption>
+            <div class="bar"><span>Rust</span><i class="rs" style="--w: 35.1%"></i><b>3.46 GiB</b></div>
+            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>9.86 GiB</b></div>
           </figure>
           <figure>
-            <figcaption><strong>Node home on disk</strong><span>GiB · after 1,000 blocks</span></figcaption>
-            <div class="bar"><span>Rust</span><i class="rs" style="--w: 36.7%"></i><b>1.8</b></div>
-            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>4.9</b></div>
+            <figcaption><strong>Node home on disk</strong><span>After 1,000 blocks</span></figcaption>
+            <div class="bar"><span>Rust</span><i class="rs" style="--w: 36.7%"></i><b>1.8 GiB</b></div>
+            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>4.9 GiB</b></div>
           </figure>
           <figure>
-            <figcaption><strong>CPU time, consensus and DA bridge</strong><span>Rounded minutes · 600 blocks</span></figcaption>
+            <figcaption><strong>CPU time, consensus and DA bridge</strong><span>600 blocks</span></figcaption>
             <div class="bar"><span>Rust</span><i class="rs" style="--w: 66.7%"></i><b><time datetime="PT513S">9 min</time></b></div>
             <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b><time datetime="PT768S">13 min</time></b></div>
           </figure>
@@ -165,11 +164,6 @@
           peers every discovery round has landed and is awaiting a Mainnet
           rerun.
         </aside>
-        <p class="links">
-          <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/benchmarks/operator-sync-2026-11-26.md">State sync and DA bridge report</a>
-          <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/benchmarks/operator-block-range-2026-11-26.md">1,000-block consensus report</a>
-          <a href="https://github.com/celestiaorg/celestia-rs/tree/main/docs/benchmarks">All benchmarks</a>
-        </p>
       </section>
 
       <section id="hardware">
