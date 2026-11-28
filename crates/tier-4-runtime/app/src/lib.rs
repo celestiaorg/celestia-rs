@@ -1297,9 +1297,34 @@ impl App {
         req: abci::RequestOfferSnapshot,
     ) -> abci::ResponseOfferSnapshot {
         use abci::response_offer_snapshot::Result as R;
+        let format_v046 = req
+            .snapshot
+            .as_ref()
+            .is_some_and(|s| s.format == snapshots::FORMAT_V046);
+        let req = if format_v046 && req.app_version == handoff::V4 {
+            // The last cosmos-sdk v0.46 block (mainnet 6,680,339) commits
+            // consensus app version 4 on the app version 3 state; the v4
+            // store loader adds its stores only at the next height. Restore
+            // that release's state (also when it replaces an unfinished
+            // restore); its first block hands off to v0.50.
+            abci::RequestOfferSnapshot {
+                app_version: handoff::V4 - 1,
+                ..req
+            }
+        } else {
+            req
+        };
         if legacy::is_v046(req.app_version) || self.legacy.is_some() || self.snapshot_v046.is_some()
         {
             return self.legacy_offer_snapshot(req);
+        }
+        if format_v046 {
+            // cosmos-sdk v0.50 snapshots are format 3 only. Reject only this
+            // snapshot: format 2 is valid at v0.46 heights and at the v4
+            // hand-off height offered in the same state sync.
+            return abci::ResponseOfferSnapshot {
+                result: R::Reject as i32,
+            };
         }
         let result = match (&mut self.snapshots, req.snapshot) {
             (None, _) => R::Abort,
@@ -1317,6 +1342,10 @@ impl App {
                     Ok(()) => {
                         let release = Release::executing(req.app_version);
                         let v10_stores = release.has_fibre();
+                        // A snapshot of the last v9 block offered at app
+                        // version 10 lacks the v10 stores; pinned Go v10
+                        // aborts that restore too (devnet-conformance
+                        // `go_upgrade_snapshot_restore_boundary`).
                         let mut optional: Vec<&'static str> = Vec::new();
                         if !v10_stores {
                             optional.extend(stores::ADDED_IN_V10);
@@ -1399,6 +1428,9 @@ impl App {
             Ok(done) => {
                 if let Some(id) = done {
                     self.snapshot_optional_stores.clear();
+                    // Optional stores the snapshot did not carry were
+                    // unmounted from the root store.
+                    self.ms.forget_unmounted_iavl();
                     tracing::info!(height = id.version, "restored state-sync snapshot");
                     if let Err(e) = self.load_committed_state() {
                         tracing::error!(error = %e, "failed to load restored state");
@@ -2752,6 +2784,76 @@ mod node_options_tests {
                 destination.ms.is_mounted("zkism"),
                 app_version == 8,
                 "v{app_version}"
+            );
+        }
+    }
+
+    #[test]
+    fn v050_app_versions_reject_format_2_snapshots_alone() {
+        // celestia-app v4 and later restore format 3 only; format 2 at app
+        // version 4 is the v3 state of the hand-off height. Only the offered
+        // snapshot is rejected: format 2 stays valid at other heights of the
+        // same state sync (RejectFormat would drop them all).
+        for app_version in [5, 6, 8, 9, 10] {
+            let home = tempfile::tempdir().expect("app home");
+            let mut app = App::open_with(home.path(), AppOptions::default()).expect("open app");
+            let chunk_hash = hash::sha256(b"chunk").to_vec();
+            let snapshot = snapshots::Snapshot {
+                height: 1,
+                format: snapshots::FORMAT_V046,
+                chunks: 1,
+                hash: chunk_hash.clone(),
+                chunk_hashes: vec![chunk_hash],
+            };
+            let offered = app.offer_snapshot(abci::RequestOfferSnapshot {
+                snapshot: Some(abci::Snapshot {
+                    height: snapshot.height,
+                    format: snapshot.format,
+                    chunks: snapshot.chunks,
+                    hash: snapshot.hash.clone(),
+                    metadata: snapshot.metadata_bytes(),
+                }),
+                app_version,
+                ..Default::default()
+            });
+            assert_eq!(
+                offered.result,
+                abci::response_offer_snapshot::Result::Reject as i32,
+                "app version {app_version}"
+            );
+        }
+    }
+
+    /// A second format 2 offer at app version 4 replaces an unfinished
+    /// hand-off restore (Go restarts state sync with another snapshot).
+    #[test]
+    fn handoff_snapshot_offer_replaces_an_unfinished_restore() {
+        let home = tempfile::tempdir().expect("app home");
+        let mut app = App::open_with(home.path(), AppOptions::default()).expect("open app");
+        for height in [1, 2] {
+            let chunk_hash = hash::sha256(b"chunk").to_vec();
+            let snapshot = snapshots::Snapshot {
+                height,
+                format: snapshots::FORMAT_V046,
+                chunks: 1,
+                hash: chunk_hash.clone(),
+                chunk_hashes: vec![chunk_hash],
+            };
+            let offered = app.offer_snapshot(abci::RequestOfferSnapshot {
+                snapshot: Some(abci::Snapshot {
+                    height: snapshot.height,
+                    format: snapshot.format,
+                    chunks: snapshot.chunks,
+                    hash: snapshot.hash.clone(),
+                    metadata: snapshot.metadata_bytes(),
+                }),
+                app_version: 4,
+                ..Default::default()
+            });
+            assert_eq!(
+                offered.result,
+                abci::response_offer_snapshot::Result::Accept as i32,
+                "offer at {height}"
             );
         }
     }

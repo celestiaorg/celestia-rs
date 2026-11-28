@@ -987,14 +987,22 @@ impl Store {
         self.read_commit_info(version)
     }
 
-    /// Export every IAVL store at `version`, sorted by store name (the SDK
-    /// snapshot order).
+    /// Export every IAVL store that the commit info of `version` lists,
+    /// sorted by store name (the SDK snapshot order). A store mounted for
+    /// a store upgrade at the next height (its first version is
+    /// `version + 1`) is not part of that state: Go snapshots the height
+    /// before the upgrading binary mounts it.
     pub fn export(&self, version: Version) -> Result<Vec<(String, iavl::Exporter)>> {
         if version <= 0 || version > self.version {
             return Err(Error::InvalidVersion { version });
         }
+        let info = self.read_commit_info(version)?;
         self.stores
             .iter()
+            .filter(|(name, _)| {
+                info.store_info(name)
+                    .is_some_and(|store_info| store_info.commit_id.is_some())
+            })
             .map(|(name, store)| Ok((name.clone(), store.tree().export(version)?)))
             .collect()
     }
