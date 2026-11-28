@@ -30,13 +30,14 @@ Keep default features. The config line must then print `allocator: mimalloc []`.
 OUT=prof/<era>-<H>; mkdir -p $OUT
 CELESTIA_PHASE_PROFILE=1 $B \
   --home "$HOME_H" --blocks 15000 \
-  --blocks-home "$BLOCKS_HOME" \
+  --blocks-home "$BLOCKS_HOME" --save-blocks true \
   --iavl-cache 4000000 --db-cache-mib 512 \
   --per-block-csv $OUT/blocks.csv \
   > $OUT/run-a.txt 2> $OUT/run-a.progress
 ```
 
 - If the blocks come from dumps, use `--blocks-jsonl` in place of `--blocks-home`.
+- Keep `--save-blocks true`. Evidence validation reads earlier headers from the block store of the home being executed. Without it, a window that contains evidence fails at the evidence block ("validate 8218923: don't have header #8218921" in the v0.50 window from 8,218,900). Saving blocks adds the block-store write to `validate_ms`, as on a real node.
 - Leave pruning at the bench default, which is what `celestia-rs start` does: copied home, background pruning, `pruning-interval 1`.
 - Must hold: `app_hash_mismatches: 0` in `run-a.txt`. Record `responses_digest`.
 
@@ -45,7 +46,7 @@ CELESTIA_PHASE_PROFILE=1 $B \
 ```sh
 perf record -F 499 -g --call-graph fp -o $OUT/perf.data -- \
   env CELESTIA_PHASE_PROFILE=1 $B \
-    --home "$HOME_H" --blocks 15000 --blocks-home "$BLOCKS_HOME" \
+    --home "$HOME_H" --blocks 15000 --blocks-home "$BLOCKS_HOME" --save-blocks true \
     --iavl-cache 4000000 --db-cache-mib 512 \
     > $OUT/run-b.txt 2> $OUT/run-b.progress
 # folded stacks (all threads, thread name as the first frame):
