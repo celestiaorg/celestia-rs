@@ -238,7 +238,7 @@ cat >"$C/vmexec" <<EOF
 #!/bin/bash
 case \$1 in
   create) touch "$C/vms/\$2" ;;
-  delete) mv "$C/vms/\$2" "$C/gone/\$2" 2>/dev/null ;;
+  delete) [ ! -e "$C/fail-delete" ] || exit 1; mv "$C/vms/\$2" "$C/gone/\$2" 2>/dev/null ;;
   build) [ -e "$C/fail-build" ] && exit 1; echo built ;;
   job) echo "\$*" >>"$C/job-calls" ;;
   exec) echo "\$*" >>"$C/exec-calls" ;;
@@ -254,7 +254,13 @@ gcloud() {
     "storage cat") cat "$C/bucket/${3#gs://*/}" ;;
     "storage cp") o=$C/bucket/${4#gs://*/}; mkdir -p "$(dirname "$o")"; cat >"$o" ;;
     "storage ls") ls "$C/bucket/${3#gs://*/}" ;;
-    "compute instances") for v in "$C"/vms/*; do [ -e "$v" ] && echo "$(basename "$v") us-central1-a RUNNING"; done ;;
+    "storage objects")
+      [ ! -e "$C/fail-objects" ] || return 1
+      (cd "$C/bucket" && find segments -type f && find go-snapshots -name metadata.json) ;;
+    "compute instances")
+      [ ! -e "$C/fail-instances" ] || return 1
+      for v in "$C"/vms/*; do [ -e "$v" ] && echo "$(basename "$v") us-central1-a RUNNING"; done
+      return 0 ;;
   esac
 }
 # shellcheck disable=SC1090
@@ -285,7 +291,22 @@ eq     "ctl final height needs no new export" "" "$(ctl 'next_of 16301725')"
 rm -rf "$C/vms"/* "$C/bucket/segments"/*; printf '0\n' >"$C/bucket/segments/launch-count"
 mkdir -p "$C/bucket/go-snapshots/4000000/2" "$C/bucket/go-snapshots/8218900/3"
 touch "$C/bucket/go-snapshots/4000000/2/metadata.json" "$C/bucket/go-snapshots/8218900/3/metadata.json"
+# A finished VM in a later plan slot still occupies the last slot until its
+# deletion succeeds. Inventory failures must not cause a restart or deletion.
+mkdir -p "$C/bucket/segments/4250000"
+touch "$C/vms/rs-seg-4250000" "$C/bucket/segments/4250000/done"
+for failure in fail-objects fail-instances; do
+  touch "$C/$failure"
+  refute "ctl skips tick on $failure" ctl 'MAX_RUNNING=1; tick'
+  check "ctl leaves VM intact on $failure" test -e "$C/vms/rs-seg-4250000"
+  rm "$C/$failure"
+done
+touch "$C/fail-delete"
 ctl 'MAX_RUNNING=1; tick' >/dev/null 2>&1
+refute "ctl keeps slot occupied if deletion fails" test -e "$C/vms/rs-seg-8218900"
+rm "$C/fail-delete"
+ctl 'MAX_RUNNING=1; tick' >/dev/null 2>&1
+check  "ctl frees finished slot in same tick" test -e "$C/gone/rs-seg-4250000"
 check  "ctl launches a priority height first" test -e "$C/vms/rs-seg-8218900"
 refute "ctl respects the slot limit"          test -e "$C/vms/rs-seg-4000000"
 check  "ctl launches from a format 3 export"  grep -q 'go-snapshots/8218900 8218900->8500000' "$C/bucket/segments/8218900/launched"

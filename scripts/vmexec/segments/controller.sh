@@ -29,7 +29,8 @@ PRIORITY=${PRIORITY:-"6680339 8218900 9217850"}
 log() { echo "$(date -u +%FT%TZ) $*"; }
 gs_get() { gcloud storage cat "$BUCKET/$1" 2>/dev/null; }
 gs_put() { printf '%s\n' "$2" | gcloud storage cp - "$BUCKET/$1" >/dev/null 2>&1; }
-gs_has() { gcloud storage ls "$BUCKET/$1" >/dev/null 2>&1; }
+listed() { grep -Fxq "$2" <<<"$1"; }
+segment_finished() { listed "$1" "segments/$2/done" || listed "$1" "segments/$2/failed"; }
 next_of() { local prev='' h; for h in $PLAN; do [ "$prev" = "$1" ] && { echo "$h"; return; }; prev=$h; done; }
 segment_vms() { gcloud compute instances list --project=fibreda --filter="labels.purpose=rs-segment-replay AND labels.owner=claude-genesis" --format='value(name,zone.basename(),status)' 2>/dev/null; }
 
@@ -71,21 +72,28 @@ launch() { # launch SEG SRC START STOP NAME
 }
 
 tick() {
-  local vms running h stop name z r last src
-  vms=$(segment_vms)
-  running=$(awk '$3 ~ /RUNNING|PROVISIONING|STAGING/' <<<"$vms" | wc -l)
+  local vms objects running=0 h stop name z status r last src
+  vms=$(segment_vms) || { log "cannot list segment VMs; skipping tick"; return 1; }
+  objects=$(gcloud storage objects list "$BUCKET/segments/**" "$BUCKET/go-snapshots/**/metadata.json" --format='value(name)') ||
+    { log "cannot list segment markers and exports; skipping tick"; return 1; }
+  # Reclaim completed workers before assigning slots in priority order. Use
+  # each VM's actual zone and keep counting it if deletion fails.
+  while read -r name z status; do
+    if [[ $name =~ ^rs-seg-([0-9]+)(-r[0-9]+)?$ ]]; then
+      h=${BASH_REMATCH[1]}
+      if [[ -n $(next_of "$h") ]] && segment_finished "$objects" "$h"; then
+        log "segment $h finished; deleting $name"
+        VMX_ZONE=$z $V delete "$name" >/dev/null 2>&1 && continue
+      fi
+    fi
+    case $status in RUNNING|PROVISIONING|STAGING) running=$((running + 1));; esac
+  done <<<"$vms"
   for h in $PRIORITY $(for p in $PLAN; do [[ " $PRIORITY " == *" $p "* ]] || echo "$p"; done); do
     stop=$(next_of "$h"); [ -n "$stop" ] || continue
+    segment_finished "$objects" "$h" && continue
     name=$(awk -v p="rs-seg-$h" '$1 == p || index($1, p "-r") == 1 {print $1; exit}' <<<"$vms")
-    if gs_has segments/$h/done || gs_has segments/$h/failed; then
-      if [ -n "$name" ]; then
-        z=$(gs_get segments/$h/zone); log "segment $h finished; deleting $name"
-        VMX_ZONE=${z:-us-central1-a} $V delete "$name" >/dev/null 2>&1 || true
-      fi
-      continue
-    fi
     [ -z "$name" ] || continue # running
-    if gs_has segments/$h/launched; then
+    if listed "$objects" "segments/$h/launched"; then
       # Launched before but its VM is gone: restart from the newest Rust snapshot.
       r=$(gs_get segments/$h/restarts || echo 0); r=${r:-0}
       ((r < MAX_RESTARTS)) || { gs_put segments/$h/failed "failed $(date -u +%FT%TZ) restart limit $MAX_RESTARTS"; continue; }
@@ -98,8 +106,8 @@ tick() {
       launch "$h" "$src" "$last" "$stop" "rs-seg-$h-r$((r + 1))" && running=$((running + 1))
       continue
     fi
-    gs_has go-snapshots/$h/2/metadata.json || gs_has go-snapshots/$h/3/metadata.json || continue
     ((running < MAX_RUNNING)) || continue
+    listed "$objects" "go-snapshots/$h/2/metadata.json" || listed "$objects" "go-snapshots/$h/3/metadata.json" || continue
     launch "$h" "go-snapshots/$h" "$h" "$stop" "rs-seg-$h" && running=$((running + 1))
   done
 }
