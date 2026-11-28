@@ -13,6 +13,7 @@ publish = false
 workspace = true
 
 [dependencies]
+arrayvec = { version = "0.7", features = ["serde"] }
 abci-server = { path = "../abci-server" }
 celestia-core-proto = { path = "../../tier-1-protocol-types/celestia-core-proto" }
 ctypes = { path = "../../tier-1-protocol-types/ctypes" }
@@ -24,12 +25,16 @@ prost = "0.13"
 rand = "0.9"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 tracing = "0.1"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-native-certs = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider"] }
 
 [dev-dependencies]
 app = { path = "../app" }
 hex = "0.4"
 kvdb = { path = "../../tier-2-state-and-store/kvdb" }
-serde_json = "1"
 snapshots = { path = "../../tier-2-state-and-store/snapshots" }
 tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }

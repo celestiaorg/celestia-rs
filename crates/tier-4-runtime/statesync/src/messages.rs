@@ -82,23 +82,29 @@ pub fn validate_msg(msg: &Msg, max_snapshot_chunks: u32) -> Result<(), String> {
             }
         }
         Msg::SnapshotsRequest => {}
-        Msg::SnapshotsResponse(m) => {
-            if m.height == 0 {
-                return Err("height cannot be 0".into());
-            }
-            if m.hash.is_empty() {
-                return Err("snapshot has no hash".into());
-            }
-            if m.chunks == 0 {
-                return Err("snapshot has no chunks".into());
-            }
-            if m.chunks > max_snapshot_chunks {
-                return Err(format!(
-                    "{ERR_EXCEEDS_MAX_SNAPSHOT_CHUNKS}: snapshot response chunk count: {}, maximum chunks: {max_snapshot_chunks}",
-                    m.chunks
-                ));
-            }
-        }
+        Msg::SnapshotsResponse(m) => return validate_offer(m, max_snapshot_chunks),
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_offer(
+    m: &pb::SnapshotsResponse,
+    max_snapshot_chunks: u32,
+) -> Result<(), String> {
+    if m.height == 0 {
+        return Err("height cannot be 0".into());
+    }
+    if m.hash.is_empty() {
+        return Err("snapshot has no hash".into());
+    }
+    if m.chunks == 0 {
+        return Err("snapshot has no chunks".into());
+    }
+    if m.chunks > max_snapshot_chunks {
+        return Err(format!(
+            "{ERR_EXCEEDS_MAX_SNAPSHOT_CHUNKS}: snapshot response chunk count: {}, maximum chunks: {max_snapshot_chunks}",
+            m.chunks
+        ));
     }
     Ok(())
 }

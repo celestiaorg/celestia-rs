@@ -1,7 +1,8 @@
 //! `rpc/core`: the RPC environment and the route handlers (`routes.go`).
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use ctypes::proto::abci;
 use ctypes::proto::types as ptypes;
@@ -38,6 +39,17 @@ pub trait AppQuery: Send + Sync {
         req: abci::RequestQuery,
     ) -> Result<Option<abci::ResponseQuery>, String> {
         self.query(req).map(Some)
+    }
+    /// Recent application snapshots available for state sync.
+    fn list_snapshots(&self) -> Result<abci::ResponseListSnapshots, String> {
+        Err("snapshot store unavailable".into())
+    }
+    /// One chunk of a local state-sync snapshot.
+    fn load_snapshot_chunk(
+        &self,
+        _req: abci::RequestLoadSnapshotChunk,
+    ) -> Result<abci::ResponseLoadSnapshotChunk, String> {
+        Err("snapshot store unavailable".into())
     }
     /// `CheckTx` on the mempool connection (without adding to the pool).
     fn check_tx(&self, tx: &[u8]) -> Result<abci::ResponseCheckTx, String>;
@@ -338,6 +350,7 @@ pub struct Environment {
     /// Config.
     pub config: RpcConfig,
     heavy_in_flight: Arc<AtomicUsize>,
+    snapshot_offers: Mutex<Option<(Instant, Result<J, String>)>>,
 }
 
 impl std::fmt::Debug for Environment {
@@ -395,6 +408,15 @@ const fn ws(mut r: Route) -> Route {
     r.ws = true;
     r
 }
+
+/// Bulk snapshot responses are available only as individual HTTP URI requests.
+pub(crate) const SNAPSHOT_ROUTES: &[Route] = &[
+    heavy(route("snapshots", &[])),
+    heavy(route(
+        "snapshot_chunk",
+        &[("height", T::Uint), ("format", T::Uint), ("index", T::Uint)],
+    )),
+];
 
 /// `GetRoutes` (celestia-core v0.42.3).
 pub const ROUTES: &[Route] = &[
@@ -676,6 +698,7 @@ impl Environment {
             event_bus,
             config,
             heavy_in_flight: Arc::new(AtomicUsize::new(0)),
+            snapshot_offers: Mutex::default(),
         }
     }
 
@@ -727,12 +750,65 @@ impl Environment {
         Ok(i64::try_from(h).unwrap_or(i64::MAX))
     }
 
+    fn snapshot_offers(&self) -> Result<J, String> {
+        let mut cache = self
+            .snapshot_offers
+            .lock()
+            .map_err(|_| "snapshot list lock poisoned")?;
+        if let Some((created, result)) = &*cache
+            && created.elapsed() < Duration::from_secs(5)
+        {
+            return result.clone();
+        }
+        let result = self.app.list_snapshots().map(|resp| {
+            let mut snaps = resp.snapshots;
+            snaps.sort_by_key(|s| std::cmp::Reverse((s.height, s.format)));
+            let mut budget = 4_000_000_usize;
+            let offers = snaps
+                .into_iter()
+                .take(10)
+                .filter_map(|s| {
+                    budget = budget.checked_sub(s.encoded_len())?;
+                    Some(J::obj([
+                        ("height", J::u64s(s.height)),
+                        ("format", J::num(s.format)),
+                        ("chunks", J::num(s.chunks)),
+                        ("hash", J::b64(&s.hash)),
+                        ("metadata", J::b64(&s.metadata)),
+                    ]))
+                })
+                .collect();
+            J::obj([("snapshots", J::Arr(offers))])
+        });
+        *cache = Some((Instant::now(), result.clone()));
+        result
+    }
+
     /// Dispatches a non-WebSocket, synchronous route. `subscribe`,
     /// `unsubscribe*` and `broadcast_tx_commit` are handled by the server.
     pub fn call(&self, name: &str, a: &[Arg]) -> Result<J, String> {
         let arg = |i: usize| a.get(i).cloned().unwrap_or(Arg::Null);
         match name {
             "health" => Ok(J::Obj(Vec::new())),
+            "snapshots" => self.snapshot_offers(),
+            "snapshot_chunk" => {
+                let height = u64::try_from(arg(0).int()).map_err(|_| "invalid snapshot height")?;
+                if height == 0 {
+                    return Err("snapshot height must be positive".into());
+                }
+                let resp = self
+                    .app
+                    .load_snapshot_chunk(abci::RequestLoadSnapshotChunk {
+                        height,
+                        format: u32::try_from(arg(1).int())
+                            .map_err(|_| "invalid snapshot format")?,
+                        chunk: u32::try_from(arg(2).int()).map_err(|_| "invalid snapshot index")?,
+                    })?;
+                if resp.chunk.len() > 16_000_000 {
+                    return Err("snapshot chunk exceeds transport limit".into());
+                }
+                Ok(J::obj([("chunk", J::b64(&resp.chunk))]))
+            }
             "status" => self.status(),
             "net_info" => Ok(self.net_info()),
             "blockchain" => self.blockchain_info(arg(0).int(), arg(1).int()),
