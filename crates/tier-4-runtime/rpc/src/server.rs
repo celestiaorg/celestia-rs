@@ -7,11 +7,7 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
-#[cfg(test)]
-use std::pin::Pin;
 use std::sync::Arc;
-#[cfg(test)]
-use std::task::{Context, Poll};
 use std::time::Duration;
 
 use axum::body::Body;
@@ -1962,9 +1958,7 @@ pub(crate) mod broadcast_tests {
 #[cfg(test)]
 mod tests {
     use std::convert::Infallible;
-    #[cfg(test)]
     use std::pin::Pin;
-    #[cfg(test)]
     use std::task::{Context, Poll};
 
     use futures_util::Sink;
