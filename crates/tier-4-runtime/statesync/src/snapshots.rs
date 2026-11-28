@@ -251,6 +251,10 @@ impl SnapshotPool {
         }
     }
 
+    pub(crate) fn is_peer_rejected(&self, peer_id: &str) -> bool {
+        self.lock().peer_blacklist.contains(peer_id)
+    }
+
     /// `RejectPeer`.
     pub fn reject_peer(&self, peer_id: &str) {
         if peer_id.is_empty() {
