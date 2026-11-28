@@ -41,3 +41,15 @@ It compares canonical JSON bytes for the entire result of `/block`,
 the chain ID, height and app version, and requires evidence at 8,218,923
 and 9,217,879. A successful run prints one SHA-256 digest per request and
 exits with status zero.
+
+## Use with replay segments
+
+Check `/status` for the archive’s last block height. For a segment that
+crosses that height, give `follow --rpc` a current primary first, a second
+independent current RPC next, and the verified archive last. For example,
+with the archive listening on the same host:
+
+    --rpc https://rpc.celestia.pops.one,https://public-celestia-rpc.numia.xyz,http://127.0.0.1:26657
+
+The follower reads the tip from the first RPC. It distributes block
+requests across all listed RPCs and tries the others if one lacks a height.
