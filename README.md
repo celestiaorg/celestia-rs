@@ -134,7 +134,7 @@ The November 25 run used release builds on the same Mac Mini M4 (16 GB
 RAM, 256 GB SSD) with Go celestia-appd v11.0.0 and celestia-rs `9ebb74f`.
 The recorded workload covered 511 heights and 386,980 transactions, with
 blocks up to 28.2 MiB. Both implementations matched every recorded app
-hash. See the [benchmark report](docs/benchmarks/README.md#results-mac-mini-m4-2026-11-25-go-v1100)
+hash. See the [benchmark report](docs/benchmarks/replay-and-node-benchmarks.md#results-mac-mini-m4-2026-11-25-go-v1100)
 for the method and caveats.
 
 | | Go | Rust | |

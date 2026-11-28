@@ -363,7 +363,7 @@ i.go {
 }
 .bar {
   display: grid;
-  grid-template-columns: 2.6em minmax(0, 1fr) 4em;
+  grid-template-columns: 2.6em minmax(0, 1fr) 6ch;
   align-items: center;
   gap: 0.7rem;
   font: 0.9rem/2 ui-monospace, monospace;
