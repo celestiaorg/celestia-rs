@@ -76,6 +76,46 @@
           "11.0.0-mocha": 6
         }
       }
+    },
+    {
+      "network": "mainnet",
+      "crawled_at": 1795826639,
+      "summary": {
+        "reachable": 228,
+        "direct": 50,
+        "rust": 3,
+        "go": 222,
+        "unknown": 3,
+        "unreachable": 4775,
+        "versions": {
+          "0.0.1": 3,
+          "0.38.17": 222,
+          "0.38.17-celestia-rs.0.1.0": 1,
+          "0.38.17-celestia-rs.0.1.0-rc.9": 2
+        },
+        "app_releases": {
+          "10.6.0": 6
+        }
+      }
+    },
+    {
+      "network": "mocha",
+      "crawled_at": 1795826759,
+      "summary": {
+        "reachable": 114,
+        "direct": 43,
+        "rust": 0,
+        "go": 113,
+        "unknown": 1,
+        "unreachable": 3844,
+        "versions": {
+          "0.0.1": 1,
+          "0.38.17": 113
+        },
+        "app_releases": {
+          "11.0.0-mocha": 6
+        }
+      }
     }
   ]
 }

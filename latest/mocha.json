@@ -1,19 +1,18 @@
 {
   "network": "mocha",
   "chain_id": "mocha-5",
-  "crawled_at": 1795823176,
+  "crawled_at": 1795826759,
   "duration_secs": 83,
   "summary": {
-    "reachable": 115,
-    "direct": 44,
-    "rust": 1,
+    "reachable": 114,
+    "direct": 43,
+    "rust": 0,
     "go": 113,
     "unknown": 1,
-    "unreachable": 3820,
+    "unreachable": 3844,
     "versions": {
       "0.0.1": 1,
-      "0.38.17": 113,
-      "0.38.17-celestia-rs.0.1.0-rc.9": 1
+      "0.38.17": 113
     },
     "app_releases": {
       "11.0.0-mocha": 6
@@ -155,7 +154,7 @@
       "implementation": "go",
       "moniker": "Anon",
       "app_version": 10,
-      "source": "rpc"
+      "source": "p2p"
     },
     {
       "id": "296215dd0454853c46dcc81856d686d17cb9cabd",
@@ -535,6 +534,14 @@
       "source": "p2p"
     },
     {
+      "id": "a2eb07cd861baecd314361eb68432d6c9796c789",
+      "version": "0.38.17",
+      "implementation": "go",
+      "moniker": "celestia-cb-01",
+      "app_version": 11,
+      "source": "rpc"
+    },
+    {
       "id": "a5573cbdee73370fae11a7223f8814cf1128a43d",
       "version": "0.38.17",
       "implementation": "go",
@@ -556,15 +563,7 @@
       "implementation": "go",
       "moniker": "relayer-testnet",
       "app_version": 11,
-      "source": "p2p"
-    },
-    {
-      "id": "a98484ac9cb8235bd6a65cdf7648107e3d14dab4",
-      "version": "0.38.17",
-      "implementation": "go",
-      "moniker": "kjnodes-testnet-backup",
-      "app_version": 11,
-      "source": "p2p"
+      "source": "rpc"
     },
     {
       "id": "a9bf63542f6b312d825089474a59f10513799ba9",
@@ -782,14 +781,6 @@
       "version": "0.38.17",
       "implementation": "go",
       "moniker": "LiveRaveN",
-      "app_version": 11,
-      "source": "rpc"
-    },
-    {
-      "id": "df2aea1cc24721dc9900409bac32ef4488c4a6c3",
-      "version": "0.38.17-celestia-rs.0.1.0-rc.9",
-      "implementation": "rust",
-      "moniker": "celestia-rs-mocha",
       "app_version": 11,
       "source": "rpc"
     },
