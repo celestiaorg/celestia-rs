@@ -193,25 +193,30 @@ function render() {
   ].join(" · ");
   for (const el of document.querySelectorAll("[data-summary]")) el.textContent = summary;
   document.getElementById("feedback").textContent = "";
-}
-
-async function copy(text, feedback, done) {
-  try {
-    await navigator.clipboard.writeText(text);
-    feedback.textContent = done;
-  } catch {
-    feedback.textContent = "Copy failed. Select the text and copy it manually.";
-  }
+  document.getElementById("prompt-fallback").hidden = true;
 }
 
 document.getElementById("config").addEventListener("change", render);
 render();
+document.getElementById("config").hidden = false;
+document.querySelector(".agent").hidden = false;
 
-const button = document.getElementById("copy-prompt");
-button.hidden = false;
-button.addEventListener("click", () =>
-  copy(buildPrompt(options()), document.getElementById("feedback"), "Prompt copied. Paste it into your agent."),
-);
+document.getElementById("copy-prompt").addEventListener("click", async () => {
+  const prompt = buildPrompt(options());
+  const feedback = document.getElementById("feedback");
+  const fallback = document.getElementById("prompt-fallback");
+  try {
+    await navigator.clipboard.writeText(prompt);
+    fallback.hidden = true;
+    feedback.textContent = "Prompt copied. Paste it into your agent.";
+  } catch {
+    fallback.value = prompt;
+    fallback.hidden = false;
+    feedback.textContent = "Copy the selected prompt below.";
+    fallback.focus();
+    fallback.select();
+  }
+});
 
 // A copy button on every command block.
 for (const block of document.querySelectorAll(".terminal")) {

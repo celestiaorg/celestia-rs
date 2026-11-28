@@ -218,11 +218,11 @@
         <span class="eyebrow">Quickstart</span>
         <h2>Run your node.</h2>
         <p class="deck">
-          Pick a network, a role and how much history to keep. The commands
-          below update to match. You need Bash, curl and jq, and the default
-          node ports free. A full node needs no wallet, TIA or fees.
+          Pick a network, a role and how much history to keep. Copy the setup
+          prompt or expand the manual steps for your selections. You need Bash,
+          curl and jq, and the default node ports free. A full node needs no wallet, TIA or fees.
         </p>
-        <form class="config" id="config" aria-label="Node options">
+        <form hidden class="config" id="config" aria-label="Node options">
           <fieldset>
             <legend>Network</legend>
             <label><input type="radio" name="network" value="mainnet" checked /><span>Mainnet</span></label
@@ -239,7 +239,7 @@
             ><label><input type="radio" name="retention" value="archive" /><span>Archive</span></label>
           </fieldset>
         </form>
-        <div class="agent">
+        <div hidden class="agent">
           <div>
             <h3>Set up with Claude Code or Codex</h3>
             <p>
@@ -248,31 +248,35 @@
             </p>
           </div>
           <div class="agent-action">
-            <button type="button" id="copy-prompt" hidden>Copy setup prompt</button>
+            <button type="button" id="copy-prompt">Copy setup prompt</button>
             <span role="status" id="feedback"></span>
           </div>
         </div>
+        <textarea id="prompt-fallback" aria-label="Setup prompt to copy" readonly hidden></textarea>
+        <noscript><p>The manual steps below use a pruned Mainnet full node.</p></noscript>
         <p class="warn" data-show="mainnet-validator" hidden>
           General Mainnet validator recommendation is pending qualification
           (<a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/adr/0008-mainnet-recommendation.md">ADR 0008</a>).
           Try it on Mocha first, and never run two nodes with the same
           signing key.
         </p>
-        <ol class="steps">
-          <li>
-            <h3>Install the release</h3>
-            <p>The installer checks the archive’s SHA-256. A release reaches
-              the <code>mocha</code> channel after 24 hours on a devnet, and
-              <code>mainnet</code> after 24 more hours on Mocha.</p>
-            <div class="terminal"><pre><code data-cmd="install">curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/celestiaorg/celestia-rs/main/scripts/install.sh | sh -s -- --channel mainnet
+        <details class="extra">
+          <summary>Manual setup steps</summary>
+          <ol class="steps">
+            <li>
+              <h3>Install the release</h3>
+              <p>The installer checks the archive’s SHA-256. A release reaches
+                the <code>mocha</code> channel after 24 hours on a devnet, and
+                <code>mainnet</code> after 24 more hours on Mocha.</p>
+              <div class="terminal"><pre><code data-cmd="install">curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/celestiaorg/celestia-rs/main/scripts/install.sh | sh -s -- --channel mainnet
 ~/.celestia-rs/bin/celestia-rs version --long</code></pre></div>
-          </li>
-          <li>
-            <h3>Start from a verified snapshot</h3>
-            <p>Paste this into Bash. It checks a recent block hash against two
-              independent RPCs, creates a fresh node home, applies your history
-              setting and starts state sync. Keep the terminal open.</p>
-            <div class="terminal"><pre><code data-cmd="launch">(
+            </li>
+            <li>
+              <h3>Start from a verified snapshot</h3>
+              <p>Paste this into Bash. It checks a recent block hash against two
+                independent RPCs, creates a fresh node home, applies your history
+                setting and starts state sync. Keep the terminal open.</p>
+              <div class="terminal"><pre><code data-cmd="launch">(
   set -eu
   node="$HOME/.celestia-rs/bin/celestia-rs"
   home_dir="$HOME/.celestia-rs/mainnet"
@@ -309,27 +313,28 @@
   ulimit -n 4096
   exec "$node" start --network mainnet --home "$home_dir"
 )</code></pre></div>
-          </li>
-          <li>
-            <h3>Check progress</h3>
-            <p>In a second terminal. The node is current once
-              <code>catching_up</code> is <code>false</code> and
-              <code>latest_block_height</code> keeps rising.</p>
-            <div class="terminal"><pre><code data-cmd="status">~/.celestia-rs/bin/celestia-rs status --home ~/.celestia-rs/mainnet | jq '.sync_info | {latest_block_height, catching_up}'</code></pre></div>
-            <p>Stop with Ctrl+C. Restart later from the same home:</p>
-            <div class="terminal"><pre><code data-cmd="restart">~/.celestia-rs/bin/celestia-rs start --network mainnet --home ~/.celestia-rs/mainnet</code></pre></div>
-          </li>
-          <li data-show="validator" hidden>
-            <h3>Create the validator</h3>
-            <p data-network-text>Once the node is current, create an operator
-              key, fund its address, then register. Write the mnemonic down
-              offline and back up <code>config/priv_validator_key.json</code>.</p>
-            <div class="terminal"><pre><code data-cmd="validator"></code></pre></div>
-            <p>Commission must be at least 0.20. See the
-              <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md#11-running-a-mocha-validator-on-a-mac-m13">validator runbook</a>
-              for monitoring, upgrades and safe shutdown.</p>
-          </li>
-        </ol>
+            </li>
+            <li>
+              <h3>Check progress</h3>
+              <p>In a second terminal. The node is current once
+                <code>catching_up</code> is <code>false</code> and
+                <code>latest_block_height</code> keeps rising.</p>
+              <div class="terminal"><pre><code data-cmd="status">~/.celestia-rs/bin/celestia-rs status --home ~/.celestia-rs/mainnet | jq '.sync_info | {latest_block_height, catching_up}'</code></pre></div>
+              <p>Stop with Ctrl+C. Restart later from the same home:</p>
+              <div class="terminal"><pre><code data-cmd="restart">~/.celestia-rs/bin/celestia-rs start --network mainnet --home ~/.celestia-rs/mainnet</code></pre></div>
+            </li>
+            <li data-show="validator" hidden>
+              <h3>Create the validator</h3>
+              <p data-network-text>Once the node is current, create an operator
+                key, fund its address, then register. Write the mnemonic down
+                offline and back up <code>config/priv_validator_key.json</code>.</p>
+              <div class="terminal"><pre><code data-cmd="validator"></code></pre></div>
+              <p>Commission must be at least 0.20. See the
+                <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md#11-running-a-mocha-validator-on-a-mac-m13">validator runbook</a>
+                for monitoring, upgrades and safe shutdown.</p>
+            </li>
+          </ol>
+        </details>
         <details class="extra">
           <summary>Enable the integrated Rust DA bridge</summary>
           <p id="da-bridge">The Rust DA bridge runs inside your consensus node and serves DA
