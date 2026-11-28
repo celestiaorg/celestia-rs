@@ -81,7 +81,10 @@ while true; do
     if ls -d $HOME_DIR/follow-diagnostics/* >/dev/null 2>&1; then
       tar -czf $DATA/diag.tgz -C $HOME_DIR follow-diagnostics && vmx-gcs put $DATA/diag.tgz rs-replay/$SEG/diagnostics-$HOST.tgz
     fi
-    if [ -n "$L" ] && grep -qE "follow finished .*last=$STOP( |$)" "$L"; then
+    # follow logs its final counters on both success and error. Only the
+    # next authenticated header proves the effects of the final block.
+    if [ -n "$L" ] && grep -qE "(^|[[:space:]])INFO celestia_rs::follow: stop height reached height=$STOP verified_header_height=$((STOP + 1))( |$)" "$L" &&
+      grep -qE "(^|[[:space:]])INFO celestia_rs::follow: follow finished .*last=$STOP( |$)" "$L"; then
       echo "done $(date -u +%FT%TZ) $HOST $(git -C /opt/celestia-rs rev-parse HEAD)" > $DATA/seg-state
       vmx-gcs put $DATA/seg-state segments/$SEG/done
     else

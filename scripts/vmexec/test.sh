@@ -424,7 +424,13 @@ EOF
 chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs"
 printf 'INFO celestia_rs::follow: followed height=250000 tip=1\nINFO celestia_rs::follow: follow finished first=120001 last=250000 blocks=130000\n' >"$W/data/home-120000/logs/follow.log"
 PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=600 timeout 30 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1
+refute "watch rejects unauthenticated final block" test -e "$W/bucket/segments_120000_done"
+check  "watch records missing final header as failure" test -e "$W/bucket/segments_120000_failed"
+printf 'INFO celestia_rs::follow: stop height reached height=250000 verified_header_height=250001\nINFO celestia_rs::follow: follow finished first=120001 last=250000 blocks=130000\n' >"$W/data/home-120000/logs/follow.log"
+PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=600 timeout 30 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1
 check  "watch writes done for a finished replay" test -e "$W/bucket/segments_120000_done"
+
+check "join authenticated segment ranges" python3 -m unittest discover -s "$here/segments" -p test_coverage.py
 
 echo
 if ((fails)); then echo "$fails test(s) failed"; exit 1; fi
