@@ -118,3 +118,23 @@ The last planned segment starts at the 15,105,000 export and replays through
 `85CA1A67FF8041B2556E27B30F170662491844F3CFCC811DBABF558206FED2E3` and
 app hash `96179B115E61EB6C42232BAE8652BFF07029D8FABA87FC0025D5F1F6721D831A`
 on mainnet. These values pin the target for checking the completed run.
+
+### Check replay coverage
+
+Download the trusted mainnet segment stop-tail logs under
+`rs-replay/<segment>/stop-tail-<host>.log`. Include the genesis follow log
+and the per-invocation `progress-*.log` records leading up to a restart. Supply logs from the same
+chain only. Tail logs do not independently identify the chain or build.
+For example, with one log per run in a local directory:
+
+```sh
+python3 scripts/vmexec/segments/coverage.py --first 1 --last 250000 evidence/*.log
+```
+
+The command reports each executed range and each gap. It reads the actual
+first executed height of each run and requires the authenticated next header
+and consistent final counters for a complete run. For in-progress logs it
+uses the resume height and stops one block below the last observed execution,
+whose header authenticates the preceding block. A Go checkpoint or a
+`done` marker alone does not establish the execution range. Exit codes
+are 0 for full coverage, 1 for gaps, and 2 for invalid input.

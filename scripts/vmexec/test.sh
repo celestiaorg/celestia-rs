@@ -314,7 +314,7 @@ printf '#!/bin/bash\n[ "$*" = "-o rss= -C celestia-rs" ] && echo " 4194304"\n' >
 sleep 300 & fake_node=$!
 printf '#!/bin/bash\necho %s\n' "$fake_node" >"$W/bin/pgrep"
 chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs" "$W/bin/ps" "$W/bin/pgrep"
-echo 'INFO celestia_rs::follow: followed height=150100 tip=1' >"$W/data/home-120000/logs/follow.log"
+printf 'INFO celestia_rs::follow: resuming height=120000 app_hash=1234\nINFO celestia_rs::follow: followed height=150100 tip=1\n' >"$W/data/home-120000/logs/follow.log"
 PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=2 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1 &
 wpid=$!
 wait_until 30 test -e "$W/bucket/segments_120000_stalled"
@@ -324,6 +324,7 @@ wait "$fake_node" 2>/dev/null || true
 check  "watch stall writes the marker"       grep -q 'stalled .* height=150100' "$W/bucket/segments_120000_stalled"
 check  "watch stall uploads the log tail"    test -e "$W/bucket/rs-replay_120000_stall-tail-$(hostname).log"
 refute "watch stall is not a failure"        test -e "$W/bucket/segments_120000_failed"
+check  "watch preserves invocation start and authenticated progress" cmp "$W/data/home-120000/logs/follow.log" "$W/bucket/rs-replay_120000_progress-$(hostname)-follow.log"
 check  "watch logs the node RSS per row"     grep -qP '\t150100\tactive\t.*\t4194304$' "$W/data/heights-120000.tsv"
 check  "watch logs smaps and status of the node" grep -qP '^[0-9]+\t150100\tRss=[0-9]+ Anonymous=[0-9]+ (?=.*VmHWM=[0-9]+ )(?=.*RssAnon=[0-9]+ )(?=.*RssFile=[0-9]+ )(?=.*Threads=[0-9]+ )' "$W/data/mem-120000.tsv"
 check  "watch uploads the memory samples"    test -e "$W/bucket/rs-replay_120000_mem-$(hostname).tsv"
@@ -426,7 +427,30 @@ EOF
 chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs"
 printf 'INFO celestia_rs::follow: followed height=250000 tip=1\nINFO celestia_rs::follow: follow finished first=120001 last=250000 blocks=130000\n' >"$W/data/home-120000/logs/follow.log"
 PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=600 timeout 30 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1
+refute "watch rejects unauthenticated final block" test -e "$W/bucket/segments_120000_done"
+check  "watch records missing final header as failure" test -e "$W/bucket/segments_120000_failed"
+printf 'INFO celestia_rs::follow: stop height reached height=250000 verified_header_height=250001\nINFO celestia_rs::follow: follow finished first=120001 last=250000 blocks=130000\n' >"$W/data/home-120000/logs/follow.log"
+PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=600 timeout 30 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1
 check  "watch writes done for a finished replay" test -e "$W/bucket/segments_120000_done"
+
+# The follow CLI can return zero when interrupted. Exercise the snapshot
+# wrapper with the same final-height and missing-header cases as the watcher.
+mkdir -p "$W/snap/120000/2"
+cat >"$W/bin/mock-follow" <<'EOF'
+#!/bin/bash
+cat "$MOCK_FOLLOW_LOG"
+EOF
+chmod +x "$W/bin/mock-follow"
+snapshot_follow() {
+  CELESTIA_RS_BIN="$W/bin/mock-follow" CELESTIA_RS_HOME="$W/wrapper-home" RPC=http://localhost \
+    MOCK_FOLLOW_LOG="$W/data/home-120000/logs/follow.log" bash "$here/../mainnet-snapshot-follow.sh" "$W/snap" 120000 "$1"
+}
+check  "snapshot wrapper accepts authenticated stop" snapshot_follow 250000
+echo "INFO celestia_rs::follow: follow finished first=120001 last=250000 blocks=130000" >"$W/data/home-120000/logs/follow.log"
+refute "snapshot wrapper rejects interrupted finite run" snapshot_follow 250000
+check  "unbounded snapshot wrapper stops cleanly" snapshot_follow 0
+
+check "join authenticated segment ranges" python3 -m unittest discover -s "$here/segments" -p test_coverage.py
 
 echo
 if ((fails)); then echo "$fails test(s) failed"; exit 1; fi
