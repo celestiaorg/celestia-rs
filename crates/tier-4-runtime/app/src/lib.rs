@@ -1297,23 +1297,26 @@ impl App {
         req: abci::RequestOfferSnapshot,
     ) -> abci::ResponseOfferSnapshot {
         use abci::response_offer_snapshot::Result as R;
-        if legacy::is_v046(req.app_version) || self.legacy.is_some() || self.snapshot_v046.is_some()
-        {
-            return self.legacy_offer_snapshot(req);
-        }
         let format_v046 = req
             .snapshot
             .as_ref()
             .is_some_and(|s| s.format == snapshots::FORMAT_V046);
-        if format_v046 && req.app_version == handoff::V4 {
+        let req = if format_v046 && req.app_version == handoff::V4 {
             // The last cosmos-sdk v0.46 block (mainnet 6,680,339) commits
             // consensus app version 4 on the app version 3 state; the v4
             // store loader adds its stores only at the next height. Restore
-            // that release's state; its first block hands off to v0.50.
-            return self.legacy_offer_snapshot(abci::RequestOfferSnapshot {
+            // that release's state (also when it replaces an unfinished
+            // restore); its first block hands off to v0.50.
+            abci::RequestOfferSnapshot {
                 app_version: handoff::V4 - 1,
                 ..req
-            });
+            }
+        } else {
+            req
+        };
+        if legacy::is_v046(req.app_version) || self.legacy.is_some() || self.snapshot_v046.is_some()
+        {
+            return self.legacy_offer_snapshot(req);
         }
         if format_v046 {
             // cosmos-sdk v0.50 snapshots are format 3 only.
@@ -2810,6 +2813,40 @@ mod node_options_tests {
                 offered.result,
                 abci::response_offer_snapshot::Result::RejectFormat as i32,
                 "app version {app_version}"
+            );
+        }
+    }
+
+    /// A second format 2 offer at app version 4 replaces an unfinished
+    /// hand-off restore (Go restarts state sync with another snapshot).
+    #[test]
+    fn handoff_snapshot_offer_replaces_an_unfinished_restore() {
+        let home = tempfile::tempdir().expect("app home");
+        let mut app = App::open_with(home.path(), AppOptions::default()).expect("open app");
+        for height in [1, 2] {
+            let chunk_hash = hash::sha256(b"chunk").to_vec();
+            let snapshot = snapshots::Snapshot {
+                height,
+                format: snapshots::FORMAT_V046,
+                chunks: 1,
+                hash: chunk_hash.clone(),
+                chunk_hashes: vec![chunk_hash],
+            };
+            let offered = app.offer_snapshot(abci::RequestOfferSnapshot {
+                snapshot: Some(abci::Snapshot {
+                    height: snapshot.height,
+                    format: snapshot.format,
+                    chunks: snapshot.chunks,
+                    hash: snapshot.hash.clone(),
+                    metadata: snapshot.metadata_bytes(),
+                }),
+                app_version: 4,
+                ..Default::default()
+            });
+            assert_eq!(
+                offered.result,
+                abci::response_offer_snapshot::Result::Accept as i32,
+                "offer at {height}"
             );
         }
     }
