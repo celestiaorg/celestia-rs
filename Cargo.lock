@@ -6918,6 +6918,8 @@ dependencies = [
  "p2p",
  "prost 0.13.5",
  "rand 0.9.5",
+ "rustls",
+ "rustls-native-certs",
  "serde",
  "serde_json",
  "snapshots",
@@ -7992,7 +7994,6 @@ dependencies = [
  "rustls-pki-types",
  "ureq-proto",
  "utf8-zero",
- "webpki-roots",
 ]
 
 [[package]]
@@ -8218,15 +8219,6 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "webpki-roots"
-version = "1.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7265c9301c16a8711c992c2d8da90ee77ef54b1ed51482d6dfeb00dc756b1297"
-dependencies = [
- "rustls-pki-types",
 ]
 
 [[package]]

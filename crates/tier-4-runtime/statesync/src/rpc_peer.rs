@@ -1,7 +1,7 @@
 //! Snapshot offers and chunks from the node's configured state-sync RPC servers.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, LazyLock, Weak};
 use std::time::Duration;
 
 use celestia_core_proto::tendermint::{abci, statesync as pb};
@@ -12,6 +12,26 @@ use crate::messages::{
     CHUNK_CHANNEL, CHUNK_MSG_SIZE, Msg, RECENT_SNAPSHOTS, SNAPSHOT_MSG_SIZE, validate_offer,
 };
 use crate::{PeerHandle, PeerRef, Snapshot, Syncer};
+
+// Initialize the connection pool on a discovery worker so loading the system
+// trust store cannot delay P2P discovery.
+static CLIENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
+    let native = rustls_native_certs::load_native_certs();
+    let roots = native
+        .certs
+        .iter()
+        .map(|c| ureq::tls::Certificate::from_der(c.as_ref()).to_owned());
+    let tls = ureq::tls::TlsConfig::builder()
+        .root_certs(ureq::tls::RootCerts::from(roots))
+        .unversioned_rustls_crypto_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .build();
+    let config = ureq::Agent::config_builder()
+        .tls_config(tls)
+        .timeout_global(Some(Duration::from_secs(10)))
+        .max_redirects(0)
+        .build();
+    config.into()
+});
 
 #[derive(Deserialize)]
 struct Reply<T> {
@@ -27,7 +47,6 @@ struct Offers {
 pub(crate) struct RpcPeer {
     id: String,
     base: String,
-    client: ureq::Agent,
     syncer: Weak<Syncer>,
     discovering: AtomicBool,
     max_chunks: u32,
@@ -46,14 +65,9 @@ impl RpcPeer {
         } else {
             format!("http://{server}")
         };
-        let config = ureq::Agent::config_builder()
-            .timeout_global(Some(Duration::from_secs(10)))
-            .max_redirects(0)
-            .build();
         Arc::new(Self {
             id: format!("rpc-{index}"),
             base,
-            client: config.into(),
             syncer: Arc::downgrade(syncer),
             discovering: AtomicBool::new(false),
             max_chunks,
@@ -61,8 +75,7 @@ impl RpcPeer {
     }
 
     fn get<T: DeserializeOwned>(&self, path: &str, limit: usize) -> Result<T, String> {
-        let mut response = self
-            .client
+        let mut response = CLIENT
             .get(format!("{}{path}", self.base))
             .call()
             .map_err(|e| e.to_string())?;
