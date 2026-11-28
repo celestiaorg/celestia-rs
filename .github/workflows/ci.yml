@@ -60,6 +60,7 @@ jobs:
             case "$path" in
               README.md|docs/.nojekyll|docs/MODULES.md|docs/hardware.md|docs/operator-guide.md|\
               docs/index.html|docs/index.md|docs/404.html|docs/llms.txt|docs/sitemap.xml|\
+              docs/benchmarks/*.md|\
               docs/about/index.html|docs/contact/index.html|docs/privacy/index.html|\
               docs/census/index.html|docs/census/census.css|docs/census/census.js|\
               docs/site/copy.js|docs/site/square.webp|docs/site/style.css|scripts/site/test_site.py) ;;

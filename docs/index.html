@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="is-agentic-site-type" content="content" />
     <title>celestia-rs · Celestia consensus node and data availability bridge in Rust</title>
     <meta
       name="description"
@@ -63,7 +64,7 @@
       <a class="brand" href="./"><span class="mark"></span>celestia-rs</a>
       <nav aria-label="Main navigation">
         <a href="./" aria-current="page">Home</a
-        ><a href="census/">Node census</a
+        ><a href="census/">census</a
         ><a class="ext" href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md">Docs</a
         ><a class="ext" href="https://github.com/celestiaorg/celestia-rs">GitHub</a>
       </nav>
@@ -120,20 +121,19 @@
           better on every chart.
         </p>
         <div class="legend" aria-hidden="true">
-          <span><i class="rs"></i>celestia-rs</span><span><i class="go"></i>Go</span>
+          <span><i class="rs"></i>Rust</span><span><i class="go"></i>Go</span>
         </div>
         <div class="charts">
           <figure>
-            <figcaption><strong>Time to a verified tip</strong><span>seconds · 8 vCPU</span></figcaption>
-            <div class="bar"><span>Rust</span><i class="rs" style="--w: 20.5%"></i><b>307</b></div>
-            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>1,493</b></div>
-            <p class="note">Second pair: 329 s against 1,361 s (4.1×).</p>
+            <figcaption><strong>Time to a verified tip</strong><span>Rounded minutes · 8 vCPU</span></figcaption>
+            <div class="bar"><span>Rust</span><i class="rs" style="--w: 20.5%"></i><b><time datetime="PT307S">5 min</time></b></div>
+            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b><time datetime="PT1493S">25 min</time></b></div>
           </figure>
           <figure>
-            <figcaption><strong>Snapshot restore</strong><span>seconds · 32 vCPU</span></figcaption>
-            <div class="bar"><span>Rust</span><i class="rs" style="--w: 11.3%"></i><b>104</b></div>
-            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>921</b></div>
-            <p class="note">Same in all six runs: 100–112 s against 889–921 s.</p>
+            <figcaption><strong>Snapshot restore</strong><span>Rounded minutes · 32 vCPU</span></figcaption>
+            <div class="bar"><span>Rust</span><i class="rs" style="--w: 11.3%"></i><b><time datetime="PT104S">2 min</time></b></div>
+            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b><time datetime="PT921S">15 min</time></b></div>
+            <p class="note">Across all six runs, Rust took under 2 minutes and Go took about 15.</p>
           </figure>
           <figure>
             <figcaption><strong>Peak memory, consensus and DA bridge</strong><span>GB · 600 blocks · 8 vCPU</span></figcaption>
@@ -145,19 +145,16 @@
             <figcaption><strong>Peak memory, consensus only</strong><span>GiB · 1,000 blocks · 32 vCPU</span></figcaption>
             <div class="bar"><span>Rust</span><i class="rs" style="--w: 35.1%"></i><b>3.46</b></div>
             <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>9.86</b></div>
-            <p class="note">Second pair: 3.72 GiB against 11.20 GiB.</p>
           </figure>
           <figure>
             <figcaption><strong>Node home on disk</strong><span>GiB · after 1,000 blocks</span></figcaption>
             <div class="bar"><span>Rust</span><i class="rs" style="--w: 36.7%"></i><b>1.8</b></div>
             <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>4.9</b></div>
-            <p class="note">Second pair: 1.9 GiB against 5.0 GiB.</p>
           </figure>
           <figure>
-            <figcaption><strong>CPU time, consensus and DA bridge</strong><span>seconds · 600 blocks</span></figcaption>
-            <div class="bar"><span>Rust</span><i class="rs" style="--w: 66.7%"></i><b>513</b></div>
-            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>768</b></div>
-            <p class="note">Second pair: 492 s against 592 s.</p>
+            <figcaption><strong>CPU time, consensus and DA bridge</strong><span>Rounded minutes · 600 blocks</span></figcaption>
+            <div class="bar"><span>Rust</span><i class="rs" style="--w: 66.7%"></i><b><time datetime="PT513S">9 min</time></b></div>
+            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b><time datetime="PT768S">13 min</time></b></div>
           </figure>
         </div>
         <aside class="callout">
@@ -171,7 +168,7 @@
         <p class="links">
           <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/benchmarks/operator-sync-2026-11-26.md">State sync and DA bridge report</a>
           <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/benchmarks/operator-block-range-2026-11-26.md">1,000-block consensus report</a>
-          <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/benchmarks/operator-sync.md">Comparison protocol</a>
+          <a href="https://github.com/celestiaorg/celestia-rs/tree/main/docs/benchmarks">All benchmarks</a>
         </p>
       </section>
 
@@ -340,18 +337,22 @@
           </li>
         </ol>
         <details class="extra">
-          <summary>Try the integrated DA bridge on a private local chain</summary>
-          <p>Stop any running node first to free its ports. This starts a
-            private chain in a fresh home with both DA listeners on loopback.</p>
-          <div class="terminal"><pre><code>~/.celestia-rs/bin/celestia-rs start --network local --home ~/.celestia-rs/bridge-demo \
-  --bridge-rpc-listen 127.0.0.1:32658 --bridge-p2p-listen 127.0.0.1:32121</code></pre></div>
-          <p>Once height 3 commits, use the
-            <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md#experimental-da-bridge-on-a-private-network">read-token and header check</a>
-            to compare the bridge’s commit hash with the consensus block ID.</p>
+          <summary>Enable the integrated Rust DA bridge</summary>
+          <p id="da-bridge">The Rust DA bridge runs inside your consensus node and serves DA
+            data from its blockstore. Enabling it replaces a separate Go
+            <code>celestia-node</code> bridge.</p>
+          <p>Start a non-validating Mocha node using the quickstart above. Stop
+            it, then restart with the same home and add the DA listeners:</p>
+          <div class="terminal"><pre><code>~/.celestia-rs/bin/celestia-rs start --network mocha --home ~/.celestia-rs/mocha \
+  --bridge-rpc-listen 127.0.0.1:26658 --bridge-p2p-listen 0.0.0.0:2121</code></pre></div>
+          <p>DA RPC stays on loopback. Allow inbound TCP on port 2121 for the
+            DA peers you want to serve. Once the node catches up, use its DA
+            peer address to <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md#mocha-5-non-validating-bridge-canary">verify reads from a Go light node</a>
+            on Mocha.</p>
         </details>
         <p class="links">
           <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md">Full operator guide</a>
-          <a href="https://github.com/celestiaorg/celestia-rs/releases">Release archives</a>
+          <a href="https://github.com/celestiaorg/celestia-rs/releases">Releases</a>
         </p>
       </section>
 
@@ -464,11 +465,10 @@ crontab -e</code></pre></div>
         </details>
         <details>
           <summary>Do I still need a separate Go bridge?</summary>
-          <p>For a private one-binary deployment, turn on the Rust DA bridge
-            in your consensus process. Consensus-only mode keeps both DA
-            listeners closed. For public deployment, follow the
-            <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md#mocha-5-non-validating-bridge-canary">Mocha canary procedure</a>
-            and verify reads from a separate Go light node.</p>
+          <p>With the Rust DA bridge enabled, your consensus node also serves
+            DA data, so you can run both roles without a separate Go bridge.
+            <a href="#da-bridge">Enable the integrated bridge on Mocha</a>
+            by adding the DA RPC and P2P listeners to your start command.</p>
         </details>
         <details>
           <summary>How long can clients retrieve old data?</summary>
@@ -500,7 +500,7 @@ crontab -e</code></pre></div>
       <span class="brand">celestia-rs</span>
       <nav aria-label="Site">
         <a href="about/">About</a><a href="contact/">Contact</a
-        ><a href="privacy/">Privacy</a><a href="llms.txt">llms.txt</a
+        ><a href="privacy/">Privacy</a><a href="index.md">Markdown</a><a href="llms.txt">llms.txt</a
         ><a href="https://github.com/celestiaorg/celestia-rs/issues">Report an issue</a>
       </nav>
     </footer>

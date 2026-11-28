@@ -7,7 +7,7 @@ This file follows https://llmstxt.org. The Markdown files below are served as pl
 ## When to use celestia-rs
 
 - Run a non-validating Celestia consensus node on Mainnet or Mocha, without a wallet, TIA or stake. Install with `curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/celestiaorg/celestia-rs/main/scripts/install.sh | sh -s -- --channel mainnet`, then `celestia-rs start`.
-- Run a consensus node and a DA bridge in one process, instead of `celestia-appd` plus a separate `celestia-node` bridge.
+- Run a consensus node and a DA bridge in one process. The operator overview includes the Mocha start command with `--bridge-rpc-listen` and `--bridge-p2p-listen`.
 - Bootstrap a node from a state-sync snapshot, or verify application execution against a trusted RPC with `celestia-rs follow`.
 - Run a DA light node that samples data availability with `celestia-rs da-light`.
 - Migrate a Go `celestia-appd` validator to Rust with Go-compatible keyrings, genesis and `priv_validator_state.json`.
@@ -24,7 +24,7 @@ Do not use celestia-rs when you need a production-grade, supported node today, o
 - [Hardware](https://celestiaorg.github.io/celestia-rs/hardware.md): hardware targets and pruning assumptions
 - [Releasing and release channels](https://celestiaorg.github.io/celestia-rs/releasing.md): how releases move through the Corto, Mocha and Mainnet channels
 - [Application modules](https://celestiaorg.github.io/celestia-rs/MODULES.md): which Cosmos SDK and Celestia modules the Rust application implements
-- [Benchmarks](https://celestiaorg.github.io/celestia-rs/benchmarks/README.md): Rust and Go sync, memory and disk measurements
+- [Benchmark index](https://celestiaorg.github.io/celestia-rs/benchmarks/README.md): paired Mainnet results, comparison protocol, and replay, storage and allocator measurements
 - [Security notes](https://celestiaorg.github.io/celestia-rs/security.md): threat model and security review notes
 
 ## Data

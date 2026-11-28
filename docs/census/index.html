@@ -28,7 +28,7 @@
       <a class="brand" href="../"><span class="mark"></span>celestia-rs</a>
       <nav aria-label="Main navigation">
         <a href="../">Home</a
-        ><a href="./" aria-current="page">Node census</a
+        ><a href="./" aria-current="page">census</a
         ><a class="ext" href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md">Docs</a
         ><a class="ext" href="https://github.com/celestiaorg/celestia-rs">GitHub</a>
       </nav>
@@ -43,20 +43,21 @@
         <span class="eyebrow">CELESTIA / NODE CENSUS</span>
         <h1>Consensus nodes by implementation</h1>
         <p class="deck">
-          A crawler connects to the consensus P2P network of each chain and reads
-          the software version that every node reports in its handshake.
-          celestia-rs nodes report <code>0.38.17-celestia-rs.&lt;version&gt;</code>,
-          which gives their celestia-rs version, such as <code>v0.1.0</code>.
-          The crawler reads the celestia-app release from the Go node's peer
-          metadata when available, or from the node's public RPC.
+          Track how many observed Celestia consensus nodes run Go or
+          celestia-rs on Mainnet and Mocha.
         </p>
-        <div class="filters" role="tablist" aria-label="Network">
-          <button role="tab" data-network="mainnet" aria-selected="true">Mainnet</button>
-          <button role="tab" data-network="mocha" aria-selected="false">Mocha</button>
+        <div class="filters" role="group" aria-label="Network">
+          <button type="button" data-network="mainnet" aria-pressed="true">Mainnet</button>
+          <button type="button" data-network="mocha" aria-pressed="false">Mocha</button>
         </div>
         <p class="meta" id="status" aria-live="polite">Loading…</p>
         <div class="tiles" id="tiles"></div>
         <div class="census-charts" id="charts"></div>
+        <p class="links">
+          <a href="https://raw.githubusercontent.com/celestiaorg/celestia-rs/node-census-data/latest/mainnet.json">Latest Mainnet crawl (JSON)</a>
+          <a href="https://raw.githubusercontent.com/celestiaorg/celestia-rs/node-census-data/latest/mocha.json">Latest Mocha crawl (JSON)</a>
+          <a href="https://raw.githubusercontent.com/celestiaorg/celestia-rs/node-census-data/history.json">Crawl history (JSON)</a>
+        </p>
       </section>
       <section id="go-versions-section">
         <h2>Go nodes by celestia-app version</h2>
@@ -70,14 +71,16 @@
         <h2>celestia-rs nodes in the latest crawl</h2>
         <div class="table-wrap"><table id="rust-nodes"></table></div>
       </section>
-      <section id="method">
-        <h2>Method and limits</h2>
+      <details id="method">
+        <summary>Method and limits</summary>
         <ul class="method">
           <li>
             A scheduled GitHub Actions job runs
             <code>node-census crawl</code> for each network. It dials known
             addresses, completes the P2P handshake, records the peer's
             <code>NodeInfo</code>, and asks for more addresses over PEX.
+            Rust nodes report <code>0.38.17-celestia-rs.&lt;version&gt;</code>
+            in the handshake, which gives their celestia-rs version.
           </li>
           <li>
             It also reads <code>/net_info</code> from public RPC servers. Those
@@ -103,12 +106,8 @@
             crawler, are left out. Bridge and light (DA) nodes use a different
             network and are not counted here.
           </li>
-          <li>
-            Data: the <code>node-census-data</code> branch
-            (<code>history.json</code>, <code>latest/&lt;network&gt;.json</code>).
-          </li>
         </ul>
-      </section>
+      </details>
     </main>
     <footer>
       <span class="brand">celestia-rs</span>

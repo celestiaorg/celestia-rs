@@ -24,7 +24,7 @@ PAGES = {
     "privacy/index.html": BASE + "privacy/",
 }
 # The primary navigation: one link per page or external destination, in order.
-PRIMARY_NAV = ["Home", "Node census", "Docs", "GitHub"]
+PRIMARY_NAV = ["Home", "census", "Docs", "GitHub"]
 TRUST_PAGES = ["about/index.html", "contact/index.html", "privacy/index.html"]
 
 
@@ -132,7 +132,7 @@ class Navigation(unittest.TestCase):
                 self.assertNotIn("#", href, f"{rel}: primary link {text!r} is a section anchor")
 
     def test_primary_nav_marks_the_current_page(self):
-        current = {"index.html": "Home", "census/index.html": "Node census"}
+        current = {"index.html": "Home", "census/index.html": "census"}
         for rel, url in PAGES.items():
             nav = parse(rel).navs["Main navigation"]
             marked = [t for t, _, a in nav if a.get("aria-current") == "page"]
@@ -193,7 +193,9 @@ class Metadata(unittest.TestCase):
 
     def test_home_links_markdown_alternate(self):
         p = parse("index.html")
+        self.assertEqual(p.meta.get("is-agentic-site-type"), "content")
         self.assertEqual(p.link("alternate", "text/markdown"), BASE + "index.md")
+        self.assertIn("index.md", p.hrefs)
         md = (DOCS / "index.md").read_text(encoding="utf-8")
         self.assertTrue(md.startswith("# celestia-rs"))
         self.assertIn(BASE + "llms.txt", md)
@@ -256,6 +258,7 @@ class MachineReadable(unittest.TestCase):
         hrefs = {urljoin(BASE + "404.html", h) for h in p.hrefs}
         self.assertIn(BASE + "llms.txt", hrefs)
         self.assertIn(BASE + "sitemap.xml", hrefs)
+        self.assertIn(BASE + "index.md", hrefs)
         # GitHub Pages serves 404.html from any depth: links must be absolute.
         for h in p.hrefs:
             self.assertTrue(h.startswith(("https://", "/", "#")), h)
@@ -282,6 +285,9 @@ class HomePage(unittest.TestCase):
             "Application module inventory",
             "Apply one profile",
             "stops during",
+            "private one-binary",
+            "private local chain",
+            "--network local",
         ):
             self.assertNotIn(phrase.lower(), self.text.lower(), phrase)
 
@@ -358,7 +364,7 @@ class CensusPage(unittest.TestCase):
         self.assertIn('href="#rust-versions-section"', html)
         self.assertIn("Go nodes by celestia-app version", self.text)
         self.assertIn("celestia-rs nodes by version", self.text)
-        self.assertIn("Unknown (RPC not reachable)", self.js)
+        self.assertIn("Unknown (release unavailable)", self.js)
         # Releases and celestia-rs versions are shown with a leading "v".
         self.assertIn("rustVersion", self.js)
         self.assertIn('"-celestia-rs."', self.js)

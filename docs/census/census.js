@@ -197,7 +197,7 @@ function countRows(nodes, key, unknown) {
 function render() {
   const net = state.network;
   document.querySelectorAll(".filters button").forEach((b) =>
-    b.setAttribute("aria-selected", String(b.dataset.network === net)),
+    b.setAttribute("aria-pressed", String(b.dataset.network === net)),
   );
   const entries = (state.history?.entries ?? []).filter((e) => e.network === net);
   const latest = state.latest[net];
@@ -235,7 +235,7 @@ function render() {
       title: "Consensus nodes by implementation",
       series: [
         { label: "Go (celestia-app)", cls: "go", points: pts((x) => x.go) },
-        { label: "celestia-rs", cls: "rust", points: pts((x) => x.rust) },
+        { label: "Rust", cls: "rust", points: pts((x) => x.rust) },
       ],
       format: (v) => String(Math.round(v)),
       integer: true,

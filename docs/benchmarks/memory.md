@@ -89,7 +89,7 @@ default (`crates/tier-5-node/celestia-rs/Cargo.toml`: `default = ["rocksdb",
 "jemalloc"]`; unprefixed on Linux so RocksDB's C++ allocations use it too;
 on macOS only Rust allocations go through it and RocksDB keeps the system
 zone allocator). `--no-default-features --features rocksdb` keeps the
-system allocator. The phase A benchmark (`docs/benchmarks/README.md`) runs
+system allocator. The [phase A benchmark](replay-and-node-benchmarks.md#method) runs
 the jemalloc build; a glibc-vs-jemalloc timing comparison on the full
 replay was cut short by the shared machine's disk limits and is part of the
 pending Mac run (`CELESTIA_RS_ALT`). macOS's allocator differs from glibc,

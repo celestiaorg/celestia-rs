@@ -43,6 +43,8 @@ than celestia-app plus celestia-node, and its node home was 62% smaller after
 <https://celestiaorg.github.io/celestia-rs/benchmarks/operator-sync-2026-11-26.md>
 and
 <https://celestiaorg.github.io/celestia-rs/benchmarks/operator-block-range-2026-11-26.md>.
+See the [benchmark index](https://celestiaorg.github.io/celestia-rs/benchmarks/README.md)
+for the comparison protocol and earlier results.
 
 ## Hardware requirements
 
@@ -74,9 +76,26 @@ has options for Mainnet or Mocha, full node or validator, and pruned or archive.
 [operator guide](https://celestiaorg.github.io/celestia-rs/operator-guide.md)
 covers configuration, validators, the DA bridge, services and upgrades.
 
+## Enable the integrated Rust DA bridge
+
+With the bridge enabled, the consensus node serves DA data from its blockstore.
+This replaces a separate Go `celestia-node` bridge. Start a non-validating Mocha
+node with the quickstart, stop it, then restart with the same home and the DA
+listeners enabled.
+
+```sh
+~/.celestia-rs/bin/celestia-rs start --network mocha --home ~/.celestia-rs/mocha \
+  --bridge-rpc-listen 127.0.0.1:26658 --bridge-p2p-listen 0.0.0.0:2121
+```
+
+DA RPC stays on loopback. Allow inbound TCP on port 2121 for the DA peers you
+want to serve. After the node catches up, use its DA peer address to
+[verify reads from a Go light node](https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md#mocha-5-non-validating-bridge-canary).
+
 ## More
 
 - [Node census](https://celestiaorg.github.io/celestia-rs/census/): Mainnet and Mocha nodes by implementation
 - [Operator FAQ](https://celestiaorg.github.io/celestia-rs/#faq)
 - [Source code](https://github.com/celestiaorg/celestia-rs)
+- [Releases](https://github.com/celestiaorg/celestia-rs/releases)
 - [Report an issue](https://github.com/celestiaorg/celestia-rs/issues)
