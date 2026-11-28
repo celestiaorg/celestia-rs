@@ -58,13 +58,23 @@ jobs:
           grep -qzE '^(conformance/|\.github/workflows/(ci|go-oracles)\.yml$)' "$paths" ||
             echo 'go=false' >> "$GITHUB_OUTPUT"
           # The macOS build runs on a pull request only when it can break it:
-          # dependencies, build scripts, the toolchain, this workflow, or
-          # platform-specific code (a cfg on the target or the allocator).
-          platform="$RUNNER_TEMP/ci-platform-paths"
-          git diff --no-renames --name-only -z \
-            -G 'target_(os|vendor|family)|mimalloc' "$BASE_SHA...$HEAD_SHA" -- > "$platform" || exit 0
+          # dependencies, build scripts, the toolchain, this workflow, or a
+          # Rust file with platform-specific code (a target cfg or the allocator).
+          # A Rust file counts as platform-specific when its base or head
+          # version mentions a target cfg or the allocator anywhere, so an
+          # edit inside an existing cfg block is caught too.
+          platform_re='target_(os|vendor|family|arch)|mimalloc'
+          platform=false
+          while IFS= read -r -d '' path; do
+            [[ "$path" == *.rs ]] || continue
+            if git grep -qE "$platform_re" "$BASE_SHA" -- "$path" ||
+               git grep -qE "$platform_re" "$HEAD_SHA" -- "$path"; then
+              platform=true
+              break
+            fi
+          done < "$paths"
           grep -qzE '(^|/)(Cargo\.(toml|lock)|build\.rs)$|^(rust-toolchain\.toml|\.cargo/|\.github/workflows/ci\.yml$)' "$paths" ||
-            [[ -s "$platform" ]] ||
+            [[ "$platform" == true ]] ||
             echo 'macos=false' >> "$GITHUB_OUTPUT"
           while IFS= read -r -d '' path; do
             case "$path" in
