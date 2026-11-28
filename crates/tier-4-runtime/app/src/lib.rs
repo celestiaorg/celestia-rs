@@ -1301,6 +1301,26 @@ impl App {
         {
             return self.legacy_offer_snapshot(req);
         }
+        let format_v046 = req
+            .snapshot
+            .as_ref()
+            .is_some_and(|s| s.format == snapshots::FORMAT_V046);
+        if format_v046 && req.app_version == handoff::V4 {
+            // The last cosmos-sdk v0.46 block (mainnet 6,680,339) commits
+            // consensus app version 4 on the app version 3 state; the v4
+            // store loader adds its stores only at the next height. Restore
+            // that release's state; its first block hands off to v0.50.
+            return self.legacy_offer_snapshot(abci::RequestOfferSnapshot {
+                app_version: handoff::V4 - 1,
+                ..req
+            });
+        }
+        if format_v046 {
+            // cosmos-sdk v0.50 snapshots are format 3 only.
+            return abci::ResponseOfferSnapshot {
+                result: R::RejectFormat as i32,
+            };
+        }
         let result = match (&mut self.snapshots, req.snapshot) {
             (None, _) => R::Abort,
             (Some(_), None) => R::Reject,
@@ -2752,6 +2772,40 @@ mod node_options_tests {
                 destination.ms.is_mounted("zkism"),
                 app_version == 8,
                 "v{app_version}"
+            );
+        }
+    }
+
+    #[test]
+    fn v050_app_versions_reject_format_2_snapshots() {
+        // celestia-app v4 and later restore format 3 only; format 2 at app
+        // version 4 is the v3 state of the hand-off height.
+        for app_version in [5, 6, 8, 9, 10] {
+            let home = tempfile::tempdir().expect("app home");
+            let mut app = App::open_with(home.path(), AppOptions::default()).expect("open app");
+            let chunk_hash = hash::sha256(b"chunk").to_vec();
+            let snapshot = snapshots::Snapshot {
+                height: 1,
+                format: snapshots::FORMAT_V046,
+                chunks: 1,
+                hash: chunk_hash.clone(),
+                chunk_hashes: vec![chunk_hash],
+            };
+            let offered = app.offer_snapshot(abci::RequestOfferSnapshot {
+                snapshot: Some(abci::Snapshot {
+                    height: snapshot.height,
+                    format: snapshot.format,
+                    chunks: snapshot.chunks,
+                    hash: snapshot.hash.clone(),
+                    metadata: snapshot.metadata_bytes(),
+                }),
+                app_version,
+                ..Default::default()
+            });
+            assert_eq!(
+                offered.result,
+                abci::response_offer_snapshot::Result::RejectFormat as i32,
+                "app version {app_version}"
             );
         }
     }

@@ -492,8 +492,12 @@ fn restart_around_every_upgrade(options: &app::AppOptions) {
     }
 }
 
-/// The snapshot heights: one per app version, inside each era.
-const RESTORE_AT: [i64; 10] = [3, 8, 13, 20, 30, 40, 50, 59, 70, 79];
+/// The snapshot heights: one per app version, inside each era, and the
+/// last cosmos-sdk v0.46 block (15, mainnet 6,680,339). That block commits
+/// consensus app version 4 on the app version 3 state: its snapshot is
+/// format 2, offered at app version 4, and the first restored block hands
+/// off to the v0.50 app.
+const RESTORE_AT: [i64; 11] = [3, 8, 13, 15, 20, 30, 40, 50, 59, 70, 79];
 
 #[test]
 fn state_sync_in_every_era() {
@@ -518,7 +522,7 @@ fn state_sync_in_every_era() {
             .find(|s| s.height == height)
             .unwrap_or_else(|| panic!("no snapshot at {h}"))
             .clone();
-        let want_format = if chain.app_version_after(h) <= 3 {
+        let want_format = if h <= LEGACY.2 {
             snapshots::FORMAT_V046
         } else {
             3
@@ -562,6 +566,12 @@ fn state_sync_in_every_era() {
         }
         assert_eq!(b.info().last_block_height, h, "restored {h}");
         assert_eq!(b.info().last_block_app_hash, want_hash, "restored {h}");
+        // `celestia-rs follow` requires the light client's app version.
+        assert_eq!(
+            b.info().app_version,
+            chain.app_version_after(h),
+            "restored {h}"
+        );
         for next in h + 1..=LAST {
             b = chain.step(b, next, &format!("restored at {h}"), &no_restart);
         }
