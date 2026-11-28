@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.0 (2026-11-27)
+
 ### Added
 
 - `celestia-rs debug-bundle` writes a `.tar.gz` of diagnostics to attach
