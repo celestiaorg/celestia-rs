@@ -47,7 +47,11 @@ launch() { # launch SEG SRC START STOP NAME
   # with no replay. The launched marker is written only once both jobs run
   # (the attempt already counted toward MAX_LAUNCHES or MAX_RESTARTS).
   export VMX_ZONE=$z
-  if ! { $V exec "$name" -- 'git clone -q --depth 1 https://github.com/celestiaorg/celestia-rs /opt/celestia-rs && git -C /opt/celestia-rs log -1 --format="%H %s"' &&
+  # main, unless segments/SEG/ref pins the segment to a commit (a PR under test).
+  local ref pin=''
+  ref=$(gs_get segments/$seg/ref | head -1 | tr -cd '0-9a-zA-Z/._-')
+  [ -n "$ref" ] && pin=" && git -C /opt/celestia-rs fetch -q origin $ref && git -C /opt/celestia-rs checkout -q --force $ref"
+  if ! { $V exec "$name" -- "git clone -q --depth 1 https://github.com/celestiaorg/celestia-rs /opt/celestia-rs$pin && git -C /opt/celestia-rs log -1 --format='%H %s'" &&
     $V build "$name" | tail -n 3 && [ "${PIPESTATUS[0]}" = 0 ] &&
     $V push "$name" "$here/seg-vm.sh" /data/seg-vm.sh >/dev/null && $V push "$name" "$here/seg-watch.sh" /data/seg-watch.sh >/dev/null &&
     $V job "$name" start seg --interval 300 --status-cmd 'L=$(ls -t /data/home-*/logs/*.log 2>/dev/null | head -1); [ -n "$L" ] && grep -E "restored|followed height|ERROR|diverg" $L | tail -n 2 | cut -c1-250' -- env SEG_EXTRA_RPC="${SEG_EXTRA_RPC:-}" bash /data/seg-vm.sh "$seg" "$src" "$start" "$stop" &&
@@ -59,7 +63,7 @@ launch() { # launch SEG SRC START STOP NAME
   fi
   unset VMX_ZONE
   gs_put segments/$seg/zone "$z"
-  gs_put segments/$seg/launched "$(date -u +%FT%TZ) $name $src $start->$stop"
+  gs_put segments/$seg/launched "$(date -u +%FT%TZ) $name $src $start->$stop${ref:+ ref $ref}"
   log "launched $name: segment $seg from $src at $start to $stop in $z"
 }
 
