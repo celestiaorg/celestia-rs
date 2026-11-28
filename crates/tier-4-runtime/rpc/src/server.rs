@@ -727,12 +727,11 @@ async fn uri_handler(
     }
 }
 
-/// `writeListOfEndpoints`.
+/// `writeListOfEndpoints`. Lists Go's routes only: the snapshot routes
+/// (`SNAPSHOT_ROUTES`) are a Rust-only extension that state sync calls by
+/// name, and listing them would make the page differ from Go's.
 fn list_endpoints(host: &str, unsafe_routes: bool) -> Response<Body> {
-    let mut routes: Vec<&Route> = crate::env::ROUTES
-        .iter()
-        .chain(crate::env::SNAPSHOT_ROUTES)
-        .collect();
+    let mut routes: Vec<&Route> = crate::env::ROUTES.iter().collect();
     if unsafe_routes {
         routes.extend(crate::env::UNSAFE_ROUTES.iter());
     }
@@ -1829,6 +1828,30 @@ pub(crate) mod broadcast_tests {
             .expect("body");
         assert!(String::from_utf8_lossy(&bytes).contains("-32601"));
         assert!(find_route("snapshot_chunk", false).is_none());
+    }
+
+    /// Go's index page (`writeListOfEndpoints`) lists only its own routes.
+    /// The snapshot routes are a Rust-only extension that state sync calls
+    /// by name, so they stay served but off the index.
+    #[tokio::test]
+    async fn index_lists_go_routes_only() {
+        for unsafe_routes in [false, true] {
+            let bytes = axum::body::to_bytes(
+                list_endpoints("localhost", unsafe_routes).into_body(),
+                1 << 20,
+            )
+            .await
+            .expect("body");
+            let page = String::from_utf8_lossy(&bytes);
+            assert!(page.contains("//localhost/status?"), "{page}");
+            for r in crate::env::SNAPSHOT_ROUTES {
+                assert!(
+                    !page.contains(&format!("/{}?", r.name)),
+                    "{} listed",
+                    r.name
+                );
+            }
+        }
     }
 
     #[tokio::test]
