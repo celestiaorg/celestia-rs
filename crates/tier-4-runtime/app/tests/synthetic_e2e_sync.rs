@@ -501,8 +501,11 @@ const RESTORE_AT: [i64; 11] = [3, 8, 13, 15, 20, 30, 40, 50, 59, 70, 79];
 /// The last block of each app version from 4 (one below each later
 /// upgrade height, as the mainnet checkpoints 6,748,821, 8,662,012,
 /// 10,960,599 and 11,771,698 are): the block commits the next consensus
-/// app version on the old release's store set.
-const RESTORE_AT_UPGRADE: [i64; 6] = [25, 36, 46, 56, 66, 76];
+/// app version on the old release's store set. Not 66: pinned Go v10
+/// aborts the restore of the last v9 block, whose snapshot lacks the
+/// stores the v10 loader adds (devnet-conformance
+/// `go_upgrade_snapshot_restore_boundary` pins that).
+const RESTORE_AT_UPGRADE: [i64; 5] = [25, 36, 46, 56, 76];
 
 #[test]
 fn state_sync_in_every_era() {

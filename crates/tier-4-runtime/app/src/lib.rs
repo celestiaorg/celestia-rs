@@ -1342,11 +1342,14 @@ impl App {
                     Ok(()) => {
                         let release = Release::executing(req.app_version);
                         let v10_stores = release.has_fibre();
-                        // The v10 stores are optional at every version: a
-                        // snapshot of the last v9 block (offered at app
-                        // version 10) predates the store loader, which
-                        // adds them at the next height.
-                        let mut optional: Vec<&'static str> = stores::ADDED_IN_V10.to_vec();
+                        // A snapshot of the last v9 block offered at app
+                        // version 10 lacks the v10 stores; pinned Go v10
+                        // aborts that restore too (devnet-conformance
+                        // `go_upgrade_snapshot_restore_boundary`).
+                        let mut optional: Vec<&'static str> = Vec::new();
+                        if !v10_stores {
+                            optional.extend(stores::ADDED_IN_V10);
+                        }
                         // Stores of the v8 store loader (`zkism`); app
                         // versions 4 to 6 have none.
                         let v8_stores = stores::ADDED_IN_V8
