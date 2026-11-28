@@ -26,6 +26,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.classify.outputs.docs_only }}
       go: ${{ steps.classify.outputs.go }}
+      macos: ${{ steps.classify.outputs.macos }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -56,6 +57,15 @@ jobs:
           # pipefail when grep exits at the first match.
           grep -qzE '^(conformance/|\.github/workflows/(ci|go-oracles)\.yml$)' "$paths" ||
             echo 'go=false' >> "$GITHUB_OUTPUT"
+          # The macOS build runs on a pull request only when it can break it:
+          # dependencies, build scripts, the toolchain, this workflow, or
+          # platform-specific code (a cfg on the target or the allocator).
+          platform="$RUNNER_TEMP/ci-platform-paths"
+          git diff --no-renames --name-only -z \
+            -G 'target_(os|vendor|family)|mimalloc' "$BASE_SHA...$HEAD_SHA" -- > "$platform" || exit 0
+          grep -qzE '(^|/)(Cargo\.(toml|lock)|build\.rs)$|^(rust-toolchain\.toml|\.cargo/|\.github/workflows/ci\.yml$)' "$paths" ||
+            [[ -s "$platform" ]] ||
+            echo 'macos=false' >> "$GITHUB_OUTPUT"
           while IFS= read -r -d '' path; do
             case "$path" in
               README.md|docs/.nojekyll|docs/MODULES.md|docs/hardware.md|docs/operator-guide.md|\
@@ -270,7 +280,10 @@ jobs:
   # This is the slowest job (about 27 minutes), and a platform-only break is
   # rare, so it runs on pushes to main, not on pull requests.
   macos:
-    if: github.event_name != 'pull_request'
+    needs: changes
+    if: >-
+      ${{ !cancelled() && (github.event_name != 'pull_request' ||
+      needs.changes.outputs.macos != 'false') }}
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -427,8 +440,8 @@ jobs:
   # One check for the branch ruleset to require, so it survives job renames
   # and path filters. It runs after every other job, whatever their outcome,
   # and fails when any of them failed or was cancelled. A job its `if`
-  # skipped (docs-only or non-Go pull requests, macos on pull requests)
-  # counts as passing.
+  # skipped (docs-only or non-Go pull requests, macos on pull requests that
+  # touch nothing macOS-specific) counts as passing.
   ci-ok:
     if: ${{ always() }}
     needs:
