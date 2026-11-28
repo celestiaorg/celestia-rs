@@ -131,9 +131,9 @@ python3 conformance/mainnet-rpc/coverage.py --verify-scoped --json /tmp/rpc-cove
 
 The `rpc-evidence` CI job now runs the registered offline current-release
 regressions for limits, WebSocket lifecycle, live transactions and their paired closure, populated staking and governance,
-REST height/POST, Comet HTTP and the merged bounded provider soak. Their verifier sources and primary receipts are
-hash-bound: they are frozen evidence. Documentation and Rust sources are bound
-by path only, because ordinary pull requests edit them; a source must still
+REST height/POST, Comet HTTP and the merged bounded provider soak. Their primary receipts are
+hash-bound: they are frozen evidence. Documentation, verifiers and Rust sources are bound
+by path only, because ordinary pull requests edit them; a Rust source must still
 exist and define the named test function. The audit text (baseline, deviations,
 provenance limits and remaining gaps) is checked for structure and is not
 pinned by a hash. It runs no fresh network capture. The ordinary workspace test job

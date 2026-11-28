@@ -234,13 +234,13 @@ class ScopedEvidenceAudit(unittest.TestCase):
             audit.validate(self.value)
 
     def test_living_files_are_bound_by_path_and_frozen_evidence_by_hash(self):
-        # Documentation and Rust sources change in ordinary pull requests, so
-        # they are bound by path. Receipts and verifiers stay hash-bound.
+        # Documentation, verifiers and Rust sources change in ordinary pull
+        # requests, so they are bound by path. Receipts stay hash-bound.
         for row in self.value["packages"]:
             self.assertEqual(set(row["documentation"]), {"path"})
             self.assertEqual(set(row["receipt"]), {"path", "sha256"})
             if row["verifier"] is not None:
-                self.assertEqual(set(row["verifier"]), {"path", "sha256"})
+                self.assertEqual(set(row["verifier"]), {"path"})
             for regression in row["runtime_regressions"]:
                 self.assertEqual(set(regression["source"]), {"path"})
         audit.validate(self.value)
@@ -269,10 +269,11 @@ class ScopedEvidenceAudit(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "bound by path only"):
             audit.validate(self.value)
 
-    def test_stale_verifier_hash_is_rejected(self):
+    def test_verifier_with_a_hash_is_rejected(self):
+        # A verifier is Python source that pull requests edit, like any test.
         row = next(row for row in self.value["packages"] if row["verifier"])
         row["verifier"]["sha256"] = "0" * 64
-        with self.assertRaisesRegex(ValueError, "hash mismatch"):
+        with self.assertRaisesRegex(ValueError, "bound by path only"):
             audit.validate(self.value)
 
     def test_verifier_execution_uses_only_registered_python_sources(self):
