@@ -1231,6 +1231,24 @@ celestia-rs start --home ~/.celestia-rs/mainnet-genesis \
 `scripts/mainnet-genesis-blocksync.sh` does the same on a VM
 (`ARCHIVE_PEERS=… scripts/mainnet-genesis-blocksync.sh [stop-height]`).
 
+If your P2P peers prune early blocks, you can execute mainnet from genesis
+over public archive RPCs. Initialize an empty home once.
+`init --network mainnet` downloads the genesis and checks its pinned SHA-256.
+
+```sh
+H=~/.celestia-rs/mainnet-genesis-rpc
+celestia-rs init genesis-sync --network mainnet --home "$H" >/dev/null
+celestia-rs follow --home "$H" --chain-id celestia \
+  --rpc https://rpc.celestia.pops.one,https://public-celestia-rpc.numia.xyz \
+  --trust-period-hours 200000
+```
+
+The long trust period covers the age of the historical headers. The pinned
+genesis supplies the initial validator set. For a bounded run, add
+`--stop-at-height 1000`. The follower executes block 1,000 and checks its
+result against signed header 1,001. Run the same `follow` command without
+the stop height to resume from the saved state and continue to the live tip.
+
 To start from a later height instead, restore a Go state-sync snapshot and
 follow the network from there. `celestia-rs follow --snapshot <dir>`
 restores `<dir>/<height>/<format>/<chunk>` (Go's snapshot layout):
