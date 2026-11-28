@@ -359,6 +359,7 @@ jobs:
         module:
           - antereplay
           - antevectors
+          - blockstore-rpc
           - consensusvectors
           - ctypesvectors
           - devnet-oracle

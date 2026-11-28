@@ -27,12 +27,17 @@ whose block store reads both key layouts.
     go build -o blockstore-rpc .
     ./blockstore-rpc -dir /data/bs -backend pebbledb -chain-id celestia -laddr tcp://0.0.0.0:26657
 
-`-dir` holds `blockstore.db` and `state.db`. The mainnet archive's databases
-are pebble. A data dir taken from a tar without its `CURRENT` file needs one
-containing the newest `MANIFEST-*` name.
+`-dir` holds `blockstore.db` and `state.db`. The mainnet archive uses Pebble.
+Both databases must already exist. The server opens them in read-only mode.
 
 ## Check before use
 
-On sample heights from every app version, including a block with evidence
-(8,218,923), compare the JSON of `/block`, `/commit`, `/validators` (every
-page) and `/consensus_params` against a public archive RPC, field by field.
+Run the verifier with the candidate server and an independent public archive:
+
+    python3 verify.py http://127.0.0.1:26657 https://rpc.celestia.pops.one
+
+It compares canonical JSON bytes for the entire result of `/block`,
+`/commit`, `/validators` (every page), and `/consensus_params`. It checks
+the chain ID, height and app version, and requires evidence at 8,218,923
+and 9,217,879. A successful run prints one SHA-256 digest per request and
+exits with status zero.

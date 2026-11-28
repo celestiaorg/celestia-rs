@@ -8,13 +8,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
-	"strings"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/inspect/rpc"
 	"github.com/cometbft/cometbft/libs/log"
@@ -26,6 +25,7 @@ import (
 	blocknull "github.com/cometbft/cometbft/state/indexer/block/null"
 	txnull "github.com/cometbft/cometbft/state/txindex/null"
 	"github.com/cometbft/cometbft/store"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 
 	dbm "github.com/cometbft/cometbft-db"
 )
@@ -41,11 +41,11 @@ func main() {
 		os.Exit(2)
 	}
 	logger := log.NewTMLogger(log.NewSyncWriter(os.Stderr))
-	bsDB, err := dbm.NewDB("blockstore", dbm.BackendType(*backend), *dir)
+	bsDB, err := openArchive("blockstore", *dir, *backend)
 	if err != nil {
 		fail(err)
 	}
-	sDB, err := dbm.NewDB("state", dbm.BackendType(*backend), *dir)
+	sDB, err := openArchive("state", *dir, *backend)
 	if err != nil {
 		fail(err)
 	}
@@ -59,13 +59,19 @@ func main() {
 	routes["status"] = server.NewRPCFunc(func(*rpctypes.Context) (*ctypes.ResultStatus, error) {
 		return status(bs, *chainID), nil
 	}, "")
-	h := rpc.Handler(cfg, routes, logger)
-	l, err := net.Listen("tcp", strings.TrimPrefix(*laddr, "tcp://"))
-	if err != nil {
-		fail(err)
+	srv := rpc.Server{Addr: *laddr, Handler: rpc.Handler(cfg, routes, logger), Config: cfg, Logger: logger}
+	fail(srv.ListenAndServe(context.Background()))
+}
+
+func openArchive(name, dir, backend string) (dbm.DB, error) {
+	switch dbm.BackendType(backend) {
+	case dbm.PebbleDBBackend:
+		return dbm.NewPebbleDBWithOpts(name, dir, &pebble.Options{ReadOnly: true})
+	case dbm.GoLevelDBBackend:
+		return dbm.NewGoLevelDBWithOpts(name, dir, &opt.Options{ReadOnly: true})
+	default:
+		return nil, fmt.Errorf("unsupported archive database backend %q", backend)
 	}
-	srv := &http.Server{Handler: h}
-	fail(srv.Serve(l))
 }
 
 // status reports the stored range; latest and earliest come from the block
