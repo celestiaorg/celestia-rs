@@ -130,6 +130,7 @@ updates:
       - /conformance/archive-export/v046
       - /conformance/archive-export/v050
       - /conformance/antevectors
+      - /conformance/blockstore-rpc
       - /conformance/consensusvectors
       - /conformance/ctypesvectors
       - /conformance/devnet-oracle
