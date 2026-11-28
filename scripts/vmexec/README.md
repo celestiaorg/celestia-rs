@@ -113,7 +113,15 @@ height (`rs-snapshots/<H>/`, from the P2P genesis run) is also checked
 with `celestia-rs compare-snapshots` (`rs-replay/<H>/compare-<H>.txt`).
 Stop the controller with `touch /var/lib/vmexec/controller-stop` on its VM.
 
-The last planned segment starts at the 15,105,000 export and replays through
+By default each worker builds the checked-out source. To reuse a measured
+Linux AMD64 binary, upload it to `bin/<full-commit>/celestia-rs-linux-amd64`
+in the bucket. Set `SEG_BINARY_REF` to the full commit and
+`SEG_BINARY_SHA256` to the independently recorded digest on the controller.
+Workers pinned to that commit check the digest before executing the binary
+and check its embedded commit before installation. If the artifact is
+unavailable or fails either check, the worker builds from source.
+
+The last planned segment starts at the 15,917,512 export and replays through
 16,301,725. Its verification header at 16,301,726 has block ID
 `85CA1A67FF8041B2556E27B30F170662491844F3CFCC811DBABF558206FED2E3` and
 app hash `96179B115E61EB6C42232BAE8652BFF07029D8FABA87FC0025D5F1F6721D831A`
