@@ -43,10 +43,14 @@ log=$HOME_DIR/logs/blocksync-$(date -u +%Y%m%dT%H%M%SZ).log
 echo "logging to $log (progress: grep 'Block Sync Rate')"
 # No --statesync-rpc-servers: a fresh home block-syncs from genesis.
 # Restarting this script resumes from the last committed height.
+command=("$BIN" start --home "$HOME_DIR" --p2p.persistent_peers "$ARCHIVE_PEERS" --stop-at-height "$STOP")
+# A bounded run needs the plain INFO stop record even with a quiet
+# RUST_LOG or a JSON log_format in the existing home.
+if [[ $STOP =~ [1-9] ]]; then
+  command=(env RUST_LOG=info "${command[@]}" --log_format plain)
+fi
 set +e
-"$BIN" start --home "$HOME_DIR" \
-  --p2p.persistent_peers "$ARCHIVE_PEERS" \
-  --stop-at-height "$STOP" >"$log" 2>&1
+"${command[@]}" >"$log" 2>&1
 status=$?
 set -e
 grep 'Block Sync Rate' "$log" | tail -n 1 || true
@@ -57,5 +61,20 @@ if [[ $status -ne 0 ]]; then
 fi
 
 grep 'synced block' "$log" | tail -n 1 || true
-echo "done. To compare the last app hash with the network, run the node again"
+if [[ $STOP =~ [1-9] ]]; then
+  # The block-sync reactor can stop for either a signal or the requested
+  # height. The node also emits "stop height reached" in consensus and when
+  # an existing home is already at or beyond the requested height.
+  height=$(sed -nE \
+    -e 's/^([^ ]+[[:space:]]+)?INFO celestia_rs::node: block sync finished height=([0-9]+) blocks_synced=[0-9]+ reason=Stopped$/\2/p' \
+    -e 's/^([^ ]+[[:space:]]+)?INFO celestia_rs::node: stop height reached height=([0-9]+)$/\2/p' "$log" | tail -n 1)
+  if [[ -z $height ]] || ((10#$height < 10#$STOP)); then
+    echo "node stopped before confirming the requested height $STOP" >&2
+    exit 1
+  fi
+  echo "reached height $height; its header commits the app hash for height $((10#$height - 1))"
+else
+  echo "unbounded node stopped; see $log for the last executed height"
+fi
+echo "To compare the last app hash with the network, run the node again"
 echo "and use: packaging/check-apphash.sh http://127.0.0.1:26657 $REF"
