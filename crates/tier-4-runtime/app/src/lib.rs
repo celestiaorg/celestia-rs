@@ -1319,9 +1319,11 @@ impl App {
             return self.legacy_offer_snapshot(req);
         }
         if format_v046 {
-            // cosmos-sdk v0.50 snapshots are format 3 only.
+            // cosmos-sdk v0.50 snapshots are format 3 only. Reject only this
+            // snapshot: format 2 is valid at v0.46 heights and at the v4
+            // hand-off height offered in the same state sync.
             return abci::ResponseOfferSnapshot {
-                result: R::RejectFormat as i32,
+                result: R::Reject as i32,
             };
         }
         let result = match (&mut self.snapshots, req.snapshot) {
@@ -2784,9 +2786,11 @@ mod node_options_tests {
     }
 
     #[test]
-    fn v050_app_versions_reject_format_2_snapshots() {
+    fn v050_app_versions_reject_format_2_snapshots_alone() {
         // celestia-app v4 and later restore format 3 only; format 2 at app
-        // version 4 is the v3 state of the hand-off height.
+        // version 4 is the v3 state of the hand-off height. Only the offered
+        // snapshot is rejected: format 2 stays valid at other heights of the
+        // same state sync (RejectFormat would drop them all).
         for app_version in [5, 6, 8, 9, 10] {
             let home = tempfile::tempdir().expect("app home");
             let mut app = App::open_with(home.path(), AppOptions::default()).expect("open app");
@@ -2811,7 +2815,7 @@ mod node_options_tests {
             });
             assert_eq!(
                 offered.result,
-                abci::response_offer_snapshot::Result::RejectFormat as i32,
+                abci::response_offer_snapshot::Result::Reject as i32,
                 "app version {app_version}"
             );
         }
