@@ -101,11 +101,35 @@ Cumulative, from the baseline before #720 to #732: 19.57 → 26.53 blocks/s (+35
   - 2,378,205 at 387 ms: finalize 358 ms, 49,136 node lookups and 30,692 disk reads for a 292 KB block. A state-heavy block, not a large one; worth a look in a later profile.
 - **Reading:** the v2 era executes faster than 559k (35.6 vs 28.7 blocks/s) and has no new hot spot. Its profile looks like the 559k one.
 
+## Profile in the v0.50 era (2026-11-28)
+
+[profiling-runbook.md](profiling-runbook.md) run on main `566e6607`: mimalloc, app version 5, v0.50 driver, IAVL cache 4,000,000, block cache 512 MiB, `--save-blocks true` (the window has evidence at 8,218,923, which passed). Heights 8,218,901–8,233,900. Outputs are in the benchmark bucket under `rs-replay/prof/v050-8218900/`.
+
+- **Run:** 15,000 blocks in 295.5 s = **50.8 blocks/s**, with 0 app-hash mismatches.
+- **Execution:** exec mean 19.0 ms (p50 16.0, p90 21.6); finalize 7.7 ms, commit 3.8 ms.
+- **Node cache:** 37 lookups/block (39.0% hit), 23 disk reads/block, 30 KiB/block.
+- **Memory:** peak RSS 2.03 GB.
+- **Result check:** `responses_digest` `ac72ec22…95fcdc`, the same in the `perf` run.
+- **Threads:** executor 31.7% of samples, `rocksdb:low` 25.9%, `iavl-prune` 10.8%.
+- **Executor largest self-time items:** `Remembered::get` 2.15%, sha256 1.96%, `Mutator::set` 1.39%, `_mi_page_malloc_zero` 1.27%, crc32c 1.08%.
+- **Slowest block:** 8,220,516 at 2,247 ms (commit 2,109 ms), the one-off RocksDB compaction stall.
+
+## Summary across eras (one build)
+
+| Window | Driver | blocks/s | exec mean ms | finalize ms | disk reads/block | peak RSS |
+|---|---|---|---|---|---|---|
+| 558,371–573,370 | legacy (app v1) | 28.7 | 33.6 | 20.6 | 197 | 3.34 GB |
+| 2,371,495–2,386,494 | legacy (app v2) | 35.6 | 26.9 | 15.3 | 152 | 2.69 GB |
+| 8,218,901–8,233,900 | v0.50 (app v5) | 50.8 | 19.0 | 7.7 | 23 | 2.03 GB |
+
+Execution gets faster in later eras, and no era has a new hot spot. The largest executor items are the same everywhere: IAVL hashing, tree walks and allocation. Live `follow` segments are limited by block fetching, not execution, so faster block sources matter more than execution work for a full sync.
+
 ## Open follow-ups
 
-- **v0.50-era profile:** this driver (from height 6.68M) has never been profiled. A 15,000-block window from the 8,218,900 checkpoint is running with [profiling-runbook.md](profiling-runbook.md) (rerun with `--save-blocks true`, see the runbook); 559k and the v2 era are done (sections above). Outputs go under `rs-replay/prof/` in the benchmark bucket. Live `follow` segments are limited by RPC fetching, not execution: exec-only rates are 11–27 blocks/s across 1.0M–4.0M heights.
+- **Era profiles:** done for 559k, the v2 era and the v0.50 era (sections above). Live `follow` segments are limited by RPC fetching, not execution: exec-only rates are 11–27 blocks/s across 1.0M–4.0M heights.
 - **mimalloc memory over long runs:** in the 100,000-block soak, RSS still grew in the second half: 69 MiB per 10,000 blocks with mimalloc vs 53 with jemalloc, while the node cache was still filling. The replay segments log RSS every 5 minutes and compare jemalloc and mimalloc builds over about 250,000 blocks. Revert criterion ([memory.md](memory.md)): if RSS grows without bound once the 4,000,000-node cache is full, go back to jemalloc with `background_thread:true` (+3.3%) as a compiled-in `malloc_conf`.
 - **Streaming block decode in `light/http.rs`:** `follow` parses each `/block` response into a `serde_json::Value` tree before decoding it. With 8–24 blocks in flight and blocks of several MB, the transient peak can reach about 0.75 GiB. Measure first: compare RSS with `--prefetch 8` and `--prefetch 24` on same-era segments. If the difference at shipped defaults is under about 0.5 GiB, do not change it.
+- **First-open RocksDB stall:** all three profile windows have one block of 2–5 s shortly after the home is first opened with the #720 settings, as the first L0 → L5 → L6 compaction cascade runs. Smaller, more frequent L5 → L6 compactions for the application database (`max_bytes_for_level_base`, target file size, `max_subcompactions`) may remove it. Not started.
 - **Persistent `iavl-prune` worker:** pruning starts one thread per prune (1,863 threads in about 1,900 blocks, 15.8% of samples). It runs off the executor, so it matters mainly on small machines. Not started.
 - **Smaller candidates from the 559k profile:**
   - begin_block distribution and staking work, about 4 ms;
