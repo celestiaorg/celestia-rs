@@ -241,6 +241,7 @@ case \$1 in
   delete) mv "$C/vms/\$2" "$C/gone/\$2" 2>/dev/null ;;
   build) [ -e "$C/fail-build" ] && exit 1; echo built ;;
   job) echo "\$*" >>"$C/job-calls" ;;
+  exec) echo "\$*" >>"$C/exec-calls" ;;
 esac
 exit 0
 EOF
@@ -290,6 +291,11 @@ check  "ctl launches from a format 3 export"  grep -q 'go-snapshots/8218900 8218
 rm -rf "$C/vms"/*; printf '0\n' >"$C/bucket/segments/launch-count"; : >"$C/job-calls"
 ctl 'SEG_EXTRA_RPC=http://rpc.invalid:26657; launch 9217850 go-snapshots/9217850 9217850 9500000 rs-seg-9217850' >/dev/null 2>&1
 check  "ctl passes SEG_EXTRA_RPC to the segment" grep -q 'env SEG_EXTRA_RPC=http://rpc.invalid:26657 bash /data/seg-vm.sh 9217850' "$C/job-calls"
+# A segment can be pinned to a commit (segments/SEG/ref, e.g. a PR head under test).
+rm -rf "$C/vms"/*; : >"$C/exec-calls"; printf '30c95fdfcae5c3245e7d9e6d16d72521ea15fbbd\n' >"$C/bucket/segments/9217850/ref"
+ctl 'launch 9217850 go-snapshots/9217850 9217850 9500000 rs-seg-9217850' >/dev/null 2>&1
+check  "ctl checks out a pinned commit"      grep -q 'git -C /opt/celestia-rs fetch -q origin 30c95fdfcae5c3245e7d9e6d16d72521ea15fbbd && git -C /opt/celestia-rs checkout -q --force 30c95fdfcae5c3245e7d9e6d16d72521ea15fbbd' "$C/exec-calls"
+check  "ctl notes the pin in launched"       grep -q 'ref 30c95fdfcae5c3245e7d9e6d16d72521ea15fbbd' "$C/bucket/segments/9217850/launched"
 
 # --- segment watcher: a replay that is active but stuck writes a stalled marker ---------------
 W=$t/watch
