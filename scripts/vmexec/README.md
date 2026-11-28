@@ -117,7 +117,7 @@ Stop the controller with `touch /var/lib/vmexec/controller-stop` on its VM.
 
 Download the trusted mainnet segment stop-tail logs under
 `rs-replay/<segment>/stop-tail-<host>.log`. Include the genesis follow log
-and any finite runs leading up to a restart. Supply logs from the same
+and the per-invocation `progress-*.log` records leading up to a restart. Supply logs from the same
 chain only. Tail logs do not independently identify the chain or build.
 For example, with one log per run in a local directory:
 
@@ -127,6 +127,8 @@ python3 scripts/vmexec/segments/coverage.py --first 1 --last 250000 evidence/*.l
 
 The command reports each executed range and each gap. It reads the actual
 first executed height of each run and requires the authenticated next header
-and consistent final counters. A Go checkpoint, an active run, or a
+and consistent final counters for a complete run. For in-progress logs it
+uses the resume height and stops one block below the last observed execution,
+whose header authenticates the preceding block. A Go checkpoint or a
 `done` marker alone does not establish the execution range. Exit codes
 are 0 for full coverage, 1 for gaps, and 2 for invalid input.

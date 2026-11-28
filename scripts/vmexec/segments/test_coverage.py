@@ -21,6 +21,15 @@ class CoverageTest(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 self.parse(invalid)
 
+    def test_progress_excludes_last_execution(self):
+        resume = "INFO celestia_rs::follow: resuming height=120000 app_hash=ABCD\n"
+        progress = "INFO celestia_rs::follow: followed height=120100 tip=250000\n"
+        self.assertEqual(self.parse(resume + progress), (120001, 120099))
+        for invalid in [progress, progress + resume, resume + progress + resume,
+                        resume + progress + progress, resume + progress.replace("120100", "120001")]:
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                self.parse(invalid)
+
     def test_restarts_overlap_and_gaps(self):
         ranges = [(20, 28), (10, 15), (13, 16), (20, 28), (40, 41)]
         self.assertEqual(list(missing(ranges, 1, 30)), [(1, 9), (17, 19), (29, 30)])

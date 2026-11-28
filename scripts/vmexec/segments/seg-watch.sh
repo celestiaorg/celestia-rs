@@ -19,7 +19,21 @@ WATCH_SECS=${WATCH_SECS:-300} STALL_SECS=${STALL_SECS:-600} last_h='' last_chang
 stall_pend=0 tail_pend=0 resume_pend=0
 while true; do
   L=$(ls -t $HOME_DIR/logs/*.log 2>/dev/null | head -1)
-  h=''; [ -n "$L" ] && h=$(grep -oE 'followed height=[0-9]+' "$L" | tail -1 | cut -d= -f2)
+  h='' observed=''
+  if [ -n "$L" ]; then
+    observed=$(grep -E '(^|[[:space:]])INFO celestia_rs::follow: followed height=[0-9]+ ' "$L" | tail -1)
+    h=${observed##*followed height=}; h=${h%% *}
+  fi
+  # Preserve the actual start of this invocation before a restart or VM
+  # loss. The header at the most recent "followed" height authenticates the
+  # effects of the previous height. Keep each invocation in its own object.
+  if [ -n "$h" ]; then
+    progress=$DATA/progress-$SEG.log
+    if grep -m1 -E '(^|[[:space:]])INFO celestia_rs::follow: resuming height=[0-9]+ ' "$L" > "$progress"; then
+      printf '%s\n' "$observed" >> "$progress"
+      vmx-gcs put "$progress" "rs-replay/$SEG/progress-$HOST-${L##*/}" >/dev/null 2>&1
+    fi
+  fi
   a=$(systemctl is-active vmxjob-seg)
   reason=''
   [ "$a" = active ] || { [ -n "$L" ] && reason=$(grep -E '^Error|ERROR' "$L" | tail -1 | cut -c1-240); }

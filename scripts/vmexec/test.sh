@@ -312,7 +312,7 @@ printf '#!/bin/bash\n[ "$*" = "-o rss= -C celestia-rs" ] && echo " 4194304"\n' >
 sleep 300 & fake_node=$!
 printf '#!/bin/bash\necho %s\n' "$fake_node" >"$W/bin/pgrep"
 chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs" "$W/bin/ps" "$W/bin/pgrep"
-echo 'INFO celestia_rs::follow: followed height=150100 tip=1' >"$W/data/home-120000/logs/follow.log"
+printf 'INFO celestia_rs::follow: resuming height=120000 app_hash=1234\nINFO celestia_rs::follow: followed height=150100 tip=1\n' >"$W/data/home-120000/logs/follow.log"
 PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=2 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1 &
 wpid=$!
 wait_until 30 test -e "$W/bucket/segments_120000_stalled"
@@ -322,6 +322,7 @@ wait "$fake_node" 2>/dev/null || true
 check  "watch stall writes the marker"       grep -q 'stalled .* height=150100' "$W/bucket/segments_120000_stalled"
 check  "watch stall uploads the log tail"    test -e "$W/bucket/rs-replay_120000_stall-tail-$(hostname).log"
 refute "watch stall is not a failure"        test -e "$W/bucket/segments_120000_failed"
+check  "watch preserves invocation start and authenticated progress" cmp "$W/data/home-120000/logs/follow.log" "$W/bucket/rs-replay_120000_progress-$(hostname)-follow.log"
 check  "watch logs the node RSS per row"     grep -qP '\t150100\tactive\t.*\t4194304$' "$W/data/heights-120000.tsv"
 check  "watch logs smaps and status of the node" grep -qP '^[0-9]+\t150100\tRss=[0-9]+ Anonymous=[0-9]+ (?=.*VmHWM=[0-9]+ )(?=.*RssAnon=[0-9]+ )(?=.*RssFile=[0-9]+ )(?=.*Threads=[0-9]+ )' "$W/data/mem-120000.tsv"
 check  "watch uploads the memory samples"    test -e "$W/bucket/rs-replay_120000_mem-$(hostname).tsv"
