@@ -171,7 +171,7 @@ function table(id, head, rows, numeric = []) {
 const GO_HEAD = ["celestia-app version", "Nodes"];
 const RUST_HEAD = ["celestia-rs version", "Nodes"];
 const RUST_NODES_HEAD = ["Node ID", "Moniker", "celestia-rs version", "Source"];
-const UNKNOWN_RELEASE = "Unknown (RPC not reachable)";
+const UNKNOWN_RELEASE = "Unknown (release unavailable)";
 
 // `0.38.17-celestia-rs.0.1.0-rc.9` → `v0.1.0-rc.9`; null without the suffix.
 function rustVersion(handshake) {
@@ -243,8 +243,7 @@ function render() {
   );
   const go = known.filter((n) => n.implementation === "go");
   const rust = known.filter((n) => n.implementation === "rust");
-  // One row per celestia-app release. The release comes from the node's own
-  // RPC `/abci_info`, so nodes without an open RPC share one row, listed last.
+  // Go releases come from peer metadata or the node's own RPC.
   table("go-versions", GO_HEAD, countRows(go, (n) => (n.app_release ? `v${n.app_release}` : null), UNKNOWN_RELEASE), [1]);
   table("rust-versions", RUST_HEAD, countRows(rust, (n) => rustVersion(n.version), "Unknown"), [1]);
   table(
@@ -252,9 +251,9 @@ function render() {
     RUST_NODES_HEAD,
     rust.map((n) => [el("code", {}, n.id.slice(0, 12) + "…"), n.moniker, rustVersion(n.version) ?? "–", n.source]),
   );
-  const answered = known.filter((n) => n.app_release).length;
+  const withRelease = go.filter((n) => n.app_release).length;
   $("release-coverage").textContent =
-    `In the latest ${net} crawl, ${answered} of ${known.length} observed nodes answered.`;
+    `The latest ${net} crawl found the app release for ${withRelease} of ${go.length} Go nodes.`;
 }
 
 async function main() {

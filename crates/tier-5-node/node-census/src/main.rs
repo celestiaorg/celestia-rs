@@ -161,8 +161,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// The handshake has no celestia-app release: ask each node's own RPC
-/// `/abci_info` where it is open. A node that does not answer stays unknown.
+/// Fall back to a node's own RPC when the handshake omitted its app release.
 async fn add_app_releases(result: &mut CrawlResult, concurrency: usize, timeout_secs: u64) {
     let timeout = Duration::from_secs(timeout_secs);
     let answered = rpc::probe_app_releases(&mut result.reached, concurrency, move |url| {

@@ -5,9 +5,8 @@
 //! connections. These count as observed nodes, and their addresses seed
 //! the crawl.
 //!
-//! The handshake carries only the celestia-core version and the app protocol
-//! version. The celestia-app release (for example `6.4.0`) is read from a
-//! node's own RPC `/abci_info`, when that RPC is open to the internet.
+//! Older peers only advertise the core version and app protocol version.
+//! For those peers, the app release can be read from their own `/abci_info`.
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -17,7 +16,7 @@ use anyhow::{Context as _, ensure};
 use p2p::NetAddress;
 use serde_json::Value;
 
-use crate::classify::classify;
+use crate::classify::{advertised_app_release, classify};
 use crate::crawl::{Observed, Source};
 
 /// CometBFT's default RPC port.
@@ -71,7 +70,7 @@ pub fn parse_net_info(body: &Value, chain_id: &str) -> Vec<RpcPeer> {
                     moniker: ni["moniker"].as_str().unwrap_or_default().to_owned(),
                     app_version,
                     source: Source::Rpc,
-                    app_release: None,
+                    app_release: advertised_app_release(version),
                     rpc_url,
                 },
                 addr,
@@ -146,9 +145,8 @@ pub fn parse_abci_info(body: &Value) -> Option<String> {
     ok.then(|| v.to_owned())
 }
 
-/// Asks each node with an RPC URL for `/abci_info` through `fetch`, at most
-/// `concurrency` at a time, and records the release it reports. A node that
-/// does not answer keeps `app_release: None`. Returns how many answered.
+/// Asks nodes missing a release for `/abci_info` through `fetch`, at most
+/// `concurrency` at a time. Returns how many probes obtained a release.
 pub async fn probe_app_releases<F>(nodes: &mut [Observed], concurrency: usize, fetch: F) -> usize
 where
     F: Fn(String) -> anyhow::Result<Value> + Send + Sync + 'static,
@@ -157,6 +155,9 @@ where
     let limit = Arc::new(tokio::sync::Semaphore::new(concurrency.max(1)));
     let mut tasks = tokio::task::JoinSet::new();
     for (i, n) in nodes.iter().enumerate() {
+        if n.app_release.is_some() {
+            continue;
+        }
         let Some(url) = n.rpc_url.clone() else {
             continue;
         };

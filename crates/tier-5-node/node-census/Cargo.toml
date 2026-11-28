@@ -18,6 +18,7 @@ celestia-core-proto = { path = "../../tier-1-protocol-types/celestia-core-proto"
 clap.workspace = true
 p2p = { path = "../../tier-4-runtime/p2p" }
 prost = "0.13"
+semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }

@@ -36,7 +36,7 @@ fn peer(
 #[test]
 fn reads_peer_node_info_and_dialable_address() {
     let body = json!({"jsonrpc": "2.0", "result": {"peers": [
-        peer(A, "0.38.17", "188.40.102.137:15656", "188.40.102.137", "celestia"),
+        peer(A, "0.38.17-celestia-app.10.6.0", "188.40.102.137:15656", "188.40.102.137", "celestia"),
         // Listening on all interfaces: dial the IP the RPC node saw instead.
         peer(B, "0.38.17-celestia-rs.0.1.0-rc.9", "tcp://0.0.0.0:26656", "65.21.1.2", "celestia"),
         // Another chain's peer is ignored.
@@ -48,6 +48,7 @@ fn reads_peer_node_info_and_dialable_address() {
     assert_eq!(peers[0].observed.id, A);
     assert_eq!(peers[0].observed.implementation, Implementation::Go);
     assert_eq!(peers[0].observed.app_version, 6);
+    assert_eq!(peers[0].observed.app_release.as_deref(), Some("10.6.0"));
     assert_eq!(peers[0].observed.source, Source::Rpc);
     assert_eq!(
         peers[0].addr.as_ref().unwrap().to_string(),
@@ -176,10 +177,14 @@ async fn probing_records_releases_and_ignores_failures() {
         observed(A, Some("http://1.1.1.1:26657")),
         observed(B, Some("http://2.2.2.2:26657")),
         observed(C, None),
+        observed("advertised", Some("http://3.3.3.3:26657")),
     ];
+    nodes[3].app_release = Some("10.7.0".into());
     let answered = probe_app_releases(&mut nodes, 2, |url: String| {
         if url == "http://1.1.1.1:26657" {
             Ok(serde_json::from_str(ABCI_INFO_MAINNET)?)
+        } else if url == "http://3.3.3.3:26657" {
+            Ok(json!({"result": {"response": {"version": "10.5.0"}}}))
         } else {
             anyhow::bail!("connection refused")
         }
@@ -189,6 +194,7 @@ async fn probing_records_releases_and_ignores_failures() {
     assert_eq!(nodes[0].app_release.as_deref(), Some("10.6.0"));
     assert_eq!(nodes[1].app_release, None);
     assert_eq!(nodes[2].app_release, None);
+    assert_eq!(nodes[3].app_release.as_deref(), Some("10.7.0"));
 }
 
 #[test]

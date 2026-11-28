@@ -13,7 +13,7 @@ use p2p::{ChannelDescriptor, MConnConfig, MConnection, NetAddress, NodeInfo, Nod
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
 
-use crate::classify::{Implementation, classify};
+use crate::classify::{Implementation, advertised_app_release, classify};
 use crate::rpc::RpcPeer;
 
 /// Channels the crawler advertises. celestia-core drops peers without the
@@ -63,8 +63,7 @@ pub struct Observed {
     pub app_version: u64,
     /// How the `NodeInfo` was obtained.
     pub source: Source,
-    /// celestia-app release from the node's RPC `/abci_info`, when its RPC
-    /// answered (`result.response.version`, for example `6.4.0`).
+    /// celestia-app release advertised by the peer or read from its RPC.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app_release: Option<String>,
     /// Where to ask for `/abci_info`; never published.
@@ -179,11 +178,11 @@ pub async fn crawl(cfg: CrawlConfig) -> CrawlResult {
                 Observed {
                     id: p.id,
                     implementation: classify(&p.info.version),
+                    app_release: advertised_app_release(&p.info.version),
                     version: p.info.version,
                     moniker: p.info.moniker,
                     app_version: p.info.protocol_version.app,
                     source: Source::P2p,
-                    app_release: None,
                     rpc_url: p.rpc_url,
                 },
             );
