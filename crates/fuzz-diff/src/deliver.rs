@@ -7441,10 +7441,24 @@ pub fn run(
             }
         }
         let op = rust.prepare_proposal(&prep);
-        // Go aborts on a tx that panics; celestia-rs drops the tx.
-        let replaces_abort = op
-            .as_ref()
-            .is_ok_and(|o| rust.replaces_go_prepare_abort(&prep, &gp, o));
+        // Go aborts the whole handler on a tx that panics; celestia-rs drops
+        // only that tx. Ask Go for the request without the dropped txs: its
+        // proposal must equal celestia-rs's (a v9 proposal may carry a blob
+        // tx that ProcessProposal rejects, as Go's own v9 Fill keeps it).
+        let replaces_abort = match (&op, rust.prepare_request_without_panicked(&prep)) {
+            (Ok(o), Some(without)) if app::proposal::is_go_prepare_abort(&prep, &gp) => {
+                match go_value(go.call_or_exception(
+                    cons_conn,
+                    &Request {
+                        value: Some(request::Value::PrepareProposal(without)),
+                    },
+                )?)? {
+                    response::Value::PrepareProposal(g) => g == *o,
+                    _ => false,
+                }
+            }
+            _ => false,
+        };
         if op.as_ref().ok() != Some(&gp) && !replaces_abort {
             stats.mismatches.push(format!(
                 "{scenario} h={height} PrepareProposal differs: go txs={} square={} rust={:?}\n  go only={}\n  rust only={}\n  txs={}",

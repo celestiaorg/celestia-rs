@@ -90,11 +90,30 @@ fn v10_5_proposal_drops_tx_whose_ante_panics() {
                 app.commit().unwrap();
             }
             "prepare" => {
-                let mut req = abci::RequestPrepareProposal::decode(request.as_slice()).unwrap();
+                let recorded = abci::RequestPrepareProposal::decode(request.as_slice()).unwrap();
+                let mut req = recorded.clone();
                 req.txs.insert(0, panic_tx.clone());
                 let resp = app.prepare_proposal(&req).unwrap();
                 let expected = hex::decode(row["response"].as_str().unwrap()).unwrap();
                 assert_eq!(resp.encode_to_vec(), expected, "{}", row["name"]);
+                // The tx it dropped for panicking, and the request without
+                // it: the recorded request, whose recorded response is Go's
+                // answer (the live differential asks Go for that).
+                assert_eq!(
+                    app.prepare_panicked_txs(),
+                    std::slice::from_ref(&panic_tx),
+                    "{}",
+                    row["name"]
+                );
+                assert_eq!(
+                    app.prepare_request_without_panicked(&req),
+                    Some(recorded.clone()),
+                    "{}",
+                    row["name"]
+                );
+                assert!(app.prepare_proposal(&recorded).is_ok());
+                assert!(app.prepare_panicked_txs().is_empty(), "{}", row["name"]);
+                assert_eq!(app.prepare_request_without_panicked(&recorded), None);
                 assert!(!app::proposal::is_go_prepare_abort(&req, &resp));
                 // What Go v10 returns for this request. The differential
                 // checks accept the celestia-rs proposal in its place, but
