@@ -4984,6 +4984,34 @@ fn go_value(r: Response) -> anyhow::Result<response::Value> {
     r.value.ok_or_else(|| anyhow::anyhow!("empty Go response"))
 }
 
+/// Whether celestia-rs's `PrepareProposal` response `ours` may stand in for
+/// Go's response `go` to `req`. Go aborts on a tx that panics; celestia-rs
+/// drops the tx. So when `go` is that abort and celestia-rs dropped txs for
+/// a panic, ask Go for the same proposal without those txs and require
+/// `ours` to equal Go's answer.
+fn replaces_go_prepare_abort(
+    rust: &app::App,
+    go: &mut GoApp,
+    conn: u32,
+    req: &abci::RequestPrepareProposal,
+    go_resp: &abci::ResponsePrepareProposal,
+    ours: &abci::ResponsePrepareProposal,
+) -> anyhow::Result<bool> {
+    let drops = rust.last_prepare_panic_drops();
+    if drops.is_empty() || !app::proposal::is_go_prepare_abort(req, go_resp) {
+        return Ok(false);
+    }
+    let mut without = req.clone();
+    without.txs.retain(|t| !drops.contains(t));
+    let again = go_value(go.call_or_exception(
+        conn,
+        &Request {
+            value: Some(request::Value::PrepareProposal(without)),
+        },
+    )?)?;
+    Ok(matches!(again, response::Value::PrepareProposal(ref r) if r == ours))
+}
+
 /// Re-drives `scenario` (patched genesis) into the Go app at `addr` and
 /// the Rust app, then finalizes `blocks` generated blocks of up to
 /// `per_block` txs on both.
@@ -5969,9 +5997,8 @@ pub fn run(
                 last_pp = Some(pp.clone());
                 let o = rust.prepare_proposal(pp);
                 let same = match (&o, &g) {
-                    // Go aborts on a tx that panics; celestia-rs drops the tx.
                     (Ok(o), response::Value::PrepareProposal(g)) => {
-                        o == g || rust.replaces_go_prepare_abort(pp, g, o)
+                        o == g || replaces_go_prepare_abort(&rust, &mut go, r.conn, pp, g, o)?
                     }
                     _ => false,
                 };
@@ -7441,10 +7468,10 @@ pub fn run(
             }
         }
         let op = rust.prepare_proposal(&prep);
-        // Go aborts on a tx that panics; celestia-rs drops the tx.
-        let replaces_abort = op
-            .as_ref()
-            .is_ok_and(|o| rust.replaces_go_prepare_abort(&prep, &gp, o));
+        let replaces_abort = match &op {
+            Ok(o) => replaces_go_prepare_abort(&rust, &mut go, cons_conn, &prep, &gp, o)?,
+            Err(_) => false,
+        };
         if op.as_ref().ok() != Some(&gp) && !replaces_abort {
             stats.mismatches.push(format!(
                 "{scenario} h={height} PrepareProposal differs: go txs={} square={} rust={:?}\n  go only={}\n  rust only={}\n  txs={}",

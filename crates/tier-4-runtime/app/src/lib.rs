@@ -106,6 +106,9 @@ pub struct App {
     proposed: proposal::ProposedSquare,
     /// Pure blob proofs admitted only by successful New CheckTx.
     blob_tx_cache: blob_cache::BlobTxCache,
+    /// Request txs the last PrepareProposal dropped because they panicked
+    /// (`App::last_prepare_panic_drops`).
+    prepare_panic_drops: Vec<Vec<u8>>,
     /// The cosmos-sdk v0.46 driver of a v0.46 state (app versions 1 to 3;
     /// [`legacy`]); `None` on a v0.50 state.
     legacy: Option<legacy::AppDriver>,
@@ -394,6 +397,7 @@ impl App {
             node: NodeOptions::default(),
             proposed: proposal::ProposedSquare::default(),
             blob_tx_cache: blob_cache::BlobTxCache::default(),
+            prepare_panic_drops: Vec::new(),
             legacy: None,
             legacy_modules: legacy::v1_modules,
             v2_upgrade_height: None,
