@@ -10,7 +10,7 @@
 # State lives in the bucket under segments/<H>/ (launched, zone, restarts,
 # done, failed). Usage: controller.sh  (from the directory holding vmexec/)
 set -uo pipefail
-here=$(cd "$(dirname "$0")" && pwd)
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 V=$here/../vmexec
 BUCKET=gs://fibreda-celestia-rs-genesis
 MAX_RUNNING=${MAX_RUNNING:-3} MAX_RESTARTS=${MAX_RESTARTS:-3} MAX_LAUNCHES=${MAX_LAUNCHES:-40}
@@ -36,6 +36,22 @@ segment_finished() { listed "$1" "segments/$2/done" || listed "$1" "segments/$2/
 next_of() { local prev='' h; for h in $PLAN; do [ "$prev" = "$1" ] && { echo "$h"; return; }; prev=$h; done; }
 segment_vms() { gcloud compute instances list --project=fibreda --filter="labels.purpose=rs-segment-replay AND labels.owner=claude-genesis" --format='value(name,zone.basename(),status)' 2>/dev/null; }
 
+prepare_binary() { # VM, pinned ref
+  local name=$1 ref=$2 digest=${SEG_BINARY_SHA256:-}
+  if [[ $ref =~ ^[0-9a-f]{40}$ && $ref == "${SEG_BINARY_REF:-}" && $digest =~ ^[0-9a-f]{64}$ ]]; then
+    if {
+      printf 'cd /opt/celestia-rs || exit 1\nset -- %q %q\n' "$ref" "$digest"
+      cat "$here/install-binary.sh"
+    } | "$V" exec "$name" -f -; then
+      log "$name: installed verified binary $digest for $ref"
+      return 0
+    fi
+    log "$name: verified binary unavailable; building checked-out source"
+  fi
+  "$V" build "$name" | tail -n 3
+  return "${PIPESTATUS[0]}"
+}
+
 launch() { # launch SEG SRC START STOP NAME
   local seg=$1 src=$2 start=$3 stop=$4 name=$5 z ok=0
   local n; n=$(gs_get segments/launch-count || echo 0); n=${n:-0}
@@ -58,7 +74,7 @@ launch() { # launch SEG SRC START STOP NAME
   ref=$(gs_get segments/$seg/ref | head -1 | tr -cd '0-9a-zA-Z/._-')
   [ -n "$ref" ] && pin=" && git -C /opt/celestia-rs fetch -q origin $ref && git -C /opt/celestia-rs checkout -q --force $ref"
   if ! { $V exec "$name" -- "git clone -q --depth 1 https://github.com/celestiaorg/celestia-rs /opt/celestia-rs$pin && git -C /opt/celestia-rs log -1 --format='%H %s'" &&
-    $V build "$name" | tail -n 3 && [ "${PIPESTATUS[0]}" = 0 ] &&
+    prepare_binary "$name" "$ref" &&
     $V push "$name" "$here/seg-vm.sh" /data/seg-vm.sh >/dev/null && $V push "$name" "$here/seg-watch.sh" /data/seg-watch.sh >/dev/null &&
     $V job "$name" start seg --interval 300 --status-cmd 'L=$(ls -t /data/home-*/logs/*.log 2>/dev/null | head -1); [ -n "$L" ] && grep -E "restored|followed height|ERROR|diverg" $L | tail -n 2 | cut -c1-250' -- env SEG_EXTRA_RPC="${SEG_EXTRA_RPC:-}" bash /data/seg-vm.sh "$seg" "$src" "$start" "$stop" &&
     $V job "$name" start segwatch --interval 600 --status-cmd "tail -n 2 /data/heights-$seg.tsv" -- bash /data/seg-watch.sh "$seg" "$stop"; }; then

@@ -322,6 +322,49 @@ ctl 'launch 9217850 go-snapshots/9217850 9217850 9500000 rs-seg-9217850' >/dev/n
 check  "ctl checks out a pinned commit"      grep -q 'git -C /opt/celestia-rs fetch -q origin 30c95fdfcae5c3245e7d9e6d16d72521ea15fbbd && git -C /opt/celestia-rs checkout -q --force 30c95fdfcae5c3245e7d9e6d16d72521ea15fbbd' "$C/exec-calls"
 check  "ctl notes the pin in launched"       grep -q 'ref 30c95fdfcae5c3245e7d9e6d16d72521ea15fbbd' "$C/bucket/segments/9217850/launched"
 
+# A cached executable must match both the controller's digest and the
+# worker's pinned source. A rejected artifact must never replace the binary.
+cache=$t/binary-cache
+mkdir -p "$cache/bin" "$cache/worker"
+ref=30c95fdfcae5c3245e7d9e6d16d72521ea15fbbd
+printf '#!/bin/sh\necho %s\n' "$ref" >"$cache/bin/git"
+cat >"$cache/bin/vmx-gcs" <<EOF
+#!/bin/sh
+test "\$1" = get && test "\$2" = bin/$ref/celestia-rs-linux-amd64 && cp "$cache/artifact" "\$3"
+EOF
+chmod +x "$cache/bin/"*
+printf '#!/bin/sh\necho "commit: %s"\n' "$ref" >"$cache/artifact"
+digest=$(sha256sum "$cache/artifact" | cut -d' ' -f1)
+install_cached() (cd "$cache/worker" && PATH="$cache/bin:$PATH" bash "$here/segments/install-binary.sh" "$@")
+check  "verified replay binary installs" install_cached "$ref" "$digest"
+check  "installed binary matches artifact" cmp "$cache/artifact" "$cache/worker/target/release/celestia-rs"
+printf '#!/bin/sh\ntouch "%s/executed"\necho "commit: different"\n' "$cache" >"$cache/artifact"
+refute "wrong digest is rejected" install_cached "$ref" "$digest"
+refute "wrong digest never executes" test -e "$cache/executed"
+bad_digest=$(sha256sum "$cache/artifact" | cut -d' ' -f1)
+refute "wrong embedded commit is rejected" install_cached "$ref" "$bad_digest"
+check  "verified binary survives rejection" grep -q "$ref" "$cache/worker/target/release/celestia-rs"
+
+# Exercise the controller's actual selection and source-build fallback.
+cat >"$C/prepare-vm" <<'EOF'
+#!/bin/bash
+case $1 in
+  exec) cat >"$C/installer-input"; test ! -e "$C/reject-artifact" ;;
+  build) touch "$C/built-source" ;;
+esac
+EOF
+chmod +x "$C/prepare-vm"
+prepare_test() { ctl "SEG_BINARY_REF=$ref SEG_BINARY_SHA256=$digest V=$C/prepare-vm prepare_binary vm1 '$1'"; }
+check  "matching pin uses installer" prepare_test "$ref"
+check  "installer receives pinned digest" grep -q "$digest" "$C/installer-input"
+refute "valid cached binary skips build" test -e "$C/built-source"
+touch "$C/reject-artifact"
+check  "rejected artifact falls back" prepare_test "$ref"
+check  "fallback builds source" test -f "$C/built-source"
+mv "$C/built-source" "$C/gone/first-build"
+check  "unpinned worker builds" prepare_test ""
+check  "unpinned worker used source" test -f "$C/built-source"
+
 # --- segment watcher: a replay that is active but stuck writes a stalled marker ---------------
 W=$t/watch
 mkdir -p "$W/bin" "$W/data/home-120000/logs" "$W/bucket"
