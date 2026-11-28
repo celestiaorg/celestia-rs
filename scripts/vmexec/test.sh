@@ -391,6 +391,41 @@ check  "seg-vm prefetch fits 15 segments"    grep -qx 'PREFETCH=${PREFETCH:-8}' 
 check  "seg-vm reads a per-segment RPC list" grep -q 'segments/$SEG/rpc' "$here/segments/seg-vm.sh"
 check  "seg-vm defaults to public sources plus SEG_EXTRA_RPC" grep -qx 'RPC=https://rpc.celestia.pops.one,https://public-celestia-rpc.numia.xyz,https://celestia-mainnet-rpc.itrocket.net${SEG_EXTRA_RPC:+,$SEG_EXTRA_RPC}' "$here/segments/seg-vm.sh"
 
+# --- segment watcher: a job that is down for one poll (a deliberate restart) is not an end ---
+W=$t/watch-restart
+mkdir -p "$W/bin" "$W/data/home-120000/logs" "$W/bucket"
+cat >"$W/bin/systemctl" <<EOF
+#!/bin/bash
+# inactive on the first query (the restarted unit is not up yet), active after
+n=\$(cat "$W/n" 2>/dev/null || echo 0); echo \$((n + 1)) >"$W/n"
+[ "\$n" = 0 ] && echo inactive || echo active
+EOF
+cat >"$W/bin/vmx-gcs" <<EOF
+#!/bin/bash
+[ "\$1" = put ] && cp "\$2" "$W/bucket/\$(echo "\$3" | tr / _)"
+exit 0
+EOF
+chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs"
+PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=600 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1 &
+wpid=$!
+wait_until 30 test "$(cat "$W/n" 2>/dev/null || echo 0)" -ge 4 || true
+kill "$wpid" 2>/dev/null || true
+wait "$wpid" 2>/dev/null || true
+refute "watch ignores one inactive poll"     test -e "$W/bucket/segments_120000_failed"
+# A replay that really ended (inactive on consecutive polls, log at STOP) is done.
+W=$t/watch-end
+mkdir -p "$W/bin" "$W/data/home-120000/logs" "$W/bucket"
+printf '#!/bin/bash\necho inactive\n' >"$W/bin/systemctl"
+cat >"$W/bin/vmx-gcs" <<EOF
+#!/bin/bash
+[ "\$1" = put ] && cp "\$2" "$W/bucket/\$(echo "\$3" | tr / _)"
+exit 0
+EOF
+chmod +x "$W/bin/systemctl" "$W/bin/vmx-gcs"
+printf 'INFO celestia_rs::follow: followed height=250000 tip=1\nINFO celestia_rs::follow: follow finished first=120001 last=250000 blocks=130000\n' >"$W/data/home-120000/logs/follow.log"
+PATH=$W/bin:$PATH SEG_DATA=$W/data WATCH_SECS=1 STALL_SECS=600 timeout 30 bash "$here/segments/seg-watch.sh" 120000 250000 >/dev/null 2>&1
+check  "watch writes done for a finished replay" test -e "$W/bucket/segments_120000_done"
+
 echo
 if ((fails)); then echo "$fails test(s) failed"; exit 1; fi
 echo "all tests passed"
