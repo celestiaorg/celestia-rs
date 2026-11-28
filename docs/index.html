@@ -125,223 +125,37 @@
         </div>
         <div class="charts">
           <figure>
-            <figcaption><strong>Time to a verified tip</strong><span>Rounded minutes · 8 vCPU</span></figcaption>
+            <figcaption><strong>Time to a verified tip</strong><span>8 vCPU</span></figcaption>
             <div class="bar"><span>Rust</span><i class="rs" style="--w: 20.5%"></i><b><time datetime="PT307S">5 min</time></b></div>
             <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b><time datetime="PT1493S">25 min</time></b></div>
           </figure>
           <figure>
-            <figcaption><strong>Snapshot restore</strong><span>Rounded minutes · 32 vCPU</span></figcaption>
+            <figcaption><strong>Snapshot restore</strong><span>32 vCPU</span></figcaption>
             <div class="bar"><span>Rust</span><i class="rs" style="--w: 11.3%"></i><b><time datetime="PT104S">2 min</time></b></div>
             <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b><time datetime="PT921S">15 min</time></b></div>
-            <p class="note">Across all six runs, Rust took under 2 minutes and Go took about 15.</p>
           </figure>
           <figure>
-            <figcaption><strong>Peak memory, consensus and DA bridge</strong><span>GB · 600 blocks · 8 vCPU</span></figcaption>
-            <div class="bar"><span>Rust</span><i class="rs" style="--w: 35.2%"></i><b>4.06</b></div>
-            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>11.54</b></div>
+            <figcaption><strong>Peak memory, consensus and DA bridge</strong><span>600 blocks · 8 vCPU</span></figcaption>
+            <div class="bar"><span>Rust</span><i class="rs" style="--w: 35.2%"></i><b>4.06 GB</b></div>
+            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>11.54 GB</b></div>
             <p class="note">Both served the same 32 share reads with identical results.</p>
           </figure>
           <figure>
-            <figcaption><strong>Peak memory, consensus only</strong><span>GiB · 1,000 blocks · 32 vCPU</span></figcaption>
-            <div class="bar"><span>Rust</span><i class="rs" style="--w: 35.1%"></i><b>3.46</b></div>
-            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>9.86</b></div>
+            <figcaption><strong>Peak memory, consensus only</strong><span>1,000 blocks · 32 vCPU</span></figcaption>
+            <div class="bar"><span>Rust</span><i class="rs" style="--w: 35.1%"></i><b>3.46 GiB</b></div>
+            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>9.86 GiB</b></div>
           </figure>
           <figure>
-            <figcaption><strong>Node home on disk</strong><span>GiB · after 1,000 blocks</span></figcaption>
-            <div class="bar"><span>Rust</span><i class="rs" style="--w: 36.7%"></i><b>1.8</b></div>
-            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>4.9</b></div>
+            <figcaption><strong>Node home on disk</strong><span>After 1,000 blocks</span></figcaption>
+            <div class="bar"><span>Rust</span><i class="rs" style="--w: 36.7%"></i><b>1.8 GiB</b></div>
+            <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b>4.9 GiB</b></div>
           </figure>
           <figure>
-            <figcaption><strong>CPU time, consensus and DA bridge</strong><span>Rounded minutes · 600 blocks</span></figcaption>
+            <figcaption><strong>CPU time, consensus and DA bridge</strong><span>600 blocks</span></figcaption>
             <div class="bar"><span>Rust</span><i class="rs" style="--w: 66.7%"></i><b><time datetime="PT513S">9 min</time></b></div>
             <div class="bar"><span>Go</span><i class="go" style="--w: 100%"></i><b><time datetime="PT768S">13 min</time></b></div>
           </figure>
         </div>
-        <p class="links">
-          <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/benchmarks/operator-sync-2026-11-26.md">State sync and DA bridge report</a>
-          <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/benchmarks/operator-block-range-2026-11-26.md">1,000-block consensus report</a>
-          <a href="https://github.com/celestiaorg/celestia-rs/tree/main/docs/benchmarks">All benchmarks</a>
-        </p>
-      </section>
-
-      <section id="hardware">
-        <span class="eyebrow">Hardware requirements</span>
-        <h2>What to provision.</h2>
-        <p class="deck">
-          Release binaries run on Apple silicon macOS and on x86-64 or ARM64
-          Linux with glibc 2.35 or newer. Requirements are the same on
-          Mainnet and Mocha.
-        </p>
-        <div class="tiers">
-          <article>
-            <h3>Pruned full node</h3>
-            <p>Follows the chain and serves recent blocks, RPC and snapshots.</p>
-            <ul class="spec">
-              <li><b>8 CPU cores</b></li>
-              <li><b>16 GB RAM</b></li>
-              <li><b>500 GB NVMe SSD</b></li>
-            </ul>
-          </article>
-          <article>
-            <h3>Validator</h3>
-            <p>A pruned node that signs blocks. Same machine, plus a key backup kept offline.</p>
-            <ul class="spec">
-              <li><b>8 CPU cores</b></li>
-              <li><b>16 GB RAM</b></li>
-              <li><b>500 GB NVMe SSD</b></li>
-            </ul>
-          </article>
-          <article>
-            <h3>Archive node</h3>
-            <p>Keeps every block and app state from its start height. Disk grows with the chain.</p>
-            <ul class="spec">
-              <li><b>8 CPU cores</b></li>
-              <li><b>16 GB RAM</b></li>
-              <li><b>4 TB NVMe SSD</b>, expandable</li>
-            </ul>
-          </article>
-        </div>
-        <p class="evidence">
-          Why these numbers: on an 8-vCPU VM, celestia-rs peaked at 6.0 GB of
-          memory during state sync and 4.1 GB with the DA bridge on. Its
-          design budget is 12 GB at peak and 350 GB of pruned disk after one
-          year, so 16 GB and 500 GB leave headroom for compaction and
-          snapshots. The archive figure is a starting size: plan to add
-          storage as history accumulates.
-          <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/hardware.md">Hardware budgets and storage defaults</a>
-        </p>
-      </section>
-
-      <section id="start">
-        <span class="eyebrow">Quickstart</span>
-        <h2>Run your node.</h2>
-        <p class="deck">
-          Pick a network, a role and how much history to keep. The commands
-          below update to match. You need Bash, curl and jq, and the default
-          node ports free. A full node needs no wallet, TIA or fees.
-        </p>
-        <form class="config" id="config" aria-label="Node options">
-          <fieldset>
-            <legend>Network</legend>
-            <label><input type="radio" name="network" value="mainnet" checked /><span>Mainnet</span></label
-            ><label><input type="radio" name="network" value="mocha" /><span>Mocha testnet</span></label>
-          </fieldset>
-          <fieldset>
-            <legend>Role</legend>
-            <label><input type="radio" name="role" value="full" checked /><span>Full node</span></label
-            ><label><input type="radio" name="role" value="validator" /><span>Validator</span></label>
-          </fieldset>
-          <fieldset>
-            <legend>History</legend>
-            <label><input type="radio" name="retention" value="pruned" checked /><span>Pruned</span></label
-            ><label><input type="radio" name="retention" value="archive" /><span>Archive</span></label>
-          </fieldset>
-        </form>
-        <div class="agent">
-          <div>
-            <h3>Set up with Claude Code or Codex</h3>
-            <p>
-              Copy a prompt for <span data-summary>Mainnet · full node · pruned</span>
-              and paste it into an agent on the machine that will run the node.
-            </p>
-          </div>
-          <div class="agent-action">
-            <button type="button" id="copy-prompt" hidden>Copy setup prompt</button>
-            <span role="status" id="feedback"></span>
-          </div>
-        </div>
-        <p class="warn" data-show="mainnet-validator" hidden>
-          General Mainnet validator recommendation is pending qualification
-          (<a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/adr/0008-mainnet-recommendation.md">ADR 0008</a>).
-          Try it on Mocha first, and never run two nodes with the same
-          signing key.
-        </p>
-        <ol class="steps">
-          <li>
-            <h3>Install the release</h3>
-            <p>The installer checks the archive’s SHA-256. A release reaches
-              the <code>mocha</code> channel after 24 hours on a devnet, and
-              <code>mainnet</code> after 24 more hours on Mocha.</p>
-            <div class="terminal"><pre><code data-cmd="install">curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/celestiaorg/celestia-rs/main/scripts/install.sh | sh -s -- --channel mainnet
-~/.celestia-rs/bin/celestia-rs version --long</code></pre></div>
-          </li>
-          <li>
-            <h3>Start from a verified snapshot</h3>
-            <p>Paste this into Bash. It checks a recent block hash against two
-              independent RPCs, creates a fresh node home, applies your history
-              setting and starts state sync. Keep the terminal open.</p>
-            <div class="terminal"><pre><code data-cmd="launch">(
-  set -eu
-  node="$HOME/.celestia-rs/bin/celestia-rs"
-  home_dir="$HOME/.celestia-rs/mainnet"
-  chain=celestia
-  rpc=https://rpc.celestia.pops.one:443
-  witness=https://celestia-rpc.polkachu.com:443
-  latest=$(curl -fsSL "$rpc/block" | jq -er --arg c "$chain" '.result.block.header | select(.chain_id == $c) | .height | tonumber')
-  height=$((latest - 3000))
-  hash_at() {
-    curl -fsSL "$1/block?height=$height" | jq -er --arg c "$chain" --arg h "$height" '
-      .result | select(.block.header.chain_id == $c and .block.header.height == $h)
-      | .block_id.hash | select(test("^[0-9A-Fa-f]{64}$"))'
-  }
-  hash=$(hash_at "$rpc")
-  if [ "$hash" != "$(hash_at "$witness")" ]; then
-    echo "RPCs disagree at height $height. Stopping." &gt;&amp;2
-    exit 1
-  fi
-  mkdir "$home_dir"  # first launch only: needs a fresh directory
-  if ! "$node" init my-node --network mainnet --home "$home_dir" &gt;"$home_dir/init.log" 2&gt;&amp;1; then
-    tail -n 10 "$home_dir/init.log" &gt;&amp;2
-    exit 1
-  fi
-  rm "$home_dir/init.log"
-  cfg() { "$node" config set "$@" --home "$home_dir"; }
-  cfg config statesync.rpc_servers "$rpc,$witness"
-  cfg config statesync.trust_height "$height"
-  cfg config statesync.trust_hash "$hash"
-  cfg config statesync.enable true
-  # Pruned: keep recent state and 3,000 blocks; serve snapshots to peers.
-  cfg app pruning default
-  cfg app min-retain-blocks 3000
-  cfg app state-sync.snapshot-interval 1500
-  ulimit -n 4096
-  exec "$node" start --network mainnet --home "$home_dir"
-)</code></pre></div>
-          </li>
-          <li>
-            <h3>Check progress</h3>
-            <p>In a second terminal. The node is current once
-              <code>catching_up</code> is <code>false</code> and
-              <code>latest_block_height</code> keeps rising.</p>
-            <div class="terminal"><pre><code data-cmd="status">~/.celestia-rs/bin/celestia-rs status --home ~/.celestia-rs/mainnet | jq '.sync_info | {latest_block_height, catching_up}'</code></pre></div>
-            <p>Stop with Ctrl+C. Restart later from the same home:</p>
-            <div class="terminal"><pre><code data-cmd="restart">~/.celestia-rs/bin/celestia-rs start --network mainnet --home ~/.celestia-rs/mainnet</code></pre></div>
-          </li>
-          <li data-show="validator" hidden>
-            <h3>Create the validator</h3>
-            <p data-network-text>Once the node is current, create an operator
-              key, fund its address, then register. Write the mnemonic down
-              offline and back up <code>config/priv_validator_key.json</code>.</p>
-            <div class="terminal"><pre><code data-cmd="validator"></code></pre></div>
-            <p>Commission must be at least 0.20. See the
-              <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md#11-running-a-mocha-validator-on-a-mac-m13">validator runbook</a>
-              for monitoring, upgrades and safe shutdown.</p>
-          </li>
-        </ol>
-        <details class="extra">
-          <summary>Enable the integrated Rust DA bridge</summary>
-          <p id="da-bridge">The Rust DA bridge runs inside your consensus node and serves DA
-            data from its blockstore. Enabling it replaces a separate Go
-            <code>celestia-node</code> bridge.</p>
-          <p>Start a non-validating Mocha node using the quickstart above. Stop
-            it, then restart with the same home and add the DA listeners:</p>
-          <div class="terminal"><pre><code>~/.celestia-rs/bin/celestia-rs start --network mocha --home ~/.celestia-rs/mocha \
-  --bridge-rpc-listen 127.0.0.1:26658 --bridge-p2p-listen 0.0.0.0:2121</code></pre></div>
-          <p>DA RPC stays on loopback. Allow inbound TCP on port 2121 for the
-            DA peers you want to serve. Once the node catches up, use its DA
-            peer address to <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md#mocha-5-non-validating-bridge-canary">verify reads from a Go light node</a>
-            on Mocha.</p>
-        </details>
         <p class="links">
           <a href="https://github.com/celestiaorg/celestia-rs/blob/main/docs/operator-guide.md">Full operator guide</a>
           <a href="https://github.com/celestiaorg/celestia-rs/releases">Releases</a>
