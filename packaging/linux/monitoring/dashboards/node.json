@@ -1,0 +1,447 @@
+{
+  "uid": "celestia-rs-operator",
+  "title": "Celestia node overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "label": "Node",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "celestia-rs-prom"
+        },
+        "query": "label_values(up{job=\"celestia-rs\"}, instance)",
+        "refresh": 1,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Metrics endpoint",
+      "type": "stat",
+      "description": "Whether Prometheus can scrape this node.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "celestia-rs-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"celestia-rs\",instance=\"$instance\"}",
+          "legendFormat": "{{instance}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Down",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Up",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "Latest committed height",
+      "type": "stat",
+      "description": "Latest block reported by the consensus loop.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "celestia-rs-prom"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cometbft_consensus_latest_block_height{job=\"celestia-rs\",instance=\"$instance\"}",
+          "legendFormat": "{{chain_id}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Connected peers",
+      "type": "stat",
+      "description": "Current consensus P2P connections.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "celestia-rs-prom"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cometbft_p2p_peers{job=\"celestia-rs\",instance=\"$instance\"}",
+          "legendFormat": "{{chain_id}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Committed height",
+      "type": "timeseries",
+      "description": "A flat line while the endpoint is up means consensus has reported no newer commit.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "celestia-rs-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cometbft_consensus_latest_block_height{job=\"celestia-rs\",instance=\"$instance\"}",
+          "legendFormat": "{{chain_id}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Mean block interval",
+      "type": "timeseries",
+      "description": "Mean time between committed blocks in the selected rate window.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "celestia-rs-prom"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(cometbft_consensus_block_interval_seconds_sum{job=\"celestia-rs\",instance=\"$instance\"}[$__rate_interval]) / rate(cometbft_consensus_block_interval_seconds_count{job=\"celestia-rs\",instance=\"$instance\"}[$__rate_interval])",
+          "legendFormat": "{{chain_id}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "Mempool backlog",
+      "type": "timeseries",
+      "description": "Transactions waiting in the local mempool.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "celestia-rs-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cometbft_mempool_size{job=\"celestia-rs\",instance=\"$instance\"}",
+          "legendFormat": "{{chain_id}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "Transaction throughput",
+      "type": "timeseries",
+      "description": "Committed transactions per second.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "celestia-rs-prom"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(cometbft_consensus_total_txs{job=\"celestia-rs\",instance=\"$instance\"}[$__rate_interval])",
+          "legendFormat": "{{chain_id}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "tps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "title": "Database size",
+      "type": "timeseries",
+      "description": "Allocated database bytes by store.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "celestia-rs-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cometbft_memstats_kvdb_data_bytes{job=\"celestia-rs\",instance=\"$instance\"}",
+          "legendFormat": "{{db}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "title": "Database cache and memtables",
+      "type": "timeseries",
+      "description": "Memory reported by each database for its cache and memtables.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "celestia-rs-prom"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cometbft_memstats_kvdb_cache_bytes{job=\"celestia-rs\",instance=\"$instance\"}",
+          "legendFormat": "{{db}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 12,
+      "title": "Latest block size",
+      "type": "timeseries",
+      "description": "Encoded size of the latest committed block.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "celestia-rs-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cometbft_consensus_block_size_bytes{job=\"celestia-rs\",instance=\"$instance\"}",
+          "legendFormat": "{{chain_id}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 13,
+      "title": "Voting power absent from commit",
+      "type": "timeseries",
+      "description": "Share of total voting power absent from the latest block’s last commit.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "celestia-rs-prom"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 25,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * cometbft_consensus_missing_validators_power{job=\"celestia-rs\",instance=\"$instance\"} / cometbft_consensus_validators_power{job=\"celestia-rs\",instance=\"$instance\"}",
+          "legendFormat": "{{chain_id}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 10,
+      "title": "Validator signing lag",
+      "type": "timeseries",
+      "description": "Blocks since the local validator last signed, as observed in commits.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "celestia-rs-prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "clamp_min(cometbft_consensus_latest_block_height{job=\"celestia-rs\",instance=\"$instance\"} - ignoring(validator_address) group_right cometbft_consensus_validator_last_signed_height{job=\"celestia-rs\",instance=\"$instance\"}, 0)",
+          "legendFormat": "{{validator_address}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 11,
+      "title": "Validator missed blocks since restart",
+      "type": "timeseries",
+      "description": "Local misses observed by this process. The on-chain slashing window is tracked separately.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "celestia-rs-prom"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cometbft_consensus_validator_missed_blocks{job=\"celestia-rs\",instance=\"$instance\"} or (0 * cometbft_consensus_validator_power{job=\"celestia-rs\",instance=\"$instance\"})",
+          "legendFormat": "{{validator_address}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

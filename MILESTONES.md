@@ -16,16 +16,23 @@ signers are later goals; an external security audit is optional
 ([ADR 0008](docs/adr/0008-mainnet-recommendation.md)). F1 still requires
 independent code review and evidence tied to an exact release candidate.
 
-**Go parity target:** celestia-app **v10.6.0**, celestia-core **v0.42.8**,
+**Go oracles for the v10 and historical qualification campaigns:** celestia-app **v10.6.0**, celestia-core **v0.42.8**,
 and historical app version 9 at celestia-app **v9.0.8** (ADR 0004).
 ADR 0010 supersedes the v10.5.0 target for new qualification; retained
 v10.5.0 evidence remains historical.
 
-**Qualification status (2026-11-20):** The 72-hour collector attempt on
-`46acbcb` recorded healthy local samples. Reference gaps and failed
-comparisons at 45 mainnet heights leave C1.1 open. C1.5 still needs
-alert-delivery evidence. F1 and Q1 remain open on the qualifying release
-candidate. [Collector audit](docs/validator-observation-audit-2026-11-20.md).
+**Qualification status at v0.1.0.** The release includes consensus and both
+experimental DA roles. The v11 patch behavior and v12 activation boundaries
+are documented separately from the v10 qualification oracle. The latest
+operator comparisons use celestia-app v11.0.0. [Release](https://github.com/celestiaorg/celestia-rs/releases/tag/v0.1.0) · [Version gates](docs/v11-patch-release.md) · [Mainnet benchmarks](docs/benchmarks/operator-sync-2026-11-26.md)
+
+C1.1 still needs a continuous three-day record on the qualifying candidate.
+Three reference RPCs corroborated local block and app hashes at all 45 heights
+excluded from the November audit. Local transaction-result commitments for
+those heights are missing from the retained evidence. C1.5 still needs
+alert-delivery evidence, and F1 and Q1 remain open. The non-archival RPC suite
+has completed its bounded baseline. F1.8 still needs exact-candidate replay
+receipts for the required Mainnet and Mocha eras. [Replay coverage](https://github.com/celestiaorg/celestia-rs/issues/302) · [Validator recheck](docs/validator-track-record-2026-11-25.md) · [RPC readiness](conformance/mainnet-rpc/readiness.json)
 
 ## Remaining milestones
 
@@ -57,7 +64,7 @@ records both nodes bonded, unjailed and at the public tip on release commit
 mainnet gate or replace the accepted historical Mocha soak: the latest
 72 hours contain 28 starts per node, and the seven-day Mocha history
 contains the Oct 31 guard refusal documented in operator guide §11.11.
-Exact-candidate qualification is tracked in [#299](https://github.com/celestiaorg/celestia-rs/issues/299).
+The November observation attempt is recorded in [#299](https://github.com/celestiaorg/celestia-rs/issues/299).
 
 The Mocha validator soak passed on 2026-10-17. The mainnet node on the
 Mac now runs as the M14 validator; what remains is its full-node record
